@@ -103,6 +103,19 @@ export function mergeEntitlementFeatures(
     ...(catalogDefaults.maxDesktopKeys !== undefined
       ? { maxDesktopKeys: catalogDefaults.maxDesktopKeys }
       : {}),
+    // Alert-ladder capabilities (#4273) are plan structure, like the
+    // desktop-key limits: nothing writes per-user overrides, and a ladder
+    // change in the catalog must apply to existing subscribers at read time,
+    // never wait for a billing event to rewrite the row.
+    ...(catalogDefaults.alertMaxCountries !== undefined
+      ? {
+        alertMaxCountries: catalogDefaults.alertMaxCountries,
+        alertChannels: catalogDefaults.alertChannels,
+        alertSensitivities: catalogDefaults.alertSensitivities,
+        alertDigestModes: catalogDefaults.alertDigestModes,
+        aiDigestAccess: catalogDefaults.aiDigestAccess,
+      }
+      : {}),
     planLimits,
   };
 }

@@ -121,14 +121,17 @@ async function seedEntitlement(
 }
 
 describe("notificationChannels — Convex entitlement gate", () => {
-  // Creation paths stay Pro-gated (identity-scoped internals since the public
-  // surface was retired; production writes go through the edge relay). Deletion/deactivation are internal and
-  // ungated — covered by the "live delete/deactivate" suite below (#8430).
+  // Creation paths gate on the caller's alert-ladder channel set (#4273):
+  // the free set (web push + email) is open to every account, everything
+  // else is a structured upgrade denial. Identity-scoped internals since the
+  // public surface was retired; production writes go through the edge relay.
+  // Deletion/deactivation are internal and ungated — covered by the "live
+  // delete/deactivate" suite below (#8430).
   const guardedMutations: Array<[string, (asUser: TestUser) => Promise<unknown>]> = [
-    ["setChannel", (asUser: TestUser) =>
+    ["setChannel (slack)", (asUser: TestUser) =>
       asUser.mutation(internal.notificationChannels.setChannel, {
-        channelType: "email",
-        email: "free-user@example.com",
+        channelType: "slack",
+        webhookEnvelope: "enc",
       })],
     ["createPairingToken", (asUser: TestUser) =>
       asUser.mutation(internal.notificationChannels.createPairingToken, {
@@ -145,17 +148,35 @@ describe("notificationChannels — Convex entitlement gate", () => {
     ["tier-0", (t: ReturnType<typeof convexTest>) => seedEntitlement(t, 0)],
   ])("%s entitlement", (_entitlementState, arrangeEntitlement) => {
     test.each(guardedMutations)(
-      "%s rejects an authenticated non-Pro caller",
+      "%s rejects an authenticated non-Pro caller with the ladder denial",
       async (_name, invoke) => {
         const t = convexTest(schema, modules);
         await arrangeEntitlement(t);
         const asUser = t.withIdentity(USER);
 
         await expect(invoke(asUser)).rejects.toThrow(
-          /PRO_REQUIRED|Notifications are a PRO feature/i,
+          /ALERT_CHANNEL_UPGRADE_REQUIRED/,
         );
       },
     );
+
+    test("email channel creation is on the free ladder and succeeds (#4273)", async () => {
+      const t = convexTest(schema, modules);
+      await arrangeEntitlement(t);
+      const asUser = t.withIdentity({ ...USER, email: "free-user@example.com", emailVerified: true });
+
+      await asUser.mutation(internal.notificationChannels.setChannel, {
+        channelType: "email",
+        email: "free-user@example.com",
+      });
+      const channels = await t.run(async (ctx) =>
+        ctx.db
+          .query("notificationChannels")
+          .withIndex("by_user_channel", (q) => q.eq("userId", USER.subject).eq("channelType", "email"))
+          .collect(),
+      );
+      expect(channels).toHaveLength(1);
+    });
   });
 
   test("claimPairingToken rejects a token whose owner is no longer Pro", async () => {
@@ -598,6 +619,10 @@ describe("notificationChannels — durable first-connect welcome", () => {
     const fetchMock = installQueueMock();
     process.env.CONVEX_TENANT_RELAY_SECRET = "relay-secret";
     const t = convexTest(schema, modules);
+    // The slack channel below sits past the free ladder (#4273), so the
+    // relay caller must hold a paid entitlement — in production the edge
+    // gate guarantees that before this action is reached.
+    await seedEntitlement(t);
     const headers = {
       Authorization: "Bearer relay-secret",
       "Content-Type": "application/json",

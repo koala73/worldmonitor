@@ -5,6 +5,7 @@ const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
+const { freeTierAllowsEvent, freeTierAllowsChannel } = require('./lib/free-tier-delivery.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
@@ -382,11 +383,11 @@ const ENTITLEMENT_FAILCLOSED_CACHE_TTL = 60;
  * legitimate PRO users for up to 60s after each cache miss. Pair with
  * monitoring on `[relay][entitlement-fail-closed]` log lines.
  */
-async function isUserPro(userId) {
+async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
     const cached = await upstashRest('GET', cacheKey);
-    if (cached !== null) return Number(cached) >= 1;
+    if (cached !== null) return Number(cached);
   } catch { /* miss */ }
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
@@ -401,19 +402,19 @@ async function isUserPro(userId) {
       // Cache "0" with short TTL so subsequent events for this user during
       // the same outage skip the 5-sec fetch. Logged with stable prefix
       // for alerting on volume.
-      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; dropping delivery`);
+      console.error(`[relay][entitlement-fail-closed] HTTP ${res.status} for ${userId}; clamping to free-tier delivery`);
       try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-      return false;
+      return 0;
     }
     const { tier } = await res.json();
     await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
-    return (tier ?? 0) >= 1;
+    return tier ?? 0;
   } catch (err) {
     // Same fail-CLOSED policy on transport error / timeout. Same short-TTL
     // cache write so we don't re-attempt the 5-sec fetch for every event.
-    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; dropping delivery`);
+    console.error(`[relay][entitlement-fail-closed] error for ${userId}: ${err && err.message ? err.message : err}; clamping to free-tier delivery`);
     try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
-    return false;
+    return 0;
   }
 }
 
@@ -1929,22 +1930,30 @@ async function processEvent(event) {
 
   if (matching.length === 0) return;
 
-  // Batch PRO check: resolve all unique userIds in parallel instead of one-by-one.
-  // isUserPro() has a 15-min Redis cache, so this is cheap after the first call.
+  // Batch tier check: resolve all unique userIds in parallel instead of
+  // one-by-one. getUserTier() has a 15-min Redis cache, so this is cheap
+  // after the first call. #4273: free users (tier 0, including the
+  // fail-closed entitlement-outage value) now DELIVER, clamped to the free
+  // ladder — critical events only, web push + email only — instead of being
+  // skipped outright. The clamp also covers legacy wider-than-plan free rows
+  // the 2026-04-28 audit found, whatever their stored settings say.
   const uniqueUserIds = [...new Set(matching.map(r => r.userId))];
-  const proResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await isUserPro(uid)]));
-  const proSet = new Set(proResults.filter(([, isPro]) => isPro).map(([uid]) => uid));
-  const skippedCount = uniqueUserIds.length - proSet.size;
-  if (skippedCount > 0) console.log(`[relay] Skipping ${skippedCount} non-PRO user(s)`);
+  const tierResults = await Promise.all(uniqueUserIds.map(async uid => [uid, await getUserTier(uid)]));
+  const tierByUser = new Map(tierResults);
 
   const text = formatMessage(event);
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
+  let freeSeverityDrops = 0;
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
 
   for (const rule of matching) {
-    if (!proSet.has(rule.userId)) continue;
+    const userTier = tierByUser.get(rule.userId) ?? 0;
+    if (!freeTierAllowsEvent(userTier, eventSeverity)) {
+      freeSeverityDrops += 1;
+      continue;
+    }
 
     const quietAction = resolveQuietAction(rule, eventSeverity);
 
@@ -2026,6 +2035,7 @@ async function processEvent(event) {
 
     const verifiedChannels = channels.filter(c =>
       c.verified &&
+      freeTierAllowsChannel(userTier, c.channelType) &&
       (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
       (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
       rule.channels.includes(c.channelType));
@@ -2078,6 +2088,7 @@ async function processEvent(event) {
     }
   }
 
+  if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
   if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }
 
