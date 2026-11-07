@@ -1252,7 +1252,7 @@ export async function readHazardFeeds({ redis }) {
       ['GET', EARTHQUAKES_KEY],
       ['GET', NATURAL_EVENTS_KEY],
       ['ZRANGE', seenKey(HAZARD_EVENT), '0', '-1'],
-      ['HGETALL', HAZARD_INIT_KEY],
+      ['HKEYS', HAZARD_INIT_KEY],
     ]);
   } catch {
     return null;
@@ -1260,7 +1260,7 @@ export async function readHazardFeeds({ redis }) {
   if (!Array.isArray(rows) || rows.length !== 4 || [rows[2], rows[3]].some((row) => !row || row.error)) return null;
   const init = Array.isArray(rows[3].result) ? rows[3].result : [];
   return {
-    initialized: init.filter((_, index) => index % 2 === 0),
+    initialized: init,
     earthquakes: seededArray(rows[0], 'earthquakes'),
     naturalEvents: seededArray(rows[1], 'events'),
     seen: parseHazardSeen(Array.isArray(rows[2].result) ? rows[2].result : []),
@@ -1438,6 +1438,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     ];
     let rows;
     for (let attempt = 0; attempt < 2 && !rows; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
       rows = await redis(commands).catch(() => null);
       if (!Array.isArray(rows) || rows.length !== 2 || rows.some((row) => !row || row.error)) rows = null;
     }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 import Module, { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import notify, { __setNotifyDepsForTests } from '../api/notify.ts';
@@ -113,7 +114,7 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
     const unreserved = renderDigestEmailHtml({ stories, nowMs: Date.now() });
     assert.ok(Buffer.byteLength(fillFooter(unreserved.html)) > DIGEST_EMAIL_MAX_HTML_BYTES, 'fixture exceeds the cap without footer reservation');
     const run = runInNewContext(`${sendEmail}\n${main}\nmain`, {
-      Date, Map, Set, AbortSignal, Buffer, process: { env: {} }, console: { log() {}, warn() {} },
+      Date, Map, Set, AbortSignal, Buffer, createHash, process: { env: {} }, console: { log() {}, warn() {} },
       DIGEST_EMAIL_MAX_HTML_BYTES, injectUnsubscribeFooterHtml, unsubscribeUrlFor,
       appendUnsubscribeText, listUnsubscribeHeaders, resend: {}, RESEND_FROM: 'brief@example.com',
       CONVEX_SITE_URL: 'https://convex.test', RELAY_SECRET: 'fake', DIGEST_LOOKBACK_MS: 86400000,
@@ -138,8 +139,10 @@ for (const proof of ['legacy', 'unverified', 'verified'] as const) {
       buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
       subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
       emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }) => {
+      sendResendEmail: async (_client: unknown, message: { to: string; html: string; text: string }, options: { idempotencyKey?: string }) => {
         assert.equal(message.to, 'owner@example.com');
+        // A late-accepted send replays on the next tick; the payload-bound key lets Resend drop it.
+        assert.match(options.idempotencyKey ?? '', /^digest-[0-9a-f]{64}$/);
         assert.ok(message.text.startsWith('Synthetic digest'), 'plain-text part carries the plain story list');
         const deliveredHtml = message.html;
         assert.ok(Buffer.byteLength(deliveredHtml) <= DIGEST_EMAIL_MAX_HTML_BYTES);

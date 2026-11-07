@@ -112,7 +112,8 @@ export async function sha256Hex(input: string): Promise<string> {
  *
  * Algorithm (deterministic, AWS SigV4-inspired):
  *   1. Parse the query string (with or without leading "?") via URLSearchParams.
- *   2. Sort entries lexicographically by key (stable: equal keys keep insertion order).
+ *   2. Sort entries lexicographically by key, then by value, so the order of a
+ *      repeated key's values does not matter either.
  *   3. URL-encode each key and value with encodeURIComponent.
  *   4. Join as `${key}=${value}` pairs separated by `&`.
  *
@@ -146,7 +147,12 @@ export function canonicalQueryString(searchOrUrl: string | URL): string {
   const params = new URLSearchParams(trimmed);
   const entries: [string, string][] = [];
   for (const [k, v] of params) entries.push([k, v]);
-  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  // Key, then value. Cloudflare in front of api.worldmonitor.app sorts query
+  // values before the request reaches the gateway, so a key-only stable sort
+  // (which kept the caller's order of a repeated key) broke every signature
+  // whose repeated values were not already sorted (WORLDMONITOR-1CJ).
+  // Already-sorted queries canonicalise to the same bytes as before.
+  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   return entries
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');
@@ -277,8 +283,12 @@ export async function signInternalMcpRequest(args: {
 
   const url = args.url instanceof URL ? args.url : new URL(args.url);
   const ts = Math.floor(args.now ?? Date.now() / 1000);
-  const queryHash = await sha256Hex(canonicalQueryString(url));
-  const bodyHash = await sha256Hex(await coerceBodyToString(args.body));
+  // Query and body are hashed independently; overlapping them removes a
+  // serialized await from every internal MCP request this signs.
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalQueryString(url)),
+    coerceBodyToString(args.body).then((body) => sha256Hex(body)),
+  ]);
   const payload = buildHmacPayload({
     ts,
     method: args.method,
@@ -371,8 +381,10 @@ export interface VerifiedInternalMcpRequest {
  */
 async function timingSafeStringEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
-  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a)));
-  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(b)));
+  const [aHash, bHash] = (await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ])).map((digest) => new Uint8Array(digest)) as [Uint8Array, Uint8Array];
   let diff = 0;
   for (let i = 0; i < aHash.length; i++) diff |= aHash[i]! ^ bHash[i]!;
   return diff === 0;
@@ -534,8 +546,10 @@ export async function verifyInternalMcpRequestDetailed(
   // empty string → SHA-256(""), matching the signer's `coerceBodyToString`.
   const bodyAsString = bodyBytes.length === 0 ? '' : new TextDecoder().decode(bodyBytes);
 
-  const queryHash = await sha256Hex(canonicalGatewayQueryString(url));
-  const bodyHash = await sha256Hex(bodyAsString);
+  const [queryHash, bodyHash] = await Promise.all([
+    sha256Hex(canonicalGatewayQueryString(url)),
+    sha256Hex(bodyAsString),
+  ]);
 
   const expectedPayload = buildHmacPayload({
     ts,

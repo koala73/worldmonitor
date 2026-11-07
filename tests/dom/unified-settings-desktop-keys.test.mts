@@ -178,6 +178,8 @@ vi.mock('@/services/mcp-clients', () => ({
   fetchMcpQuota: vi.fn(),
   revokeMcpClient: vi.fn(),
 }));
+const startCheckout = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('@/services/checkout', () => ({ startCheckout }));
 
 const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
@@ -239,6 +241,7 @@ beforeEach(() => {
   createApiKey.mockClear();
   listApiKeys.mockClear();
   revokeApiKey.mockClear();
+  startCheckout.mockClear();
   mount();
 });
 
@@ -255,12 +258,33 @@ describe('Settings -> API Keys: which section each plan sees', () => {
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys');
-    expect(text).toContain('for your own desktop app');
-    expect(text).toContain('Shared or public deployments need an API plan');
+    expect(text).toContain('in your desktop app and on self-hosted dashboards');
+    expect(text).toContain('On a shared install, each person enters their own key');
+    expect(text).toContain('An API plan is for calling the API directly');
+    expect(text).not.toContain('Shared or public deployments need an API plan');
     expect(text).not.toContain('Create API keys to access WorldMonitor data programmatically');
-    expect(text).not.toContain('Upgrade to API Starter');
     expect(createButton()?.textContent).toContain('Create desktop key');
     expect(count()?.textContent).toContain('0 of 2');
+  });
+
+  // Pro holders were a third of API Starter buyers (two thirds in October 2026),
+  // and this tab was their way in. #9687 replaced it with the desktop section
+  // and no Starter offer; Starter sales fell from 3-8 a week to about zero.
+  it('offers a Pro owner API Starter below their desktop keys, Terms first', async () => {
+    openApiKeysTab();
+    await keysLoaded();
+
+    const offer = panel().querySelector<HTMLElement>('[data-api-starter-offer]');
+    expect(offer?.textContent).toContain('REST API, SDKs or webhooks');
+    const cta = offer?.querySelector<HTMLButtonElement>('.api-keys-gate-btn');
+    expect(cta?.textContent).toBe('Upgrade to API Starter');
+    const consent = offer?.querySelector('.checkout-consent');
+    expect(consent).not.toBeNull();
+    expect(consent!.compareDocumentPosition(cta!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    cta!.click();
+    const { DODO_PRODUCTS } = await import('@/config/products');
+    await vi.waitFor(() => expect(startCheckout).toHaveBeenCalledWith(DODO_PRODUCTS.API_STARTER_MONTHLY));
   });
 
   it('shows an API-plan owner the existing API key section unchanged', async () => {
@@ -282,7 +306,16 @@ describe('Settings -> API Keys: which section each plan sees', () => {
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys come with Pro');
-    expect(panel().querySelector('.upgrade-pro-cta')?.textContent).toContain('Upgrade to Pro');
+    const pro = panel().querySelector('.upgrade-pro-cta');
+    expect(pro?.textContent).toContain('Upgrade to Pro');
+    // "Upgrade to Pro" opens the /pro plan picker; only API Starter checks out
+    // here, so the one Terms line sits between the two, above API Starter.
+    const starter = panel().querySelector('.api-keys-gate-btn');
+    expect(starter?.textContent).toBe('Upgrade to API Starter');
+    const consents = panel().querySelectorAll('.checkout-consent');
+    expect(consents).toHaveLength(1);
+    expect(pro!.compareDocumentPosition(consents[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(consents[0]!.compareDocumentPosition(starter!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(createButton()).toBeNull();
     expect(listApiKeys).not.toHaveBeenCalled();
   });

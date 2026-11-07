@@ -100,7 +100,7 @@
         "description": "Suluhisho la kawaida kwa mashirikishi",
         "features": [
           "Kila kitu katika Pro + API",
-          "Maombi ya API yasiyo na kikomo",
+          "Maombi 10,000 ya API kwa siku, zaidi kwa mkataba",
           "Msaada unaozingatiwa",
           "Ujumuishaji wa kawaida",
           "Dhamana ya SLA",
@@ -113,7 +113,8 @@
         ],
         "cta": "Wasiliana na Bora"
       }
-    }
+    },
+    "cancelAnytime": "Ghairi wakati wowote kutoka kwa akaunti yako. Utabaki na upatikanaji hadi mwisho wa kipindi ulicholipa."
   },
   "meta": {
     "title": "World Monitor Pro | Uchambuzi AI & MCP",
@@ -133,48 +134,17 @@
   "hero": {
     "noiseWord": "Kelele",
     "signalWord": "Ishara",
-    "valueProps": "Safu ya uchambuzi wa kisiasa-dunia — uliza, jisajiri, jenga juu yake.",
+    "valueProps": "Uliza mchanganaji AI, weka sheria za onyo, pata ripoti fupi, na uitumie katika Claude.",
     "launchingDate": "Halisi sasa",
     "tryFreeDashboard": "Jaribu dashboard bure",
     "choosePlan": "Chagua Mpango Wako",
-    "goToDashboard": "Nenda kwa Dashboard",
-    "signIn": "Ingia"
+    "goToDashboard": "Nenda kwa Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Ilivyoonekana katika"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "Mchambuzi wa AI yako. Meza ya habari yako binafsi. Jukwaa unaweza kujenga juu yake.",
-    "proF1": "Mazungumzo ya WM Analyst — uliza huduma za moja kwa moja kwa mazungumzo",
-    "proF2": "Muhtasari wa AI — kila siku, mara mbili kwa siku, au kila wiki — kwa Slack, Discord, Telegram, Barua pepe, au webhook",
-    "proF3": "Zana ya Kuweka Vidget Maalum — HTML/CSS/JS na kurekebisha kwa usaidizi wa AI",
-    "proF4": "Muunganisho wa MCP — unganisha WorldMonitor katika Claude, GPT, LLM maalum",
-    "proF5": "Utafiti wa hisa, uchambuzi wa hisa & mtihani wa nyuma",
-    "proF6": "Utafutaji wa ndege & kulinganisha bei",
-    "proF7": "Injini ya sheria za onyo — vigezo maalum, saa za utulivu, salikhani zilizochorwa AES-256",
-    "proF8": "Orodha ya kuzingatia soko, kufuatilia mambo makuu na benki ya kati",
-    "proF9": "Athari za Soko la AI & Akili ya Kanda",
-    "choosePlan": "Chagua Mpango Wako",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "Kwa timu zinazohitaji ufuatiliaji wa pamoja, upatikanaji wa API, chaguzi za uongezaji, programu za TV, na msaada wa moja kwa moja.",
-    "entF1": "Kila kitu katika Pro, pamoja na:",
-    "entF2": "Picha za Satellite na SAR za Live-edge",
-    "entF3": "Wanakili wa AI wenye wasifu wa wawekezaji & MCP",
-    "entF4": "Rasilimali za miundombinu iliyochorwa ramani",
-    "entF5": "Waunganisha wa data (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhooks + ubadilisho wa wingi",
-    "entF7": "Nafasi za timu zilizo na SSO/MFA/RBAC",
-    "entF8": "Paneli zenye alama ya biashara & zenye uwezo wa kuingizwa",
-    "entF9": "Programu ya Android TV kwa kuta za SOC & sakafu za biashara",
-    "entF10": "Uongezaji wa juu ya wingu, ndani ya matangazo, au uhaba wa hewa",
-    "entF11": "Kuandaa kwa mkakati na msaada mahususi",
-    "entCta": "Ongea na Mauzo",
-    "freeF2": "Milo iliyoteuliwa, vyanzo vilivyohesabiwa, na tabaka za ramani",
-    "proF10": "Akili ya juu — utafutaji wa kihistoria, mstari wa wakati & utafutaji wa matukio yanayofanana"
-  },
   "whyUpgrade": {
-    "title": "Kwa nini kubadilisha kwenda World Monitor Pro?",
+    "title": "Pata habari kabla ya vichwa vya habari",
     "noiseTitle": "Jua kwanza",
     "noiseDesc": "AIS utata → Brent picha → Slack yako ndani ya dakika chini ya moja. Ishara, si manukuu.",
     "fasterTitle": "Uliza chochote",
@@ -265,7 +235,7 @@
   },
   "proShowcase": {
     "proTier": "KIWANGO CHA PRO",
-    "title": "Mchambuzi wa AI wa World Monitor hufanya nini?",
+    "title": "Mchambuzi wa AI kwa hisa, macro na geopolitiki",
     "subtitle": "Dashibodi bure inakuonyesha ulimwengu. Pro inakupatia mchanganuzi kuuliza, muhtasari unayojibu, na msingi wa kujenga. Hisa, makro, hatari ya kisiasa — na uhusiano kati yao.",
     "equityResearch": "Utafiti wa Hisa",
     "equityResearchDesc": "Uchambuzi wa hisa duniani wenye uonyaji wa fedha, malengo ya bei ya wachanganuzi, na vipimo vya thamani. Fuatilia kile kinachosogeza masoko.",
@@ -426,11 +396,11 @@
     "q7": "Je, niweza bado kutumia funguo zako za API?",
     "a7": "Ndiyo. Kuleta-fungi-yako-mwenyewe-ufunguo inafanya kazi daima. Pro inamaanisha tu kwamba haina kumsimu kwa huduma tofauti.",
     "q8": "MCP ni nini?",
-    "a8": "MCP huruhusu maafikiano ya AI — Claude, GPT, LLM za kaada — kutumia WorldMonitor kama zana, na kuuliza huduma zilizosajiliwa. Imejumuishwa katika Pro. Enterprise inaongeza seva za MCP za kibinafsi na utengenezaji wa kaada.",
+    "a8": "MCP huruhusu maafikiano ya AI — Claude, GPT, LLM za kaada — kutumia World Monitor kama zana, na kuuliza huduma zilizosajiliwa. Imejumuishwa katika Pro. Enterprise inaongeza seva za MCP za kibinafsi na utengenezaji wa kaada.",
     "q9": "Je, niweza kujenga paneli zangu?",
     "a9": "Ndiyo. Pro inajumuisha Custom Widget Builder — jenga paneli kutokana na HTML, CSS, na JavaScript, na marekebisho yanayobuniwa na AI.",
-    "q10": "Je, niweza kuunganisha Claude au GPT na WorldMonitor?",
-    "a10": "Ndiyo. MCP inajumuishwa katika Pro — meng'enya WorldMonitor katika Claude, GPT, au LLM yoyote inayolingana na MCP kama chombo moja kwa moja.",
+    "q10": "Je, niweza kuunganisha Claude au GPT na World Monitor?",
+    "a10": "Ndiyo. MCP inajumuishwa katika Pro — meng'enya World Monitor katika Claude, GPT, au LLM yoyote inayolingana na MCP kama chombo moja kwa moja.",
     "q11": "Je, hazina inajifanya jinsi gani?",
     "a11": "Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki. Tunapima upya kila hadithi iliyofuatiliwa dhidi ya sheria yako za onyo na orodha ya ufuatiliaji, kuduliwa katika vyanzo, na kutuma hadi vipengee 50 vilivyoainishwa na Tathmini ya AI na Ishara za ufuatiliaji zilizoandikwa katika muktadha wako. Onyo za moja kwa moja pia zinapatikana kwa matukio muhimu.",
     "q12": "Kasi ya kuonyesha upya ni nini?",
@@ -476,17 +446,17 @@
       "sub": "Wakati itakuwa habari, wewe tayari ulijua.",
       "ctaPrimary": "Anzisha dashibodi",
       "ctaFree": "Bure · Hapana usajili · Hupakiki kwa sekunde",
-      "ctaSecondary": "Tazama jinsi watu wanavyotumia ↓",
       "trustUsers": "2M+ watumiaji",
       "trustOpenSource": "Chanzo Wazi · AGPL-3.0",
       "screenshotAlt": "World Monitor dashibodi ya akili za moja kwa moja — ramani ya kimataifa yenye safu ya mgogoro, mitambo ya baharini na soko",
       "plateNote": "Inayoshikwa kutoka kwenye ramani ya moja kwa moja — bofya kufungua",
       "trustBuild": "Tengeneza juu yake:",
-      "positioningLink": "WorldMonitor si Palantir ya chanzo wazi",
+      "positioningLink": "World Monitor si Palantir ya chanzo wazi",
       "asOf": "Kufikia {{date}}",
       "whatIsTitle": "World Monitor ni nini?",
       "whatIsBody": "World Monitor ni dashibodi ya bure ($0), yenye chanzo wazi (AGPL-3.0) inayotumiwa na watu 2M+. Inatiririsha {{feeds}} milisho ya habari na OSINT kutoka kwa watoa huduma {{providers}} waliotajwa kwenye ramani moja hai ya dunia yenye aina {{mapLayers}} za tabaka za ramani, ikishughulikia jiopolitiki, masoko, usafirishaji wa baharini, usafiri wa anga na mtandao. Inazilinganisha ili matukio yanayokutana yajitokeze kabla ya vichwa vya habari. Kila takwimu ina chanzo na kila mbinu imeandikwa.",
-      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja."
+      "whatIsBestFor": "Bora kwa wachambuzi, wanahabari, wafanyabiashara wa masoko na wasanidi programu wanaohitaji ishara za kijiografia na kisiasa za moja kwa moja.",
+      "ctaPro": "Pro kutoka {{price}}/mwezi"
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",
@@ -506,7 +476,8 @@
       "marketWeakest": "Dhaifu zaidi",
       "trendRising": "inakwea",
       "trendFalling": "inaanguka",
-      "trendStable": "imara"
+      "trendStable": "imara",
+      "situationLink": "Fuatilia hali: migogoro, habari kuu, njia nyembamba za bahari na hitilafu kwenye ubao mmoja"
     },
     "moments": {
       "eyebrow": "Injini ya uunganisho",
@@ -738,5 +709,8 @@
     "m6": "Ramani ya shughuli za viwanda kutoka data ya setilaiti ya NO2 ya Sentinel-5P",
     "m7": "Mtiririko wa mitaji kwa uchumi 230 na jozi yoyote ya nchi, kwa mawakala wa AI na API",
     "m8": "Dashibodi ya terminal na ramani ya CLI inayokuzwa — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Vyanzo tunavyofuatilia"
   }
 }

@@ -93,6 +93,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  nvd: Object.freeze({
+    provider: 'NVD (NIST)',
+    memberHosts: Object.freeze(['nvd.nist.gov', 'services.nvd.nist.gov']),
+    reason: 'The NVD API host serves the CVE data documented by the NVD website.',
+    reviewReference: 'Issue #6229, PR #9385 provider identity review',
+  }),
   uzstat: Object.freeze({
     provider: 'stat.uz',
     memberHosts: Object.freeze(['api.siat.stat.uz', 'stat.uz']),
@@ -104,6 +110,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     memberHosts: Object.freeze(['doe.gov.ph', 'd24qbtp4vooyzi.cloudfront.net']),
     reason: 'The Philippine Department of Energy price pages link each weekly monitoring PDF on the site\'s CloudFront media host.',
     reviewReference: 'Issue #10051 fuel-price batch 3',
+  }),
+  gdelt: Object.freeze({
+    provider: 'api.gdeltproject.org',
+    memberHosts: Object.freeze(['api.gdeltproject.org', 'storage.googleapis.com']),
+    reason: 'GDELT serves its bulk event exports from the data.gdeltproject.org bucket on storage.googleapis.com; every reference to that host reads the GDELT bucket.',
+    reviewReference: 'PR #10100, the 2026-11-03 Ember host move that left storage.googleapis.com serving only GDELT bulk files',
   }),
   sonabhy: Object.freeze({
     provider: 'www.sonabhy.bf',
@@ -121,7 +133,7 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     provider: 'British Geological Survey World Mineral Statistics',
     memberHosts: Object.freeze(['ogcapi.bgs.ac.uk', 'www.bgs.ac.uk']),
     reason: 'The BGS OGC API supplies the observations and the BGS statistics page supplies the required public attribution link.',
-    reviewReference: 'Issue #6449 commodity-vulnerability provenance review',
+    reviewReference: 'PR #9385 NVD identity review; Issue #6449 commodity-vulnerability provenance review',
   }),
   'al-jazeera': Object.freeze({
     provider: 'Al Jazeera',
@@ -207,6 +219,32 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'nvd.nist.gov': {
+    provider: 'NVD (NIST)', identityGroup: 'nvd',
+    license: 'Public domain (US Federal Government work)',
+    attribution: 'This product uses the NVD API but is not endorsed or certified by the NVD.',
+    status: 'reviewed',
+  },
+  'services.nvd.nist.gov': {
+    provider: 'NVD (NIST)', identityGroup: 'nvd',
+    license: 'Public domain (US Federal Government work)',
+    attribution: 'This product uses the NVD API but is not endorsed or certified by the NVD.',
+    status: 'reviewed',
+  },
+  // Fuel-price additions (#10147, #10113). Source-level details for Gasvaktin
+  // are documented separately: raw.githubusercontent.com also hosts other data.
+  'data.ssb.no': {
+    provider: 'data.ssb.no',
+    license: 'CC BY 4.0 (SSB Public APIs and Licence pages)',
+    attribution: 'Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.',
+    status: 'reviewed',
+  },
+  'www2.moeaea.gov.tw': {
+    provider: 'www2.moeaea.gov.tw',
+    license: 'Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed',
+    attribution: 'Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.',
+    status: 'terms-review',
+  },
   // Food-price publishers (#9892) whose own terms we recorded at onboarding.
   'stat.uz': {
     provider: 'stat.uz',
@@ -251,6 +289,8 @@ const PROVIDER_OVERRIDES = {
   'api.publisher.jodidata.org': { provider: 'www.jodidata.org', identityGroup: 'jodi' },
   'doe.gov.ph': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
   'd24qbtp4vooyzi.cloudfront.net': { provider: 'doe.gov.ph', identityGroup: 'doe-ph' },
+  'api.gdeltproject.org': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
+  'storage.googleapis.com': { provider: 'api.gdeltproject.org', identityGroup: 'gdelt' },
   'www.sonabhy.bf': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'king-prawn-app-6bsvl.ondigitalocean.app': { provider: 'www.sonabhy.bf', identityGroup: 'sonabhy' },
   'api.adsb.lol': { provider: 'adsb.lol' },
@@ -641,7 +681,7 @@ const PROVIDER_OVERRIDES = {
     attribution: 'ENTSO-E Transparency Platform; link to the returned dataset.',
     status: 'terms-review',
   },
-  'storage.googleapis.com': {
+  'files.ember-energy.org': {
     provider: 'Ember electricity data',
     license: 'CC BY 4.0 (Ember dataset)',
     attribution: 'Ember; link to the Ember dataset and preserve its license notice.',
@@ -1051,7 +1091,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '1d19fb74af33c4d2f0635ca2d883355f416276cbe887dcae7b5698e02b24d851',
+  sha256: 'c438b992a1334a4595b655db9e0aa71fc0b36bb8df184c88835589759935a1f3',
+  // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
+  // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
+  // remains in terms review.
   // 2026-11-02 (#10051): group the Philippine DOE with the CloudFront media
   // host that serves its weekly PDFs, and SONABHY with the Strapi CMS its
   // tariff page reads from.
@@ -1061,12 +1104,12 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Add the Keenable Search MCP identity for api.keenable.ai as an excluded user-configured MCP connector, matching the Parallel Search MCP row.',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add the Keenable Search MCP identity for api.keenable.ai as an excluded user-configured MCP connector, matching the Parallel Search MCP row.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the vendor-disclosed Keenable Search MCP Quick Connect preset PR.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the vendor-disclosed Keenable Search MCP Quick Connect preset PR.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

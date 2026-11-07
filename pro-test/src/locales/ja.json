@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "ノイズ",
     "signalWord": "シグナル",
-    "valueProps": "地政学 AI レイヤー — 尋ね、購読し、その上に構築する。",
+    "valueProps": "AIアナリストに質問し、アラートルールを設定し、ブリーフィングを取得し、Claudeで使用できます。",
     "launchingDate": "現在ご利用可能",
     "tryFreeDashboard": "無料ダッシュボードを試す",
     "choosePlan": "プランを選ぶ",
-    "signIn": "サインイン",
     "goToDashboard": "ダッシュボードに移動"
   },
   "wired": {
     "asFeaturedIn": "掲載媒体"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "AIアナリスト。個人用インテリジェンスデスク。構築できるプラットフォーム。",
-    "proF1": "WM Analyst chat — ライブサービスを会話形式でクエリ可能",
-    "proF2": "AI ダイジェスト — 日次、1日2回、または週次 — Slack、Discord、Telegram、メール、Webhook へ",
-    "proF3": "カスタムウィジェットビルダー — HTML/CSS/JS を AI 支援で編集",
-    "proF4": "MCP コネクタ — WorldMonitor を Claude、GPT、独自 LLM に接続",
-    "proF5": "エクイティリサーチ、株式分析、バックテスト",
-    "proF6": "フライト検索と価格比較",
-    "proF7": "アラートルールエンジン — カスタムトリガー、サイレント時間、AES-256 暗号化チャネル",
-    "proF8": "マーケットウォッチリスト、マクロ・中央銀行追跡",
-    "proF9": "AI 市場インプリケーション & 地域インテリジェンス",
-    "choosePlan": "プランを選ぶ",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "共有モニタリング、API アクセス、デプロイオプション、TV アプリ、直接サポートを必要とするチーム向け。",
-    "entF1": "Pro の全機能に加え:",
-    "entF2": "ライブエッジの衛星画像と SAR",
-    "entF3": "投資家ペルソナを持つ AI エージェントと MCP",
-    "entF4": "インフラストラクチャアセットのマッピング",
-    "entF5": "データコネクタ（Splunk、Snowflake、Sentinel...）",
-    "entF6": "REST API + Webhook + 一括エクスポート",
-    "entF7": "SSO/MFA/RBAC を備えたチームワークスペース",
-    "entF8": "ホワイトラベルと埋め込み可能なパネル",
-    "entF9": "SOC ウォールとトレーディングフロア向け Android TV アプリ",
-    "entF10": "クラウド、オンプレミス、エアギャップ配備",
-    "entF11": "専任のオンボーディングとサポート",
-    "entCta": "営業に相談する",
-    "freeF2": "厳選フィード、ソース表示、マップレイヤー",
-    "proF10": "インテル メモリ — 過去の検索、タイムライン & 類似イベント検索"
-  },
   "whyUpgrade": {
-    "title": "World Monitor Pro にアップグレードする理由は?",
+    "title": "ニュースより先に情報をキャッチ",
     "noiseTitle": "一番に知る",
     "noiseDesc": "AIS 異常 → Brent の急騰 → あなたの Slack へ 1 分以内。見出しではなく、シグナル。",
     "fasterTitle": "何でも尋ねる",
@@ -143,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO ティア",
-    "title": "World Monitor AI アナリストは何をしますか?",
+    "title": "株式、マクロ経済、地政学向けのAIアナリスト",
     "subtitle": "無料のダッシュボードは世界を見せる。Pro は、尋ねるためのアナリスト、購読するダイジェスト、そして構築のためのプリミティブを提供する。株式、マクロ、地政学リスク — そしてそれらの関係。",
     "equityResearch": "エクイティリサーチ",
     "equityResearchDesc": "財務可視化、アナリスト目標株価、評価指標を備えたグローバル株式分析。市場を動かすものを追跡。",
@@ -304,11 +273,11 @@
     "q7": "自分の API キーをまだ使えますか?",
     "a7": "はい。Bring-your-own-keys は常に機能します。Pro は単に個別のサービスに登録する必要がなくなるだけです。",
     "q8": "MCP とは?",
-    "a8": "MCP により AI エージェント — Claude、GPT、カスタム LLM — が WorldMonitor をツールとして使用し、登録済みサービスをクエリできます。Pro に含まれます。Enterprise は プライベート MCP サーバーとカスタムデプロイメントを追加します。",
+    "a8": "MCP により AI エージェント — Claude、GPT、カスタム LLM — が World Monitor をツールとして使用し、登録済みサービスをクエリできます。Pro に含まれます。Enterprise は プライベート MCP サーバーとカスタムデプロイメントを追加します。",
     "q9": "独自のパネルを作れますか?",
     "a9": "はい。Pro はカスタムウィジェットビルダーを含みます — HTML、CSS、JavaScript からパネルを構築し、AI 支援で変更できます。",
-    "q10": "Claude または GPT を WorldMonitor に接続できますか?",
-    "a10": "はい。MCP は Pro に含まれます — WorldMonitor をライブツールとして Claude、GPT、または MCP 互換の任意の LLM に接続します。",
+    "q10": "Claude または GPT を World Monitor に接続できますか?",
+    "a10": "はい。MCP は Pro に含まれます — World Monitor をライブツールとして Claude、GPT、または MCP 互換の任意の LLM に接続します。",
     "q11": "ダイジェストはどれほどパーソナライズされていますか?",
     "a11": "配信頻度を選択 — 日次、2日次、または週次。当社は監視対象の全ストーリーをアラートルールとウォッチリストに対して再スコアリング、ソース間での重複排除を行い、最大30件のランク付きアイテムを AI Assessment と注視すべき Signals とともにあなたのコンテキストに送信します。重大イベントの場合はリアルタイムアラートも利用可能です。",
     "q12": "更新頻度は?",
@@ -396,7 +365,7 @@
         "description": "組織向けカスタムソリューション",
         "features": [
           "Pro + API内のすべて",
-          "無制限APIリクエスト",
+          "1日あたり10,000件のAPIリクエスト、契約により増加可能",
           "専任サポート",
           "カスタムインテグレーション",
           "SLA保証",
@@ -410,7 +379,7 @@
         "cta": "営業に連絡"
       },
       "apiBusiness": {
-        "description": "WorldMonitorデータを基盤とした独自プロダクト立ち上げ",
+        "description": "World Monitorデータを基盤とした独自プロダクト立ち上げ",
         "features": [
           "API Starter 内のすべて",
           "顧客向け製品のためのR1–R3再配布権",
@@ -447,7 +416,8 @@
     "axisPersonal": "個人用",
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
-    "axisCommercialNote": "仕事、クライアント、製品"
+    "axisCommercialNote": "仕事、クライアント、製品",
+    "cancelAnytime": "いつでもアカウントからキャンセルできます。お支払いいただいた期間の終了まで、アクセスは継続します。"
   },
   "welcome": {
     "meta": {
@@ -476,17 +446,17 @@
       "sub": "ニュースになる頃には、既に知っている。",
       "ctaPrimary": "ダッシュボードを起動",
       "ctaFree": "無料 · 登録不要 · 数秒で読み込み",
-      "ctaSecondary": "使用方法を見る ↓",
       "trustUsers": "200 万+ ユーザー",
       "trustOpenSource": "オープンソース · AGPL-3.0",
       "screenshotAlt": "World Monitor ライブ インテリジェンス ダッシュボード — 紛争、海運、市場レイヤー付きグローバルマップ",
       "plateNote": "ライブマップからキャプチャ — クリックして開く",
       "trustBuild": "構築:",
-      "positioningLink": "WorldMonitor はオープンソース版 Palantir ではありません",
+      "positioningLink": "World Monitor はオープンソース版 Palantir ではありません",
       "asOf": "{{date}}時点",
       "whatIsTitle": "World Monitor とは何ですか？",
       "whatIsBody": "World Monitor は無料（$0）のオープンソース（AGPL-3.0）ダッシュボードで、200万人以上が利用しています。{{feeds}}個のニュースおよびOSINT フィードを{{providers}}個の提供元から集約し、1つのライブ世界地図上にストリーミング配信します。{{mapLayers}}種類のマップレイヤーで地政学、市場、海運、航空、サイバーに対応し、収束するイベントがヘッドラインになる前に表示されます。すべての数値は出典付きで、すべての手法は文書化されています。",
-      "whatIsBestFor": "リアルタイムの地政学シグナルを必要とするアナリスト、ジャーナリスト、トレーダー、開発者に最適です。"
+      "whatIsBestFor": "リアルタイムの地政学シグナルを必要とするアナリスト、ジャーナリスト、トレーダー、開発者に最適です。",
+      "ctaPro": "Pro は{{price}}/月から"
     },
     "live": {
       "eyebrow": "現在ライブ配信中",
@@ -506,7 +476,8 @@
       "marketWeakest": "最弱",
       "trendRising": "上昇中",
       "trendFalling": "下落中",
-      "trendStable": "安定"
+      "trendStable": "安定",
+      "situationLink": "状況を監視：危機、ヘッドライン、チョークポイント、障害を1つのボードで"
     },
     "moments": {
       "eyebrow": "相関エンジン",
@@ -738,5 +709,8 @@
     "m6": "Sentinel-5P衛星のNO2データによる産業活動マップ",
     "m7": "230の経済圏と任意の国の組み合わせの資本フロー（AIエージェントとAPI向け）",
     "m8": "ターミナルダッシュボードとズーム可能なCLIマップ — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "監視中のソース"
   }
 }

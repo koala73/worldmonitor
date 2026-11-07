@@ -5,12 +5,12 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.48.0",
+  "version": "1.50.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.48.0",
+    "version": "1.50.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -497,6 +497,14 @@
       }
     },
     {
+      "name": "get_fred_series",
+      "description": "Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched with requested. Defaults to 24 observations per series, with a 1000 maximum.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "markets-economy"
+      }
+    },
+    {
       "name": "get_airspace",
       "description": "Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like \"how many planes are over the UAE right now?\" or \"are there military aircraft over Taiwan?\"",
       "_meta": {
@@ -595,6 +603,14 @@
     {
       "name": "simulate_infrastructure_cascade",
       "description": "Infrastructure cascade simulation and subsea cable exposure: what fails downstream when a cable, chokepoint, pipeline, or port is disrupted. Builds the dependency graph from the seeded TeleGeography submarine-cable table plus curated pipeline, port, and chokepoint registries, then propagates the failure breadth-first. Results list affected nodes, per-country impact levels, alternative cables (ranked by whether they avoid the chokepoints the cut cables cross), and graph stats. Call with no arguments for the catalog of node ids. source_ids or cut_cables_through (a chokepoint id) model a simultaneous multi-cable cut, e.g. every cable through Hormuz. countries (up to 10) compares per-country cable exposure: cable count, landing stations, chokepoints crossed, and cables the cable-health monitor flags as faulted. disruption_level ranges 0.1 to 1 (default 1). Cable results are estimates (capacity shares from landing counts, redundancy assumed); see cascade.dataQuality.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
+      }
+    },
+    {
+      "name": "get_global_air_activity",
+      "description": "Military snapshot counts only: observed aircraft by type, overlapping theater, and outside all theaters. Uses redistribution-cleared tracks; confirmed grounded tracks are excluded, unknown ground status included. Regional/unknown coverage is partial, never a world total; even global scope omits unobserved aircraft.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -919,19 +935,20 @@
       "proBusiness": 60,
       "apiStarter": 60,
       "apiBusiness": 300,
-      "enterprise": 1000
+      "enterprise": 300
     },
     "dailyByPlan": {
       "pro": 50,
       "proBusiness": 250,
       "apiStarter": 1000,
       "apiBusiness": 10000,
-      "enterprise": 25000
+      "enterprise": 10000
     },
-    "notes": "Subscription-gated tools/call and resources/read of a data-bearing URI-template instantiation reserve against a per-user daily counter before dispatch. The allowance is plan-resolved and identical on the OAuth and dashboard-issued wm_ API-key doors. Pro (50/day) and Pro Business (250/day) meter on a dedicated MCP counter at one unit per call. API Starter (1000/day) and API Business (10000/day) have no separate MCP allowance: their MCP calls spend the same daily allowance as their REST requests, charged at a per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data downstream, and 3 for get_country_brief and get_airspace which fetch from two sources. Those two halves currently reserve against separate counters holding the same number, and merge into one counter when REST enforcement is enabled; the sold allowance is the combined one either way. A weighted call is all-or-nothing, so a 2-unit call is rejected rather than partly served when only 1 unit remains. Enterprise is capped at 25000/day as a fair-use ceiling. Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate 10000/day ceiling per key. get_sources is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Daily-quota exemptions: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, ping, describe_tool, get_mcp_allowance, skills/list, skills/get, get_sources, public resource reads, and the authenticated worldmonitor://account/mcp-allowance status read. resources/read of a template instantiation intentionally counts toward the daily cap symmetrically with the equivalent tools/call. Per-minute authenticated limiting bounds all methods. Ordinary data calls use the plan's burst from perMinuteByPlan, with a default of 60. Recognized data-free protocol methods, get_mcp_allowance and public resource reads use a separate 192/minute user bucket, shared across OAuth and dashboard keys and all sessions. Validated paid MCP panel receipts use separate 64/minute uncached-read and 64/minute cached-replay buckets per admission, with one daily allocation per opening and 64 uncached executions per admission; API-plan and free-account data calls retain their account budgets. Unsupported methods do not use the protocol bucket. Legacy operator keys and anonymous discovery stay at a combined 60/minute, and anonymous get_sources calls use the separate 10/minute/IP ceiling.",
+    "notes": "Subscription-gated tools/call and resources/read of a data-bearing URI-template instantiation reserve against a per-user daily counter before dispatch. The allowance is plan-resolved and identical on the OAuth and dashboard-issued wm_ API-key doors. Pro (50/day) and Pro Business (250/day) meter on a dedicated MCP counter at one unit per call. API Starter (1000/day), API Business (10000/day) and Enterprise (10000/day by default, more by contract) have no separate MCP allowance: their MCP calls spend the same daily allowance as their REST requests, charged at a per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data downstream, 3 for get_country_brief, and 5 for get_airspace, which makes up to four downstream requests. Outside an Enterprise contract account, those two halves currently reserve against separate counters holding the same number, and merge into one counter when REST enforcement is enabled; the sold allowance is the combined one either way. Members of an Enterprise contract account always reserve against one pooled account counter shared with REST and every other member, whatever API_RATE_LIMIT_ENFORCE says, and the reported usage is the account total. Calls past the contract allowance are served and billed as overage until the account's daily safety limit. A weighted call is all-or-nothing, so a 2-unit call is rejected rather than partly served when only 1 unit remains. Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS reserve one unit per call against a separate 10000/day ceiling per key. get_sources is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Daily-quota exemptions: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, ping, describe_tool, get_mcp_allowance, skills/list, skills/get, get_sources, public resource reads, and the authenticated worldmonitor://account/mcp-allowance status read. resources/read of a template instantiation intentionally counts toward the daily cap symmetrically with the equivalent tools/call. Per-minute authenticated limiting bounds all methods. Ordinary data calls use the plan's burst from perMinuteByPlan, with a default of 60. Recognized data-free protocol methods, get_mcp_allowance and public resource reads use a separate 192/minute user bucket, shared across OAuth and dashboard keys and all sessions. Validated paid MCP panel receipts use separate 64/minute uncached-read and 64/minute cached-replay buckets per admission, with one daily allocation per opening and 64 uncached executions per admission; API-plan and free-account data calls retain their account budgets. Unsupported methods do not use the protocol bucket. Legacy operator keys and anonymous discovery stay at a combined 60/minute, and anonymous get_sources calls use the separate 10/minute/IP ceiling.",
     "dailyBudgetSharedWithRestByPlan": [
       "apiStarter",
-      "apiBusiness"
+      "apiBusiness",
+      "enterprise"
     ],
     "protocolPerMinute": 192,
     "panelReadsPerMinute": 64,

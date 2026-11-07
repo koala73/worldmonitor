@@ -5,6 +5,22 @@ import { build } from 'esbuild';
 
 const NOW = 1_780_000_000_000;
 const DAY = 86_400_000;
+test('URLhaus preserves download classification without inventing a malware family', async t => {
+  const h = await producerHarness(t, { keys: ['URLHAUS_AUTH_KEY'], urls: [{
+    url: 'https://192.0.2.42/payload', url_status: 'online', threat: 'malware_download',
+    tags: ['elf', 'tag2', 'tag3', 'tag4', 'tag5', 'tag6', 'tag7', 'tag8'], date_added: new Date(NOW - DAY).toISOString(),
+    latitude: 51.5, longitude: -0.1,
+  }] });
+  const result = await h.seed.fetchUrlhaus(NOW - 14 * DAY);
+  assert.equal(result.threats.length, 1);
+  assert.equal(result.threats[0].malwareFamily, '');
+  assert.ok(result.threats[0].tags.includes('malware_download'));
+  assert.ok(result.threats[0].tags.includes('elf'));
+  assert.equal(result.threats[0].tags.length, 9);
+  assert.ok(result.threats[0].tags.includes('tag8'));
+  const [deduped] = h.seed.dedupeThreats([...result.threats, ...result.threats]);
+  assert.deepEqual(h.seed.toProto(deduped).tags, result.threats[0].tags);
+});
 async function producerHarness(context, options = {}) {
   const text = readFileSync(new URL('../scripts/seed-cyber-threats.mjs', import.meta.url), 'utf8');
   const built = await build({

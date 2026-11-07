@@ -101,6 +101,13 @@ export function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
   return controller.signal;
 }
 
+/** Bound a fetch body while preserving cancellation carried by a Request. */
+export function createRequestTimeoutSignal(input: RequestInfo | URL, init: RequestInit | undefined, ms: number): AbortSignal {
+  const deadline = createTimeoutSignal(ms);
+  const caller = init?.signal === undefined ? (input instanceof Request ? input.signal : undefined) : init.signal;
+  return caller ? combineAbortSignals([caller, deadline]) : deadline;
+}
+
 /**
  * True for deadline/cancel outcomes from `createTimeoutSignal` / fetch abort.
  *

@@ -835,8 +835,9 @@ async function mountPlugin(): Promise<void> {
   document.addEventListener('click', event => {
     const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
     if (!link) return;
-    const href = new URL(link.getAttribute('href')!, 'https://www.worldmonitor.app').href;
-    if (!/^https?:$/.test(new URL(href).protocol)) return;
+    const url = new URL(link.getAttribute('href')!, 'https://www.worldmonitor.app');
+    if (!/^https?:$/.test(url.protocol)) return;
+    const href = url.href;
     event.preventDefault();
     if (linksAvailable) void request('ui/open-link', { url: href }).catch(() => { status.textContent = 'The host could not open this source link.'; });
     else status.textContent = 'Opening source links is unavailable in this host.';

@@ -1,6 +1,7 @@
 [
   {
     "slug": "iran-israel-escalation",
+    "question": "What is happening with Iran and Israel?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -127,6 +128,7 @@
   },
   {
     "slug": "ukraine-war",
+    "question": "What is happening in the Ukraine war?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -253,6 +255,7 @@
   },
   {
     "slug": "red-sea-security",
+    "question": "What is happening in the Red Sea?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -376,6 +379,7 @@
   },
   {
     "slug": "sudan-conflict",
+    "question": "What is happening in Sudan?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -518,6 +522,7 @@
   },
   {
     "slug": "lebanon-israel-escalation",
+    "question": "What is happening in Lebanon?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -637,6 +642,7 @@
   },
   {
     "slug": "hormuz-gulf-security",
+    "question": "What is happening in the Strait of Hormuz?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -764,6 +770,7 @@
   },
   {
     "slug": "sahel-insurgency",
+    "question": "What is happening in the Sahel?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -909,6 +916,7 @@
   },
   {
     "slug": "horn-of-africa",
+    "question": "What is happening in the Horn of Africa?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1050,6 +1058,7 @@
   },
   {
     "slug": "myanmar-civil-war",
+    "question": "What is happening in Myanmar?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1181,6 +1190,7 @@
   },
   {
     "slug": "haiti-gang-crisis",
+    "question": "What is happening in Haiti?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1309,6 +1319,7 @@
   },
   {
     "slug": "drc-eastern-conflict",
+    "question": "What is happening in eastern Congo?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1441,6 +1452,7 @@
   },
   {
     "slug": "nigeria-security-crisis",
+    "question": "What is happening in Nigeria?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1580,6 +1592,7 @@
   },
   {
     "slug": "afghanistan-crisis",
+    "question": "What is happening in Afghanistan?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1702,6 +1715,7 @@
   },
   {
     "slug": "palestine-gaza-crisis",
+    "question": "What is happening in Gaza?",
     "lastReviewed": "2026-10-24",
     "background": [
       {
@@ -1823,6 +1837,585 @@
         "indicator": "Settler attacks during the olive harvest",
         "why": "OCHA logged over 2,060 settler attacks in 2026 to mid-October and 74 percent of recent injuries in settler attacks; harvest-season incidents concentrate in rural communities and drive displacement.",
         "trackedBy": "Armed Conflict Events"
+      }
+    ]
+  },
+  {
+    "slug": "taiwan-strait-tensions",
+    "question": "What is happening in the Taiwan Strait?",
+    "lastReviewed": "2026-11-05",
+    "background": [
+      {
+        "text": "The dispute dates to China's civil war. In 1949 Mao Zedong's Communists took control of the mainland and Chiang Kai-shek's Nationalists retreated to Taiwan, where the Republic of China is still the island's formal name. The People's Republic has never governed Taiwan, yet it claims the island and has never renounced the use of force to take it. Beijing says relations can only proceed under a One China framework, and the two sides read the 1992 Consensus differently. The United States recognised Beijing in 1979 but keeps unofficial ties and sells arms to Taiwan under the Taiwan Relations Act, while only acknowledging China's position.",
+        "sourceUrls": [
+          "https://www.cfr.org/backgrounder/china-taiwan-relations-tension-us-policy-trump",
+          "https://www.aljazeera.com/news/2026/10/10/taiwan-president-says-defence-spending-boost-aims-to-deter-war"
+        ]
+      },
+      {
+        "text": "There is no fighting between China and Taiwan; the strain shows up as military pressure. Three days after Lai Ching-te became president on 20 May 2024, the People's Liberation Army began Joint Sword-2024A around the island. During Joint Sword-2024B that October, Taiwan reported a record 153 Chinese aircraft in a single day, according to ASPI. Strait Thunder-2025A in April 2025 rehearsed blockades and strikes on ports and energy sites. In February 2025 a freighter with a Chinese captain severed a cable to Penghu, and a Taiwanese court jailed him for three years. Justice Mission 2025, in late December, followed a record $11.1bn US arms package.",
+        "sourceUrls": [
+          "https://www.pressurepoints.aspi.org.au/taiwan-and-the-taiwan-strait/chinas-military-coercion/chinas-large-scale-exercises-since-2022",
+          "https://www.taipeitimes.com/News/front/archives/2025/04/02/2003834496",
+          "https://www.taipeitimes.com/News/taiwan/archives/2025/06/13/2003838551",
+          "https://www.nbcnews.com/world/asia/taiwan-stays-high-alert-chinese-ships-pull-back-massive-drills-rcna251652"
+        ]
+      },
+      {
+        "text": "As of early November 2026 there is no war in the Taiwan Strait, but China keeps up daily military and coast guard pressure. Taiwan's defence ministry counted 21 Chinese military aircraft and seven navy ships around the island in the 24 hours to 10 October 2026. ISW and AEI counted 159 air defence zone incursions in September, less than half the 2024 and 2025 levels, and four China Coast Guard incursions into Kinmen's restricted waters in October. China has held no full war games near Taiwan since late December 2025. A US arms package worth about $14bn remains stalled, and Taiwan elects mayors at the end of November.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/10/10/taiwan-president-says-defence-spending-boost-aims-to-deter-war",
+          "https://www.aei.org/commentary/china-taiwan-update-november-3-2026/",
+          "https://www.taipeitimes.com/News/taiwan/archives/2026/10/13/2003865868",
+          "https://www.taipeitimes.com/News/taiwan/archives/2026/11/05/2003867213",
+          "https://www.aei.org/commentary/china-taiwan-update-october-20-2026/"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Lai Ching-te",
+        "role": "Taiwan's president, whose government has set aside a record NT$1.1 trillion ($34.5bn) for defence in 2027 and who said on 10 October 2026 that Taiwan will not accept subordination to Beijing.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/10/taiwan-president-says-defence-spending-boost-aims-to-deter-war"
+      },
+      {
+        "name": "Xi Jinping",
+        "role": "China's president, who told Donald Trump at their May 2026 Beijing summit that Taiwan is the most important issue in China-US relations.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/xi-tells-trump-u-s-and-china-could-clash-over-taiwan"
+      },
+      {
+        "name": "PLA Eastern Theater Command",
+        "role": "The Chinese military command that runs named exercises around Taiwan, including Strait Thunder-2025A, which practised blockade and precision strikes on key targets.",
+        "sourceUrl": "https://www.taipeitimes.com/News/front/archives/2025/04/02/2003834496"
+      },
+      {
+        "name": "Wellington Koo",
+        "role": "Taiwan's defence minister, who in October 2026 said the coast guard would lead in expelling Chinese maritime militia and coast guard vessels that enter Taiwan's waters, with navy support.",
+        "sourceUrl": "https://www.taipeitimes.com/News/taiwan/archives/2026/10/13/2003865868"
+      },
+      {
+        "name": "Cheng Li-wun",
+        "role": "Chair of the Kuomintang, Taiwan's largest opposition party, who opposes Taiwanese independence and met Xi Jinping in Beijing on 10 April 2026.",
+        "sourceUrl": "https://www.npr.org/2026/04/10/nx-s1-5780605/china-xi-taiwan-opposition"
+      },
+      {
+        "name": "Donald Trump",
+        "role": "US president, who approved an $11bn arms sale to Taiwan in December 2025 but has held a second package of about $14bn in abeyance, calling it a bargaining chip.",
+        "sourceUrl": "https://www.taipeitimes.com/News/taiwan/archives/2026/11/05/2003867213"
+      },
+      {
+        "name": "Sanae Takaichi",
+        "role": "Japan's prime minister, who said in November 2025 that a Chinese use of force around Taiwan could be a survival-threatening situation for Japan, prompting a row with Beijing.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/japan-and-china-trade-barbs-after-pm-takaichi-says-an-attack-on-taiwan-would-be-an-existential-threat"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2024-05-23",
+        "event": "Three days after Lai Ching-te's inauguration, the PLA launched Joint Sword-2024A, a two-day exercise Beijing called punishment for 'separatist acts'.",
+        "sourceUrl": "https://www.pressurepoints.aspi.org.au/taiwan-and-the-taiwan-strait/chinas-military-coercion/chinas-large-scale-exercises-since-2022"
+      },
+      {
+        "date": "2024-10-14",
+        "event": "Joint Sword-2024B followed Lai's National Day speech; a record 153 PLA aircraft were reported near Taiwan in one day.",
+        "sourceUrl": "https://www.pressurepoints.aspi.org.au/taiwan-and-the-taiwan-strait/chinas-military-coercion/chinas-large-scale-exercises-since-2022"
+      },
+      {
+        "date": "2025-02-25",
+        "event": "Taiwan's coast guard was told the freighter Hong Tai 58 had severed the Taiwan-Penghu No. 3 cable; its Chinese captain was later jailed for three years.",
+        "sourceUrl": "https://www.taipeitimes.com/News/taiwan/archives/2025/06/13/2003838551"
+      },
+      {
+        "date": "2025-04-01",
+        "event": "The PLA launched Strait Thunder-2025A, deploying 135 aircraft, 38 naval vessels and 12 official vessels, according to ASPI.",
+        "sourceUrl": "https://www.pressurepoints.aspi.org.au/taiwan-and-the-taiwan-strait/chinas-military-coercion/chinas-large-scale-exercises-since-2022"
+      },
+      {
+        "date": "2025-11",
+        "event": "Japan's prime minister Sanae Takaichi said Chinese use of force around Taiwan could be a survival-threatening situation for Japan, drawing protests from Beijing.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/japan-and-china-trade-barbs-after-pm-takaichi-says-an-attack-on-taiwan-would-be-an-existential-threat"
+      },
+      {
+        "date": "2025-12",
+        "event": "China held the Justice Mission 2025 drills 11 days after a record $11.1bn US arms package; Taiwan counted 77 aircraft and 25 vessels in 24 hours.",
+        "sourceUrl": "https://www.nbcnews.com/world/asia/taiwan-stays-high-alert-chinese-ships-pull-back-massive-drills-rcna251652"
+      },
+      {
+        "date": "2026-04-10",
+        "event": "Xi Jinping met Kuomintang chair Cheng Li-wun in Beijing, the first meeting between sitting heads of the two parties in almost a decade.",
+        "sourceUrl": "https://www.npr.org/2026/04/10/nx-s1-5780605/china-xi-taiwan-opposition"
+      },
+      {
+        "date": "2026-05-14",
+        "event": "At a Beijing summit, Xi told Trump that Taiwan is the most important issue in China-US relations; Rubio said US policy was unchanged.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/xi-tells-trump-u-s-and-china-could-clash-over-taiwan"
+      },
+      {
+        "date": "2026-09-24",
+        "event": "Trump hosted Xi at the White House; the US fact sheet omitted Taiwan, and the US ambassador to China said the next day that Taiwan policy had not changed.",
+        "sourceUrl": "https://www.taipeitimes.com/News/front/archives/2026/09/27/2003864953"
+      },
+      {
+        "date": "2026-10-10",
+        "event": "Lai said in his National Day speech that Taiwan cherishes peace but will not give up its freedom; China's Taiwan Affairs Office condemned the speech.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/10/taiwan-president-says-defence-spending-boost-aims-to-deter-war"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Daily PLA aircraft and ship counts reported by Taiwan's defence ministry",
+        "why": "ISW and AEI counted 159 PLA incursions into Taiwan's air defence zone in September 2026, less than half the 2024 and 2025 levels, after monthly totals passed 300 following Lai's inauguration.",
+        "trackedBy": "Military Activity"
+      },
+      {
+        "indicator": "Announcement of a named PLA exercise around Taiwan",
+        "why": "China has held no full war games near Taiwan since Justice Mission 2025 in late December 2025, when Taiwan counted 77 Chinese aircraft and 25 vessels in 24 hours.",
+        "trackedBy": "Escalation Monitor"
+      },
+      {
+        "indicator": "China Coast Guard patrols near Kinmen and Pratas",
+        "why": "ISW and AEI recorded four coast guard incursions into Kinmen's restricted waters and four near Pratas in October 2026, continuing a monthly Kinmen pattern dating to February 2024.",
+        "trackedBy": "Ship Traffic"
+      },
+      {
+        "indicator": "US arms sales and US-China diplomacy over Taiwan",
+        "why": "A US arms package of about $14bn, including Patriot air defence systems, has stalled since Trump called it a bargaining chip after his May 2026 Beijing summit with Xi.",
+        "trackedBy": "Strategic Risk Overview"
+      }
+    ]
+  },
+  {
+    "slug": "venezuela-crisis",
+    "question": "What is happening in Venezuela?",
+    "lastReviewed": "2026-11-05",
+    "background": [
+      {
+        "text": "Venezuela's governing movement has held power since Hugo Chávez took office in 1999, and Nicolás Maduro succeeded him in 2013. His 2018 re-election was widely seen as a sham because main opposition parties were barred. In 2024 electoral authorities declared him the winner, although the opposition gathered evidence that he lost by more than two to one, AP reported, and more than 2,000 people were arrested in the protests that followed. By September 2025 Washington had doubled its bounty for Maduro to $50 million and sent warships to the Caribbean, and on 2 September it struck a boat it said had left Venezuela carrying drugs, killing 11 people.",
+        "sourceUrls": [
+          "https://www.pbs.org/newshour/world/us-strikes-venezuela-and-says-its-leader-maduro-has-been-captured-and-flown-out-of-the-country",
+          "https://www.wlrn.org/americas/2026-02-20/venezuela-approves-amnesty-that-could-release-hundreds-detained-for-political-reasons",
+          "https://www.dawn.com/news/1939384"
+        ]
+      },
+      {
+        "text": "By late October 2025 the US campaign against alleged drug boats in the Caribbean and Pacific had killed at least 61 people, and UN human rights chief Volker Türk said the strikes violated international human rights law. On 3 January 2026 US forces struck targets in Caracas and seized Maduro and his wife, Cilia Flores, flying them to New York to face narco-terrorism charges. OCHA says 7.9 million people in Venezuela need humanitarian aid, and an estimated 6.87 million Venezuelans lived elsewhere in the region in 2025. Twin earthquakes on 24 June 2026 killed 6,438 people, according to an official toll in August.",
+        "sourceUrls": [
+          "https://www.pbs.org/newshour/amp/world/un-human-rights-chief-u-s-strikes-on-alleged-drug-boats-unacceptable",
+          "https://www.pbs.org/newshour/world/us-strikes-venezuela-and-says-its-leader-maduro-has-been-captured-and-flown-out-of-the-country",
+          "https://humanitarianaction.info/article/venezuela-4",
+          "https://humanitarianaction.info/plan/1525/article/venezuela-rmrp-3",
+          "https://english.adnkronos.com/2026/08/18/venezuela-june-earthquake-death-toll-rises-to-6483/"
+        ]
+      },
+      {
+        "text": "In early November 2026 Venezuela is run by interim President Delcy Rodríguez, Maduro's former deputy, who works closely with Washington, while Maduro awaits trial in New York and pleaded not guilty to new torture conspiracy charges on 15 October. On 22 October thousands joined the first nationwide opposition protest in nearly two years demanding elections; no date has been set. María Corina Machado returned on 25 October and called for a presidential vote in 2027. On 2 November the US reaffirmed its three-phase plan ending in democratic transition. In Apure, an army attack on an ELN camp on 30 October killed at least 19 people, AFP reported.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/news/2026/10/15/venezuelas-maduro-pleads-not-guilty-to-us-conspiracy-to-torture-charges",
+          "https://www.thestar.com.my/news/world/2026/10/23/venezuelans-call-for-elections-in-first-national-protest-in-nearly-two-years",
+          "https://www.aljazeera.com/news/2026/10/30/machado-lauds-trump-for-freedom-floodgate-urges-2027-elections",
+          "https://www.aljazeera.com/news/2026/11/3/us-urges-venezuela-to-follow-phased-plan-for-democratic-transition",
+          "https://www.ewn.co.za/2026/11/02/at-least-19-dead-in-venezuela-army-attack-on-colombian-rebel-camp"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Delcy Rodríguez",
+        "role": "Interim president since Maduro's capture in January 2026, who has opened the state-owned oil industry to foreign companies and promised elections without setting a date.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/venezuelas-maduro-pleads-not-guilty-to-us-conspiracy-to-torture-charges"
+      },
+      {
+        "name": "María Corina Machado",
+        "role": "Nobel Peace Prize-winning opposition leader who returned from more than 10 months in exile in October 2026 and is pressing for a presidential election in 2027.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/30/machado-lauds-trump-for-freedom-floodgate-urges-2027-elections"
+      },
+      {
+        "name": "US government (Trump administration)",
+        "role": "Removed Maduro by force and now backs the interim government under a three-phase plan of stabilisation, economic recovery and reconciliation, then democratic transition, which Secretary of State Marco Rubio reaffirmed on 2 November 2026.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/11/3/us-urges-venezuela-to-follow-phased-plan-for-democratic-transition"
+      },
+      {
+        "name": "Nicolás Maduro",
+        "role": "Former president held in the United States since January 2026, who pleaded not guilty on 15 October 2026 to torture conspiracy charges added to the earlier drug trafficking case.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/15/venezuelas-maduro-pleads-not-guilty-to-us-conspiracy-to-torture-charges"
+      },
+      {
+        "name": "Jorge Rodríguez",
+        "role": "National Assembly president and brother of the interim president, removed from the US Treasury sanctions list on 14 October 2026 after steering oil, mining and power-sector reforms through the legislature.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/10/14/us-lifts-sanctions-on-venezuelas-top-legislator"
+      },
+      {
+        "name": "National Liberation Army (ELN)",
+        "role": "Colombian guerrilla group operating along the 2,200km border, whose camp in Apure state was hit by a Venezuelan army attack on 30 October 2026 that killed at least 19 people.",
+        "sourceUrl": "https://www.ewn.co.za/2026/11/02/at-least-19-dead-in-venezuela-army-attack-on-colombian-rebel-camp"
+      },
+      {
+        "name": "Foro Penal",
+        "role": "Venezuelan legal rights group that represents detainees and says more than 320 political prisoners remain held despite releases under the 2026 amnesty law.",
+        "sourceUrl": "https://www.thestar.com.my/news/world/2026/10/23/venezuelans-call-for-elections-in-first-national-protest-in-nearly-two-years"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2025-09-02",
+        "event": "US forces strike a boat that Washington says left Venezuela carrying drugs, killing 11 people in the first strike of the maritime campaign.",
+        "sourceUrl": "https://www.dawn.com/news/1939384"
+      },
+      {
+        "date": "2025-10",
+        "event": "UN human rights chief Volker Türk calls the US boat strikes unacceptable after the 14th strike raises the death toll to at least 61.",
+        "sourceUrl": "https://www.pbs.org/newshour/amp/world/un-human-rights-chief-u-s-strikes-on-alleged-drug-boats-unacceptable"
+      },
+      {
+        "date": "2026-01-03",
+        "event": "US strikes hit Caracas and special forces capture Maduro and Cilia Flores, who are flown to New York for prosecution.",
+        "sourceUrl": "https://www.pbs.org/newshour/world/us-strikes-venezuela-and-says-its-leader-maduro-has-been-captured-and-flown-out-of-the-country"
+      },
+      {
+        "date": "2026-01-05",
+        "event": "Maduro pleads not guilty in a New York court as Delcy Rodríguez is sworn in as interim president in Caracas.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/1/5/venezuelas-abducted-leader-maduro-wife-to-appear-in-nyc-court"
+      },
+      {
+        "date": "2026-02-19",
+        "event": "Rodríguez signs an amnesty law; Foro Penal counts 448 releases since 8 January and more than 600 people still held for political reasons.",
+        "sourceUrl": "https://www.wlrn.org/americas/2026-02-20/venezuela-approves-amnesty-that-could-release-hundreds-detained-for-political-reasons"
+      },
+      {
+        "date": "2026-03-30",
+        "event": "The US formally reopens its embassy in Caracas after restoring full diplomatic relations, ending a seven-year closure.",
+        "sourceUrl": "https://www.pbs.org/newshour/amp/world/u-s-reopens-long-closed-embassy-in-venezuela-months-after-military-operation-to-remove-maduro"
+      },
+      {
+        "date": "2026-06-24",
+        "event": "Earthquakes of magnitude 7.2 and 7.5 strike northern Venezuela, hitting La Guaira state hardest; the official toll reached 5,278 dead by 20 July.",
+        "sourceUrl": "https://ewn.co.za/2026/07/21/venezuela-earthquakes-death-toll-rises-to-5-278"
+      },
+      {
+        "date": "2026-10-25",
+        "event": "Opposition leader María Corina Machado returns to Venezuela overland from Colombia after several failed attempts.",
+        "sourceUrl": "https://www.dailymaverick.co.za/article/2026-10-26-venezuela-opposition-leader-machado-returns-home-after-fraught-year-away"
+      },
+      {
+        "date": "2026-10-30",
+        "event": "A Venezuelan army attack on an ELN camp in Apure state kills at least 19 people, according to FundaRedes and a military source cited by AFP.",
+        "sourceUrl": "https://www.ewn.co.za/2026/11/02/at-least-19-dead-in-venezuela-army-attack-on-colombian-rebel-camp"
+      },
+      {
+        "date": "2026-11-02",
+        "event": "Marco Rubio meets Foreign Minister Oliver Blanco in Washington and reaffirms the US three-phase plan for Venezuela.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/11/3/us-urges-venezuela-to-follow-phased-plan-for-democratic-transition"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Opposition street mobilisation over an election date",
+        "why": "The 22 October 2026 protest was the first nationwide opposition protest in nearly two years, and neither Rodríguez nor Trump has set a date for legislative or presidential elections.",
+        "trackedBy": "Protests"
+      },
+      {
+        "indicator": "Army operations against armed groups on the Colombian border",
+        "why": "An attack on an ELN camp in Apure on 30 October 2026 killed at least 19 people, and a military source told AFP that forces would keep searching for more camps.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Venezuelan migration and returns",
+        "why": "The 2026 regional response plan counts about 6.87 million Venezuelans living in Latin American and Caribbean host countries and estimates that 5.37 million refugees and migrants need assistance.",
+        "trackedBy": "UNHCR Displacement"
+      },
+      {
+        "indicator": "US sanctions relief tied to oil deals",
+        "why": "OFAC removed National Assembly president Jorge Rodríguez from its sanctions list on 14 October 2026; sanctions on Delcy Rodríguez were lifted earlier, and a deal has given the US access to 17 oil fields.",
+        "trackedBy": "Sanctions Pressure"
+      }
+    ]
+  },
+  {
+    "slug": "india-pakistan-conflict",
+    "question": "What is happening with India and Pakistan?",
+    "lastReviewed": "2026-11-05",
+    "background": [
+      {
+        "text": "The dispute began with the 1947 Partition of British India, when Kashmir's maharaja acceded to India and the two new states fought their first war over the territory, according to the Council on Foreign Relations. Further wars followed in 1965 and 1971, and the 1972 Simla Agreement drew the Line of Control that still divides Kashmir. India tested a nuclear weapon in 1974 and Pakistan later did the same. In August 2019 India revoked Article 370, ending Jammu and Kashmir's special status. Inside Pakistan, a separate conflict resumed when the Pakistani Taliban (TTP) ended a June 2022 ceasefire that November and announced attacks across the country.",
+        "sourceUrls": [
+          "https://www.cfr.org/global-conflict-tracker/conflict/conflict-between-india-and-pakistan",
+          "https://thediplomat.com/2026/10/why-the-ttp-remains-the-central-fault-line-between-pakistan-and-afghanistan/"
+        ]
+      },
+      {
+        "text": "On 22 April 2025 militants killed 26 people near Pahalgam in Indian-administered Kashmir. India blamed Pakistan, which denied involvement. The next day India held the 1960 Indus Waters Treaty in abeyance and closed the Attari-Wagah crossing. In the early hours of 7 May India launched Operation Sindoor against what it called nine terrorist camps in Pakistan; four days of air combat, drone strikes and shelling ended in a ceasefire on 10 May, announced by US President Donald Trump. A Court of Arbitration ruled in June 2025 that India could not suspend the treaty unilaterally. India rejects the court's jurisdiction.",
+        "sourceUrls": [
+          "https://www.cfr.org/global-conflict-tracker/conflict/conflict-between-india-and-pakistan",
+          "https://scroll.in/latest/1081631/india-suspends-indus-water-treaty-with-pakistan-after-pahalgam-terror-attack",
+          "https://southasianvoices.org/sav-one-year-after-may-2025/",
+          "https://www.usip.org/india-pakistan/",
+          "https://www.dawn.com/news/1930879/water-minister-slams-india-for-running-away-from-indus-waters-treaty-rejecting-hague-court-award"
+        ]
+      },
+      {
+        "text": "As of early November 2026, the May 2025 ceasefire between India and Pakistan has held, but India still keeps the Indus Waters Treaty suspended. On 15 September an Indian destroyer and a Pakistani patrol vessel collided in the Arabian Sea, and on 2 October Indian border guards shot dead two Pakistani civilians in the Bedian sector, prompting both governments to summon diplomats. Most deaths now come from Pakistan's internal conflict: the PICSS think tank counted 260 deaths from militant attacks in September and 111 in October. Pakistani and Afghan Taliban forces clashed on the border on 19 and 27 October.",
+        "sourceUrls": [
+          "https://www.cfr.org/global-conflict-tracker/conflict/conflict-between-india-and-pakistan",
+          "https://www.pakistantoday.com.pk/2026/10/03/pakistan-summons-indian-envoy-over-killing-of-two-civilians-by-bsf",
+          "https://www.arabnews.pk/pakistan/pakistan-sees-37-percent-drop-in-terrorist-attacks-in-october-kidnappings-surge-report-3005792",
+          "https://www.longwarjournal.org/archives/2026/10/afghanistan-pakistan-border-clashes-continue-amid-reported-pakistani-outreach-to-anti-taliban-groups.php"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Government of India",
+        "role": "Holds the Indus Waters Treaty in abeyance until Pakistan verifiably ends support for cross-border terrorism and rejects the Court of Arbitration's jurisdiction.",
+        "sourceUrl": "https://www.tribuneindia.com/news/world/lack-of-jurisdiction-legitimacy-competence-india-rejects-award-issued-by-court-of-arbitration-under-indus-waters-treaty"
+      },
+      {
+        "name": "Government of Pakistan",
+        "role": "Its Foreign Office summoned India's chargé d'affaires on 3 October 2026 over the Bedian killings and demanded a transparent investigation.",
+        "sourceUrl": "https://www.pakistantoday.com.pk/2026/10/03/pakistan-summons-indian-envoy-over-killing-of-two-civilians-by-bsf"
+      },
+      {
+        "name": "Pakistan Army (ISPR)",
+        "role": "Runs counterterrorism operations and cross-border strikes, and on 1 October 2026 its spokesman accused the Taliban of hosting militant leaders at a meeting he said India helped arrange.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/pakistan-launches-new-strikes-as-conflict-with-taliban-persist-into-third-week.php"
+      },
+      {
+        "name": "Tehrik-e-Taliban Pakistan (TTP)",
+        "role": "Islamist insurgent group that the 2026 Global Terrorism Index ranked the world's third-deadliest terrorist organisation in 2025; Pakistan says it shelters in Afghanistan.",
+        "sourceUrl": "https://thediplomat.com/2026/10/why-the-ttp-remains-the-central-fault-line-between-pakistan-and-afghanistan/"
+      },
+      {
+        "name": "Ittehad ul Mujahideen Pakistan (IMP)",
+        "role": "Militant alliance formed in April 2025 with roots in the TTP that claimed the 18 September 2026 suicide attack that killed 31 people.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/taliban-pakistan-border-clashes-continue-after-moscow-talks-end-without-agreement.php"
+      },
+      {
+        "name": "Balochistan Liberation Army (BLA)",
+        "role": "Separatist group that claimed coordinated attacks across Balochistan on 31 January 2026; Pakistan accuses India of backing it, which India denies.",
+        "sourceUrl": "https://www.nationalheraldindia.com/story/international/pakistan-says-145-militants-killed-in-balochistan-crackdown-after-coordinated-attacks"
+      },
+      {
+        "name": "Taliban government of Afghanistan",
+        "role": "Exchanged fire with Pakistani forces on the Paktika border on 27 October 2026 and said Pakistani drones had struck its security facilities there.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/afghanistan-pakistan-border-clashes-continue-amid-reported-pakistani-outreach-to-anti-taliban-groups.php"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2019-08",
+        "event": "India revokes Article 370, removing Jammu and Kashmir's special status; Pakistan calls the move a grave injustice.",
+        "sourceUrl": "https://www.cfr.org/global-conflict-tracker/conflict/conflict-between-india-and-pakistan"
+      },
+      {
+        "date": "2025-04-22",
+        "event": "Militants kill 26 people near Pahalgam; the next day India holds the Indus Waters Treaty in abeyance and closes the Attari-Wagah crossing.",
+        "sourceUrl": "https://scroll.in/latest/1081631/india-suspends-indus-water-treaty-with-pakistan-after-pahalgam-terror-attack"
+      },
+      {
+        "date": "2025-05-07",
+        "event": "India launches Operation Sindoor against nine sites in Pakistan; four days of fighting end in a ceasefire on 10 May.",
+        "sourceUrl": "https://southasianvoices.org/sav-one-year-after-may-2025/"
+      },
+      {
+        "date": "2025-08-08",
+        "event": "A Court of Arbitration issues its award on the Indus Waters Treaty; India rejects it on 14 August, citing lack of jurisdiction.",
+        "sourceUrl": "https://www.tribuneindia.com/news/world/lack-of-jurisdiction-legitimacy-competence-india-rejects-award-issued-by-court-of-arbitration-under-indus-waters-treaty"
+      },
+      {
+        "date": "2026-01-31",
+        "event": "The BLA claims coordinated gun and bomb attacks in Quetta, Gwadar, Mastung and Noshki; Pakistani officials say 145 militants were killed in the response.",
+        "sourceUrl": "https://www.nationalheraldindia.com/story/international/pakistan-says-145-militants-killed-in-balochistan-crackdown-after-coordinated-attacks"
+      },
+      {
+        "date": "2026-02-22",
+        "event": "Pakistani airstrikes in Nangarhar and Paktika provinces kill at least 13 civilians, according to the UN mission, and border clashes follow.",
+        "sourceUrl": "https://www.aljazeera.com/news/2026/2/24/fresh-afghan-pakistani-border-clashes-follow-deadly-strikes"
+      },
+      {
+        "date": "2026-09-15",
+        "event": "An Indian destroyer and a Pakistani patrol vessel collide in the Arabian Sea, the first direct military confrontation since May 2025.",
+        "sourceUrl": "https://www.cfr.org/global-conflict-tracker/conflict/conflict-between-india-and-pakistan"
+      },
+      {
+        "date": "2026-09-18",
+        "event": "A suicide attack claimed by Ittehad ul Mujahideen Pakistan kills 31 people at the Kohat Police Lines in Khyber Pakhtunkhwa.",
+        "sourceUrl": "https://thediplomat.com/2026/10/why-the-ttp-remains-the-central-fault-line-between-pakistan-and-afghanistan/"
+      },
+      {
+        "date": "2026-10-02",
+        "event": "Indian border guards kill two Pakistani civilians in the Bedian sector; Pakistan summons India's chargé d'affaires the next day.",
+        "sourceUrl": "https://www.pakistantoday.com.pk/2026/10/03/pakistan-summons-indian-envoy-over-killing-of-two-civilians-by-bsf"
+      },
+      {
+        "date": "2026-10-27",
+        "event": "Taliban and Pakistani forces exchange fire on the Paktika–South Waziristan border; Pakistan reports one civilian killed.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/afghanistan-pakistan-border-clashes-continue-amid-reported-pakistani-outreach-to-anti-taliban-groups.php"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Incidents on the India–Pakistan border and at sea",
+        "why": "The 15 September 2026 naval collision and the 2 October killing of two civilians in the Bedian sector each led both governments to summon diplomats.",
+        "trackedBy": "Escalation Monitor"
+      },
+      {
+        "indicator": "Militant violence inside Pakistan",
+        "why": "PICSS counted militant-attack deaths falling from 260 in September 2026 to 111 in October, while attacks and security operations together killed 272 people in October, 169 of them militants.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Pakistan–Afghanistan border fighting",
+        "why": "Pakistan struck Kunar and Helmand on 30 September and forces clashed on 19 and 27 October; bilateral trade fell 95 percent in fiscal 2026.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Status of the Indus Waters Treaty",
+        "why": "India has held the treaty in abeyance since April 2025 and rejects Court of Arbitration rulings that it cannot suspend it unilaterally.",
+        "trackedBy": "Strategic Risk Overview"
+      }
+    ]
+  },
+  {
+    "slug": "syria-conflict",
+    "question": "What is happening in Syria?",
+    "lastReviewed": "2026-11-05",
+    "background": [
+      {
+        "text": "Syria's uprising began in the southern city of Deraa, where security agents detained and tortured 15 boys for painting anti-government slogans in March 2011; on 18 March security forces fired on protesters and killed three, Al Jazeera reported. Protests against Bashar al-Assad spread and, as CFR notes, turned into a full war between the government and rebel groups. Foreign powers entered the fight. The Islamic State seized territory from 2013 and was pushed back by a US-led coalition and the Kurdish-led Syrian Democratic Forces (SDF). Russia began air strikes for Damascus in September 2015, and Turkish troops have operated inside Syria since 2016, mainly against Kurdish armed groups.",
+        "sourceUrls": [
+          "https://www.aljazeera.com/features/2011/4/19/inside-deraa",
+          "https://www.cfr.org/global-conflict-tracker/conflict/conflict-syria"
+        ]
+      },
+      {
+        "text": "UN estimates cited by CFR put the civil war's death toll at no fewer than 580,000, and more than half of Syrians were uprooted; Al Jazeera reported that 6.8 million had fled abroad at the 2021 peak. Rebels led by Hayat Tahrir al-Sham took Damascus on 8 December 2024, ending Assad's rule, and the group's leader, Ahmed al-Sharaa, was named interim president on 29 January 2025. Sectarian bloodshed followed. A UN commission said some 1,400 people, mainly Alawite civilians, were killed on the coast in March 2025, and it counted at least 1,707 dead in Suwayda province during a week of fighting in July 2025.",
+        "sourceUrls": [
+          "https://www.cfr.org/global-conflict-tracker/conflict/conflict-syria",
+          "https://www.aljazeera.com/news/2025/12/8/how-many-syrians-have-returned-home-one-year-since-the-fall-of-al-assad",
+          "https://www.mprnews.org/story/2025/01/29/npr-syria-ahmed-al-sharaa-president",
+          "https://www.aljazeera.com/news/2025/8/14/war-crimes-likely-committed-by-both-sides-in-syria-sectarian-violence-un-commission-says",
+          "https://thenationalnews.com/news/mena/2026/03/28/un-report-more-than-1700-deaths-and-possible-war-crimes-during-clashes-in-syrias-sweida-province-last-year"
+        ]
+      },
+      {
+        "text": "In late October 2026 Syria is governed by President Ahmed al-Sharaa, and armed violence continues on several fronts. SDF commander Mazloum Abdi declared his force dissolved into the national army on 25 August 2026. In Suwayda, the Druze National Guard of Sheikh Hikmat al-Hijri fought government forces again in late August, while Israeli troops operate mainly in Quneitra and Deraa. On 26 October, Jordanian air strikes in the south killed seven people, Syria said; Jordan said it hit Islamic State militants. Iraq's prime minister visited Damascus two days later. UNHCR data published in August recorded 1,717,964 refugee returns, while about 15.6 million people still need aid.",
+        "sourceUrls": [
+          "https://euronews.com/2026/08/28/syrias-al-sharaa-appoints-sdf-commander-as-adviser-after-kurdish-force-dissolves",
+          "https://al-monitor.com/originals/2026/09/fresh-fighting-syrias-suwayda-leaves-one-dead-what-know",
+          "https://www.al-monitor.com/originals/2026/10/jordan-says-it-killed-more-20-islamic-state-militants-airstrikes-syria",
+          "https://www.longwarjournal.org/archives/2026/10/syria-hosts-iraqi-pm-for-visit-amid-security-challenges-in-north-and-south.php",
+          "https://npasyria.com/en/140220/"
+        ]
+      }
+    ],
+    "keyActors": [
+      {
+        "name": "Ahmed al-Sharaa",
+        "role": "Syria's president, who hosted Iraqi Prime Minister Ali al-Zaidi in Damascus on 28 October 2026 for talks on trade, energy and regional ties.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/syria-hosts-iraqi-pm-for-visit-amid-security-challenges-in-north-and-south.php"
+      },
+      {
+        "name": "Mazloum Abdi and the former SDF",
+        "role": "Abdi led the Kurdish-led Syrian Democratic Forces until he declared them dissolved into the Syrian army in August 2026, after which he was named an adviser to the president.",
+        "sourceUrl": "https://euronews.com/2026/08/28/syrias-al-sharaa-appoints-sdf-commander-as-adviser-after-kurdish-force-dissolves"
+      },
+      {
+        "name": "Sheikh Hikmat al-Hijri and the National Guard",
+        "role": "Druze spiritual leader in Suwayda whose National Guard militia opposes the Sharaa government, seeks autonomy for the province and clashed with security forces in late August 2026.",
+        "sourceUrl": "https://al-monitor.com/originals/2026/09/fresh-fighting-syrias-suwayda-leaves-one-dead-what-know"
+      },
+      {
+        "name": "Israel",
+        "role": "Says it is protecting Syria's Druze and conducts military operations in southern Syria, mainly in Quneitra and Deraa provinces.",
+        "sourceUrl": "https://al-monitor.com/originals/2026/09/fresh-fighting-syrias-suwayda-leaves-one-dead-what-know"
+      },
+      {
+        "name": "Islamic State",
+        "role": "Jihadist group that declared war on the Sharaa government in a recording released on 21 February 2026 and then claimed a wave of attacks on security forces in the north-east.",
+        "sourceUrl": "https://www.thenationalnews.com/news/mena/2026/02/25/isis-launching-daily-attacks-in-north-eastern-syria-as-fears-of-security-vacuum-grow"
+      },
+      {
+        "name": "Turkey",
+        "role": "Neighbour that opposes Kurdish autonomy, backed Damascus during its January 2026 offensive against the SDF, and belongs to a Mecca defence pact that Syria says it is considering joining.",
+        "sourceUrl": "https://www.cfr.org/global-conflict-tracker/conflict/conflict-syria"
+      },
+      {
+        "name": "Jordan",
+        "role": "Neighbour that struck what it called Islamic State hideouts in southern Syria on 26 October 2026 after a deadly church attack, a move Damascus condemned as a breach of sovereignty.",
+        "sourceUrl": "https://www.al-monitor.com/originals/2026/10/jordan-says-it-killed-more-20-islamic-state-militants-airstrikes-syria"
+      }
+    ],
+    "timeline": [
+      {
+        "date": "2011-03-18",
+        "event": "Security forces fire on protesters in Deraa, killing three, after the detention and torture of 15 boys over anti-government graffiti.",
+        "sourceUrl": "https://www.aljazeera.com/features/2011/4/19/inside-deraa"
+      },
+      {
+        "date": "2024-12-08",
+        "event": "Rebels take Damascus and Bashar al-Assad flees the capital by plane, ending five decades of Assad family rule.",
+        "sourceUrl": "https://www.africanews.com/2024/12/08/reports-that-syrias-assad-flees-country-as-rebels-take-control-of-damascus"
+      },
+      {
+        "date": "2025-01-29",
+        "event": "Ahmed al-Sharaa is named interim president; the old constitution and parliament are dissolved.",
+        "sourceUrl": "https://www.mprnews.org/story/2025/01/29/npr-syria-ahmed-al-sharaa-president"
+      },
+      {
+        "date": "2025-03-06",
+        "event": "A government arrest operation on the coast triggers attacks by pro-Assad fighters and reprisals; a UN commission later reports some 1,400 killed, mostly Alawite civilians.",
+        "sourceUrl": "https://www.aljazeera.com/news/2025/8/14/war-crimes-likely-committed-by-both-sides-in-syria-sectarian-violence-un-commission-says"
+      },
+      {
+        "date": "2025-07-16",
+        "event": "Israel bombs the Syrian army headquarters in Damascus during fighting in Druze-majority Suwayda, and government forces withdraw from the city.",
+        "sourceUrl": "https://www.al-monitor.com/originals/2025/07/syria-heavy-israeli-strikes-damascus-fighting-rages-druze-city-suwayda"
+      },
+      {
+        "date": "2025-12-18",
+        "event": "US President Donald Trump signs the defence bill that permanently repeals the Caesar Act sanctions on Syria, subject to reviews every 180 days.",
+        "sourceUrl": "https://www.thenationalnews.com/news/mena/2025/12/20/syria-welcomes-repeal-of-sweeping-us-sanctions"
+      },
+      {
+        "date": "2026-01-30",
+        "event": "Damascus and the SDF announce a ceasefire and phased integration deal after government forces capture large parts of the north-east.",
+        "sourceUrl": "https://www.dawn.com/news/1969903"
+      },
+      {
+        "date": "2026-08-25",
+        "event": "SDF commander Mazloum Abdi declares the force dissolved and its integration into the Syrian army complete.",
+        "sourceUrl": "https://euronews.com/2026/08/28/syrias-al-sharaa-appoints-sdf-commander-as-adviser-after-kurdish-force-dissolves"
+      },
+      {
+        "date": "2026-10-26",
+        "event": "Jordanian air strikes hit southern Syria; Syria says seven people were killed, while Jordan says it killed more than 20 Islamic State militants.",
+        "sourceUrl": "https://www.al-monitor.com/originals/2026/10/jordan-says-it-killed-more-20-islamic-state-militants-airstrikes-syria"
+      },
+      {
+        "date": "2026-10-28",
+        "event": "Iraqi Prime Minister Ali al-Zaidi makes his first visit to Damascus and meets al-Sharaa on trade and energy links.",
+        "sourceUrl": "https://www.longwarjournal.org/archives/2026/10/syria-hosts-iraqi-pm-for-visit-amid-security-challenges-in-north-and-south.php"
+      }
+    ],
+    "whatToWatch": [
+      {
+        "indicator": "Islamic State attacks on government forces",
+        "why": "After the Islamic State declared war on the government on 21 February 2026, the Syrian Observatory for Human Rights counted at least 13 people killed in 10 attacks in four days.",
+        "trackedBy": "UCDP Conflict Events"
+      },
+      {
+        "indicator": "Clashes between the Druze National Guard and government forces in Suwayda",
+        "why": "Fighting resumed in late August 2026 around Mazraa, a year after a July 2025 outbreak in which a UN commission counted at least 1,707 dead.",
+        "trackedBy": "Armed Conflict Events"
+      },
+      {
+        "indicator": "Cross-border operations in southern Syria",
+        "why": "Israeli raids continue in Quneitra and Deraa, and Jordanian strikes on 26 October 2026 killed seven people, according to Syria.",
+        "trackedBy": "Military Activity"
+      },
+      {
+        "indicator": "Refugee returns against unmet humanitarian need",
+        "why": "UNHCR recorded 1,717,964 refugee returns and about 1.97 million IDP returns by August 2026, while about 15.6 million people still need assistance.",
+        "trackedBy": "UNHCR Displacement"
       }
     ]
   }

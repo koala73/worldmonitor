@@ -754,6 +754,7 @@ describe('api/mcp-proxy', () => {
         headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
       assertNoStore(res, 'DELETE method guard');
     });
 
@@ -764,6 +765,7 @@ describe('api/mcp-proxy', () => {
         body: '{}',
       }));
       assert.equal(res.status, 405);
+      assert.equal(res.headers.get('allow'), 'GET, POST, OPTIONS');
     });
   });
 
@@ -2174,6 +2176,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_bearer',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2184,6 +2188,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_key',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2194,6 +2200,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_mcp',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
   });

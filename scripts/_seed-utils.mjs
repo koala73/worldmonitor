@@ -24,6 +24,7 @@ export { isTestRuntime, loadEnvFile };
 // nothing is pending). Used by every runSeed exit reachable after fetchFn,
 // where seeder LLM calls may have emitted events (#4954 review).
 async function exitAfterTelemetryFlush(code) {
+  activeLockHeartbeat?.stop();
   try { await flushPendingLlmEvents(); } catch { /* never block exit */ }
   process.exit(code);
 }
@@ -336,8 +337,12 @@ export async function parseRedisCommandResponse(resp, label = 'Redis command') {
     if (PERMANENT_4XX_STATUSES.has(resp.status)) {
       err.nonRetryable = true;
     } else if (resp.status === 429) {
-      const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-      if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+      const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+      if (retryAfterMs != null) {
+        err.retryAfterMs = retryAfterMs;
+        // A bounded Redis operation cannot wait out a longer cooldown.
+        if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+      }
     }
     err.httpStatus = resp.status;
     throw err;
@@ -397,8 +402,12 @@ async function redisGet(url, token, key, options = {}) {
         if (PERMANENT_4XX_STATUSES.has(resp.status)) {
           err.nonRetryable = true;
         } else if (resp.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         err.httpStatus = resp.status;
         throw err;
@@ -479,6 +488,137 @@ export async function releaseLock(domain, runId) {
   }
 }
 
+// ─── Seed lock fencing (SM-122) ───
+// runSeed's fetch may run past lockTtlMs, so ownership is re-checked inside
+// Redis at every publish point. Both scripts return {1, ''} when KEYS[1] still
+// holds ARGV[1] (and renew it for ARGV[2] ms), or {0, <current holder or ''>}
+// when the lock is gone, so the caller can tell a takeover from an expiry.
+// The redis-rest proxy pins both texts byte for byte
+// (docker/redis-rest-proxy.mjs, tests/redis-rest-proxy-command-parity.test.mjs).
+export const SEED_LOCK_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "return {1, ''}",
+].join('\n');
+
+// Fenced SET: writes KEYS[2] = ARGV[3] (with EX ARGV[4] unless it is '') only
+// while KEYS[1] still holds ARGV[1].
+export const SEED_LOCK_FENCED_SET_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "if ARGV[4] == '' then",
+  "  redis.call('SET', KEYS[2], ARGV[3])",
+  'else',
+  "  redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])",
+  'end',
+  "return {1, ''}",
+].join('\n');
+
+export class SeedLockLostError extends Error {
+  constructor(lockKey, holder) {
+    super(holder
+      ? `seed lock ${lockKey} is now held by run ${holder}`
+      : `seed lock ${lockKey} expired and is held by no run`);
+    this.name = 'SeedLockLostError';
+    this.lockKey = lockKey;
+    this.holder = holder || null;
+    // A lost lock never comes back by retrying the same write.
+    this.nonRetryable = true;
+  }
+}
+
+export function isSeedLockLostError(err) {
+  return err instanceof SeedLockLostError;
+}
+
+/**
+ * Throw SeedLockLostError unless an EVAL reply from one of the fence scripts
+ * says the lock is still ours. Any other reply shape is a protocol error.
+ */
+function assertFenceReply(reply, lockKey) {
+  const result = reply?.result;
+  if (!Array.isArray(result) || (result[0] !== 1 && result[0] !== 0)) {
+    throw new Error(`Seed lock fence for ${lockKey} returned an unexpected reply: ${JSON.stringify(result)}`);
+  }
+  if (result[0] === 0) throw new SeedLockLostError(lockKey, typeof result[1] === 'string' ? result[1] : '');
+}
+
+/**
+ * Renew `seed-lock:<domain>` for ttlMs if runId still holds it. Throws
+ * SeedLockLostError when it does not; Redis failures propagate after retries.
+ */
+export async function renewLockIfHeld(domain, runId, ttlMs) {
+  const { url, token } = getRedisCredentials();
+  const lockKey = `seed-lock:${domain}`;
+  const reply = await withRetry(
+    () => redisCommand(url, token, ['EVAL', SEED_LOCK_RENEW_SCRIPT, 1, lockKey, runId, ttlMs], {
+      label: `Seed lock renew ${lockKey}`,
+    }),
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
+  );
+  assertFenceReply(reply, lockKey);
+}
+
+function fencedSetCommand(lockFence, key, payload, ttlSeconds) {
+  return [
+    'EVAL', SEED_LOCK_FENCED_SET_SCRIPT, 2, lockFence.lockKey, key,
+    lockFence.runId, lockFence.ttlMs, payload, ttlSeconds ? ttlSeconds : '',
+  ];
+}
+
+// The heartbeat of the lock runSeed currently holds. exitAfterTelemetryFlush
+// stops it so a test harness that traps process.exit leaves no live timer.
+let activeLockHeartbeat = null;
+
+/**
+ * Keep renewing a held seed lock every ttlMs/3 so a legitimately long fetch
+ * does not lose it. Stops for good once Redis reports the lock gone; a
+ * transient Redis error is logged and the next tick tries again.
+ */
+function startLockHeartbeat(domain, runId, ttlMs) {
+  const state = { lost: null, timer: null, inFlight: false };
+  const intervalMs = Math.max(250, Math.floor(ttlMs / 3));
+  const stop = () => {
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    if (activeLockHeartbeat === heartbeat) activeLockHeartbeat = null;
+  };
+  const tick = async () => {
+    if (state.inFlight || state.lost) return;
+    state.inFlight = true;
+    try {
+      const { url, token } = getRedisCredentials();
+      const lockKey = `seed-lock:${domain}`;
+      const reply = await redisCommand(url, token, ['EVAL', SEED_LOCK_RENEW_SCRIPT, 1, lockKey, runId, ttlMs], {
+        label: `Seed lock renew ${lockKey}`,
+      });
+      assertFenceReply(reply, lockKey);
+    } catch (err) {
+      if (isSeedLockLostError(err)) {
+        state.lost = err;
+        stop();
+        console.warn(`  [${domain}] ${err.message} — this run will not publish`);
+      } else {
+        console.warn(`  [${domain}] seed lock renewal failed (will retry): ${err?.message || err}`);
+      }
+    } finally {
+      state.inFlight = false;
+    }
+  };
+  state.timer = setInterval(tick, intervalMs);
+  state.timer.unref?.();
+  const heartbeat = { state, stop };
+  activeLockHeartbeat = heartbeat;
+  return heartbeat;
+}
+
 export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
 
@@ -536,6 +676,9 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   return await withRetry(
     async () => {
       if (options.publishAtomically) {
+        // A custom atomic publisher owns its Redis writes, so the fence can
+        // only be checked (and the lease renewed) just before it runs.
+        if (options.lockFence) await options.lockFence.renew();
         await options.publishAtomically({
           canonicalKey,
           payload,
@@ -547,9 +690,13 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
-      const canonicalCommand = ttlSeconds
-        ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
-        : ['SET', canonicalKey, payload];
+      // With a lock fence, the canonical SET runs inside Redis only while this
+      // run still holds the seed lock (SM-122).
+      const canonicalCommand = options.lockFence
+        ? fencedSetCommand(options.lockFence, canonicalKey, payload, ttlSeconds)
+        : ttlSeconds
+          ? ['SET', canonicalKey, payload, 'EX', ttlSeconds]
+          : ['SET', canonicalKey, payload];
       if (maxPayloadBytes > MAX_PAYLOAD_BYTES) {
         const requestBytes = Math.max(
           Buffer.byteLength(JSON.stringify(canonicalCommand), 'utf8'),
@@ -566,7 +713,15 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
       await redisCommand(url, token, ['SET', stagingKey, payload, 'EX', 300]); // 5 min staging TTL
 
       // Overwrite canonical key
-      await redisCommand(url, token, canonicalCommand);
+      const canonicalReply = await redisCommand(url, token, canonicalCommand);
+      if (options.lockFence) {
+        try {
+          assertFenceReply(canonicalReply, options.lockFence.lockKey);
+        } catch (err) {
+          await redisDel(url, token, stagingKey).catch(() => {});
+          throw err;
+        }
+      }
 
       // Cleanup staging
       await redisDel(url, token, stagingKey).catch(() => {});
@@ -636,6 +791,7 @@ export async function writeFreshnessMetadata(
   fetchedAtOverride,
   contentAge,
   metaPatch,
+  options = {},
 ) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
@@ -673,8 +829,23 @@ export async function writeFreshnessMetadata(
   // seeder's top-level catch as `FATAL: The operation was aborted due to
   // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
   // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
+  //
+  // options.lockFence (runSeed only) makes the SET conditional on the run
+  // still holding its seed lock, so a run that lost the lock cannot stamp
+  // fetchedAt=now over the newer owner's seed-meta (SM-122).
+  const lockFence = options?.lockFence;
   await withRetry(
-    () => redisSet(url, token, metaKey, meta, metaTtl),
+    async () => {
+      if (!lockFence) return redisSet(url, token, metaKey, meta, metaTtl);
+      const reply = await redisCommand(
+        url,
+        token,
+        fencedSetCommand(lockFence, metaKey, JSON.stringify(meta), metaTtl),
+        { label: `seed-meta ${metaKey}` },
+      );
+      assertFenceReply(reply, lockFence.lockKey);
+      return reply;
+    },
     SEED_REDIS_RETRY_ATTEMPTS - 1,
     SEED_REDIS_RETRY_BASE_MS,
   );
@@ -700,6 +871,8 @@ export async function writeFreshnessMetadataSafely(domain, resource, ...rest) {
   try {
     return await writeFreshnessMetadata(domain, resource, ...rest);
   } catch (err) {
+    // Losing the seed lock is an ownership decision, not a bookkeeping blip.
+    if (isSeedLockLostError(err)) throw err;
     console.warn(
       `  WARNING: seed-meta write for ${domain}:${resource} failed after retries (${err?.message || err}) — `
       + `continuing; seed-meta will age and /api/health STALE_SEED is the alarm if this persists`,
@@ -739,8 +912,12 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
         if (PERMANENT_4XX_STATUSES.has(resp.status)) {
           err.nonRetryable = true;
         } else if (resp.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         throw err;
       }
@@ -865,6 +1042,10 @@ function parseRetryAfterUncappedMs(value) {
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
+  if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 10
+      || !Number.isFinite(delayMs) || delayMs < 0) {
+    throw new RangeError('withRetry requires 0-10 retries and a finite non-negative delay');
+  }
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -880,8 +1061,15 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
         // (typically 429 / 503). Take whichever is longer — the upstream
         // hint OR the exponential backoff — so a generous server hint
         // isn't undercut, and a missing/short hint still gets back-off.
-        const baseWait = delayMs * 2 ** attempt;
-        const wait = err?.retryAfterMs ? Math.max(baseWait, err.retryAfterMs) : baseWait;
+        const capMs = 60_000;
+        const ceiling = Math.min(capMs, delayMs * 2 ** attempt * 1.25);
+        // Keep the existing minimum delay below the cap, then spread workers
+        // across the upper 20% of the capped exponential window.
+        const baseWait = Math.round(ceiling * (0.8 + Math.random() * 0.2));
+        const retryAfterMs = Number(err?.retryAfterMs);
+        // Provider cooldowns can exceed the backoff cap; callers with phase
+        // budgets reject hints that cannot fit before starting another attempt.
+        const wait = Number.isFinite(retryAfterMs) ? Math.max(baseWait, retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);
         // Test-only cap on the idle wait between attempts (WM_SEED_RETRY_DELAY_MS):
@@ -1048,18 +1236,24 @@ export function shouldEnvelopeKey(key) {
   return typeof key === 'string' && !key.startsWith('seed-meta:');
 }
 
-export async function writeExtraKey(key, data, ttl, envelopeMeta) {
+export async function writeExtraKey(key, data, ttl, envelopeMeta, options = {}) {
   const { url, token } = getRedisCredentials();
   const payload = serializeExtraKeyValue(key, data, envelopeMeta);
+  // options.lockFence (runSeed only): write only while the run still holds
+  // its seed lock (SM-122).
+  const lockFence = options?.lockFence;
   // Retry transient Redis timeouts / 5xx / network tears so a single Upstash
   // blip in afterPublish doesn't crash the whole seeder run. Permanent 4xx
   // (auth, payload-too-large) fail fast; 429 honors Retry-After. Mirrors the
   // redisCommand / atomicPublish contract (seed-gdelt-intel PUBLISH_TIMEOUT fix).
   await withRetry(async () => {
-    await redisCommand(url, token, ['SET', key, payload, 'EX', ttl], {
-      label: `Extra key ${key}`,
-      timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
-    });
+    const reply = await redisCommand(
+      url,
+      token,
+      lockFence ? fencedSetCommand(lockFence, key, payload, ttl) : ['SET', key, payload, 'EX', ttl],
+      { label: `Extra key ${key}`, timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS },
+    );
+    if (lockFence) assertFenceReply(reply, lockFence.lockKey);
   }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   console.log(`  Extra key ${key}: written`);
 }
@@ -1145,7 +1339,7 @@ function buildSeedMeta(recordCount, coverage, extra, fetchedAt = Date.now()) {
   return meta;
 }
 
-export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra, options = {}) {
   const { url, token } = getRedisCredentials();
   const metaKey = resolveSeedMetaKey(dataKey, metaKeyOverride);
   const meta = buildSeedMeta(recordCount, coverage, extra);
@@ -1155,7 +1349,11 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
+    // options.lockFence (runSeed only): write only while the run still holds
+    // its seed lock (SM-122).
+    body: JSON.stringify(options?.lockFence
+      ? fencedSetCommand(options.lockFence, metaKey, JSON.stringify(meta), metaTtl)
+      : ['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) {
@@ -1165,7 +1363,8 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   // Upstash can return HTTP 200 with a command-level error. Treat that as a
   // failed metadata write instead of reporting success while health still
   // points at the previous heartbeat.
-  await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
+  const reply = await parseRedisCommandResponse(resp, `seed-meta ${metaKey}`);
+  if (options?.lockFence) assertFenceReply(reply, options.lockFence.lockKey);
   return true;
 }
 
@@ -1315,8 +1514,12 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options 
         if (PERMANENT_4XX_STATUSES.has(r.status)) {
           err.nonRetryable = true;
         } else if (r.status === 429) {
-          const retryAfterMs = parseRetryAfterMs(getResponseHeader(r.headers, 'Retry-After'));
-          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+          const retryAfterMs = parseRetryAfterUncappedMs(getResponseHeader(r.headers, 'Retry-After'));
+          if (retryAfterMs != null) {
+            err.retryAfterMs = retryAfterMs;
+            // A bounded Redis operation cannot wait out a longer cooldown.
+            if (retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
+          }
         }
         throw err;
       }
@@ -1767,7 +1970,8 @@ export async function imfSdmxFetchIndicatorWithRelease(indicator, { database = '
       // 429 (rate limit) and 503 (overloaded) typically carry Retry-After;
       // attach so withRetry can honor the upstream hint.
       if (r.status === 429 || r.status === 503) {
-        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+        err.retryAfterMs = parseRetryAfterUncappedMs(r.headers.get('retry-after'));
+        if (err.retryAfterMs > MAX_RETRY_AFTER_MS) err.nonRetryable = true;
       }
       throw err;
     }
@@ -2704,6 +2908,27 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
+  // SM-122: the fetch deadline is lockTtlMs + 120s, so a run can outlive its
+  // lock, and another run can then take it and publish newer data. Renew the
+  // lock while this run works, and fence every publish point on ownership:
+  // the canonical SET and seed-meta SET run inside Redis only while this run
+  // still holds the lock (SEED_LOCK_FENCED_SET_SCRIPT), and the publish phase
+  // re-checks ownership before its first write. A run that lost the lock
+  // exits without publishing and without touching seed-meta.
+  const lockDomain = `${domain}:${resource}`;
+  const lockHeartbeat = startLockHeartbeat(lockDomain, runId, lockTtlMs);
+  const lockFence = {
+    lockKey: `seed-lock:${lockDomain}`,
+    runId,
+    ttlMs: lockTtlMs,
+    renew: () => renewLockIfHeld(lockDomain, runId, lockTtlMs),
+  };
+  // Cheap local check between Redis-fenced writes: the heartbeat already
+  // learned the lock is gone, so stop before the next write group.
+  const assertLockStillHeld = () => {
+    if (lockHeartbeat.state.lost) throw lockHeartbeat.state.lost;
+  };
+
   // SIGTERM handler — installed BEFORE fetch and KEPT installed through
   // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
   // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
@@ -2728,6 +2953,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   let currentPhase = 'fetch';
   const sigTermHandler = async () => {
     console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
+    lockHeartbeat.stop();
     try {
       if (currentPhase === 'fetch') {
         await Promise.allSettled([
@@ -2845,6 +3071,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
+    // Ownership gate before any publish-phase write (canonical, extra keys,
+    // hooks, seed-meta, TTL preservation). Renews the lease on success.
+    await lockFence.renew();
+
     // Content-age contract: invoke contentMeta on RAW fetcher output BEFORE
     // publishTransform runs. This lets seeders carry pre-publish helper fields
     // (e.g. _publishedAtIsSynthetic) on items that contentMeta reads, then
@@ -2980,6 +3210,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
           : undefined,
         compressPayload,
+        lockFence,
       });
     } catch (error) {
       // An atomic publisher either switches its complete key cohort or leaves
@@ -2989,6 +3220,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       // A thrown `beforePublish` is the same shape: it runs ahead of every
       // canonical/extra write, so the prior cohort is likewise untouched and the
       // deep coverage rejections that live there must not cost last-good TTLs.
+      // A lost seed lock goes straight to the lock-lost exit below: the keys
+      // now belong to the run that holds the lock.
+      if (isSeedLockLostError(error)) throw error;
       if (publishAtomically || beforePublish) {
         const preserved = await preserveExistingKeys().catch(() => false);
         if (!preserved) {
@@ -3020,6 +3254,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       if (!strictFailure && afterValidationSkip) {
         validationSkipExistingMeta = await readExistingSeedMeta(domain, resource);
         validationSkipMetaRead = true;
+        assertLockStillHeld();
         validationSkipResult = await afterValidationSkip(data, {
           ...validationSkipContext,
           existingSeedMeta: validationSkipExistingMeta,
@@ -3082,6 +3317,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             canonicalMeta.fetchedAt,
             canonicalMeta.contentAge,
             Object.keys(preservedDiagnostics).length > 0 ? preservedDiagnostics : null,
+            { lockFence },
           );
           console.log(
             `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
@@ -3098,6 +3334,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             domain, resource, 0, opts.sourceVersion, ttlSeconds,
             undefined, undefined,
             Object.keys(currentSkipDiagnostics).length > 0 ? currentSkipDiagnostics : null,
+            { lockFence },
           );
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
@@ -3129,6 +3366,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // the canonical one.
     if (extraKeys) {
       for (const ek of extraKeys) {
+        // Stop at the first key once the heartbeat has seen the lock go; each
+        // write below is also fenced inside Redis.
+        assertLockStillHeld();
         // skipWhenEmpty needs a resolved recordCount, which only exists in
         // contract mode (declareRecords). Warn loudly on misconfig instead of
         // silently writing the empty payload the flag was meant to guard against.
@@ -3177,6 +3417,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // allowMissingOnSkip key that has not been written yet), or a real
           // preservation failure / unconfirmed pipeline result.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
+            assertLockStillHeld();
             const preservation = await extendExistingTtlDetailed(
               [ek.key],
               ek.ttl || ttlSeconds || 600,
@@ -3215,7 +3456,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           );
           await exitAfterTelemetryFlush(1);
         }
-        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
+        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope, { lockFence });
         if (contractMode && ek.metaKey) {
           const metaExtra = typeof ek.metaExtra === 'function'
             ? ek.metaExtra(ekData, data)
@@ -3231,9 +3472,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
               resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
               ek.coverage,
               metaExtra,
+              { lockFence },
             );
           } catch (err) {
-            if (ek.metaCritical) throw err;
+            if (ek.metaCritical || isSeedLockLostError(err)) throw err;
             console.warn(`  Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed; freshness will age: ${err.message}`);
           }
           if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
@@ -3241,6 +3483,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
     }
 
+    assertLockStillHeld();
     const afterPublishResult = afterPublish
       ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId })
       : null;
@@ -3269,6 +3512,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
       afterPublishResult?.freshnessMetaPatch,
+      { lockFence },
     );
     if (afterFreshness) {
       if (meta == null) {
@@ -3302,6 +3546,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           runId,
         },
         Math.max(7 * 24 * 60 * 60, ttlSeconds || 0),
+        undefined,
+        { lockFence },
       );
     }
 
@@ -3346,6 +3592,29 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     await releaseLock(`${domain}:${resource}`, runId);
     await exitAfterTelemetryFlush(0);
   } catch (err) {
+    lockHeartbeat.stop();
+    if (isSeedLockLostError(err)) {
+      const durationMs = Date.now() - startMs;
+      if (err.holder) {
+        // Same outcome as the acquire-time lock-contention skip: the run that
+        // now holds the lock publishes this tick and owns its seed-meta.
+        console.warn(
+          `  SKIPPED: seed lock ${err.lockKey} was taken over by run ${err.holder} before this run (${runId}) `
+          + 'finished publishing — remaining writes and seed-meta left to that run',
+        );
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, LOCK LOST) ===`);
+        await exitAfterTelemetryFlush(0);
+      }
+      // No run owns the tick: keep last-good alive and report a graceful
+      // failure so the next tick retries. seed-meta is not touched.
+      console.warn(
+        `  SKIPPED: seed lock ${err.lockKey} expired before this run (${runId}) finished publishing `
+        + '— remaining writes and seed-meta skipped',
+      );
+      await preserveExistingKeys().catch(() => false);
+      console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms, lock expired) ===`);
+      await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+    }
     await releaseLock(`${domain}:${resource}`, runId);
     throw err;
   }

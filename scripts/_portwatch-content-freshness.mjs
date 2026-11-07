@@ -120,6 +120,9 @@ export function orderColdFetchQueue(
     now = Date.now(),
     maxCacheAgeMs = PORTWATCH_MAX_CACHE_AGE_MS,
     expiryPriorityLeadMinutes = PORTWATCH_EXPIRY_PRIORITY_LEAD_MINUTES,
+    // The seeder passes its own usability check, so a payload it cannot
+    // publish (corrupt ports, a future timestamp) ranks with expired ones.
+    isOutOfCoverage = null,
   } = {},
 ) {
   const critical = new Set(criticalCountries ?? PORTWATCH_DECISION_CRITICAL_COUNTRIES);
@@ -150,7 +153,7 @@ export function orderColdFetchQueue(
   };
   const priority = (item) => {
     if (critical.has(item?.iso2)) return 0;
-    if (cachedAt(item) === null || isExpired(item)) return 1;
+    if (cachedAt(item) === null || isExpired(item) || isOutOfCoverage?.(item)) return 1;
     return isExpiring(item) ? 2 : 3;
   };
   return [...needsFetch].sort((a, b) => {

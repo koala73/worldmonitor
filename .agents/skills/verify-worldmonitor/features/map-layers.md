@@ -23,6 +23,12 @@ Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/notam-airspace.
 Run `wm-verify.sh drive .agents/skills/verify-worldmonitor/steps/aircraft-emergencies.mjs --name aircraft-emergencies`. Set `WM_VERIFY_MOBILE=1` for 390px mobile, or `WM_VERIFY_HEADED=1` for a real GPU desktop map. The step explicitly uses synthetic responses and a controlled clock. It does not prove live provider detection.
 Set `WM_VERIFY_HEADED=1 WM_VERIFY_CURRENT_ONLY=1` for a separate current-signal visual check with native animation timers. It waits for the DeckGL overlay to mount and selects the synthetic Washington marker at the fixed desktop viewport.
 
+## Displacement on the mobile SVG map
+
+Open `/dashboard?layers=displacement` and tap **Show Map**. UNHCR origin-to-asylum routes, IOM DTM regional figures and routes, and IDMC event points share the Displacement layer with existing cross-border markers. Tap a circle or route diamond for the count, source, and available date/context. The feeds are separate measures; do not sum them.
+
+Run `npx playwright test e2e/mobile-displacement.spec.ts --project chromium`. It checks 390px and 1280px SVG rendering, source details, empty refreshes, toggling, route cleanup, and the marker budget. Its dashboard case exercises the real loader and MapContainer through controlled RPC/bootstrap responses, including reload with the Displacement panel offscreen. It does not prove live provider data or deployed API access. The DOM companion is `npm run test:dom -- tests/dom/displacement-markers.test.mts` (coordinate validation, escaping, route limits, and renderer forwarding).
+
 ## How to get to it (user POV)
 
 - Choose a layer chip under the map on the dashboard.

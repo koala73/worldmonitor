@@ -103,7 +103,7 @@ describe('Panel storage cache', () => {
     });
   });
 
-  it('retries saved column-span reconciliation until the connected grid has width', async () => {
+  it('keeps a saved column span the grid cannot fit and bounds the resize handle once the grid has width', async () => {
     await withHarness((harness) => {
       invalidateAllPanelStorageCaches();
       harness.localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify({ delayed: 3 }));
@@ -142,8 +142,12 @@ describe('Panel storage cache', () => {
 
       gridWidth = 560;
       frames.shift()?.();
-      assert.equal(root.classList.contains('col-span-3'), false);
-      assert.equal(root.classList.contains('col-span-2'), true);
+      // CSS clamps what renders to the grid's real columns, so the saved span
+      // stays for when the grid widens; the handle's range is the real count.
+      assert.equal(root.classList.contains('col-span-3'), true);
+      const handle = root.querySelector('.panel-col-resize-handle');
+      assert.equal(handle?.getAttribute('aria-valuemax'), '2');
+      assert.equal(handle?.getAttribute('aria-valuenow'), '2');
     });
   });
 

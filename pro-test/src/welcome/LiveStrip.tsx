@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Newspaper, ShieldAlert, Anchor, LineChart } from 'lucide-react';
 import { t } from '../i18n';
+import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import {
   fetchLiveTeasers, formatSnapshotDate, getFallbackTeasers,
   type TeaserState, type TeaserQuote,
@@ -39,8 +40,10 @@ function LiveBadge({ live, capturedAt }: { live: boolean; capturedAt: string }) 
 
 function Card({ icon, title, live, capturedAt, children }: { icon: ReactNode; title: string; live: boolean; capturedAt: string; children: ReactNode }) {
   return (
-    <div className="bg-wm-card border border-wm-border rounded-xl p-5 flex flex-col gap-4 min-h-[232px]">
-      <div className="flex items-center justify-between border-b border-wm-border pb-3">
+    // min-w-0 and the wrapping header keep a long translated badge ("Veröffentlichter
+    // Pulse vom …") from widening the card past a 320px phone.
+    <div className="min-w-0 bg-wm-card border border-wm-border rounded-xl p-5 flex flex-col gap-4 min-h-[232px]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-wm-border pb-3">
         <div className="flex items-center gap-2 font-mono text-xs text-wm-muted">
           {icon} {title}
         </div>
@@ -291,6 +294,19 @@ export const LiveStrip = () => {
             <MarketTape quotes={teasers.quotes.items} />
           </Card>
         </div>
+        {/* The same readings, and every crisis tracker, on one crawlable page.
+            Search shows this homepage for "monitor the situation"; the link is
+            how a crawler and a reader reach the board built for that search. */}
+        <a
+          href="/monitor-the-situation/"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-live-situation"
+          className={`group mt-6 inline-block font-mono text-xs text-wm-green hover:text-wm-text transition-colors ${cardLinkFocusRing}`}
+        >
+          {t('welcome.live.situationLink')}
+          {/* Inline, not flex: a wrapped label keeps the arrow after its last word. */}
+          <CardLinkArrow className="ms-1.5 inline-block align-[-2px]" />
+        </a>
         {!allLive && (
           <p className="mt-6 font-mono text-xs text-wm-muted">{t('welcome.live.refreshNote')}</p>
         )}

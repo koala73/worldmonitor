@@ -5,12 +5,13 @@
  * For each enabled alert rule with digestMode != "realtime":
  *   1. Checks isDue() against digest:last-sent:v1:${userId}:${variant}
  *   2. ZRANGEBYSCORE digest:accumulator:v1:${variant} to get stories in window
- *   3. Batch HGETALL story:track:v1:${hash} for metadata
+ *   3. Batch HMGET story:track:v1:${hash} for digest metadata
  *   4. Derives phase, filters fading/non-matching severity, sorts by currentScore
  *   5. SMEMBERS story:sources:v1:${hash} for source attribution
  *   6. Formats and dispatches to each configured channel
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   markdownToTelegramHtml,
@@ -137,6 +138,7 @@ import {
   digestCoverageText,
   digestWebhookStory,
   readStoryCorroboration,
+  storyCorroborationField,
 } from './lib/digest-corroboration.mjs';
 import { buildTickerDictionary } from '../shared/ticker-extract.js';
 import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
@@ -724,7 +726,7 @@ async function buildDigest(rule, windowStartMs) {
   );
   if (!Array.isArray(hashes) || hashes.length === 0) return null;
 
-  // null = at least one HGETALL chunk failed. Returning null here
+  // null = at least one story-track chunk failed. Returning null here
   // matches the legacy semantic (single-pipeline failure produced
   // an empty story list → null buildDigest result → cron skipped
   // sending the digest for this user/variant). The alternative —
@@ -732,7 +734,14 @@ async function buildDigest(rule, windowStartMs) {
   // chunks — would silently drop stories AND mark the slot as sent,
   // suppressing retry on the next tick. See:
   //   scripts/lib/story-track-batch-reader.mjs (bail-on-failure rationale).
-  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
+  const trackResults = await readStoryTracksChunked(hashes, upstashPipeline, {
+    fields: [
+      'title', 'severity', 'publishedAt', 'isOpinion', 'isFeelGood',
+      'isEphemeralLiveCoverage', 'link', 'description', 'mentionCount',
+      'firstSeen', 'lastSeen', 'currentScore', 'category', 'entityCorroborationCount',
+      storyCorroborationField(variant, lang),
+    ],
+  });
   if (trackResults === null) return null;
 
   // READ-time freshness cutoff is anchored to the rule's own digest
@@ -1360,7 +1369,7 @@ async function sendTeams(userId, webhookEnvelope, payload) {
   return true;
 }
 
-async function sendEmail(email, subject, text, html, channel = null) {
+async function sendEmail(email, subject, text, html, channel = null, occurrence = '') {
   const unsubscribeUrl = unsubscribeUrlFor(channel, 'brief');
   const label = 'Unsubscribe from the daily brief';
   const payload = {
@@ -1369,7 +1378,14 @@ async function sendEmail(email, subject, text, html, channel = null) {
     html: injectUnsubscribeFooterHtml(html, unsubscribeUrl, label),
     headers: listUnsubscribeHeaders(unsubscribeUrl),
   };
-  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]' });
+  // sendResendEmail bounds the call at 10s. A send Resend accepted but answered
+  // late reads as a failure, so last-sent stays unwritten and the next tick
+  // re-sends; keying the exact payload lets Resend drop an identical replay
+  // while a re-rendered digest (new content) still goes out under a new key.
+  // The body carries only the date, so `occurrence` (the scheduled local hour)
+  // keeps a twice_daily evening send from colliding with an identical morning one.
+  const idempotencyKey = `digest-${createHash('sha256').update(JSON.stringify([occurrence, payload.to, payload.subject, payload.text, payload.html])).digest('hex')}`;
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[digest]', idempotencyKey });
   if (result.ok) console.log(`[digest] Email delivered to ${email}`);
   return result.ok;
 }
@@ -2696,7 +2712,9 @@ async function main() {
             briefUrl: magazineUrl,
           }));
         } else if (ch.channelType === 'email' && ch.email) {
-          ok = await sendEmail(ch.email, subject, text, html, ch);
+          // cooldownSlot is YYYY-MM-DD-HHMM; the hour prefix stays fixed across
+          // retries within one scheduled hour.
+          ok = await sendEmail(ch.email, subject, text, html, ch, cooldownSlot.slice(0, 13));
         } else if (ch.channelType === 'webhook' && ch.webhookEnvelope) {
           // Webhook payload's `summary` field reads the canonical
           // briefLead — same string the email exec block + magazine

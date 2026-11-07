@@ -110,6 +110,7 @@
   --semantic-high-text: initial;
   --semantic-elevated-text: initial;
   --semantic-positive-text: initial;
+  --semantic-low-text: initial;
   --status-live-text: initial;
   --status-cached-text: initial;
   --status-unavailable-text: initial;
@@ -1392,3 +1393,13 @@
   border-color: var(--yellow);
   background: rgba(196, 163, 90, 0.12);
 }
+
+/* ---------- Climate Anomalies deltas (light) ----------
+   A happy user can add Climate Anomalies from settings. The deltas are 11px
+   text, and the light palette's fills are too pale for text on cream
+   (2.4–3.7:1), so they take darker shades of the same hues (5.3:1+).
+   Dark mode keeps the palette, which already clears 4.5:1. */
+:root[data-variant="happy"]:not([data-theme="dark"]) .climate-warm { color: #4F6B43; }
+:root[data-variant="happy"]:not([data-theme="dark"]) .climate-cold,
+:root[data-variant="happy"]:not([data-theme="dark"]) .climate-wet { color: #8E5168; }
+:root[data-variant="happy"]:not([data-theme="dark"]) .climate-dry { color: #52703F; }

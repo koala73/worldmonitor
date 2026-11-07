@@ -12,11 +12,15 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1009.0",
+    "@e965/xlsx": "0.20.3",
+    "@noble/hashes": "1.4.0",
     "convex": "^1",
+    "deepmerge": "file:vendor/deepmerge",
     "exceljs": "^4.4.0",
     "fast-xml-parser": "^5.8.0",
     "fflate": "0.8.3",
     "h3-js": "^4.2.1",
+    "hyparquet": "1.32.0",
     "jszip": "^3.10.1",
     "papaparse": "^5.5.3",
     "pdfjs-dist": "6.2.108",
@@ -30,6 +34,8 @@
     "yaml": "^2.8.3"
   },
   "overrides": {
+    "deepmerge": "$deepmerge",
+    "uuid@8": "11.1.1",
     "esbuild": "0.28.1",
     "undici": "$undici",
     "ws": "$ws",

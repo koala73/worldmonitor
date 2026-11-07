@@ -17,7 +17,7 @@ import {
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
-import { argStr } from '../filters';
+import { argNum, argStr, argStrList } from '../filters';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, parseSafeRpcViolations, RpcValidationError, throwIfBillingDenial, UpstreamHttpError } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
@@ -2700,6 +2700,78 @@ export const RPC_TOOLS: ToolDef[] = [
       'GET /api/consumer-prices/v1/list-consumer-price-categories',
       'GET /api/consumer-prices/v1/list-consumer-price-movers',
       'GET /api/consumer-prices/v1/list-retailer-price-spreads',
+    ],
+  },
+  {
+    name: 'get_fred_series',
+    title: 'Cached macroeconomic series',
+    _outputBudgetBytes: 131072,
+    description:
+      'Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. ' +
+      'Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched ' +
+      'with requested. Defaults to 24 observations per series, with a 1000 maximum.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        series_ids: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string', pattern: '\\S' },
+          description:
+            `FRED series ids (case-insensitive), bounded to the seeded allowlist: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 1000,
+          description: 'Observations per series, newest-last (default 24, max 1000). Keep small — 20 series at full history is large.',
+        },
+      },
+      required: ['series_ids'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        results: { type: 'object', additionalProperties: { type: 'object', properties: {
+          seriesId: { type: 'string' }, title: { type: 'string' },
+          units: { type: 'string' }, frequency: { type: 'string' },
+          observations: { type: 'array', items: { type: 'object', properties: {
+            date: { type: 'string' }, value: { type: 'number' },
+          } } },
+        } } },
+        fetched: { type: 'number' },
+        requested: { type: 'number', description: 'Allowlisted ids actually looked up; below the ids sent when some were unlisted.' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context, execution) => {
+      const seriesIds = Array.from(new Set(argStrList(params.series_ids)
+        .map((id) => id.trim().toUpperCase())
+        .filter((id) => filterParamContracts.economicFredSeriesIds.includes(id))))
+        .sort()
+        .slice(0, 20);
+      if (seriesIds.length === 0) return { results: {}, fetched: 0, requested: 0 };
+      const requestedLimit = argNum(params.limit);
+      // Bounded by default: the RPC's own default is 120 observations, which
+      // at 20 series would dwarf the output budget for an agent that only
+      // wanted the latest readings.
+      const limit = requestedLimit !== null && requestedLimit > 0
+        ? Math.max(1, Math.min(Math.floor(requestedLimit), 1000))
+        : 24;
+      const url = `${base}/api/economic/v1/get-fred-series-batch`;
+      const body = JSON.stringify({ seriesIds, limit });
+      const auth = await buildAuthHeaders(context, 'POST', url, body);
+      const res = await fetchMcpDownstream(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        body,
+        signal: AbortSignal.timeout(8_000),
+      }, execution);
+      await assertToolFetchOk(res, 'get-fred-series-batch');
+      return res.json();
+    },
+    _apiPaths: [
+      "POST /api/economic/v1/get-fred-series-batch",
     ],
   },
   {

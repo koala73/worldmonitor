@@ -323,6 +323,24 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+
+### `get_fred_series`
+
+**Access:** `subscription`.
+
+Read up to 20 macroeconomic series from the same seeded cache and allowlist used by the dashboard. Calls the canonical `POST /api/economic/v1/get-fred-series-batch` RPC; it never calls FRED at request time. The live `series_ids` description lists all supported IDs, including `UNRATE`, `CPIAUCSL`, and `FEDFUNDS`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `series_ids` | `array<string>` | Required FRED IDs, normalized to uppercase. Up to 20 are forwarded. Unlisted IDs are ignored by the canonical reader. |
+| `limit` | integer | Observations per series, newest-last. Default 24; valid range 1–1000. |
+
+Returns `results` keyed by series ID, with title, units, frequency and observations. `requested` counts the unique allowlisted IDs looked up; `fetched` counts the ones present in cache. Missing seeded data remains missing; this call does not trigger a refresh. Large responses may be compacted by the MCP output budget.
+
+Example: `get_fred_series({"series_ids":["UNRATE","CPIAUCSL"],"limit":24})`.
+
 ### `get_procurement_opportunities`
 
 Search active global public-procurement opportunities through the canonical Pro-gated tender API. The tool never reads Upstash directly. It returns a compact projection of the canonical records: official notice URL, source, title, buyer, timing, money, categories, sectors, `participationMode`, and compact `automationFit`; it deliberately omits descriptions, eligibility requirements, and submission URLs.
@@ -2118,6 +2136,22 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_global_air_activity`
+
+Observed military aircraft from the seeded flight snapshot: total, type breakdown, overlapping geographic theater counts, and count outside every theater. Only redistribution-cleared providers contribute. Confirmed on-ground tracks are excluded; unknown ground status remains included. Untyped aircraft remain in totals. Theater counts overlap, so they must not be summed to obtain the total.
+
+**Parameters (tool-specific):** none.
+
+- **API endpoints:** none (MCP-only derived analysis).
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** derived analysis over `military:flights:v1`; no new provider or seeder.
+- **Freshness budget:** flights **30 min** before `stale: true`; `cached_at` is derived from `seed-meta:military:flights.fetchedAt`, not the snapshot’s `fetchedAt`. Missing or invalid seed metadata yields `cached_at: null` and `stale: true`.
+- **Coverage:** `data.coverage` preserves `global` or `regional`; absent or unrecognized scope becomes `unknown`. Regional and unknown scope set `data.partial: true`, so counts describe an observed subset, never a worldwide total. Global scope still does not imply every military aircraft is observable. Coverage and freshness are independent. Missing snapshots fail explicitly.
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_global_air_activity","arguments":{}}}
+```
 
 ### `get_military_surge`
 

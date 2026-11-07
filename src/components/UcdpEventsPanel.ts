@@ -135,17 +135,19 @@ export class UcdpEventsPanel extends Panel {
       }).join('');
 
       bodyHtml = `
-        <table class="ucdp-table">
-          <thead>
-            <tr>
-              <th scope="col">${t('components.ucdpEvents.country')}</th>
-              <th scope="col">${t('components.ucdpEvents.deaths')}</th>
-              <th scope="col">${t('components.ucdpEvents.date')}</th>
-              <th scope="col">${t('components.ucdpEvents.actors')}</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>`;
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table ucdp-table">
+            <thead>
+              <tr>
+                <th scope="col">${t('components.ucdpEvents.country')}</th>
+                <th scope="col">${t('components.ucdpEvents.deaths')}</th>
+                <th scope="col">${t('components.ucdpEvents.date')}</th>
+                <th scope="col">${t('components.ucdpEvents.actors')}</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
     }
 
     const moreHtml = filtered.length > 50

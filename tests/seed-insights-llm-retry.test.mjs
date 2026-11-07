@@ -20,7 +20,7 @@ afterEach(() => {
 
 const PAID_MODEL = 'deepseek/deepseek-v4-flash';
 const FREE_MODEL = 'google/gemma-4-26b-a4b-it:free';
-const BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+const BACKUP_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
 const modelOf = (init) => JSON.parse(init.body).model;
 
 function okResponse(content) {
@@ -100,7 +100,8 @@ describe('seed-insights callLLM retry/budget', () => {
   //   wait0 = max(8s, 3s) = 8s → rem 4s
   //   wait1 = max(16s, 3s) = 16s (3s < 4s so still slept) → rem < 0
   //   attempt2: usable <= 0 → createLlmBudgetError (no fallthrough)
-  it('stops at the call budget without falling through to the next provider', async () => {
+  it('stops at the call budget without falling through to the next provider', async t => {
+    t.mock.method(Math, 'random', () => 0);
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     delete process.env.OLLAMA_API_URL;
     const originalDateNow = Date.now;

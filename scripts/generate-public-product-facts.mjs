@@ -334,7 +334,7 @@ function rewriteApplicationJsonLd(source, includedGroups) {
  * in order; later digits (the "1" in "Tier-1") are left alone.
  */
 const PROVIDERS_ACROSS_HOSTS = { pattern: /\b\d+ attributed providers across \d+ observed source hosts\b/g, occurrences: 1, keys: ['providers', 'sourceHosts'] };
-const CONSENT_PROVIDERS = { pattern: /\bevents from \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] };
+const CONSENT_PROVIDERS = { pattern: /\bIntelligence data from \d+ attributed providers\b/g, occurrences: 1, keys: ['providers'] };
 const RESTATED_FACT_PHRASES = new Map([
   ['docs/about.mdx', [
     { pattern: /\b\d+ news and OSINT feeds from \d+ attributed providers\b/g, occurrences: 1, keys: ['feeds', 'providers'] },

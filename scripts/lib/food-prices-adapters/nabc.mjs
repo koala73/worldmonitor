@@ -1,32 +1,22 @@
 import { htmlElements, isoDate } from '../food-prices.mjs';
 
-const BASE = 'https://www.nabc.go.th/commodity/';
+export const NABC_FARM_PRICES_URL = 'https://www.nabc.go.th/dashboard/farm-prices';
 const DAY = 86400000;
-const UNITS = { 'บาท/ตัน': 'tonne', 'บาท/กก.': 'kg', 'บาท/ร้อยฟอง': '100 eggs' };
-// OAE weekly farm-gate national averages, one NABC commodity page per entry.
+// OAE daily prices that major buying markets (rice mills, rice ports, buying
+// yards, central markets) paid farmers, keyed by the dashboard's product key.
+// The dashboard also lists rubber sheet, which is not a food price.
 export const NABC_BASKET = {
-  'ข้าว': {
-    'ข้าวเปลือกเจ้า ความชื้น 15%': 'Paddy rice, white (15% moisture)',
-    'ข้าวเปลือกเจ้า ความชื้น 24-25%': 'Paddy rice, white (24-25% moisture)',
-    'ข้าวเปลือกเจ้าหอมมะลิ ความชื้น 15%': 'Paddy rice, Hom Mali (15% moisture)',
-    'ข้าวเปลือกเหนียวเมล็ดยาว ความชื้น 15%': 'Paddy rice, glutinous long-grain (15% moisture)',
-  },
-  'ข้าวโพดเลี้ยงสัตว์': { 'ข้าวโพดเลี้ยงสัตว์เมล็ด ความชื้น 14.5%': 'Feed maize grain (14.5% moisture)' },
-  'มันสำปะหลัง': {
-    'มันสำปะหลังสด คละ': 'Fresh cassava (mixed)',
-    'มันสำปะหลังสดเชื้อแป้ง 25%': 'Fresh cassava (25% starch)',
-  },
-  'ไข่ไก่': {
-    'ไข่ไก่สด คละ': 'Chicken eggs (mixed sizes)',
-    'ไข่ไก่สด เบอร์ 3': 'Chicken eggs (size 3)',
-  },
-  'สุกร': { 'สุกรมีชีวิต น้ำหนักเกิน 100 กก.': 'Live hogs (over 100 kg)' },
-  'ปาล์มน้ำมัน': { 'ผลปาล์มน้ำมันทั้งทะลาย คละ': 'Oil palm fresh fruit bunches (mixed)' },
-  'ไก่เนื้อ': {
-    'ไก่รุ่นพันธุ์เนื้อ ฟาร์มอิสระ': 'Live broilers (independent farms)',
-    'ไก่รุ่นพันธุ์เนื้อ ฟาร์มประกัน': 'Live broilers (contract farms)',
-  },
+  rice_hommali: { item: 'Paddy rice, Hom Mali 105', unit: 'tonne', unitEn: 'THB/tonne' },
+  maize145: { item: 'Feed maize grain (14.5% moisture)', unit: 'kg', unitEn: 'THB/kg' },
+  cassava25: { item: 'Fresh cassava (25% starch)', unit: 'kg', unitEn: 'THB/kg' },
+  palm_ffb15: { item: 'Oil palm fresh fruit bunches (over 15 kg)', unit: 'kg', unitEn: 'THB/kg' },
+  swine: { item: 'Live hogs (over 100 kg)', unit: 'kg', unitEn: 'THB/kg' },
+  broiler: { item: 'Live broilers', unit: 'kg', unitEn: 'THB/kg' },
+  egg: { item: 'Chicken eggs', unit: '100 eggs', unitEn: 'THB/100 eggs' },
 };
+// The dashboard shows each day's low-high range across reporting markets; its
+// payload also carries the median, which is the one figure comparable week on week.
+const MARKET = 'Major buying markets (median)';
 
 const shiftDate = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 const validDate = value => typeof value === 'string' && isoDate(...value.split('-')) === value;
@@ -61,40 +51,37 @@ export function nuxtData(html, key) {
   return revive(entries[key]);
 }
 
-export function parseNabcCommodity(html, th) {
-  const variants = NABC_BASKET[th];
-  if (!variants) throw new Error('unknown nabc commodity');
-  const commodity = nuxtData(html, `commodity-${th}`);
-  const date = commodity?.weeklyLast;
-  if (commodity?.th !== th || !Array.isArray(commodity.weekly) || !validDate(date)) throw new Error('nabc commodity format changed');
-  const dates = [date, shiftDate(date, -7)];
+export function parseNabcFarmPrices(html) {
+  const products = nuxtData(html, 'farm-prices-detail')?.products;
+  if (!Array.isArray(products)) throw new Error('nabc page payload format changed');
+  const series = new Map();
+  for (const [key, spec] of Object.entries(NABC_BASKET)) {
+    const product = products.find(p => p?.key === key);
+    if (!product) continue;
+    if (product.unit_en !== spec.unitEn || !Array.isArray(product.series)
+      || !product.series.every(point => validDate(point?.d))) throw new Error(`nabc ${key} format changed`);
+    series.set(key, new Map(product.series.map(point => [point.d, point.med])));
+  }
+  const date = [...series.values()].flatMap(points => [...points.keys()]).sort().at(-1);
+  if (!date) throw new Error('nabc has no food prices');
+  const dates = [shiftDate(date, -7), date];
   const rows = [];
   const missing = [];
-  for (const [name, item] of Object.entries(variants)) {
-    const series = commodity.weekly.find(series => series?.name === name);
-    if (!series) { missing.push(name); continue; }
-    const unit = UNITS[series.unit];
-    if (!unit || !Array.isArray(series.national)) throw new Error(`nabc ${name} format changed`);
-    for (const week of series.national) {
-      const span = (Date.parse(week?.we) - Date.parse(week?.ws)) / DAY;
-      if (!validDate(week?.ws) || !validDate(week.we) || !(span >= 0 && span <= 6)) throw new Error(`nabc ${name} week format changed`);
-      if (!dates.includes(week.ws) || !(typeof week.price === 'number' && week.price > 0)) continue;
-      rows.push({ item, market: 'National average', marketType: 'farmgate', unit, currency: 'THB', date: week.ws, price: week.price, origin: '' });
+  for (const [key, { item, unit }] of Object.entries(NABC_BASKET)) {
+    const points = series.get(key);
+    const priced = day => typeof points?.get(day) === 'number' && points.get(day) > 0;
+    if (!priced(date)) { missing.push(item); continue; }
+    for (const day of dates.filter(priced)) {
+      rows.push({ item, market: MARKET, marketType: 'farmgate', unit, currency: 'THB', date: day, price: points.get(day), origin: '' });
     }
-    if (!rows.some(row => row.item === item && row.date === date)) missing.push(name);
   }
-  if (!rows.some(row => row.date === date)) throw new Error(`nabc ${th} has no latest-week national prices`);
   return { date, rows, missing };
 }
 
 export async function collect(ctx) {
-  const observations = [];
-  for (const th of Object.keys(NABC_BASKET)) {
-    const { date, rows, missing } = parseNabcCommodity(await ctx.get(`${BASE}${encodeURIComponent(th)}`), th);
-    if (missing.length) ctx.warn(`latest week ${date} lacks ${missing.join(', ')}`);
-    if (!rows.some(row => row.date !== date)) ctx.warn(`${th} has no national prices for the week of ${shiftDate(date, -7)}`);
-    observations.push(...rows);
-  }
-  const refreshedReports = [...new Set(observations.map(row => row.date))].map(date => ({ date }));
-  return { observations, contexts: [], refreshedReports, reportUrl: BASE.replace(/\/$/, '') };
+  const { date, rows, missing } = parseNabcFarmPrices(await ctx.get(NABC_FARM_PRICES_URL));
+  if (missing.length) ctx.warn(`${date} lacks ${missing.join(', ')}`);
+  if (!rows.some(row => row.date !== date)) ctx.warn(`no prices for ${shiftDate(date, -7)}`);
+  const refreshedReports = [...new Set(rows.map(row => row.date))].map(day => ({ date: day }));
+  return { observations: rows, contexts: [], refreshedReports, reportUrl: NABC_FARM_PRICES_URL };
 }

@@ -256,13 +256,13 @@ Deep dives: [News feeds panel](/panels/news-feeds) · [News digest & briefing me
 
 Rather than each client browser independently fetching dozens of RSS feeds through individual edge function invocations, the `listFeedDigest` RPC endpoint aggregates all feeds server-side into a single categorized response.
 
-The public server digest feed inventory below is source-backed from `shared/news-catalog.json` (each feed's server placements); that catalog is the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their language code and are only included when the request language matches. The relay requests every edition and language pair the catalog places a feed in every 17 minutes, just past the digest's 15-minute cache (`scripts/shared/news-digest-warm-cells.json`), so a language-scoped feed is fetched even when no reader requests its language. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
+The public server digest feed inventory below is source-backed from `shared/news-catalog.json` (each feed's server placements); that catalog is the source of truth for exact URLs, Google News query wrappers, and locale-specific URL parameters. Feed choices are intentionally visible here so regional coverage, official-source inclusion, and politically sensitive inclusions such as `Trump - Truth Social` can be reviewed rather than hidden behind a generic "RSS" label. Language-scoped feeds are marked with their content language code. They are included when the request language matches, or when the catalog sets `strategicDefault` or `fetchInAllLanguages`. Deutschlandfunk and ZDFheute use `fetchInAllLanguages`: their content stays German, they default on only for German UI languages, and users in any UI language can enable them. The relay requests every edition and language pair the catalog places a feed in every 17 minutes, just past the digest's 15-minute cache (`scripts/shared/news-digest-warm-cells.json`), so a language-scoped feed is fetched even when no reader requests its language. The `full` variant also appends `INTEL_SOURCES` under the `intel` category.
 
 | Variant | Category | Server feed sources |
 | --- | --- | --- |
 | `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social; New York Times World; Washington Post World; The Economist; The Independent |
 | `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; Fox News; CBC News; Globe and Mail; Global News; Toronto Star; National Post; Financial Post; iPolitics; The Narwhal; The Tyee; Radio-Canada (fr); La Presse (fr); Le Devoir (fr); TVA Nouvelles (fr); Vancouver Sun; Calgary Herald; Winnipeg Free Press; Ottawa Citizen; Edmonton Journal; Maclean's; The Province; CTV News; CP24; Montreal Gazette |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el); Sky News; BBC UK; BBC Northern Ireland; BBC Mundo (es); BBC Russian (ru); BBC Turkce (tr); Bild (de); Corriere della Sera (it); DW Turkish (tr); Dagens Nyheter (sv); De Telegraaf (nl); Der Spiegel (de); Die Zeit (de); El Mundo (es); El País (es); NRC (nl); Novaya Gazeta Europe (ru); RT; RT Russia; Repubblica (it); Svenska Dagbladet (sv); TASS |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el); Naftemporiki (el); in.gr (el); iefimerida (el); Proto Thema (el); ERT (el); AMNA (el); Ta Nea (el); Liberal GR (el); CNN Greece (el); Sky News; BBC UK; BBC Northern Ireland; BBC Mundo (es); BBC Russian (ru); BBC Turkce (tr); Bild (de); Corriere della Sera (it); DW Turkish (tr); Dagens Nyheter (sv); De Telegraaf (nl); Der Spiegel (de); Die Zeit (de); El Mundo (es); El País (es); NRC (nl); Novaya Gazeta Europe (ru); RT; RT Russia; Repubblica (it); Svenska Dagbladet (sv); TASS; Deutschlandfunk (de); ZDFheute (de) |
 | `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr; Times of Israel; Middle East Eye; Asharq News (ar); Fars News; IRNA; Mehr News |
 | `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review; Wired |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
@@ -466,6 +466,7 @@ Macro, markets, and money — official statistics from central banks and statist
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
+| Moscow Exchange ISS | IMOEX closes for the Russian country stock index, keyless and 15-minute delayed; Yahoo stopped serving MOEX data after 2022 | [iss.moex.com](https://iss.moex.com) |
 
 China-specific official financial and statistical sources (NBS, SAFE, PBoC, SSE/SZSE, and more) are listed under [China Coverage](#china-coverage).
 
@@ -494,11 +495,34 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 |----------|------|------|
 | GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
+| Statistics Norway (SSB) | Monthly national petrol 95 and dutiable diesel averages, NOK/l | [SSB table 09654](https://data.ssb.no/api/v0/en/table/09654) |
+| Gasvaktin (community project) | Unweighted mean of ordinary station petrol 95 and diesel prices, ISK/l | [Gasvaktin data and attribution](https://github.com/gasvaktin/gasvaktin) |
+| Taiwan MOEA Energy Administration | Weekly 92 unleaded and diesel pump surveys, TWD/l | [oil111 county survey](https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg) |
 | USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
 | BGS World Mineral Production | Cross-check / fill where USGS lacks a world table (attribution required) | [bgs.ac.uk world mineral statistics](https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/) |
 | Shanghai Gold Exchange | SHAU gold and SHAG silver daily AM/PM benchmarks | [official benchmark data](https://en.sge.com.cn/data_BenchmarkPrice) |
 
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
+
+The fuel-price seed preserves local prices and source observation dates, then
+uses shared FX rates to produce USD/l for the existing table. Norway's date is
+the first day of the observed month; its monthly data has roughly three weeks
+of publication lag and expires 65 days after month end. Gasvaktin is an MIT-licensed
+community project scraping company websites, not an official national average.
+Its ordinary pump prices exclude discounts; the observation date is the last
+Git revision changing the station file (content is fetched at that exact revision),
+with a 14-day freshness limit. This date records a file change, not verification
+of every station. Credit: Gasvaktin and its contributors.
+
+Taiwan's derived national survey mean weights the published, rounded mainland,
+offshore and mountain group averages by their report counts. Missing groups with zero reports
+are excluded. The observation date is the survey week end, with a 21-day
+freshness limit. The oil111 reuse licence remains unconfirmed. SSB data is
+[CC BY 4.0](https://www.ssb.no/en/diverse/lisens); USD prices are derived by FX
+conversion from SSB's published NOK prices. These three optional sources are
+omitted on failure or expiry and recorded in the snapshot's source health
+metadata; old country rows are never carried forward. County ranges and LPG
+cylinder prices are outside the current petrol/diesel schema.
 
 The physical precious-metals comparison uses the latest valid SGE PM print and
 retains its own trade date through weekends and exchange holidays. SHAU is CNY
@@ -533,6 +557,7 @@ The physical and digital backbone: cables, pipelines, ports, datacenters, intern
 | Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
 | Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
 | AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
+| NVD (NIST) | CVE reference store for the CISA KEV subset: CVSS, CWE, affected products, KEV due dates (public domain) | [nvd.nist.gov](https://nvd.nist.gov/developers/vulnerabilities) |
 
 Deep dives: [Infrastructure cascade](/infrastructure-cascade) · [Supply chain panel](/panels/supply-chain)
 
@@ -550,6 +575,8 @@ Six threat intelligence feeds provide indicators of compromise (IOCs) for active
 | **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
 
 Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
+
+The standalone CVE seeder can maintain a reference store for the CISA Known Exploited Vulnerabilities subset of the NVD corpus (`cyber:cve-reference:v1`): per CVE ID, the primary CVSS score and vector, CWE IDs, affected `vendor:product` pairs, the KEV added and due dates, and the SSVC exploitation verdict. Scheduling and reader integration remain pending. Sync is incremental on NVD's last-modified window and keyless by default; a free `NVD_API_KEY` raises the request ceiling. This product uses the NVD API but is not endorsed or certified by the NVD.
 
 IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
 
@@ -644,6 +671,7 @@ Airport operations, airspace closures, live flight tracking, and airline intelli
 | airplanes.live | Optional non-commercial ADS-B point queries (gap-fill) | [airplanes.live](https://airplanes.live/api-guide/) |
 | adsb.fi | Optional personal/non-commercial ADS-B point queries (gap-fill) | [adsb.fi](https://github.com/adsbfi/opendata) |
 | Wingbits | Live ADS-B flight data (keyed) | [wingbits.com](https://wingbits.com) |
+| plane-alert-db | Vendored ICAO-hex watchlist of military and government aircraft (ODbL, refreshed by script) | [sdr-enthusiasts/plane-alert-db](https://github.com/sdr-enthusiasts/plane-alert-db) |
 | OpenSky Network | Legacy per-request recovery (disabled in the military seeder) | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |

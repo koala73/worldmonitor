@@ -146,13 +146,9 @@ vi.mock('@/services/mcp-clients', () => ({
   revokeMcpClient: vi.fn(),
 }));
 
-// Force the web branch down its `.catch(...)` fallback deterministically.
-// Without this the web case asserted nothing: startCheckout would take over
-// and no window.open would ever happen, which the old `.every(...)` check
-// reported as a pass.
-vi.mock('@/services/checkout', () => ({
-  startCheckout: () => Promise.reject(new Error('checkout unavailable in test')),
-}));
+// The CTA opens the /pro plan picker; it must never start a checkout itself.
+const startCheckout = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('@/services/checkout', () => ({ startCheckout }));
 
 const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
@@ -163,6 +159,8 @@ type SettingsInternals = {
 };
 
 const PRO_URL = 'https://worldmonitor.app/pro';
+const PLANS_URL = 'https://worldmonitor.app/pro#pricing';
+const DESKTOP_PLANS_URL = 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing';
 const RUNTIMES = [
   ['web', false],
   ['desktop', true],
@@ -193,6 +191,7 @@ beforeEach(() => {
   storageValues.clear();
   vi.stubGlobal('localStorage', storage);
   invocations = [];
+  startCheckout.mockClear();
   signedIn = true;
   billingUxState = 'free';
   mockSubscription = null;
@@ -221,24 +220,21 @@ describe('UnifiedSettings upgrade click (#5911)', () => {
     (settings as unknown as SettingsInternals).handleUpgradeClick();
     await vi.waitFor(() => expect(invocations.length).toBe(1));
 
-    expect(invocations[0]).toEqual({ command: 'open_url', payload: { url: PRO_URL } });
+    expect(invocations[0]).toEqual({ command: 'open_url', payload: { url: DESKTOP_PLANS_URL } });
     expect(openSpy).not.toHaveBeenCalled();
+    expect(startCheckout).not.toHaveBeenCalled();
   });
 
-  it('leaves the web path on window.open and never touches the native bridge', async () => {
+  it('opens the plan picker on the web, not a Pro Monthly checkout', async () => {
     desktopRuntime = false;
     const openSpy = vi.spyOn(window, 'open').mockReturnValue({} as Window);
     settings = new UnifiedSettings(config(false));
 
     (settings as unknown as SettingsInternals).handleUpgradeClick();
-    // The web branch reaches its fallback only after the lazy checkout import
-    // rejects (mocked at module scope above), so wait for the real call.
     await vi.waitFor(() => expect(openSpy).toHaveBeenCalled());
 
-    // Positive assertion on purpose: the earlier `.every(...)` form was
-    // vacuously true on an empty call list, so it passed whether or not the
-    // web branch ran at all.
-    expect(openSpy).toHaveBeenCalledWith(PRO_URL, '_blank');
+    expect(openSpy).toHaveBeenCalledWith(PLANS_URL, '_blank');
+    expect(startCheckout).not.toHaveBeenCalled();
     expect(invocations).toEqual([]);
   });
 });

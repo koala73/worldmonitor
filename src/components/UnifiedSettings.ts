@@ -48,6 +48,7 @@ import {
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
+import { EnterpriseSeatsSection } from '@/components/EnterpriseSeatsSection';
 import {
   deriveBillingUxState,
   getReactivationHref,
@@ -55,6 +56,15 @@ import {
   type BillingStatusTone,
 } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
+import {
+  getSelfHostKeySnapshot,
+  removeSelfHostKey,
+  saveSelfHostKey,
+  subscribeSelfHostKey,
+  type SelfHostKeySnapshot,
+  type SelfHostKeyStatus,
+  type SelfHostKeyWriteResult,
+} from '@/services/self-host-key';
 import { hasDesktopKeyAccess } from '../../shared/desktop-key-access.js';
 import { createEmbedKey, listEmbedKeys, revokeEmbedKey, type EmbedKeyInfo } from '@/services/embed-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
@@ -110,6 +120,35 @@ export interface UnifiedSettingsConfig {
 }
 
 type TabId = UnifiedSettingsTabId;
+
+/** What the self-host Desktop key section shows (plan 2026-11-04-001, U6). */
+const SELF_HOST_KEY_TONE: Record<SelfHostKeyStatus, 'ok' | 'warn' | 'bad' | 'neutral'> = {
+  none: 'neutral',
+  active: 'ok',
+  invalid: 'bad',
+  not_desktop_key: 'bad',
+  over_cap: 'bad',
+  lapsed: 'bad',
+  unavailable: 'warn',
+  disabled: 'neutral',
+};
+
+/**
+ * Map the verdict service's snapshot to one displayed state. An active verdict
+ * the client no longer trusts (past the 24-hour bound) reads as "could not
+ * verify", because that is why Pro is off.
+ */
+function selfHostKeyDisplay(snapshot: SelfHostKeySnapshot): { state: SelfHostKeyStatus; staleNote: boolean } | null {
+  const verdict = snapshot.verdict;
+  if (snapshot.selfHosted !== true || !verdict) return null;
+  if (!verdict.enabled || verdict.status === 'disabled') return { state: 'disabled', staleNote: false };
+  if (verdict.status === 'active') {
+    return snapshot.unlock === 'unlocked'
+      ? { state: 'active', staleNote: verdict.stale || snapshot.checkFailed }
+      : { state: 'unavailable', staleNote: false };
+  }
+  return { state: verdict.status, staleNote: false };
+}
 type AccountRequest = { userId: string; generation: number };
 
 /**
@@ -172,6 +211,7 @@ export class UnifiedSettings {
   private planLimitNoticesError = '';
   // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
   private readonly businessSeatsSection: BusinessSeatsSection;
+  private readonly enterpriseSeatsSection: EnterpriseSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -183,6 +223,11 @@ export class UnifiedSettings {
   private accountDataGeneration = 0;
   private accountEntitlementRefreshPending = false;
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeSelfHostKey: (() => void) | null = null;
+  private selfHostKeyBusy: 'save' | 'remove' | null = null;
+  private selfHostKeyRenderedHtml: string | null = null;
+  private selfHostKeyMessage = '';
+  private selfHostKeyRejected = false;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
@@ -204,6 +249,7 @@ export class UnifiedSettings {
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
+    this.enterpriseSeatsSection = new EnterpriseSeatsSection(this.overlay);
 
     this.resetPanelDraft();
 
@@ -470,6 +516,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const enterpriseInviteBtn = target.closest<HTMLElement>('.enterprise-seats-invite-btn');
+      if (enterpriseInviteBtn) {
+        void this.enterpriseSeatsSection.handleInvite();
+        return;
+      }
+
+      const enterpriseRemoveBtn = target.closest<HTMLElement>('.enterprise-seat-remove-btn');
+      if (enterpriseRemoveBtn?.dataset.memberId) {
+        void this.enterpriseSeatsSection.handleRemove(enterpriseRemoveBtn.dataset.memberId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -537,6 +595,9 @@ export class UnifiedSettings {
     this.unsubscribeAuth = subscribeAuthState((state) => {
       this.handleAccountIdentityChange(state.user?.id ?? null);
     });
+    // The verdict can land after Settings is built (the first read is never
+    // awaited), and it changes on refresh or a premium denial.
+    this.unsubscribeSelfHostKey = subscribeSelfHostKey(() => this.refreshSelfHostKeySection());
   }
 
   private handleAccountIdentityChange(nextUserId: string | null): void {
@@ -564,6 +625,7 @@ export class UnifiedSettings {
     this.mcpQuota = null;
     this.stopMcpQuotaPolling();
     this.businessSeatsSection.resetForAccountChange();
+    this.enterpriseSeatsSection.resetForAccountChange();
 
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
@@ -623,7 +685,10 @@ export class UnifiedSettings {
         // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
         // Keep the marker through the reset(null) emission; the first real B
         // snapshot must rebuild once more before ordinary targeted refreshes.
-        if (state !== null) this.accountEntitlementRefreshPending = false;
+        if (state !== null) {
+          this.accountEntitlementRefreshPending = false;
+          this.loadEnterpriseSeats();
+        }
         this.render();
         return;
       }
@@ -659,6 +724,7 @@ export class UnifiedSettings {
         }
       }
       this.replaceUpgradeSection();
+      this.loadEnterpriseSeats();
     });
     this.unsubscribeEntitlementVerification?.();
     this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
@@ -678,6 +744,19 @@ export class UnifiedSettings {
     });
     if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
+    }
+    this.loadEnterpriseSeats();
+  }
+
+  /**
+   * Ask the server for the signed-in user's Enterprise seat view; it returns
+   * null for anyone who is not a member. Not gated on the current plan: after
+   * a contract ends its members lose the Enterprise plan but keep their seats,
+   * and the admin still needs the roster to remove people.
+   */
+  private loadEnterpriseSeats(): void {
+    if (getAuthState().user) {
+      void this.enterpriseSeatsSection.load();
     }
   }
 
@@ -818,6 +897,8 @@ export class UnifiedSettings {
     this.unsubscribeSubscription = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeSelfHostKey?.();
+    this.unsubscribeSelfHostKey = null;
     this.stopMcpQuotaPolling();
     this.closeDeletionDialog();
     document.removeEventListener('keydown', this.escapeHandler);
@@ -883,6 +964,9 @@ export class UnifiedSettings {
     this.activeTab = normalizeSettingsTab(this.activeTab, availableTabs);
     const tabClass = (id: TabId) => `unified-settings-tab${this.activeTab === id ? ' active' : ''}`;
     const applicablePresets = this.getApplicableTheaterPresets();
+    // The refresh cache must describe what this render draws.
+    const selfHostKeyHtml = this.renderSelfHostKeySection();
+    this.selfHostKeyRenderedHtml = selfHostKeyHtml;
 
     setTrustedHtml(this.overlay, trustedHtml(`
       <div class="modal unified-settings-modal">
@@ -901,6 +985,7 @@ export class UnifiedSettings {
           ${showMcpClientsTab ? `<button class="${tabClass('mcp-clients')}" tabindex="${this.activeTab === 'mcp-clients' ? 0 : -1}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
+          <div data-selfhost-key-host>${selfHostKeyHtml}</div>
           ${prefs.html}
         </div>
         ${isSignedIn ? `
@@ -910,6 +995,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
           ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
@@ -998,6 +1084,7 @@ export class UnifiedSettings {
     this.renderSourcesGrid();
     this.updateSourcesCounter();
 
+    this.attachSelfHostKeyHandlers();
     this.attachApiKeysHandlers();
     this.attachEmbedKeysHandlers();
     if (loadAccountData) {
@@ -1217,7 +1304,6 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
-        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -1397,14 +1483,7 @@ export class UnifiedSettings {
       return;
     }
     this.close();
-    if (this.config.isDesktopApp) {
-      // Desktop deliberately skips in-app checkout and sends the user to the
-      // pricing page — but a bare window.open only opens another WebView
-      // window. `openExternalUrl` hands it to the OS browser (#5911).
-      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
-      return;
-    }
-    import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+    import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
       void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
     });
   }
@@ -1996,11 +2075,175 @@ export class UnifiedSettings {
     return raw || 'Failed to create desktop key';
   }
 
+  // ── Self-hosted install: this browser's desktop key (plan 2026-11-04-001, U6)
+
+  /** Empty unless this page is served by a self-hosted install. */
+  private renderSelfHostKeySection(): string {
+    const display = selfHostKeyDisplay(getSelfHostKeySnapshot());
+    if (!display) return '';
+    const { state, staleNote } = display;
+    const label = escapeHtml(t(`preferences.selfHostKey.state.${state}`));
+    const detail = state === 'disabled'
+      ? t('preferences.selfHostKey.disabled')
+      : t(`preferences.selfHostKey.detail.${state}`);
+    const status = `
+      <div class="selfhost-key-status" data-selfhost-key-status data-state="${state}" role="status" aria-live="polite">
+        <span class="api-keys-item-kind-badge selfhost-key-badge" data-tone="${SELF_HOST_KEY_TONE[state]}">${label}</span>
+        <span class="selfhost-key-detail">${escapeHtml(detail)}${staleNote ? ` ${escapeHtml(t('preferences.selfHostKey.staleNote'))}` : ''}</span>
+      </div>`;
+    const intro = `
+      <p class="api-keys-desc selfhost-key-desc">${escapeHtml(t('preferences.selfHostKey.description'))}</p>
+      <p class="api-keys-desc selfhost-key-desc">${escapeHtml(t('preferences.selfHostKey.relay'))} ${escapeHtml(t('preferences.selfHostKey.trust'))}</p>`;
+    if (state === 'disabled') {
+      return `
+      <details class="wm-pref-group selfhost-key-section" open data-selfhost-key-section>
+        <summary>${escapeHtml(t('preferences.selfHostKey.heading'))}</summary>
+        <div class="wm-pref-group-content">${status}</div>
+      </details>`;
+    }
+    const busy = this.selfHostKeyBusy;
+    const insecure = typeof window !== 'undefined' && window.isSecureContext === false;
+    const message = this.selfHostKeyMessage;
+    return `
+      <details class="wm-pref-group selfhost-key-section" open data-selfhost-key-section>
+        <summary>${escapeHtml(t('preferences.selfHostKey.heading'))}</summary>
+        <div class="wm-pref-group-content">
+          ${intro}
+          ${status}
+          ${insecure ? `<p class="ai-flow-toggle-warn selfhost-key-warn" data-selfhost-key-insecure>${escapeHtml(t('preferences.selfHostKey.insecure'))}</p>` : ''}
+          <div class="api-keys-create-form selfhost-key-form">
+            <input type="password" class="api-keys-name-input selfhost-key-input" data-selfhost-key-input
+              aria-label="${escapeHtml(t('preferences.selfHostKey.inputLabel'))}"
+              placeholder="${escapeHtml(t('preferences.selfHostKey.placeholder'))}"
+              autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200"
+              ${this.selfHostKeyRejected ? 'aria-invalid="true"' : ''}
+              ${busy ? 'disabled' : ''} />
+            <button type="button" class="btn btn-primary" data-selfhost-key-save ${busy ? 'disabled' : ''}>${escapeHtml(t(busy === 'save' ? 'preferences.selfHostKey.saving' : 'preferences.selfHostKey.save'))}</button>
+            ${state !== 'none' ? `<button type="button" class="btn btn-secondary" data-selfhost-key-remove ${busy ? 'disabled' : ''}>${escapeHtml(t(busy === 'remove' ? 'preferences.selfHostKey.removing' : 'preferences.selfHostKey.remove'))}</button>` : ''}
+          </div>
+          <div class="api-keys-error selfhost-key-message" data-selfhost-key-message role="alert"${message ? '' : ' hidden'}>${escapeHtml(message)}</div>
+        </div>
+      </details>`;
+  }
+
+  /**
+   * Re-render the section in place, keeping a half-typed key, its focus and
+   * whether the section was collapsed. A poll that changes nothing is a no-op.
+   */
+  private refreshSelfHostKeySection(): void {
+    const host = this.overlay.querySelector<HTMLElement>('[data-selfhost-key-host]');
+    if (!host) return;
+    const html = this.renderSelfHostKeySection();
+    if (html === this.selfHostKeyRenderedHtml && host.firstElementChild) return;
+    const previous = host.querySelector<HTMLInputElement>('[data-selfhost-key-input]');
+    const value = previous?.value ?? '';
+    const focused = previous !== null && document.activeElement === previous;
+    const wasOpen = host.querySelector<HTMLDetailsElement>('[data-selfhost-key-section]')?.open;
+    setTrustedHtml(host, trustedHtml(html, 'self-host key section; every interpolated value escaped'));
+    this.selfHostKeyRenderedHtml = html;
+    const section = host.querySelector<HTMLDetailsElement>('[data-selfhost-key-section]');
+    if (section && wasOpen !== undefined) section.open = wasOpen;
+    const next = host.querySelector<HTMLInputElement>('[data-selfhost-key-input]');
+    if (next) {
+      next.value = value;
+      if (focused && !next.disabled) next.focus();
+    }
+  }
+
+  private attachSelfHostKeyHandlers(): void {
+    const host = this.overlay.querySelector<HTMLElement>('[data-selfhost-key-host]');
+    if (!host) return;
+    host.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-selfhost-key-save]')) void this.saveSelfHostKeyFromForm();
+      else if (target.closest('[data-selfhost-key-remove]')) void this.removeSelfHostKeyFromForm();
+    });
+    host.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.target as HTMLElement).matches('[data-selfhost-key-input]')) {
+        e.preventDefault();
+        void this.saveSelfHostKeyFromForm();
+      }
+    });
+  }
+
+  private selfHostKeyInput(): HTMLInputElement | null {
+    return this.overlay.querySelector<HTMLInputElement>('[data-selfhost-key-host] [data-selfhost-key-input]');
+  }
+
+  private selfHostKeyWriteMessage(result: SelfHostKeyWriteResult, failedKey: string): string {
+    if (result.kind === 'rate_limited') {
+      return result.retryAfterSeconds
+        ? t('preferences.selfHostKey.rateLimited', { seconds: result.retryAfterSeconds })
+        : t('preferences.selfHostKey.rateLimitedSoon');
+    }
+    return result.kind === 'failed' ? t(failedKey) : '';
+  }
+
+  private async saveSelfHostKeyFromForm(): Promise<void> {
+    if (this.selfHostKeyBusy) return;
+    const key = this.selfHostKeyInput()?.value.trim() ?? '';
+    if (!key) {
+      this.selfHostKeyMessage = t('preferences.selfHostKey.empty');
+      this.refreshSelfHostKeySection();
+      this.selfHostKeyInput()?.focus();
+      return;
+    }
+    // The cookie is only as private as the connection carrying it (KTD2).
+    if (window.isSecureContext === false) {
+      const send = await confirmDialog({
+        message: t('preferences.selfHostKey.insecureConfirm'),
+        confirmLabel: t('preferences.selfHostKey.insecureConfirmButton'),
+      });
+      if (!send) {
+        this.selfHostKeyInput()?.focus();
+        return;
+      }
+    }
+    this.selfHostKeyBusy = 'save';
+    this.selfHostKeyMessage = '';
+    this.selfHostKeyRejected = false;
+    this.refreshSelfHostKeySection();
+    let result: SelfHostKeyWriteResult;
+    try {
+      result = await saveSelfHostKey(key);
+    } finally {
+      this.selfHostKeyBusy = null;
+    }
+    const accepted = result.kind === 'verdict' && result.verdict.status === 'active';
+    this.selfHostKeyRejected = result.kind === 'verdict' && !accepted && result.verdict.status !== 'unavailable';
+    this.selfHostKeyMessage = this.selfHostKeyWriteMessage(result, 'preferences.selfHostKey.saveFailed');
+    this.refreshSelfHostKeySection();
+    const input = this.selfHostKeyInput();
+    if (!input) return;
+    if (accepted) {
+      input.value = '';
+    } else {
+      // Keep the key so it can be corrected.
+      input.focus();
+    }
+  }
+
+  private async removeSelfHostKeyFromForm(): Promise<void> {
+    if (this.selfHostKeyBusy) return;
+    this.selfHostKeyBusy = 'remove';
+    this.selfHostKeyMessage = '';
+    this.selfHostKeyRejected = false;
+    this.refreshSelfHostKeySection();
+    let result: SelfHostKeyWriteResult;
+    try {
+      result = await removeSelfHostKey();
+    } finally {
+      this.selfHostKeyBusy = null;
+    }
+    this.selfHostKeyMessage = this.selfHostKeyWriteMessage(result, 'preferences.selfHostKey.removeFailed');
+    this.refreshSelfHostKeySection();
+  }
+
   private renderDesktopKeysContent(): string {
     return `
       <div class="api-keys-section desktop-keys-section">
         <div class="api-keys-header">
-          <p class="api-keys-desc"><strong>Desktop keys</strong> are for your own desktop app: paste one into the desktop app to get your Pro data without signing in. Shared or public deployments need an API plan. Keys are shown once on creation.</p>
+          <p class="api-keys-desc"><strong>Desktop keys</strong> unlock Pro in your desktop app and on self-hosted dashboards. On a shared install, each person enters their own key. An API plan is for calling the API directly. Keys are shown once on creation.</p>
         </div>
         <div class="desktop-keys-count" data-desktop-keys-count aria-live="polite"></div>
         <div class="api-keys-create-form">
@@ -2011,6 +2254,11 @@ export class UnifiedSettings {
         <div class="api-keys-error" id="usApiKeysError" style="display:none;"></div>
         <div class="api-keys-list" id="usApiKeysList">
           <div class="api-keys-loading">Loading...</div>
+        </div>
+        <div class="api-starter-offer" data-api-starter-offer>
+          <p class="api-keys-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to your dashboard. Customer-facing products need API Business.</p>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
+          <button class="btn btn-secondary api-keys-gate-btn">Upgrade to API Starter</button>
         </div>
       </div>`;
   }
@@ -2067,9 +2315,9 @@ export class UnifiedSettings {
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
-          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
           <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }

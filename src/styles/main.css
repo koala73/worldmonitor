@@ -191,6 +191,7 @@
   --green-text: #166534;
   --semantic-positive-text: #166534;
   --status-live-text: #166534;
+  --semantic-low-text: #1e40af;
 
   /* Backgrounds */
   --bg: #f8f9fa;
@@ -732,6 +733,7 @@ canvas,
   --semantic-high-text: initial;
   --semantic-elevated-text: initial;
   --semantic-positive-text: initial;
+  --semantic-low-text: initial;
   --status-live-text: initial;
   --status-cached-text: initial;
   --status-unavailable-text: initial;
@@ -1020,6 +1022,21 @@ canvas,
 .region-select:focus {
   outline: none;
   border-color: var(--green);
+}
+
+/* The Regional Intelligence panel reuses .region-select for its own region picker. */
+.rib-controls {
+  margin-bottom: 8px;
+}
+
+.rib-region-selector {
+  min-height: 32px;
+}
+
+@media (pointer: coarse) {
+  .rib-region-selector {
+    min-height: 44px;
+  }
 }
 
 .header-center {
@@ -1676,7 +1693,7 @@ canvas,
 
 .panels-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   grid-auto-flow: row dense;
   grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
   gap: var(--dashboard-grid-gap);
@@ -2018,18 +2035,20 @@ canvas,
   }
 }
 
-/* #8276: A collapsed natural video panel is only its header, so reserve one
-   grid row instead of the two-row .panel-wide footprint. The channel and
-   region bars control hidden video; with many channels the wrapped bar would
-   outgrow the row and overlap the next panel, so collapse hides them too. */
+/* #8276, #10185: A collapsed video panel is only its header, so it reserves
+   one grid row, even after a user resize. The !important beats the
+   .panel.span-N rows; the span classes stay so expanding restores the saved
+   size. The channel and region bars control hidden video; with many channels
+   the wrapped bar would outgrow the row and overlap the next panel, so
+   collapse hides them too. */
 @media (min-width: 769px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-wide.panel-collapsed:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
-    grid-row: span 1;
+  .panel[data-panel="live-news"].panel-collapsed,
+  .panel[data-panel="live-webcams"].panel-collapsed {
+    grid-row: span 1 !important;
   }
 
-  #panelsGrid > .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
-  #panelsGrid > .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
+  .panel[data-panel="live-news"].panel-collapsed .live-news-toolbar,
+  .panel[data-panel="live-webcams"].panel-collapsed .webcam-toolbar {
     display: none;
   }
 }
@@ -2054,6 +2073,17 @@ canvas,
 
 .panel.col-span-3 {
   grid-column: span 3 !important;
+}
+
+/* A span wider than the sidebar grid's real columns adds implicit columns and
+   squeezes every other panel below 270px. data-grid-cols is the real count,
+   kept current by observePanelGridColumns() in src/utils/panel-grid.ts. */
+.panels-grid[data-grid-cols="1"] > .panel {
+  grid-column: span 1 !important;
+}
+
+.panels-grid[data-grid-cols="2"] > .panel.col-span-3 {
+  grid-column: span 2 !important;
 }
 
 .panel-resize-handle {
@@ -2257,7 +2287,8 @@ body.panel-resize-active iframe {
 .panel-col-resize-handle:focus-visible,
 .map-resize-handle:focus-visible,
 .map-width-resize-handle:focus-visible,
-.panel-content:focus-visible {
+.panel-content:focus-visible,
+.table-scroll:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
 }
@@ -2313,6 +2344,27 @@ body.panel-resize-active iframe {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The title group fills the space the controls leave, and the title gets the
+   first line of it. The fixed-size freshness and new-items badges wrap under
+   the title instead of squeezing it: in a 375px column "Intel Feed" was 3px
+   wide, and 5px on a phone. A title too long for one line takes a second line,
+   and only a title longer than two lines ends in an ellipsis. The controls
+   keep one row. */
+.panel > .panel-header > .panel-header-left {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.panel > .panel-header .panel-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 /* Badges and icon controls have fixed boxes. Keep their glyphs at the tested
@@ -2548,6 +2600,12 @@ body.panel-resize-active iframe {
   min-height: 0 !important;
 }
 
+/* #10185: Row height has no effect on a collapsed panel; hiding the
+   separator stops drags and keys from changing the saved span unseen. */
+.panel.panel-collapsed > .panel-resize-handle {
+  display: none;
+}
+
 .panel-collapsed .panel-collapse-btn {
   opacity: 0.7;
 }
@@ -2555,6 +2613,29 @@ body.panel-resize-active iframe {
 @media (hover: none) {
   .panel-header .panel-collapse-btn {
     opacity: 0.7;
+  }
+}
+
+/* On a touch screen the header controls are small for a finger: close is
+   20x20, sort 26x18 and the methodology button 14x14. An invisible extension
+   makes each take taps across at least a 24x24 box (WCAG 2.5.8) and 5px above
+   and below it, without growing what it draws or taking room from the title.
+   A control 20px or wider gains only 2px on each side, so the 4px gap between
+   two controls in a narrow header never belongs to both. The 14px methodology
+   button gains 5px on each side, inside the 8px gaps between it and the title
+   and badges, which take no taps. */
+@media (pointer: coarse) {
+  .panel-header :is(.icon-btn, .panel-sort-btn, .panel-summarize-btn, .panel-info-btn, .live-news-settings-btn) {
+    position: relative;
+  }
+
+  .panel-header :is(.icon-btn, .panel-sort-btn, .panel-summarize-btn, .panel-info-btn, .live-news-settings-btn)::after {
+    content: '';
+    position: absolute;
+    top: min(-5px, calc(50% - 12px));
+    right: min(-2px, calc(50% - 12px));
+    bottom: min(-5px, calc(50% - 12px));
+    left: min(-2px, calc(50% - 12px));
   }
 }
 
@@ -2629,37 +2710,139 @@ body.panel-resize-active iframe {
   will-change: opacity, transform;
 }
 
-/* A dashboard column is 248px on a 1366px laptop and 214px at 1280px. The
-   header's fixed-size badges then spill under the controls and the title
-   collapses to nothing. Below 300px the title wins: status badges shrink to
-   dots and the counters go. The JS toggles those counters with an inline
-   display, so the hide needs !important. These rules sit after the base badge
-   rules so they win at equal specificity. */
-@container (max-width: 300px) {
-  .panel-freshness-badge,
-  .panel-data-badge.live {
+/* A status badge collapsed to a dot must not tell its states apart by colour
+   alone (WCAG 1.4.1), so each state has its own shape, and the freshness dot
+   uses the same ones: live or fresh data is a filled circle, cached or stale
+   data a ring, and unavailable, missing or failed data a hollow square. The
+   dot rules below read these; a full pill ignores them. */
+.panel-data-badge:is(.cached, .unavailable),
+.panel-freshness-badge:not(.panel-freshness-fresh) {
+  --wm-dot-border: 2px solid currentColor;
+  --wm-dot-fill: transparent;
+}
+
+.panel-data-badge.unavailable,
+.panel-freshness-badge:is(.panel-freshness-no_data, .panel-freshness-disabled, .panel-freshness-error) {
+  --wm-dot-radius: 0;
+}
+
+/* Two kinds of header crowd the title in a phone panel or a 375px desktop
+   column. A news header carries a LIVE pill, sort, summarize, count and close
+   controls, and leaves the title group about 170px. A market header carries a
+   data pill such as "CACHED · 12 symbols" and an "Edit Watchlist" button, and
+   left "Premium Stock Analysis" 113px, too narrow for two lines. Up to 420px
+   these headers use the collapse from below 300px: the news LIVE pill and any
+   market data pill become dots, the watchlist button keeps only its icon, and
+   the news item count leaves the layout. The count and the watchlist label
+   stay in the accessibility tree; the NEW badge still shows how many items
+   are new. */
+@container (max-width: 420px) {
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live,
+  .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge {
+    flex-shrink: 0;
     width: 8px;
     height: 8px;
     min-width: 0;
     min-height: 0;
     padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: currentColor;
+    border: var(--wm-dot-border, 0);
+    border-radius: var(--wm-dot-radius, 50%);
+    background: var(--wm-dot-fill, currentColor);
     font-size: 0;
   }
 
-  .panel-data-badge.live::before {
+  .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live::before,
+  .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge::before {
     display: none;
   }
 
-  .panel-new-badge,
-  .deviation-indicator,
-  .panel-count {
-    display: none !important;
+  .panel-header > .panel-watchlist-btn {
+    width: 24px;
+    padding: 4px 0;
+  }
+
+  .panel-header .panel-watchlist-icon {
+    display: inline;
+  }
+
+  .panel-header:has(> .panel-summarize-btn) > .panel-count,
+  .panel-header .panel-watchlist-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
+/* A dashboard column is 270-300px from about 1400px, where the sidebar first
+   holds two columns, and on any panel squeezed narrower. The
+   header's fixed-size badges then spill under the controls and the title
+   collapses to nothing. Below 300px the title wins: status badges in every
+   data state shrink to dots, the counters leave the layout, and the controls
+   sit 4px apart. The dots then sit beside a two-line title instead of on a
+   row of their own, as long as the title keeps 9em and its longest word;
+   otherwise they move under it.
+   9em holds most titles in two lines. With less, "Strategic Risk Overview"
+   needed a third line in a 192px column and lost "Overview". The title and
+   freshness rules sit after their base rules so they win at equal
+   specificity. The other base rules come later in the file, so those rules
+   are scoped to the header. The counters keep their display, which the JS
+   toggles inline, and are hidden the .wm-visually-hidden way so screen
+   readers still read the values. */
+@container (max-width: 300px) {
+  .panel > .panel-header {
+    gap: 4px;
+  }
+
+  .panel > .panel-header .panel-title {
+    flex: 1 1 min-content;
+    min-width: min(100%, 9em);
+    max-width: max-content;
+  }
+
+  .panel-header .panel-sort-btn,
+  .panel-header .panel-summarize-btn {
+    margin-right: 0;
+    padding: 2px 4px;
+  }
+
+  .panel-freshness-badge,
+  .panel > .panel-header > .panel-data-badge {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: var(--wm-dot-border, 0);
+    border-radius: var(--wm-dot-radius, 50%);
+    background: var(--wm-dot-fill, currentColor);
+    font-size: 0;
+  }
+
+  .panel > .panel-header > .panel-data-badge::before {
+    display: none;
+  }
+
+  .panel-header .panel-new-badge,
+  .panel-header .deviation-indicator,
+  .panel-header .panel-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+}
 
 .panel-data-badge.cached {
   color: var(--semantic-elevated-text, var(--semantic-elevated));
@@ -3058,6 +3241,16 @@ body.panel-resize-active iframe {
 .live-news-settings-btn:hover {
   border-color: var(--text-dim);
   color: var(--text);
+}
+
+.panel-header > .panel-watchlist-btn {
+  align-self: center;
+}
+
+.panel-watchlist-icon {
+  display: none;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
 }
 
 
@@ -4152,17 +4345,17 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 7px;
-  padding: 14px;
+  /* Centred so the play control stays in view however short the tile is
+     (a phone gives the panel ~140px of content). */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38%),
     linear-gradient(135deg, rgba(220, 38, 38, 0.24), rgba(0, 0, 0, 0.88));
-}
-
-.webcam-preview-tile:hover .webcam-preview-play {
-  border-color: var(--text);
 }
 
 .webcam-preview-title {
@@ -4182,7 +4375,32 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-preview-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
   margin-top: 4px;
+  padding: 8px 16px;
+  /* Solid, so the prompt reads as the action on the dark tile: white on
+     --red-strong clears AA. */
+  background: var(--red-strong);
+  border-color: var(--red-strong);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+/* Drawn, not a glyph: U+25B6 renders as an emoji on iOS. */
+.webcam-preview-play::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.webcam-preview-tile:hover .webcam-preview-play,
+.webcam-preview-play:hover {
+  border-color: #fff;
 }
 
 .webcam-cell:hover .webcam-cell-label {
@@ -4513,8 +4731,6 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 /* Pinned list below grid */
 .pinned-webcams-list {
   margin-top: 8px;
-  max-height: 120px;
-  overflow-y: auto;
 }
 
 .pinned-webcams-list-header {
@@ -6417,10 +6633,12 @@ body.playback-mode .status-dot {
 
 .repair-ship-marker {
   --repair-ship-color: var(--semantic-low);
+  --repair-ship-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .repair-ship-marker.on-station {
   --repair-ship-color: var(--status-live);
+  --repair-ship-text: var(--status-live-text, var(--status-live));
 }
 
 .repair-ship-icon {
@@ -6430,7 +6648,7 @@ body.playback-mode .status-dot {
 
 .repair-ship-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--repair-ship-color, var(--semantic-low));
+  color: var(--repair-ship-text, var(--semantic-low-text, var(--semantic-low)));
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -6570,7 +6788,6 @@ body.playback-mode .status-dot {
 
 .datacenter-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--datacenter-color);
   text-transform: uppercase;
   letter-spacing: 0.4px;
   margin-top: 2px;
@@ -6932,7 +7149,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.us-nato .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.china .base-label {
@@ -6944,7 +7161,7 @@ body.playback-mode .status-dot {
 }
 
 .base-marker.uk .base-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .base-marker.france .base-label {
@@ -7063,7 +7280,7 @@ body.playback-mode .status-dot {
 }
 
 .port-marker.port-naval .port-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .port-marker.port-mixed .port-label {
@@ -7192,7 +7409,7 @@ body.playback-mode .status-dot {
 
 /* Category-specific colors */
 .nat-event-marker.severeStorms .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.wildfires .nat-event-label {
@@ -7220,7 +7437,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.snow .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.tempExtremes .nat-event-label {
@@ -7228,7 +7445,7 @@ body.playback-mode .status-dot {
 }
 
 .nat-event-marker.seaLakeIce .nat-event-label {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .nat-event-marker.waterColor .nat-event-label {
@@ -7253,7 +7470,7 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.nat-event.severeStorms .popup-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .popup-header.nat-event.wildfires {
@@ -7466,15 +7683,15 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.datacenter {
-  background: rgba(51, 34, 85, 0.08);
+  background: color-mix(in srgb, rgb(51, 34, 85) 8%, var(--bg));
 }
 
 .popup-header.datacenter.existing {
-  background: rgba(59, 130, 246, 0.06);
+  background: color-mix(in srgb, rgb(59, 130, 246) 6%, var(--bg));
 }
 
 .popup-header.datacenter.planned {
-  background: rgba(234, 179, 8, 0.06);
+  background: color-mix(in srgb, rgb(234, 179, 8) 6%, var(--bg));
 }
 
 /* Heatmap */
@@ -8399,7 +8616,7 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
+  min-width: max-content;
   transition: width 0.5s ease;
   border-right: 1px solid rgba(0, 0, 0, 0.15);
 }
@@ -8409,7 +8626,7 @@ a.prediction-link:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 40px;
+  min-width: max-content;
   flex: 1;
   transition: width 0.5s ease;
 }
@@ -9890,6 +10107,56 @@ a.prediction-link:hover {
   margin-bottom: 10px;
 }
 
+.datacenter-details {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+  padding-top: 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.datacenter-details summary {
+  cursor: pointer;
+  color: var(--green-text, var(--green));
+  padding: 6px 0;
+}
+
+.datacenter-details summary:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 2px;
+}
+
+.datacenter-details h3 {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  margin: 10px 0;
+}
+
+.datacenter-details dl > div {
+  margin-bottom: 8px;
+}
+
+.datacenter-details dt {
+  color: var(--text-muted);
+}
+
+.datacenter-details dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.datacenter-details p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.datacenter-details a {
+  display: block;
+  margin: 8px 0;
+  color: var(--green-text, var(--green));
+}
+
 .popup-location {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
@@ -10304,6 +10571,20 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+button.popup-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: inherit;
+}
+
+.popup-provenance .popup-link {
+  margin-top: 0;
+  font-size: inherit;
+}
+
 .popup-source-links {
   display: flex;
   flex-wrap: wrap;
@@ -10495,7 +10776,7 @@ a.prediction-link:hover {
 }
 
 .map-legend-icon.base {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .map-legend-icon.cable {
@@ -11900,6 +12181,55 @@ a.prediction-link:hover {
   gap: 8px;
 }
 
+/* Energy Complex: IEA oil-stock badges and regional summary rows. */
+.energy-net-exporter-badge,
+.energy-below-obligation-badge {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.energy-net-exporter-badge {
+  margin-inline-start: 0;
+  background: var(--overlay-subtle);
+  color: var(--text-secondary);
+}
+
+.energy-below-obligation-badge {
+  background: color-mix(in srgb, var(--semantic-elevated) 14%, transparent);
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+
+.oil-stocks-regional {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.oil-stocks-region-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.oil-stocks-region-row .energy-below-obligation-badge {
+  margin-inline-start: 0;
+}
+
+.oil-stocks-region-name {
+  min-width: 88px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .economic-indicator {
   background: var(--surface);
   padding: 8px 12px;
@@ -12108,19 +12438,6 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
-.radiation-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.radiation-table th,
-.radiation-table td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
-
 .radiation-row {
   cursor: pointer;
 }
@@ -12191,17 +12508,14 @@ a.prediction-link:hover {
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px) {
-  .radiation-table th,
-  .radiation-table td {
-    padding-inline: 4px;
-  }
-
+@container panel-body (max-width: 480px) {
   .radiation-reading,
   .radiation-delta {
     white-space: normal;
   }
+}
 
+@media (max-width: 768px) {
   .radiation-location {
     overflow-wrap: anywhere;
   }
@@ -12234,7 +12548,7 @@ a.prediction-link:hover {
 }
 
 .radiation-confidence-low {
-  color: #7dd3fc;
+  color: var(--semantic-low-text, #7dd3fc);
   border-color: rgba(125, 211, 252, 0.35);
   background: rgba(125, 211, 252, 0.08);
 }
@@ -12244,7 +12558,7 @@ a.prediction-link:hover {
 }
 
 .radiation-flag-conflict {
-  color: #7dd3fc;
+  color: var(--semantic-low-text, #7dd3fc);
 }
 
 .radiation-flag-converted {
@@ -12293,16 +12607,8 @@ a.prediction-link:hover {
 
 /* economic-tabs: now uses shared .panel-tabs / .panel-tab */
 
-.panel-content:has(.economic-content) {
-  display: flex;
-  flex-direction: column;
-}
-
 .economic-content {
   padding: 8px;
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .economic-content-macro {
@@ -12763,23 +13069,7 @@ a.prediction-link:hover {
 }
 
 .sc-disruption-table {
-  width: 100%;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  border-collapse: collapse;
   margin-bottom: 4px;
-}
-
-.sc-disruption-table th {
-  text-align: left;
-  font-weight: 600;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.sc-disruption-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sc-disruption-table td:nth-child(n+2) {
@@ -12923,33 +13213,6 @@ a.prediction-link:hover {
 /* Trade Tariffs Table */
 .trade-tariffs-table {
   width: 100%;
-}
-
-.trade-tariffs-table table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-}
-
-.trade-tariffs-table thead th {
-  text-align: left;
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 4px 8px 6px;
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody td {
-  padding: 5px 8px;
-  color: var(--text);
-  border-bottom: 1px solid var(--border);
-}
-
-.trade-tariffs-table tbody tr:last-child td {
-  border-bottom: none;
 }
 
 .trade-tariffs-table tbody tr:hover {
@@ -13739,35 +14002,43 @@ a.prediction-link:hover {
   cursor: pointer;
   z-index: 54;
   --vessel-color: var(--status-live);
+  --vessel-text: var(--status-live-text, var(--status-live));
 }
 
 .military-vessel-marker.usn {
   --vessel-color: var(--semantic-low);
+  --vessel-text: var(--semantic-low-text, var(--semantic-low));
 }
 
 .military-vessel-marker.rn {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.plan {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
 }
 
 .military-vessel-marker.vks {
   --vessel-color: var(--semantic-high);
+  --vessel-text: var(--semantic-high-text, var(--semantic-high));
 }
 
 .military-vessel-marker.carrier {
   --vessel-color: var(--semantic-elevated);
+  --vessel-text: var(--semantic-elevated-text, var(--semantic-elevated));
   z-index: 56;
 }
 
 .military-vessel-marker.submarine {
   --vessel-color: var(--semantic-info);
+  --vessel-text: var(--semantic-info);
 }
 
 .military-vessel-marker.dark-vessel {
   --vessel-color: var(--semantic-critical);
+  --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   animation: dark-vessel-alert 0.8s ease-in-out infinite;
 }
 
@@ -13824,7 +14095,7 @@ a.prediction-link:hover {
 
 .military-vessel-label {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
-  color: var(--vessel-color);
+  color: var(--vessel-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-top: 2px;
@@ -13869,11 +14140,13 @@ a.prediction-link:hover {
   100% {
     opacity: 1;
     --vessel-color: var(--semantic-critical);
+    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
     --vessel-color: var(--semantic-high);
+    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -14109,6 +14382,41 @@ a.prediction-link:hover {
   padding: 4px 8px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+.cluster-vessel-item,
+.popup-back {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  min-height: 36px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cluster-vessel-item {
+  width: 100%;
+}
+
+.popup-back {
+  display: block;
+  background: var(--overlay-light);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.cluster-vessel-item:hover,
+.popup-back:hover {
+  background: var(--overlay-medium);
+}
+
+.cluster-vessel-item:focus-visible,
+.popup-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .popup-description.alert {
@@ -16593,8 +16901,6 @@ a.prediction-link:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .cascade-country {
@@ -16871,8 +17177,6 @@ a.prediction-link:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 150px;
-  overflow-y: auto;
 }
 
 .risk-alert {
@@ -16937,7 +17241,7 @@ a.prediction-link:hover {
 }
 
 .risk-location-icon {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   margin-left: auto;
   opacity: 0.7;
@@ -17311,25 +17615,33 @@ a.prediction-link:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  --breakdown-gap: 8px;
+  --breakdown-bar-min: 48px;
+  --breakdown-value-width: 20px;
 }
 
 .breakdown-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--breakdown-gap);
 }
 
 .component-label {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  width: 45px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 45px;
+  max-width: calc(100% - (var(--breakdown-bar-min) + var(--breakdown-value-width) + 2 * var(--breakdown-gap)));
+  line-height: 1.25;
+  overflow-wrap: break-word;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .component-bar-bg {
   flex: 1;
+  min-width: var(--breakdown-bar-min);
   height: 6px;
   background: var(--overlay-medium);
   border-radius: 3px;
@@ -17361,7 +17673,7 @@ a.prediction-link:hover {
 .component-value {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  width: 20px;
+  width: var(--breakdown-value-width);
   text-align: right;
   flex-shrink: 0;
 }
@@ -17469,7 +17781,7 @@ a.prediction-link:hover {
   background: rgba(68, 136, 255, 0.15);
   border: 1px solid rgba(68, 136, 255, 0.4);
   border-radius: 4px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   padding: 4px 10px;
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -17480,7 +17792,7 @@ a.prediction-link:hover {
 .location-link:hover {
   background: rgba(68, 136, 255, 0.3);
   border-color: var(--semantic-low);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 /* --- Signal Modal: Focal Points & News Correlation --- */
@@ -17509,7 +17821,7 @@ a.prediction-link:hover {
 }
 
 .news-correlation-header {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .focal-point-item {
@@ -17579,7 +17891,7 @@ a.prediction-link:hover {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   margin-bottom: 8px;
 }
 
@@ -17720,7 +18032,7 @@ a.prediction-link:hover {
 
 .intel-findings-badge.status-low .findings-count {
   background: rgba(74, 158, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .intel-findings-badge.status-high {
@@ -17843,7 +18155,7 @@ a.prediction-link:hover {
 
 .findings-badge.moderate {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-badge.high {
@@ -18001,7 +18313,7 @@ a.prediction-link:hover {
 
 .finding-confidence.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .finding-confidence.low {
@@ -18189,7 +18501,7 @@ a.prediction-link:hover {
 
 .findings-modal-item-priority.medium {
   background: rgba(74, 158, 255, 0.2);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .findings-modal-item-desc {
@@ -18552,8 +18864,6 @@ a.prediction-link:hover {
   flex-direction: column;
   gap: 2px;
   padding: 6px 8px;
-  overflow-y: auto;
-  max-height: 320px;
 }
 .id-row {
   background: rgba(255,255,255,.04);
@@ -18619,8 +18929,6 @@ a.prediction-link:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  max-height: 320px;
 }
 .id-date-range {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
@@ -18967,6 +19275,90 @@ a.prediction-link:hover {
 }
 
 /* deck.gl Time Slider */
+.map-distance-control {
+  position: absolute;
+  /* Reserve the navigation column, including its optional clear-trails button. */
+  top: 150px;
+  right: 10px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 160px);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.map-distance-control .maplibregl-ctrl-scale {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.map-distance-toolbar,
+.map-distance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.map-distance-control button,
+.map-distance-control select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.map-distance-control button:focus-visible,
+.map-distance-control select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.map-distance-toggle[aria-expanded="true"] {
+  border-color: var(--green);
+}
+
+.map-distance-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map-distance-panel[hidden] {
+  display: none;
+}
+
+.map-distance-status,
+.map-distance-actions {
+  flex-shrink: 0;
+}
+
+.map-distance-note {
+  overflow: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.map-measuring .maplibregl-canvas {
+  cursor: crosshair !important;
+}
+
 .deckgl-time-slider {
   position: absolute;
   top: 10px;
@@ -19423,7 +19815,9 @@ a.prediction-link:hover {
   justify-content: center;
   gap: 12px;
   padding: 7px 36px 7px 16px;
-  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06));
+  /* The tint is translucent; the themed surface under it keeps the text
+     readable in the light theme, where the page body stays dark. */
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06)), var(--surface);
   border-bottom: 1px solid rgba(74, 222, 128, 0.15);
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -19508,12 +19902,27 @@ a.prediction-link:hover {
   .pro-banner {
     font-size: calc(11px * var(--wm-panel-effective-scale, 1));
     gap: 8px;
-    padding: 6px 32px 6px 10px;
+    padding: 5px 32px 5px 10px;
   }
 
   .pro-banner-text {
     flex: 1 1 0;
     min-width: 0;
+    /* Two lines (2 x 13.75px + 10px padding + 1px border) fit the 40px
+       reserved slot, so the headline is never cut off on a phone. */
+    white-space: normal;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* The CTA already says Pro, and the tagline cannot fit; keep the width
+     for the headline. */
+  .pro-banner-badge,
+  .pro-banner-tagline {
+    display: none;
   }
 }
 
@@ -19673,6 +20082,10 @@ a.prediction-link:hover {
   padding: 5px 12px;
 }
 
+.deckgl-legend[hidden] {
+  display: none;
+}
+
 .deckgl-legend .legend-label-title {
   font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: bold;
@@ -19734,6 +20147,15 @@ a.prediction-link:hover {
 .deckgl-tooltip strong {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Owning layer, so markers from overlapping layers stay identifiable (#10139) */
+.deckgl-tooltip-category {
+  margin-bottom: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 /* MapLibre GL overrides for dark theme */
@@ -20429,7 +20851,7 @@ a.prediction-link:hover {
 }
 
 .insights-missed .insights-section-title {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .insight-story.missed {
@@ -20446,7 +20868,7 @@ a.prediction-link:hover {
 
 .insight-badge.ml-detected {
   background: rgba(107, 138, 253, 0.15);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   border-color: rgba(107, 138, 253, 0.3);
 }
 
@@ -20620,26 +21042,24 @@ a.prediction-link:hover {
   max-height: 80vh;
 }
 
+/* Tabs that do not fit wrap onto more rows instead of scrolling out of
+   sight. Each tab's shadow rules off its row; on the last row it lands on
+   the strip's border, so a single row looks unchanged. */
 .unified-settings-tabs {
   display: flex;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
-}
-
-.unified-settings-tabs::-webkit-scrollbar {
-  display: none;
 }
 
 .unified-settings-tab {
   flex: 1 0 auto;
   min-height: 44px;
-  padding: 10px 12px;
+  padding: 10px 8px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+  box-shadow: 0 1px var(--border);
   color: var(--text-dim);
   font-family: inherit;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -20658,6 +21078,17 @@ a.prediction-link:hover {
 .unified-settings-tab.active {
   border-bottom-color: var(--text);
   color: var(--text);
+}
+
+/* Forced colors paint every transparent border, which hid the selected tab. */
+@media (forced-colors: active) {
+  .unified-settings-tab {
+    border-bottom-color: Canvas;
+  }
+
+  .unified-settings-tab.active {
+    border-bottom-color: Highlight;
+  }
 }
 
 .unified-settings-tab-panel {
@@ -22358,7 +22789,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.military {
   border-color: rgba(100, 180, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.outage {
@@ -22595,11 +23026,11 @@ body.has-breaking-alert .panels-grid {
 
 .badge-bullish {
   background: rgba(76, 175, 80, 0.2);
-  color: var(--semantic-normal);
+  color: var(--green-text, var(--semantic-normal));
 }
 
 .badge-bearish {
-  background: rgba(244, 67, 54, 0.2);
+  background: rgba(244, 67, 54, 0.12);
   color: var(--semantic-critical-text, var(--semantic-critical));
 }
 
@@ -22664,7 +23095,7 @@ body.has-breaking-alert .panels-grid {
 
 .etf-summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   gap: 6px;
   padding: 8px;
   margin-bottom: 8px;
@@ -22673,6 +23104,8 @@ body.has-breaking-alert .panels-grid {
 }
 
 .etf-summary-item {
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: center;
 }
 
@@ -22702,25 +23135,35 @@ body.has-breaking-alert .panels-grid {
   overflow-x: auto;
 }
 
-.etf-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+.etf-table-nav:not([hidden]) {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
-.etf-table th {
-  text-align: left;
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+.etf-table-nav button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--overlay-light);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.etf-table-nav button:disabled {
   color: var(--text-muted);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--overlay-medium);
-  font-weight: 500;
-  text-transform: uppercase;
+  cursor: default;
 }
 
-.etf-table td {
-  padding: 5px 6px;
-  border-bottom: 1px solid var(--overlay-light);
+.etf-table-nav button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .etf-ticker {
@@ -23430,7 +23873,7 @@ body.has-breaking-alert .panels-grid {
 
 .signal-chip.displacement {
   border-color: rgba(100, 200, 255, 0.3);
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
 }
 
 .signal-chip.climate {
@@ -23459,7 +23902,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
@@ -23469,7 +23912,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-citation:hover {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: underline;
 }
 
@@ -23586,7 +24029,7 @@ body.has-breaking-alert .panels-grid {
 }
 
 .cb-market-link {
-  color: var(--semantic-low);
+  color: var(--semantic-low-text, var(--semantic-low));
   text-decoration: none;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
 }
@@ -23906,7 +24349,7 @@ body.map-width-resizing {
     grid-column: 3;
     grid-row: 1;
     min-height: 0;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
     align-content: start;
     overflow-y: auto;
@@ -25662,16 +26105,20 @@ body.map-width-resizing {
 
 .debt-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 0 8px;
   flex-shrink: 0;
 }
 
+/* The tabs take the free space while the search fits beside them; in a
+   narrow column the search wraps to its own full-width row. */
 .debt-sort-tabs {
   display: flex;
   gap: 2px;
-  flex: 1;
+  flex: 999 1 180px;
+  min-width: 0;
 }
 
 .debt-tab {
@@ -25701,7 +26148,8 @@ body.map-width-resizing {
 }
 
 .debt-search {
-  width: 110px;
+  flex: 1 0 110px;
+  min-width: 0;
   padding: 4px 8px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   border: 1px solid var(--border);
@@ -25709,7 +26157,6 @@ body.map-width-resizing {
   background: var(--bg-input, var(--bg-secondary));
   color: var(--text);
   outline: none;
-  flex-shrink: 0;
 }
 
 .debt-search:focus {
@@ -26000,8 +26447,8 @@ body.map-width-resizing {
   border-radius: 3px;
   font-variant-numeric: tabular-nums;
 }
-.cp-badge--green { background: rgba(34,197,94,0.15); color: #4ade80; }
-.cp-badge--red   { background: rgba(239,68,68,0.15);  color: #f87171; }
+.cp-badge--green { background: rgba(34,197,94,0.15); color: var(--green-text, #4ade80); }
+.cp-badge--red   { background: rgba(239,68,68,0.15);  color: var(--red-text, #f87171); }
 .cp-badge--neutral { background: var(--overlay-subtle); color: var(--text-dim); }
 
 .cp-pressure {
@@ -26010,22 +26457,10 @@ body.map-width-resizing {
   padding: 1px 6px;
   border-radius: 3px;
 }
-.cp-pressure--steady  { background: rgba(148,163,184,0.15); color: #94a3b8; }
-.cp-pressure--watch   { background: rgba(245,158,11,0.15);  color: #fbbf24; }
-.cp-pressure--stress  { background: rgba(239,68,68,0.15);   color: #f87171; }
-.cp-pressure--green   { background: rgba(34,197,94,0.15);   color: #4ade80; }
-
-.cp-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
-}
-
-.cp-table th, .cp-table td {
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-}
+.cp-pressure--steady  { background: rgba(148,163,184,0.15); color: var(--text-secondary); }
+.cp-pressure--watch   { background: rgba(245,158,11,0.15);  color: var(--yellow-text, #fbbf24); }
+.cp-pressure--stress  { background: rgba(239,68,68,0.15);   color: var(--red-text, #f87171); }
+.cp-pressure--green   { background: rgba(34,197,94,0.15);   color: var(--green-text, #4ade80); }
 
 .cp-col-header { cursor: pointer; }
 .cp-col-header--up::after   { content: ' ↑'; }
@@ -26067,8 +26502,8 @@ body.map-width-resizing {
 .cp-mover-meta  { color: var(--text-dim); font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); }
 .cp-mover-cat, .cp-mover-retailer { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); }
 .cp-mover-pct   { font-weight: 600; font-variant-numeric: tabular-nums; }
-.cp-mover-row--up   .cp-mover-pct { color: #f87171; }
-.cp-mover-row--down .cp-mover-pct { color: #4ade80; }
+.cp-mover-row--up   .cp-mover-pct { color: var(--red-text, #f87171); }
+.cp-mover-row--down .cp-mover-pct { color: var(--green-text, #4ade80); }
 
 .cp-spread-list { display: flex; flex-direction: column; gap: 4px; }
 
@@ -26105,7 +26540,7 @@ body.map-width-resizing {
   font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1));
   padding: 1px 4px;
   background: rgba(245,158,11,0.15);
-  color: #fbbf24;
+  color: var(--yellow-text, #fbbf24);
   border-radius: 2px;
 }
 
@@ -26125,9 +26560,9 @@ body.map-width-resizing {
 .cp-health-name   { flex: 1; }
 .cp-health-rate   { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .cp-health-status { font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border-radius: 3px; }
-.cp-health-status--ok      { background: rgba(34,197,94,0.15);  color: #4ade80; }
-.cp-health-status--stale   { background: rgba(245,158,11,0.15); color: #fbbf24; }
-.cp-health-status--missing { background: rgba(239,68,68,0.15);  color: #f87171; }
+.cp-health-status--ok      { background: rgba(34,197,94,0.15);  color: var(--green-text, #4ade80); }
+.cp-health-status--stale   { background: rgba(245,158,11,0.15); color: var(--yellow-text, #fbbf24); }
+.cp-health-status--missing { background: rgba(239,68,68,0.15);  color: var(--red-text, #f87171); }
 
 .cp-market-bar {
   display: flex;
@@ -26159,32 +26594,17 @@ body.map-width-resizing {
   border-color: var(--text-dim);
 }
 
-.cp-global-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: calc(0.78rem * var(--wm-panel-effective-scale, 1));
-}
-.cp-global-table th {
-  text-align: left;
-  font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1));
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-}
 .cp-global-row {
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
 }
 .cp-global-row:hover { background: var(--overlay-subtle); }
-.cp-global-row td { padding: 6px 6px; vertical-align: middle; }
-.cp-global-flag { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); white-space: nowrap; }
+.cp-global-row td { vertical-align: middle; }
+.cp-global-flag { white-space: nowrap; }
 .cp-global-index { color: var(--text-primary, #e0e0e0); font-variant-numeric: tabular-nums; }
 .cp-global-wow { white-space: nowrap; }
 .cp-global-spread { color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.cp-global-fresh { font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); }
-.cp-global-pending { color: var(--text-dim); font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1)); font-style: italic; }
+.cp-global-pending { color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-style: italic; }
 .cp-global-hint {
   font-size: calc(0.68rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -26246,9 +26666,9 @@ body.map-width-resizing {
   border-bottom: 1px solid var(--border);
 }
 
-.cp-fresh--ok      { color: #4ade80; }
-.cp-fresh--warn    { color: #fbbf24; }
-.cp-fresh--stale   { color: #f87171; }
+.cp-fresh--ok      { color: var(--green-text, #4ade80); }
+.cp-fresh--warn    { color: var(--yellow-text, #fbbf24); }
+.cp-fresh--stale   { color: var(--red-text, #f87171); }
 .cp-fresh--unknown { color: var(--text-muted); }
 
 /* ── Grocery Basket Panel ──────────────────────────────────────────────── */
@@ -26264,23 +26684,10 @@ body.map-width-resizing {
   overflow: auto;
 }
 
-.gb-table {
-  border-collapse: collapse;
-  font-size: calc(0.72rem * var(--wm-panel-effective-scale, 1));
-  white-space: nowrap;
-}
-
-.gb-table th, .gb-table td {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  vertical-align: top;
-}
-
-.gb-table .gb-item-col { min-width: 110px; text-align: left; position: sticky; left: 0; z-index: 2; background: var(--panel-bg); }
+.gb-table .gb-item-col { min-width: 110px; text-align: start; position: sticky; inset-inline-start: 0; z-index: 2; background: var(--panel-bg, var(--surface)); }
 
 .gb-country-header {
   text-align: center;
-  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   min-width: 80px;
   background: var(--overlay-subtle);
 }
@@ -26288,13 +26695,12 @@ body.map-width-resizing {
 .gb-country-name { font-size: calc(0.6rem * var(--wm-panel-effective-scale, 1)); display: block; }
 
 .gb-table .gb-item-name {
-  font-weight: 500;
   min-width: 110px;
   position: sticky;
-  left: 0;
+  inset-inline-start: 0;
   z-index: 2;
-  background: var(--panel-bg);
-  text-align: left;
+  background: var(--panel-bg, var(--surface));
+  text-align: start;
 }
 
 .gb-unit {
@@ -26314,8 +26720,10 @@ body.map-width-resizing {
 
 .gb-na { text-align: center; color: var(--text-dim); }
 
-.gb-cheapest { background: rgba(34,197,94,0.12); color: #4ade80; }
-.gb-priciest { background: rgba(239,68,68,0.12);  color: #f87171; }
+.gb-cheapest { background: rgba(34,197,94,0.12); color: var(--green-text, #4ade80); }
+.gb-priciest { background: rgba(239,68,68,0.12);  color: var(--red-text, #f87171); }
+/* Muted grey drops below 4.5:1 on the green tint in dark; the local price takes the cell's colour. */
+.gb-cheapest .gb-local, .gb-priciest .gb-local { color: inherit; }
 
 .gb-total-row td { font-weight: 600; background: var(--overlay-subtle); }
 .gb-total { font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1)); }
@@ -26328,8 +26736,8 @@ body.map-width-resizing {
   flex-shrink: 0;
 }
 
-.bm-wow-up   { color: #f87171; } /* red = more expensive */
-.bm-wow-down { color: #4ade80; } /* green = cheaper */
+.bm-wow-up   { color: var(--red-text, #f87171); } /* red = more expensive */
+.bm-wow-down { color: var(--green-text, #4ade80); } /* green = cheaper */
 .bm-wow-summary {
   font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #888);
@@ -27237,6 +27645,76 @@ body.map-width-resizing {
 }
 
 .desktop-keys-count:empty {
+  display: none;
+}
+
+.api-starter-offer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Settings -> Desktop key on a self-hosted install. Reuses the API key form
+   and badge; only the status row and its tones are specific. */
+.selfhost-key-section .wm-pref-group-content {
+  padding-top: 12px;
+}
+
+.selfhost-key-section .api-keys-desc {
+  margin-bottom: 8px;
+}
+
+.selfhost-key-status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 4px 0 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.selfhost-key-badge {
+  align-self: baseline;
+  flex: none;
+}
+
+.selfhost-key-detail {
+  flex: 1 1 14em;
+  min-width: 0;
+}
+
+.selfhost-key-badge[data-tone="ok"] {
+  color: var(--semantic-normal);
+  border-color: color-mix(in srgb, var(--semantic-normal) 45%, transparent);
+}
+
+.selfhost-key-badge[data-tone="warn"] {
+  color: var(--semantic-elevated-text, var(--semantic-elevated));
+  border-color: color-mix(in srgb, var(--semantic-elevated) 45%, transparent);
+}
+
+.selfhost-key-badge[data-tone="bad"] {
+  color: var(--semantic-critical-text, var(--semantic-critical));
+  border-color: color-mix(in srgb, var(--semantic-critical) 45%, transparent);
+}
+
+.selfhost-key-warn {
+  margin: 0 0 8px;
+}
+
+.selfhost-key-form {
+  flex-wrap: wrap;
+}
+
+.selfhost-key-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+}
+
+.selfhost-key-message[hidden] {
   display: none;
 }
 
@@ -28975,6 +29453,26 @@ body.map-width-resizing {
   .panel-count {
     border: 1px solid CanvasText;
   }
+
+  /* The filled narrow-header dots are a background with border: 0 at higher
+     specificity, so forced colors would erase them. Same selectors, later in
+     the file, keep them filled in the system text color. The ring and square
+     dots are borders, which forced colors keep, so their shapes survive. */
+  @container (max-width: 420px) {
+    .panel-header:has(> .panel-summarize-btn) > .panel-data-badge.live,
+    .panel-header:has(> .panel-watchlist-btn) > .panel-data-badge.live {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
+
+  @container (max-width: 300px) {
+    .panel-freshness-badge.panel-freshness-fresh,
+    .panel > .panel-header > .panel-data-badge.live {
+      forced-color-adjust: none;
+      background: CanvasText;
+    }
+  }
 }
 
 /* Keyboard-activatable drill-in rows (#7023): visible focus for the
@@ -29244,11 +29742,46 @@ body.map-width-resizing {
 .food-prices-filter { display: flex; flex: 1 1 140px; min-width: 0; flex-direction: column; gap: 4px; font-size: .85em; }
 .food-prices-filter select { width: 100%; min-width: 0; padding: 6px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
 .food-prices-table-wrap { overflow-x: auto; max-width: 100%; }
-.food-prices-table { width: 100%; border-collapse: collapse; font-size: .85em; }
-.food-prices-table th, .food-prices-table td { padding: 8px 4px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; overflow-wrap: anywhere; }
-.food-prices-table th:first-child { width: 42%; font-weight: 500; }
-.food-prices-table thead th { font-weight: 600; color: var(--text-dim); }
+.food-prices-table th, .food-prices-table td { vertical-align: top; overflow-wrap: anywhere; }
+.food-prices-table th:first-child { width: 42%; }
 .food-prices-card small { display: block; margin-top: 3px; color: var(--text-dim); font-size: .9em; }
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }
 .fao-monthly-context { border-top: 1px solid var(--border); }
+
+/* Passive network context stays within the existing popup scroll surface. */
+.cyber-network-info {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cyber-network-info summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  margin-bottom: 10px;
+}
+
+.cyber-network-info .popup-stats {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cyber-copy {
+  margin-inline-start: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cyber-copy-status {
+  display: block;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}

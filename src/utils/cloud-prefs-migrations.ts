@@ -238,8 +238,13 @@ export interface CloudPrefsMigrationOptions {
   curatedRegional?: {
     optInSources?: ReadonlyArray<string>;
   };
+  germanRss?: {
+    sources: ReadonlyArray<string>;
+    locale: () => string;
+  };
 }
 
+/** Build the numbered preference migrations; locale providers are read when a migration runs. */
 export function buildMigrations(
   feedsByCategory: FeedsByCategory,
   options: CloudPrefsMigrationOptions = {},
@@ -274,6 +279,9 @@ export function buildMigrations(
     7: (data) => migrateCanadaDepthOptInsV7(data, canadaDepth.optInSources ?? []),
     8: (data) => migrateCrisisDeskOptInsV8(data, crisisDesk.optInSources ?? []),
     9: (data) => migrateCuratedRegionalOptInsV9(data, curatedRegional.optInSources ?? []),
+    10: (data) => options.germanRss
+      ? migrateGermanRssSourcesV10(data, options.germanRss.sources, options.germanRss.locale())
+      : data,
   };
 }
 
@@ -648,5 +656,25 @@ export function migrateCuratedRegionalOptInsV9(
   console.log(
     `[prefs] schema-9 migration: disabled ${updated.length - parsed.length} curated regional opt-in source(s)`,
   );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/** New German RSS feeds follow the user's locale without resetting existing choices. */
+export function migrateGermanRssSourcesV10(
+  data: Record<string, unknown>,
+  sources: ReadonlyArray<string>,
+  locale: string,
+): Record<string, unknown> {
+  if (locale.split('-')[0]?.toLowerCase() === 'de') return data;
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some(name => typeof name !== 'string')) return data;
+  const updated = [...parsed];
+  for (const name of sources) {
+    if (!updated.includes(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
 }

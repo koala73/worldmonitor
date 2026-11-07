@@ -264,6 +264,9 @@ export default async function handler(req: Request): Promise<Response> {
     // GET opens the SSE listening stream, DELETE terminates a session — both
     // stream through untouched.
     const upstream = await fetch(UPSTREAM_URL, {
+      // SSE clients reconnect; cap one listening session without applying the
+      // short JSON-RPC budget to an otherwise healthy stream.
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(req.method === 'GET' ? 300_000 : 15_000)]),
       method: req.method,
       headers: upstreamRequestHeaders(req),
     });

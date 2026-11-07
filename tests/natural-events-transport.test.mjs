@@ -70,26 +70,46 @@ const run = transport => fetchNaturalEvents({
 });
 
 test('late EONET headers leave progressing body time within the shared budget', { timeout: 10_000 }, async t => {
-  compressTime(t);
-  const body = JSON.stringify({ events: [event] });
-  const timers = [];
-  const server = createServer((_req, res) => {
-    timers.push(setTimeout(() => { res.writeHead(200); res.write(body.slice(0, 20)); }, 12_900));
-    timers.push(setTimeout(() => res.end(body.slice(20)), 16_000));
+  // Drive deadlines without charging real connection setup or CI scheduling
+  // delays against the narrow gap between late headers and their deadline.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 0 });
+  t.mock.method(performance, 'now', () => Date.now());
+  t.mock.method(AbortSignal, 'timeout', ms => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), ms);
+    return controller.signal;
   });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  t.after(() => { timers.forEach(clearTimeout); server.closeAllConnections(); server.close(); });
+  const body = new TextEncoder().encode(JSON.stringify({ events: [event] }));
   const transport = fixture((source, attempt, options) => {
     if (source !== 'eonet') return;
     if (attempt === 1) throw dualFamilyFailure();
-    return fetch(`http://127.0.0.1:${server.address().port}`, options);
+    return new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      setTimeout(() => {
+        let bodyTimer;
+        resolve(new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(body.slice(0, 20));
+            bodyTimer = setTimeout(() => { controller.enqueue(body.slice(20)); controller.close(); }, 3_100);
+          },
+          cancel() { clearTimeout(bodyTimer); },
+        })));
+      }, 12_900);
+    });
   });
   const started = performance.now();
-  const result = await run(transport);
+  const pending = run(transport);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(0); // Release the test-only zero-delay retry.
+  await new Promise(setImmediate);
+  assert.equal(transport.calls.get('eonet'), 2);
+  t.mock.timers.tick(12_900);
+  await new Promise(setImmediate);
+  t.mock.timers.tick(3_100); // Body completes after the 15 s header deadline.
+  const result = await pending;
   assert.ok(result.events.some(item => item.id === event.id));
   assert.equal(result._eonetFailed, false);
-  assert.ok(performance.now() - started < 20_000);
+  assert.equal(performance.now() - started, 16_000);
   assert.equal(transport.calls.get('eonet'), 2);
 });
 
@@ -150,7 +170,11 @@ test('EONET decoded-size rejection cancels acquisition and preserves last-good w
   assert.equal(result._eonetFailed, true);
   assert.equal(transport.calls.get('eonet'), 1);
   assert.equal(cancelled, true);
-  assert.deepEqual(result._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+  const { consecutiveFailures, firstFailureAt, lastAttemptAt, ...retained } = result._sourceSnapshots.eonet;
+  const { consecutiveFailures: _c, firstFailureAt: _f, lastAttemptAt: _l, ...original } = first._sourceSnapshots.eonet;
+  assert.deepEqual(retained, original);
+  assert.deepEqual({ consecutiveFailures, firstFailureAt, lastAttemptAt },
+    { consecutiveFailures: 1, firstFailureAt: NOW + 1000, lastAttemptAt: NOW + 1000 });
 });
 
 test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', async () => {
@@ -584,6 +608,7 @@ test('throwing diagnostic getters preserve bounded failures and the retry limit'
 
 test('failure timing separates each request duration from total elapsed time', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);
@@ -607,6 +632,7 @@ test('failure timing separates each request duration from total elapsed time', a
 
 test('failure phase timings distinguish late headers from a stalled body and reset on retry', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);

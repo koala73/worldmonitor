@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "Nhiễu",
     "signalWord": "Tín hiệu",
-    "valueProps": "Lớp AI địa chính trị — hãy hỏi nó, đăng ký, xây dựng trên đó.",
+    "valueProps": "Hỏi một nhà phân tích AI, đặt quy tắc cảnh báo, nhận báo cáo tình hình, và sử dụng trong Claude.",
     "launchingDate": "Hiện có sẵn",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
     "choosePlan": "Chọn gói",
-    "signIn": "Đăng nhập",
     "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "wired": {
     "asFeaturedIn": "Được giới thiệu trên"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "AI phân tích viên của bạn. Một bàn làm việc tình báo cá nhân. Một nền tảng bạn có thể phát triển trên đó.",
-    "proF1": "WM Analyst chat — truy vấn các dịch vụ trực tiếp một cách thoại",
-    "proF2": "AI digest — hàng ngày, hai lần mỗi ngày hoặc hàng tuần — đến Slack, Discord, Telegram, Email hoặc webhook",
-    "proF3": "Custom Widget Builder — HTML/CSS/JS với chỉnh sửa hỗ trợ AI",
-    "proF4": "Bộ kết nối MCP — cắm WorldMonitor vào Claude, GPT hoặc LLM tùy chỉnh",
-    "proF5": "Equity research, phân tích cổ phiếu và backtesting",
-    "proF6": "Tìm chuyến bay và so sánh giá",
-    "proF7": "Động cơ quy tắc cảnh báo — trình kích hoạt tùy chỉnh, giờ yên lặng, kênh mã hóa AES-256",
-    "proF8": "Watchlist thị trường, theo dõi vĩ mô và ngân hàng trung ương",
-    "proF9": "Hàm ý thị trường AI & Thông tin tình báo khu vực",
-    "choosePlan": "Chọn gói",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "Dành cho các nhóm cần giám sát chia sẻ, truy cập API, các tùy chọn triển khai, ứng dụng TV và hỗ trợ trực tiếp.",
-    "entF1": "Tất cả trong Pro, cộng thêm:",
-    "entF2": "Hình ảnh vệ tinh trực tiếp và SAR",
-    "entF3": "AI agents với persona nhà đầu tư và MCP",
-    "entF4": "Tài sản cơ sở hạ tầng được ánh xạ",
-    "entF5": "Các kết nối dữ liệu (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhook + xuất hàng loạt",
-    "entF7": "Không gian làm việc nhóm với SSO/MFA/RBAC",
-    "entF8": "White-label và bảng có thể nhúng",
-    "entF9": "Ứng dụng Android TV cho tường SOC và sàn giao dịch",
-    "entF10": "Triển khai đám mây, on-premises hoặc air-gapped",
-    "entF11": "Onboarding và hỗ trợ chuyên trách",
-    "entCta": "Liên hệ kinh doanh",
-    "freeF2": "Các nguồn cấp được chọn lọc, nguồn được quy định và lớp bản đồ",
-    "proF10": "Bộ nhớ Intel — tìm kiếm lịch sử, dòng thời gian & tra cứu sự kiện tương tự"
-  },
   "whyUpgrade": {
-    "title": "Tại sao nâng cấp lên World Monitor Pro?",
+    "title": "Biết trước khi tin tức đưa tin",
     "noiseTitle": "Biết đầu tiên",
     "noiseDesc": "Bất thường AIS → Brent tăng đột biến → Slack của bạn dưới một phút. Tín hiệu, không phải tiêu đề.",
     "fasterTitle": "Hỏi bất cứ điều gì",
@@ -143,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
-    "title": "Trí tuệ nhân tạo phân tích của World Monitor hoạt động như thế nào?",
+    "title": "Nhà phân tích AI cho cổ phiếu, vĩ mô và địa chính trị",
     "subtitle": "Bảng điều khiển miễn phí cho bạn thấy thế giới. Pro cho bạn một nhà phân tích để hỏi, một digest để đăng ký và các nguyên thủy để xây dựng. Cổ phiếu, vĩ mô, rủi ro địa chính trị — và các kết nối giữa chúng.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Phân tích cổ phiếu toàn cầu với trực quan hóa tài chính, mục tiêu giá của nhà phân tích và chỉ số định giá. Theo dõi những gì di chuyển thị trường.",
@@ -304,11 +273,11 @@
     "q7": "Tôi vẫn có thể sử dụng khóa API của riêng mình?",
     "a7": "Có. Mang khóa của riêng bạn luôn hoạt động. Pro đơn giản có nghĩa là bạn không phải đăng ký các dịch vụ riêng biệt.",
     "q8": "MCP là gì?",
-    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng WorldMonitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
+    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng World Monitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
     "q9": "Tôi có thể xây dựng các bảng của riêng mình không?",
     "a9": "Có. Pro bao gồm Custom Widget Builder — xây dựng bảng từ HTML, CSS và JavaScript, với chỉnh sửa hỗ trợ AI.",
-    "q10": "Tôi có thể kết nối Claude hoặc GPT với WorldMonitor không?",
-    "a10": "Có. MCP được bao gồm trong Pro — kết nối WorldMonitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
+    "q10": "Tôi có thể kết nối Claude hoặc GPT với World Monitor không?",
+    "a10": "Có. MCP được bao gồm trong Pro — kết nối World Monitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
     "q11": "Digest được cá nhân hóa như thế nào?",
     "a11": "Chọn lịch của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Chúng tôi cho mỗi bài báo theo dõi được chấm điểm lại so với các quy tắc cảnh báo và danh sách theo dõi của bạn, loại bỏ trùng lặp trên các nguồn, và gửi lên đến 30 mục xếp hạng với Đánh giá AI và Tín hiệu cần theo dõi được viết vào ngữ cảnh của bạn. Cảnh báo thời gian thực cũng có sẵn cho các sự kiện quan trọng.",
     "q12": "Tốc độ làm mới là bao nhiêu?",
@@ -396,7 +365,7 @@
         "description": "Giải pháp tùy chỉnh cho các tổ chức",
         "features": [
           "Tất cả trong Pro + API",
-          "Yêu cầu API không giới hạn",
+          "10,000 yêu cầu API mỗi ngày, có thể tăng thêm theo hợp đồng",
           "Hỗ trợ chuyên dụng",
           "Tích hợp tùy chỉnh",
           "Bảo đảm SLA",
@@ -410,7 +379,7 @@
         "cta": "Liên hệ Phòng bán hàng"
       },
       "apiBusiness": {
-        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu WorldMonitor",
+        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu World Monitor",
         "features": [
           "Tất cả trong API Starter",
           "Quyền phân phối lại R1–R3 cho các sản phẩm hướng tới khách hàng",
@@ -447,7 +416,8 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, khách hàng & sản phẩm"
+    "axisCommercialNote": "công việc, khách hàng & sản phẩm",
+    "cancelAnytime": "Hủy bất cứ lúc nào từ tài khoản của bạn. Bạn vẫn có quyền truy cập cho đến hết kỳ thanh toán của mình."
   },
   "welcome": {
     "meta": {
@@ -476,17 +446,17 @@
       "sub": "Khi tin tức xuất hiện, bạn đã biết rồi.",
       "ctaPrimary": "Khởi chạy bảng điều khiển",
       "ctaFree": "Miễn phí · Không cần đăng ký · Tải trong vài giây",
-      "ctaSecondary": "Xem cách mọi người sử dụng nó ↓",
       "trustUsers": "2 triệu+ người dùng",
       "trustOpenSource": "Mã nguồn mở · AGPL-3.0",
       "screenshotAlt": "Bảng điều khiển tình báo trực tiếp World Monitor — bản đồ toàn cầu với các lớp xung đột, vận chuyển và thị trường",
       "plateNote": "Được chụp từ bản đồ trực tiếp — bấm để mở",
       "trustBuild": "Xây dựng trên nó:",
-      "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
+      "positioningLink": "World Monitor không phải là Palantir mã nguồn mở",
       "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
       "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
-      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp."
+      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp.",
+      "ctaPro": "Pro từ {{price}}/tháng"
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",
@@ -506,7 +476,8 @@
       "marketWeakest": "Yếu nhất",
       "trendRising": "tăng",
       "trendFalling": "giảm",
-      "trendStable": "ổn định"
+      "trendStable": "ổn định",
+      "situationLink": "Theo dõi tình hình: khủng hoảng, tin tức chính, điểm nghẽn và sự cố trên một bảng"
     },
     "moments": {
       "eyebrow": "Công cụ tương quan",
@@ -727,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Nhật ký vận tải",
-    "title": "Có gì mới trong WorldMonitor",
+    "title": "Có gì mới trong World Monitor",
     "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
     "proTag": "PRO",
     "m1": "Góc nhìn truyền thông — báo chí từng nước đưa tin về bất kỳ quốc gia nào ra sao, cho tác tử AI và API",
@@ -738,5 +709,8 @@
     "m6": "Bản đồ hoạt động công nghiệp từ dữ liệu NO2 của vệ tinh Sentinel-5P",
     "m7": "Dòng vốn của 230 nền kinh tế và mọi cặp quốc gia, cho tác tử AI và API",
     "m8": "Bảng điều khiển trong terminal và bản đồ CLI phóng to được — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Các nguồn chúng tôi theo dõi"
   }
 }

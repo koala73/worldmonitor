@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "Szum",
     "signalWord": "Sygnał",
-    "valueProps": "Geopolityczna warstwa AI — zapytaj ją, subskrybuj, buduj na niej.",
+    "valueProps": "Pytaj AI analityka, ustaw reguły alertów, otrzymuj briefingi i używaj w Claude.",
     "launchingDate": "Dostępne teraz",
     "tryFreeDashboard": "Wypróbuj darmowy panel",
     "choosePlan": "Wybierz plan",
-    "signIn": "Zaloguj się",
     "goToDashboard": "Przejdź do Pulpitu"
   },
   "wired": {
     "asFeaturedIn": "Wyróżnione w"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "Twój asystent AI. Osobisty desk wywiadu. Platforma do budowy.",
-    "proF1": "WM Analyst chat — zapytania live usług w naturalnym języku",
-    "proF2": "Digest AI — codziennie, dwa razy dziennie lub tygodniowo — na Slack, Discord, Telegram, Email lub webhook",
-    "proF3": "Custom Widget Builder — HTML/CSS/JS ze wsparciem AI",
-    "proF4": "Konektory MCP — podłącz WorldMonitor do Claude, GPT lub własnych LLM-ów",
-    "proF5": "Equity research, analiza akcji i backtesting",
-    "proF6": "Wyszukiwanie lotów i porównywanie cen",
-    "proF7": "Silnik reguł alertów — własne wyzwalacze, ciche godziny, kanały szyfrowane AES-256",
-    "proF8": "Watchlista rynkowa, śledzenie makro i banków centralnych",
-    "proF9": "Implikacje AI dla rynków i wywiad regionalny",
-    "choosePlan": "Wybierz plan",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "Dla zespołów, które potrzebują współdzielonego monitoringu, dostępu do API, opcji wdrożenia, aplikacji TV i bezpośredniego wsparcia.",
-    "entF1": "Wszystko z Pro, plus:",
-    "entF2": "Obrazy satelitarne na żywo i SAR",
-    "entF3": "Agenci AI z personami inwestorskimi i MCP",
-    "entF4": "Zasoby infrastrukturalne zmapowane",
-    "entF5": "Konektory danych (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhooki + eksport masowy",
-    "entF7": "Workspace'y zespołowe z SSO/MFA/RBAC",
-    "entF8": "White-label i osadzalne panele",
-    "entF9": "Aplikacja Android TV do ścian SOC i trading floorów",
-    "entF10": "Wdrożenie w chmurze, on-premises lub air-gapped",
-    "entF11": "Dedykowane wdrożenie i wsparcie",
-    "entCta": "Porozmawiaj ze sprzedażą",
-    "freeF2": "Kluczowane kanały, źródła przypisane i warstwy map",
-    "proF10": "Pamięć wywiadu — przeszukiwanie historyczne, osie czasu i wyszukiwanie podobnych zdarzeń"
-  },
   "whyUpgrade": {
-    "title": "Dlaczego warto przejść na World Monitor Pro?",
+    "title": "Dowiedz się, zanim trafi to na nagłówki",
     "noiseTitle": "Wiedz pierwszy",
     "noiseDesc": "Anomalia AIS → skok Brent → Twój Slack w mniej niż minutę. Sygnał, nie nagłówki.",
     "fasterTitle": "Zapytaj o wszystko",
@@ -143,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "POZIOM PRO",
-    "title": "Co robi analityk AI World Monitor?",
+    "title": "Analityk AI dla akcji, makroekonomii i geopolityki",
     "subtitle": "Darmowy panel pokazuje Ci świat. Pro daje analityka do zapytania, digest do subskrypcji i prymitywy do budowania. Akcje, makro, ryzyko geopolityczne — i powiązania między nimi.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Globalna analiza akcji z wizualizacją danych finansowych, celami cenowymi analityków i wskaźnikami wyceny. Śledź, co porusza rynki.",
@@ -304,11 +273,11 @@
     "q7": "Czy nadal mogę używać własnych kluczy API?",
     "a7": "Tak. Bring-your-own-keys zawsze działa. Pro oznacza po prostu, że nie musisz rejestrować się w osobnych usługach.",
     "q8": "Czym jest MCP?",
-    "a8": "MCP pozwala agentom AI — Claude, GPT, custom LLM — używać WorldMonitor jako narzędzia, zapytując zarejestrowane usługi. Zawarte w Pro. Enterprise dodaje prywatne serwery MCP i custom deployments.",
+    "a8": "MCP pozwala agentom AI — Claude, GPT, custom LLM — używać World Monitor jako narzędzia, zapytując zarejestrowane usługi. Zawarte w Pro. Enterprise dodaje prywatne serwery MCP i custom deployments.",
     "q9": "Czy mogę budować własne panele?",
     "a9": "Tak. Pro zawiera Custom Widget Builder — buduj panele z HTML, CSS i JavaScript, z modyfikacją wspomaganą przez AI.",
-    "q10": "Czy mogę podłączyć Claude lub GPT do WorldMonitor?",
-    "a10": "Tak. MCP jest zawarte w Pro — podłącz WorldMonitor do Claude, GPT lub dowolnego LLM kompatybilnego z MCP jako narzędzie na żywo.",
+    "q10": "Czy mogę podłączyć Claude lub GPT do World Monitor?",
+    "a10": "Tak. MCP jest zawarte w Pro — podłącz World Monitor do Claude, GPT lub dowolnego LLM kompatybilnego z MCP jako narzędzie na żywo.",
     "q11": "Jak spersonalizowany jest digest?",
     "a11": "Wybierz częstotliwość — codziennie, dwa razy dziennie lub tygodniowo. Przeliczamy co monitorowany artykuł względem Twoich reguł alertów i listy monitorowania, deduplikujemy w źródłach i wysyłamy do 30 rankingowanych pozycji z oceną AI i sygnałami do obserwacji napisanymi w Twoim kontekście. Alerty w czasie rzeczywistym są też dostępne dla krytycznych zdarzeń.",
     "q12": "Jakie jest tempo odświeżania?",
@@ -396,7 +365,7 @@
         "description": "Rozwiązania dostosowane dla organizacji",
         "features": [
           "Wszystko z planu Pro + API",
-          "Nieograniczone żądania API",
+          "10 000 żądań API dziennie, więcej na podstawie umowy",
           "Wsparcie dedykowane",
           "Niestandardowe integracje",
           "Gwarancja SLA",
@@ -410,7 +379,7 @@
         "cta": "Skontaktuj się z działem sprzedaży"
       },
       "apiBusiness": {
-        "description": "Uruchom własny produkt na danych WorldMonitor",
+        "description": "Uruchom własny produkt na danych World Monitor",
         "features": [
           "Wszystko z planu API Starter",
           "Prawa do redystrybucji R1–R3 dla produktów skierowanych do klientów",
@@ -447,7 +416,8 @@
     "axisPersonal": "Osobiste",
     "axisPersonalNote": "użytek indywidualny",
     "axisCommercial": "Komercyjne",
-    "axisCommercialNote": "praca, klienci i produkty"
+    "axisCommercialNote": "praca, klienci i produkty",
+    "cancelAnytime": "Anuluj w dowolnym momencie z poziomu swojego konta. Zachowujesz dostęp do końca okresu, za który zapłaciłeś."
   },
   "welcome": {
     "meta": {
@@ -476,17 +446,17 @@
       "sub": "Kiedy to staje się wiadomością, ty już o tym wiesz.",
       "ctaPrimary": "Uruchom pulpit",
       "ctaFree": "Darmowe · Bez rejestracji · Wczytuje się w sekundy",
-      "ctaSecondary": "Zobacz, jak go używają ↓",
       "trustUsers": "2M+ użytkowników",
       "trustOpenSource": "Otwarty kod · AGPL-3.0",
       "screenshotAlt": "Żywa mapa inteligencji World Monitor — globalna mapa z warstwami konfliktów, transportu i rynków",
       "plateNote": "Przechwycone z żywej mapy — kliknij, aby ją otworzyć",
       "trustBuild": "Buduj na jej podstawie:",
-      "positioningLink": "WorldMonitor nie jest open-source'owym Palantir",
+      "positioningLink": "World Monitor nie jest open-source'owym Palantir",
       "asOf": "Stan na {{date}}",
       "whatIsTitle": "Czym jest World Monitor?",
       "whatIsBody": "World Monitor to darmowy ($0), open-source'owy (AGPL-3.0) dashboard używany przez 2M+ osób. Transmituje {{feeds}} kanałów wiadomości i OSINT ze {{providers}} przypisanych dostawców na jedną żywą mapę świata z {{mapLayers}} typami warstw mapy, obejmującymi geopolitykę, rynki, transport morski, lotnictwo i cyber. Koreluje je, aby zbieżne zdarzenia wyświetliły się przed nagłówkami. Każda liczba jest udokumentowana wraz ze źródłem i metodą.",
-      "whatIsBestFor": "Najlepszy dla analityków, dziennikarzy, traderów i deweloperów, którzy potrzebują geopolitycznych sygnałów na żywo."
+      "whatIsBestFor": "Najlepszy dla analityków, dziennikarzy, traderów i deweloperów, którzy potrzebują geopolitycznych sygnałów na żywo.",
+      "ctaPro": "Pro od {{price}}/miesiąc"
     },
     "live": {
       "eyebrow": "Na żywo teraz",
@@ -506,7 +476,8 @@
       "marketWeakest": "Najsłabsze",
       "trendRising": "rosnący",
       "trendFalling": "spadający",
-      "trendStable": "stabilny"
+      "trendStable": "stabilny",
+      "situationLink": "Monitoruj sytuację: kryzysy, wiadomości, wąskie gardła i awarie na jednym pulpicie"
     },
     "moments": {
       "eyebrow": "Silnik korelacji",
@@ -727,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Dziennik wysyłki",
-    "title": "Co nowego w WorldMonitor",
+    "title": "Co nowego w World Monitor",
     "subtitle": "Nowe funkcje z ostatnich 30 dni — poprawki i infrastruktura nie uwzględnione.",
     "proTag": "PRO",
     "m1": "Perspektywa mediów — jak media z każdego kraju relacjonują dowolny kraj, dla agentów AI i API",
@@ -738,5 +709,8 @@
     "m6": "Mapa aktywności przemysłowej z satelitarnych danych NO2 z Sentinel-5P",
     "m7": "Przepływy kapitału dla 230 gospodarek i dowolnej pary krajów, dla agentów AI i API",
     "m8": "Panel w terminalu i powiększalna mapa CLI — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Źródła, które monitorujemy"
   }
 }

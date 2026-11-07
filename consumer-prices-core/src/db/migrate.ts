@@ -6,9 +6,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
+import type pg from 'pg';
 import { getPool } from './client.js';
 
 const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../migrations');
+const MIGRATION_TIMEOUT_MS = 30 * 60_000;
 
 async function run() {
   const pool = getPool();
@@ -40,7 +42,13 @@ async function run() {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(sql);
+      // The shared pool caps statements at 30s for request paths; schema
+      // changes and backfills may legitimately run longer. pg reads a
+      // query_timeout of 0 as unset, so lift both limits to an explicit bound.
+      await client.query(`SET LOCAL statement_timeout = ${MIGRATION_TIMEOUT_MS}`);
+      // pg's runtime honours a per-query query_timeout; its QueryConfig type omits it.
+      const migration: pg.QueryConfig & { query_timeout: number } = { text: sql, query_timeout: MIGRATION_TIMEOUT_MS + 5_000 };
+      await client.query(migration);
       await client.query(`INSERT INTO schema_migrations (version) VALUES ($1)`, [version]);
       await client.query('COMMIT');
       console.log(`  [done] ${file}`);

@@ -329,7 +329,7 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pricing" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
           <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
           <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
           <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
@@ -449,10 +449,8 @@ const SignalBars = () => {
 const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
-  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
-  // Hide it once auth state confirms; falls back to just the "Choose Plan"
-  // CTA which is the relevant action for returning users anyway.
-  const showSignIn = isLoaded && !signedIn;
+  // Sign-in lives in the nav. Repeating it here made two sign-in controls
+  // on the first screen, beside the plan CTA it competed with.
   // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
   // is already Pro — same reasoning as the nav swap, and also removes
   // the #pricing anchor jump which is actively misleading for a paying
@@ -496,11 +494,6 @@ const Hero = ({ srLead }: { srLead?: string }) => {
                 {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             )}
-            {showSignIn && (
-              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-                {t('hero.signIn')}
-              </button>
-            )}
           </div>
 
           <div className="flex items-center justify-center mt-4">
@@ -534,48 +527,6 @@ const SocialProof = () => (
       <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
       <VoiceCards />
       <PressNav className="mt-6" />
-    </div>
-  </section>
-);
-
-/* ─── 3. Two-path split (new — from draft) ─── */
-const TwoPathSplit = () => (
-  <section className="py-24 px-6 max-w-5xl mx-auto" id="tiers">
-    <h2 className="sr-only">Plans</h2>
-    <div className="grid md:grid-cols-2 gap-8">
-      <div className="bg-wm-card border border-wm-green p-8 relative border-glow">
-        <div className="absolute top-0 left-0 w-full h-1 bg-wm-green" />
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
-          {t('twoPath.choosePlan')}
-        </a>
-      </div>
-
-      <div className="bg-wm-card border border-wm-border p-8">
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.entTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.entDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          <li className="text-xs font-mono text-wm-green uppercase tracking-wider mb-1">{t('twoPath.entF1')}</li>
-          {[t('twoPath.entF2'), t('twoPath.entF3'), t('twoPath.entF4'), t('twoPath.entF5'), t('twoPath.entF6'), t('twoPath.entF7'), t('twoPath.entF8'), t('twoPath.entF9'), t('twoPath.entF10'), t('twoPath.entF11')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-muted" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#enterprise" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors">
-          {t('twoPath.entCta')}
-        </a>
-      </div>
     </div>
   </section>
 );
@@ -728,17 +679,20 @@ const LivePreview = () => (
 const SourceMarquee = () => {
   const sources = [
     "Finnhub", "FRED", "Bloomberg", "CNBC", "Nikkei", "CoinGecko", "Polymarket",
-    "Reuters", "ACLED", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
-    "Cloudflare Radar", "BGPStream", "GPSJam", "NOAA", "Copernicus", "IAEA",
+    "Reuters", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
+    "Cloudflare Radar", "GPSJam", "NOAA", "Copernicus", "IAEA",
     "Al Jazeera", "Sky News", "Euronews", "DW News", "France 24",
-    "OilPrice", "Rigzone", "Maritime Executive", "Hellenic Shipping News",
+    "OilPrice", "Rigzone",
     "Defense One", "Jane's", "The War Zone",
     "TechCrunch", "Ars Technica", "The Verge", "Wired",
-    "Krebs on Security", "BleepingComputer", "The Record",
+    "Krebs on Security",
   ];
   const items = sources.join(" · ");
   return (
-    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label="Data sources">
+    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label={t('sourceMarquee.label')}>
+      <a href="/sources/" className="block w-fit mx-auto mb-3 px-4 font-mono text-xs text-wm-green hover:underline">
+        {t('sourceMarquee.label')} →
+      </a>
       <div className="marquee-track whitespace-nowrap font-mono text-xs text-wm-muted uppercase tracking-widest">
         <span className="inline-block px-4">{items} · </span>
         <span className="inline-block px-4">{items} · </span>
@@ -1307,6 +1261,7 @@ const EnterprisePage = () => (
             }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
+                signal: createTimeoutSignal(60_000),
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1381,7 +1336,7 @@ const EnterprisePage = () => (
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} World Monitor</span>
       </div>
       <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
@@ -1415,6 +1370,9 @@ export const ProHomeShell = ({ heroSrLead, footer, children }: {
 
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+  // Section to scroll to once the home view has rendered after leaving the
+  // Enterprise view; its sections do not exist until then.
+  const pendingHomeTarget = useRef<string | null>(null);
 
   // Resume a checkout the buyer started before signing in.
   //
@@ -1440,6 +1398,11 @@ export default function App() {
       const wasEnterprise = page === 'enterprise';
       setPage(next);
       if (next === 'enterprise' && !wasEnterprise) window.scrollTo(0, 0);
+      // The removed #tiers section has no element for native fragment
+      // navigation; send history or same-page jumps to the price cards.
+      const homeTarget = hash === '#tiers' ? 'pricing' : hash.slice(1);
+      if (next === 'home' && wasEnterprise && homeTarget) pendingHomeTarget.current = homeTarget;
+      else if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
       if (hash === '#enterprise-contact') {
         setTimeout(() => {
           document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
@@ -1449,6 +1412,31 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [page]);
+
+  useEffect(() => {
+    const target = pendingHomeTarget.current;
+    if (page !== 'home' || !target) return;
+    pendingHomeTarget.current = null;
+    const frame = requestAnimationFrame(() => { document.getElementById(target)?.scrollIntoView(); });
+    return () => cancelAnimationFrame(frame);
+  }, [page]);
+
+  // Deep links into the home page (/pro#pricing from every dashboard
+  // "Upgrade to Pro" CTA) target React-only sections that are absent from the
+  // prerendered HTML, so the browser's native fragment scroll runs before the
+  // target exists and leaves the buyer at the top of the page. Scroll once
+  // the section has mounted. The rAF lets layout settle first.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    // #tiers was a Plans section without prices, removed in favour of the
+    // price cards; saved links to it still land on the plans.
+    const target = hash === '#tiers' ? 'pricing' : hash.slice(1);
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (page === 'enterprise' && window.location.hash === '#enterprise-contact') {
@@ -1467,7 +1455,6 @@ export default function App() {
         <Pillars />
         <WhyUpgrade />
         <SocialProof />
-        <TwoPathSplit />
         <ProShowcase />
         <DeliveryDesk />
         <AudiencePersonas />

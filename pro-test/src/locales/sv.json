@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "Brus",
     "signalWord": "Signal",
-    "valueProps": "Det geopolitiska AI-lagret — fråga det, prenumerera, bygg på det.",
+    "valueProps": "Fråga en AI-analytiker, ställ in varningsregler, få situationsrapporter och använd det i Claude.",
     "launchingDate": "Tillgänglig nu",
     "tryFreeDashboard": "Prova den kostnadsfria dashboarden",
     "choosePlan": "Välj din plan",
-    "signIn": "Logga in",
     "goToDashboard": "Gå till instrumentpanel"
   },
   "wired": {
     "asFeaturedIn": "Omskrivna i"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "Din AI-analytiker. Ett personligt underrättelsebord. En plattform du kan bygga på.",
-    "proF1": "WM Analyst chat — fråga live-tjänster i naturligt språk",
-    "proF2": "AI-digest — dagligen, två gånger om dagen eller veckovis — till Slack, Discord, Telegram, E-post eller webhook",
-    "proF3": "Custom Widget Builder — HTML/CSS/JS med AI-assisterad modifiering",
-    "proF4": "MCP-konnektorer — koppla WorldMonitor till Claude, GPT, egna LLM:er",
-    "proF5": "Aktieanalys, equity research och backtesting",
-    "proF6": "Flygsökning och prisjämförelse",
-    "proF7": "Regelmotor för larm — egna triggers, tysta timmar, AES-256-krypterade kanaler",
-    "proF8": "Market watchlist, makro- och centralbanksspårning",
-    "proF9": "AI-marknadsimplikationer och regional underrättelse",
-    "choosePlan": "Välj din plan",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "För team som behöver delad övervakning, API-åtkomst, deployment-alternativ, TV-appar och direkt support.",
-    "entF1": "Allt i Pro, plus:",
-    "entF2": "Live-edge satellitbilder och SAR",
-    "entF3": "AI-agenter med investor-personas och MCP",
-    "entF4": "Infrastrukturresurser kartlagda",
-    "entF5": "Dataöverbindningar (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhooks + massexport",
-    "entF7": "Team-workspaces med SSO/MFA/RBAC",
-    "entF8": "White-label och inbäddbara paneler",
-    "entF9": "Android TV-app för SOC-väggar och trading floors",
-    "entF10": "Moln, on-premises eller air-gapped deployment",
-    "entF11": "Dedikerad onboarding och support",
-    "entCta": "Prata med sälj",
-    "freeF2": "Kurerade flöden, attribuerade källor och kartlager",
-    "proF10": "Intel-minne — historisk sökning, tidslinjer och sökning efter liknande händelser"
-  },
   "whyUpgrade": {
-    "title": "Varför uppgradera till World Monitor Pro?",
+    "title": "Få veta det före rubrikerna",
     "noiseTitle": "Vet först",
     "noiseDesc": "AIS-anomali → Brent-spik → din Slack på mindre än en minut. Signal, inte rubriker.",
     "fasterTitle": "Fråga vad som helst",
@@ -143,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "PRO-NIVÅ",
-    "title": "Vad gör World Monitor AI-analytikern?",
+    "title": "En AI-analytiker för aktier, makroekonomi och geopolitik",
     "subtitle": "Den kostnadsfria dashboarden visar dig världen. Pro ger dig en analytiker att fråga, en digest att prenumerera på och primitiver att bygga på. Aktier, makro, geopolitisk risk — och kopplingarna mellan dem.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Global aktieanalys med visualisering av finansiella data, analytikermål och värderingsmått. Följ vad som rör marknader.",
@@ -304,11 +273,11 @@
     "q7": "Kan jag fortfarande använda mina egna API-nycklar?",
     "a7": "Ja. Egna nycklar fungerar alltid. Pro betyder bara att du inte behöver registrera dig för separata tjänster.",
     "q8": "Vad är MCP?",
-    "a8": "MCP låter AI-agenter — Claude, GPT, anpassade LLM:er — använda WorldMonitor som ett verktyg, fråga registrerade tjänster. Ingår i Pro. Enterprise lägger till privata MCP-servrar och anpassade distributioner.",
+    "a8": "MCP låter AI-agenter — Claude, GPT, anpassade LLM:er — använda World Monitor som ett verktyg, fråga registrerade tjänster. Ingår i Pro. Enterprise lägger till privata MCP-servrar och anpassade distributioner.",
     "q9": "Kan jag bygga egna paneler?",
     "a9": "Ja. Pro inkluderar Custom Widget Builder — bygg paneler från HTML, CSS och JavaScript med AI-assisterad modifiering.",
-    "q10": "Kan jag koppla Claude eller GPT till WorldMonitor?",
-    "a10": "Ja. MCP ingår i Pro — koppla WorldMonitor till Claude, GPT eller vilken MCP-kompatibel LLM som helst som live-verktyg.",
+    "q10": "Kan jag koppla Claude eller GPT till World Monitor?",
+    "a10": "Ja. MCP ingår i Pro — koppla World Monitor till Claude, GPT eller vilken MCP-kompatibel LLM som helst som live-verktyg.",
     "q11": "Hur personlig är digesten?",
     "a11": "Välj din cadence — dagligen, två gånger dagligen eller veckovis. Vi omvärdesätter varje övervakad nyhetsartikel mot dina varningsregler och bevakningslista, avduplicerar över källor och skickar upp till 30 rankade objekt med en AI-bedömning och signaler att bevaka skrivna till din kontext. Realtidsaviseringar är också tillgängliga för kritiska händelser.",
     "q12": "Vad är uppdateringsfrekvensen?",
@@ -396,7 +365,7 @@
         "description": "Anpassade lösningar för organisationer",
         "features": [
           "Allt i Pro + API",
-          "Obegränsade API-förfrågningar",
+          "10 000 API-förfrågningar per dag, mer enligt avtal",
           "Dedikerad support",
           "Anpassade integreringar",
           "SLA-garanti",
@@ -410,7 +379,7 @@
         "cta": "Kontakta försäljning"
       },
       "apiBusiness": {
-        "description": "Lansera din egen produkt på WorldMonitor-data",
+        "description": "Lansera din egen produkt på World Monitor-data",
         "features": [
           "Allt i API Starter",
           "R1–R3 omfördelningsrättigheter för kundvända produkter",
@@ -447,7 +416,8 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, klienter och produkter"
+    "axisCommercialNote": "arbete, klienter och produkter",
+    "cancelAnytime": "Avbryt när som helst från ditt konto. Du behåller åtkomsten till slutet av den period du betalade för."
   },
   "welcome": {
     "meta": {
@@ -476,17 +446,17 @@
       "sub": "Innan det blir nyheter, visste du redan.",
       "ctaPrimary": "Starta instrumentpanelen",
       "ctaFree": "Gratis · Ingen registrering · Läses in på sekunder",
-      "ctaSecondary": "Se hur människor använder det ↓",
       "trustUsers": "2M+ användare",
       "trustOpenSource": "Öppen källkod · AGPL-3.0",
       "screenshotAlt": "World Monitor live underrättelseinstrumentpanel — global karta med konflikt-, sjöfarts- och marknadslager",
       "plateNote": "Fångad från live-kartan — klicka för att öppna den",
       "trustBuild": "Bygg på den:",
-      "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
+      "positioningLink": "World Monitor är inte en öppen källkod Palantir",
       "asOf": "Per {{date}}",
       "whatIsTitle": "Vad är World Monitor?",
       "whatIsBody": "World Monitor är en kostnadsfri ($0), öppen källkod (AGPL-3.0) dashboard som används av 2M+ personer. Den strömmar {{feeds}} nyhets- och OSINT-flöden från {{providers}} attribuerade leverantörer till en live-världskarta med {{mapLayers}} kartlagertyper, som omfattar geopolitik, marknader, sjöfart, luftfart och cyber. Den korrelerar dem så att konvergerande händelser dyker upp innan rubrikerna gör det. Varje siffra är källa och varje metod dokumenterad.",
-      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid."
+      "whatIsBestFor": "Bäst för analytiker, journalister, traders och utvecklare som behöver geopolitiska signaler i realtid.",
+      "ctaPro": "Pro från {{price}}/månad"
     },
     "live": {
       "eyebrow": "Live just nu",
@@ -506,7 +476,8 @@
       "marketWeakest": "Svagast",
       "trendRising": "stigande",
       "trendFalling": "fallande",
-      "trendStable": "stabil"
+      "trendStable": "stabil",
+      "situationLink": "Övervaka situationen: kriser, nyheter, flaskhalsar och driftstörningar på en instrumentpanel"
     },
     "moments": {
       "eyebrow": "Korrelationsmotor",
@@ -727,7 +698,7 @@
   },
   "whatsNew": {
     "eyebrow": "Fraktlogg",
-    "title": "Vad är nytt i WorldMonitor",
+    "title": "Vad är nytt i World Monitor",
     "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
     "proTag": "PRO",
     "m1": "Medieperspektiv — hur medier från varje land bevakar vilket land som helst, för AI-agenter och API:t",
@@ -738,5 +709,8 @@
     "m6": "Karta över industriell aktivitet från NO2-satellitdata från Sentinel-5P",
     "m7": "Kapitalflöden för 230 ekonomier och alla landspar, för AI-agenter och API:t",
     "m8": "Terminalpanel och zoombar CLI-karta — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Källor vi övervakar"
   }
 }

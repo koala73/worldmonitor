@@ -141,6 +141,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'api/_bootstrap-tier-keys.js',
       'tests/cors-preflight-live.test.mjs',
       'tests/helpers/public-bootstrap-contract.mjs',
+      'scripts/cf-rate-limit-retry.mjs',
       '.github/workflows/deploy-worker.yml',
     ]),
     // Same dormant reasoning as the reconcile Worker: a healthy run can be

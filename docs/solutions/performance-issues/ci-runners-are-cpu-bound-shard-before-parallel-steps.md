@@ -185,6 +185,13 @@ same blob at the same moment took 12-62s on PR #9626. The job now sets
   most runs. The repack keeps shard 3 and moves 7 small specs:
   244/246/243/245. `country-brief` (207s) and `dashboard-news-request-budget`
   (191s) are each most of a shard, so the small specs fill the remainder.
+- **It drifted again within weeks.** On 4 November 2026 the split measured
+  268/331/411/287 of 1297 test-seconds (per-spec medians of six main runs),
+  and shard 3 finished last in five of the six. Moving
+  `map-overlay-marker-budget` to shard 1, and `progress-chart-fits` and
+  `variant-live-smoke` to shard 4, gives 326/317/328/326. A greedy search
+  (move the one spec that most lowers the largest shard, repeat) found that
+  three-move split; a hand-picked four-move split only reached 342.
 - **Removing sleeps does not free the seconds they held on CI.** Locally the
   flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
   1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to

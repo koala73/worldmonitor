@@ -126,6 +126,37 @@ test('Retry-After header parsed: backoff respects upstream hint (DI _sleep captu
   assert.deepEqual(sleepDurations, [7000], 'Retry-After: 7 must produce a 7000ms sleep, not retryBaseMs default (10ms)');
 });
 
+test('Retry-After beyond the 60s cap: skips direct retries and goes to the proxy', async () => {
+  // A 120s cooldown clamped to 60s would retry before the provider allows it.
+  const { fetchYahooJson } = await import('../scripts/_yahoo-fetch.mjs');
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return { ok: false, status: 429, headers: { get: (name) => name.toLowerCase() === 'retry-after' ? '120' : null }, json: async () => ({}) };
+  };
+  const sleepDurations = [];
+  let curlCalls = 0;
+  const result = await fetchYahooJson(URL, {
+    ...COMMON_OPTS,
+    _curlProxyResolver: () => 'user:pass@proxy.example:10001',
+    _proxyCurlFetcher: () => { curlCalls += 1; return JSON.stringify(VALID_PAYLOAD); },
+    _sleep: async (ms) => { sleepDurations.push(ms); },
+  });
+  assert.deepEqual(result, VALID_PAYLOAD);
+  assert.equal(calls, 1, 'no direct retry inside the cooldown');
+  assert.deepEqual(sleepDurations, []);
+  assert.equal(curlCalls, 1);
+});
+
+test('retryAfterExceedsCap: seconds and HTTP-date forms', async () => {
+  const { retryAfterExceedsCap } = await import('../scripts/_yahoo-fetch.mjs');
+  assert.equal(retryAfterExceedsCap('60'), false);
+  assert.equal(retryAfterExceedsCap('61'), true);
+  assert.equal(retryAfterExceedsCap(null), false);
+  assert.equal(retryAfterExceedsCap(new Date(Date.now() + 120_000).toUTCString()), true);
+  assert.equal(retryAfterExceedsCap(new Date(Date.now() + 10_000).toUTCString()), false);
+});
+
 test('Retry-After absent: falls back to linear backoff retryBaseMs * (attempt+1)', async () => {
   // Companion to the test above — locks the OTHER branch of the if so
   // they're not collapsed into one path silently.
@@ -146,7 +177,8 @@ test('Retry-After absent: falls back to linear backoff retryBaseMs * (attempt+1)
     _curlProxyResolver: () => null,
     _sleep: async (ms) => { sleepDurations.push(ms); },
   });
-  assert.deepEqual(sleepDurations, [10], 'no Retry-After → retryBaseMs * 1 = 10ms');
+  assert.equal(sleepDurations.length, 1);
+  assert.ok(sleepDurations[0] >= 10 && sleepDurations[0] <= 13, 'jittered first backoff stays within 10–13ms');
 });
 
 // ─── Curl proxy fallback path ───────────────────────────────────────────

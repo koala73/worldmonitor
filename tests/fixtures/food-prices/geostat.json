@@ -1,0 +1,146 @@
+[
+  [
+    [
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      },
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      },
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      },
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      },
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      },
+      {
+        "richText": [
+          {
+            "text": "CONSUMER PRICE INDICES IN GEORGIA\n"
+          },
+          {
+            "font": {
+              "size": 11,
+              "name": "Sylfaen",
+              "family": 1
+            },
+            "text": "Previous month=100"
+          }
+        ]
+      }
+    ],
+    [],
+    [
+      "Level",
+      "Code",
+      "Groups",
+      2026,
+      2026,
+      2026
+    ],
+    [
+      "Level",
+      "Code",
+      "Groups",
+      "VIII",
+      "IX",
+      "X"
+    ],
+    [
+      null,
+      null,
+      "Total",
+      100.4049,
+      100.3758,
+      100.8807
+    ],
+    [],
+    [
+      2,
+      1,
+      "Food and non-alcoholic beverages",
+      100.154,
+      99.8496,
+      99.9608
+    ],
+    [
+      3,
+      11,
+      "Food",
+      100.2272,
+      99.9163,
+      99.8592
+    ],
+    [
+      3,
+      12,
+      "Non-alcoholic beverages",
+      99.3542,
+      99.1094,
+      101.1057
+    ]
+  ]
+]

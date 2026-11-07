@@ -29,9 +29,10 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # The repo-root package.json has "type":"module" which tells Node to
 # parse .js files under shared/, server/_shared/, api/ as ESM. Inside
@@ -44,7 +45,9 @@ RUN printf '{"type":"module","private":true}\n' > /app/package.json
 
 # Install scripts/ runtime dependencies (resend, convex, etc.).
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-RUN npm ci --prefix scripts --omit=dev
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
+# Match the other Alpine images: ws can use pure JS without compiling bufferutil.
+RUN npm ci --prefix scripts --omit=dev --ignore-scripts
 
 # Digest cron + shared script helpers it imports via createRequire.
 COPY scripts/seed-digest-notifications.mjs ./scripts/
@@ -105,7 +108,7 @@ COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
 COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
-COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
+COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts server/_shared/brief-fonts.generated.js ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
 # path (legacy whyMatters generator) to strip prompt-injection patterns
 # from story fields before they reach the LLM. Without this COPY, the

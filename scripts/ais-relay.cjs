@@ -181,6 +181,14 @@ const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
   : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Unset = every interface, which Railway and the Docker network need. A native
+// install with no container boundary sets RELAY_BIND_HOST=127.0.0.1.
+const RELAY_BIND_HOST = (process.env.RELAY_BIND_HOST || '').trim() || undefined;
+// Self-requests must reach the bound address; `localhost` may resolve to the
+// other address family than a specific RELAY_BIND_HOST.
+const RELAY_SELF_HOST = !RELAY_BIND_HOST || RELAY_BIND_HOST === '0.0.0.0' || RELAY_BIND_HOST === '::'
+  ? 'localhost'
+  : (RELAY_BIND_HOST.includes(':') ? `[${RELAY_BIND_HOST}]` : RELAY_BIND_HOST);
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
@@ -3029,7 +3037,7 @@ function ucdpFetchPage(version, page, timeoutMs = 30000) {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
     const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
-    const req = https.request(pageUrl, { method: 'GET', headers, timeout: timeoutMs }, (resp) => {
+    const req = https.request(pageUrl, { signal: AbortSignal.timeout(timeoutMs), method: 'GET', headers, timeout: timeoutMs }, (resp) => {
       if (resp.statusCode === 401 || resp.statusCode === 403) {
         resp.resume();
         return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode} — API token required (set UCDP_ACCESS_TOKEN env var)`));
@@ -3320,7 +3328,7 @@ async function seedSatelliteTLEs() {
       try {
         text = await new Promise((resolve, reject) => {
           const url = new URL(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`);
-          const req = https.request(url, { method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
+          const req = https.request(url, { signal: AbortSignal.timeout(15000), method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
             if (resp.statusCode < 200 || resp.statusCode >= 300) {
               resp.resume();
               return reject(new Error(`CelesTrak ${group}: HTTP ${resp.statusCode}`));
@@ -3481,6 +3489,7 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       timeout: 10000,
     }, (resp) => {
@@ -3584,6 +3593,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
   return new Promise((resolve) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'X-Finnhub-Token': apiKey },
       timeout: 10000,
     }, (resp) => {
@@ -3967,7 +3977,7 @@ async function seedEtfFlows() {
     try {
       const raw = await new Promise((resolve) => {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-        const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
+        const req = https.get(url, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
           if (resp.statusCode !== 200) { resp.resume(); return resolve(null); }
           let body = '';
           resp.on('data', (chunk) => { body += chunk; });
@@ -4496,7 +4506,7 @@ function cyberToProto(t) {
 
 function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -4508,7 +4518,7 @@ function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
 }
 function cyberHttpGetText(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -5215,6 +5225,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
     const parsed = new URL(apiUrl);
     const transport = parsed.protocol === 'http:' ? http : https;
     const req = transport.request(parsed, {
+      signal: AbortSignal.timeout(timeout),
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(bodyStr) },
       timeout,
@@ -5281,6 +5292,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     try {
       const resp = await new Promise((resolve, reject) => {
         const req = transport.get(digestUrl, {
+          signal: AbortSignal.timeout(15000),
           headers: buildClassifyDigestHeaders({
             userAgent: CHROME_UA,
             relayKey: RELAY_API_KEY,
@@ -6205,7 +6217,7 @@ async function handleWingbitsTrackRequest(req, res) {
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
     headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
@@ -7249,6 +7261,7 @@ function techEventsParseRSS(rssText) {
 function techEventsFetchUrl(url) {
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Accept: 'text/calendar, application/rss+xml, application/xml, text/xml, */*',
@@ -7387,6 +7400,7 @@ const WB_RENEWABLE_REGION_NAMES = {
 function wbFetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
+      signal: AbortSignal.timeout(30000),
       headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json' },
       timeout: 30000,
     }, (resp) => {
@@ -8735,7 +8749,10 @@ async function pollPizzintBestTimeVenue(apiKey, venue) {
     });
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
-      return { outcome: 'http' };
+      // The status is the only diagnostic worth keeping: a 400/401 means the
+      // key is wrong, a 429 means the plan budget is spent, a 5xx is BestTime
+      // itself. The body is dropped unread (it can echo the key).
+      return { outcome: 'http', status: resp.status };
     }
     let reply;
     try {
@@ -8778,12 +8795,14 @@ function pizzintBestTimePlaceholder(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const polls = await Promise.all(PIZZINT_BESTTIME_VENUES.map(venue => pollPizzintBestTimeVenue(apiKey, venue)));
   const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, timeout: 0, transport: 0, json: 0 };
+  const httpStatuses = new Map();
   const locations = [];
   const published = [];
   const historyLocations = [];
   PIZZINT_BESTTIME_VENUES.forEach((venue, i) => {
-    const { outcome, location, reply } = polls[i];
+    const { outcome, location, reply, status } = polls[i];
     counts[outcome]++;
+    if (outcome === 'http') httpStatuses.set(status, (httpStatuses.get(status) || 0) + 1);
     if (location) {
       locations.push(location);
       published.push(location);
@@ -8803,7 +8822,13 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       noLiveSignal: true,
     });
   });
-  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // http=3 alone cannot tell a bad key (400/401) from a spent plan budget
+  // (429) or a BestTime outage (5xx); the status histogram can.
+  const summary = Object.entries(counts).map(([category, count]) => (
+    category === 'http' && count > 0
+      ? `http=${count}(${[...httpStatuses].sort(([a], [b]) => a - b).map(([code, n]) => `${code}x${n}`).join(',')})`
+      : `${category}=${count}`
+  )).join(' ');
   // Every venue answered cleanly; with no accepted reading, all reported unavailable.
   const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
@@ -10803,7 +10828,7 @@ async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(UCDP_FETCH_TIMEOUT), headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`UCDP API ${res.statusCode} (v${version} p${page})`));
@@ -11291,6 +11316,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
     return _openskyProxyConnect('auth.opensky-network.org', 443).then((tlsSocket) => {
       return new Promise((resolve) => {
         const req = https.request({
+          signal: AbortSignal.timeout(10000),
           // tlsSocket is ALREADY a TLS connection to the target — proxyConnectTunnel
           // does tls.connect() through the CONNECT tunnel. Reuse it via
           // createConnection (NOT `socket:`): `socket:` makes https.request wrap it
@@ -11331,6 +11357,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
 
   return new Promise((resolve) => {
     const req = https.request({
+      signal: AbortSignal.timeout(10000),
       hostname: 'auth.opensky-network.org',
       port: 443,
       family: 4,
@@ -11442,6 +11469,7 @@ function _openskyRawFetch(url, token) {
     return _openskyProxyConnect(parsed.hostname, 443, 15000).then((tlsSocket) => {
       return new Promise((resolve) => {
         const request = https.get({
+          signal: AbortSignal.timeout(15000),
           // Reuse the already-TLS tunnel socket via createConnection, not `socket:`
           // — passing an already-TLS socket as `socket:` double-wraps TLS and throws
           // EPROTO "wrong version number", failing every OpenSky states fetch. See #5074.
@@ -11467,6 +11495,7 @@ function _openskyRawFetch(url, token) {
 
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       family: 4,
       headers: reqHeaders,
       agent: httpsKeepAliveAgent,
@@ -11884,6 +11913,8 @@ function handleWorldBankRequest(req, res) {
   console.log('[Relay] World Bank request (MISS):', indicator);
 
   const request = https.get(wbUrl, {
+
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Accept': 'application/json',
       'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0; +https://worldmonitor.app)',
@@ -12067,6 +12098,7 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
         }
       }
       const request = https.get(gammaUrl, {
+        signal: AbortSignal.timeout(10000),
         headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
         timeout: 10000,
       }, (response) => {
@@ -12325,6 +12357,8 @@ function handleYahooChartRequest(req, res) {
   }
 
   const yahooReq = https.get(yahooUrl, {
+
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -12473,6 +12507,7 @@ function handleAviationStackRequest(req, res) {
 
   const apiUrl = `https://api.aviationstack.com/v1/flights?${params}`;
   const apiReq = https.get(apiUrl, {
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -12574,6 +12609,8 @@ function handleNotamProxyRequest(req, res) {
   const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${locations}`;
 
   const request = https.get(apiUrl, {
+
+    signal: AbortSignal.timeout(25000),
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
     timeout: 25000,
   }, (upstream) => {
@@ -13072,6 +13109,7 @@ async function handleRelayRequest(req, res) {
       const apiResult = await new Promise((resolve) => {
         const start = Date.now();
         const apiReq = https.get('https://opensky-network.org/api/states/all?lamin=47&lomin=5&lamax=48&lomax=6', {
+          signal: AbortSignal.timeout(15000),
           family: 4,
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
           timeout: 15000,
@@ -14831,7 +14869,11 @@ async function handleWidgetAgentRequest(req, res) {
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    // The widget deadline and cancellation own recovery; SDK retries would
+    // replay billed turns and can sleep beyond the remaining request budget.
+    // Turns are non-streaming, so headers arrive only after generation: the
+    // client timeout must cover the whole request budget, not a fixed minute.
+    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 });
 
     const messages = [
       ...conversationHistory
@@ -15620,10 +15662,10 @@ function connectUpstream() {
 
 const wss = new WebSocketServer({ server });
 
-server.listen(PORT, () => {
+server.listen(PORT, RELAY_BIND_HOST, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort}, host ${server.address()?.address} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {

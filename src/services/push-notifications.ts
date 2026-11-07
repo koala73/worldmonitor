@@ -1,3 +1,4 @@
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 // Web Push subscription lifecycle (Phase 6).
 //
 // Tiny wrapper around navigator.serviceWorker.pushManager that:
@@ -128,6 +129,7 @@ async function authFetch(
   assertExpectedAccount(expectedUserId);
   return fetch(path, {
     ...init,
+    signal: createRequestTimeoutSignal(path, init, 15_000),
     headers: {
       'Content-Type': 'application/json',
       ...(init.headers ?? {}),

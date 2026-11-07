@@ -708,8 +708,13 @@ export class MapContainer {
     console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
     try {
       markLcpDebug('wm:map:deck-init-start');
-      await loadMapLibreCss();
-      const { DeckGLMap } = await import('./DeckGLMap');
+      // The MapLibre stylesheet chunk and the DeckGL renderer chunk are
+      // independent, and both are needed before the first map paint. Fetching
+      // them together removes one serialized round trip from the critical path.
+      const [, { DeckGLMap }] = await Promise.all([
+        loadMapLibreCss(),
+        import('./DeckGLMap'),
+      ]);
       if (!this.isCurrentRendererInit(token)) return;
       this.prepareRendererDom('deckgl-mode');
       this.deckGLMap = new DeckGLMap(this.container, {
@@ -1315,6 +1320,8 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setDisplacementFlows(flows); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementFlows(flows);
+    } else {
+      this.svgMap?.setDisplacementFlows(flows);
     }
   }
 
@@ -1328,12 +1335,14 @@ export class MapContainer {
     }
   }
 
-  // IDMC event points, deck.gl only like the DTM and cross-border layers.
+  // IDMC event points are supported by both 2D renderers.
   public setDisplacementEvents(data: DisplacementEventsData): void {
     this.cachedDisplacementEvents = data;
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementEvents(data);
+    } else {
+      this.svgMap?.setDisplacementEvents(data);
     }
   }
 
@@ -1343,6 +1352,8 @@ export class MapContainer {
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setInternalDisplacement(data);
+    } else {
+      this.svgMap?.setInternalDisplacement(data);
     }
   }
 

@@ -214,7 +214,7 @@ describe('publisher-families map data', () => {
     assert.deepEqual(colliding, [], 'a curated id starting with "label:" can collide with an unmapped label');
   });
 
-  it('gives every family a publisher display name and at least two labels', () => {
+  it('gives every family a publisher name and useful label or domain normalization', () => {
     // #8398: domain-only families (labels: []) declare an article-host
     // allowance without folding any label — the ingest/relay link gates
     // need wsj.com for Dow Jones delivery-host feeds, but the label must
@@ -247,6 +247,14 @@ describe('publisher-families map data', () => {
       assert.ok(entry.publisher.length > 0, `${familyId} has an empty publisher name`);
       if (DOMAIN_ONLY_FAMILIES.has(familyId)) {
         assert.deepEqual(entry.labels, [], `${familyId} must stay domain-only (no label folding)`);
+        continue;
+      }
+      // These single-source families unify RSS labels with URL-only country
+      // evidence. Without the mapping, the same publisher could corroborate itself.
+      if (familyId === 'deutschlandradio' || familyId === 'zdf') {
+        assert.equal(entry.labels.length, 1);
+        const domain = familyId === 'deutschlandradio' ? 'deutschlandfunk.de' : 'zdfheute.de';
+        assert.equal(publisherFamilyForDomain(domain), publisherFamilyFor(entry.labels[0]));
         continue;
       }
       assert.ok(

@@ -86,12 +86,36 @@ npx convex run --prod entitlements:clearAiRoutingPolicy '{"userId":"user_XXXX"}'
 
 Valid provider names: `anthropic`, `openrouter`, `openrouter-free`,
 `openrouter-free-backup`, `ollama`, `generic`. Unknown names, an empty list and
-an empty reason are rejected. The policy is per user: set it for every user id
-the customer signs in or holds keys with, and for any seat added later.
+an empty reason are rejected. The policy is per user: for a customer without an
+Enterprise account, set it for every user id the customer signs in or holds
+keys with, and for any seat added later. Do not write a per-user row for an
+Enterprise account member unless that member must have fewer providers than
+the account; the row stops them inheriting providers added to the account
+later.
+
+### Enterprise accounts
+
+A user who is an active member of an Enterprise account
+(`convex/enterpriseAccounts.ts`, tables `enterpriseAccounts` and
+`enterpriseMembers`) and has no per-user row inherits the account's
+`allowedProviders`. No per-member row is written. The inherited policy holds
+after the contract ends and stops only when the operator removes the member. A
+per-user row, when present, can only narrow the account's providers: the
+member gets the providers both the row and the account allow, and an empty
+overlap allows none. Company Monitoring
+admission reads the same resolver (`resolveAiRoutingPolicy` in
+`convex/lib/enterpriseAccounts.ts`).
+
+```bash
+npx convex run --prod enterpriseAccounts:addMemberByUserId '{"accountId":"<id>","userId":"user_XXXX"}'
+npx convex run --prod enterpriseAccounts:removeMember '{"accountId":"<id>","userId":"user_XXXX"}'
+```
 
 The edge caches each lookup for 60 s in Redis (`ai-routing:{env}:{userId}`).
 Setting or clearing a policy deletes that entry, so the change applies on the
-next request when Upstash is reachable, and within 60 s otherwise.
+next request when Upstash is reachable, and within 60 s otherwise. Adding or
+removing a member, and every account edit, deletes the entry for each affected
+member the same way.
 
 ## Failure behaviour
 

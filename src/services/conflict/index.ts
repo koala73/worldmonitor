@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, ListAcledEventsResponse, ListUcdpEventsResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
@@ -120,7 +121,7 @@ export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 // ---- Empty fallbacks ----
 
 const emptyAcledFallback: ListAcledEventsResponse = { events: [], pagination: undefined };
-const emptyUcdpFallback: ListUcdpEventsResponse = { events: [], pagination: undefined };
+const emptyUcdpFallback: ListUcdpEventsResponse = { events: [], pagination: undefined, candidateVersion: '' };
 
 // ---- Exported Functions ----
 
@@ -250,7 +251,7 @@ export async function fetchIranEvents(): Promise<IranEvent[]> {
 
   const resp = await iranBreaker.execute(async () => {
     const cacheBust = Math.floor(Date.now() / 120_000);
-    const r = await globalThis.fetch(toApiUrl(`/api/conflict/v1/list-iran-events?_v=${cacheBust}`));
+    const r = await globalThis.fetch(toApiUrl(`/api/conflict/v1/list-iran-events?_v=${cacheBust}`), { signal: createTimeoutSignal(15_000) });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json() as Promise<ListIranEventsResponse>;
   }, emptyIranFallback);

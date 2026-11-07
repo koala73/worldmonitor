@@ -104,7 +104,7 @@ describe('feeds added by the 2026-10-17 audit', () => {
       assert.equal(VARIANT_FEEDS.full!.europe!.find((feed) => feed.name === name)?.url, url, `${name}: server`);
       assert.equal(feeds.FULL_FEEDS.europe!.find((feed) => feed.name === name)?.url, url, `${name}: client`);
     }
-    assert.deepEqual(feeds.FULL_FEEDS.europe!.slice(-2).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland']);
+    assert.deepEqual(feeds.FULL_FEEDS.europe!.slice(-4).map((feed) => feed.name), ['BBC UK', 'BBC Northern Ireland', 'Deutschlandfunk', 'ZDFheute']);
   });
 
   it('enables BBC UK by default in English and leaves BBC Northern Ireland opt-in', () => {
