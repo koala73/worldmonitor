@@ -38,7 +38,7 @@ Each account holds at most five active MCP OAuth grants (`MAX_TOKENS_PER_USER` i
 **Diagnosis:**
 
 1. **Identify the checker.** Match the times of Glama's healthy checks against `wm_api_usage`. Glama sends User-Agent `node` from 40.160.65.14, authenticated, at roughly :37–:41 past each hour, and it also runs an anonymous pass near :15. That gave the account and showed its last successful call at 07:40:45 UTC.
-2. **List the account's grant rows.** Run `npx convex data mcpProTokens --format jsonLines`, with `CONVEX_DEPLOY_KEY` parsed from the main checkout's `.env.local`, and filter to the account.
+2. **List the account's grant rows.** Run `npx convex data mcpProTokens --limit 5000 --format jsonLines`, with `CONVEX_DEPLOY_KEY` parsed from the main checkout's `.env.local`, and filter to the account. Without `--limit` the command returns only the 100 newest rows of the whole table, about 1,000 rows on 2026-11-07, so it can miss the account's older grants. Keep revoked rows: they carry the evidence.
    - The "Connected via Glama" row had `revokedAt` 07:57:09, which is exactly the `createdAt` of a new "Connected via Claude" row.
    - Rows unused since October survived.
    - The 2026-10-21 rows showed the same pattern.
@@ -69,13 +69,13 @@ A hosted connector or health checker typically completes OAuth once and then ref
 
 Reconnects make this worse. claude.ai and other hosts may register a new client and mint a new grant on each reconnect, so a busy account churns through the cap quickly.
 
-`lastUsedAt` is debounced to 5 minutes (`TOUCH_DEBOUNCE_MS`), which is fine-grained enough for this ordering.
+`lastUsedAt` is debounced to 5 minutes (`TOUCH_DEBOUNCE_MS`), which is fine-grained enough for this ordering. Only authenticated MCP requests record use: a token refresh validates the grant with `recordUsage: false` (`api/oauth/token.ts`). A client that refreshes but never calls a tool therefore still looks idle and can be evicted.
 
 ## Prevention
 
 - An eviction rule for credentials should order by last use, never by creation time. Pin it with a test where the oldest-created row is also the most recently used.
 - For any report that a connector lost its sign-in, list the account's `mcpProTokens` rows and compare each `revokedAt` with new `createdAt` times before suspecting the client.
-- In a third-party checker's history, a failure that takes a few milliseconds means the checker never called us. Look at credential state, not at the server.
+- In a third-party checker's history, a failure that takes a few milliseconds means that check never called our MCP endpoint. The credential was already gone. It may have been lost to a revoked grant or to an earlier rejected refresh, after which the client discarded its tokens. Check grant rows and refresh outcomes, not the transport.
 
 ## Related Issues
 
