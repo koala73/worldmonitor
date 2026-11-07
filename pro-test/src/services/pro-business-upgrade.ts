@@ -46,9 +46,10 @@ function buildUpgradePreviewBody(planDisplayName: string, preview: UpgradePrevie
   const charge = formatMinorAmount(preview.chargeAmount, preview.currency);
   const period = preview.billingPeriod === 'annual' ? 'year' : 'month';
   const date = formatRenewalDate(preview.renewalDate);
-  const price = preview.renewalAmount === null
+  // The charge currency is the customer's, not the plan's: never borrow it for the renewal.
+  const price = preview.renewalAmount === null || !preview.renewalCurrency
     ? 'the Pro Business price'
-    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency ?? preview.currency)} a ${period} plus any tax`;
+    : `${formatMinorAmount(preview.renewalAmount, preview.renewalCurrency)} a ${period} plus any tax`;
   const renewal = date ? `It renews at ${price} on ${date}.` : `It renews at ${price}.`;
   return (
     `Your ${planDisplayName} subscription moves to Pro Business now. ` +

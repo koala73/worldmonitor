@@ -57,7 +57,7 @@ describe('buildUpgradePreviewBody', () => {
       chargeAmount: 6000,
       currency: 'USD',
       renewalAmount: 44999,
-      renewalCurrency: null,
+      renewalCurrency: 'USD',
       renewalDate: null,
       billingPeriod: 'annual',
     });
@@ -71,6 +71,19 @@ describe('buildUpgradePreviewBody', () => {
       billingPeriod: 'monthly',
     });
     assert.ok(unknown.includes('It renews at the Pro Business price.'));
+  });
+
+  it('names no renewal number when its currency is missing, instead of borrowing the charge currency', () => {
+    const body = buildUpgradePreviewBody('Pro Monthly', {
+      chargeAmount: 20053,
+      currency: 'AED',
+      renewalAmount: 4999,
+      renewalCurrency: null,
+      renewalDate: '2026-12-07T11:03:06Z',
+      billingPeriod: 'monthly',
+    });
+    assert.doesNotMatch(body, /AED\s?49\.99/);
+    assert.ok(body.includes('It renews at the Pro Business price on December 7, 2026.'));
   });
 
   it('never claims the charge covers only the rest of the old period', () => {
@@ -111,7 +124,7 @@ describe('cross-app copy parity (dashboard vs /pro)', () => {
     'If the payment fails, you stay on Pro.',
     'the Pro Business price',
     "new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })",
-    'preview.renewalCurrency ?? preview.currency',
+    "preview.renewalAmount === null || !preview.renewalCurrency",
     UPGRADE_SUCCESS_BODY,
     UPGRADE_CANCEL_SCHEDULED_BODY,
     UPGRADE_FAILED_BODY,
