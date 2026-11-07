@@ -2915,6 +2915,13 @@ paths:
                                       "source": "example"
                                 "byCountry":
                                     "exampleKey": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "registerLevels":
+                                    - "country": "US"
+                                      "level": "example"
+                                      "link": "https://example.com/worldmonitor"
+                                      "pubDate": "2026-01-15"
+                                      "source": "example"
                             schema:
                                 $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
                 "400":
@@ -9271,6 +9278,12 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecurityAdvisoryItem'
+                fetchedAt:
+                    type: string
         ByCountryEntry:
             type: object
             properties:

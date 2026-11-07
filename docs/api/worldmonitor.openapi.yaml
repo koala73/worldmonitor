@@ -18329,6 +18329,13 @@ paths:
                                       "source": "example"
                                 "byCountry":
                                     "exampleKey": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "registerLevels":
+                                    - "country": "US"
+                                      "level": "example"
+                                      "link": "https://example.com/worldmonitor"
+                                      "pubDate": "2026-01-15"
+                                      "source": "example"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse'
                 "400":
@@ -51365,6 +51372,12 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_SecurityAdvisoryItem'
+                fetchedAt:
+                    type: string
         worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse_ByCountryEntry:
             type: object
             properties:
