@@ -79,6 +79,7 @@ export const MONITORED_WORKFLOWS = Object.freeze([
       'shared/chokepoint-alert-ids.ts',
       'shared/cloud-preferences-contract.ts',
       'shared/alert-rule-shape.ts',
+      'shared/alert-capabilities.ts',
       'shared/pinned-webcams.ts',
       'shared/mcp-attribution.ts',
       'shared/company-monitoring-contract.ts',
