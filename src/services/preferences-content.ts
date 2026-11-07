@@ -565,7 +565,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       };
       const importFocusTrap = importModal ? createFocusTrap(importModal, {
         onEscape: closeFrameworkImport,
-        initialFocus: () => container.querySelector<HTMLElement>('#fwAgentskillsUrl'),
+        initialFocus: () => container.querySelector<HTMLElement>('.fw-import-tab-panel.active input, .fw-import-tab-panel.active textarea'),
       }) : null;
 
       const ac = new AbortController();

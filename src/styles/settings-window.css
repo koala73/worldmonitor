@@ -588,7 +588,7 @@
 }
 
 .settings-secret-row select[data-model-select] option {
-  background: #1e1e2e;
+  background: var(--settings-bg);
   color: var(--settings-text);
 }
 

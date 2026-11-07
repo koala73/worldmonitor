@@ -79,6 +79,12 @@ for (const theme of ['light', 'dark']) {
       await expect(page.locator('.fw-import-modal')).not.toBeVisible();
       await expect(page.locator('#unifiedSettingsModal')).toBeVisible();
       await expect(page.locator('#fwImportBtn')).toBeFocused();
+      await page.locator('#fwImportBtn').click();
+      await expect(page.locator('#fwJsonInput')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.fw-import-modal')).not.toBeVisible();
+      await expect(page.locator('#unifiedSettingsModal')).toBeVisible();
+      await expect(page.locator('#fwImportBtn')).toBeFocused();
       await page.locator('.unified-settings-close').click();
       await page.goto('/dashboard?c=UA');
       const more = page.locator('.cdp-more-actions > summary');

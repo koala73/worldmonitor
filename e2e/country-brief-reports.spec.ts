@@ -3,6 +3,32 @@ import { test, expect } from './country-brief-fixtures';
 import { readFile } from 'node:fs/promises';
 import { installDecisionBriefData, installCommodityBriefData } from './country-brief-design-fixtures';
 
+for (const action of ['Create story', 'Decision brief']) {
+  test(`${action} returns focus to a disclosure closed during loading`, async ({ page, countryBrief }) => {
+    void countryBrief;
+    await installDecisionBriefData(page);
+    await page.goto('/dashboard?country=DE');
+    const panel = page.locator('#country-deep-dive-panel');
+    await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let pending = false;
+    await page.route('**/src/components/CountryBriefOutput.ts*', async route => {
+      pending = true;
+      await held;
+      await route.continue();
+    });
+    const summary = panel.locator('.cdp-more-actions > summary');
+    await summary.click();
+    await panel.getByRole('button', { name: action, exact: true }).click();
+    await expect.poll(() => pending).toBe(true);
+    await summary.click();
+    release();
+    await panel.getByRole('button', { name: '← Back to brief', exact: true }).click();
+    await expect(summary).toBeFocused();
+  });
+}
+
 // Split from country-brief.spec.ts so the CI smoke shards can balance: that
 // file alone was 387 of shard 1's 390 test-seconds. Same fixture, same
 // recording policy.
@@ -16,6 +42,7 @@ for (const mobile of [false, true]) {
     await page.goto(`/dashboard?country=DE${mobile ? '' : '&expanded=1'}`);
     const panel = page.locator('#country-deep-dive-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
     const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
@@ -91,6 +118,7 @@ for (const mobile of [false, true]) {
     await page.goto(`/dashboard?country=DE${mobile ? '' : '&expanded=1'}`);
     const panel = page.locator('#country-deep-dive-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
     const form = output.getByRole('region', { name: 'Operational what-if worksheet', exact: true });
@@ -135,6 +163,7 @@ for (const mobile of [false, true]) {
     await expect(paper.locator('.operational-result')).toHaveCount(0);
     expect(JSON.parse(await paper.locator('#decision-brief-snapshot').textContent() ?? 'null').operationalWorksheet).toBeNull();
     await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     await expect(form.locator('.operational-result')).toHaveCount(0);
     await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeDisabled();
@@ -145,11 +174,13 @@ for (const mobile of [false, true]) {
     await expect(form.getByRole('button', { name: 'Export worksheet JSON' })).toBeEnabled();
     await alternativeDemand.fill('10');
     await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     await expect(form.getByLabel('Alternative daily demand (blank keeps baseline)', { exact: true })).toHaveValue('10');
     await expect(form.locator('.operational-summary')).toContainText('Alternative first gap: None within horizon');
     await form.getByLabel('Daily demand', { exact: true }).fill('');
     await output.getByRole('button', { name: '← Back to brief', exact: true }).click();
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     await expect(form.getByLabel('Daily demand', { exact: true })).toHaveValue('');
     await expect(form.locator('.operational-result')).toHaveCount(0);
@@ -166,6 +197,7 @@ for (const mobile of [false, true]) {
     await page.goto('/dashboard?country=DE');
     const panel = page.locator('#country-deep-dive-panel');
     await expect(panel).toHaveAttribute('aria-hidden', 'false');
+    if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
     await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
     const output = panel.getByRole('region', { name: 'Decision brief', exact: true });
     await expect(output).toBeVisible();
@@ -220,6 +252,7 @@ test('decision brief request failures recover and a second country uses its own 
   await page.goto('/dashboard?country=JP');
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
   const output = panel.locator('.cdp-output');
   for (const mode of ['denied', 'error'] as const) {
@@ -250,6 +283,7 @@ test('decision brief rejects anonymous entry and ignores delayed responses after
   await page.goto('/dashboard?country=DE');
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
   await expect(page.getByText('Decision brief is available on Pro.', { exact: true })).toBeVisible();
   await expect(panel.locator('.cdp-output')).toHaveCount(0);
@@ -264,6 +298,7 @@ test('decision brief rejects anonymous entry and ignores delayed responses after
     await held;
     await route.fallback();
   });
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
   await panel.getByRole('button', { name: 'Capture / refresh both' }).click();
   await expect.poll(() => pending).toBe(2);
@@ -273,6 +308,7 @@ test('decision brief rejects anonymous entry and ignores delayed responses after
   await page.locator('.search-modal .search-input').fill('Japan');
   await page.locator('.search-result-item[data-index]').filter({ hasText: 'Brief: Japan' }).click();
   await expect(panel.locator('.cdp-country-name')).toHaveText('Japan');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
   // Positive control: a real, live, freshly-built output is mounted and waiting for a
   // capture before the stale Germany responses land. Without this the checks below
@@ -309,6 +345,7 @@ test('decision brief clears and stays usable when a selection change aborts a ca
     await held;
     await route.fallback();
   });
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Decision brief', exact: true }).click();
   await panel.getByRole('button', { name: 'Capture / refresh both' }).click();
   await expect.poll(() => pending).toBe(2);
@@ -332,6 +369,7 @@ async function openCommodityBrief(page: Page, { mobile, light }: { mobile: boole
   await page.goto(`/dashboard?country=JP${light && !mobile ? '&expanded=1' : ''}`);
   const panel = page.locator('#country-deep-dive-panel');
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) await panel.locator('.cdp-more-actions > summary').click();
   await panel.getByRole('button', { name: 'Commodity decision brief', exact: true }).click();
   const output = panel.getByRole('region', { name: 'Commodity decision brief', exact: true });
   await expect(output.getByLabel('Commodity / product', { exact: true })).toHaveValue('helium');

@@ -53,5 +53,17 @@ for (const theme of ['light', 'dark']) for (const standalone of [false, true]) {
       });
       expect(contrast(colors.text, colors.background), selector).toBeGreaterThanOrEqual(4.5);
     }
+    if (standalone) {
+      const colors = await page.locator('#contentArea').evaluate(container => {
+        const row = document.createElement('div');
+        row.className = 'settings-secret-row';
+        row.innerHTML = '<select data-model-select><option>Controlled model choice</option></select>';
+        container.append(row);
+        const style = getComputedStyle(row.querySelector('option')!);
+        const rgb = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+        return { text: rgb(style.color), background: rgb(style.backgroundColor) };
+      });
+      expect(contrast(colors.text, colors.background), 'model option').toBeGreaterThanOrEqual(4.5);
+    }
   });
 }

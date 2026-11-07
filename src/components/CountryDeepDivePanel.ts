@@ -4574,6 +4574,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     );
   }
 
+  private restoreActionFocus(trigger: HTMLButtonElement): void {
+    const disclosure = trigger.closest<HTMLDetailsElement>('.cdp-more-actions');
+    const target = disclosure && !disclosure.open ? disclosure.querySelector<HTMLElement>('summary') : trigger;
+    target?.focus({ preventScroll: true });
+  }
+
   private async openDecisionBrief(trigger: HTMLButtonElement, commodity = false): Promise<void> {
     const code = this.currentCode;
     const name = this.currentName;
@@ -4598,7 +4604,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.outputClose = () => {
         outputController.abort();
         output.remove(); shell.hidden = false; this.outputClose = null;
-        this.content.scrollTop = scrollTop; trigger.focus({ preventScroll: true });
+        this.content.scrollTop = scrollTop; this.restoreActionFocus(trigger);
       };
       shell.hidden = true; this.content.append(output); this.content.scrollTop = 0;
       output.querySelector<HTMLButtonElement>('button')?.focus();
@@ -4656,7 +4662,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         shell.hidden = false;
         this.outputClose = null;
         this.content.scrollTop = scrollTop;
-        trigger.focus({ preventScroll: true });
+        this.restoreActionFocus(trigger);
       };
       shell.hidden = true;
       this.content.append(output);
