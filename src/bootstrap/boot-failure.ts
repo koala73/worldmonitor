@@ -122,6 +122,11 @@ export function renderBootFailureScreen(error: unknown): void {
   actions.append(reload, home);
   column.append(brand, eyebrow, heading, lede, detail, actions);
   overlay.append(column);
+  // Teardown leaves an already-rendered header in place; covering it is not
+  // enough, its controls would stay in the tab order behind the screen.
+  for (const sibling of Array.from(document.body.children)) {
+    sibling.setAttribute('inert', '');
+  }
   document.body.appendChild(overlay);
   reload.focus();
 }

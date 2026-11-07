@@ -40,15 +40,6 @@ http {
     # rewrite of the catch-all route to /dashboard.html. Keep nginx in sync.
     index dashboard.html index.html;
 
-    # Server-side failures serve the branded error page instead of nginx's
-    # stock one. Without proxy_intercept_errors this covers only errors nginx
-    # generates itself (502/504 when the API upstream is unreachable, its own
-    # 500/503); upstream 5xx responses pass through untouched, so /api/ JSON
-    # error bodies are preserved. The internal redirect lands in `location /`,
-    # which serves /500.html (copied from public/ by the Vite build) while
-    # keeping the original status code.
-    error_page 500 502 503 504 /500.html;
-
     location = /embed {
       include /etc/nginx/embed_security_headers.conf;
       try_files /embed.html =404;
@@ -76,6 +67,11 @@ http {
       # without an explicit index lookup the $uri/ match would 403.
       try_files $uri $uri/ $uri/index.html /dashboard.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
+      # Branded page for nginx-generated 5xx on document routes, keeping the
+      # status code. Scoped to this location, not the server: a server-level
+      # error_page is inherited by /api/, where it would replace JSON errors
+      # with HTML and drop the CORS headers that location sets.
+      error_page 500 502 503 504 /500.html;
     }
 
     location ~* ^/(assets|pro/assets|map-styles|data|textures|favico)/ {

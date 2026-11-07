@@ -63,6 +63,19 @@ describe('renderBootFailureScreen', () => {
     expect(detail).not.toContain('x'.repeat(241));
   });
 
+  it('makes the dead dashboard underneath inert so keyboard focus stays on the screen', () => {
+    // A failure after layout render leaves header controls in place; teardown
+    // does not remove them.
+    document.body.innerHTML = '<div id="app"><header><button id="leftover">Settings</button></header></div><div id="toast-root"></div>';
+
+    renderBootFailureScreen(new Error('late init failure'));
+
+    expect(document.getElementById('app')!.hasAttribute('inert')).toBe(true);
+    expect(document.getElementById('toast-root')!.hasAttribute('inert')).toBe(true);
+    expect(screen()!.hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(screen()!.querySelector('button'));
+  });
+
   it('is idempotent: a second render leaves the first screen in place', () => {
     renderBootFailureScreen(new Error('first failure'));
     renderBootFailureScreen(new Error('second failure'));
