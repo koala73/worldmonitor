@@ -2942,6 +2942,63 @@ describe('document-URL-only explicit Error (WORLDMONITOR-134)', () => {
   });
 });
 
+// ─── WORLDMONITOR-161 / -1CQ: Firefox CSP eval refusal from an injected script ─
+//
+// Firefox 156 and 159 on Windows, `EvalError: call to eval() blocked by CSP`
+// via onerror, at `/dashboard` and `/`. Both frames are the document URL:
+// `init` at 47:304021 (later 47:309244) and `interval<` at 42:17. Line 47 of
+// the served index.html is a 61-character meta tag, so the code is a ~300 KB
+// one-line script injected into the page's main world (its column grows
+// between versions). The dashboard already drops Chrome's wording of the same
+// refusal outright in ignoreErrors; Firefox words it differently. This is
+// gated on the document-frame invariant instead: an eval from our bundle rides
+// an `/assets/*.js` frame, and no inline script in an HTML entry evaluates a
+// string (pinned below).
+describe('document-URL-only CSP EvalError (WORLDMONITOR-161)', () => {
+  const MSG = 'call to eval() blocked by CSP';
+  const documentFrames = [
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 47, colno: 309244, function: 'init' },
+    { filename: 'https://www.worldmonitor.app/dashboard', lineno: 42, colno: 17, function: 'interval<' },
+  ];
+
+  it('suppresses an EvalError whose only source frames are the page document', () => {
+    assert.equal(beforeSend(makeEvent(MSG, 'EvalError', documentFrames)), null);
+  });
+
+  it('suppresses the same shape on the relative document path', () => {
+    const relative = documentFrames.map((f) => ({ ...f, filename: '/dashboard' }));
+    assert.equal(beforeSend(makeEvent(MSG, 'EvalError', relative)), null);
+  });
+
+  it('keeps the EvalError when a first-party bundle frame is on the stack', () => {
+    const event = makeEvent(MSG, 'EvalError', [...documentFrames, firstPartyFrame()]);
+    assert.ok(beforeSend(event) !== null);
+  });
+
+  it('keeps an EvalError whose single document frame is the SDK onerror synthesis', () => {
+    const synthesized = { filename: 'https://www.worldmonitor.app/dashboard', lineno: 0, colno: 0, function: '?' };
+    assert.ok(beforeSend(makeEvent(MSG, 'EvalError', [synthesized])) !== null);
+  });
+
+  it('keeps an EvalError with an empty stack', () => {
+    assert.ok(beforeSend(makeEvent(MSG, 'EvalError', [])) !== null);
+  });
+
+  it('pins the licence: no inline script in an HTML entry evaluates a string', () => {
+    const root = resolve(__dirname, '..');
+    const offenders = readdirSync(root)
+      .filter((name) => name.endsWith('.html'))
+      .flatMap((name) => {
+        const html = readFileSync(join(root, name), 'utf-8');
+        return [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+          .filter(([, body]) => /\beval\s*\(|\bnew\s+Function\b|\bset(?:Timeout|Interval)\s*\(\s*['"`]/.test(body))
+          .map(() => name);
+      });
+    assert.deepEqual(offenders, [],
+      'an inline HTML script now evaluates a string — a document-attributed EvalError may be ours; re-derive the WORLDMONITOR-161 gate');
+  });
+});
+
 // #9653: DeckGLMap reports a deck.gl render-loop stop only after confirming the
 // map froze. Those errors come from deck/maplibre frames, which the vendor-stack
 // rules drop, so the report claims itself with a kind tag.
