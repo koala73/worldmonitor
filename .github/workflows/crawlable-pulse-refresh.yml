@@ -76,6 +76,11 @@ jobs:
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Weekly pulse PR #${existing_pr} already exists."
+            # Re-arm auto-merge in case the run that opened the PR failed to.
+            # A merged, closed or draft PR is left alone.
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+              gh pr merge --auto --squash "$existing_pr"
+            fi
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
@@ -83,9 +88,8 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
-              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
-            BRANCH_NAME="$branch"
-            gh pr merge --auto --squash "$BRANCH_NAME"
+              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070). Recovered from a branch whose run did not open its PR, so this run cannot tell whether that capture passed verification. Check CI, then mark it ready." \
+              --draft
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

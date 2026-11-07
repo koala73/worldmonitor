@@ -89,6 +89,11 @@ jobs:
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
+            # Re-arm auto-merge in case the run that opened the PR failed to.
+            # A merged, closed or draft PR is left alone.
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+              gh pr merge --auto --squash "$existing_pr"
+            fi
             exit 0
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"

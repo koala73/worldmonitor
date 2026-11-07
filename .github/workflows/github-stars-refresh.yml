@@ -57,6 +57,11 @@ jobs:
             fi
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Monthly star-snapshot PR #${existing_pr} already exists."
+            # Re-arm auto-merge in case the run that opened the PR failed to.
+            # A merged, closed or draft PR is left alone.
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+              gh pr merge --auto --squash "$existing_pr"
+            fi
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then

@@ -41,8 +41,21 @@ describe('bot-PR workflows', () => {
       assert.doesNotMatch(text, /github\.token/, 'the Actions token opens PRs that get no CI');
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
       assert.match(text, /gh pr merge --auto --squash "\$BRANCH_NAME"/);
+      assert.match(
+        text,
+        /--jq '\.state == "OPEN" and \(\.isDraft \| not\)'\)" = "true" \]; then\n\s+gh pr merge --auto --squash "\$existing_pr"/,
+        'a rerun re-arms auto-merge on an open, non-draft PR',
+      );
     });
   }
+
+  it('opens a recovered crawlable pulse branch as an unarmed draft', () => {
+    const { jobs } = YAML.parse(read('crawlable-pulse-refresh.yml'));
+    const reconcile = jobs.refresh.steps.find((step) => step.id === 'reconcile').run;
+    const recovery = reconcile.slice(reconcile.indexOf('git ls-remote'));
+    assert.match(recovery, /--draft/);
+    assert.doesNotMatch(recovery, /gh pr merge/, 'its verification outcome is unknown');
+  });
 
   it('checks the token weekly and on demand', () => {
     const workflow = YAML.parse(read('review-pr-token-check.yml'));
