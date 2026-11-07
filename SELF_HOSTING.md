@@ -13,10 +13,10 @@ Run the full World Monitor stack locally with Docker/Podman.
 Prefer a single command? This does steps 1–4 below (clone, secrets, start, seed) and is safe to re-run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh | bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
 ```
 
-Options: `--dir`, `--port`, `--no-seed`, `--no-build` (run with `--help` for details). Or follow the manual steps:
+Options: `--dir`, `--port`, `--no-seed`, `--no-build`. Pass them after `bash -s --`, for example `curl -fsSL https://www.worldmonitor.app/install.sh | bash -s -- --port 8080`. Run `scripts/install.sh --help` in a checkout for details. Or follow the manual steps:
 
 ```bash
 # 1. Clone and enter the repo

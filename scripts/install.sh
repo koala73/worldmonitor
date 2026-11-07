@@ -2,7 +2,10 @@
 # World Monitor one-line installer (self-host with Docker).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh | bash
+#   curl -fsSL https://www.worldmonitor.app/install.sh | bash
+#   curl -fsSL https://www.worldmonitor.app/install.sh | bash -s -- --port 8080
+#
+# www.worldmonitor.app/install.sh is a vercel.json rewrite of this file on main.
 #
 # What it does (idempotent, safe to re-run):
 #   1. Uses the current directory when it already is a World Monitor checkout,
@@ -34,7 +37,13 @@ SEED=1
 BUILD=1
 
 usage() {
-  sed -n '2,/^set -eu/p' "$0" | sed 's/^# \{0,1\}//'
+  # Piped (`curl ... | bash -s -- --help`) there is no script file to read.
+  if [ -f "$0" ] && head -1 "$0" | grep -q '^#!'; then
+    sed -n '2,/^set -eu/p' "$0" | sed 's/^# \{0,1\}//'
+  else
+    printf '%s\n' "Usage: curl -fsSL https://www.worldmonitor.app/install.sh | bash -s -- [--dir DIR] [--port PORT] [--no-seed] [--no-build]" \
+      "Full help: https://github.com/koala73/worldmonitor/blob/main/scripts/install.sh"
+  fi
 }
 
 log() { printf '%s\n' "$*"; }
@@ -108,9 +117,6 @@ else
     /*) PROJECT_DIR="$TARGET_DIR" ;;
     *) PROJECT_DIR="$(pwd)/$TARGET_DIR" ;;
   esac
-  if [ -d "$PROJECT_DIR/docker-compose.yml" ] || [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
-    PROJECT_DIR="$PROJECT_DIR"
-  fi
   if [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
     log "Reusing existing checkout: $PROJECT_DIR"
     if [ -d "$PROJECT_DIR/.git" ]; then

@@ -97,10 +97,10 @@ Issues filed against any of the above are triaged from the same backlog — see 
 **One-line install** (self-host the full stack with Docker — dashboard, Redis, AIS relay, seeded public data):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh | bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
 ```
 
-This clones into `./worldmonitor` (or reuses your checkout), generates the required secrets, starts the stack, and seeds data. Then open [localhost:3000](http://localhost:3000). Options: `--dir`, `--port`, `--no-seed`, `--no-build` (see `scripts/install.sh --help`). API keys are optional. Details, production notes, and uninstall: [SELF_HOSTING.md](./SELF_HOSTING.md).
+This clones into `./worldmonitor` (or reuses your checkout), generates the required secrets, starts the stack, and seeds data. Then open [localhost:3000](http://localhost:3000). Options: `--dir`, `--port`, `--no-seed`, `--no-build`, passed after `bash -s --` (see `scripts/install.sh --help`). API keys are optional. Details, production notes, and uninstall: [SELF_HOSTING.md](./SELF_HOSTING.md).
 
 **Local development** (hot-reload Vite server):
 
