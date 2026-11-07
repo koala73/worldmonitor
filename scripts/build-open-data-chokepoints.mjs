@@ -404,6 +404,9 @@ export const REDIS_KEYS = Object.freeze({
   index: 'open-data:chokepoints:v1:index',
   dayPrefix: 'open-data:chokepoints:v1:day:',
   seedMeta: 'seed-meta:open-data:chokepoints',
+  // Durable "has ever published" marker: /api/health reads a missing seed-meta
+  // as pending only while this is absent (#10284).
+  activation: 'seed-activated:open-data:chokepoints',
 });
 const SEED_META_TTL_SECONDS = 7 * 86_400;
 
@@ -456,6 +459,7 @@ const dayBody = (json, csv) => JSON.stringify({ json, csv });
 async function writeSeedMeta(redis, dates) {
   const meta = { fetchedAt: Date.now(), recordCount: dates.length, latest: dates.at(-1) };
   await redis.command(['SET', REDIS_KEYS.seedMeta, JSON.stringify(meta), 'EX', String(SEED_META_TTL_SECONDS)]);
+  await redis.command(['SET', REDIS_KEYS.activation, '1']);
 }
 
 export async function publishSnapshotToRedis(redis, snapshot) {

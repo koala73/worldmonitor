@@ -58,7 +58,8 @@ function fakeUpstash() {
   };
 }
 
-const snapshotOfStore = (store) => Object.fromEntries([...store.entries()].filter(([key]) => key !== REDIS_KEYS.seedMeta));
+const snapshotOfStore = (store) =>
+  Object.fromEntries([...store.entries()].filter(([key]) => key !== REDIS_KEYS.seedMeta && key !== REDIS_KEYS.activation));
 
 describe('open data chokepoint Redis archive', () => {
   it('keeps the handler and the publisher on the same keys', () => {
@@ -103,6 +104,8 @@ describe('open data chokepoint Redis archive', () => {
     assert.equal(meta.latest, '2026-11-07');
     assert.equal(Number.isFinite(meta.fetchedAt), true);
     assert.equal(upstash.ttls.get(REDIS_KEYS.seedMeta), 7 * 86_400);
+    assert.equal(upstash.store.get(REDIS_KEYS.activation), '1');
+    assert.equal(upstash.ttls.has(REDIS_KEYS.activation), false);
   });
 
   it('refuses to publish over an index it cannot read', async () => {

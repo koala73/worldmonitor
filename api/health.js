@@ -1053,7 +1053,11 @@ const SEED_META = {
   newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },
   newsRecallBenchmark: { key: 'seed-meta:news:recall-benchmark', maxStaleMin: 2880 },
   // Daily GH Actions publisher at 06:23 UTC; 2880 = 2x, so one fully missed day alarms.
-  openDataChokepoints: { key: 'seed-meta:open-data:chokepoints', maxStaleMin: 2880 },
+  openDataChokepoints: {
+    key: 'seed-meta:open-data:chokepoints', maxStaleMin: 2880,
+    activationKey: 'seed-activated:open-data:chokepoints',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10284, activationKey: 'seed-activated:open-data:chokepoints' },
+  },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   // #6235: the country-index RPC is seeded for every serviceable country in the
   // enum. The seeding pass is deliberately best-effort (one country's provider
@@ -2773,6 +2777,7 @@ const ON_DEMAND_KEYS = new Set([
   'globalTendersDominicanRepublicDgcp',
   'globalTendersMalaysiaMyprocurement',
   'ukmtoIncidents',
+  'openDataChokepoints',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
   // activation marker after its first successful publish; after that, a
@@ -2996,6 +3001,7 @@ const ACTIVATION_MARKERS = {
   globalTendersDominicanRepublicDgcp: SEED_META.globalTendersDominicanRepublicDgcp.activationKey,
   globalTendersMalaysiaMyprocurement: SEED_META.globalTendersMalaysiaMyprocurement.activationKey,
   ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
+  openDataChokepoints: SEED_META.openDataChokepoints.activationKey,
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
