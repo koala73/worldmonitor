@@ -148,6 +148,38 @@ function parseConvexErrorData(err: unknown): unknown {
   }
 }
 
+/**
+ * Alert-ladder capability denial (#4273) → 402 with the structured upsell
+ * payload (`error` code, message, upgradeUrl, and the limit or value that
+ * tripped). The error is the marketing surface: the client and agents route
+ * on the code and render the named rung.
+ */
+const ALERT_CAPABILITY_CODES = new Set([
+  "ALERT_COUNTRIES_UPGRADE_REQUIRED",
+  "ALERT_CHANNEL_UPGRADE_REQUIRED",
+  "ALERT_SENSITIVITY_UPGRADE_REQUIRED",
+  "ALERT_DIGEST_MODE_UPGRADE_REQUIRED",
+  "ALERT_COUNTRY_SCOPE_REQUIRED",
+  "AI_DIGEST_UPGRADE_REQUIRED",
+]);
+
+function alertCapabilityDenialResponse(err: unknown): Response | null {
+  const code = extractConvexErrorCode(err);
+  if (!code || !ALERT_CAPABILITY_CODES.has(code)) return null;
+  const parsed = parseConvexErrorData(err);
+  const data = (parsed && typeof parsed === "object") ? parsed as Record<string, unknown> : {};
+  // COUNTRY_SCOPE is a 400, not a 402: a free caller fixes it by choosing
+  // countries, no payment required (upgradeUrl rides along as the alternative).
+  const status = code === "ALERT_COUNTRY_SCOPE_REQUIRED" ? 400 : 402;
+  return new Response(JSON.stringify({
+    error: code,
+    message: typeof data.message === "string" ? data.message : "",
+    upgradeUrl: typeof data.upgradeUrl === "string" ? data.upgradeUrl : "https://worldmonitor.app/pro",
+    ...(typeof data.limit === "number" ? { limit: data.limit } : {}),
+    ...(typeof data.value === "string" ? { value: data.value } : {}),
+  }), { status, headers: { "Content-Type": "application/json" } });
+}
+
 function extractConvexErrorCode(err: unknown): string | null {
   const parsed = parseConvexErrorData(err);
   if (typeof parsed === "string") return parsed;
@@ -1360,6 +1392,7 @@ http.route({
         try {
           await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             enabled: body.enabled,
             eventTypes: body.eventTypes as string[],
@@ -1394,6 +1427,8 @@ http.route({
           if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED" || code === "CHOKEPOINTS_INVALID") {
             return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
           }
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["INCOMPATIBLE_DELIVERY"]);
           if (validation) return validation;
           throw err;
@@ -1412,6 +1447,7 @@ http.route({
         try {
           await ctx.runMutation((internal as any).alertRules.setQuietHoursForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             quietHoursEnabled: body.quietHoursEnabled,
             quietHoursStart: body.quietHoursStart,
@@ -1421,6 +1457,8 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
           });
         } catch (err: unknown) {
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED"]);
           if (validation) return validation;
           throw err;
@@ -1439,6 +1477,7 @@ http.route({
         try {
           await ctx.runMutation((internal as any).alertRules.setDigestSettingsForUser, {
             userId,
+            enforceEntitlement: true,
             variant: body.variant,
             digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
@@ -1446,6 +1485,8 @@ http.route({
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
           });
         } catch (err: unknown) {
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           const validation = alertRuleValidationResponse(err, ["COUNTRIES_LIMIT_EXCEEDED", "INCOMPATIBLE_DELIVERY"]);
           if (validation) return validation;
           throw err;
@@ -1515,6 +1556,8 @@ http.route({
             "INCOMPATIBLE_DELIVERY", "TICKERS_LIMIT_EXCEEDED", "COUNTRIES_LIMIT_EXCEEDED", "CHOKEPOINTS_INVALID",
           ]);
           if (validation) return validation;
+          const capability = alertCapabilityDenialResponse(err);
+          if (capability) return capability;
           if (code === "PRO_REQUIRED") {
             // 402 Payment Required — the canonical HTTP status for paywall-gated
             // content. Client reads `error: "PRO_REQUIRED"` to route to the
@@ -1532,6 +1575,8 @@ http.route({
       if (code === "EMAIL_OWNERSHIP_REQUIRED" || code === "PRO_REQUIRED") {
         return new Response(JSON.stringify({ error: code }), { status: code === "PRO_REQUIRED" ? 402 : 400, headers: { "Content-Type": "application/json" } });
       }
+      const capability = alertCapabilityDenialResponse(err);
+      if (capability) return capability;
       console.error('[notification-channels] Operation failed', err);
       return new Response(JSON.stringify({ error: 'Operation failed' }), { status: 500, headers: { "Content-Type": "application/json" } });
     }

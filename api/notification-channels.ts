@@ -31,6 +31,7 @@ import {
   scopedTooManyRequestsResponse,
 } from '../server/_shared/rate-limit';
 import { getAlertRuleShapeViolation } from '../shared/alert-rule-shape';
+import { ALERT_UPGRADE_URL, FREE_ALERT_CHANNELS } from '../shared/alert-capabilities';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -486,10 +487,11 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // Scope note: this does NOT cover the day-0 poisoned-marker cohort. That
       // one arrives as a plain tier-0 answer (no billingStatus, no
       // verificationUnavailable), so the helper returns null and the buyer
-      // still gets the 403 below — bounded to
-      // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS by the other half of this fix.
+      // proceeds as a free-ladder caller (#4273) — bounded to
+      // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS by the other half of that fix,
+      // after which the refreshed entitlement restores their paid ladder.
       // Making that state 503 instead would hand every never-subscribed free
-      // user a retryable error in place of a clean upsell.
+      // user a retryable error in place of a working free tier.
       const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
       if (billingDenial) {
         const code = billingDenial.headers.get('X-Billing-Verification');
@@ -533,12 +535,14 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         }
         return billingDenial;
       }
-      return json({
-        error: 'pro_required',
-        message: 'Real-time alerts are available on the Pro plan.',
-        upgradeUrl: 'https://worldmonitor.app/pro',
-      }, 403, corsHeaders);
+      // #4273: a CONFIRMED free account is no longer turned away here — the
+      // free alert ladder (critical-only, 3 countries, web push + email) is
+      // written through the same relay, and the Convex capability gates
+      // (convex/lib/alertCapabilities.ts) answer anything past the ladder
+      // with a structured 402. Only unverifiable billing states (handled
+      // above) and the per-action prechecks below still deny early.
     }
+    const callerIsFree = !hasCurrentEntitlementCoverage(ent) || ent.features.tier < 1;
 
     // Every accepted POST writes through the Convex relay and the durable
     // welcome path can send mail, so a signed-in Pro user must not be able to
@@ -595,6 +599,35 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
     const { action } = body;
 
+    // #4273 free-ladder prechecks: the two actions whose denial would
+    // otherwise surface as a late Convex 402 mid-flow get the clean early
+    // 403 the old blanket gate used to give, now with the specific rung
+    // named. Everything else flows through; the Convex capability gates
+    // answer over-ladder writes with a structured 402 the client routes on.
+    if (callerIsFree) {
+      const freeChannels = new Set<string>(FREE_ALERT_CHANNELS);
+      if (action === 'create-pairing-token') {
+        return finish(json({
+          error: 'pro_required',
+          reason: 'channel_not_in_plan',
+          channel: 'telegram',
+          message: 'Telegram delivery is available on the Pro plan.',
+          upgradeUrl: ALERT_UPGRADE_URL,
+        }, 403, corsHeaders));
+      }
+      if (action === 'set-channel' && typeof (body as { channelType?: unknown }).channelType === 'string'
+        && !freeChannels.has((body as { channelType: string }).channelType)) {
+        const channel = (body as { channelType: string }).channelType;
+        return finish(json({
+          error: 'pro_required',
+          reason: 'channel_not_in_plan',
+          channel,
+          message: `The ${channel} channel is available on the Pro plan.`,
+          upgradeUrl: ALERT_UPGRADE_URL,
+        }, 403, corsHeaders));
+      }
+    }
+
     // session.userId is narrowed to string by the auth guard above, but
     // property narrowing does not flow into closures — capture it once.
     const welcomeUserId = session.userId;
@@ -613,6 +646,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       const resp = relay.response;
       if (!resp.ok) {
         console.error(`[notification-channels] POST ${relayAction} relay error:`, resp.status);
+        // Capability denials (#4273) and other machine-readable 400/402
+        // bodies must reach the client intact — a stale-paid edge cache can
+        // let a pro-channel save through to Convex's gate, and swallowing
+        // its 402 as `500 Operation failed` loses the upgrade reason
+        // (Greptile P2). EMAIL_OWNERSHIP_REQUIRED rides the same passthrough.
+        const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+        if (passthrough) return finish(passthrough);
         if (welcomeChannelType === 'email' && resp.status === 400) {
           const failure = await resp.json().catch(() => null);
           if (failure?.error === 'EMAIL_OWNERSHIP_REQUIRED') {

@@ -18,6 +18,7 @@ import {
   type AlertRuleShapeCode,
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
+import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -78,46 +79,31 @@ function clampPageItems(numItems: number | undefined): number {
 }
 
 /**
- * Layer-2 entitlement gate: notifications are a PRO feature, but until now
- * the only enforcement was at layer 1 (UI paywall) and layer 3 (relay
- * isUserPro filter). Layer 1 has had at least one hole — a 2026-04-28
- * audit found 7 of 28 enabled `alertRules` rows belonged to free-tier
- * users (`tier=0`, never been PRO). The relay's PRO filter has been
- * masking the bug at delivery time, but it fail-opens on entitlement-
- * service errors and shouldn't be the only line of defense.
+ * Layer-2 entitlement gate, capability edition (#4273). The old binary
+ * `assertProEntitlement` (PRO_REQUIRED on tier < 1) is replaced by the
+ * alert-ladder check in `./lib/alertCapabilities`: free accounts may hold a
+ * free-shaped rule (critical-only, the free channel set, up to the free
+ * country limit), and every rung past the ladder throws a structured
+ * `ALERT_*_UPGRADE_REQUIRED` / `AI_DIGEST_UPGRADE_REQUIRED` ConvexError that
+ * convex/http.ts maps to a 402 with an upgrade hint.
  *
- * This helper is the WRITE-PATH gate. Throws ConvexError with structured
- * `{code: "PRO_REQUIRED"}` data so the client can detect it and route to
- * the upgrade flow rather than surface a generic 500.
+ * History the gate still answers for: a 2026-04-28 audit found 7 of 28
+ * enabled `alertRules` rows belonged to free-tier users because layer 1 (UI
+ * paywall) had a hole and layer 3 (relay delivery filter) was masking it.
+ * The write path stays the primary defense; the relay's delivery-time clamp
+ * (scripts/notification-relay.cjs) remains defense-in-depth and clamps
+ * free-tier delivery to the free ladder regardless of what a legacy row says.
  *
- * Mirrors the FREE_TIER_DEFAULTS semantics in `convex/entitlements.ts`:
- *   - no entitlement row → tier 0 (free)
- *   - validUntil < Date.now() → expired, treat as tier 0
- *   - tier >= 1 → PRO, allowed
- *
- * Kept inline (not imported from entitlements.ts) for security-review
- * readability: every alertRules mutation that calls this should be
- * trivially auditable in one file.
+ * Each mutation validates the EFFECTIVE state of the fields it writes
+ * (incoming value, else the stored row's), so editing quiet hours on a
+ * legacy wider-than-plan row does not demand repairing the whole row first.
  */
-async function assertProEntitlement(
+async function assertAlertCapabilitiesFor(
   ctx: MutationCtx,
   userId: string,
+  state: Parameters<typeof assertAlertCapabilities>[1],
 ): Promise<void> {
-  const entitlement = await ctx.db
-    .query("entitlements")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .first();
-  const tier =
-    entitlement && entitlement.validUntil >= Date.now()
-      ? entitlement.features.tier
-      : 0;
-  if (tier < 1) {
-    throw new ConvexError({
-      code: "PRO_REQUIRED",
-      message:
-        "Notifications are a PRO feature. Upgrade to enable real-time and digest alerts.",
-    });
-  }
+  assertAlertCapabilities(await loadAlertCapabilities(ctx, userId), state);
 }
 
 // Cross-field invariant enforcement for (digestMode, sensitivity).
@@ -290,6 +276,11 @@ export const setAlertRulesForUser = internalMutation({
     countries: v.optional(v.array(v.string())),
     tickers: v.optional(v.array(v.string())),
     chokepoints: v.optional(v.array(v.string())),
+    // True on the user-facing relay path (convex/http.ts): enforce the
+    // caller's alert-ladder capabilities (#4273). Omitted on trusted operator
+    // paths (admin migration scripts, cleanup jobs), which stay ungated —
+    // see the sister comment in setNotificationConfigForUser.
+    enforceEntitlement: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
@@ -313,6 +304,22 @@ export const setAlertRulesForUser = internalMutation({
     const normalizedCountries = rest.countries !== undefined
       ? normalizeCountries(rest.countries)
       : undefined;
+    if (rest.enforceEntitlement) {
+      // Validate only what this call writes — see the sister comment in
+      // setNotificationConfigForUser. `channels` is a required arg here, so
+      // it is always judged; sensitivity only when sent (or on insert, where
+      // the default applies).
+      await assertAlertCapabilitiesFor(ctx, userId, {
+        ...(rest.sensitivity !== undefined || !existing ? { sensitivity: pair.sensitivity } : {}),
+        channels,
+        ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
+        ...(rest.aiDigestEnabled !== undefined ? { aiDigestEnabled: rest.aiDigestEnabled } : {}),
+        // Whole-rule view for the worldwide-scope check — see
+        // setNotificationConfigForUser.
+        enabled: rest.enabled,
+        effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
+      });
+    }
     const normalizedTickers = rest.tickers !== undefined
       ? normalizeTickers(rest.tickers)
       : undefined;
@@ -392,11 +399,13 @@ export const setDigestSettingsForUser = internalMutation({
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
     countries: v.optional(v.array(v.string())),
+    // See setAlertRulesForUser: true on the user-facing relay path only.
+    enforceEntitlement: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     assertRuleShape(args);
-    const { userId, variant, countries, ...digest } = args;
+    const { userId, variant, countries, enforceEntitlement, ...digest } = args;
     if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
     }
@@ -424,6 +433,14 @@ export const setDigestSettingsForUser = internalMutation({
     const normalizedCountries = countries !== undefined
       ? normalizeCountries(countries)
       : undefined;
+    if (enforceEntitlement) {
+      // `digestMode` is a required arg here, so it is always judged;
+      // countries only when sent — see setNotificationConfigForUser.
+      await assertAlertCapabilitiesFor(ctx, userId, {
+        digestMode: pair.digestMode,
+        ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
+      });
+    }
     if (existing) {
       const patch: Record<string, unknown> = { ...digest, updatedAt: now };
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
@@ -439,11 +456,17 @@ export const setDigestSettingsForUser = internalMutation({
 });
 
 export const setQuietHoursForUser = internalMutation({
-  args: { userId: v.string(), ...QUIET_HOURS_ARGS, countries: v.optional(v.array(v.string())) },
+  args: {
+    userId: v.string(),
+    ...QUIET_HOURS_ARGS,
+    countries: v.optional(v.array(v.string())),
+    // See setAlertRulesForUser: true on the user-facing relay path only.
+    enforceEntitlement: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
     assertRuleShape(args);
-    const { userId, countries, ...rest } = args;
+    const { userId, countries, enforceEntitlement, ...rest } = args;
     validateQuietHoursArgs(rest);
 
     const existing = await ctx.db
@@ -473,6 +496,13 @@ export const setQuietHoursForUser = internalMutation({
     const normalizedCountries = countries !== undefined
       ? normalizeCountries(countries)
       : undefined;
+    if (enforceEntitlement && normalizedCountries !== undefined) {
+      // Quiet-hours edits touch no capability-gated field except an optional
+      // countries update, so that is all this path validates.
+      await assertAlertCapabilitiesFor(ctx, userId, {
+        countriesCount: normalizedCountries.length,
+      });
+    }
     const patch = {
       quietHoursEnabled: rest.quietHoursEnabled,
       quietHoursStart: rest.quietHoursStart,
@@ -535,13 +565,14 @@ export const setNotificationConfigForUser = internalMutation({
     // the HTTP action verifies the Clerk JWT, the entitlement check belongs
     // on the same transaction as the write — defense-in-depth against any
     // future caller (a different HTTP action, a webhook handler, etc.).
-    // Sister *ForUser internal mutations (setAlertRulesForUser, etc.) are
-    // INTENTIONALLY left ungated: they are invoked by trusted operator paths
-    // (admin migration scripts, cleanup jobs) where the operator's intent
-    // is "manage another user's settings," and entitlement-gating those
-    // would block the very cleanup we need to do for free-tier rows that
-    // got created before this gate existed.
-    await assertProEntitlement(ctx, userId);
+    // Capability edition (#4273): the check runs unconditionally here (this
+    // is the UI's atomic write path, never an operator path) but now admits
+    // free-shaped rules; it is applied below, once the effective post-write
+    // state is known. Sister *ForUser internal mutations gate only when the
+    // relay passes `enforceEntitlement` — their flagless form stays open for
+    // trusted operator paths (admin migration scripts, cleanup jobs), where
+    // entitlement-gating would block the very cleanup we need for over-plan
+    // legacy rows.
 
     if (args.digestHour !== undefined && (args.digestHour < 0 || args.digestHour > 23 || !Number.isInteger(args.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
@@ -575,6 +606,24 @@ export const setNotificationConfigForUser = internalMutation({
     const normalizedChokepoints = args.chokepoints !== undefined
       ? normalizeChokepoints(args.chokepoints)
       : undefined;
+
+    // Validate only what this call writes (insert defaults included): a
+    // downgraded account must always be able to disable or narrow a legacy
+    // wider-than-plan row, so untouched stored fields are not re-judged here.
+    // Delivery stays clamped to the caller's ladder either way
+    // (scripts/notification-relay.cjs).
+    await assertAlertCapabilitiesFor(ctx, userId, {
+      ...(args.sensitivity !== undefined || !existing ? { sensitivity: pair.sensitivity } : {}),
+      ...(args.digestMode !== undefined || !existing ? { digestMode: pair.digestMode } : {}),
+      ...(channels !== undefined ? { channels } : {}),
+      ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
+      ...(args.aiDigestEnabled !== undefined ? { aiDigestEnabled: args.aiDigestEnabled } : {}),
+      // Whole-rule view for the worldwide-scope check (Greptile P1): an
+      // omitted or empty countries list is a worldwide rule, which the free
+      // ladder does not include. Disables stay allowed.
+      enabled: args.enabled ?? existing?.enabled ?? true,
+      effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
+    });
 
     const now = Date.now();
 
