@@ -801,10 +801,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Error` and synthesizes exactly ONE document-URL frame for it, and that
       // error can be ours — Firefox's `uncaught exception: [object Object]`
       // (WORLDMONITOR-106) is a bundle throwing a non-Error.
+      //
+      // An `EvalError` joins on the same multi-frame terms. Our CSP has no
+      // 'unsafe-eval', our bundle's evals would ride an `/assets/*.js` frame,
+      // and no inline script in our HTML entries evaluates a string (pinned by
+      // tests/sentry-beforesend.test.mjs). WORLDMONITOR-161 / -1CQ: Firefox's
+      // `call to eval() blocked by CSP` from a ~300 KB injected script at
+      // `/dashboard` 47:309244, where the served line 47 is a short meta tag.
+      // Chrome's wording of the same refusal is already in ignoreErrors.
       const isNonScriptUrlFrame = (filename: string) =>
         !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
         && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
-      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || (excType === 'Error' && nonInfraFrames.length > 1))
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || ((excType === 'Error' || excType === 'EvalError') && nonInfraFrames.length > 1))
           && !hasFirstParty
           && nonInfraFrames.length > 0
           && nonInfraFrames.every(f => isNonScriptUrlFrame(f.filename ?? ''))) return null;
