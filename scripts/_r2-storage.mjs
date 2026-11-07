@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
+
 let _S3Client, _PutObjectCommand, _GetObjectCommand;
 async function loadS3SDK() {
   if (!_S3Client) {
@@ -94,7 +96,9 @@ function isRetryableApiStatus(status) {
   return status === 408 || status === 409 || status === 429 || status >= 500;
 }
 
-function isRetryableR2Error(err) {
+function isRetryableR2Error(err, depth = 0) {
+  if (depth > 4) return false;
+  if (['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'ENETUNREACH', 'EAI_AGAIN'].includes(err?.code)) return true;
   const status = err?.status;
   if (typeof status === 'number') return isRetryableApiStatus(status);
 
@@ -114,12 +118,11 @@ function isRetryableR2Error(err) {
 
   const httpStatus = err?.$metadata?.httpStatusCode;
   if (typeof httpStatus === 'number') return isRetryableApiStatus(httpStatus);
-  return false;
+  return err?.cause ? isRetryableR2Error(err.cause, depth + 1) : false;
 }
 
 async function withR2Retry(operation, context = {}) {
   const maxAttempts = 3;
-  const delays = [0, 500, 1500];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -130,7 +133,8 @@ async function withR2Retry(operation, context = {}) {
       if (!retryable || lastAttempt) throw err;
 
       console.warn(`  [R2] Retry ${attempt}/${maxAttempts - 1} for ${context.op || 'operation'} key=${context.key || ''}: ${summarizeError(err)}`);
-      await sleep(delays[attempt] || 1500);
+      const ceiling = Math.min(5_000, 500 * 2 ** (attempt - 1));
+      await sleep(Math.round(ceiling * (0.5 + Math.random() * 0.5)));
     }
   }
 }
@@ -207,6 +211,8 @@ async function getR2StorageClient(config) {
       region: config.region,
       credentials: config.credentials,
       forcePathStyle: config.forcePathStyle,
+      // withR2Retry owns the three-attempt budget; do not nest SDK retries.
+      maxAttempts: 1,
       // Bound connection + socket-inactivity so a stalled R2 socket fails
       // fast (→ withR2Retry → caller fallback) rather than hanging the run.
       requestHandler: { requestTimeout: R2_S3_TIMEOUT_MS, connectionTimeout: 10_000 },
@@ -216,8 +222,24 @@ async function getR2StorageClient(config) {
   return client;
 }
 
+// The exact bytes putR2JsonObject writes. A reader that parses an object and
+// serializes it again gets the same bytes, so a recorded digest can be checked.
+function serializeR2JsonBody(payload) {
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+function sha256Hex(body) {
+  return createHash('sha256').update(body, 'utf8').digest('hex');
+}
+
 async function putR2JsonObject(config, key, payload, metadata = {}) {
-  const body = `${JSON.stringify(payload, null, 2)}\n`;
+  return putR2JsonBody(config, key, serializeR2JsonBody(payload), metadata);
+}
+
+// Writes an already-serialized JSON body, for a caller that records the
+// digest before the write. Returns the digest of the bytes written.
+async function putR2JsonBody(config, key, body, metadata = {}) {
+  const sha256 = sha256Hex(body);
 
   if (config.mode === 'api') {
     return withR2Retry(async () => {
@@ -237,7 +259,7 @@ async function putR2JsonObject(config, key, payload, metadata = {}) {
         error.status = resp.status;
         throw error;
       }
-      return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+      return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8'), sha256 };
     }, {
       op: 'put',
       key,
@@ -259,7 +281,7 @@ async function putR2JsonObject(config, key, payload, metadata = {}) {
       _s3TimeoutMs,
       `R2 s3 put ${key}`,
     );
-    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8') };
+    return { bucket: config.bucket, key, bytes: Buffer.byteLength(body, 'utf8'), sha256 };
   }, {
     op: 'put',
     key,
@@ -323,6 +345,9 @@ export {
   getR2StorageClient,
   getR2JsonObject,
   putR2JsonObject,
+  putR2JsonBody,
+  serializeR2JsonBody,
+  sha256Hex,
   withSettleTimeout,
   __setS3ClientForTests,
   __setR2S3TimeoutForTests,

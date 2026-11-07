@@ -42,6 +42,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     assert.ok(copied.size > 0, 'Dockerfile.relay has no COPY scripts/*.mjs|cjs lines');
   });
 
+  it('includes the AU yield fallback seeder launched as a child process', () => {
+    assert.ok(copied.has('scripts/seed-yield-curve-au.mjs'));
+  });
+
   it('copies the China country-index helper that ais-relay loads dynamically', () => {
     assert.ok(copied.has('scripts/_country-stock-index.mjs'));
   });
@@ -52,6 +56,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
       copied.has('scripts/shared/iso3-to-iso2.json'),
       'iso3-to-iso2.json must be COPY\'d; _weather-alert-select.mjs reads it at import for SWIC member codes',
     );
+  });
+
+  it('copies the PizzINT history helper required by the relay', () => {
+    assert.ok(copied.has('scripts/shared/pizzint-history.cjs'));
   });
 
   // The BFS below seeds only from COPY'd entrypoints. notification-relay.cjs

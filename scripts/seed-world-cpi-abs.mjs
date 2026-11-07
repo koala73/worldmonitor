@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Australia national CPI overlay (ABS SDMX 2.1).
 //
-// Australia publishes CPI quarterly; the IMF and OECD copies are also
+// Australia publishes CPI quarterly; the IMF copy is also
 // quarterly. This overlay keeps the official ABS series as the fallback of
 // record for AU, and its presence is what lets the read path label AU as
 // quarterly instead of pretending a monthly indicator exists.

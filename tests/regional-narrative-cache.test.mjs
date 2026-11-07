@@ -54,7 +54,7 @@ afterEach(() => { /* no globals mutated — everything is injected */ });
 test('identical inputs hit the cache: one LLM call, second result served as provider=cache', async () => {
   const cache = makeCache();
   let llmCalls = 0;
-  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'groq', model: 'llama-70b' }; };
+  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' }; };
 
   const first = await generateRegionalNarrative(REGION, snapshotFixture(), [], { callLlm, cache });
   const second = await generateRegionalNarrative(REGION, snapshotFixture(), [], { callLlm, cache });
@@ -63,7 +63,7 @@ test('identical inputs hit the cache: one LLM call, second result served as prov
   assert.equal(first.narrative.situation.text, 'Something is happening in the region.');
   assert.deepEqual(second.narrative, first.narrative, 'cached narrative must round-trip');
   assert.equal(second.provider, 'cache');
-  assert.equal(second.model, 'llama-70b', 'cached entry must preserve the producing model');
+  assert.equal(second.model, 'deepseek/deepseek-v4-flash', 'cached entry must preserve the producing model');
   assert.equal(cache.sets, 1);
   const [, entry] = [...cache.store.entries()][0];
   assert.ok(entry.ttlSeconds > 0, 'cache writes must carry a TTL');
@@ -72,7 +72,7 @@ test('identical inputs hit the cache: one LLM call, second result served as prov
 test('changed snapshot content misses the cache and generates fresh', async () => {
   const cache = makeCache();
   let llmCalls = 0;
-  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'groq', model: 'llama-70b' }; };
+  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' }; };
 
   await generateRegionalNarrative(REGION, snapshotFixture(), [], { callLlm, cache });
   const changed = snapshotFixture();
@@ -84,7 +84,7 @@ test('changed snapshot content misses the cache and generates fresh', async () =
 
 test('failed/invalid generations are never cached', async () => {
   const cache = makeCache();
-  const callLlm = async () => ({ text: 'not json at all', provider: 'groq', model: 'llama-70b' });
+  const callLlm = async () => ({ text: 'not json at all', provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' });
 
   const result = await generateRegionalNarrative(REGION, snapshotFixture(), [], { callLlm, cache });
 
@@ -98,7 +98,7 @@ test('a throwing cache never blocks generation', async () => {
     async set() { throw new Error('redis down'); },
   };
   let llmCalls = 0;
-  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'groq', model: 'llama-70b' }; };
+  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'openrouter', model: 'deepseek/deepseek-v4-flash' }; };
 
   const result = await generateRegionalNarrative(REGION, snapshotFixture(), [], { callLlm, cache });
 
@@ -109,7 +109,7 @@ test('a throwing cache never blocks generation', async () => {
 test('global region still short-circuits without touching cache or LLM', async () => {
   const cache = makeCache();
   let llmCalls = 0;
-  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'groq', model: 'x' }; };
+  const callLlm = async () => { llmCalls += 1; return { text: VALID_LLM_TEXT, provider: 'openrouter', model: 'x' }; };
 
   const result = await generateRegionalNarrative({ id: 'global', name: 'Global' }, snapshotFixture(), [], { callLlm, cache });
 

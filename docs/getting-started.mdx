@@ -78,6 +78,8 @@ WorldMonitor has three setup tracks depending on what you're doing.
 
 Runs the Vite dashboard with **no required environment variables**. Optional API keys (see below) unlock extra layers and feeds.
 
+**Requires Node.js 24**, the version pinned in `.nvmrc`. Distribution packages are often older. Debian 12 and Raspberry Pi OS ship Node.js 18 with npm 9.2.0, where `npm install` stops with `Invalid comparator: file:vendor/braces`. Install Node.js 24 with [nvm](https://github.com/nvm-sh/nvm) (`nvm install` inside the checkout reads `.nvmrc`) or from [nodejs.org](https://nodejs.org/en/download).
+
 ```bash
 git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
@@ -101,7 +103,7 @@ Run `make generate` before building or pushing whenever you modify `.proto` file
 
 ### 3. Self-hosted Docker stack
 
-The full self-hosted stack (dashboard + Railway-style relay + Redis + seed scripts) requires **Node.js 22+**, Docker or Podman, and secrets with no safe defaults — `RELAY_SHARED_SECRET`, `REDIS_PASSWORD`, and `REDIS_TOKEN` must be set before `docker compose up`. See the `SELF_HOSTING.md` guide in the repository for the complete walkthrough.
+The full self-hosted stack (dashboard + Railway-style relay + Redis + seed scripts) requires **Node.js 24** (the version in `.nvmrc`), Docker or Podman, and secrets with no safe defaults: `RELAY_SHARED_SECRET`, `REDIS_PASSWORD`, `REDIS_TOKEN`, and `WM_SESSION_SECRET` must be set before `docker compose up`. See the `SELF_HOSTING.md` guide in the repository for the complete walkthrough. For what self-hosting includes, what it does not, and the licence position, see [Self-hosting](/self-hosting).
 
 ## API Dependencies
 

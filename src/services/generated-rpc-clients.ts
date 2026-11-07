@@ -32,19 +32,31 @@ import type { UnrestServiceClient as UnrestServiceClientInstance } from '@/gener
 import type { WebcamServiceClient as WebcamServiceClientInstance } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { WildfireServiceClient as WildfireServiceClientInstance } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
 import type { MarketServiceClient as MarketServiceClientCtor } from '@/generated/client/worldmonitor/market/v1/service_client';
+import { createRequestTimeoutSignal } from './timeout-signal';
 
 /** Derived from generated service client constructors so protoc-gen option drift fails typecheck. */
 type RpcClientOptions = NonNullable<ConstructorParameters<typeof MarketServiceClientCtor>[1]>;
 type RpcClientConstructor<T extends object> = new (baseURL: string, options?: RpcClientOptions) => T;
 type RpcClientConstructorLoader<T extends object> = () => Promise<RpcClientConstructor<T>>;
+/** Maps every public member that is not an async method to `never`, so `T extends AsyncMethodsOnly<T>` fails for it. */
+type AsyncMethodsOnly<T> = { [K in keyof T]: T[K] extends (...args: never[]) => Promise<unknown> ? T[K] : never };
 
-export function createLazyRpcClientConstructor<T extends object>(loadConstructor: RpcClientConstructorLoader<T>): RpcClientConstructor<T> {
+export function createLazyRpcClientConstructor<T extends object & AsyncMethodsOnly<T>>(loadConstructor: RpcClientConstructorLoader<T>): RpcClientConstructor<T> {
   return function LazyRpcClient(baseURL: string, options?: RpcClientOptions): T {
+    const transport = options?.fetch ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
+    const boundedOptions: RpcClientOptions = {
+      ...options,
+      fetch: (input, init) => {
+        // A final guard for adapters that merely forward fetch. Callers keep
+        // their shorter budgets; 120s also accommodates the 90s LLM path.
+        return transport(input, { ...init, signal: createRequestTimeoutSignal(input, init, 120_000) });
+      },
+    };
     let clientPromise: Promise<T> | undefined;
     const getClient = () => {
       if (!clientPromise) {
         clientPromise = loadConstructor()
-          .then((ClientCtor) => new ClientCtor(baseURL, options))
+          .then((ClientCtor) => new ClientCtor(baseURL, boundedOptions))
           .catch((error) => {
             clientPromise = undefined;
             throw error;
@@ -53,13 +65,29 @@ export function createLazyRpcClientConstructor<T extends object>(loadConstructor
       return clientPromise;
     };
 
+    // Every property read yields an invoker, because the real client is not
+    // loaded yet. That is only sound when every public member of T is an async
+    // method; a field or getter would read as a function here while its type
+    // says string or boolean (#4550). The AsyncMethodsOnly constraint rejects
+    // such clients at compile time. At runtime a bare read stays silent, so if
+    // the loaded client still drifts from its type, invoking a non-method
+    // rejects instead of resolving to the value.
+    // `then` and `toJSON` stay undefined so await and JSON.stringify treat the
+    // proxy as a plain object instead of calling an invoker.
     return new Proxy({}, {
       get(target, property, receiver) {
-        if (property === 'then') return undefined;
+        if (property === 'then' || property === 'toJSON') return undefined;
         if (typeof property === 'symbol') return Reflect.get(target, property, receiver);
         return (...args: unknown[]) => getClient().then((client) => {
           const value = (client as Record<PropertyKey, unknown>)[property];
-          return typeof value === 'function' ? value.apply(client, args) : value;
+          if (typeof value !== 'function') {
+            throw new TypeError(
+              `Lazy RPC client: "${String(property)}" is not a method on the loaded client `
+              + `(got ${value === null ? 'null' : typeof value}). Only async methods can be `
+              + 'read through the lazy proxy; access the loaded instance for fields.',
+            );
+          }
+          return value.apply(client, args);
         });
       },
     }) as T;

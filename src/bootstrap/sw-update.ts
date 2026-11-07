@@ -213,12 +213,12 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         // Settings, ⌘K search, etc.). The reload stays armed — next tab-hide
         // after the modal closes will fire it. User can also click Reload
         // in the toast manually at any time.
-        // An overlay carrying RELOAD_SAFE_ATTR (the onboarding popover) does
-        // not count: it holds nothing a reload would lose. See
-        // src/utils/open-modal.ts and WORLDMONITOR-15X.
-        const blockedBy = findReloadBlockingModal(doc);
-        if (blockedBy !== null) {
-          logSw('auto-reload-suppressed-modal-open', { blockedBy });
+        // An overlay that declared itself reload-safe (the onboarding popover,
+        // the SignalModal) does not count: it holds nothing a reload would
+        // lose. See src/utils/open-modal.ts and WORLDMONITOR-15X.
+        const blocker = findReloadBlockingModal(doc);
+        if (blocker !== null) {
+          logSw('auto-reload-suppressed-modal-open', { blockedBy: blocker.label, reloadPolicy: blocker.policy });
           return;
         }
         logSw('auto-reload-triggered');
@@ -233,6 +233,10 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
         dwellTimerId = null;
         currentDwellCancel = null;
         logSw('reload-clicked');
+        // reload:user-initiated — the user pressed Reload, so the modal guard
+        // does not apply. Deferring a direct instruction would be a bug, not a
+        // protection. The marker is what keeps this exception explicit rather
+        // than implied by the shape of the enclosing installer.
         reload();
       } else if (action === 'dismiss') {
         clearTimer(dwellTimerId);

@@ -7,24 +7,32 @@ import {
   fetchSp500Breadth,
   mergeBreadthHistory,
   readBreadthHistory,
+  readSavedConstituents,
   requireCompleteReadings,
+  SP500_CONSTITUENTS_KEY,
 } from './_sp500-breadth.mjs';
 loadEnvFile(import.meta.url);
 
 const BREADTH_TTL = 2592000; // 30 days
 
-async function fetchAll() {
-  const { readings, constituents, valid, sessionDate, sourceSessionAt } = await fetchSp500Breadth();
+function redisOpts() {
+  return { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+}
 
-  console.log(`  TradingView: ${constituents} S&P 500 constituents (valid 20d=${valid.pctAbove20d} | 50d=${valid.pctAbove50d} | 200d=${valid.pctAbove200d})`);
+async function fetchAll() {
+  const {
+    readings, constituents, valid, sessionDate, sourceSessionAt, otherSessions, membership, indexConstituents, symbols,
+  } = await fetchSp500Breadth({ loadSavedConstituents: () => readSavedConstituents(redisOpts()) });
+
+  if (membership === 'saved') {
+    console.warn(`  TradingView S&P 500 symbol set returned ${indexConstituents} rows; scored the saved constituent list instead`);
+  }
+  console.log(`  TradingView: ${constituents} S&P 500 constituents on ${sessionDate} (valid 20d=${valid.pctAbove20d} | 50d=${valid.pctAbove50d} | 200d=${valid.pctAbove200d} | other sessions=${otherSessions})`);
   console.log(`    20d=${readings.pctAbove20d ?? 'null'} | 50d=${readings.pctAbove50d ?? 'null'} | 200d=${readings.pctAbove200d ?? 'null'}`);
 
   requireCompleteReadings(readings);
 
-  const existing = await readBreadthHistory({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
+  const existing = await readBreadthHistory(redisOpts());
   const { history, current, updatedExisting } = mergeBreadthHistory(
     existing?.history ?? [],
     readings,
@@ -41,6 +49,8 @@ async function fetchAll() {
     sourceSessionAt,
     current,
     history,
+    // Written to SP500_CONSTITUENTS_KEY, never to the published history.
+    savedConstituents: symbols ? { savedAt: Date.now(), symbols } : null,
   };
 }
 
@@ -59,9 +69,23 @@ export function declareRecords(data) {
   return Array.isArray(data?.history) ? data.history.length : 0;
 }
 
+function publishBreadth({ savedConstituents: _saved, ...data }) {
+  return data;
+}
+
 runSeed('market', 'breadth-history', BREADTH_HISTORY_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: BREADTH_TTL,
+  publishTransform: publishBreadth,
+  // A fallback run has no new list to save; skipWhenEmpty keeps the old one.
+  extraKeys: [{
+    key: SP500_CONSTITUENTS_KEY,
+    transform: (data) => data.savedConstituents ?? { symbols: [] },
+    declareRecords: (list) => list.symbols.length,
+    ttl: BREADTH_TTL,
+    skipWhenEmpty: true,
+    allowMissingOnSkip: true,
+  }],
   fetchPhaseTimeoutMs: 90_000,
   contentMeta: (data) => ({ newestItemAt: data.sourceSessionAt, oldestItemAt: data.sourceSessionAt }),
   maxContentAgeMin: MAX_SESSION_AGE_MIN,

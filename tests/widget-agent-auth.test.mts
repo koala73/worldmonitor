@@ -295,4 +295,27 @@ describe('widget-agent unified tester key auth', () => {
 
     assert.equal(fetchMock.mock.calls.length, 0);
   });
+
+  // Valid JSON that is not an object used to throw inside the tier
+  // normalisation (`null.tier`), land in its catch, and reach the relay
+  // unchanged, where the same read crashed the relay process.
+  it('refuses a JSON body that is not an object before the relay is called', async () => {
+    for (const body of ['null', '[]', '[{"tier":"pro"}]', '42', '"widget"', 'true']) {
+      fetchMock.mock.resetCalls();
+      const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+        method: 'POST',
+        headers: {
+          Origin: 'https://www.worldmonitor.app',
+          'Content-Type': 'application/json',
+          'X-WorldMonitor-Key': 'browser-test-key',
+        },
+        body,
+      }));
+
+      assert.equal(res.status, 400, `body ${body}`);
+      assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://www.worldmonitor.app', `body ${body}`);
+      assert.deepEqual(await res.json(), { error: 'Request body must be a JSON object' }, `body ${body}`);
+      assert.equal(fetchMock.mock.calls.length, 0, `body ${body} must not reach the relay`);
+    }
+  });
 });

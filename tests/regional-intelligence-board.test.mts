@@ -3,6 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import {
   BOARD_REGIONS,
@@ -64,8 +65,8 @@ function snapshotFixture(overrides: Partial<RegionalSnapshot> = {}): RegionalSna
       staleInputs: [],
       validUntil: 0,
       triggerReason: 'scheduled_6h',
-      narrativeProvider: 'groq',
-      narrativeModel: 'openai/gpt-oss-20b',
+      narrativeProvider: 'openrouter',
+      narrativeModel: 'deepseek/deepseek-v4-flash',
     },
     regime: {
       label: 'coercive_stalemate',
@@ -196,6 +197,13 @@ describe('buildBalanceBlock', () => {
     assert.match(html, /Energy Lev/);
   });
 
+  it('fills pressure bars in the critical colour and buffer bars in the accent', () => {
+    const html = buildBalanceBlock(balanceFixture());
+    const fills = (token: string) => html.match(new RegExp(`height:100%;width:[\\d.]+%;background:var\\(${token}\\)`, 'g'))?.length ?? 0;
+    assert.equal(fills('--semantic-critical'), 4);
+    assert.equal(fills('--accent'), 3);
+  });
+
   it('renders the net_balance bar', () => {
     const html = buildBalanceBlock(balanceFixture({ netBalance: -0.25 }));
     assert.match(html, /Net Balance/);
@@ -253,6 +261,8 @@ describe('buildActorsBlock', () => {
     // Positive delta uses danger color; negative uses accent.
     assert.match(html, /\+0\.10/);
     assert.match(html, /-0\.10/);
+    // The delta is 10px text: the light theme darkens the text token to pass 4.5:1.
+    assert.match(html, /color:var\(--semantic-critical-text, var\(--semantic-critical\)\);[^>]*>\+0\.10/);
   });
 
   it('shows empty-state when no actors', () => {
@@ -306,6 +316,20 @@ describe('buildTransmissionBlock', () => {
     assert.match(html, /naval_posture/);
     assert.match(html, /hormuz/);
     assert.match(html, /high/i);
+  });
+
+  it('writes critical and high severity labels in the critical text colour', () => {
+    const base = { start: 'a', end: 'x', corridorId: '', confidence: 0.5, latencyHours: 0, impactedAssetClass: '', impactedRegions: [], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: '', templateId: '', templateVersion: '' };
+    for (const severity of ['critical', 'high']) {
+      const html = buildTransmissionBlock([{ ...base, mechanism: 'm', severity }]);
+      assert.match(html, new RegExp(`color:var\\(--semantic-critical-text, var\\(--semantic-critical\\)\\);[^>]*>${severity}`), severity);
+    }
+  });
+
+  it('writes medium severity labels in the elevated text colour', () => {
+    const base = { start: 'a', end: 'b', corridorId: '', confidence: 0.5, latencyHours: 0, impactedAssetClass: '', impactedRegions: [], magnitudeLow: 0, magnitudeHigh: 0, magnitudeUnit: '', templateId: '', templateVersion: '' };
+    const html = buildTransmissionBlock([{ ...base, mechanism: 'm', severity: 'medium' }]);
+    assert.match(html, /color:var\(--semantic-elevated-text, var\(--semantic-elevated\)\);[^>]*>medium/);
   });
 
   it('sorts transmissions by confidence descending', () => {
@@ -441,7 +465,7 @@ describe('buildMetaFooter', () => {
     assert.match(html, /confidence 92%/);
     assert.match(html, /scoring v1\.0\.0/);
     assert.match(html, /geo v1\.0\.0/);
-    assert.match(html, /groq\/openai\/gpt-oss-20b/);
+    assert.match(html, /openrouter\/deepseek\/deepseek-v4-flash/);
   });
 
   it('shows "no narrative" when provider is empty', () => {
@@ -472,6 +496,22 @@ describe('buildBoardHtml', () => {
     assert.match(html, /Watchlist/);
     assert.match(html, /generated/);
     assert.match(html, /confidence/);
+  });
+
+  it('reads only colour tokens the dashboard stylesheets define', () => {
+    // An undefined token renders nothing: the Pressures bars once read --danger and had no fill.
+    // A fallback hides the gap instead: --warning, #e0a020 was a hard-coded colour in both themes.
+    const stylesDir = new URL('../src/styles/', import.meta.url);
+    const standalone = new Set(['plugin-market.css', 'plugin.css', 'plugin-country.css', 'embed.css', 'happy-theme.css']);
+    const defined = new Set(readdirSync(stylesDir)
+      .filter((f) => f.endsWith('.css') && !standalone.has(f))
+      .flatMap((f) => [...readFileSync(new URL(f, stylesDir), 'utf8').matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1])));
+    // The rendered board, plus the component's own markup (status and fallback notices).
+    const html = buildBoardHtml(snapshotFixture())
+      + readFileSync(new URL('../src/components/RegionalIntelligenceBoard.ts', import.meta.url), 'utf8');
+    const used = new Set([...html.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]));
+    assert.ok(used.has('--semantic-critical'), 'the fixture renders the Pressures bars');
+    assert.deepEqual([...used].filter((t) => !defined.has(t)), []);
   });
 
   it('escapes user-provided strings to prevent HTML injection', () => {
@@ -790,8 +830,8 @@ describe('buildWeeklyBriefBlock', () => {
     regimeTrajectory: 'Shifted from calm to coercive stalemate mid-week.',
     keyDevelopments: ['Hormuz transit dropped 15%', 'CII spike for Iran'],
     riskOutlook: 'Escalation risk remains elevated.',
-    provider: 'groq',
-    model: 'openai/gpt-oss-20b',
+    provider: 'openrouter',
+    model: 'deepseek/deepseek-v4-flash',
   };
 
   it('renders all brief sections when populated', () => {
@@ -802,7 +842,7 @@ describe('buildWeeklyBriefBlock', () => {
     assert.match(html, /Hormuz transit dropped/);
     assert.match(html, /CII spike/);
     assert.match(html, /Escalation risk/);
-    assert.match(html, /groq/);
+    assert.match(html, /openrouter/);
   });
 
   it('shows "no brief" for undefined', () => {
@@ -826,5 +866,17 @@ describe('buildWeeklyBriefBlock', () => {
     const html = buildWeeklyBriefBlock(malicious);
     assert.doesNotMatch(html, /<img onerror/);
     assert.match(html, /&lt;img/);
+  });
+});
+
+describe('critical red text', () => {
+  // --semantic-critical is #ff4444 in both themes, about 3.4:1 on the light
+  // theme's white panel. Text reads the text token, which the light theme
+  // darkens; bars and fills keep the base token.
+  it('reads the text token wherever a colour property uses the critical red', () => {
+    for (const path of ['src/components/RegionalIntelligenceBoard.ts', 'src/components/regional-intelligence-board-utils.ts']) {
+      const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      assert.deepEqual(source.match(/(?<![-\w])color:\s*var\(--semantic-critical\)/g) ?? [], [], path);
+    }
   });
 });

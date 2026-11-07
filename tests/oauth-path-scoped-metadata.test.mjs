@@ -120,6 +120,23 @@ describe('authorization-server metadata — path-scoped probe', () => {
   }
 });
 
+describe('authorization-server metadata — registration method', () => {
+  // CIMD and DCR together (#9244). Clients pick one at discovery and do not
+  // fall back, so this flag ships only with the complete CIMD flow
+  // (tests/oauth-cimd.test.mjs). `none` stays the only auth method: Claude and
+  // Codex need it to choose CIMD, and advertising private_key_jwt would move
+  // ChatGPT onto signed client assertions we do not verify.
+  for (const path of ['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp']) {
+    it(`${path} advertises CIMD alongside DCR, public clients only`, async () => {
+      const json = await (await get(asHandler, 'worldmonitor.app', path)).json();
+      assert.equal(json.registration_endpoint, 'https://worldmonitor.app/oauth/register');
+      assert.equal(json.client_id_metadata_document_supported, true);
+      assert.deepEqual(json.token_endpoint_auth_methods_supported, ['none']);
+      assert.deepEqual(json.code_challenge_methods_supported, ['S256']);
+    });
+  }
+});
+
 describe('the MCP 401 challenge points at the path-scoped document', () => {
   it('wwwAuthHeader carries the /mcp resource metadata URL', async () => {
     const { wwwAuthHeader } = await import('../api/mcp/auth.ts');
@@ -159,8 +176,21 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
+  // api. is a served alias: its own discovery documents name it as the
+  // resource, so its transport must challenge rather than refuse.
+  for (const path of ['/mcp', '/api/mcp']) {
+    it(`the served api. alias challenges ${path} with its own path-scoped document`, async () => {
+      const res = await call(`https://${'api'}.worldmonitor.app${path}`, 'api.worldmonitor.app');
+      assert.equal(res.status, 401);
+      assert.equal(
+        res.headers.get('www-authenticate'),
+        `Bearer realm="worldmonitor", resource_metadata="https://${'api'}.worldmonitor.app/.well-known/oauth-protected-resource${path}"`,
+      );
+    });
+  }
+
   it('a retired /api/mcp transport request gets the migration error before auth', async () => {
-    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp`, 'api.worldmonitor.app');
+    const res = await call(`https://${'www'}.worldmonitor.app/api/mcp`, 'www.worldmonitor.app');
     assert.equal(res.status, 410);
     assert.deepEqual(await res.json(), {
       jsonrpc: '2.0',
@@ -192,7 +222,7 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
   }
 
   it('a query parameter cannot bypass the /api/mcp migration response', async () => {
-    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp?transport=mcp`, 'api.worldmonitor.app');
+    const res = await call(`https://${'www'}.worldmonitor.app/api/mcp?transport=mcp`, 'www.worldmonitor.app');
     assert.equal(res.status, 410);
     assert.equal((await res.json()).error?.data?.reason, 'canonical_endpoint_required');
   });

@@ -282,22 +282,17 @@ export async function verifyAnonClaimToken(
  * (`business-invite:` prefix so it cannot be replayed as an anon-claim token or
  * `wm_user_id_sig`), embedding the token version and expiry. The token binds to
  * the `businessProGrants` document id — the signature does not verify for any
- * other grantId — and expires after the 14-day pending-invite window.
+ * other grantId — and expires after the 14-day pending-invite window, or at
+ * `expiresAt` when given (an extended invite must expire with its grant row).
  *
- * @throws If grantId is empty or contains a `.` (the token delimiter).
+ * @throws If grantId is empty or contains a `.` (the token delimiter), or if
+ *   `expiresAt` is not a future safe integer.
  */
-export async function signBusinessInviteToken(grantId: string): Promise<string> {
-  if (!grantId || grantId.length === 0) {
-    throw new Error("[identity-signing] business invite token requires a non-empty grantId");
-  }
-  if (grantId.includes(".")) {
-    throw new Error('[identity-signing] business invite grantId must not contain "."');
-  }
-  const expiresAt = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS;
-  const signature = await signPayload(
-    `business-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${grantId}:${expiresAt}`,
-  );
-  return `${BUSINESS_INVITE_TOKEN_VERSION}.${expiresAt}.${signature}`;
+export async function signBusinessInviteToken(
+  grantId: string,
+  expiresAt: number = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS,
+): Promise<string> {
+  return signSeatInviteToken("business", grantId, expiresAt);
 }
 
 /**
@@ -308,7 +303,57 @@ export async function verifyBusinessInviteToken(
   grantId: string,
   token: string | undefined,
 ): Promise<boolean> {
-  if (!token || !grantId || grantId.length === 0) return false;
+  return verifySeatInviteToken("business", grantId, token);
+}
+
+/**
+ * Signs an Enterprise contract-account invite token bound to one
+ * `enterpriseMembers` row. Same format and TTL as the Business token, under
+ * an `enterprise-invite:` prefix so neither kind verifies as the other.
+ */
+export async function signEnterpriseInviteToken(
+  memberId: string,
+  expiresAt: number = Date.now() + BUSINESS_INVITE_TOKEN_TTL_MS,
+): Promise<string> {
+  return signSeatInviteToken("enterprise", memberId, expiresAt);
+}
+
+/** Verifies an Enterprise invite token against the expected member row id. Fails closed. */
+export async function verifyEnterpriseInviteToken(
+  memberId: string,
+  token: string | undefined,
+): Promise<boolean> {
+  return verifySeatInviteToken("enterprise", memberId, token);
+}
+
+type SeatInviteKind = "business" | "enterprise";
+
+async function signSeatInviteToken(
+  kind: SeatInviteKind,
+  rowId: string,
+  expiresAt: number,
+): Promise<string> {
+  if (!rowId || rowId.length === 0) {
+    throw new Error(`[identity-signing] ${kind} invite token requires a non-empty grantId`);
+  }
+  if (rowId.includes(".")) {
+    throw new Error(`[identity-signing] ${kind} invite grantId must not contain "."`);
+  }
+  if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) {
+    throw new Error(`[identity-signing] ${kind} invite token expiry must be a future integer timestamp`);
+  }
+  const signature = await signPayload(
+    `${kind}-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${rowId}:${expiresAt}`,
+  );
+  return `${BUSINESS_INVITE_TOKEN_VERSION}.${expiresAt}.${signature}`;
+}
+
+async function verifySeatInviteToken(
+  kind: SeatInviteKind,
+  rowId: string,
+  token: string | undefined,
+): Promise<boolean> {
+  if (!token || !rowId || rowId.length === 0) return false;
   const [version, expiresAtRaw, signature, ...extra] = token.split(".");
   if (version !== BUSINESS_INVITE_TOKEN_VERSION || extra.length > 0) return false;
   if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return false;
@@ -317,7 +362,7 @@ export async function verifyBusinessInviteToken(
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return false;
   try {
     const expected = await signPayload(
-      `business-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${grantId}:${expiresAt}`,
+      `${kind}-invite:${BUSINESS_INVITE_TOKEN_VERSION}:${rowId}:${expiresAt}`,
     );
     return timingSafeEqualHex(expected, signature);
   } catch {
@@ -460,4 +505,54 @@ export async function verifyCheckoutLoginEmail(
   // it is a clock problem worth surfacing rather than an ordinary expiry.
   if (age < -CHECKOUT_LOGIN_EMAIL_CLOCK_SKEW_MS) return "invalid";
   return "valid";
+}
+
+const DUNNING_PORTAL_TOKEN_VERSION = "v1";
+const DUNNING_PORTAL_USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// Covers a week of reading time on the day-7 final notice. The relay also
+// refuses the token once the user has no open hold, so the link is not a
+// standing billing credential.
+export const DUNNING_PORTAL_TOKEN_TTL_MS = 8 * 24 * 60 * 60 * 1000;
+
+function dunningPortalPayload(userId: string, expiresAt: number): string {
+  return `dunning-portal:${DUNNING_PORTAL_TOKEN_VERSION}:${userId.length}:${userId}:${expiresAt}`;
+}
+
+export async function signDunningPortalToken(
+  userId: string,
+  nowMs: number,
+): Promise<string> {
+  if (!DUNNING_PORTAL_USER_ID_RE.test(userId)) {
+    throw new Error("[identity-signing] dunning portal token requires a Clerk-shaped userId");
+  }
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0) {
+    throw new Error("[identity-signing] dunning portal token requires a non-negative integer nowMs");
+  }
+  const expiresAt = nowMs + DUNNING_PORTAL_TOKEN_TTL_MS;
+  const signature = await signPayload(dunningPortalPayload(userId, expiresAt));
+  return `${DUNNING_PORTAL_TOKEN_VERSION}.${userId}.${expiresAt}.${signature}`;
+}
+
+export async function verifyDunningPortalToken(
+  token: string | undefined,
+  nowMs: number,
+): Promise<string | null> {
+  if (!token || !Number.isFinite(nowMs)) return null;
+  const [version, userId, expiresAtRaw, signature, ...extra] = token.split(".");
+  if (version !== DUNNING_PORTAL_TOKEN_VERSION || extra.length > 0) return null;
+  if (!userId || !DUNNING_PORTAL_USER_ID_RE.test(userId)) return null;
+  if (typeof expiresAtRaw !== "string" || typeof signature !== "string") return null;
+  // Canonical digits only: a leading-zero variant would re-verify the same
+  // signature under a different string, i.e. a fresh edge rate-limit bucket.
+  if (!/^[1-9]\d*$/.test(expiresAtRaw) || !signature) return null;
+  const expiresAt = Number(expiresAtRaw);
+  if (!Number.isSafeInteger(expiresAt)) return null;
+  try {
+    const expected = await signPayload(dunningPortalPayload(userId, expiresAt));
+    if (!timingSafeEqualHex(expected, signature)) return null;
+  } catch {
+    return null;
+  }
+  if (expiresAt <= nowMs) return null;
+  return userId;
 }

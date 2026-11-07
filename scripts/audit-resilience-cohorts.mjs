@@ -181,7 +181,7 @@ function apiHeaders() {
 }
 
 async function fetchRanking() {
-  const response = await fetch(RANKING_URL, { headers: apiHeaders() });
+  const response = await fetch(RANKING_URL, { signal: AbortSignal.timeout(30_000), headers: apiHeaders() });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} from ${RANKING_URL}: ${await response.text().catch(() => '')}`);
   }
@@ -189,7 +189,7 @@ async function fetchRanking() {
 }
 
 async function fetchScore(countryCode) {
-  const response = await fetch(SCORE_URL(countryCode), { headers: apiHeaders() });
+  const response = await fetch(SCORE_URL(countryCode), { signal: AbortSignal.timeout(30_000), headers: apiHeaders() });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${countryCode}`);
   }

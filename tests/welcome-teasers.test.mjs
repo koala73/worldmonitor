@@ -13,7 +13,7 @@
 // what keeps it that way.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import {
   TEASERS_OUTPUT_PATH,
   buildWelcomeTeasers,
+  renderHomeMarkdown,
   renderProHtml,
   renderWelcomeHtml,
   renderWelcomeTeasers,
@@ -33,6 +34,8 @@ import {
 import {
   QUOTE_LABELS as CLIENT_QUOTE_LABELS,
   QUOTE_SYMBOLS as CLIENT_QUOTE_SYMBOLS,
+  PUBLISHED_PULSE_DATE,
+  formatLocalizedDate,
   getFallbackTeasers,
 } from '../pro-test/src/services/teasers.ts';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
@@ -280,6 +283,53 @@ describe('welcome teaser strip carries its snapshot stamp (#7654)', () => {
     );
     assert.match(read('pro-test/index.html'), new RegExp(`"dateModified": "${snapshot.capturedAt}"`),
       'the shared software entity must declare the same date on the Pro page');
+  });
+
+  it('dates the hero "As of" line from the same snapshot as lastmod (#8701)', () => {
+    // The hero used to carry a hand-set "As of 8 September 2026" and a literal
+    // dateTime, which trailed lastmod by 20 days within three weeks.
+    assert.equal(PUBLISHED_PULSE_DATE, snapshot.capturedAt);
+    const hero = read('pro-test/src/welcome/Hero.tsx');
+    assert.match(hero, /dateTime=\{PUBLISHED_PULSE_DATE\}/, 'the hero <time> must read the pulse date');
+    assert.doesNotMatch(hero, /dateTime="\d{4}-\d{2}-\d{2}"/, 'no literal hero date');
+    assert.match(hero, /t\('welcome\.hero\.asOf', \{ date: formatLocalizedDate\(PUBLISHED_PULSE_DATE/);
+
+    const localeDir = join(repoRoot, 'pro-test/src/locales');
+    const locales = readdirSync(localeDir).filter((file) => file.endsWith('.json'));
+    assert.equal(locales.length, 28);
+    for (const file of locales) {
+      const asOf = JSON.parse(readFileSync(join(localeDir, file), 'utf8')).welcome.hero.asOf;
+      assert.equal(asOf.match(/\{\{date\}\}/g)?.length, 1, `${file} asOf must carry one {{date}}`);
+      assert.doesNotMatch(asOf, /20\d\d|[\u0660-\u0669\u06F0-\u06F9]/, `${file} asOf must not hardcode a date`);
+    }
+  });
+
+  it('moves the agent-facing homepage as-of line with the next pulse', () => {
+    assert.match(read('public/home.md'), new RegExp(`^As of ${snapshot.capturedAt}\\.$`, 'm'));
+    const next = renderHomeMarkdown({ capturedAt: '2026-10-01' });
+    assert.match(next, /^As of 2026-10-01\.$/m);
+    assert.equal(next.match(/^As of \d{4}-\d{2}-\d{2}\.$/gm).length, 1);
+  });
+
+  it('formats the hero date the way each locale wrote it by hand', () => {
+    // The strings the locales carried before the date became generated.
+    const expected = {
+      en: '8 September 2026',
+      de: '8. September 2026',
+      ar: '8 سبتمبر 2026',
+      fa: '۸ سپتامبر ۲۰۲۶',
+      th: '8 กันยายน 2026',
+      ja: '2026年9月8日',
+      zh: '2026年9月8日',
+      'zh-TW': '2026年9月8日',
+      ko: '2026년 9월 8일',
+      ru: '8 сентября 2026 г.',
+      hr: '8. rujna 2026.',
+    };
+    for (const [language, date] of Object.entries(expected)) {
+      assert.equal(formatLocalizedDate('2026-09-08', language), date, language);
+    }
+    assert.equal(formatLocalizedDate('not-a-date', 'en'), 'not-a-date');
   });
 
   it('updates both software declarations for the next pulse', () => {

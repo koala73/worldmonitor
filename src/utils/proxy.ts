@@ -1,5 +1,6 @@
 import { isDesktopRuntime, toApiUrl, toRuntimeUrl } from '../services/runtime';
 import { getPersistentCache, setPersistentCache } from '../services/persistent-cache';
+import { createRequestTimeoutSignal } from '../services/timeout-signal';
 
 const isDev = import.meta.env.DEV;
 const RESPONSE_CACHE_PREFIX = 'api-response:';
@@ -34,7 +35,9 @@ export function widgetAgentHealthUrl(): string {
 }
 
 export function rssProxyUrl(feedUrl: string): string {
-  if (isDesktopRuntime()) return proxyUrl(feedUrl);
+  // Desktop fetches through the sidecar's rss-proxy. The WebView cannot read
+  // publisher feeds directly (CORS), and the relay's CORS excludes tauri://.
+  if (isDesktopRuntime()) return `/api/rss-proxy?url=${encodeURIComponent(feedUrl)}`;
   if (RSS_PROXY_BASE) {
     return `${RSS_PROXY_BASE}/rss?url=${encodeURIComponent(feedUrl)}`;
   }
@@ -85,10 +88,10 @@ function requestPathname(url: string): string {
   }
 }
 
-// /api/fwdstart is a public wildcard-CORS feed. The session interceptor
+// This public feed uses wildcard CORS. The session interceptor
 // defaults credentials to 'include'; browsers then reject ACAO: *.
 function proxyFetchInit(url: string, init: RequestInit = {}): RequestInit {
-  return requestPathname(url) === '/api/fwdstart'
+  return requestPathname(url) === '/api/miit-news'
     ? { ...init, credentials: 'omit' }
     : init;
 }
@@ -162,6 +165,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Response> {
+  init = { ...init, signal: createRequestTimeoutSignal(url, init, 30_000) };
   const response = await fetch(proxyUrl(url), proxyFetchInit(url, { ...init, cache: 'no-store' }));
   throwIfAborted(init.signal);
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
@@ -187,6 +191,7 @@ async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Res
 }
 
 export async function fetchWithProxy(url: string, init: RequestInit = {}): Promise<Response> {
+  init = { ...init, signal: createRequestTimeoutSignal(url, init, 30_000) };
   throwIfAborted(init.signal);
   if (!shouldPersistResponse(url)) {
     return fetch(proxyUrl(url), proxyFetchInit(url, init));

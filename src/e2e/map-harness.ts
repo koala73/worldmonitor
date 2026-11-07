@@ -483,7 +483,8 @@ const energyAllLayersEnabled: MapLayers = {
   // commodityPorts is base-false in allLayersEnabled post-#3925 isolation
   // refactor (was true in an earlier snapshot Greptile reviewed) — energy
   // explicitly enables it because the energy harness ships seeded port
-  // fixtures and tests/energy-variant-atlas-guard asserts on this line.
+  // fixtures; e2e/map-harness.spec.ts (npm run test:e2e:energy) expects
+  // the Atlas deck layers these flags enable.
   commodityPorts: true,
   storageFacilities: true,
   fuelShortages: true,
@@ -1830,6 +1831,7 @@ const ensureDeterministicStyles = (): void => {
       transition: none !important;
     }
 
+    body.${DETERMINISTIC_BODY_CLASS} .map-distance-control,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-controls,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-time-slider,
     body.${DETERMINISTIC_BODY_CLASS} .deckgl-layer-toggles,

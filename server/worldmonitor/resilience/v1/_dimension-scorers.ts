@@ -330,6 +330,7 @@ interface ImfMacroEntry {
   currentAccountPct?: number | null;
   govRevenuePct?: number | null;
   year?: number | null;
+  periods?: { govRevenuePct?: number | null; currentAccountPct?: number | null } | null;
 }
 
 // BisExchangeRate interface removed in PR 3 §3.5: only the
@@ -1769,7 +1770,8 @@ export async function scoreMacroFiscal(
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
           rawValue: imfEntry?.govRevenuePct ?? null,
           rawUnit: 'percent_gdp',
-          sourceYear: imfEntry?.year ?? null,
+          // `year` is the inflation year; each metric's own year is in `periods`.
+          sourceYear: imfEntry?.periods?.govRevenuePct ?? null,
           provenanceHint: overlay.usedStatcanInflation ? 'canada-national-overlay' : '',
         }),
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
@@ -1787,7 +1789,7 @@ export async function scoreMacroFiscal(
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
           rawValue: imfEntry?.currentAccountPct ?? null,
           rawUnit: 'percent_gdp',
-          sourceYear: imfEntry?.year ?? null,
+          sourceYear: imfEntry?.periods?.currentAccountPct ?? null,
         }),
     tracedMetric('unemploymentPct', imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
@@ -3732,6 +3734,7 @@ interface RecoverySovereignWealthCountry {
 }
 interface RecoverySovereignWealthPayload {
   countries?: Record<string, RecoverySovereignWealthCountry>;
+  summary?: { countryStatuses?: Array<{ country?: string; expected?: number }> };
 }
 
 export async function scoreSovereignFiscalBuffer(
@@ -3748,6 +3751,13 @@ export async function scoreSovereignFiscalBuffer(
     ], options);
   }
   const entry = payload.countries[countryCode.toUpperCase()] ?? null;
+  if (!entry && Array.isArray(payload.summary?.countryStatuses)
+    && payload.summary.countryStatuses.some((status) => status?.country === countryCode.toUpperCase()
+      && typeof status.expected === 'number' && Number.isSafeInteger(status.expected) && status.expected > 0)) {
+    return tracedBlend('sovereignFiscalBuffer', [
+      tracedMetric('recoverySovereignWealthEffectiveMonths', { score: IMPUTE.recoverySovereignFiscalBuffer.score, weight: 1, certaintyCoverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass }),
+    ], options);
+  }
   // Path 3 — seed present, country not in manifest → no SWF.
   // Plan 2026-04-26-001 §U3 (+ review fixup): reframed from
   // "substantive absence (score 0, full coverage 1.0,

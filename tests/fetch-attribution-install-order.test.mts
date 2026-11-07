@@ -57,11 +57,13 @@ const DEFERRED_FETCH_WRAPPERS = new Set(['initAnalytics()', 'initDebugBearRum()'
  * src/bootstrap/sw-update.ts.
  */
 const NON_FETCH_BOOTSTRAP = new Set([
+  'installBetaConsoleToggle()',
   'installChunkReloadGuard()',
   'installSwUpdateHandler()',
   'initI18n()',
   'initLiveChannelsWindow()',
   'initMetaTags()',
+  'initPwaInstall()',
   'initSettingsWindow()',
   'initVercelAnalytics()',
   'installLcpAttributionDebug()',

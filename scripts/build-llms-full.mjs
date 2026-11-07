@@ -20,9 +20,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
+import { getRootlessDocsDestination } from '../src/config/docs-root-redirects.ts';
 import { COMPARISON_MATRIX_COLUMNS, comparisonDiscoveryEntries } from './build-comparison-pages.mjs';
 import { renderAccuracyLlmsSection } from './build-accuracy-page.mjs';
-import { resolveLatestLivePulseSnapshotPath, resolveLatestResilienceSnapshotPath, slugify } from './build-crawlable-corpus.mjs';
+import {
+  RESILIENCE_COVERAGE_PATTERN,
+  publishedRankedCountries,
+  resilienceCoveragePhrase,
+  resolveLatestLivePulseSnapshotPath,
+  resolveLatestResilienceSnapshotPath,
+  slugify,
+} from './build-crawlable-corpus.mjs';
 import { CHOKEPOINT_CONTENT } from './chokepoint-page-content.mjs';
 import { SITE_ORIGIN } from './discover-content-corpus-pages.mjs';
 import { buildSourceCatalog, buildSourcePages } from './crawlable-sources-page.mjs';
@@ -77,10 +85,47 @@ export function redactInternalApiOrigins(text) {
   }).join('\n');
 }
 
+/**
+ * Mintlify resolves a root-relative href against /docs. llms-full.txt is
+ * served from the site root, so the same href 308s (middleware rootless docs
+ * map, or vercel /api-reference/:match*). Rewrite only those paths. A site
+ * route such as /countries/ stays put.
+ */
+function rebaseInlinedDocsHref(href) {
+  const splitAt = [href.indexOf('#'), href.indexOf('?')].filter((index) => index >= 0);
+  const cut = splitAt.length > 0 ? Math.min(...splitAt) : href.length;
+  const path = href.slice(0, cut);
+  const suffix = href.slice(cut);
+  const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  const destination = getRootlessDocsDestination(normalized);
+  if (destination) return `${new URL(destination).pathname}${suffix}`;
+  if (normalized === '/api-reference' || normalized.startsWith('/api-reference/')) {
+    return `/docs${normalized}${suffix}`;
+  }
+  return null;
+}
+
+function rebaseInlinedDocsLinks(text) {
+  return mapProseLines(text, (line) => line.replace(
+    /\]\((\/[^)\s]+)(\s+"[^"]*")?\)/g,
+    (full, href, title = '') => {
+      const next = rebaseInlinedDocsHref(href);
+      return next ? `](${next}${title})` : full;
+    },
+  ).replace(
+    /(<a\b[^>]*\bhref=")(\/[^"]+)(")/g,
+    (full, open, href, close) => {
+      const next = rebaseInlinedDocsHref(href);
+      return next ? `${open}${next}${close}` : full;
+    },
+  ));
+}
+
 function stripMdx(source) {
   let text = stripFrontmatter(source);
   text = text.replace(/<[A-Z][A-Za-z0-9]*[^>]*\/>/g, '');
   text = text.replace(/<\/?[A-Z][A-Za-z0-9]*[^>]*>/g, '');
+  text = rebaseInlinedDocsLinks(text);
   return redactInternalApiOrigins(text.replace(/\n{3,}/g, '\n\n').trim());
 }
 
@@ -263,6 +308,20 @@ function renderSourceDirectory(rootDir) {
 }
 
 /**
+ * Restate resilience coverage in the agent briefs from the newest published
+ * snapshot: "{ranked} of {universe} countries". Both numbers are read from the
+ * snapshot (ranked rows; ranked plus greyed-out rows), so a new snapshot
+ * rewrites the briefs instead of leaving a stale count behind.
+ */
+export function withResilienceCoverage(text, coverage) {
+  const source = String(text);
+  if (!source.match(RESILIENCE_COVERAGE_PATTERN)) {
+    throw new Error('expected "structural resilience ranked for <n> of <m> countries" in the llms brief');
+  }
+  return source.replace(RESILIENCE_COVERAGE_PATTERN, resilienceCoveragePhrase(coverage));
+}
+
+/**
  * Splice the generated Comparisons section into the hand-maintained
  * llms.txt: replace the existing section in place, or insert it ahead of
  * Live Instances the first time. Idempotent, so --check can diff it.
@@ -292,7 +351,10 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
   const existing = existsSync(join(rootDir, OUTPUT_PATH))
     ? read(rootDir, OUTPUT_PATH)
     : '';
-  const prefix = withVersionHeader(briefPrefix(existing), readVersionHeader(rootDir));
+  const prefix = withResilienceCoverage(
+    withVersionHeader(briefPrefix(existing), readVersionHeader(rootDir)),
+    publishedRankedCountries(rootDir),
+  );
   const introduction = [
     LLMS_FULL_GENERATED_HEADING,
     '',
@@ -332,7 +394,10 @@ export function buildLlmsFullText({ rootDir = ROOT } = {}) {
  */
 export function writeLlmsFull({ rootDir = ROOT, check = false } = {}) {
   const outputs = [
-    { relativePath: LLMS_TXT_PATH, next: withComparisonsSection(read(rootDir, LLMS_TXT_PATH)) },
+    {
+      relativePath: LLMS_TXT_PATH,
+      next: withResilienceCoverage(withComparisonsSection(read(rootDir, LLMS_TXT_PATH)), publishedRankedCountries(rootDir)),
+    },
     { relativePath: OUTPUT_PATH, next: buildLlmsFullText({ rootDir }) },
   ].map(({ relativePath, next }) => {
     const path = join(rootDir, relativePath);

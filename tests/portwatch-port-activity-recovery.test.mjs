@@ -497,6 +497,135 @@ describe('PortWatch last-good and gap reporting', () => {
     assert.equal(sleepCalls.length, 0);
   });
 
+  // Activity pages retry invalid_query themselves. A country-level retry on top
+  // would refetch the sibling window and double a failing page's requests.
+  it('leaves invalid_query retries to the activity pages', async () => {
+    let attempts = 0;
+    const sleepCalls = [];
+    await assert.rejects(portwatchSeed.fetchCountryActivityWithRecovery('PRI', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T00:00:00Z'),
+      dateField: 'date',
+      preflightObservation: { status: 'observed', maxDate: '2026-10-30' },
+      fetchAccumFn: async () => {
+        attempts += 1;
+        throw new Error('ArcGIS error: Invalid URL');
+      },
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+    }), /Invalid URL/);
+    assert.equal(attempts, 1);
+    assert.deepEqual(sleepCalls, []);
+  });
+
+  // 2026-11-03: ArcGIS began answering about half of uncached queries with
+  // `{"error":{"code":400,"message":"Invalid URL"}}` in ~2s, and the identical
+  // query succeeded on the next try. None were retried, so 52 countries failed
+  // per run and coverage decayed below the publish gate.
+  it('retries each activity page through intermittent Invalid URL answers', async () => {
+    const calls = { last30: 0, prev30: 0 };
+    const sleepCalls = [];
+    const result = await portwatchSeed.fetchCountryAccum('SEN', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T23:59:59.999Z'),
+      dateField: 'date',
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+      fetchFn: async (url) => {
+        const window = new URL(url).searchParams.get('where').includes('<=') ? 'prev30' : 'last30';
+        calls[window] += 1;
+        if (calls[window] <= 3) return Response.json({ error: { code: 400, message: 'Invalid URL', details: ['Invalid URL'] } });
+        return Response.json({
+          features: [{ attributes: { portid: 'sn-dkr', portname: 'Dakar', ISO3: 'SEN', date: window === 'last30' ? '2026-10-30' : '2026-09-20', portcalls_tanker: 4, import_tanker: 1, export_tanker: 1 } }],
+          exceededTransferLimit: false,
+        });
+      },
+      proxyRetryFn: async () => assert.fail('an ArcGIS error body is not a proxy signal'),
+    });
+    assert.deepEqual(calls, { last30: 4, prev30: 4 });
+    assert.equal(result.currentWindowRowCount, 1);
+    assert.equal(result.portAccumMap.get('sn-dkr').last30_calls, 4);
+    assert.equal(result.portAccumMap.get('sn-dkr').prev30_calls, 4);
+    assert.deepEqual(sleepCalls, Array(6).fill(5_000));
+  });
+
+  it('gives up on an activity page after three Invalid URL retries', async () => {
+    let calls = 0;
+    await assert.rejects(portwatchSeed.fetchCountryAccum('SEN', {
+      deadlineAt: Date.now() + 90_000,
+      anchorEpochMs: Date.parse('2026-11-01T23:59:59.999Z'),
+      dateField: 'date',
+      sleepFn: async () => {},
+      fetchFn: async (url) => {
+        if (new URL(url).searchParams.get('where').includes('<=')) return Response.json({ features: [] });
+        calls += 1;
+        return Response.json({ error: { code: 400, message: 'Invalid URL' } });
+      },
+      proxyRetryFn: async () => assert.fail('an ArcGIS error body is not a proxy signal'),
+    }), /Invalid URL/);
+    assert.equal(calls, 4);
+  });
+
+  // A failed preflight forfeits the country's cache confirmation, so it spends
+  // one of the run's capped cold-fetch slots instead.
+  it('retries the max-date preflight through intermittent Invalid URL answers', async () => {
+    let calls = 0;
+    const sleepCalls = [];
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+      fetchFn: async () => {
+        calls += 1;
+        return calls <= 2
+          ? Response.json({ error: { code: 400, message: 'Invalid URL', details: ['Invalid URL'] } })
+          : Response.json({ features: [{ attributes: { max_date: '2026-10-30' } }] });
+      },
+    });
+    assert.deepEqual(observation, { status: 'observed', maxDate: '2026-10-30' });
+    assert.equal(calls, 3);
+    assert.deepEqual(sleepCalls, [1_000, 1_000]);
+  });
+
+  it('reports the preflight failed after two Invalid URL retries', async () => {
+    let calls = 0;
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      sleepFn: async () => {},
+      fetchFn: async () => {
+        calls += 1;
+        return Response.json({ error: { code: 400, message: 'Invalid URL' } });
+      },
+    });
+    assert.deepEqual(observation, { status: 'failed', maxDate: null });
+    assert.equal(calls, 3);
+  });
+
+  // The run deadline counts from the start of the run, so preflight retries
+  // stop once the phase budget is spent instead of eating activity time.
+  it('stops retrying the preflight once the preflight phase budget is spent', async () => {
+    let calls = 0;
+    const sleepCalls = [];
+    const observation = await portwatchSeed.fetchMaxDate('SEN', {
+      dateField: 'date',
+      deadlineAt: Date.now() + 2_000,
+      sleepFn: async (ms) => { sleepCalls.push(ms); },
+      fetchFn: async () => {
+        calls += 1;
+        return Response.json({ error: { code: 400, message: 'Invalid URL' } });
+      },
+    });
+    assert.deepEqual(observation, { status: 'failed', maxDate: null });
+    assert.equal(calls, 1);
+    assert.deepEqual(sleepCalls, []);
+  });
+
+  it('persists an Invalid URL refresh failure as invalid_query', () => {
+    const state = portwatchSeed.buildRefreshFailureState(
+      { iso2: 'SN', prevPayload: { iso2: 'SN' } },
+      new Error('ArcGIS error: Invalid URL'),
+      1,
+    );
+    assert.equal(state.refreshFailure.code, 'invalid_query');
+  });
+
   it('bounds repeated rate-limit failures to one retry', async () => {
     const retryRateLimited = portwatchSeed.retryRateLimited;
     let attempts = 0;

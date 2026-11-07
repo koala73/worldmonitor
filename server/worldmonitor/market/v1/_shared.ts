@@ -38,7 +38,9 @@ export interface YahooChartResponse {
         regularMarketPrice: number;
         chartPreviousClose?: number;
         previousClose?: number;
+        currency?: string;
       };
+      timestamp?: number[];
       indicators?: {
         quote?: Array<{ close?: (number | null)[] }>;
       };

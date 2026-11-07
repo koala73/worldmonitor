@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // UsTreasuryParYieldCurve is one business day's Treasury par yield curve.
@@ -43,6 +44,12 @@ message UsTreasuryParYieldCurve {
 message GetUsTreasuryParYieldCurveRequest {
   // When true, return every stored business day since 1990. When false, return the latest day.
   bool history = 1 [(sebuf.http.query) = {name: "history"}];
+  // Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+  optional int32 limit = 2 [
+    (sebuf.http.query) = {name: "limit"},
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 366
+  ];
 }
 
 // GetUsTreasuryParYieldCurveResponse is the par curve for the requested window.

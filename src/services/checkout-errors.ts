@@ -128,6 +128,13 @@ function statusToCode(status: number, body: CheckoutErrorBody | undefined): Chec
   // the user gets accurate copy instead of the misleading "That product isn't
   // available" they'd see under the generic 4xx → invalid_product branch.
   if (status === 403) return 'service_unavailable';
+  // Edge `req.json()` failure (api/create-checkout.ts). Not a product catalog
+  // problem — the body never parsed. Mapping it through the generic 4xx arm
+  // told buyers "That product isn't available" and disabled retry
+  // (Sentry WORLDMONITOR-188). Same false-message shape as the 403 case above.
+  if (status === 400 && body?.error === 'Invalid JSON') return 'service_unavailable';
+  // Real catalog rejection from the Convex relay, preserved by the edge.
+  if (status === 400 && body?.error === 'INVALID_CHECKOUT_PRODUCT') return 'invalid_product';
   if (status >= 400 && status < 500) return 'invalid_product';
   if (status >= 500 && status < 600) return 'service_unavailable';
   return 'unknown';
@@ -194,12 +201,12 @@ export function classifyThrownCheckoutError(caught: unknown): CheckoutError {
 }
 
 /**
- * Classify a synthetic "no Clerk session" or "no token" condition.
+ * Classify a locally detected checkout failure.
  * These don't correspond to an HTTP response, but should still flow
  * through the taxonomy so the toast copy stays consistent.
  */
 export function classifySyntheticCheckoutError(
-  kind: 'unauthorized' | 'session_expired',
+  kind: 'unauthorized' | 'session_expired' | 'invalid_product',
 ): CheckoutError {
   return {
     code: kind,

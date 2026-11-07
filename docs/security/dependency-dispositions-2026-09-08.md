@@ -114,6 +114,13 @@ advisory gate, not a crates.io yanking check.
   Wry declares GTK `0.18`. Fresh dry runs of `cargo update -p glib` and
   `cargo update -p gtk -p wry -p tauri` both selected zero compatible updates.
   No speculative fork or major override was introduced.
+  **Renewal, 2026-10-08:** the decision expired and turned the gate red on every
+  PR. Re-review found no compatible upgrade: the latest tauri 2.12.1,
+  tauri-runtime-wry 2.12.1 and wry 0.57.0 on crates.io still require gtk `^0.18`.
+  A source scan of all 524 locked dependency crates plus `src-tauri/src` found
+  `Variant::array_iter_str` / `VariantStrIter` referenced only inside glib
+  itself. The user explicitly approved a renewal on **2026-10-08** through
+  **2027-01-08 00:00 UTC**. Runtime non-reachability on Linux remains unproven.
 - Six unmaintained-crate notices remain: proc-macro-error 1.0.4, and
   unic-char-property, unic-char-range, unic-common, unic-ucd-ident and
   unic-ucd-version 0.9.0. They stay visible as maintenance warnings owned by

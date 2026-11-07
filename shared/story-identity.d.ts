@@ -13,12 +13,17 @@ export interface StoryVector {
   /** Content-token set (lexical vectors only) — drives the containment
    * rescue for truncated headlines; absent on semantic-provider vectors. */
   t?: Set<string>;
+  /** Exact lexical weights keep projection collisions out of identity scoring. */
+  f?: { u: Map<string, number>; b: Map<string, number> };
 }
 
 export const STORY_SIMILARITY_THRESHOLD: number;
 
 export function normalizeStoryText(text: string): string;
-export function stripAttributionSuffix(text: string): string;
+export function stripAttributionSuffix(
+  text: string,
+  options?: { allowPipe?: boolean },
+): string;
 export function candidateTokens(text: string): Set<string>;
 export function setStoryVectorProvider(
   provider: ((text: string) => StoryVector | null) | null,
@@ -28,3 +33,7 @@ export function cosineSimilarity(a: StoryVector | null, b: StoryVector | null): 
 export function storySimilarity(textA: string, textB: string): number;
 export function isSameStory(textA: string, textB: string, threshold?: number): boolean;
 export function clusterTexts(texts: string[], opts?: { threshold?: number }): number[][];
+
+export function deriveFeatureHashSalt(value: unknown): number;
+export function setFeatureHashSalt(value: string | null | undefined): number;
+export function activeFeatureHashSalt(): number;

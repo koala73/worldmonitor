@@ -1,5 +1,6 @@
-import { sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.js';
 import { validateImfDataset } from './_imf-dataset.js';
+import { stripTrailingSlashes } from './_strip-trailing-slashes.js';
 import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
@@ -18,11 +19,14 @@ import {
   validateApiKey,
 } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import { checkRateLimit } from './_rate-limit.js';
 import {
+  checkBootstrapDesktopKeyBudget,
+  checkBootstrapDesktopKeyClient,
   checkBootstrapUserApiKeyRateLimit,
   isCanonicalUserApiKey,
-  validateBootstrapUserApiAccess,
-  validateBootstrapUserApiKey,
+  resolveBootstrapUserKeyAccess,
+  validateBootstrapUserApiKeyPrincipal,
 } from './_user-api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
@@ -95,6 +99,10 @@ const TIER_CDN_CACHE = {
 // budget guarantees the shield outlives a complete seed cycle.
 // tests/bootstrap-on-demand-cache-budget.test.mts enforces the ceiling.
 const ON_DEMAND_CACHE_PROFILES = {
+  ukmtoIncidents: {
+    browser: 'max-age=60, stale-while-revalidate=60, stale-if-error=60',
+    cdn: 'public, s-maxage=60, stale-while-revalidate=60, stale-if-error=60',
+  },
   // Correlation cards publish every 5 minutes and have a 30-minute health
   // budget. The conservative complete CDN window is 11m.
   correlationCards: {
@@ -150,6 +158,11 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  // FAA NMS seeder on a 5min interval against a 20min health budget.
+  notamAirspace: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=300, stale-while-revalidate=120, stale-if-error=900',
+  },
   // seed-aviation aggregate, 90min health budget. Default 2h on-demand
   // shield would outlive the budget after #7046 moved this key off FAST.
   flightDelays: {
@@ -185,7 +198,7 @@ export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
   const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  const pathname = stripTrailingSlashes(url.pathname);
   if (pathname !== '/api/bootstrap') return false;
 
   const params = Array.from(url.searchParams.keys());
@@ -323,7 +336,10 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
         // Envelope-aware: bootstrap is a public-boundary consumer — strip _seed
         // from contract-mode canonical keys so clients never see envelope
         // metadata. Legacy bare-shape values pass through unchanged.
-        result.set(keys[i], unwrapEnvelope(parsed).data);
+        const { data: payload, _seed } = unwrapEnvelope(parsed);
+        result.set(keys[i], keys[i] === BOOTSTRAP_CACHE_KEYS.wildfires
+          ? restoreWildfireBootstrapMetadata(payload, _seed)
+          : payload);
       } catch { /* skip malformed */ }
     }
   }
@@ -384,7 +400,13 @@ async function validateBootstrapAuth(req, cors) {
     // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
     // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
     // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
-    const userKeyResult = await validateBootstrapUserApiKey(headerKey);
+    //
+    // Desktop-aware (plan 2026-10-25-001, KTD3): the principal carries its
+    // kind, and resolveBootstrapUserKeyAccess decides whether the owner's
+    // API plan (today's path) or the desktop entitlement admits it. Bootstrap
+    // serves one payload to every credentialed caller, so a desktop principal
+    // gets what a signed-in Pro session gets here — under the desktop meter.
+    const userKeyResult = await validateBootstrapUserApiKeyPrincipal(headerKey);
     if (!userKeyResult.ok) {
       return {
         ok: false,
@@ -397,7 +419,7 @@ async function validateBootstrapAuth(req, cors) {
       };
     }
 
-    const entitlementResult = await validateBootstrapUserApiAccess(userKeyResult.userId);
+    const entitlementResult = await resolveBootstrapUserKeyAccess(userKeyResult);
     if (!entitlementResult.ok) {
       return {
         ok: false,
@@ -416,6 +438,20 @@ async function validateBootstrapAuth(req, cors) {
           entitlementResult.headers,
         ),
       };
+    }
+
+    if (entitlementResult.scope === 'desktop') {
+      const client = checkBootstrapDesktopKeyClient(req);
+      if (!client.ok) {
+        return { ok: false, response: authFailure({ error: client.error }, client.status, cors) };
+      }
+      const budget = await checkBootstrapDesktopKeyBudget(userKeyResult.userId, entitlementResult.entitlement);
+      if (!budget.ok) {
+        return {
+          ok: false,
+          response: authFailure(budget.body ?? { error: budget.error }, budget.status, cors, budget.headers),
+        };
+      }
     }
 
     return { ok: true, kind: 'user' };
@@ -499,6 +535,9 @@ function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) 
   };
 }
 
+const SESSION_BOOTSTRAP_RATE_SCOPE = 'bootstrap-session';
+const SESSION_BOOTSTRAP_RATE_LIMIT = 120;
+
 export default async function handler(req, ctx) {
   // no-store because this rejection is decided by the Origin header, which no
   // cache layer here keys on (CF ignores Vary — see TIER_CACHE above). Without
@@ -515,6 +554,18 @@ export default async function handler(req, ctx) {
 
   const auth = await validateBootstrapAuth(req, cors);
   if (!auth.ok) return auth.response;
+  // Anonymous wms_ sessions are free to mint and their reads are no-store, so
+  // every request is a full Redis read plus egress. Give them a per-address
+  // budget well above a dashboard boot; wm_ user keys have their own limiter.
+  if (auth.kind === 'session') {
+    const limited = await checkRateLimit(req, cors, {
+      ctx,
+      scope: SESSION_BOOTSTRAP_RATE_SCOPE,
+      limit: SESSION_BOOTSTRAP_RATE_LIMIT,
+      window: '60 s',
+    });
+    if (limited) return limited;
+  }
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');

@@ -2,9 +2,8 @@
  * Slot B regression tests: NWS event-family coalesce.
  *
  * Verifies the contract that adjacent-zone NWS alerts (same VTEC family)
- * collapse to one notification per user. Source-grep tests because the
- * relay scripts are runtime side-effect modules with no exports — the same
- * pattern used by tests/notification-relay-effective-sensitivity.test.mjs.
+ * collapse to one notification per user. The relay wiring checks are
+ * source-grep tests.
  *
  * The VTEC parser (deriveWeatherCoalesceKey) and the notification family/slot
  * selection live in scripts/_weather-alert-select.mjs and are imported and
@@ -42,7 +41,7 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
     assert.match(
       relaySrc,
-      /async function checkDedup\(userId,\s*eventType,\s*title,\s*coalesceKey\)/,
+      /async function checkDedup\(userId,\s*eventType,\s*title,\s*coalesceKey[,)]/,
       'checkDedup must take coalesceKey as the 4th parameter',
     );
   });
@@ -59,7 +58,7 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('both checkDedup call sites pass event.payload?.coalesceKey through', () => {
     // The held-event path AND the realtime path must thread coalesceKey, otherwise
     // one branch silently misses the coalesce. (Half-defense regression.)
-    const callSites = relaySrc.match(/checkDedup\(rule\.userId,\s*event\.eventType,\s*event\.payload\?\.title\s*\?\?\s*'',\s*coalesceKey\)/g);
+    const callSites = relaySrc.match(/checkDedup\(rule\.userId,\s*event\.eventType,\s*event\.payload\?\.title\s*\?\?\s*'',\s*coalesceKey[,)]/g);
     assert.ok(
       callSites && callSites.length >= 2,
       `expected ≥2 checkDedup call sites threading coalesceKey, found ${callSites?.length ?? 0}`,

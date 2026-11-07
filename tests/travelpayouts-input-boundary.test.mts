@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { searchPricesTravelpayouts } from '../server/worldmonitor/aviation/v1/_providers/travelpayouts_data.ts';
-import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
 import { __resetRateLimitForTest, checkEndpointRateLimit, ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -45,6 +46,8 @@ function request(overrides: Record<string, string> = {}, withKey = true) {
 const gateway = createDomainGateway(createAviationServiceRoutes(aviationHandler, serverOptions));
 const providerCalls = () => calls.filter(url => url.hostname === 'api.travelpayouts.com');
 
+const WIRE: Record<string, string> = { departureDate: 'departure_date', returnDate: 'return_date' };
+
 describe('Travelpayouts input boundary', () => {
   for (const [field, value] of [
     ['origin', 'A:B'], ['destination', 'AB1'], ['origin', 'KJFK'],
@@ -54,7 +57,7 @@ describe('Travelpayouts input boundary', () => {
     ['market', 'us:nonce'], ['market', 'zz'], ['cabin', 'constructor'], ['cabin', 'CABIN_CLASS_CUSTOM'],
   ]) {
     it(`rejects invalid ${field} before any cache or provider work: ${value.slice(0, 24)}`, async () => {
-      await assert.rejects(searchPricesTravelpayouts({ ...base, [field]: value }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+      await assert.rejects(searchPricesTravelpayouts({ ...base, [field]: value }), validationFailure(WIRE[field] ?? field));
       assert.equal(calls.length, 0);
       assert.equal(redis.redis.size, 0);
     });

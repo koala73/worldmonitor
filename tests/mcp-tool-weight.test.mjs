@@ -18,6 +18,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { TOOL_REGISTRY, toolWeight } from '../api/mcp/registry/index.ts';
+import { COUNTRY_READERS } from '../shared/country-brief-host.ts';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 
 const REGISTRY_DIR = fileURLToPath(new URL('../api/mcp/registry/', import.meta.url));
@@ -131,6 +132,44 @@ function authenticatedFanOut(execute, helpers = SIGNING_HELPERS) {
 
 /** A source call-site count cannot measure the airspace helper's URL loop. */
 async function registryFanOut(tool, helpers = SIGNING_HELPERS) {
+  if (tool.name === 'get_country_brief_section') {
+    // Raw Signals has four paid-panel-only reads. Measure the ordinary API arm,
+    // rather than adding mutually exclusive, authorization-gated call sites.
+    const originalFetch = globalThis.fetch;
+    const required = { country_code: 'US', countryCode: 'US', iso2: 'US', reporter_code: '840', reporting_country: '840', chokepointId: 'hormuz', chokepoint_id: 'hormuz', pipelineId: 'fixture', facilityId: 'fixture', shortageId: 'fixture', commodity: 'copper', hs2: '27' };
+    let maximum = 0;
+    try {
+      for (const [section, reader] of Object.entries(COUNTRY_READERS)) {
+        const values = { ...required, ...({ countrySignals: { family: 'COUNTRY_SIGNAL_FAMILY_OUTAGES' }, housing: { keys: 'bisDsr,bisPropertyResidential,bisPropertyCommercial' }, imf: { keys: 'imfMacro,imfGrowth,imfLabor,imfExternal' } }[section] ?? {}) };
+        const args = Object.fromEntries(Object.entries(reader.args.shape).filter(([, schema]) => !schema.safeParse(undefined).success).map(([field]) => {
+          assert.ok(field in values, `${section}.${field} needs a valid runtime fan-out fixture`);
+          return [field, values[field]];
+        }));
+        assert.equal(reader.args.safeParse(args).success, true, section);
+        let signed = 0; let calls = 0;
+        globalThis.fetch = async (url, init) => {
+          calls++;
+          if (new Headers(init.headers).has('X-WorldMonitor-Key')) {
+            assert.equal(new Headers(init.headers).get('X-WorldMonitor-Key'), 'weight-test'); signed++;
+          }
+          const key = new URL(url).searchParams.get('keys');
+          return Response.json(key ? { data: { [key]: {} }, missing: [] } : {});
+        };
+        const pending = tool._execute({ section, arguments: args }, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' });
+        if (section === 'signalsRaw' || section === 'countrySignals') {
+          const reason = section === 'countrySignals' ? /verified same-country panel/i : /verified paid country panel/i;
+          await assert.rejects(pending, error => error.name === 'RpcValidationError' && error.violations.some(value => value.field === 'panel_request' && reason.test(value.description)));
+          assert.equal(calls, 0, 'ordinary API cannot enter a paid country panel collector');
+        } else {
+          await pending;
+          assert.equal(signed, reader.path === '/api/bootstrap' ? 0 : 1, section);
+        }
+        maximum = Math.max(maximum, signed);
+      }
+    } finally { globalThis.fetch = originalFetch; }
+    assert.equal(maximum, 1, 'ordinary country sections retain exactly one signed downstream maximum');
+    return maximum;
+  }
   if (tool.name !== 'get_airspace') return authenticatedFanOut(tool._execute, helpers);
   const originalFetch = globalThis.fetch;
   let maximum = 0;
@@ -246,9 +285,9 @@ describe('signing-helper collection', () => {
     // returns the deriver to body-only reads this file as a failure rather
     // than as fourteen tools quietly scoring zero again.
     assert.equal(
-      SIGNING_HELPERS.get('fetchNlpDigestItems'),
+      SIGNING_HELPERS.get('fetchNlpNewsItems'),
       1,
-      `fetchNlpDigestItems must resolve to one signed fetch; collected: ${JSON.stringify([...SIGNING_HELPERS])}`,
+      `fetchNlpNewsItems must resolve to one signed fetch; collected: ${JSON.stringify([...SIGNING_HELPERS])}`,
     );
   });
 
@@ -393,5 +432,27 @@ describe('derived downstream fan-out', () => {
       ['get_airspace', 'get_country_brief'],
       'the multi-fetch set drifted — add the new tool\'s _weight or fix the fan-out matcher',
     );
+  });
+});
+
+describe('maritime view accounting', () => {
+  it('uses exactly one signed downstream fetch and weight 2 for either view', async () => {
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_maritime_activity');
+    const savedFetch = globalThis.fetch;
+    try {
+      for (const view of [undefined, 'traffic', 'ports']) {
+        let calls = 0;
+        globalThis.fetch = async (url, init) => {
+          calls++;
+          assert.equal(new Headers(init.headers).get('X-WorldMonitor-Key'), 'weight-test');
+          assert.equal(new URL(url).pathname, view === 'ports'
+            ? '/api/intelligence/v1/get-country-port-activity' : '/api/maritime/v1/get-vessel-snapshot');
+          return Response.json(view === 'ports' ? { available: false, ports: [], fetchedAt: '' } : { snapshot: {} });
+        };
+        await tool._execute({ country_code: 'NL', ...(view ? { view } : {}) }, 'https://example.test', { kind: 'env_key', apiKey: 'weight-test' });
+        assert.equal(calls, 1);
+        assert.equal(toolWeight(tool), 2);
+      }
+    } finally { globalThis.fetch = savedFetch; }
   });
 });

@@ -100,10 +100,12 @@ export class EnergyComplexPanel extends Panel {
     return `
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">IEA Oil Stocks — Days of Cover</div>
-        <table class="oil-stocks-table">
-          <thead><tr><th scope="col">#</th><th scope="col">Ctry</th><th scope="col">Days</th><th scope="col">vs 90d</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table oil-stocks-table">
+            <thead><tr><th scope="col">#</th><th scope="col">Ctry</th><th scope="col">Days</th><th scope="col">vs 90d</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
         <div class="oil-stocks-regional" style="margin-top:6px">
           ${euRow}${apRow}${naRow}
         </div>
@@ -126,10 +128,12 @@ export class EnergyComplexPanel extends Panel {
     return `
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">LNG Vulnerability</div>
-        <table class="oil-stocks-table">
-          <thead><tr><th scope="col">Country</th><th scope="col">LNG Share</th><th scope="col">LNG Imports</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table oil-stocks-table">
+            <thead><tr><th scope="col">Country</th><th scope="col">LNG Share</th><th scope="col">LNG Imports</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
         <div class="indicator-date" style="margin-top:4px">Data: ${escapeHtml(d.dataMonth)} (JODI Gas)</div>
       </div>`;
   }
@@ -251,7 +255,7 @@ export class EnergyComplexPanel extends Panel {
                 <div class="commodity-item energy-tape-card">
                   <div class="commodity-name">${escapeHtml(item.display)}</div>
                   ${miniSparkline(item.sparkline, item.change, 60, 18)}
-                  <div class="commodity-price">${formatPrice(item.price!)}</div>
+                  <div class="commodity-price">${escapeHtml(formatPrice(item.price!))}</div>
                   <div class="commodity-change ${getChangeClass(item.change ?? 0)}">${formatChange(item.change ?? 0)}</div>
                 </div>
               `).join('')}

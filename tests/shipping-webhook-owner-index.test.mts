@@ -15,6 +15,17 @@ beforeEach(() => {
 });
 afterEach(() => { globalThis.fetch = originalFetch; process.env = { ...originalEnv }; });
 
+test('callerFingerprint refuses to mint an owner tag without a credential', async () => {
+  const bare = new Request('https://worldmonitor.app/api/v2/shipping/webhooks');
+  await assert.rejects(callerFingerprint(bare), (err: unknown) =>
+    err instanceof Error && err.name === 'ApiError' && (err as { statusCode?: number }).statusCode === 401);
+  await assert.rejects(callerFingerprint(bare, ''), (err: unknown) =>
+    err instanceof Error && (err as { statusCode?: number }).statusCode === 401);
+  // A resolved credential wins over headers and hashes deterministically.
+  assert.equal(await callerFingerprint(bare, 'pro-test-key'), await callerFingerprint(request, 'pro-test-key'));
+  assert.notEqual(await callerFingerprint(bare, 'pro-test-key'), 'anon');
+});
+
 for (const action of ['list', 'register'] as const) {
   test(`${action} removes confirmed stale members and preserves live records`, async () => {
     const ownerTag = await callerFingerprint(request, 'pro-test-key');

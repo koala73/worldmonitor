@@ -1,6 +1,7 @@
 import { clearTelegramIntelCache } from '@/services/telegram-intel';
 import { subscribeRuntimeConfig } from '@/services/runtime-config';
 import type { AppContext, AppModule } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { CORRELATION_DOMAINS } from '@/types/correlation';
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
@@ -9,12 +10,12 @@ import { hasPanelSettingEntry, newsPanelKeyForCategory, newsPanelKeyLookupsFor }
 import {
   createDeferredPanelShell,
   getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
-  reconcileDeferredPanelShellColSpan,
   shouldDeferInitialPanelMount,
   type DeferredPanelShellFootprint,
 } from '@/app/panel-mount-deferral';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
+  clampMapColWidthPercent,
   mapRightClassForVisualSide,
   type MapVisualSide,
 } from '@/app/split-layout';
@@ -33,6 +34,7 @@ import type { AviationCommandBar } from '@/components/AviationCommandBar';
 import { MobilePanelNav } from '@/components/MobilePanelNav';
 import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
+import { safeStorageGet } from '@/utils/safe-storage';
 import {
   CANONICAL_FEEDS,
   STORAGE_KEYS,
@@ -47,6 +49,7 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
+import { getPanelDisplayName } from '@/services/panel-display-name';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, trackLayoutCustomized, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents, replayPendingMissionReturn } from '@/services/analytics';
 import { ProPreviewSection } from '@/components/ProPreviewSection';
@@ -54,14 +57,14 @@ import { syncPanelPreview } from '@/services/mission-preview-registry';
 import { loadStoredMissionPreset } from '@/services/mission-presets';
 import { peekPendingMissionAttribution } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
-import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
+import { loadWidgets, saveWidget, isProUser, isProTierResolved, subscribeWidgetAccess } from '@/services/widget-store';
 import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import {
   panelGateStateChanged,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, markEntitlementVerificationUnavailable, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { createEntitlementReloadController } from '@/services/entitlement-reload-controller';
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -127,6 +130,8 @@ import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { observePanelGridColumns } from '@/utils/panel-grid';
+import { registerSettingsExportFlush } from '@/utils/settings-persistence';
 import { measure, mutate } from '@/utils/layout-batch';
 import { applyPanelFontScale } from '@/services/font-scale-settings';
 import {
@@ -228,6 +233,7 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
  */
 const LATE_REGISTERED_PANEL_KEYS = new Set(['live-news']);
 const CW_PRO_GATE_TAB_RECOVERY_KEY = 'worldmonitor-cw-pro-gate-tab-recovery-v1';
+const STORAGE_ATLAS_PANEL_KEY = 'storage-facility-map';
 
 const DASHBOARD_REFERENCE_LINKS = [
   { label: 'Countries', path: '/countries/' },
@@ -273,6 +279,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
+  'fao-food-price-index': { rowSpan: 3 },
   'global-procurement': { rowSpan: 2 },
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },
@@ -420,7 +427,7 @@ export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
   openSearch: () => void;
-  loadAllData: (forceAll?: boolean) => Promise<void>;
+  loadAllData: (forceAll?: boolean, trigger?: LoadAllDataTrigger) => Promise<void>;
   primeVisiblePanelData: () => void;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
@@ -466,10 +473,12 @@ export class PanelLayoutManager implements AppModule {
   private mobileMapCollapseBtn: HTMLButtonElement | null = null;
   private panelTabBar: PanelTabBar | null = null;
   private tabsState: TabsState | null = null;
+  private unregisterExportFlush: (() => void) | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeRuntimeConfig: (() => void) | null = null;
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeWidgetAccess: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
@@ -484,6 +493,7 @@ export class PanelLayoutManager implements AppModule {
   private readonly proActivationController: ProActivationController;
   private readonly passkeyOfferController: PasskeyOfferBoot;
   private readonly checkoutReturnFocusController = new AbortController();
+  private pendingStorageFacilityId: string | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -724,6 +734,12 @@ export class PanelLayoutManager implements AppModule {
       this.updatePanelGating(getAuthState());
     });
 
+    // Tester keys and the self-host desktop-key verdict change isProUser()
+    // without an auth or entitlement event.
+    this.unsubscribeWidgetAccess = subscribeWidgetAccess(() => {
+      this.updatePanelGating(getAuthState());
+    });
+
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
       void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
@@ -811,7 +827,46 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  /**
+   * Open one facility in the Strategic Storage Atlas ("Open in Storage Atlas"
+   * from the map popup). The atlas is a deferred panel, so its element may not
+   * exist yet: the request is parked in `pendingStorageFacilityId` and
+   * delivered by `afterPanelMounted` once the chunk mounts, however long that
+   * takes. A newer request replaces an older one; destroy() drops it.
+   */
+  public focusStorageFacility(facilityId: string): void {
+    const key = STORAGE_ATLAS_PANEL_KEY;
+    this.pendingStorageFacilityId = facilityId;
+    this.mountDeferredPanel(key);
+    const panel = this.ctx.panels[key];
+    if (panel?.getElement().isConnected) {
+      this.deliverPendingStorageFacility(panel);
+      return;
+    }
+    // Still loading: bring the deferred shell into view so the user sees the
+    // atlas arrive where the drawer will open.
+    document.querySelector(`[data-panel="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  private deliverPendingStorageFacility(panel: Panel): void {
+    const facilityId = this.pendingStorageFacilityId;
+    if (!facilityId || this.ctx.isDestroyed) return;
+    this.pendingStorageFacilityId = null;
+    // The atlas claims the detail event only while the user can see it
+    // (Panel.isVisibleToUser), so make it visible first: expand a collapsed
+    // panel and lift a mobile category filter that excludes it.
+    panel.setCollapsed(false);
+    window.dispatchEvent(new CustomEvent('wm:reveal-panel', { detail: { panelId: STORAGE_ATLAS_PANEL_KEY } }));
+    window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+      cancelable: true,
+      detail: { facilityId },
+    }));
+    panel.getElement().scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /** Retire panel resources and watches, then settle pending entitlement verification. */
   destroy(): void {
+    this.pendingStorageFacilityId = null;
     this.checkoutReturnFocusController.abort();
     clearAllPendingCalls();
     this.applyTimeRangeFilterDebounced.cancel();
@@ -819,6 +874,8 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeRuntimeConfig = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeWidgetAccess?.();
+    this.unsubscribeWidgetAccess = null;
     this.proBlockUnsubscribe?.();
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();
@@ -867,6 +924,8 @@ export class PanelLayoutManager implements AppModule {
     this.mobileMapCollapseBtn = null;
     this.panelTabBar?.destroy();
     this.panelTabBar = null;
+    this.unregisterExportFlush?.();
+    this.unregisterExportFlush = null;
     // Clean up happy variant panels
     destroyOnce(this.ctx.tvMode);
     this.ctx.tvMode = null;
@@ -916,6 +975,8 @@ export class PanelLayoutManager implements AppModule {
     // Clean up billing subscription watch + entitlement subscription
     destroySubscriptionWatch();
     destroyEntitlementSubscription();
+    // Final teardown owns the terminal verdict; account rebinds keep verification pending.
+    markEntitlementVerificationUnavailable();
 
     // Clean up entitlement change listener
     this.unsubscribeEntitlementChange?.();
@@ -1018,10 +1079,11 @@ export class PanelLayoutManager implements AppModule {
   /** #5159/#5205/#5201: storage access can throw (blocked cookies, sandboxed
    *  iframe) and this runs BEFORE the shell installs — an uncaught throw would
    *  strand users on the boot skeleton. loadFromStorage is try/catch-guarded;
-   *  first-time mobile visitors default to the collapsed, feed-first Today
-   *  state. Wire format stays 'true'/'false' (JSON booleans). */
+   *  first-time mobile visitors see the map; it stays collapsed only for a
+   *  viewer who collapsed it (the control or the Today tab saves 'true').
+   *  Wire format stays 'true'/'false' (JSON booleans). */
   private static isMobileMapCollapsedPreferred(): boolean {
-    return loadFromStorage<boolean>('mobile-map-collapsed', true) === true;
+    return loadFromStorage<boolean>('mobile-map-collapsed', false) === true;
   }
 
   async renderLayout(): Promise<void> {
@@ -1048,6 +1110,14 @@ export class PanelLayoutManager implements AppModule {
       } catch {
         return false;
       }
+    })();
+    // Render the saved map width the same way: EventHandlerManager.init() runs
+    // after the first paint, and applying it there moved the map, the sidebar
+    // and every panel span. It re-clamps against the measured width later.
+    const mapColWidthStyle = (() => {
+      const stored = Number.parseFloat(safeStorageGet('map-col-width') ?? '');
+      if (!Number.isFinite(stored)) return '';
+      return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
     })();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
     const referenceOrigin = this.ctx.isDesktopApp || window.location.hostname.endsWith('.worldmonitor.app')
@@ -1256,11 +1326,11 @@ export class PanelLayoutManager implements AppModule {
       ).join('')}
       </div>
       <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
-      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}">
+      <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}"${mapColWidthStyle}>
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
-              <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
+              <span class="panel-title">${escapeHtml(getPanelDisplayName('map'))}</span>
             </div>
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
@@ -1332,6 +1402,8 @@ export class PanelLayoutManager implements AppModule {
     // earlier than any LCP candidate in the new shell, making it useless for
     // ordering the LCP element against the shell swap (PR #4512 review).
     markLcpDebug('wm:layout:shell-replaced');
+    const panelsGrid = document.getElementById('panelsGrid');
+    if (panelsGrid) observePanelGridColumns(panelsGrid);
 
     // Skip link: explicitly move focus to <main> on activation. Native
     // fragment focus on a tabindex="-1" target is inconsistent across
@@ -1379,12 +1451,27 @@ export class PanelLayoutManager implements AppModule {
       const initial: PanelTab = {
         id: generateTabId(),
         name: t('dashboardTabs.defaultName'),
-        ...this.captureCurrentTabState(),
+        ...this.captureCurrentTabState().snapshot,
       };
       state = { activeTabId: initial.id, tabs: [initial] };
       saveTabsState(state);
     }
     this.tabsState = state;
+    // A settings export reads storage, where the active tab's snapshot is only
+    // refreshed on switch-away. Write the live layout into it first so the
+    // backup carries the tab as it is now, not as it was at the last switch.
+    this.unregisterExportFlush?.();
+    this.unregisterExportFlush = registerSettingsExportFlush(() => {
+      if (!this.tabsState) return;
+      if (!this.snapshotActiveTab().persisted || !saveTabsState(this.tabsState).persisted) {
+        throw new Error('Settings export could not save the current dashboard layout');
+      }
+    }, [
+      `worldmonitor-tabs-v1:${SITE_VARIANT}`,
+      STORAGE_KEYS.panels,
+      this.ctx.PANEL_ORDER_KEY,
+      this.ctx.PANEL_ORDER_KEY + '-bottom-set',
+    ]);
     // Clamp stored snapshots to the current free-tier cap so a workspace saved
     // while Pro (or persisted before the cap existed) can't re-enable an
     // over-cap layout when the user later switches to it. Skips itself while
@@ -1937,22 +2024,30 @@ export class PanelLayoutManager implements AppModule {
   }
 
   /** Capture the live panel state (settings + order) for a tab snapshot. */
-  private captureCurrentTabState(): Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet'> {
+  private captureCurrentTabState(): {
+    snapshot: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet'>;
+    persisted: boolean;
+  } {
     // Persist the live DOM order first so the snapshot reflects any drags.
-    this.savePanelOrder();
+    const { persisted } = this.savePanelOrder();
     return {
-      panelSettings: JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>,
-      panelOrder: [...this.resolvedPanelOrder],
-      bottomSet: Array.from(this.bottomSetMemory),
+      snapshot: {
+        panelSettings: JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>,
+        panelOrder: [...this.resolvedPanelOrder],
+        bottomSet: Array.from(this.bottomSetMemory),
+      },
+      persisted,
     };
   }
 
   /** Refresh the active tab's snapshot from live state (called on switch-away). */
-  private snapshotActiveTab(): void {
-    if (!this.tabsState) return;
+  private snapshotActiveTab(): TabsPersistReceipt {
+    if (!this.tabsState) return { persisted: false };
     const active = this.tabsState.tabs.find((t) => t.id === this.tabsState!.activeTabId);
-    if (!active) return;
-    Object.assign(active, this.captureCurrentTabState());
+    if (!active) return { persisted: false };
+    const { snapshot, persisted } = this.captureCurrentTabState();
+    Object.assign(active, snapshot);
+    return { persisted };
   }
 
   private switchToTab(tabId: string): TabsPersistReceipt {
@@ -2490,7 +2585,6 @@ export class PanelLayoutManager implements AppModule {
     if (placeholder && grid) {
       applyPanelFontScale(placeholder, this.ctx.panelSettings[key]?.fontScale);
       this.insertByOrder(grid, placeholder, key);
-      reconcileDeferredPanelShellColSpan(placeholder);
       this.mobilePanelNav?.applyToNewPanel(placeholder);
     }
     const existing = this.deferredPanelMounts.get(key);
@@ -2665,6 +2759,7 @@ export class PanelLayoutManager implements AppModule {
     }
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
+    if (key === STORAGE_ATLAS_PANEL_KEY) this.deliverPendingStorageFacility(panel);
     this.observePanelForHydration(panel);
     if (config?.enabled) {
       this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
@@ -2781,6 +2876,7 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('github', 'panels.github');
     this.createNewsPanel('ipo', 'panels.ipo');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
+    this.createNewsPanel('science', 'panels.science');
     this.lazyDefaultPanel('economic', () => import('@/components/EconomicPanel'), 'EconomicPanel');
     this.lazyDefaultPanel('global-procurement', () => import('@/components/GlobalProcurementPanel'), 'GlobalProcurementPanel');
     this.lazyDefaultPanel('consumer-prices', () => import('@/components/ConsumerPricesPanel'), 'ConsumerPricesPanel');
@@ -2940,6 +3036,15 @@ export class PanelLayoutManager implements AppModule {
       const p = new DisplacementPanel();
       p.setCountryClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
       return p;
+    });
+
+    this.lazyImportedPanel('ukmto-incidents', () => import('@/components/UkmtoIncidentsPanel'), 'UkmtoIncidentsPanel', (UkmtoIncidentsPanel) => {
+      const panel = new UkmtoIncidentsPanel();
+      panel.setLocationClickHandler((lat: number, lon: number) => {
+        if (this.ctx.isMobile) this.revealMobileMap();
+        this.ctx.map?.setCenter(lat, lon, 6);
+      });
+      return panel;
     });
 
     this.lazyImportedPanel('climate', () => import('@/components/ClimateAnomalyPanel'), 'ClimateAnomalyPanel', (ClimateAnomalyPanel) => {
@@ -3102,12 +3207,9 @@ export class PanelLayoutManager implements AppModule {
 
     this.lazyImportedPanel('tech-readiness', () => import('@/components/TechReadinessPanel'), 'TechReadinessPanel', (TechReadinessPanel) => {
       const p = new TechReadinessPanel();
-      // Only auto-refresh on variants whose bootstrap seeds techReadiness
-      // (full + tech). On commodity/finance/energy the seed key is empty
-      // and the 5s fetch at services/economic/index.ts:694 just times out.
-      // The panel is still created so users who opt-in via settings can
-      // trigger a manual refresh from its UI.
-      if (isPanelInVariantDefaults('tech-readiness')) {
+      // Auto-refresh where the variant ships the panel (full + tech) or the
+      // user enabled it. The seed is global, so it loads on every edition.
+      if (isPanelInVariantDefaults('tech-readiness') || this.ctx.panelSettings['tech-readiness']?.enabled === true) {
         void p.refresh();
       }
       return p;
@@ -3290,7 +3392,7 @@ export class PanelLayoutManager implements AppModule {
     let allOrder: string[];
 
     if (hasSavedOrder) {
-      const valid = savedOrder.filter(k => activePanelKeys.includes(k));
+      const valid = savedOrder.filter(k => activePanelKeys.includes(k) && (SITE_VARIANT !== 'happy' || k !== 'monitors'));
       const missing = activePanelKeys.filter(k => !valid.includes(k));
 
       missing.forEach(k => {
@@ -3305,9 +3407,7 @@ export class PanelLayoutManager implements AppModule {
         if (!inserted) valid.push(k);
       });
 
-      const monitorsIdx = valid.indexOf('monitors');
-      if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1);
-      if (SITE_VARIANT !== 'happy') valid.push('monitors');
+      if (SITE_VARIANT !== 'happy' && !valid.includes('monitors')) valid.push('monitors');
       allOrder = valid;
     } else {
       allOrder = [...defaultOrder];
@@ -3531,7 +3631,7 @@ export class PanelLayoutManager implements AppModule {
 
   private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
       return;
     }
     const mark = (label: string) => {
@@ -3546,7 +3646,7 @@ export class PanelLayoutManager implements AppModule {
         this.scheduledLoadAllIdle = idle(() => {
           this.scheduledLoadAllIdle = null;
           mark('wm:hydration:near-trigger');
-          void this.callbacks.loadAllData();
+          void this.callbacks.loadAllData(false, 'viewport');
         }, { timeout: 300 });
         return;
       }
@@ -3560,7 +3660,7 @@ export class PanelLayoutManager implements AppModule {
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
       mark(`wm:hydration:${phase}-trigger`);
-      void this.callbacks.loadAllData();
+      void this.callbacks.loadAllData(false, 'viewport');
     });
   }
 
@@ -4572,13 +4672,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   getLocalizedPanelName(panelKey: string, fallback: string): string {
-    if (panelKey === 'runtime-config') {
-      return t('modals.runtimeConfig.title');
-    }
-    const key = panelKey.replace(/-([a-z])/g, (_match, group: string) => group.toUpperCase());
-    const lookup = `panels.${key}`;
-    const localized = t(lookup);
-    return localized === lookup ? fallback : localized;
+    return getPanelDisplayName(panelKey, fallback);
   }
 
 }

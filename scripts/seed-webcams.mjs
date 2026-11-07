@@ -7,6 +7,10 @@
  * Env:   WINDY_API_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
  */
 
+import { loadEnvFile } from './_seed-utils.mjs';
+
+loadEnvFile(import.meta.url);
+
 const WINDY_API_KEY = process.env.WINDY_API_KEY;
 if (!WINDY_API_KEY) {
   console.log('WINDY_API_KEY not set — skipping webcam seed');
@@ -41,6 +45,7 @@ const REGIONS = [
 
 async function pipelineRequest(commands) {
   const resp = await fetch(`${REDIS_URL}/pipeline`, {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
@@ -67,6 +72,8 @@ async function fetchRegion(bounds, regionName, depth = 0) {
     url.searchParams.set('offset', String(offset));
 
     const resp = await fetch(url, {
+
+      signal: AbortSignal.timeout(30_000),
       headers: { 'x-windy-api-key': WINDY_API_KEY },
     });
 

@@ -20,7 +20,11 @@ import { loadAllBasketConfigs } from '../../src/config/loader.js';
 import { AUTO_MATCH_THRESHOLD, validateSearchHit } from '../../src/adapters/validator.js';
 import { parseSize } from '../../src/normalizers/size.js';
 
-/** Leading unit tokens the #6868 corpus ranked as unmatched (parse → null). */
+/**
+ * Leading unit tokens the #6868 corpus ranked as unmatched (parse → null).
+ * `litro`/`litros` left this list when #5445 mapped the unit; they now reach
+ * the quantity window (see src/normalizers/size.test.ts).
+ */
 const UNPARSEABLE_SIZE_TEXTS = [
   '24 pack',
   '12 unidades',
@@ -28,8 +32,6 @@ const UNPARSEABLE_SIZE_TEXTS = [
   '12 eggs',
   '2 pint',
   '6 pk',
-  '1 litros',
-  '1 litro',
 ] as const;
 
 describe('#6868 unverified-size score impact', () => {
@@ -65,25 +67,17 @@ describe('#6868 unverified-size score impact', () => {
     expect(stillAuto, 'an unparseable size must never clear AUTO_MATCH_THRESHOLD').toEqual([]);
   });
 
-  it('leaves structurally-absent sizes publishing for every windowed item', () => {
-    const demoted: string[] = [];
+  it('requires fetched quantity evidence before automatic publication for windowed items', () => {
     for (const basket of loadAllBasketConfigs()) {
       for (const item of basket.items) {
         if (item.minBaseQty == null && item.maxBaseQty == null) continue;
-        const r = validateSearchHit({
-          canonicalName: item.canonicalName,
-          productName: item.canonicalName,
-          sizeText: undefined,
-          item,
-        });
-        if (r.signals.sizeWindow !== 'absent' || r.score < AUTO_MATCH_THRESHOLD) {
-          demoted.push(
-            `${basket.slug}/${item.id} status=${r.signals.sizeWindow} score=${r.score}`,
-          );
+        const result = validateSearchHit({ canonicalName: item.canonicalName,
+          productName: item.canonicalName, sizeText: undefined, item });
+        if (result.signals.sizeWindow !== 'pass') {
+          expect(result.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
         }
       }
     }
-    expect(demoted, 'missing sizeText must keep the historical 0.2 weight').toEqual([]);
   });
 
   // Density-reconcilable carve-outs also move to unverified. Count how many

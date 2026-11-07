@@ -14,12 +14,14 @@
  */
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18next from 'i18next';
+import en from '@/locales/en.json';
 
 import { useChineseCatalogue } from './helpers/i18n.mts';
 
 // Parameters are declared so the assertions below can index the recorded call
 // by position — `vi.fn(async () => …)` records an empty tuple type.
-const translateText = vi.fn(async (_text: string, _targetLang: string) => '翻譯結果');
+const translateText = vi.fn(async (_text: string, _targetLang: string): Promise<string | null> => '翻譯結果');
 const generateSummary = vi.fn(
   async (_headlines: string[], _onProgress: undefined, _panelId: string, _lang: string, _options?: unknown) =>
     ({ summary: '摘要', provider: 'test', model: 'test', cached: false }),
@@ -61,6 +63,7 @@ let NewsPanel: typeof import('@/components/NewsPanel')['NewsPanel'];
 
 beforeAll(async () => {
   await useChineseCatalogue('zh-TW');
+  i18next.addResourceBundle('en', 'translation', en);
   ({ NewsPanel } = await import('@/components/NewsPanel'));
 });
 
@@ -94,6 +97,51 @@ function headlineRow(): HTMLElement {
 }
 
 describe('headline translation target', () => {
+  it('disables translation and ignores duplicate activation while a request runs', async () => {
+    await useChineseCatalogue('zh-TW');
+    const panel = newPanel();
+    const button = headlineRow() as HTMLButtonElement;
+    let complete!: (value: string) => void;
+    translateText.mockImplementationOnce(() => new Promise<string>((resolve) => { complete = resolve; }));
+
+    const pending = panel.handleTranslate(button, 'Sanctions package agreed');
+    const disabledWhilePending = button.disabled;
+    await panel.handleTranslate(button, 'Sanctions package agreed');
+    const requestsWhilePending = translateText.mock.calls.length;
+    complete('翻譯結果');
+    await pending;
+
+    expect(disabledWhilePending).toBe(true);
+    expect(requestsWhilePending).toBe(1);
+    expect(button.disabled).toBe(false);
+    expect(button.closest('.item')!.querySelector('[role="status"]')).toBeNull();
+    expect(button.closest('.item')!.querySelector('.item-title')!.textContent).toBe('翻譯結果');
+  });
+
+  for (const failure of ['empty', 'rejected']) {
+    it(`shows an actionable error for ${failure} translation and clears it on retry`, async () => {
+      await useChineseCatalogue('zh-TW');
+      const panel = newPanel();
+      const button = headlineRow();
+      if (failure === 'empty') translateText.mockResolvedValueOnce(null);
+      else translateText.mockRejectedValueOnce(new Error('Provider unavailable'));
+
+      await panel.handleTranslate(button, 'Sanctions package agreed');
+
+      const status = button.closest('.item')!.querySelector('[role="status"]');
+      expect(status?.textContent).toBe('翻譯不可用。請檢查 AI 提供商設定並重試。');
+      expect(button.textContent).toBe('文');
+      expect(button.style.pointerEvents).toBe('auto');
+      expect(button.closest('.item')!.querySelector('.item-title')!.textContent).toBe('Sanctions package agreed');
+
+      await panel.handleTranslate(button, 'Sanctions package agreed');
+
+      expect(button.closest('.item')!.querySelector('[role="status"]')).toBeNull();
+      expect(button.closest('.item')!.querySelector('.item-title')!.textContent).toBe('翻譯結果');
+      expect(button.textContent).toBe('✓');
+    });
+  }
+
   it('asks for Traditional Chinese, not the stripped code', async () => {
     await useChineseCatalogue('zh-TW');
     const panel = newPanel();

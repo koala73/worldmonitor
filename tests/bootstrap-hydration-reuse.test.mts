@@ -49,6 +49,7 @@ type Harness = {
     dataFreshness: 'fresh' | 'stale';
     lastUpdate: Date;
   }>;
+  fetchGdeltTensions: () => Promise<Array<{ score: number }>>;
   fetchChokepointStatus: () => Promise<{
     chokepoints: Array<{ id: string }>;
     fetchedAt: string;
@@ -212,7 +213,7 @@ before(async () => {
         "export { fetchDiseaseOutbreaks } from './src/services/disease-outbreaks.ts';",
         "export { fetchImdCycloneMarine } from './src/services/imd-cyclone-marine.ts';",
         "export { fetchSanctionsPressure } from './src/services/sanctions-pressure.ts';",
-        "export { fetchPizzIntStatus } from './src/services/pizzint.ts';",
+        "export { fetchPizzIntStatus, fetchGdeltTensions } from './src/services/pizzint.ts';",
         "export { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from './src/services/supply-chain/index.ts';",
         "export { fetchConsumerPriceOverview, fetchConsumerPriceCategories, fetchConsumerPriceMovers, fetchRetailerPriceSpreads } from './src/services/consumer-prices/index.ts';",
         "export { createHydrationHandoff } from './src/services/hydration-handoff.ts';",
@@ -381,8 +382,66 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(rpcUrlCount(requests), 2, 'each call retries because empty wildfire data is not cached');
   });
 
+  it('wildfires: stale and invalid clocks cannot hydrate or warm the breaker', async () => {
+    const now = Date.now();
+    const originalNow = Date.now;
+    Date.now = () => now;
+    try {
+      for (const fetchedAt of [now - 6 * 60 * 60 * 1000 - 1, 0, -1, undefined, NaN, Infinity, 'invalid', now + 1]) {
+        const snapshot = { fireDetections: [FIRE_DETECTION], fetchedAt, dataAvailable: true };
+        const requests = bootstrapStub({ wildfires: snapshot }, () => snapshot);
+        harness.bootstrapTesting.seedHydrationCacheForTests({ wildfires: snapshot });
+        assert.equal((await harness.fetchAllFires()).skipped, true, `reject clock ${fetchedAt}`);
+        assert.equal((await harness.fetchAllFires()).skipped, true);
+        assert.equal(rpcUrlCount(requests), 2, 'rejected responses must remain retryable');
+      }
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
+  it('wildfires: malformed hydration falls through without throwing', async () => {
+    for (const fireDetections of [undefined, null, {}, 'not-an-array']) {
+      const snapshot = { fireDetections, fetchedAt: Date.now(), dataAvailable: true };
+      const requests = bootstrapStub({});
+      harness.bootstrapTesting.seedHydrationCacheForTests({ wildfires: snapshot });
+      assert.equal((await harness.fetchAllFires()).skipped, true);
+      assert.equal(rpcUrlCount(requests), 1);
+    }
+  });
+
+  it('wildfires: malformed RPC arrays remain unavailable and retryable', async () => {
+    for (const fireDetections of [undefined, null, {}, 'not-an-array']) {
+      const snapshot = { fireDetections, fetchedAt: Date.now(), dataAvailable: true };
+      const requests = bootstrapStub({}, () => snapshot);
+      assert.equal((await harness.fetchAllFires()).skipped, true);
+      assert.equal((await harness.fetchAllFires()).skipped, true);
+      assert.equal(rpcUrlCount(requests), 2);
+    }
+  });
+
+  it('wildfires: cached data expires from its source clock and a fresh RPC recovers', async () => {
+    const now = Date.now();
+    const originalNow = Date.now;
+    Date.now = () => now;
+    const snapshot = { fireDetections: [FIRE_DETECTION], fetchedAt: now - 6 * 60 * 60 * 1000, dataAvailable: true };
+    let liveFetchedAt = snapshot.fetchedAt;
+    const requests = bootstrapStub({ wildfires: snapshot }, () => ({ ...snapshot, fetchedAt: liveFetchedAt }));
+    harness.bootstrapTesting.seedHydrationCacheForTests({ wildfires: snapshot });
+    try {
+      assert.equal((await harness.fetchAllFires()).totalCount, 1, 'exactly six hours remains within the budget');
+      Date.now = () => now + 1;
+      assert.equal((await harness.fetchAllFires()).skipped, true, 'even newly cached data expires at its source deadline');
+      liveFetchedAt = now + 1;
+      assert.equal((await harness.fetchAllFires()).totalCount, 1, 'fresh RPC data recovers after rejection');
+      assert.equal(rpcUrlCount(requests), 2);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
   it('wildfires: a second call is served from the warmed breaker with zero RPC requests', async () => {
-    const requests = bootstrapStub({ wildfires: { fireDetections: [FIRE_DETECTION], fetchedAt: 1, dataAvailable: true } });
+    const requests = bootstrapStub({ wildfires: { fireDetections: [FIRE_DETECTION], fetchedAt: Date.now(), dataAvailable: true } });
     await harness.fetchBootstrapData();
 
     const first = await harness.fetchAllFires();
@@ -709,7 +768,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const staleStatus = {
       defconLevel: 4, defconLabel: 'stale', aggregateActivity: 10, activeSpikes: 1,
       locationsMonitored: 1, locationsOpen: 1, updatedAt: 1,
-      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [],
+      dataFreshness: 'DATA_FRESHNESS_STALE', locations: [{
+        placeId: 'missing-live', name: 'Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, noLiveSignal: true, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_STALE',
+      }],
     };
     const freshStatus = {
       ...staleStatus,
@@ -717,6 +780,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
       defconLabel: 'fresh',
       updatedAt: 2,
       dataFreshness: 'DATA_FRESHNESS_FRESH',
+      locations: [...staleStatus.locations, {
+        placeId: 'quiet-live', name: 'Quiet Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, hasBaseline: true, noLiveSignal: false, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_FRESH',
+      }],
     };
     const requests = bootstrapStub(
       { pizzint: { pizzint: staleStatus, tensionPairs: [] } },
@@ -729,9 +797,23 @@ describe('bootstrap hydration reuse (#7048)', () => {
     const cached = await harness.fetchPizzIntStatus();
 
     assert.equal(hydrated.dataFreshness, 'stale');
+    assert.equal(hydrated.locations[0].no_live_signal, true);
     assert.equal(recovered.dataFreshness, 'fresh');
+    assert.equal(recovered.locations[0].no_live_signal, true);
+    assert.equal(recovered.locations[1].percentage_of_usual, 0);
     assert.deepEqual(cached, recovered);
     assert.equal(rpcUrlCount(requests), 1, 'stale hydration must retry once and cache only the fresh result');
+  });
+
+  it('GDELT tensions: every refresh rechecks the server instead of serving a browser cache', async () => {
+    let score = 50;
+    const requests = bootstrapStub({}, () => ({ tensionPairs: [{ id: 'usa_russia',
+      countries: ['US', 'RU'], label: 'US–Russia', score,
+      trend: 'TREND_DIRECTION_STABLE', changePercent: 0, region: 'global' }] }));
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 50);
+    score = 75;
+    assert.equal((await harness.fetchGdeltTensions())[0]?.score, 75);
+    assert.equal(rpcUrlCount(requests), 2);
   });
 
   it('chokepoints: degraded hydration renders promptly, refreshes once, and remains retryable', async () => {

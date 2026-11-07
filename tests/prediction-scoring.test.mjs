@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import capturedChanges from './fixtures/prediction-polymarket-embedded-changes.json' with { type: 'json' };
+import capturedLiquidity from './fixtures/prediction-liquidity-upstream.json' with { type: 'json' };
 
 import {
   isExcluded,
@@ -7,7 +9,11 @@ import {
   tagRegions,
   parseYesPrice,
   parseKalshiYesPrice,
+  parsePolymarketChange,
+  parseKalshiChange24h,
   parsePredictionMarketVolume,
+  parsePolymarketLiquidity,
+  kalshiMarketUrl,
   selectPricedKalshiMarket,
   shouldInclude,
   scoreMarket,
@@ -18,9 +24,44 @@ import {
   REGION_PATTERNS,
 } from '../scripts/_prediction-scoring.mjs';
 
+describe('upstream probability moves', () => {
+  it('parses embedded market fields captured from Railway without a separate history request', () => {
+    assert.deepEqual(capturedChanges.markets.map(m => parsePolymarketChange(m, 'oneDayPriceChange')), [-0.1, -5.5, 0.4]);
+    assert.deepEqual(capturedChanges.markets.map(m => parsePolymarketChange(m, 'oneWeekPriceChange')), [-0.5, -4, 0.4]);
+  });
+  it('scales signed Polymarket changes without rounding away small moves', () => {
+    for (const [raw, expected] of [['-0.007', -0.7], [0.004, 0.4], ['0', 0], [-1, -100], [1, 100]]) {
+      assert.equal(parsePolymarketChange({ oneDayPriceChange: raw }, 'oneDayPriceChange'), expected);
+    }
+    assert.equal(parsePolymarketChange({ oneWeekPriceChange: '-0.04' }, 'oneWeekPriceChange'), -4);
+  });
+  it('leaves missing, malformed and out-of-range changes unknown', () => {
+    for (const raw of [undefined, null, '', ' ', '0.62oops', 'NaN', Infinity, 1.01, -1.01, true, [], {}]) {
+      assert.equal(parsePolymarketChange({ oneDayPriceChange: raw }, 'oneDayPriceChange'), null, String(raw));
+      assert.equal(parseKalshiChange24h({ last_price_dollars: '0.69', previous_price_dollars: raw }), null, String(raw));
+    }
+  });
+  it('computes Kalshi daily moves from the same contract and preserves zero', () => {
+    assert.equal(parseKalshiChange24h({ last_price_dollars: '0.69', previous_price_dollars: '0.68' }), 1);
+    assert.equal(parseKalshiChange24h({ last_price_dollars: '0.50', previous_price_dollars: '0.62' }), -12);
+    assert.equal(parseKalshiChange24h({ last_price_dollars: 0, previous_price_dollars: 0 }), 0);
+    assert.equal(parseKalshiChange24h({ last_price_dollars: '0.69' }), null);
+    assert.equal(parseKalshiChange24h({ last_price_dollars: '0.62oops', previous_price_dollars: '0.68' }), null);
+    assert.equal(parseKalshiChange24h({ last_price_dollars: '1.1', previous_price_dollars: '0.68' }), null);
+  });
+});
+
 function market(title, yesPrice, volume, opts = {}) {
   return { title, yesPrice, volume, ...opts };
 }
+
+describe('Kalshi series website landing', () => {
+  it('matches the official KXHIGHNY guide example from explicit provenance', () => {
+    assert.equal(kalshiMarketUrl('KXHIGHNY'), 'https://kalshi.com/markets/kxhighny');
+    assert.equal(kalshiMarketUrl(' KXPUTINDJTLOCATION '), 'https://kalshi.com/markets/kxputindjtlocation');
+    for (const value of [undefined, '', '../other', 'KXHIGHNY?market=other']) assert.equal(kalshiMarketUrl(value), '');
+  });
+});
 
 describe('parseKalshiYesPrice', () => {
   it('converts 0-1 dollar scale to 0-100', () => {
@@ -134,6 +175,33 @@ describe('parsePredictionMarketVolume', () => {
     assert.equal(parsePredictionMarketVolume({ volume: '6789.5' }), 6789.5);
     assert.equal(parsePredictionMarketVolume({}), 0);
     assert.equal(parsePredictionMarketVolume({ volumeNum: Number.NaN }), 0);
+  });
+});
+
+describe('parsePolymarketLiquidity', () => {
+  it('reads event-level and market-level liquidity from captured Gamma responses', () => {
+    const event = capturedLiquidity.polymarketEvent;
+    assert.equal(parsePolymarketLiquidity(event), 2494419.31546);
+    assert.equal(parsePolymarketLiquidity(event.markets[0]), 140268.51998);
+    assert.equal(parsePolymarketLiquidity({ liquidity: '140268.51998' }), 140268.51998);
+  });
+
+  it('returns null instead of a fabricated value when liquidity is absent or unreadable', () => {
+    assert.equal(parsePolymarketLiquidity(capturedLiquidity.polymarketMarketWithoutLiquidity), null);
+    assert.equal(parsePolymarketLiquidity({}), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: '' }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: null }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: 'n/a' }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidity: true }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: [] }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: -5 }), null);
+    assert.equal(parsePolymarketLiquidity({ liquidityNum: Number.NaN, liquidity: '12' }), 12);
+  });
+
+  it('confirms the Kalshi market payload carries no liquidity field, so depth comes from order books', () => {
+    const kalshiFields = Object.keys(capturedLiquidity.kalshiMarket);
+    assert.ok(kalshiFields.includes('open_interest_fp'));
+    assert.deepEqual(kalshiFields.filter((field) => /liquid/i.test(field)), []);
   });
 });
 

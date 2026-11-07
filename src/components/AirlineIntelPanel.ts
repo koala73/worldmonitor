@@ -122,12 +122,13 @@ export class AirlineIntelPanel extends Panel {
         refreshBtn.addEventListener('click', () => this.refresh());
         this.header.appendChild(refreshBtn);
 
-        // Add LIVE indicator badge to the title
+        // Add LIVE indicator badge beside the title. Inside the title it would
+        // break onto the title's second line or be cut off with it.
         this.liveIndicator = document.createElement('span');
         this.liveIndicator.className = 'live-badge';
         this.liveIndicator.textContent = '\u25CF LIVE';
-        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;margin-left:8px;letter-spacing:0.5px;';
-        this.header.querySelector('.panel-title')?.appendChild(this.liveIndicator);
+        this.liveIndicator.style.cssText = 'display:none;color:#22c55e;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;letter-spacing:0.5px;white-space:nowrap;';
+        this.header.querySelector('.panel-title')?.after(this.liveIndicator);
 
         // Insert tab bar between header and content
         this.tabBar = document.createElement('div');
@@ -215,7 +216,7 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#priceInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
         }
         const today = localDateStr();
@@ -242,7 +243,7 @@ export class AirlineIntelPanel extends Panel {
         const errEl = this.content.querySelector('#datesInlineErr') as HTMLElement | null;
         const iataRe = /^[A-Z]{3}$/;
         if (!iataRe.test(origin) || !iataRe.test(dest)) {
-            if (errEl) errEl.textContent = 'Enter valid 3-letter IATA codes';
+            if (errEl) errEl.textContent = 'Enter valid 3-letter airport codes (for example, DXB)';
             return;
         }
         if (!start || !end) {
@@ -262,7 +263,11 @@ export class AirlineIntelPanel extends Panel {
             return;
         }
         const daysDiff = (new Date(end).getTime() - new Date(start).getTime()) / 86400000;
-        if (errEl) errEl.textContent = daysDiff > 90 ? 'Range exceeds 90 days — results may be incomplete' : '';
+        if (daysDiff > 30) {
+            if (errEl) errEl.textContent = 'Choose a range of at most 31 days';
+            return;
+        }
+        if (errEl) errEl.textContent = '';
         this.pricesOrigin = origin;
         this.pricesDest = dest;
         this.datesStart = start;
@@ -426,7 +431,7 @@ export class AirlineIntelPanel extends Panel {
           <div class="flight-route">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}</div>
           <div class="flight-time">${fmtTime(when)}</div>
           <div class="flight-delay" style="color:${f.delayMinutes > 0 ? '#f97316' : '#aaa'}">${f.delayMinutes > 0 ? `+${f.delayMinutes}m` : ''}</div>
-          <div class="flight-status" style="color:${color}">${f.status}</div>
+          <div class="flight-status" style="color:${color}">${escapeHtml(f.status)}</div>
         </div>`;
         }).join('');
         this.setTrustedContent(trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));
@@ -479,7 +484,7 @@ export class AirlineIntelPanel extends Panel {
             <div style="display:flex;gap:8px;align-items:baseline">
               <strong>${escapeHtml(f.flightNumber)}</strong>
               <span style="color:#9ca3af;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(f.carrier.name || f.carrier.iata)}</span>
-              <span style="color:${color};font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-left:auto">${f.status}</span>
+              <span style="color:${color};font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-left:auto">${escapeHtml(f.status)}</span>
             </div>
             <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(f.origin.iata)} → ${escapeHtml(f.destination.iata)}${depStr ? ` · ${depStr}` : ''}${arrStr}</div>
             ${f.aircraftType ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#6b7280">${escapeHtml(f.aircraftType)}</div>` : ''}

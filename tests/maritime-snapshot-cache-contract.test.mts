@@ -112,7 +112,7 @@ function maritimeStubs() {
       });
       builder.onLoad({ filter: /src\/services\/maritime\/index\.ts$/ }, (args) => ({
         loader: 'ts',
-        contents: `${readFileSync(args.path, 'utf8')}\nexport { fetchSnapshotPayload, pollSnapshot };`,
+        contents: `${readFileSync(args.path, 'utf8')}\nexport { fetchSnapshotPayload, pollSnapshot, snapshotBreaker as testBreaker };`,
       }));
     },
   };
@@ -121,7 +121,9 @@ function maritimeStubs() {
 type Harness = {
   fetchSnapshotPayload(includeCandidates: boolean): Promise<{ sequence: number } | null>;
   pollSnapshot(force?: boolean): Promise<void>;
-  registerAisCallback(callback: (data: { mmsi: string }) => void): void;
+  registerAisCallback(callback: (data: { mmsi: string }) => void): Promise<void>;
+  initAisStream(): void;
+  getAisStatus(): { connected: boolean; vessels: number; messages: number };
   unregisterAisCallback(callback: (data: { mmsi: string }) => void): void;
   disconnectAisStream(): void;
 };
@@ -129,7 +131,7 @@ type Harness = {
 before(async () => {
   const result = await build({
     stdin: {
-      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, disconnectAisStream } from './src/services/maritime/index.ts';`,
+      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, initAisStream, getAisStatus, getAisCandidateDataState, disconnectAisStream, testBreaker } from './src/services/maritime/index.ts';`,
       loader: 'ts',
       resolveDir: root,
       sourcefile: 'maritime-cache-runtime-entry.ts',
@@ -194,6 +196,50 @@ test('a density sequence does not suppress the first candidate snapshot', async 
 
   assert.deepEqual(runtime.__maritimeRequests, [false, true]);
   assert.deepEqual(delivered, ['123456789']);
+  harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+// #8634: the density layer starts polling before the military layer registers,
+// and polling used to fetch candidates only at the next 5-minute tick.
+test('the first callback fetches candidates immediately when polling already runs', async () => {
+  setup([response(7), response(8, true)]);
+  const harness = await loadHarness();
+  harness.initAisStream();
+  await settleBackgroundWork();
+  assert.deepEqual(runtime.__maritimeRequests, [false]);
+
+  const delivered: string[] = [];
+  const callback = (data: { mmsi: string }) => delivered.push(data.mmsi);
+  await harness.registerAisCallback(callback);
+
+  assert.deepEqual(runtime.__maritimeRequests, [false, true]);
+  assert.deepEqual(delivered, ['123456789'], 'registration resolves after the first candidates are delivered');
+
+  const secondCallback = () => {};
+  await harness.registerAisCallback(secondCallback);
+  assert.deepEqual(runtime.__maritimeRequests, [false, true], 'later callbacks share the running candidate poll');
+  harness.unregisterAisCallback(secondCallback);
+  harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+test('a density poll that finishes after a newer candidate poll does not overwrite shared status', async () => {
+  let releaseDensity!: (value: SnapshotResponse) => void;
+  const pendingDensity = new Promise<SnapshotResponse>((resolveResponse) => { releaseDensity = resolveResponse; });
+  setup([pendingDensity, response(9, true)]);
+  const harness = await loadHarness();
+  harness.initAisStream();
+  await settleBackgroundWork();
+
+  const callback = () => {};
+  await harness.registerAisCallback(callback);
+  assert.equal(harness.getAisStatus().messages, 9);
+
+  releaseDensity(response(7));
+  await settleBackgroundWork();
+
+  assert.equal(harness.getAisStatus().messages, 9, 'the older density response must not replace newer status');
   harness.unregisterAisCallback(callback);
   harness.disconnectAisStream();
 });
@@ -268,3 +314,61 @@ test('a degraded candidate refresh cannot pin the stale candidate entry', async 
   assert.equal((await harness.fetchSnapshotPayload(true))?.sequence, 2, 'degraded refresh must evict the stale candidate entry');
   assert.deepEqual(runtime.__maritimeRequests, [true, true, true]);
 });
+
+function deferredSnapshot() {let resolve!: (v:SnapshotResponse)=>void,reject!: (e:Error)=>void;const promise=new Promise<SnapshotResponse>((ok,bad)=>{resolve=ok;reject=bad;});return {promise,resolve,reject};}
+test('candidate confirmation is current only for accepted live empty and expires at existing freshness limit',async()=>{
+ let now=1791296400000;Date.now=()=>now;setup([response(1)]);const h=await loadHarness() as any;const callback=()=>{};await h.registerAisCallback(callback);assert.equal(h.getAisCandidateDataState().mode,'live');now+=6*60*1000+1;assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.unregisterAisCallback(callback);h.disconnectAisStream();
+});
+test('dataAvailable false with a snapshot preserves callback admission but cannot confirm absence',async()=>{
+ setup([{...response(1,true),dataAvailable:false}]);const h=await loadHarness() as any;const delivered:string[]=[];const callback=(p:any)=>delivered.push(p.mmsi);await h.registerAisCallback(callback);assert.deepEqual(delivered,['123456789']);assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.unregisterAisCallback(callback);h.disconnectAisStream();
+});
+test('density-only success cannot restore failed candidate evidence',async()=>{
+ const fail=deferredSnapshot();setup([response(1),fail.promise,response(2)]);const h=await loadHarness() as any;await h.pollSnapshot(true);const callback=()=>{};const first=h.registerAisCallback(callback);await settleBackgroundWork();fail.reject(Error('fixture candidate failed'));await first;assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.unregisterAisCallback(callback);await h.pollSnapshot(true);assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.disconnectAisStream();
+});
+test('older candidate success after newer failure cannot certify zero while callbacks still deliver unchanged',async()=>{
+ const old=deferredSnapshot(),recent=deferredSnapshot();setup([old.promise,recent.promise]);const h=await loadHarness() as any;const delivered:string[]=[];const callback=(p:any)=>delivered.push(p.mmsi);const first=h.registerAisCallback(callback);await settleBackgroundWork();const second=h.pollSnapshot(true);await settleBackgroundWork();recent.reject(Error('newer fixture failed'));await second;old.resolve(response(9,true));await first;assert.deepEqual(delivered,['123456789']);assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.unregisterAisCallback(callback);h.disconnectAisStream();
+});
+test('duplicate or older sequence cannot renew candidate confirmation; later accepted sequence recovers',async()=>{
+ let now=1791296400000;Date.now=()=>now;setup([response(7),response(7),response(6),response(8)]);const h=await loadHarness() as any;const callback=()=>{};await h.registerAisCallback(callback);assert.equal(h.getAisCandidateDataState().mode,'live');for(const expected of ['unavailable','unavailable','live']){h.testBreaker.clearCache();await settleBackgroundWork();now+=1000;await h.pollSnapshot(true);assert.equal(h.getAisCandidateDataState().mode,expected);}h.unregisterAisCallback(callback);assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.disconnectAisStream();
+});
+test('cached candidate sample cannot be upgraded by a density live read or new callback lifecycle',async()=>{
+ setup([response(7)]);const h=await loadHarness() as any;const callback=()=>{};await h.registerAisCallback(callback);assert.equal(h.getAisCandidateDataState().mode,'live');h.unregisterAisCallback(callback);await h.registerAisCallback(callback);assert.equal(h.getAisCandidateDataState().mode,'cached');assert.equal(h.getAisCandidateDataState().timestamp,null);h.disconnectAisStream();assert.equal(h.getAisCandidateDataState().mode,'unavailable');h.unregisterAisCallback(callback);
+});
+
+for (const sequence of [0, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+  test(`unknown candidate sequence ${String(sequence)} cannot confirm absence or suppress callback delivery`, async () => {
+    let now = 1791296400000;
+    Date.now = () => now;
+    const samples = [response(sequence as number, true), response(sequence as number, true), response(1, true)];
+    samples.forEach((sample, index) => { sample.snapshot!.candidateReports[0]!.timestamp = now + index * 1000; });
+    setup(samples);
+    const h = await loadHarness() as any;
+    const delivered: string[] = [];
+    const callback = (p: { mmsi: string }) => delivered.push(p.mmsi);
+    await h.registerAisCallback(callback);
+    assert.deepEqual(h.getAisCandidateDataState(), { mode: 'unavailable', timestamp: null, offline: false });
+    assert.deepEqual(delivered, ['123456789']);
+    h.testBreaker.clearCache();
+    await settleBackgroundWork();
+    now += 1000;
+    await h.pollSnapshot(true);
+    assert.deepEqual(h.getAisCandidateDataState(), { mode: 'unavailable', timestamp: null, offline: false });
+    const repeatedDeliveries = sequence === 0 ? 2 : 1;
+    assert.equal(delivered.length, repeatedDeliveries, 'retain existing callback watermark policy');
+    h.testBreaker.clearCache();
+    await settleBackgroundWork();
+    now += 1000;
+    await h.pollSnapshot(true);
+    if (sequence === 0 || sequence === null) {
+      assert.deepEqual(h.getAisCandidateDataState(), { mode: 'live', timestamp: now, offline: false });
+      assert.equal(delivered.length, repeatedDeliveries + 1);
+    } else {
+      assert.equal(h.getAisCandidateDataState().mode, 'unavailable', 'invalid callback watermark must not be reset by metadata');
+      assert.equal(delivered.length, repeatedDeliveries);
+    }
+    h.unregisterAisCallback(callback);
+    assert.equal(h.getAisCandidateDataState().mode, 'unavailable');
+    h.disconnectAisStream();
+    assert.equal(h.getAisCandidateDataState().mode, 'unavailable');
+  });
+}

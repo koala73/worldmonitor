@@ -284,6 +284,32 @@ describe('authenticated MCP allowance resource', () => {
     assert.match(body.error?.message ?? '', /temporarily unavailable/i);
   });
 
+  it('preserves subscription counter parsing, first use, clipping and unlimited reporting', async () => {
+    for (const [raw, limit, expected] of [[null, 50, 0], [undefined, 50, 0], ['12', 50, 12], [70, 50, 50], ['70', null, 70], ['2', 0, 0]]) {
+      const observed = [];
+      const { deps } = makeProDeps({ getEntitlements: async () => ({
+        planKey: 'pro', features: { tier: 1, mcpAccess: true, planLimits: { mcpCallsPerDay: limit } },
+        validUntil: Date.now() + 86400000,
+      }) });
+      deps.redisPipeline = async commands => { observed.push(...commands); return [{ result: raw }]; };
+      const response = await mcpHandler(proReq('POST', readBody()), deps);
+      const body = await response.json();
+      assert.equal(body.error, undefined, String(raw));
+      const status = JSON.parse(body.result.contents[0].text);
+      assert.deepEqual(status, {
+        access: 'subscription', used: expected, limit, remaining: limit === null ? null : limit - expected,
+        resetsAt: new Date(new Date().setUTCHours(24, 0, 0, 0)).toISOString(), requestWindows: null, sharedWithRestApi: false,
+      });
+      assert.deepEqual(observed, [['GET', dailyCounterKey(PRO_USER_ID)]]);
+    }
+    for (const result of [[{}], [], [{ result: '-1' }], [{ result: '1.5' }], [{ result: true }], [{ result: ' ' }], [{ result: Infinity }], [{ result: '9007199254740992' }], [{ result: 1, error: 'outage' }]]) {
+      const { deps } = makeProDeps();
+      deps.redisPipeline = async () => result;
+      const response = await mcpHandler(proReq('POST', readBody()), deps);
+      assert.equal((await response.json()).error?.code, -32603, JSON.stringify(result));
+    }
+  });
+
   it('fails closed on a missing Redis result or an impossible free-account tuple', async () => {
     const startedAt = Date.now();
     const entitlement = async () => ({

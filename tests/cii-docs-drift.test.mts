@@ -17,6 +17,23 @@ import {
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
 
+it('current public and translated CII claims use the published formula version', () => {
+  const paths = [
+    'README.md', 'README.ru.md', 'README.ja-JP.md', 'README.zh-CN.md',
+    'public/ai-search.md', 'public/llms.txt', 'public/llms-full.txt',
+    'public/home.md', 'public/agent-view.json', 'docs/PRESS_KIT.md',
+    'docs/health-endpoints.mdx', 'docs/zh/health-endpoints.mdx',
+    'docs/zh/algorithms.mdx', 'docs/zh/overview.mdx', 'docs/zh/features.mdx',
+    'docs/zh/country-instability-index.mdx', 'docs/zh/strategic-risk.mdx',
+  ];
+  for (const path of paths) {
+    const body = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+    const versions = [...body.matchAll(/\bCII (v\d+)\b/g)].map(match => match[1]);
+    assert.ok(versions.length > 0, `${path} must identify its current CII formula`);
+    assert.ok(versions.every(version => version === CII_FORMULA_VERSION), `${path} has stale CII claims`);
+  }
+});
+
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 function findNextMarkdownHeadingOffset(text: string, start: number): number {
@@ -155,7 +172,7 @@ describe('CII docs drift guards', () => {
     const riskLevels = markdownSection(doc, '### Risk Levels');
     const trendSection = markdownSection(doc, '### Trend Detection');
     const pizzintSection = markdownSection(doc, '### DEFCON-Style Alerting');
-    const gdeltSection = markdownSection(doc, '### GDELT Tension Pairs');
+    const gdeltSection = markdownSection(doc, '### World Monitor Tension Pairs');
     const multipliersSection = markdownSection(doc, '### Event Significance Multipliers');
 
     assert.match(
@@ -220,15 +237,18 @@ describe('CII docs drift guards', () => {
       'USA ↔ China',
       'China ↔ Taiwan',
       'USA ↔ Iran',
-      'USA ↔ Venezuela',
+      'Israel ↔ Iran',
+      'Iran ↔ GCC',
+      'Saudi Arabia ↔ Yemen',
     ]) {
       assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
     }
     assert.doesNotMatch(
       gdeltSection,
-      /Israel ↔ Iran/,
-      'strategic-risk GDELT table must match DEFAULT_GDELT_PAIRS and omit stale Israel-Iran pair',
+      /USA ↔ Venezuela/,
+      'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
+    assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
     assert.equal(CII_COUNTRY_WEIGHTS.US.eventMultiplier, 0.3);
     assert.match(
       multipliersSection,
@@ -430,16 +450,16 @@ describe('CII docs drift guards', () => {
     const pressKit = surfaces[2]!.text;
     const communityGuide = surfaces[3]!.text;
 
-    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
-    assert.match(llmsBrief, /CII v8[\s\S]{0,80}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v14 has a versioned fixed country universe
+    assert.match(llmsBrief, /CII v14[\s\S]{0,80}31 Tier-1 countries/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(llmsBrief, /CRI[\s\S]{0,120}196-country public rankable universe/i);
     assert.match(llmsBrief, /specialized variants/i);
     assert.match(llmsBrief, /shared map-layer catalog/i);
     assert.match(llmsBrief, /curated RSS feeds/i);
     assert.match(llmsBrief, /Multilingual UI with RTL support/i);
-    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
-    assert.match(llmsFull, /Country Instability Index \(CII v8\)[\s\S]{0,240}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v14 has a versioned fixed country universe
+    assert.match(llmsFull, /Country Instability Index \(CII v14\)[\s\S]{0,240}31 Tier-1 countries/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: the CII event formula is a fixed behavioral contract
     assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
@@ -448,8 +468,8 @@ describe('CII docs drift guards', () => {
     assert.match(llmsFull, /shared map-layer catalog/i);
     assert.match(llmsFull, /\*\*RSS feeds\*\* across categories/i);
     assert.match(llmsFull, /Localization follows the runtime locale registry/i);
-    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
-    assert.match(pressKit, /server-authoritative CII v8[\s\S]{0,120}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v14 has a versioned fixed country universe
+    assert.match(pressKit, /server-authoritative CII v14[\s\S]{0,120}31 Tier-1 countries/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(pressKit, /Country Resilience Index[\s\S]{0,140}196-country public rankable universe/i);
     assert.match(pressKit, /named thematic variants/i);
@@ -460,12 +480,12 @@ describe('CII docs drift guards', () => {
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: both public algorithm universes are fixed contracts
     assert.match(
       publicHome,
-      /^- CII v8 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking$/m,
+      /^- CII v14 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking$/m,
     );
     assert.ok(Array.isArray(agentView.capabilities), 'public/agent-view.json capabilities must be an array');
-    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v14 has a versioned fixed country universe
     assert.ok(
-      agentView.capabilities.includes('global live conflict events and CII v8 scores for 31 Tier-1 countries'),
+      agentView.capabilities.includes('global live conflict events and CII v14 scores for 31 Tier-1 countries'),
       'public/agent-view.json must publish the current CII coverage',
     );
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
@@ -484,6 +504,36 @@ describe('CII docs drift guards', () => {
       `${llmsFull}\n${communityGuide}\n${readFileSync(resolve(root, 'AGENTS.md'), 'utf8')}`,
       /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,
     );
+  });
+
+  it('the CII version claim names a version after the current formula, and the change protocols point at the brief', () => {
+    const claim = JSON.parse(readFileSync(resolve(root, 'docs/methodology/cii-next.json'), 'utf8')) as {
+      next?: unknown; claimedBy?: unknown; claimedAt?: unknown;
+    };
+    assert.match(String(claim.next), /^v\d+$/, 'cii-next.json `next` must be a version such as v15');
+    const versionNumber = (v: string) => Number(v.slice(1));
+    assert.ok(
+      versionNumber(String(claim.next)) > versionNumber(CII_FORMULA_VERSION),
+      `cii-next.json claims ${String(claim.next)}, which is not after the current ${CII_FORMULA_VERSION}; move it on when a version ships`,
+    );
+    assert.ok(claim.claimedBy === null || (typeof claim.claimedBy === 'string' && claim.claimedBy.length > 0));
+    if (claim.claimedBy !== null) assert.ok(Number.isFinite(Date.parse(String(claim.claimedAt))), 'a claim needs an ISO claimedAt');
+
+    const brief = readFileSync(resolve(root, 'docs/methodology/cii-change-brief.md'), 'utf8');
+    for (const path of [
+      'tests/fixtures/cii/', 'scripts/cii-table-diff.mts', 'scripts/cii-capture-fixture.mts',
+      'tests/cii-invariants.test.mts', 'tests/cii-fixtures.test.mts', 'docs/methodology/cii-next.json',
+      'docs/methodology/cii-input-register.md',
+    ]) {
+      assert.ok(brief.includes(path), `the brief must name ${path}`);
+      assert.ok(path.endsWith('/') || readFileSync(resolve(root, path)).length > 0, `${path} must exist`);
+    }
+    for (const id of ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10', 'P11', 'P12', 'P13', 'P14', 'P15', 'P16']) {
+      assert.match(brief, new RegExp(`^\\| ${id} \\|`, 'm'), `the brief's property table must list ${id}`);
+    }
+    for (const path of ['server/worldmonitor/intelligence/v1/_risk-config.ts', 'server/worldmonitor/intelligence/v1/get-risk-scores.ts']) {
+      assert.ok(readFileSync(resolve(root, path), 'utf8').includes('docs/methodology/cii-change-brief.md'), `${path} change protocol must point at the brief`);
+    }
   });
 
   it('public CII surfaces point to the canonical live rankings page', () => {

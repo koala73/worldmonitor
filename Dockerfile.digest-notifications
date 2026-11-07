@@ -29,9 +29,10 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 # The repo-root package.json has "type":"module" which tells Node to
 # parse .js files under shared/, server/_shared/, api/ as ESM. Inside
@@ -44,11 +45,14 @@ RUN printf '{"type":"module","private":true}\n' > /app/package.json
 
 # Install scripts/ runtime dependencies (resend, convex, etc.).
 COPY scripts/package.json scripts/package-lock.json ./scripts/
-RUN npm ci --prefix scripts --omit=dev
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
+# Match the other Alpine images: ws can use pure JS without compiling bufferutil.
+RUN npm ci --prefix scripts --omit=dev --ignore-scripts
 
 # Digest cron + shared script helpers it imports via createRequire.
 COPY scripts/seed-digest-notifications.mjs ./scripts/
 COPY scripts/_digest-markdown.mjs ./scripts/
+COPY scripts/_env-file.mjs ./scripts/
 COPY scripts/lib/ ./scripts/lib/
 # Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
 # pairs with the delivered-log writer in scripts/lib/digest-delivered-
@@ -92,6 +96,9 @@ COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
 COPY shared/stocks.json ./shared/
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+# notify-fields.cjs: link classifier for the Teams digest card
+# (scripts/lib/notification-teams.cjs, #9215).
+COPY scripts/shared/notify-fields.cjs ./scripts/shared/
 # #6428: corroboration counts publishers, not feed labels. Imported by
 # seed-digest-notifications.mjs (the corroboration run metric) as
 # shared/publisher-families.js, and by scripts/lib/digest-delivery-plan.mjs
@@ -101,7 +108,7 @@ COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
 COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
 COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
-COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
+COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts server/_shared/brief-fonts.generated.js ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback
 # path (legacy whyMatters generator) to strip prompt-injection patterns
 # from story fields before they reach the LLM. Without this COPY, the

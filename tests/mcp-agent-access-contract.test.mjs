@@ -7,6 +7,7 @@ import {
   buildPublicTool,
   TOOL_LIST_RESPONSE,
   TOOL_REGISTRY,
+  toolAccess,
   toolWeight,
 } from '../api/mcp/registry/index.ts';
 import { RESOURCE_TEMPLATE_LIST_RESPONSE } from '../api/mcp/resources/index.ts';
@@ -20,18 +21,24 @@ describe('agent-visible MCP access contract', () => {
   it('labels anonymous, authenticated-free-account, and subscription-only tools', () => {
     assert.equal(accessFor('get_sources'), 'free');
     assert.equal(accessFor('get_market_data'), 'free-account');
+    assert.equal(accessFor('get_mcp_allowance'), 'free-account');
+    assert.equal(accessFor('start_upgrade'), 'free-account');
     assert.equal(accessFor('get_country_risk'), 'subscription');
     assert.equal(accessFor('get_sanctions_data'), 'subscription');
+    assert.equal(accessFor('get_supply_chain_data'), 'subscription');
 
     for (const tool of TOOL_REGISTRY) {
       const expected = tool._subscriptionOnly ? 'subscription' : tool._freeTier === true
         ? 'free'
-        : tool._execute === undefined || tool.name === 'describe_tool'
+        : tool._execute === undefined || tool.name === 'describe_tool' || tool.name === 'get_mcp_allowance' || tool.name === 'start_upgrade'
           ? 'free-account'
           : 'subscription';
       assert.equal(accessFor(tool.name), expected, `${tool.name} access marker`);
     }
   });
+
+  // Pro-only cache data (Comtrade flows, the #7433 datasets) is kept out of
+  // free-account tools by tests/mcp-free-account-paid-data-invariant.test.mts.
 
   it('publishes what every tool COSTS, on every tool', () => {
     // An API-tier caller is charged 1, 2 or 3 units per call. Without this the

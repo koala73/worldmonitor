@@ -58,6 +58,7 @@ const INTERNATIONAL_HOST_SUFFIXES = [
   '.unep.org',
   '.unesco.org',
   '.unhcr.org',
+  '.unognewsroom.org',
   '.who.int',
   '.worldbank.org',
   '.wto.org',
@@ -66,6 +67,37 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  // RIPE NCC's publishing organization is based in Amsterdam.
+  'stat.ripe.net': 'NL',
+  'fdw.fews.net': 'US',
+  'lindas.cz-aws.net': 'CH',
+  // #6153: Moscow Exchange ISS, the exchange's own market-data API.
+  'iss.moex.com': 'RU',
+  'simaniger.net': 'NE',
+  'data.1212.mn': 'MN',
+  'www.ocpv-ci.com': 'CI',
+  'api.cammesa.com': 'AR',
+  'admin.gse.com.ge': 'GE',
+  'erp.powergrid.gov.bd': 'BD',
+  'petrobangla.org.bd': 'BD',
+  'niggrid.org': 'NG',
+  'eskom.co.za': 'ZA',
+  'dados.ons.org.br': 'BR',
+  'www.datos.gov.co': 'CO',
+  'www.armeps.am': 'AM',
+  // Fuel-price regulators (#10051): a vanity .co TLD, the DOE's CloudFront
+  // media host and the Strapi CMS behind the SONABHY tariff page.
+  'www.qatarenergy.qa': 'QA',
+  'www.erb.org.zm': 'ZM',
+  'npa.gov.gh': 'GH',
+  'www.sonabhy.bf': 'BF',
+  'www.zera.co.zw': 'ZW',
+  'doe.gov.ph': 'PH',
+  'www.anp.tl': 'TL',
+  'creg.gov.co': 'CO',
+  'www.gub.uy': 'UY',
+  'd24qbtp4vooyzi.cloudfront.net': 'PH',
+  'king-prawn-app-6bsvl.ondigitalocean.app': 'BF',
   // Editorial hosts used by site-scoped news searches. These are catalogued
   // as publishers in their own right; the shared search endpoint is a
   // separate provider.
@@ -84,6 +116,7 @@ const HOST_ORIGINS = Object.freeze({
   'ayibopost.com': 'HT',
   'bangkokpost.com': 'TH',
   'bellingcat.com': 'NL',
+  'besttime.app': 'NL',
   'bihus.info': 'UA',
   'binance.com': null,
   'bloomberg.com': 'US',
@@ -125,10 +158,6 @@ const HOST_ORIGINS = Object.freeze({
   'montrealgazette.com': 'CA',
   'nti.org': 'US',
   'oecd.org': null,
-  // OECD's SDMX API host. Same publisher as oecd.org — an international
-  // organisation, so it classifies as null ("International") like its parent
-  // domain rather than inferring from the generic .org TLD.
-  'sdmx.oecd.org': null,
   'oko.press': 'PL',
   'oglobo.globo.com': 'BR',
   'pajhwok.com': 'AF',
@@ -160,6 +189,8 @@ const HOST_ORIGINS = Object.freeze({
   'zerkalo.io': 'BY',
   'acleddata.com': 'US',
   'adsb.lol': 'NL',
+  // Republishes UK Maritime Trade Operations reports; the catalog origin is the reporting authority.
+  'hormuz.data-tracking.net': 'GB',
   'api.adsb.lol': 'NL',
   'aerotime.aero': 'LT',
   'agentskills.io': 'US',
@@ -272,7 +303,9 @@ const HOST_ORIGINS = Object.freeze({
   'feeds.nbcnews.com': 'US',
   'feeds.news24.com': 'ZA',
   'feeds.npr.org': 'US',
+  'files.ember-energy.org': 'GB',
   'financialpost.com': 'CA',
+  'factchecktools.googleapis.com': 'US',
   'finnhub.io': 'US',
   'foreignpolicy.com': 'US',
   'fr.africanews.com': null,
@@ -291,6 +324,7 @@ const HOST_ORIGINS = Object.freeze({
   'hacker-news.firebaseio.com': 'US',
   'health.aws.amazon.com': 'US',
   'hnrss.org': 'US',
+  'hub.arcgis.com': 'US',
   'humanprogress.org': 'US',
   'inc42.com': 'IN',
   'indianexpress.com': 'IN',
@@ -378,7 +412,7 @@ const HOST_ORIGINS = Object.freeze({
   'status.stripe.com': 'US',
   'status.supabase.com': 'US',
   'status.twilio.com': 'US',
-  'storage.googleapis.com': 'GB',
+  'storage.googleapis.com': 'US',
   'stratechery.com': 'US',
   'taskandpurpose.com': 'US',
   'tech.eu': 'EU',
@@ -413,6 +447,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.africanews.com': null,
   'www.aajtak.in': 'IN',
   'www.alarabiya.net': 'SA',
+  'aljazeera.com': 'QA',
   'www.aljazeera.com': 'QA',
   'www.aljazeera.net': 'QA',
   'www.alphavantage.co': 'US',
@@ -519,7 +554,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.reddit.com': 'US',
   'www.replicatestatus.com': 'US',
   'www.rigzone.com': 'US',
-  'www.rt.com': 'RU',
+  'rt-english.com': 'RU',
   'www.saastr.com': 'US',
   'www.schneier.com': 'US',
   'www.sciencedaily.com': 'US',
@@ -562,6 +597,7 @@ const HOST_ORIGINS = Object.freeze({
   'www.zdnet.com': 'US',
   'www.zoomstatus.com': 'US',
   'arxiv.org': 'US',
+  'economist.com': 'GB',
   'fc.yahoo.com': 'US',
   'finance.yahoo.com': 'US',
   'news.usni.org': 'US',
@@ -569,7 +605,14 @@ const HOST_ORIGINS = Object.freeze({
   'your-app.convex.site': 'US',
   'yourstory.com': 'IN',
   'gamma-api.polymarket.com': 'US',
+  'independent.co.uk': 'GB',
+  'japantimes.co.jp': 'JP',
+  'middleeasteye.net': 'GB',
+  'news.sky.com': 'GB',
   'noaadata.apps.nsidc.org': 'US',
+  'nytimes.com': 'US',
+  'timesofisrael.com': 'IL',
+  'washingtonpost.com': 'US',
 });
 
 // Provider-level overrides win when the host is a CDN, cloud, or shared

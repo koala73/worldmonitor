@@ -491,6 +491,7 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
       ['/api/market/v1/get-insider-transactions', { limit: 60, window: '60 s' }],
       ['/api/market/v1/list-crypto-quotes', { limit: 60, window: '60 s' }],
       ['/api/market/v1/get-country-stock-index', { limit: 30, window: '60 s' }],
+      ['/api/market/v1/get-price-history', { limit: 30, window: '60 s' }],
       ['/api/economic/v1/list-world-bank-indicators', { limit: 30, window: '60 s' }],
     ] as const);
 
@@ -693,6 +694,11 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
 describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   const SCOPED_RATE_LIMIT_CALLERS = [
     {
+      path: 'server/worldmonitor/cyber/v1/get-network-info.ts',
+      expected: /if\s*\(!budget\.allowed \|\| budget\.degraded\) throw new ProviderBudgetError/,
+      reason: 'both provider-wide lookup budgets fail closed on Redis degradation before any RIPEstat work',
+    },
+    {
       path: 'server/worldmonitor/aviation/v1/track-aircraft.ts',
       expected: /if\s*\(limit\.degraded\)\s*\{[\s\S]*?throw Object\.assign\(new ApiError\(503,/,
       reason: 'aircraft identifier lookups must fail closed before cache or provider work when the shared limiter is unavailable',
@@ -701,11 +707,6 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       path: 'api/reverse-geocode.js',
       expected: /failClosed:\s*true/,
       reason: 'the provider-wide Nominatim bucket is shared across both routes and must fail closed before upstream work',
-    },
-    {
-      path: 'server/worldmonitor/leads/v1/register-interest.ts',
-      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
-      reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
     },
     {
       path: 'server/worldmonitor/infrastructure/v1/reverse-geocode.ts',
@@ -743,9 +744,19 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
     },
     {
+      path: 'api/desktop-key/status.ts',
+      expected: /A degraded per-IP ceiling fails closed with 503/,
+      reason: 'the per-IP ceiling in front of the Convex key lookup fails closed when degraded (rotating keys miss the negative cache); the owner and invalid-key buckets after the lookup stay availability-first, and a self-host sidecar keeps its last verdict through a 503',
+    },
+    {
       path: 'api/notify.ts',
       expected: /limiter outage here should NOT fail open/,
       reason: 'notify publishes create relay-side delivery obligations on the shared event queue, so Redis degradation fails closed instead of allowing unbounded fan-out',
+    },
+    {
+      path: 'api/notification-channels.ts',
+      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
+      reason: 'channel mutations write through the Convex relay and can trigger welcome mail, so Redis degradation fails closed instead of allowing unbounded writes',
     },
   ];
 
@@ -835,6 +846,12 @@ describe('slow-Redis timeout is degraded, not a silent allow (#6412 review)', ()
       errorLogs.some((l) => l.includes('[rate-limit] redis-error') && l.includes('timed out')),
       `the bypass window must be visible in logs: ${errorLogs.join(' | ')}`,
     );
+  });
+
+  it('global checkRateLimit fails closed on an SDK timeout', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const res = await checkRateLimit(makeRequest({ 'x-real-ip': '203.0.113.79' }), {}, { failClosed: true });
+    assert.equal(res?.status, 503);
+    assert.equal(res?.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
   it('checkRateLimit (api/_rate-limit.js) fails closed on a timed-out decision when asked to', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {

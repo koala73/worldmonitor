@@ -33,6 +33,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   DEFAULT_CONCURRENCY,
   RAILWAY_CALL_TIMEOUT_MS,
+  RAILWAY_INVENTORY_TIMEOUT_MS,
   mapWithConcurrency,
   readArgument,
   readDeployments,
@@ -882,8 +883,15 @@ async function main() {
   const projectId = process.env.RAILWAY_PROJECT_ID;
   if (!projectId) throw new Error('RAILWAY_PROJECT_ID is required for the Viewer deployment projection');
   assertRailwayCallCanStart('reading the Railway service list');
+  const remainingInventoryMs = deepPassDeadlineAt - performance.now();
   const services = selectExpectedRepositoryServices(
-    readServices(environment, { projectId }),
+    readServices(environment, {
+      projectId,
+      timeoutMs: Math.min(
+        RAILWAY_INVENTORY_TIMEOUT_MS,
+        Math.max(1, Math.floor(remainingInventoryMs)),
+      ),
+    }),
     readExpectedRepositoryFleet(),
   );
   // What each service's container can be affected by. The registry is the

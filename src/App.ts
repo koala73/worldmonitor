@@ -8,6 +8,7 @@ import { openStockResearchOverlay } from '@/features/stock-research/stock-resear
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
+import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import {
   REFRESH_INTERVALS,
@@ -52,7 +53,8 @@ import {
   stopFlightHistoryCleanup,
 } from '@/services';
 import { enableVesselRuntime, stopLoadedVesselHistoryCleanup } from '@/services/military-vessels-lazy';
-import { isProUser, isProTierResolved, loadWidgets } from '@/services/widget-store';
+import { isProUser, isProTierResolved, loadWidgets, subscribeWidgetAccess } from '@/services/widget-store';
+import { startSelfHostKeyService } from '@/services/self-host-key';
 import { mlWorker } from '@/services/ml-worker';
 import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } from '@/services/ai-flow-settings';
 import { startLearning } from '@/services/country-instability';
@@ -126,6 +128,7 @@ import {
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
+  GERMAN_RSS_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -212,6 +215,8 @@ import { TierPreferenceHandoff } from '@/app/tier-preference-handoff';
 import { initialRegionFromCache, resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { getAuthState, initAuthState, subscribeAuthState } from '@/services/auth-state';
+import { installSignUpResume } from '@/services/sign-up-resume';
+import { createSignUpResumeOverlay } from '@/components/SignUpResumeOverlay';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
   CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
@@ -231,6 +236,7 @@ import {
   migrateCanadaDepthOptInsV7,
   migrateCrisisDeskOptInsV8,
   migrateCuratedRegionalOptInsV9,
+  migrateGermanRssSourcesV10,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -255,7 +261,12 @@ import {
   resetEntitlementState,
   resetEntitlementVerification,
 } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { watchDesktopCloudAccess } from '@/services/desktop-cloud-auth';
+import { initSubscriptionWatch, destroySubscriptionWatch, openBillingPortal } from '@/services/billing';
+import {
+  captureBillingPortalIntentFromUrl,
+  resumePendingBillingPortal,
+} from '@/services/billing-portal-intent';
 import {
   FREE_TIER_FOLLOW_LIMIT,
   WM_FOLLOWED_COUNTRIES_CAP_DROP,
@@ -278,6 +289,13 @@ import {
   getStoredAnonId,
 } from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
+import {
+  businessInviteErrorKind,
+  captureBusinessInviteFromUrl,
+  clearPendingBusinessInvite,
+  keepInviteAfterAttempt,
+  loadPendingBusinessInvite,
+} from '@/services/business-invite-capture';
 import { nextPrimeRetryDelayMs } from '@/utils/prime-retry';
 
 /** Look-ahead margin for viewport-gated panel priming and refresh scheduling. */
@@ -299,6 +317,15 @@ export type { CountryBriefSignals } from '@/app/app-context';
 
 export class App {
   private state: AppContext;
+  private resumeBillingPortal(capturedThisLoad = false): Promise<boolean> {
+    return resumePendingBillingPortal({
+      getUserId: () => getAuthState().user?.id,
+      openAuth: () => this.state.authModal?.open(),
+      openPortal: () => openBillingPortal(),
+      notify: (message) => showToast(message),
+    }, capturedThisLoad);
+  }
+
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
@@ -333,6 +360,8 @@ export class App {
   private unsubAiFlow: (() => void) | null = null;
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
+  private unsubWidgetAccessPremiumLoaders: (() => void) | null = null;
+  private unsubDesktopCloudAccess: (() => void) | null = null;
   /**
    * Boot epoch for optional local-AI continuations (#7779). destroy() bumps
    * it first so a stale detached continuation from a torn-down App can never
@@ -368,6 +397,7 @@ export class App {
   /** Earliest `Date.now()` at which a failed prime key may be retried. */
   private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
+  private visiblePanelPrimeFullPass = false;
   private viewportHydrationReady = false;
   private viewportHydrationReadyAt = 0;
   private slowTierWaitTimedOut = false;
@@ -411,18 +441,22 @@ export class App {
     ) {
       return;
     }
+    // A resize can move panels across layout breakpoints, so it keeps a full
+    // pass. A scroll only needs data for panels entering range for the first
+    // time; re-running loaded panels re-fetched their data on every frame.
+    if (event?.type === 'resize') this.visiblePanelPrimeFullPass = true;
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
+      const trigger: LoadAllDataTrigger = this.visiblePanelPrimeFullPass ? 'full' : 'viewport';
+      this.visiblePanelPrimeFullPass = false;
       markLcpDebug('wm:hydration:viewport-trigger');
       void this.primeVisiblePanelData();
       // loadAllData covers panels primeVisiblePanelData does not (news,
       // markets, intelligence, fred, …). Now that bootstrap runs with
       // forceAll=false, below-fold panels need this re-trigger on scroll
-      // so their data lands when they enter the viewport. Both are
-      // viewport-gated and inflight-guarded — repeat invocations are
-      // cheap.
-      void this.dataLoader.loadAllData();
+      // so their data lands when they enter the viewport.
+      void this.dataLoader.loadAllData(false, trigger);
     });
   };
   private readonly handleConnectivityChange = (): void => {
@@ -1490,6 +1524,18 @@ export class App {
         }
         if (persisted) safeStorageSet(curatedRegionalOptInKey, 'done');
       }
+      const germanRssKey = 'worldmonitor-german-rss-sources-v1';
+      if (!safeStorageGet(germanRssKey)) {
+        // Missing preferences need persisted defaults; a saved [] is an explicit enable-all choice.
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateGermanRssSourcesV10(blob, GERMAN_RSS_SOURCES, userLang);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted) safeStorageSet(germanRssKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -1572,6 +1618,7 @@ export class App {
       clustersSettled: false,
       resolvedLocation: 'global',
       activeChokepoint: initialUrlState.chokepoint ?? null,
+      pendingCountryBrief: null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -1600,7 +1647,6 @@ export class App {
         const name = CountryIntelManager.resolveCountryName(code);
         void this.countryIntel.openCountryBriefByCode(code, name).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         });
       },
@@ -1608,7 +1654,7 @@ export class App {
         track('search-open', { source: 'pro-onboarding' });
         void this.openSearch();
       },
-      loadAllData: () => this.dataLoader.loadAllData(),
+      loadAllData: (forceAll, trigger) => this.dataLoader.loadAllData(forceAll, trigger),
       primeVisiblePanelData: () => {
         if (!this.viewportHydrationReady || this.state.isDestroyed) return;
         void this.primeVisiblePanelData();
@@ -1634,6 +1680,7 @@ export class App {
       applySavedPanelOrder: (panelOrder?: string[]) => this.panelLayout.applySavedPanelOrder(panelOrder),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
+      focusStorageFacility: (facilityId) => this.panelLayout.focusStorageFacility(facilityId),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -1746,7 +1793,6 @@ export class App {
           return;
         }
         console.error('[CountryBrief] Failed to open country brief:', error);
-        this.state.map?.setRenderPaused(false);
         showToast('Country brief failed to open. Please try again.');
         resolve(false);
       };
@@ -2409,15 +2455,29 @@ export class App {
     // the first await so a failed init unregisters those tools through destroy().
     this.webMcpController = webMcpController;
 
+    // Take a Business seat invite out of the URL before the map URL sync
+    // rewrites the query string. The accept hook in the auth subscription
+    // reads it from here, including after a sign-up that happens later.
+    captureBusinessInviteFromUrl();
+
+    // Self-hosted installs: ask the sidecar for the desktop-key verdict. Never
+    // awaited; a no-op on worldmonitor.app and in the desktop app.
+    startSelfHostKeyService();
+
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
 
+    // IndexedDB and the locale bundles are independent (i18n reads only
+    // localStorage and the URL), so the locale loads while the database opens.
+    // A failed load is still thrown below, where it is awaited.
+    const i18nReady = initI18n();
+    i18nReady.catch(() => {});
     await initDB();
     startFlightHistoryCleanup();
     // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
     // same-document re-init after a prior App.destroy() disarmed it). The
     // history-cleanup interval itself still starts lazily on first vessel use.
     enableVesselRuntime();
-    await initI18n();
+    await i18nReady;
     markLcpDebug('wm:boot:i18n-ready');
     initDeferredDashboardFonts();
     // Localize the static index.html shell — <title>, meta description, and
@@ -2579,13 +2639,20 @@ export class App {
       // periodic-refresh handlers). ensureWmSession() genuinely rejects on the
       // old WebView / Smart-TV engines this module targets — `new
       // AbortController()` and the timeout setTimeout sit outside mintSession's
-      // try — and init() has no try/catch, so a bare await would abort boot
-      // here: no bootstrap hydration, no auth, no UI. main.ts catches that with
+      // try — and init() has no try/catch, so an unguarded await would abort
+      // boot: no bootstrap hydration, no auth, no UI. main.ts catches that with
       // `.catch(console.error)`, so it would not even reach Sentry. Session
       // establishment is best-effort at this point; the refresh-on-401 layer is
       // the safety net.
-      await ensureWmSession().catch(() => false);
-      markLcpDebug('wm:boot:session-ready');
+      //
+      // Boot does not await the mint. The fast tier is a credential-less public
+      // read the interceptor passes straight through, and every session-bound
+      // call goes through the interceptor, which awaits the in-flight mint.
+      // Awaiting here put a full /api/wm-session round trip in front of the
+      // first dashboard data.
+      void ensureWmSession()
+        .catch(() => false)
+        .then(() => markLcpDebug('wm:boot:session-ready'));
     }
 
     // Hydrate in-memory cache from bootstrap endpoint. Awaits only the fast tier; the slow
@@ -2603,6 +2670,7 @@ export class App {
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
     initAuthAnalytics();
+    installSignUpResume(createSignUpResumeOverlay());
     installCloudPrefsSync(SITE_VARIANT);
     window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.handleCloudPrefsApplied);
     window.addEventListener(
@@ -2672,6 +2740,14 @@ export class App {
       _prevHadPremium = nowPremium;
     };
     this.unsubEntitlementPremiumLoaders = onEntitlementChange(() => firePremiumLoaders());
+    // Tester keys and a self-hosted install's desktop-key verdict are Pro
+    // signals that settle after boot, so they re-run the same reconcile.
+    this.unsubWidgetAccessPremiumLoaders = subscribeWidgetAccess(() => firePremiumLoaders());
+    if (isDesktopRuntime()) {
+      // Desktop cloud data rides the Pro credential (#9396). Requests sent
+      // before it existed got 401s and tripped panel breakers, so start clean.
+      this.unsubDesktopCloudAccess = watchDesktopCloudAccess(() => window.location.reload());
+    }
     this.unsubFreeTier = subscribeAuthState((session) => {
       const userId = session.user?.id ?? null;
       const accountTransition = (
@@ -2717,6 +2793,7 @@ export class App {
         void startAccountAuthHandoff({
           userId,
           isCurrent: () => (
+            !this.state.isDestroyed &&
             handoffGeneration === _convexWatchHandoffGeneration &&
             getAuthState().user?.id === userId
           ),
@@ -2777,12 +2854,14 @@ export class App {
           });
         }
 
-        // Accept a Business Pro seat invite carried in the URL (mirror of the
-        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // Accept a Business Pro seat invite (mirror of the anon-claim hook).
+        // The invite link is /dashboard?accept-business-invite=<id>&token=<t>;
+        // older emails used /settings, which vercel.json redirects here.
+        // init() captured it before the map URL sync rewrote the query string,
+        // so an invitee who signs up after landing still accepts it here.
         // Runs after sign-in so the invitee's Clerk email is available server-side.
-        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
-        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
-        if (businessInviteGrantId && businessInviteToken) {
+        const pendingBusinessInvite = loadPendingBusinessInvite();
+        if (pendingBusinessInvite) {
           void (async () => {
             const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
             if (!client || !api) return;
@@ -2791,44 +2870,73 @@ export class App {
               console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
               return;
             }
+            // settleAccountOperation also throws when the server accepted but
+            // Clerk switched accounts meanwhile, so record acceptance here.
+            let acceptedByServer = false;
+            let failureKind: string | null = null;
+            // Enterprise account invites share this capture and lifecycle;
+            // only the mutation and the success copy differ.
+            const isEnterpriseInvite = pendingBusinessInvite.kind === 'enterprise';
+            const operation = isEnterpriseInvite
+              ? 'accepting the Enterprise account invite'
+              : 'accepting the Business Pro seat invite';
             try {
               await settleAccountOperation(
                 userId,
-                'accepting the Business Pro seat invite',
-                () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
-                  grantId: businessInviteGrantId as Id<'businessProGrants'>,
-                  token: businessInviteToken,
+                operation,
+                () => (isEnterpriseInvite
+                  ? client.mutation(api.enterpriseSeats.acceptInvite, {
+                    memberId: pendingBusinessInvite.grantId as Id<'enterpriseMembers'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                  : client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                    grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                ).then((result) => {
+                  acceptedByServer = true;
+                  return result;
                 }),
               );
-              assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
-              showToast('Pro seat activated');
+              assertAccountStillCurrent(userId, operation);
+              showToast(isEnterpriseInvite ? 'You have joined the Enterprise account' : 'Pro seat activated');
             } catch (err) {
+              const kind = businessInviteErrorKind(err);
+              failureKind = kind;
               if (!isAccountStillCurrent(userId)) return;
-              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
-              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+              if (kind === 'INVITE_EMAIL_MISMATCH') {
                 showToast('This invite is for a different email address');
-              } else if (msg.includes('INVITE_EXPIRED')) {
+              } else if (kind === 'INVITE_EXPIRED') {
                 showToast('This invite has expired');
-              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+              } else if (kind === 'BUSINESS_NOT_ACTIVE') {
                 showToast('The Business plan that sent this invite is no longer active');
-              } else if (msg.includes('INVITE_ALREADY_USED')) {
+              } else if (kind === 'CONTRACT_ENDED') {
+                showToast('The Enterprise contract that sent this invite has ended');
+              } else if (kind === 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT') {
+                showToast('This account already belongs to another Enterprise account');
+              } else if (kind === 'INVITE_ALREADY_USED') {
                 showToast('This invite has already been used');
               } else {
                 showToast('Could not accept invite');
               }
               console.warn('[business-seats] acceptBusinessInvite failed:', err);
             } finally {
-              // Clear the invite params from the URL so a refresh does not retry.
-              const url = new URL(window.location.href);
-              url.searchParams.delete('accept-business-invite');
-              url.searchParams.delete('token');
-              window.history.replaceState({}, '', url.toString());
+              // Forget the invite once it is settled so a refresh does not retry.
+              // A wrong account or an account switch keeps it for the invited
+              // account to accept in this tab.
+              const keep = keepInviteAfterAttempt({
+                accepted: acceptedByServer,
+                accountChanged: !isAccountStillCurrent(userId),
+                errorKind: failureKind,
+              });
+              if (!keep) clearPendingBusinessInvite(pendingBusinessInvite);
             }
           })();
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),
         });
+        void this.resumeBillingPortal();
       } else if (userId === null && _prevUserId !== null) {
         // Clerk's mounted UserButton signs out through the SDK directly, so
         // this observed transition is the authoritative place to invalidate
@@ -2958,6 +3066,11 @@ export class App {
         openAuth: () => this.state.authModal?.open(),
       });
     }
+    // Payment-email fallback (/dashboard?billing=portal): open the portal
+    // now if signed in, else after the sign-in the auth listener observes.
+    if (captureBillingPortalIntentFromUrl()) {
+      void this.resumeBillingPortal(true);
+    }
 
     // Phase 4: MapLayerHandlers, CountryIntel. SearchManager is lazy-loaded
     // on first CMD+K/search-button open so its modal catalog stays off startup.
@@ -2975,6 +3088,9 @@ export class App {
     this.pendingDeepLinkExpanded = initState.expanded === true;
     this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
+    if (earlyParams.get('settings') === 'notifications') {
+      void this.state.unifiedSettings?.open('notifications');
+    }
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.eventHandlers.setupUrlStateSync();
@@ -2982,7 +3098,11 @@ export class App {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
     }
 
-    this.state.countryBriefPage?.onStateChange?.(() => {
+    this.countryIntel.onBriefStateChange(({ visible }) => {
+      // The loading panel opens with a placeholder code; the deep link stays
+      // pending until a real country shows or the panel closes.
+      const code = this.state.countryBriefPage?.getCode();
+      if (!visible || (code && !code.startsWith('__'))) this.state.pendingCountryBrief = null;
       this.eventHandlers.syncUrlState();
     });
 
@@ -3604,6 +3724,8 @@ export class App {
       this.unsubAiFlow?.();
       this.unsubFreeTier?.();
       this.unsubEntitlementPremiumLoaders?.();
+      this.unsubWidgetAccessPremiumLoaders?.();
+      this.unsubDesktopCloudAccess?.();
       this.freeTierGate.cancelFallback();
       mlWorker.terminate();
       this.state.findingsBadge?.destroy();
@@ -3812,7 +3934,6 @@ export class App {
             maximize: true,
           }).catch((err) => {
             console.error('[CountryBrief] Failed to open country brief:', err);
-            this.state.map?.setRenderPaused(false);
             showToast('Country brief failed to open. Please try again.');
           });
           this.eventHandlers.syncUrlState();
@@ -3829,13 +3950,22 @@ export class App {
     if (deepLinkCountry) {
       trackDeeplinkOpened('country', deepLinkCountry);
       const cName = CountryIntelManager.resolveCountryName(deepLinkCountry);
+      // Set in the same task as setupUrlStateSync(), before its first debounced
+      // write, and only here: search and story links return above and open no
+      // ?country brief.
+      this.state.pendingCountryBrief = { code: deepLinkCountry, expanded: deepLinkExpanded };
       setTimeout(() => {
         void this.countryIntel.openCountryBriefByCode(deepLinkCountry, cName, {
           maximize: deepLinkExpanded,
         }).catch((err) => {
           console.error('[CountryBrief] Failed to open country brief:', err);
-          this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
+        }).finally(() => {
+          // The open also resolves without a brief (a failed chunk import is
+          // handled inside it, a stale request returns). Once it settles the
+          // panel itself decides the URL.
+          this.state.pendingCountryBrief = null;
+          this.eventHandlers.syncUrlState();
         });
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);
@@ -3876,7 +4006,14 @@ export class App {
       );
     });
 
-    // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
+    this.refreshScheduler.scheduleRefresh(
+      'ukmtoIncidents',
+      () => this.dataLoader.loadUkmtoIncidents(),
+      60_000,
+      () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
+    );
+
+    // Other geopolitical, financial and military refreshes exclude Happy.
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([
         {
@@ -4042,12 +4179,12 @@ export class App {
     // PRO-gated: the isNearViewport check is a visibility gate, not an entitlement gate,
     // so without hasPremiumAccess() here we'd still hit the 6 WTO RPCs every poll for
     // free users once the panel scrolled into view.
-    if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
-      this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
-      this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
-      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
-      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
-    }
+    // Not variant-gated: a user can add these panels to any variant, and each
+    // condition already requires the panel on screen (#9396).
+    this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
+    this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+    this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+    this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
 
     this.refreshScheduler.scheduleRefresh(
       'cross-source-signals',
@@ -4257,6 +4394,13 @@ export class App {
         if (iranEvents) this.state.intelligenceCache.iranEvents = iranEvents;
         return this.dataLoader.loadIntelligenceSignals();
       }, REFRESH_INTERVALS.intelligence, () => this.shouldRefreshIntelligence());
+    } else {
+      // Other variants have no intelligence refresh, so Internet Disruptions
+      // gets its own. Drop the cached outages so loadOutages refetches.
+      this.refreshScheduler.scheduleRefresh('internet-disruptions', () => {
+        delete this.state.intelligenceCache.outages;
+        return this.dataLoader.loadOutages();
+      }, REFRESH_INTERVALS.intelligence, () => this.isPanelNearViewport('internet-disruptions'));
     }
 
     // Correlation engine refresh

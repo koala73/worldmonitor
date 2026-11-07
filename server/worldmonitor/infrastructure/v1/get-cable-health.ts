@@ -9,9 +9,10 @@ import type {
 
 import { cachedFetchJson, getCachedJson, runRedisPipeline, setCachedJson, setCachedJsonIfAbsent } from '../../../_shared/redis';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../../../../shared/cable-health-repair-script.mjs';
-import { parseNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
+import { fetchNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
+import { extractCableShipName, isCableRelatedNotice, isFreshNotice } from '../../../../shared/nga-cable-notices';
 
 // ========================================================================
 // Constants
@@ -38,19 +39,8 @@ type NgaWarning = Partial<Pick<NgaBroadcastWarning, 'text' | 'issueDate'>>;
 // Cable keywords and patterns
 // ========================================================================
 
-const CABLE_KEYWORDS = [
-  'CABLE', 'CABLESHIP', 'CABLE SHIP', 'CABLE LAYING',
-  'CABLE OPERATIONS', 'SUBMARINE CABLE', 'UNDERSEA CABLE',
-  'FIBER OPTIC', 'TELECOMMUNICATIONS CABLE',
-];
-
+// Cable keyword / ship-name / staleness rules live in shared/nga-cable-notices.ts.
 const FAULT_KEYWORDS = /FAULT|BREAK|CUT|DAMAGE|SEVERED|RUPTURE|OUTAGE|FAILURE/i;
-const SHIP_PATTERNS = [
-  /CABLESHIP\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /CABLE\s+SHIP\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /CS\s+([A-Z][A-Z0-9\s\-']+)/i,
-  /M\/V\s+([A-Z][A-Z0-9\s\-']+)/i,
-];
 const ON_STATION_RE = /ON STATION|OPERATIONS IN PROGRESS|LAYING|REPAIRING|WORKING|COMMENCED/i;
 
 // Known cable names -> cableId mapping
@@ -168,17 +158,8 @@ interface Signal {
 // ========================================================================
 
 async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
-  try {
-    const res = await fetch(
-      'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A',
-      { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) },
-    );
-    if (!res.ok) return null; // fetch failed — don't cache, let sentinel TTL govern retry
-    const data = await res.json();
-    return parseNgaBroadcastWarnings(data);
-  } catch {
-    return null; // network error — don't poison NGA cache with empty data
-  }
+  // Null on failure: don't poison the NGA cache with empty data.
+  return fetchNgaBroadcastWarnings({ userAgent: CHROME_UA, timeoutMs: UPSTREAM_TIMEOUT_MS });
 }
 
 // ========================================================================
@@ -186,8 +167,7 @@ async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
 // ========================================================================
 
 export function isCableRelated(text: string): boolean {
-  const upper = text.toUpperCase();
-  return CABLE_KEYWORDS.some((kw) => upper.includes(kw));
+  return isCableRelatedNotice(text);
 }
 
 export function parseCoordinates(text: string): [number, number][] {
@@ -259,20 +239,23 @@ export function parseIssueDate(dateStr: string | undefined): number {
 }
 
 function hasShipName(text: string): boolean {
-  return SHIP_PATTERNS.some((pat) => pat.test(text));
+  return extractCableShipName(text) !== null;
 }
 
 // ========================================================================
 // Signal processing
 // ========================================================================
 
-export function processNgaSignals(warnings: NgaWarning[]): Signal[] {
+export function processNgaSignals(warnings: NgaWarning[], nowMs: number = Date.now()): Signal[] {
   const signals: Signal[] = [];
   const cableWarnings = warnings.filter((w) => isCableRelated(w.text || ''));
 
   for (const warning of cableWarnings) {
     const text = warning.text || '';
     const ts = parseIssueDate(warning.issueDate);
+    // NGA keeps "until further notice" warnings active for years; old or undated
+    // notices are standing advisories, not current cable activity.
+    if (!isFreshNotice(ts, nowMs)) continue;
     const coords = parseCoordinates(text);
 
     let cableId = matchCableByName(text);

@@ -24,9 +24,10 @@ export const SYNDICATION_TRANSPORT_HOSTS = Object.freeze(new Set([
   'news.google.com',
 ]));
 
+// Every feed is declared once in shared/news-catalog.json. src/config/feeds.ts
+// and server/worldmonitor/news/v1/_feeds.ts are views over it and hold no URLs.
 export const FEED_DECLARATION_FILES = Object.freeze([
-  'src/config/feeds.ts',
-  'server/worldmonitor/news/v1/_feeds.ts',
+  'shared/news-catalog.json',
 ]);
 
 const FEEDBURNER_TRANSPORT_HOSTS = Object.freeze(new Set([
@@ -313,7 +314,21 @@ function collectFeedUrls(tokens, start, end, pairs, urls) {
   }
 }
 
+function parseFeedCatalogJson(source) {
+  const declarations = [];
+  for (const feed of JSON.parse(source).feeds) {
+    const urls = [];
+    for (const value of [feed.url, feed.browser?.url]) {
+      if (typeof value === 'string') pushUrl(urls, value);
+      else if (value && typeof value === 'object') for (const href of Object.values(value)) pushUrl(urls, href);
+    }
+    for (const url of urls) declarations.push(classifyFeedDeclaration(feed.name, url));
+  }
+  return declarations;
+}
+
 function parseFeedDeclarationSource(source, fileName) {
+  if (fileName.endsWith('.json')) return parseFeedCatalogJson(source);
   const tokens = tokenizeFeedSource(source, fileName);
   const pairs = delimiterPairs(tokens, fileName);
   const declarations = [];

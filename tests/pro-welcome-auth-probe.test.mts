@@ -71,6 +71,14 @@ describe('welcome auth probe — hasLiveSessionJwt (live __session token only)',
     assert.equal(hasLiveSessionJwt('foo=bar; baz=qux'), false);
   });
 
+  it('is false for non-string cookie headers (WORLDMONITOR-17E)', () => {
+    // Synthetic stand-ins for a missing/broken document.cookie — never paste
+    // production cookie values into fixtures.
+    assert.equal(hasLiveSessionJwt(undefined as unknown as string), false);
+    assert.equal(hasLiveSessionJwt(null as unknown as string), false);
+    assert.equal(hasLiveSessionJwt(123 as unknown as string), false);
+  });
+
   it('decodes a URL-encoded __session value before parsing', () => {
     assert.equal(hasLiveSessionJwt(`__session=${encodeURIComponent(jwt({ exp: nowSec + 3600 }))}`), true);
   });
@@ -92,6 +100,38 @@ describe('welcome auth probe — hasLiveClientSession browser wrapper', () => {
     withDocumentCookie('', () => {
       assert.equal(hasLiveClientSession(), false);
     });
+  });
+
+  it('coerces a non-string document.cookie to empty (WORLDMONITOR-17E)', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        get cookie(): unknown {
+          return undefined;
+        },
+      },
+    });
+    try {
+      assert.equal(readDocumentCookie(), '');
+      assert.equal(hasLiveClientSession(), false);
+      assert.equal(
+        maybeRedirectWelcomeVisitor(readDocumentCookie(), {
+          search: '',
+          hash: '',
+          replace() {
+            assert.fail('must not redirect when cookie is non-string');
+          },
+        }),
+        false,
+      );
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, 'document', descriptor);
+      } else {
+        delete (globalThis as { document?: unknown }).document;
+      }
+    }
   });
 
   it('treats sandboxed-iframe cookie SecurityError as no session (WORLDMONITOR-14B)', () => {

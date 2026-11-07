@@ -48,17 +48,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci
+      - uses: ./.github/actions/install-root-deps
+        with:
+          # setup-node restores the npm cache for this job's other install.
+          npm-cache: 'false'
       - run: npm run typecheck
       - run: npm run typecheck:api
       # `npm run typecheck` covers src/ only, so tests/ and shared modules reached only from tests
       # were never type-checked by any job. Runs inside the existing required `typecheck` context
       # rather than as a new job, so no branch-protection context list has to change.
       - run: npm run typecheck:contract-tests
+      # Playwright strips types without checking them, so e2e/ had drifted to
+      # 616 errors before the TypeScript 7 move. Same required context.
+      - run: npm run typecheck:e2e
       # Mirror the pre-push convex typecheck so direct pushes to main
       # and `--no-verify` bypasses can't land stale convex/_generated
       # types. See .husky/pre-push for the rationale.

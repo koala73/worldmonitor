@@ -18,6 +18,7 @@ import { MARKET_SYMBOLS, REGION_LABELS, STOCK_CATALOG } from '@/config/markets';
 import { WatchlistEditor } from './WatchlistEditor';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { createFocusTrap } from '@/utils/focus-trap';
+import { declareOverlay } from '@/utils/open-modal';
 
 
 let activeOverlay: HTMLElement | null = null;
@@ -30,6 +31,7 @@ export function openWatchlistModal(): void {
   overlay.id = 'marketWatchlistModal';
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
+  declareOverlay(overlay, { reload: 'blocking' });
   overlay.setAttribute('aria-labelledby', 'wmMarketWatchlistTitle');
 
   const editor = new WatchlistEditor({ initial: getMarketWatchlistEntries() });
@@ -232,13 +234,21 @@ export function openWatchlistModal(): void {
 /**
  * Build a header button wired to {@link openWatchlistModal}. Reuses the
  * existing `live-news-settings-btn` styling so it matches the other panel
- * header affordances.
+ * header affordances. In a panel up to 420px wide the stylesheet shows the
+ * star instead of the label, which stays the button's accessible name.
  */
 export function createWatchlistButton(label = 'Watchlist'): HTMLButtonElement {
   const btn = document.createElement('button');
-  btn.className = 'live-news-settings-btn';
+  btn.className = 'live-news-settings-btn panel-watchlist-btn';
   btn.title = 'Customize market watchlist';
-  btn.textContent = label;
+  const icon = document.createElement('span');
+  icon.className = 'panel-watchlist-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '★';
+  const text = document.createElement('span');
+  text.className = 'panel-watchlist-label';
+  text.textContent = label;
+  btn.append(icon, text);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     openWatchlistModal();

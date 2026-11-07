@@ -27,6 +27,7 @@ import { strict as assert } from 'node:assert';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -43,14 +44,36 @@ const originalEnv = { ...process.env };
 // before reaching dispatch. Values are deliberately benign and aligned with
 // each tool's documented format (e.g. ISO 3166-1 alpha-2 for country_code).
 const REQUIRED_ARGS = {
+  get_fred_series: { series_ids: ['UNRATE'] },
+  find_webcams: { bound_w: 4, bound_s: 51, bound_e: 5, bound_n: 52, zoom: 9 },
+  get_webcam_media: { webcam_id: '123456789' },
+  get_country_history: { country_code: 'US' },
+  get_media_perspective: { subject_country: 'SA' },
+  get_defense_industrial_base: { country_code: 'US' },
+  get_country_coverage: { country_code: 'US' },
+  get_food_stocks: { country_code: 'US' },
+  get_demographics_capability: { country_code: 'US' },
+  get_resilience_indicators: { country_code: 'US' },
+  get_five_factor_scorecard: { country_code: 'US' },
+  get_supply_vulnerabilities: { country_code: 'US' },
+  get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  verify_claim: { claim: 'A controlled claim for verification.' },
+  analyze_news_headlines: { headlines: ['Controlled headline'] },
+  get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
+  get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '010121' },
+  get_us_import_duty: { partner: 'CN', hs_code: '010121' },
   classify_event: { text: 'Iran closes Strait of Hormuz to tanker traffic' },
+  start_upgrade: { plan: 'pro_monthly' },
+  report_issue: { kind: 'bug', summary: 'A controlled report.' },
   get_country_brief: { country_code: 'US' },
+  open_country_brief: { country_code: 'US' },
   get_country_risk: { country_code: 'US' },
   get_consumer_prices: { country_code: 'US' },
   get_airspace: { country_code: 'US' },
   get_maritime_activity: { country_code: 'US' },
   analyze_situation: { query: 'test query' },
   search_intel_history: { query: 'test query' },
+  get_intel_timeline: { domain: 'conflict' },
   // `situation` carries a 10-char proto minimum, so the placeholder clears it.
   get_similar_events: { situation: 'a test situation description' },
   search_flights: { origin: 'JFK', destination: 'LHR', departure_date: '2026-06-01' },
@@ -58,6 +81,11 @@ const REQUIRED_ARGS = {
     origin: 'JFK', destination: 'LHR', start_date: '2026-06-01', end_date: '2026-06-10',
   },
   describe_tool: { tool_name: 'get_market_data' },
+  get_macro_history: { dataset: 'us-cpi' },
+  get_internet_activity: { dataset: 'traffic' },
+  get_stock_research: { operation: 'analysis', symbols: ['AAPL'] },
+  get_supply_chain_cost_shock: { mode: 'energy', country: 'JP', chokepoint_id: 'suez' },
+  compute_energy_shock: { country: 'JP', chokepoint_id: 'suez' },
 };
 
 // Generate the smallest concrete value satisfying a JSON-Schema-subset
@@ -91,6 +119,9 @@ function minimalShape(schema) {
 // hand-written payload, or the stub is not a valid instance of the very schema
 // it was derived from — which the Ajv check below would (rightly) reject.
 const STUB_FIXTURES = {
+  get_country_brief_section: assembleRawSignals('US', Object.fromEntries(RAW_SIGNAL_FAMILIES.map(family =>
+    [family, failedRawSignal(family, 'unavailable', '2026-10-05T12:00:00Z', 'Controlled failure')])), '2026-10-05T12:00:00Z'),
+  get_stock_research: { operation: 'analysis', data: { available: false, symbol: 'AAPL' } },
   get_five_factor_scorecard: { unavailable: true, unavailableReason: 'country-unavailable' },
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
@@ -180,8 +211,33 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
         tool._execute = async () => stubReturn;
       }
 
-      const args = REQUIRED_ARGS[name] ?? {};
-      const { deps } = makeProDeps();
+      let args = REQUIRED_ARGS[name] ?? {};
+      const { deps, pipe } = makeProDeps();
+      // start_upgrade creates its checkout session in dispatch, before the
+      // stubbed _execute; answer the relay so the call reaches the result path.
+      if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });
+      let originalForecast;
+      if (name === 'get_forecast_case' || name === 'get_forecast_theaters') {
+        const generatedAt = Date.now();
+        originalForecast = { id: 'contract-case', title: 'Controlled original forecast', caseFile: { baseCase: 'Original case evidence' } };
+        globalThis.fetch = async url => {
+          const parsedUrl = new URL(url);
+          assert.equal(parsedUrl.hostname, 'stub.upstash', 'contract fixture must never fetch a live service');
+          if (!parsedUrl.pathname.startsWith('/get/')) return Response.json({ result: [9999, 10000] });
+          const key = decodeURIComponent(parsedUrl.pathname.slice('/get/'.length));
+          assert.ok(['forecast:predictions:v2', 'seed-meta:forecast:predictions'].includes(key), key);
+          return Response.json({ result: JSON.stringify(key === 'forecast:predictions:v2'
+            ? { generatedAt, predictions: [originalForecast] }
+            : { fetchedAt: generatedAt }) });
+        };
+        const opening = await mcpHandler(proReq('POST', callBody('get_forecast_predictions', {})), deps);
+        const openingBody = await opening.json();
+        const receipt = openingBody.result?.structuredContent?.panelRequest;
+        assert.equal(receipt?.panel, 'forecasts', 'original evidence fixture must obtain a real signed admission');
+        args = name === 'get_forecast_case'
+          ? { forecast_id: originalForecast.id, generated_at: String(generatedAt), panel_request: receipt.token }
+          : { panel_request: receipt.token };
+      }
       const res = await mcpHandler(proReq('POST', callBody(name, args)), deps);
 
       assert.equal(res.status, 200, `tools/call must return 200 for ${name}`);
@@ -191,6 +247,12 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
         `tools/call response for ${name} missing content[0].text`,
       );
       const parsed = JSON.parse(body.result.content[0].text);
+      if (name === 'get_forecast_case') {
+        assert.equal(parsed.data.forecastCase.status, 'ready');
+        assert.deepEqual(parsed.data.forecastCase.forecast, originalForecast);
+        assert.equal(pipe.count, 1, 'opening and original case share one daily allocation');
+      }
+      if (name === 'get_forecast_theaters') assert.equal(pipe.count, 1, 'opening and original theaters share one daily allocation');
 
       // Cache tools must always carry the envelope keys, regardless of the
       // schema's per-tool `data.properties`. Asserting these explicitly here
@@ -226,4 +288,57 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       );
     });
   }
+});
+
+describe('get_maritime_activity ports view through the real producer and REST reader', () => {
+  it('serves the top 25 ports, preserves unknown trends, and handles uncovered countries', async () => {
+    const { finalisePortsForCountry } = await import('../scripts/seed-portwatch-port-activity.mjs');
+    const { getCountryPortActivity } = await import('../server/worldmonitor/intelligence/v1/get-country-port-activity.ts');
+    const { installRedis } = await import('./helpers/fake-upstash-redis.mts');
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_maritime_activity');
+    const accum = new Map(Array.from({ length: 30 }, (_, i) => [String(i), {
+      portname: `Port ${i}`, last30_calls: 100 - i, prev30_calls: i === 0 ? 0 : 50,
+      last30_import: 1000, last30_export: 500,
+    }]));
+    const ports = finalisePortsForCountry(accum, new Map());
+    ports[1].prevTankerCalls30d = undefined;
+    const savedEnv = { ...process.env };
+    const savedFetch = globalThis.fetch;
+    delete process.env.LOCAL_API_MODE;
+    const redis = installRedis({
+      'supply_chain:portwatch-ports:v1:_countries': ['NL'],
+      'supply_chain:portwatch-ports:v1:NL': { ports, cacheWrittenAt: Date.now(), fetchedAt: '2026-10-17T00:00:00Z' },
+    });
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+      if (new URL(url).hostname !== 'example.test') return redis.fetchImpl(url, init);
+      calls.push(String(url));
+      assert.equal(new URL(url).pathname, '/api/intelligence/v1/get-country-port-activity');
+      return Response.json(await getCountryPortActivity({}, { countryCode: new URL(url).searchParams.get('country_code') }));
+    };
+    try {
+      const result = await tool._execute({ country_code: 'Netherlands', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(calls.length, 1);
+      assert.equal(result.country_code, 'NL');
+      assert.equal(result.available, true);
+      assert.equal(result.fetched_at, '2026-10-17T00:00:00Z');
+      assert.equal(result.ports.length, 25);
+      assert.equal(result.ports[0].trend_delta_pct, null);
+      assert.equal(result.ports[1].trend_delta_pct, null);
+      assert.equal(result.ports[2].trend_delta_pct, 96);
+      assert.equal(result.ports[2].import_tanker_dwt_30d, 1000);
+      assert.equal(result.ports[2].export_tanker_dwt_30d, 500);
+      assert.equal(Object.hasOwn(result.ports[0], 'anomaly_signal'), false);
+      assert.deepEqual(validate(tool.outputSchema, result), []);
+      const validateOutput = ajv.compile(tool.outputSchema);
+      assert.equal(validateOutput(result), true, JSON.stringify(validateOutput.errors));
+      const empty = await tool._execute({ country_code: 'CH', view: 'ports' }, 'https://example.test', { kind: 'env_key', apiKey: 'test' });
+      assert.equal(empty.available, false);
+      assert.deepEqual(empty.ports, []);
+    } finally {
+      globalThis.fetch = savedFetch;
+      for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+      Object.assign(process.env, savedEnv);
+    }
+  });
 });

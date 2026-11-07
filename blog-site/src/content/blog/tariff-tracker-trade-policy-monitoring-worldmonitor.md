@@ -36,7 +36,7 @@ For question three, the [Scenario Engine](/blog/posts/stress-test-supply-chain-s
 
 ## For developers and agents
 
-The `get_tariff_trends` MCP tool returns the tariff-trend series with customs revenue, Big Mac Index, FAO Food Price Index, and national-debt context in one call, and `get_supply_chain_data` adds COMTRADE bilateral flows and customs revenue for lane-level analysis. An agent handling "what does the new steel tariff mean for our Q4 landed costs?" can ground itself in actual baselines and flows rather than headlines — the [supply-chain early-warning tutorial](/blog/posts/build-supply-chain-early-warning-system-api/) and [tender-tracking guide](/blog/posts/government-tenders-procurement-intelligence-worldmonitor/) both build on the same API surface.
+The `get_tariff_averages` MCP tool returns the WTO MFN tariff series or applied bilateral averages, `get_us_import_duty` adds Section 301 and 232 measures, and `get_supply_chain_data` adds COMTRADE bilateral flows and customs revenue for lane-level analysis. An agent handling "what does the new steel tariff mean for our Q4 landed costs?" can ground itself in actual baselines and flows rather than headlines — the [supply-chain early-warning tutorial](/blog/posts/build-supply-chain-early-warning-system-api/) and [tender-tracking guide](/blog/posts/government-tenders-procurement-intelligence-worldmonitor/) both build on the same API surface.
 
 ## Limits
 

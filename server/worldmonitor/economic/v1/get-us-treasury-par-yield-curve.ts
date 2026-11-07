@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { macroHistoryWindow } from './macro-history-window';
 import {
   TREASURY_LATEST_KEY,
   treasuryCurvesFromSeed,
@@ -23,6 +24,7 @@ export async function getUsTreasuryParYieldCurve(
   _ctx: ServerContext,
   req: GetUsTreasuryParYieldCurveRequest,
 ): Promise<GetUsTreasuryParYieldCurveResponse> {
+  const recent = macroHistoryWindow(req.limit);
   try {
     if (req.history !== true) {
       const latest = treasuryCurvesFromSeed(await getCachedJson(TREASURY_LATEST_KEY, true));
@@ -32,7 +34,7 @@ export async function getUsTreasuryParYieldCurve(
     const curves = await readHistory();
     if (curves.length === 0) return { curves: [], unavailable: true };
     return {
-      curves: req.history === true ? curves : curves.slice(-1),
+      curves: req.history === true ? recent(curves) : curves.slice(-1),
       unavailable: false,
     };
   } catch {

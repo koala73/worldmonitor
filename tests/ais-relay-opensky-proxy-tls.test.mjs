@@ -40,3 +40,20 @@ test('both OpenSky proxy fetches (token + data) reuse the tunnel socket via crea
     `Expected >= 2 "createConnection: () => tlsSocket" call sites (OpenSky token + data fetch); found ${good.length}.`,
   );
 });
+
+// With only `createConnection` there is no agent, so https.request defaults to port
+// 80 and writes `Host: <host>:80` on a TLS request to :443. ENTSO-E rejects that
+// shape with HTTP 400; tests/proxy-utils.test.mjs proves the wire header for
+// proxyFetch(). Each tunnel request's options object must declare port 443.
+test('every tunnel request declares defaultPort 443 so Host carries no :80', () => {
+  const sites = [...SRC.matchAll(/createConnection:\s*\(\)\s*=>\s*tlsSocket/g)];
+  assert.ok(sites.length >= 2);
+  for (const site of sites) {
+    const optionsTail = SRC.slice(site.index, SRC.indexOf('}, (', site.index));
+    assert.match(
+      optionsTail,
+      /defaultPort:\s*443\b/,
+      `tunnel request at offset ${site.index} lacks \`defaultPort: 443\`, so Node sends Host: <host>:80`,
+    );
+  }
+});

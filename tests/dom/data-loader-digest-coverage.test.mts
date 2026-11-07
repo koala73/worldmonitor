@@ -23,6 +23,7 @@ vi.mock('@/services/analysis-worker', () => ({
 }));
 
 await import('@/app/data-loader');
+const { INTEL_SOURCES } = await import('@/config');
 
 interface SelectedNewsDigest {
   digest: ListFeedDigestResponse;
@@ -44,12 +45,19 @@ interface DigestLoaderInternals {
   commitNewsFreshness(generation: number, servedStale: boolean): boolean;
   canNotifyForCommittedNews(generation: number, servedStale: boolean): boolean;
   runCorrelationAnalysis(): Promise<void>;
+  resolveEnabledNewsCategories(): Array<{ key: string; feeds: Array<{ name: string; url: string }>; isCustom: boolean }>;
+  loadIntelNews(
+    digest?: SelectedNewsDigest | null,
+    options?: { recordBaselineSample: boolean },
+    generation?: number,
+  ): Promise<unknown[]>;
+  clusterNewsForGeneration(): Promise<{ clusters: ClusteredEvent[] }>;
   loadNewsCategory(
     category: string,
     feeds: Array<{ name: string }>,
     digest: SelectedNewsDigest | null,
     isCustom: boolean,
-    options: { allowDigestPendingFallback: boolean; recordBaselineSample: boolean },
+    options: { recordBaselineSample: boolean },
     generation: number,
   ): Promise<unknown[]>;
 }
@@ -100,6 +108,7 @@ async function makeLoader() {
     newsPanels: {},
     panels: {
       politics: { setSourceCoverage: vi.fn(), setRefreshDegraded: vi.fn() },
+      intel: { setSourceCoverage: vi.fn(), setRefreshDegraded: vi.fn() },
     },
     newsByCategory: {},
     currentTimeRange: 'all',
@@ -118,7 +127,8 @@ async function makeLoader() {
   const internal = loader as unknown as DigestLoaderInternals;
   internal.persistDigest = vi.fn();
   internal.loadPersistedDigest = vi.fn().mockResolvedValue(null);
-  return { loader, internal, updateDigestCoverage };
+  const panels = ctx.panels as unknown as Record<'politics' | 'intel', { setRefreshDegraded: ReturnType<typeof vi.fn> }>;
+  return { loader, internal, updateDigestCoverage, panels };
 }
 
 describe('digest coverage follows the selected browser response', () => {
@@ -151,6 +161,41 @@ describe('digest coverage follows the selected browser response', () => {
       feedsCompleted: 2,
     }));
     expect(retained.coverage?.state).toBe('complete');
+  });
+
+  it('clears news locations on a successful refresh without located clusters', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    ctx.monitors = [];
+    internal.resolveEnabledNewsCategories = () => [];
+    internal.tryFetchDigest = async () => null;
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+    setNewsLocations([{ lat: 52.5, lon: 13.4, title: 'Previous headline', threatLevel: 'info' }]);
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).toHaveBeenLastCalledWith([]);
+  });
+
+  it('preserves news locations when the news load has no authoritative result', async () => {
+    const { loader, internal } = await makeLoader();
+    const ctx = (loader as unknown as { ctx: AppContext }).ctx;
+    const setNewsLocations = vi.fn();
+    ctx.map = { setNewsLocations, updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+    internal.resolveEnabledNewsCategories = () => [{ key: 'politics', feeds: [{ name: 'Reuters', url: 'https://fixture.test/rss' }], isCustom: false }];
+    internal.tryFetchDigest = async () => null;
+    internal.loadNewsCategory = async () => [];
+    internal.loadIntelNews = async () => [];
+    internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+
+    await loader.loadNews();
+
+    expect(ctx.clustersSettled).toBe(true);
+    expect(setNewsLocations).not.toHaveBeenCalled();
   });
 
   it('derives retained item counts when a pre-coverage digest is marked stale', async () => {
@@ -377,7 +422,7 @@ describe('digest coverage follows the selected browser response', () => {
         [{ name: 'source-0' }],
         selected,
         false,
-        { allowDigestPendingFallback: false, recordBaselineSample: false },
+        { recordBaselineSample: false },
         generation,
       );
 
@@ -399,5 +444,78 @@ describe('digest coverage follows the selected browser response', () => {
     expect(served?.digest.coverage?.state).toBe('stale');
     expect(served?.servedStale).toBe(true);
     expect(internal.persistDigest).not.toHaveBeenCalled();
+  });
+
+  describe('the LIVE/CACHED badge follows the selected digest', () => {
+    function respond(body: ListFeedDigestResponse): void {
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+
+    function withIntel(body: ListFeedDigestResponse): ListFeedDigestResponse {
+      const items = body.categories.politics!.items.map(item => ({ ...item, source: INTEL_SOURCES[0]!.name }));
+      return { ...body, categories: { ...body.categories, intel: { items } } };
+    }
+
+    async function selectHomeDigest(kind: 'fresh' | 'server-stale' | 'retained' | 'persisted') {
+      const { internal, panels } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      if (kind === 'fresh') respond(withIntel(digest('complete')));
+      if (kind === 'server-stale') respond(withIntel(digest('stale')));
+      if (kind === 'retained') {
+        internal.lastGoodDigest = { key: 'digest:current', data: withIntel(digest('complete')) };
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network down'));
+      }
+      if (kind === 'persisted') {
+        internal.loadPersistedDigest = vi.fn().mockResolvedValue(withIntel(digest('complete')));
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('network down'));
+      }
+      const selected = await internal.tryFetchDigest();
+      return { internal, panels, selected, generation: internal.beginNewsLoad() };
+    }
+
+    it.each([
+      ['fresh', false],
+      ['server-stale', true],
+      ['retained', true],
+      ['persisted', true],
+    ] as const)('a %s home digest marks the category panel cached=%s', async (kind, cached) => {
+      const { internal, panels, selected, generation } = await selectHomeDigest(kind);
+
+      await internal.loadNewsCategory('politics', [{ name: 'source-0' }], selected, false, { recordBaselineSample: false }, generation);
+
+      expect(panels.politics.setRefreshDegraded).toHaveBeenLastCalledWith(cached);
+    });
+
+    it.each([
+      ['fresh', false],
+      ['server-stale', true],
+      ['retained', true],
+      ['persisted', true],
+    ] as const)('a %s home digest marks the intel panel cached=%s', async (kind, cached) => {
+      const { internal, panels, selected, generation } = await selectHomeDigest(kind);
+
+      const intel = await internal.loadIntelNews(selected, { recordBaselineSample: false }, generation);
+
+      expect(intel).toHaveLength(2);
+      expect(panels.intel.setRefreshDegraded).toHaveBeenLastCalledWith(cached);
+    });
+
+    it('returns a cached panel to LIVE once a fresh digest arrives', async () => {
+      const { internal, panels } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+
+      respond(digest('stale'));
+      const stale = await internal.tryFetchDigest();
+      await internal.loadNewsCategory('politics', [{ name: 'source-0' }], stale, false, { recordBaselineSample: false }, internal.beginNewsLoad());
+      expect(panels.politics.setRefreshDegraded).toHaveBeenLastCalledWith(true);
+
+      respond(digest('complete'));
+      const fresh = await internal.tryFetchDigest();
+      await internal.loadNewsCategory('politics', [{ name: 'source-0' }], fresh, false, { recordBaselineSample: false }, internal.beginNewsLoad());
+      expect(panels.politics.setRefreshDegraded).toHaveBeenLastCalledWith(false);
+    });
   });
 });

@@ -133,13 +133,13 @@ async function loadPreferencesModule(): Promise<PreferencesModule> {
     ['@/services/i18n', 'export const LANGUAGES = []; export function getCurrentLanguageTag(){ return "en"; } export function changeLanguage(value){ return globalThis.__settingsChangeLanguage?.(value) ?? Promise.resolve(true); } export function t(key){ return key; }'],
     ['@/services/ai-flow-settings', 'export const STREAM_QUALITY_OPTIONS = []; export function getAiFlowSettings(){ return { cloudLlm: false, browserModel: false, mapNewsFlash: false, headlineMemory: false, badgeAnimation: false }; } export function getStreamQuality(){ return "auto"; } export function setStreamQuality(value){ globalThis.__settingsSavedQuality = value; } export function setAiFlowSetting(){}'],
     ['@/config/basemap', 'export const MAP_PROVIDER_OPTIONS = []; export const MAP_THEME_OPTIONS = { carto: [] }; export function getMapProvider(){ return "carto"; } export function setMapProvider(){} export function getMapTheme(){ return "dark"; } export function setMapTheme(){}'],
-    ['@/services/live-stream-settings', 'export const LIVE_MEDIA_IDLE_STOP_OPTIONS = [15, 30, 60, 120, 240, "never"]; export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){} export function getLiveMediaIdleStop(){ return 60; } export function setLiveMediaIdleStop(value){ globalThis.__settingsSavedIdleStop = value; } export function parseLiveMediaIdleStop(value){ return LIVE_MEDIA_IDLE_STOP_OPTIONS.find((option) => String(option) === value); } export function formatIdleStopMinutes(minutes){ return `${minutes} min`; }'],
+    ['@/services/live-stream-settings', 'export const LIVE_MEDIA_IDLE_STOP_OPTIONS = [15, 30, 60, 120, 240, "never"]; export function getLiveNewsAutoplay(){ return true; } export function setLiveNewsAutoplay(value){ globalThis.__settingsSavedNewsAutoplay = value; } export function getLiveStreamsAlwaysOn(){ return false; } export function setLiveStreamsAlwaysOn(){} export function getLiveMediaIdleStop(){ return 60; } export function setLiveMediaIdleStop(value){ globalThis.__settingsSavedIdleStop = value; } export function parseLiveMediaIdleStop(value){ return LIVE_MEDIA_IDLE_STOP_OPTIONS.find((option) => String(option) === value); } export function formatIdleStopMinutes(minutes){ return `${minutes} min`; }'],
     ['@/services/globe-render-settings', 'export const GLOBE_VISUAL_PRESET_OPTIONS = []; export function getGlobeVisualPreset(){ return "default"; } export function setGlobeVisualPreset(){}'],
     ['@/utils/theme-manager', 'export function getThemePreference(){ return "auto"; } export function setThemePreference(){}'],
     ['@/services/font-settings', 'export function getFontFamily(){ return "mono"; } export function setFontFamily(){}'],
     ['@/services/font-scale-settings', 'export const FONT_SCALE_CHANGED_EVENT = "font-scale-changed"; export const FONT_SCALE_STEPS = []; export function fontScaleLabel(value){ return String(value); } export function getFontScale(){ return 1; } export function parseFontScale(value){ const parsed = Number(value); return Number.isFinite(parsed) ? parsed : undefined; } export function setFontScale(){}'],
     ['@/utils/sanitize', 'export function escapeHtml(value){ return String(value); }'],
-    ['@/services/analytics', 'export function trackLanguageChange(){}'],
+    ['@/services/analytics', 'export function trackLanguageChange(){} export function track(){}'],
     ['@/utils/settings-persistence', 'export function exportSettings(){} export async function importSettings(){ return { keysImported: 0 }; }'],
     ['@/utils/cloud-prefs-sync', 'export function getSyncState(){ return "synced"; } export function getLastSyncAt(){ return null; } export async function syncNow(){} export function isCloudSyncEnabled(){ return false; }'],
     ['@/services/analysis-framework-store', 'export function loadFrameworkLibrary(){ return []; } export function saveImportedFramework(){} export function deleteImportedFramework(){} export function renameImportedFramework(){} export function getActiveFrameworkForPanel(){ return null; }'],
@@ -159,6 +159,7 @@ describe('settings save feedback', () => {
     const runtime = globalThis as typeof globalThis & {
       __settingsSavedQuality?: string;
       __settingsSavedIdleStop?: unknown;
+      __settingsSavedNewsAutoplay?: unknown;
     };
     try {
       const { handlePreferenceChange } = await loadPreferencesModule();
@@ -173,11 +174,14 @@ describe('settings save feedback', () => {
       assert.equal(runtime.__settingsSavedIdleStop, 240);
       assert.equal(handlePreferenceChange({ id: 'us-live-media-idle-stop', value: 'forever' } as HTMLInputElement, container, host), false);
       assert.equal(runtime.__settingsSavedIdleStop, 240);
+      assert.equal(handlePreferenceChange({ id: 'us-live-news-autoplay', checked: false } as HTMLInputElement, container, host), true);
+      assert.equal(runtime.__settingsSavedNewsAutoplay, false);
       assert.equal(handlePreferenceChange({ id: 'us-font-scale', value: 'invalid' } as HTMLInputElement, container, host), false);
       assert.equal(handlePreferenceChange({ id: 'unrelated-control' } as HTMLInputElement, container, host), false);
     } finally {
       delete runtime.__settingsSavedQuality;
       delete runtime.__settingsSavedIdleStop;
+      delete runtime.__settingsSavedNewsAutoplay;
     }
   });
 
@@ -198,6 +202,9 @@ describe('settings save feedback', () => {
       const { html } = renderPreferences({ isDesktopApp: false });
 
       const autoplayAt = html.indexOf('us-live-streams-always-on');
+      const newsAutoplayAt = html.indexOf('us-live-news-autoplay');
+      assert.ok(newsAutoplayAt > -1 && newsAutoplayAt < autoplayAt, 'the Live News toggle renders before the webcam toggle');
+      assert.match(html, /components\.insights\.liveNewsAutoplayLabel/);
       const selectOpen = '<select class="unified-settings-select" id="us-live-media-idle-stop" aria-labelledby="us-live-media-idle-stop-label">';
       const selectAt = html.indexOf(selectOpen);
       assert.ok(autoplayAt > -1, 'autoplay toggle renders');

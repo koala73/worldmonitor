@@ -3,7 +3,9 @@ import type {
   GetCountryFactsRequest,
   GetCountryFactsResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import { ValidationError } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
+import { isAssignedCountryCode } from '../../../../shared/country-code-resolve';
 import { cachedFetchJson } from '../../../_shared/redis';
 import unToIso2Json from '../../../../shared/un-to-iso2.json';
 
@@ -38,26 +40,20 @@ interface WikipediaSummary {
   thumbnail?: { source?: string };
 }
 
-const EMPTY: GetCountryFactsResponse = {
-  headOfState: '',
-  headOfStateTitle: '',
-  wikipediaSummary: '',
-  wikipediaThumbnailUrl: '',
-  population: 0,
-  capital: '',
-  languages: [],
-  currencies: [],
-  areaSqKm: 0,
-  countryName: '',
-};
-
 export async function getCountryFacts(
   _ctx: ServerContext,
   req: GetCountryFactsRequest,
 ): Promise<GetCountryFactsResponse> {
-  if (!req.countryCode) return EMPTY;
-
-  const code = req.countryCode.toUpperCase();
+  const code = req.countryCode?.toUpperCase() ?? '';
+  // The proto checks shape only. Intl names an unassigned code such as ZZ
+  // "Unknown Region", which this handler would otherwise look up on Wikipedia
+  // and return as the country's facts.
+  if (!isAssignedCountryCode(code)) {
+    throw new ValidationError([{
+      field: 'country_code',
+      description: 'country_code must be an assigned ISO 3166-1 alpha-2 code, e.g. "IQ".',
+    }]);
+  }
   const countryData = await fetchWikidata(code);
   const countryName = countryData?.countryName || displayCountryName(code);
 
@@ -151,6 +147,7 @@ async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
   const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
 
   for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(1_000, 250 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     let response: Response;
     try {
       response = await fetch(url, {
@@ -163,7 +160,10 @@ async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
     }
     if (!response.ok) {
       const retryable = response.status === 429 || response.status >= 500;
-      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) continue;
+      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) {
+        await response.body?.cancel().catch(() => {});
+        continue;
+      }
       throw new Error(`Wikidata request failed with status ${response.status}`);
     }
 

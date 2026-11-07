@@ -30,7 +30,7 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
-import wiredLogo from './assets/wired-logo.svg';
+import { VoiceCards } from './components/Voices';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -40,7 +40,7 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
-import { PressFooterNav } from './components/PressFooterNav';
+import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
 import {
   isDesktopCheckoutHandoff,
@@ -90,6 +90,7 @@ export function renderTurnstileWidgets(): number {
  * referral-capture guard (#6493).
  */
 function getRefCode(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
   const params = new URLSearchParams(window.location.search);
   const code = params.get('ref') || undefined;
   if (!code || isInternalSourceTag(code)) return undefined;
@@ -100,6 +101,7 @@ function getMcpAttributionSource(): string | undefined {
   // Uses the shared allowlist rather than an inline literal so the /pro page,
   // the checkout edge function, and the Convex webhook reader can never disagree
   // about what the campaign marker is (#6716).
+  if (typeof window === 'undefined') return undefined;
   return readMcpAttributionFromSearch(window.location.search);
 }
 
@@ -327,7 +329,7 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pricing" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
           <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
           <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
           <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
@@ -444,13 +446,11 @@ const SignalBars = () => {
   );
 };
 
-const Hero = () => {
+const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
-  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
-  // Hide it once auth state confirms; falls back to just the "Choose Plan"
-  // CTA which is the relevant action for returning users anyway.
-  const showSignIn = isLoaded && !signedIn;
+  // Sign-in lives in the nav. Repeating it here made two sign-in controls
+  // on the first screen, beside the plan CTA it competed with.
   // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
   // is already Pro — same reasoning as the nav swap, and also removes
   // the #pricing anchor jump which is actively misleading for a paying
@@ -460,8 +460,10 @@ const Hero = () => {
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
       <div className="max-w-4xl mx-auto text-center relative z-10">
+        {/* The prerendered /pro HTML paints this hero before React mounts, so
+            an opacity:0 initial state would blank it out until the bundle ran. */}
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
@@ -470,6 +472,7 @@ const Hero = () => {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-display font-bold tracking-tighter leading-[0.95]">
+            {srLead && <span className="sr-only">{srLead} </span>}
             <span className="text-wm-muted/40">{t('hero.noiseWord')}</span>
             <span className="mx-3 md:mx-5 text-wm-border/50">→</span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-wm-green to-emerald-300 text-glow">{t('hero.signalWord')}</span>
@@ -490,11 +493,6 @@ const Hero = () => {
               <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
-            )}
-            {showSignIn && (
-              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-                {t('hero.signIn')}
-              </button>
             )}
           </div>
 
@@ -526,58 +524,9 @@ const SocialProof = () => (
           </div>
         ))}
       </div>
-      <blockquote className="max-w-3xl mx-auto text-center">
-        <p className="text-lg md:text-xl text-wm-muted italic leading-relaxed">
-          "{t('socialProof.quote')}"
-        </p>
-        <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
-          </a>
-        </footer>
-      </blockquote>
-    </div>
-  </section>
-);
-
-/* ─── 3. Two-path split (new — from draft) ─── */
-const TwoPathSplit = () => (
-  <section className="py-24 px-6 max-w-5xl mx-auto" id="tiers">
-    <h2 className="sr-only">Plans</h2>
-    <div className="grid md:grid-cols-2 gap-8">
-      <div className="bg-wm-card border border-wm-green p-8 relative border-glow">
-        <div className="absolute top-0 left-0 w-full h-1 bg-wm-green" />
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
-          {t('twoPath.choosePlan')}
-        </a>
-      </div>
-
-      <div className="bg-wm-card border border-wm-border p-8">
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.entTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.entDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          <li className="text-xs font-mono text-wm-green uppercase tracking-wider mb-1">{t('twoPath.entF1')}</li>
-          {[t('twoPath.entF2'), t('twoPath.entF3'), t('twoPath.entF4'), t('twoPath.entF5'), t('twoPath.entF6'), t('twoPath.entF7'), t('twoPath.entF8'), t('twoPath.entF9'), t('twoPath.entF10'), t('twoPath.entF11')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-muted" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#enterprise" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors">
-          {t('twoPath.entCta')}
-        </a>
-      </div>
+      <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
+      <VoiceCards />
+      <PressNav className="mt-6" />
     </div>
   </section>
 );
@@ -730,17 +679,20 @@ const LivePreview = () => (
 const SourceMarquee = () => {
   const sources = [
     "Finnhub", "FRED", "Bloomberg", "CNBC", "Nikkei", "CoinGecko", "Polymarket",
-    "Reuters", "ACLED", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
-    "Cloudflare Radar", "BGPStream", "GPSJam", "NOAA", "Copernicus", "IAEA",
+    "Reuters", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
+    "Cloudflare Radar", "GPSJam", "NOAA", "Copernicus", "IAEA",
     "Al Jazeera", "Sky News", "Euronews", "DW News", "France 24",
-    "OilPrice", "Rigzone", "Maritime Executive", "Hellenic Shipping News",
+    "OilPrice", "Rigzone",
     "Defense One", "Jane's", "The War Zone",
     "TechCrunch", "Ars Technica", "The Verge", "Wired",
-    "Krebs on Security", "BleepingComputer", "The Record",
+    "Krebs on Security",
   ];
   const items = sources.join(" · ");
   return (
-    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label="Data sources">
+    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label={t('sourceMarquee.label')}>
+      <a href="/sources/" className="block w-fit mx-auto mb-3 px-4 font-mono text-xs text-wm-green hover:underline">
+        {t('sourceMarquee.label')} →
+      </a>
       <div className="marquee-track whitespace-nowrap font-mono text-xs text-wm-muted uppercase tracking-widest">
         <span className="inline-block px-4">{items} · </span>
         <span className="inline-block px-4">{items} · </span>
@@ -828,7 +780,7 @@ const ProShowcase = () => (
             ].map((ch, i) => (
               <div key={i} className="flex flex-col items-center gap-1.5 text-wm-muted hover:text-wm-text transition-colors cursor-pointer">
                 {ch.icon}
-                <span className="text-[10px] font-mono">{ch.label}</span>
+                <span className="text-xs font-mono">{ch.label}</span>
               </div>
             ))}
           </div>
@@ -912,7 +864,7 @@ const AudiencePersonas = () => {
 const ApiSection = () => (
   <section className="py-24 px-6 border-y border-wm-border bg-[#0a0a0a]" id="api">
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-      <div className="order-2 lg:order-1">
+      <div className="order-2 lg:order-1 min-w-0">
         <div className="bg-black border border-wm-border rounded-lg overflow-hidden font-mono text-sm">
           <div className="bg-wm-card px-4 py-2 border-b border-wm-border flex items-center gap-2">
             <Terminal className="w-4 h-4 text-wm-muted" aria-hidden="true" />
@@ -939,7 +891,7 @@ const ApiSection = () => (
         </div>
       </div>
 
-      <div className="order-1 lg:order-2">
+      <div className="order-1 lg:order-2 min-w-0">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-wm-border bg-wm-card text-wm-muted text-xs font-mono mb-6">
           {t('apiSection.apiTier')}
         </div>
@@ -1124,7 +1076,7 @@ const PricingTable = () => {
         {rows.map((row, i) => (
           <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
             <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-2 text-xs break-words">
               <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
               <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
               <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
@@ -1309,6 +1261,7 @@ const EnterprisePage = () => (
             }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
+                signal: createTimeoutSignal(60_000),
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1381,11 +1334,11 @@ const EnterprisePage = () => (
           <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} World Monitor</span>
       </div>
-      <PressFooterNav />
+      <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1395,8 +1348,31 @@ const EnterprisePage = () => (
 );
 
 /* ─── Page Layout ─── */
+/**
+ * The home page's first viewport and landmark structure. prerender.mjs renders
+ * it to static HTML (pro-first-viewport-prerender.tsx) so the hero paints, at
+ * its final size, before the bundle mounts and replaces #root.
+ */
+export const ProHomeShell = ({ heroSrLead, footer, children }: {
+  heroSrLead?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) => (
+  <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <Navbar />
+    <main>
+      <Hero srLead={heroSrLead} />
+      {children}
+    </main>
+    {footer}
+  </div>
+);
+
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+  // Section to scroll to once the home view has rendered after leaving the
+  // Enterprise view; its sections do not exist until then.
+  const pendingHomeTarget = useRef<string | null>(null);
 
   // Resume a checkout the buyer started before signing in.
   //
@@ -1422,6 +1398,11 @@ export default function App() {
       const wasEnterprise = page === 'enterprise';
       setPage(next);
       if (next === 'enterprise' && !wasEnterprise) window.scrollTo(0, 0);
+      // The removed #tiers section has no element for native fragment
+      // navigation; send history or same-page jumps to the price cards.
+      const homeTarget = hash === '#tiers' ? 'pricing' : hash.slice(1);
+      if (next === 'home' && wasEnterprise && homeTarget) pendingHomeTarget.current = homeTarget;
+      else if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
       if (hash === '#enterprise-contact') {
         setTimeout(() => {
           document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
@@ -1431,6 +1412,31 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [page]);
+
+  useEffect(() => {
+    const target = pendingHomeTarget.current;
+    if (page !== 'home' || !target) return;
+    pendingHomeTarget.current = null;
+    const frame = requestAnimationFrame(() => { document.getElementById(target)?.scrollIntoView(); });
+    return () => cancelAnimationFrame(frame);
+  }, [page]);
+
+  // Deep links into the home page (/pro#pricing from every dashboard
+  // "Upgrade to Pro" CTA) target React-only sections that are absent from the
+  // prerendered HTML, so the browser's native fragment scroll runs before the
+  // target exists and leaves the buyer at the top of the page. Scroll once
+  // the section has mounted. The rAF lets layout settle first.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    // #tiers was a Plans section without prices, removed in favour of the
+    // price cards; saved links to it still land on the plans.
+    const target = hash === '#tiers' ? 'pricing' : hash.slice(1);
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (page === 'enterprise' && window.location.hash === '#enterprise-contact') {
@@ -1444,33 +1450,27 @@ export default function App() {
 
   return (
     <ProEntitlementProvider>
-      <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-        <Navbar />
-        <main>
-          <Hero />
-          <SourceMarquee />
-          <Pillars />
-          <WhyUpgrade />
-          <TwoPathSplit />
-          <ProShowcase />
-          <DeliveryDesk />
-          <AudiencePersonas />
-          <SocialProof />
-          <LivePreview />
-          <WhatsNew />
-          <PricingSection
-            refCode={getRefCode()}
-            attributionSource={getMcpAttributionSource()}
-            checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-            desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
-          />
-          <PricingTable />
-          <ApiSection />
-          <EnterpriseShowcase />
-          <FAQ />
-        </main>
-        <Footer />
-      </div>
+      <ProHomeShell footer={<Footer />}>
+        <SourceMarquee />
+        <Pillars />
+        <WhyUpgrade />
+        <SocialProof />
+        <ProShowcase />
+        <DeliveryDesk />
+        <AudiencePersonas />
+        <LivePreview />
+        <WhatsNew />
+        <PricingSection
+          refCode={getRefCode()}
+          attributionSource={getMcpAttributionSource()}
+          checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+        />
+        <PricingTable />
+        <ApiSection />
+        <EnterpriseShowcase />
+        <FAQ />
+      </ProHomeShell>
     </ProEntitlementProvider>
   );
 }

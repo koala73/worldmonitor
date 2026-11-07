@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { exportSettings, importSettings } from '@/utils/settings-persistence';
+import { exportSettings, importSettings, registerSettingsExportFlush } from '@/utils/settings-persistence';
 import { invalidatePanelStorageCacheForKeys, loadPanelSpans } from '@/utils/panel-storage';
 
 const monitor = { id: 'saved', color: '#ff0000', keywords: ['oil', 'gas'] };
@@ -123,4 +123,71 @@ it('restores earlier entries when a later quota write fails', async () => {
   await expect(importSettings(file({ 'worldmonitor-theme': 'light', 'wm-font-scale': '1.2' }))).rejects.toThrow('Cannot persist');
   vi.unstubAllGlobals();
   expect(snapshot()).toEqual(before);
+});
+
+describe('dashboard tabs in the settings backup (#9372)', () => {
+  const tab = (id: string, name: string) => ({ id, name, panelSettings: { news: { enabled: true } }, panelOrder: ['news'], bottomSet: [] });
+  const tabsState = { activeTabId: 'tab-b-2', tabs: [tab('tab-a-1', 'Markets'), tab('tab-b-2', 'Food resilience')] };
+  const exportToObject = async () => {
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:settings');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    exportSettings();
+    return JSON.parse(await (create.mock.calls[0]![0] as Blob).text()) as { data: Record<string, string> };
+  };
+
+  it('exports every variant tabs key and ignores impostors', async () => {
+    localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify(tabsState));
+    localStorage.setItem('worldmonitor-tabs-v1:tech', JSON.stringify(tabsState));
+    localStorage.setItem('worldmonitor-tabs-v1:evil', '{}');
+    localStorage.setItem('worldmonitor-tabs-v2:full', '{}');
+    const { data } = await exportToObject();
+    expect(data['worldmonitor-tabs-v1:full']).toBe(JSON.stringify(tabsState));
+    expect(data['worldmonitor-tabs-v1:tech']).toBe(JSON.stringify(tabsState));
+    expect(data['worldmonitor-tabs-v1:evil']).toBeUndefined();
+    expect(data['worldmonitor-tabs-v2:full']).toBeUndefined();
+  });
+
+  it('runs registered flush hooks before reading storage, until they unregister', async () => {
+    localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify({ ...tabsState, activeTabId: 'tab-a-1' }));
+    const flush = vi.fn(() => localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify(tabsState)));
+    const unregister = registerSettingsExportFlush(flush, ['worldmonitor-tabs-v1:full']);
+    expect((await exportToObject()).data['worldmonitor-tabs-v1:full']).toBe(JSON.stringify(tabsState));
+    expect(flush).toHaveBeenCalledTimes(1);
+    unregister();
+    vi.restoreAllMocks();
+    localStorage.setItem('worldmonitor-tabs-v1:full', '{"activeTabId":"tab-a-1","tabs":[]}');
+    expect((await exportToObject()).data['worldmonitor-tabs-v1:full']).toBe('{"activeTabId":"tab-a-1","tabs":[]}');
+    expect(flush).toHaveBeenCalledTimes(1);
+  });
+
+  it('round trips tab workspaces through export and import', async () => {
+    localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify(tabsState));
+    const { data } = await exportToObject();
+    localStorage.clear();
+    await expect(importSettings(file(data))).resolves.toEqual({ success: true, keysImported: Object.keys(data).length });
+    expect(localStorage.getItem('worldmonitor-tabs-v1:full')).toBe(JSON.stringify(tabsState));
+  });
+
+  it.each([
+    'not JSON', 'null', '[]', '{}', '{"tabs":[]}', '{"tabs":{}}',
+    JSON.stringify({ activeTabId: 'tab-a-1', tabs: [{ id: 'tab-a-1', name: 'x', panelSettings: null, panelOrder: [], bottomSet: [] }] }),
+    JSON.stringify({ activeTabId: 'tab-a-1', tabs: [{ id: 'tab-a-1', name: 'x', panelSettings: {}, panelOrder: 'news', bottomSet: [] }] }),
+  ])('skips unusable tab state %s without failing the rest of the import', async value => {
+    await expect(importSettings(file({ 'worldmonitor-theme': 'light', 'worldmonitor-tabs-v1:full': value }))).resolves.toEqual({ success: true, keysImported: 1 });
+    expect(localStorage.getItem('worldmonitor-theme')).toBe('light');
+    expect(localStorage.getItem('worldmonitor-tabs-v1:full')).toBeNull();
+  });
+
+  it('drops malformed tabs and heals an unknown active id on import', async () => {
+    const mixed = { activeTabId: 'tab-gone-9', tabs: [{ id: 'tab-a-1' }, tab('tab-b-2', 'Food resilience'), null] };
+    await expect(importSettings(file({ 'worldmonitor-tabs-v1:full': JSON.stringify(mixed) }))).resolves.toEqual({ success: true, keysImported: 1 });
+    expect(JSON.parse(localStorage.getItem('worldmonitor-tabs-v1:full')!)).toEqual({ activeTabId: 'tab-b-2', tabs: [tab('tab-b-2', 'Food resilience')] });
+  });
+
+  it('still rejects a non-string tabs value before writing anything', async () => {
+    const before = snapshot();
+    await expect(importSettings(file({ 'worldmonitor-theme': 'light', 'worldmonitor-tabs-v1:full': tabsState }))).rejects.toThrow('must be a string');
+    expect(snapshot()).toEqual(before);
+  });
 });

@@ -440,8 +440,8 @@ describe('#7081 consumers — FADING stays wire-compatible', () => {
   });
 
   it('the client still maps the value rather than falling through', () => {
-    const loader = read('src', 'app', 'data-loader.ts');
-    assert.match(loader, /STORY_PHASE_FADING:\s*'fading'/,
+    const converter = read('src', 'services', 'news-digest-items.ts');
+    assert.match(converter, /STORY_PHASE_FADING:\s*'fading'/,
       'an unmapped FADING would silently render as breaking');
   });
 

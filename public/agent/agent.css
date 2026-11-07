@@ -1,0 +1,34 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0f0a;
+  --panel: #0e140e;
+  --border: #1f2a1f;
+  --text: #e0e0e0;
+  --muted: #9a9a9a;
+  --accent: #4ade80;
+}
+body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, sans-serif; margin: 0; }
+main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+a { color: var(--accent); }
+h1 { font-size: 1.8rem; margin: 4px 0 8px; }
+h2 { font-size: 1.25rem; margin: 40px 0 8px; }
+h3 { font-size: 1.05rem; margin: 0 0 6px; }
+code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.eyebrow { margin: 0; font-size: 13px; }
+.lede { font-size: 1.1rem; color: #cfcfcf; max-width: 70ch; }
+.muted { color: var(--muted); max-width: 72ch; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 12px 0; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+.tile dt { font-weight: 600; }
+.tile dd { margin: 6px 0 0; color: #cfcfcf; font-size: 14px; }
+.client { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; margin: 12px 0; scroll-margin-top: 16px; }
+.client p { margin: 6px 0; max-width: 74ch; }
+.cmd { position: relative; margin: 8px 0; }
+.cmd pre { background: #111811; border: 1px solid #2a3a2a; border-radius: 4px; padding: 10px 72px 10px 12px; margin: 0; overflow-x: auto; white-space: pre-wrap; }
+.copy { position: absolute; top: 6px; right: 6px; background: #1a3a1a; color: var(--accent); border: 1px solid #2a5a2a; border-radius: 4px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: 12px; }
+.copy.done { color: var(--text); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skills { columns: 2 320px; column-gap: 24px; padding-left: 18px; margin: 8px 0 0; }
+.skills li { break-inside: avoid; margin: 0 0 6px; color: #cfcfcf; font-size: 14px; }
+.skills code { color: var(--text); }
+.links li { margin: 4px 0; }

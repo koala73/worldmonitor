@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
 import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
 import {
@@ -18,6 +19,7 @@ import {
 } from './wingbits';
 import { isFeatureAvailable } from './runtime-config';
 import { isDesktopRuntime, toApiUrl } from './runtime';
+import type { BreakerDataState } from '@/utils/circuit-breaker';
 import { MilitaryServiceClient } from '@/services/generated-rpc-clients';
 
 const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
@@ -338,17 +340,17 @@ async function fetchQueryRegion(region: QueryRegion): Promise<RegionResult> {
   const query = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
   const urls = [`${OPENSKY_PROXY_URL}?${query}`];
   if (isLocalhostRuntime && DIRECT_OPENSKY_BASE_URL) urls.push(`${DIRECT_OPENSKY_BASE_URL}?${query}`);
-  try {
-    for (const url of urls) {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { signal: createTimeoutSignal(15_000), headers: { 'Accept': 'application/json' } });
       if (!response.ok) continue;
       const data: OpenSkyResponse = await response.json();
       return { name: region.name, flights: parseOpenSkyResponse(data), ok: true };
+    } catch {
+      // A failed proxy still permits the configured localhost relay fallback.
     }
-    return { name: region.name, flights: [], ok: false };
-  } catch {
-    return { name: region.name, flights: [], ok: false };
   }
+  return { name: region.name, flights: [], ok: false };
 }
 
 const STALE_MAX_AGE_MS = 10 * 60 * 1000;
@@ -560,15 +562,23 @@ startFlightHistoryCleanup();
 export async function fetchMilitaryFlights(): Promise<{
   flights: MilitaryFlight[];
   clusters: MilitaryFlightCluster[];
+  dataState: BreakerDataState;
 }> {
   const desktop = isDesktopRuntime();
-  if (desktop && !isFeatureAvailable('openskyRelay')) return { flights: [], clusters: [] };
-  if (!desktop && !isFeatureAvailable('militaryFlights')) return { flights: [], clusters: [] };
+  const fallback = { flights: [] as MilitaryFlight[], clusters: [] as MilitaryFlightCluster[] };
+  const unavailable: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
+  if ((desktop && !isFeatureAvailable('openskyRelay')) || (!desktop && !isFeatureAvailable('militaryFlights'))) {
+    return { ...fallback, dataState: unavailable };
+  }
+  let completed: typeof fallback | undefined;
+  let completedState: BreakerDataState | undefined;
 
-  return breaker.execute(async () => {
+  const result = await breaker.execute(async () => {
     if (flightCache && Date.now() - flightCache.timestamp < CACHE_TTL) {
       const clusters = clusterFlights(flightCache.data);
-      return { flights: flightCache.data, clusters };
+      completed = { flights: flightCache.data, clusters };
+      completedState = { mode: 'cached', timestamp: flightCache.timestamp, offline: false };
+      return completed;
     }
 
     let flights = desktop ? await fetchFromOpenSky() : await fetchViaProto();
@@ -586,8 +596,14 @@ export async function fetchMilitaryFlights(): Promise<{
     // Generate clusters
     const clusters = clusterFlights(flights);
 
-    return { flights, clusters };
-  }, { flights: [], clusters: [] });
+    completed = { flights, clusters };
+    completedState = { mode: 'live', timestamp: flightCache.timestamp, offline: false };
+    return completed;
+  }, fallback);
+  const dataState: BreakerDataState = result === fallback ? unavailable
+    : result === completed && completedState ? completedState
+      : { mode: 'cached', timestamp: null, offline: breaker.getDataState().offline };
+  return { ...result, dataState };
 }
 
 /**

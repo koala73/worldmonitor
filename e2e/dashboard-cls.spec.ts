@@ -201,7 +201,7 @@ const waitForStableBoxes = async (
   for (let attempt = 0; attempt < 30; attempt += 1) {
     await nextLayoutFrames(page, 2);
     const current = await snapshotBoxes(page, selectors);
-    const stable = selectors.every((selector) => boxesMatch(previous[selector], current[selector]));
+    const stable = selectors.every((selector) => boxesMatch(previous[selector] ?? null, current[selector] ?? null));
     if (stable) {
       stableSamples += 1;
       if (stableSamples >= requiredStableSamples) return current;
@@ -368,6 +368,22 @@ test.describe('dashboard layout stability', () => {
 
   test('keeps desktop first-load CLS below the dashboard threshold with top banner visible', async ({ page }) => {
     await exerciseDashboardBoot(page, { assertSeededDeferredFootprint: shouldSeedDeferredFootprint });
+  });
+});
+
+test.describe('dashboard layout stability with a saved map width', () => {
+  test.beforeEach(async ({ page }) => {
+    await installDashboardClsObserver(page);
+    // At 1280px the default 60% map leaves the sidebar one column; a saved 45%
+    // gives it two. Applied after first paint, the map, the sidebar and every
+    // panel span would move.
+    await page.addInitScript(() => localStorage.setItem('map-col-width', '45%'));
+  });
+
+  test('renders the saved map width from the first frame', async ({ page }) => {
+    await exerciseDashboardBoot(page);
+    const sidebar = await page.locator('#panelsGrid').evaluate((grid) => grid.getBoundingClientRect().width);
+    expect(sidebar, 'the saved width is applied').toBeGreaterThan(640);
   });
 });
 

@@ -1,8 +1,11 @@
+import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
+import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -25,7 +28,7 @@ const pureSrc = seedSrc
   .replace(/loadEnvFile\([^)]+\);/, '')
   .replace(/async function fetchSource[\s\S]*/, ''); // remove network + runSeed tail
 
-const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp });
+const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
 vm.runInContext(pureSrc, ctx);
 
 const {
@@ -42,26 +45,34 @@ const fetchPressureSrc = seedSrc.slice(
   seedSrc.indexOf('\nfunction validate('),
 );
 
-async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], semaJson } = {}) {
+async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {
   const context = vm.createContext({
     console: { log() {}, warn() {} },
-    SEMA_SOURCE,
-    mergeSanctionEntries,
+    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, Buffer, gzipSync, gunzipSync,
+    mergeSanctionEntries, buildSanctionsChanges,
     verifySeedKey: async (key) => key === 'sanctions:pressure:v1' ? { entries: cached } : null,
+    readSeedSnapshot: async key => key === 'sanctions:source-snapshots:v1' ? snapshots : null,
     ingestSemaEntries: semaJson === undefined
       ? async () => ({ records: [], publishedAtMs: 0, error: 'SEMA_INVALID_RECORD' })
       : () => ingestSemaEntries({ fetchFn: async () => new Response(JSON.stringify(semaJson)) }),
-    fetchSource: async ({ label }) => {
+    CSL_SOURCES, CSL_ROW_ID, ingestCslEntries: async ({ deadlineAt }) => {
+      deadlines.csl = deadlineAt;
+      return { lists: {}, error: 'CSL_FIXTURE_OFF' };
+    },
+    fetchSource: async ({ label }, { deadlineAt }) => {
+      deadlines[label] = deadlineAt;
       if (!sources.includes(label)) throw new Error('source timeout');
       return {
         datasetDate: Date.UTC(2026, 8, 14),
         entries: [{ id: `${label}:1`, name: `${label} entity`, sourceLists: [label],
           countryCodes: ['RU'], countryNames: ['Russia'], programs: [label],
+          _aliases: Array.from({ length: 12 }, (_, i) => `Alias ${i}`), _identifiers: ['imo:1234567'],
           entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY', effectiveAt: '0', isNew: false }],
       };
     },
   });
-  vm.runInContext(`${pureSrc}\n${fetchPressureSrc}`, context);
+  vm.runInContext(`${pureSrc}\n${fetchPressureSrc}\nglobalThis.FETCH_PHASE_TIMEOUT_MS = FETCH_PHASE_TIMEOUT_MS;`, context);
+  deadlines.fetchPhaseTimeoutMs = context.FETCH_PHASE_TIMEOUT_MS;
   return normalize(await context.fetchSanctionsPressure());
 }
 
@@ -74,8 +85,9 @@ describe('partial sanctions publication', () => {
     assert.ok(healthy.entries.some(row => row.id === 'sema-ca:russia:1-1:731'));
     const cached = healthy.entries.filter(row => row.sourceLists.includes(SEMA_SOURCE));
     cached.push({ ...cached[0], id: 'sema-ca:unspecified:unspecified:0', name: '1, Part 1' });
+    const snapshots = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(healthy._sourceSnapshots)).toString('base64') };
     semaJson.data[1]['Item Number'] = '';
-    const failed = await partialPublication({ semaJson, cached });
+    const failed = await partialPublication({ semaJson, cached, snapshots });
     assert.equal(failed.semaError, 'SEMA_INVALID_RECORD');
     assert.equal(failed.semaCount, cached.length - 1);
     assert.equal(failed.sdnCount, 0);
@@ -98,6 +110,13 @@ describe('partial sanctions publication', () => {
     assert.equal(data.consolidatedCount, 0);
   });
 
+  it('publishes bounded aliases, IMO identifiers and source lists in the screening index', async () => {
+    const data = await partialPublication({ sources: ['SDN'] });
+    assert.equal(data._entityIndex[0].al.length, 10);
+    assert.deepEqual(data._entityIndex[0].ids, ['imo:1234567']);
+    assert.deepEqual(data._entityIndex[0].sl, ['SDN']);
+  });
+
   it('counts both sources when both succeed', async () => {
     const data = await partialPublication({ sources: ['SDN', 'CONSOLIDATED'] });
     assert.equal(data.sdnCount, 1);
@@ -115,17 +134,38 @@ describe('partial sanctions publication', () => {
     assert.equal(data.totalCount, 1);
     assert.ok(data.entries.every((e) => !e.sourceLists.includes(SEMA_SOURCE)));
     assert.ok(data._entityIndex.every((e) => !e.id.startsWith('sema-ca:')));
-    await assert.rejects(partialPublication({ sources: [], cached }), /all sanctions lists failed/);
+    assert.equal((await partialPublication({ sources: [], cached })).totalCount, 0);
   });
 
   it('retains valid undated cached identities with an optional schedule', async () => {
     const { records } = parseSemaXml('<record><Country>Russia</Country><Item>7</Item><LastName>Example</LastName></record>');
     const cached = records.map(({ _aliases, _identifiers, _publishedAt, _regime, ...entry }) => entry);
-    const data = await partialPublication({ cached });
+    const fetchedAt = Date.now() - 1000;
+    const snapshots = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify({
+      [SEMA_SOURCE]: { version: 1, fetchedAt, retainedUntil: fetchedAt + 48 * 3600000, publishedAt: 0, records: cached },
+    })).toString('base64') };
+    const data = await partialPublication({ snapshots });
     assert.equal(data.semaCount, 1);
     assert.equal(data.totalCount, 2);
     assert.equal(data.entries.find((e) => e.id === records[0].id).effectiveAt, '0');
     assert.equal(data.semaError, 'SEMA_INVALID_RECORD');
+  });
+
+  // runSeed discards the whole run at the fetch-phase timeout, so OFAC must stop
+  // early enough for SEMA and the CSL download that run after it.
+  it('ends the OFAC fetches early enough for SEMA and CSL to finish inside the fetch phase', async () => {
+    const deadlines = {};
+    const before = Date.now();
+    await partialPublication({ sources: ['SDN', 'CONSOLIDATED'], deadlines });
+    const after = Date.now();
+    const { fetchPhaseTimeoutMs, csl, SDN, CONSOLIDATED } = deadlines;
+
+    assert.ok(Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0);
+    assert.equal(CONSOLIDATED, SDN, 'both OFAC sources share one deadline');
+    assert.ok(csl <= after + fetchPhaseTimeoutMs, 'CSL must stop inside the fetch phase');
+    assert.ok(csl - SDN >= SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS,
+      `only ${csl - SDN} ms between the OFAC and CSL deadlines; SEMA and CSL need ${SEMA_TIMEOUT_MS + CSL_TIMEOUT_MS} ms`);
+    assert.ok(SDN > before, 'OFAC keeps a positive budget');
   });
 });
 

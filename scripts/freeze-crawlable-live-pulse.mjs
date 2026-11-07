@@ -30,6 +30,9 @@ import {
   crisisTrackerViewModel,
   liveRiskViewModel,
 } from './crawlable-live-tools.mjs';
+import { chokepointPulseRecord } from './crawlable-chokepoint-live.mjs';
+import { LIVE_TOPIC_PAGES, liveTopicReading, liveTopicRpcPath } from './live-pages/index.mjs';
+import { activeWarsReading, palestineLocator } from './active-wars.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
   briefCitationGroundingGap,
@@ -44,8 +47,10 @@ import {
   parseBriefSections,
 } from './crawlable-developments.mjs';
 import { countryIndexPath, topUpCountryIndex } from './crawlable-country-index.mjs';
-import { selectDeclaredScorecardFields } from './build-accuracy-page.mjs';
+import { selectDeclaredScorecardFields, selectHorizonGrades } from './build-accuracy-page.mjs';
+import { MCP_CANONICAL_ENDPOINT, MCP_CANONICAL_ORIGIN } from '../shared/mcp-host-policy.ts';
 import { countryMentionTerms, mentionsCountry } from '../shared/country-mention.js';
+import DIGEST_EDITIONS from './shared/news-digest-editions.json' with { type: 'json' };
 import { isBriefRelevantTitle } from '../shared/brief-relevance.js';
 import { dedupeByArticleUrl, duplicateArticleUrls } from '../shared/article-identity.js';
 
@@ -131,8 +136,10 @@ export function minimumBriefCaptures(briefMatchedCount) {
 // pro-test is an isolated package that must not import from here, so the lists
 // are duplicated on purpose; tests/welcome-teasers.test.mjs imports both and
 // fails if they drift.
-const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
-const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// ^VIX is a commodities.json symbol: list-commodity-quotes serves it and
+// list-market-quotes answers NOT_FOUND, which kept the market card off LIVE.
+export const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC'];
+export const COMMODITY_QUOTE_SYMBOLS = ['^VIX', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
 export const QUOTE_SYMBOLS = [
   '^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH',
@@ -230,30 +237,11 @@ const BRIEF_CONTEXT_MAX_CHARS = 3800;
 // every variant is a different slice of the same feed set capped at 20 items
 // per category, and country mentions are spread across them: on 2026-09-05
 // `full` alone named 48 of 194 countries, the five variants pooled named 68.
-// `full` goes first so its rows win ties and URL de-duplication.
-const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', 'tech', 'finance', 'commodity', 'happy']);
+// Every edition the digest serves (generated from shared/news-catalog.json),
+// `full` first so its rows win ties and URL de-duplication.
+const COUNTRY_DIGEST_VARIANTS = Object.freeze(['full', ...DIGEST_EDITIONS.filter((edition) => edition !== 'full')]);
 // The per-country index top-up (#7748) that fills the countries the pool
 // leaves short lives in scripts/crawlable-country-index.mjs.
-
-// Operator-facing review-hygiene text the chokepoint status contract appends
-// (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
-// It is useful in the live tool but must not be frozen into the crawlable corpus,
-// where it becomes indexed, quotable page content.
-const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
-const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
-
-// Returns null, never a placeholder sentence. "No additional status note was
-// supplied." used to be frozen here and rendered as a real <p> in <main> — an
-// absence described in prose reads to a crawler as published content, and it
-// was the only body text 7 of 13 chokepoint pages carried (#7530). An absent
-// note has no page representation: the paragraph is emitted `hidden`.
-function publishableDescription(value) {
-  const cleaned = String(value || '')
-    .replace(INTERNAL_NOTE_RE, '')
-    .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
-    .trim();
-  return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
-}
 
 // Every capture gate below reports a bare count. That number says a refresh
 // failed but never why, so a red scheduled run (or a hand-run freeze) starts
@@ -415,24 +403,6 @@ function countryRecord(view, payload, freezeStartedAt) {
     geoConvergence: Number.isFinite(payload?.cii?.components?.geoConvergence)
       ? payload.cii.components.geoConvergence
       : null,
-  };
-}
-
-function chokepointRecord(view) {
-  return {
-    disruptionScore: view.disruptionScore,
-    status: view.status,
-    congestion: view.congestion,
-    navigationalWarnings: view.navigationalWarnings,
-    navigationalWarningsAvailable: view.navigationalWarnings !== null,
-    aisDisruptions: view.aisDisruptions,
-    aisSnapshotAvailable: view.aisDisruptions !== null,
-    description: publishableDescription(view.description),
-    todayTransits: view.todayTransits,
-    todayCountsAvailable: view.todayCountsAvailable,
-    weekMovement: view.weekMovement,
-    partial: view.partial === true,
-    asOf: new Date(view.fetchedAt).toISOString(),
   };
 }
 
@@ -792,7 +762,7 @@ function signalConvergenceReference(capturedAt) {
 // dated older measurement is more useful than a blank page as long as the page
 // ages it on its own clock. The weekly workflow prunes superseded snapshots
 // AFTER this runs, so the previous week's file is still on disk here.
-async function retainedForecastScorecard(rootDir) {
+async function findInPreviousSnapshots(rootDir, pick) {
   let entries = [];
   try {
     entries = await fs.readdir(path.join(rootDir, 'docs', 'snapshots'));
@@ -808,17 +778,45 @@ async function retainedForecastScorecard(rootDir) {
       const snapshot = JSON.parse(
         await fs.readFile(path.join(rootDir, 'docs', 'snapshots', filename), 'utf8'),
       );
-      const previous = snapshot?.forecastScorecard;
-      const scorecard = selectDeclaredScorecardFields(previous?.scorecard);
-      const generatedAt = Number(previous?.generatedAt);
-      if (scorecard && Number.isFinite(generatedAt) && generatedAt > 0) {
-        return { scorecard, generatedAt, capturedAt: previous.capturedAt ?? null };
-      }
+      const found = pick(snapshot);
+      if (found) return found;
     } catch {
       // A malformed sibling snapshot is not this run's problem; keep looking.
     }
   }
   return null;
+}
+
+async function retainedForecastScorecard(rootDir) {
+  return findInPreviousSnapshots(rootDir, ({ forecastScorecard: previous } = {}) => {
+    const scorecard = selectDeclaredScorecardFields(previous?.scorecard);
+    const generatedAt = Number(previous?.generatedAt);
+    return scorecard && Number.isFinite(generatedAt) && generatedAt > 0
+      ? { scorecard, generatedAt, capturedAt: previous.capturedAt ?? null }
+      : null;
+  });
+}
+
+// Grades an earlier run read from the same seeder run as this edition's
+// scorecard, captured or retained. Any other run's grades would not match the
+// record, and the page refuses them anyway.
+async function retainedHorizonGrades(rootDir, generatedAt) {
+  if (!Number.isFinite(generatedAt) || generatedAt <= 0) return null;
+  return findInPreviousSnapshots(rootDir, ({ forecastScorecard: previous } = {}) => {
+    const captured = previous?.horizonGrades;
+    const grades = selectHorizonGrades(captured?.grades);
+    return grades && Number(captured.generatedAt) === generatedAt ? { generatedAt, grades } : null;
+  });
+}
+
+// The war list is a monthly reading, dated by its own referenceMonth, so last
+// week's capture is still the current answer when this week's read fails.
+// The corpus build drops a carried reading once its month ages out
+// (normalizeActiveWars).
+async function retainedActiveWars(rootDir) {
+  return findInPreviousSnapshots(rootDir, (snapshot) => (
+    snapshot?.activeWars?.referenceMonth ? snapshot.activeWars : null
+  ));
 }
 
 /** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
@@ -865,6 +863,48 @@ async function captureForecastScorecard({
       scorecard: retained?.scorecard ?? null,
       failureCode,
     };
+  }
+}
+
+// The horizon grades (#9057) are not in the REST contract: the public OpenAPI
+// document has no room for them. The MCP get_forecast_scorecard tool serves
+// them from the same stored scorecard, and it needs the service key, so a
+// keyless run records why it has none. The page shows them only when their
+// generatedAt equals the REST capture's, which proves both reads saw one run.
+// The hosted MCP transport answers only on its canonical host: every alias,
+// www included, gets a 410 before auth, so API_BASE is not used here.
+async function captureHorizonGrades({ serviceKey, capturedAt, scorecardGeneratedAt, rootDir, errors }) {
+  const failed = async (failureCode, message) => {
+    errors.push({ id: 'horizonGrades', code: failureCode, message });
+    const retained = await retainedHorizonGrades(rootDir, scorecardGeneratedAt);
+    return {
+      attemptedAt: capturedAt,
+      generatedAt: retained?.generatedAt ?? null,
+      grades: retained?.grades ?? null,
+      failureCode,
+      retained: Boolean(retained),
+    };
+  };
+  if (!serviceKey) return failed('no-service-key', 'the MCP scorecard tool needs WORLDMONITOR_API_KEY');
+  try {
+    const payload = await fetchJson(MCP_CANONICAL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': serviceKey },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_forecast_scorecard', arguments: {} } }),
+      apiBase: MCP_CANONICAL_ORIGIN,
+    });
+    const content = payload?.result?.isError ? null : payload?.result?.structuredContent;
+    // A cache tool answers { cached_at, stale, data }; an attribution rider
+    // wraps that once more under data.
+    const projected = content?.data?.scorecard !== undefined ? content.data : content?.data?.data;
+    const scorecard = projected?.scorecard;
+    const grades = selectHorizonGrades(scorecard?.horizonGrades);
+    if (!grades) return failed('malformed-response', 'the MCP scorecard result carried no horizonGrades object');
+    const generatedAt = Number(scorecard.generatedAt);
+    if (!Number.isFinite(generatedAt) || generatedAt <= 0) return failed('undated-response', 'the MCP scorecard result carried no usable generatedAt');
+    return { attemptedAt: capturedAt, generatedAt, grades, failureCode: '', retained: false };
+  } catch (error) {
+    return failed(scorecardFailureCode(error), error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -925,11 +965,27 @@ export async function freezeCrawlableLivePulse({
     for (const id of chokepointIds) {
       try {
         const view = chokepointStatusViewModel(chokepointPayload, id, freezeStartedAt);
-        chokepoints[id] = chokepointRecord(view);
+        chokepoints[id] = chokepointPulseRecord(view);
       } catch (error) {
         chokepointErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
       }
     }
+  }
+
+  // The /tools/<slug>/ live data pages build from these readings; the routing
+  // middleware replaces them with the current reading at request time.
+  const liveTopics = {};
+  const liveTopicErrors = [];
+  for (const page of LIVE_TOPIC_PAGES) {
+    try {
+      const payload = await authedGet(liveTopicRpcPath(page), token, base, authOpts);
+      const record = liveTopicReading(page, payload, freezeStartedAt);
+      if (record === null) liveTopicErrors.push({ id: page.slug, message: 'reading not publishable as current' });
+      else liveTopics[page.slug] = record;
+    } catch (error) {
+      liveTopicErrors.push({ id: page.slug, message: error instanceof Error ? error.message : String(error) });
+    }
+    await sleep(requestGapMs);
   }
 
   const crisisSnapshots = {};
@@ -960,6 +1016,33 @@ export async function freezeCrawlableLivePulse({
       });
     }
   }
+
+  // The /crises/ hub answers "what wars are happening right now" from this.
+  // The handler answers an empty list on a Redis miss, which activeWarsReading
+  // rejects, so an outage carries last week's dated reading instead of
+  // publishing zero wars.
+  let activeWars = null;
+  let activeWarsRetained = false;
+  const activeWarErrors = [];
+  try {
+    const payload = await authedGet('/api/conflict/v1/list-ucdp-events', token, base, authOpts);
+    // The seeder publishes the surviving pages of a release whose candidate
+    // pages partly failed, tagged "+partial". Counting those would drop or
+    // shrink countries, so only a complete monthly release is read.
+    const candidateVersion = String(payload?.candidateVersion ?? '');
+    if (!candidateVersion || candidateVersion.endsWith('+partial')) {
+      throw new Error(`UCDP candidate release ${candidateVersion || 'absent'} is not complete`);
+    }
+    activeWars = {
+      ...activeWarsReading(payload.events, freezeStartedAt, { inPalestine: palestineLocator(REPO_ROOT) }),
+      candidateVersion,
+    };
+  } catch (error) {
+    activeWarErrors.push({ message: error instanceof Error ? error.message : String(error) });
+    activeWars = await retainedActiveWars(rootDir);
+    activeWarsRetained = activeWars !== null;
+  }
+  await sleep(requestGapMs);
 
   // Guarded like every other network step, and unlike the others it never
   // throws: a digest outage costs the strip its headline rows, not the whole
@@ -1280,6 +1363,15 @@ export async function freezeCrawlableLivePulse({
     errors: scorecardErrors,
   });
   await sleep(requestGapMs);
+  const horizonGradeErrors = [];
+  forecastScorecard.horizonGrades = await captureHorizonGrades({
+    serviceKey: keyed ? serviceKey : '',
+    capturedAt,
+    scorecardGeneratedAt: forecastScorecard.generatedAt,
+    rootDir,
+    errors: horizonGradeErrors,
+  });
+  await sleep(requestGapMs);
 
   const geoLeaders = Object.entries(countries)
     .filter(([, row]) => Number.isFinite(row.geoConvergence) && row.geoConvergence > 0)
@@ -1300,7 +1392,9 @@ export async function freezeCrawlableLivePulse({
     resilienceSnapshotPath,
     countries,
     chokepoints,
+    liveTopics,
     crises: crisisSnapshots,
+    activeWars,
     headlines,
     quotes,
     quotesAsOf,
@@ -1314,6 +1408,8 @@ export async function freezeCrawlableLivePulse({
       countryErrorCount: countryErrors.length,
       chokepointCount: Object.keys(chokepoints).length,
       chokepointErrorCount: chokepointErrors.length,
+      liveTopicCount: Object.keys(liveTopics).length,
+      liveTopicErrorCount: liveTopicErrors.length,
       crisisCount: Object.keys(crisisSnapshots).length,
       crisisErrorCount: crisisErrors.length,
       headlineCount: headlines.length,
@@ -1379,6 +1475,8 @@ export async function freezeCrawlableLivePulse({
       // longer publish a digest-sized tail as a green build.
       developmentsCountryIndex: countryIndex,
       serviceKeyPresent: keyed,
+      activeWarsCaptured: activeWarErrors.length === 0,
+      activeWarsRetained,
       developmentsErrorCount: developmentsErrors.length,
       // Captured means THIS run read the scorecard. A retained older payload
       // still publishes, so `retained` distinguishes the two rather than
@@ -1387,15 +1485,22 @@ export async function freezeCrawlableLivePulse({
       forecastScorecardRetained: forecastScorecard.failureCode !== '' && forecastScorecard.scorecard !== null,
       forecastScorecardFailureCode: forecastScorecard.failureCode,
       forecastScorecardScored: forecastScorecard.scorecard?.totals?.scored ?? null,
+      forecastHorizonGradesFailureCode: forecastScorecard.horizonGrades.failureCode,
+      forecastHorizonGradesRetained: forecastScorecard.horizonGrades.retained,
     },
     errors: {
       countries: countryErrors,
       chokepoints: chokepointErrors,
+      // Not a freeze gate: a missing topic builds as "no current reading" and
+      // the middleware still serves the live one.
+      liveTopics: liveTopicErrors,
       crises: crisisErrors,
+      activeWars: activeWarErrors,
       headlines: headlineErrors,
       quotes: quoteErrors,
       developments: developmentsErrors,
       forecastScorecard: scorecardErrors,
+      forecastHorizonGrades: horizonGradeErrors,
     },
   };
 
@@ -1535,6 +1640,15 @@ if (isMain) {
           `[freeze-crawlable-live-pulse] WARNING: forecast scorecard capture failed (${snapshot.coverage.forecastScorecardFailureCode}); `
           + `/accuracy/ will report the failure and ${snapshot.coverage.forecastScorecardRetained ? 'publish the retained measurement, dated' : 'publish no figures'}. `
           + `Cause: ${snapshot.errors.forecastScorecard[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.forecastHorizonGradesFailureCode) {
+        // Loud like the scorecard: a capture that fails every week would
+        // otherwise leave /accuracy/ without grades and nobody told (#9057).
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: forecast horizon grades capture failed (${snapshot.coverage.forecastHorizonGradesFailureCode}); `
+          + `/accuracy/ will ${snapshot.coverage.forecastHorizonGradesRetained ? 'publish the grades an earlier run read from the same scoring run' : 'publish no horizon grades'}. `
+          + `Cause: ${snapshot.errors.forecastHorizonGrades[0]?.message || 'unrecorded'}`,
         );
       }
       if (snapshot.coverage.developmentsMissingCount > 0) {

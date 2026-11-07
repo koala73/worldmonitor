@@ -32,14 +32,17 @@
 
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 // @ts-expect-error — JS module, no declaration file
-import { getClientIp, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
+import { getClientRateLimitKey, rateLimitErrorLevel, rateLimitFingerprintStage } from '../_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+import { getOperatorKeys, keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
@@ -47,9 +50,11 @@ import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { emitOAuthTokenUsage } from '../_usage-telemetry.js';
 import {
+  REFRESH_REPLAY_GRACE_SECONDS,
   REFRESH_TTL_SECONDS,
   finalizeRefreshAttempt,
   markRefreshFamilyRevoked,
+  parseRefreshSuccessor,
   persistRefreshFamilyPointer,
   rawRedisBeginRefreshAttempt,
   rawRedisFinalizeRefreshAttempt,
@@ -57,11 +62,14 @@ import {
   rawRedisRestoreRefreshAttempt,
   refreshFamilyPointerKey,
   refreshFamilyRevocationKey,
+  refreshSuccessorKey,
   restoreRefreshAttempt,
+  serializeRefreshSuccessor,
 } from './_refresh-recovery';
 import type {
   PipelineCommand,
   PipelineResult,
+  RefreshConsumeMiss,
   RefreshConsumeResult,
   RefreshRecoveryDeps,
   RefreshRestoreFailureContext,
@@ -95,12 +103,6 @@ function withRateLimitDegradedHeader(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-// @upstash/redis defaults to 5 retries (~4.3s) before surfacing an unreachable
-// Redis error. Under the node test runner skip retries so fail-open tests that
-// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately. Production
-// (env unset) keeps the resilient default. Mirrors api/_rate-limit.js.
-const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
-
 // Tight rate limiter for credential endpoint
 let _rl: TokenRateLimiter | null = null;
 let _rlOverride: TokenRateLimiter | null | undefined;
@@ -115,7 +117,7 @@ function getRatelimit(): TokenRateLimiter | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   _rl = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(10, '60 s'),
     prefix: 'rl:oauth-token',
     analytics: false,
@@ -203,7 +205,7 @@ function reportTokenRateLimitDegraded(
 
 async function validateSecret(secret: string | null | undefined): Promise<boolean> {
   if (!secret) return false;
-  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  const validKeys = getOperatorKeys();
   return timingSafeIncludes(secret, validKeys);
 }
 
@@ -314,6 +316,7 @@ async function storeNewTokens(
   scope: string,
   familyId: string,
   kind?: 'user_key',
+  successor?: RefreshSuccessorWrite,
 ): Promise<boolean> {
   const results = await pipeline([
     ['SET', `oauth:token:${accessUuid}`, JSON.stringify(kind === 'user_key' ? { kind, api_key_hash: apiKeyHash } : apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
@@ -329,8 +332,26 @@ async function storeNewTokens(
     // record so a later replay of this token can be traced to its family and
     // trigger family revocation. Same TTL as the refresh token.
     ['SET', refreshFamilyPointerKey(refreshUuid), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
+    ...successorWriteCommands(successor),
   ]);
   return Array.isArray(results) && results.every((r) => r?.result === 'OK');
+}
+
+/**
+ * Replay grace record for a rotation (SM-092): written with the rotated
+ * tokens so "the rotation committed" and "the successor pair is on file" are
+ * the same fact. Absent on the code exchange, which replaces no token.
+ */
+interface RefreshSuccessorWrite {
+  /** `oauth:famsucc:<sha256 of the token being rotated away>` */
+  key: string;
+  value: string;
+}
+
+/** Pipeline command for the grace record, or nothing when no token is being replaced. */
+function successorWriteCommands(successor: RefreshSuccessorWrite | undefined): PipelineCommand[] {
+  if (!successor) return [];
+  return [['SET', successor.key, successor.value, 'EX', REFRESH_REPLAY_GRACE_SECONDS]];
 }
 
 /**
@@ -357,6 +378,7 @@ async function storeProTokens(
   clientId: string,
   scope: string,
   familyId: string,
+  successor?: RefreshSuccessorWrite,
 ): Promise<boolean> {
   const results = await pipeline([
     [
@@ -376,6 +398,7 @@ async function storeProTokens(
     ],
     // Persistent family pointer (GHSA-f6gj) — see storeNewTokens.
     ['SET', refreshFamilyPointerKey(refreshUuid), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
+    ...successorWriteCommands(successor),
   ]);
   return Array.isArray(results) && results.every((r) => r?.result === 'OK');
 }
@@ -409,6 +432,8 @@ export interface TokenHandlerDeps extends RefreshRecoveryDeps {
   randomPointerId: () => string;
   /** Optional Vercel isolate context so limiter Sentry/usage survive teardown. */
   ctx?: WaitUntilCtx;
+  /** Fetch for CIMD client metadata documents; defaults to the global fetch. */
+  fetchClientMetadata?: typeof fetch;
 }
 
 interface CodeDataPro {
@@ -487,6 +512,16 @@ async function handleAuthorizationCode(
     );
   }
 
+  // A CIMD client is resolved before the code is consumed: it may need a live
+  // fetch of its metadata document (always, for a no-store document such as
+  // VS Code's), and a vendor blip there must answer a retryable 503 with the
+  // code still redeemable, not burn it (#9244). DCR keeps its original order.
+  const cimdClient = isClientMetadataDocumentId(clientId);
+  if (cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
+
   // Atomically consume the auth code (GETDEL — prevents concurrent exchange race).
   let codeData: CodeDataPro | CodeDataLegacy | null;
   try {
@@ -522,8 +557,10 @@ async function handleAuthorizationCode(
     );
   }
 
-  const clientCheck = await checkClientExists(deps, clientId);
-  if (clientCheck) return clientCheck;
+  if (!cimdClient) {
+    const clientCheck = await checkClientExists(deps, clientId);
+    if (clientCheck) return clientCheck;
+  }
 
   const accessUuid = deps.randomUuid();
   const refreshUuid = deps.randomUuid();
@@ -606,22 +643,12 @@ async function handleRefreshToken(
   }
 
   if (consume.kind === 'miss') {
-    if (consume.recoveryPending) return temporaryAuthFailure();
-
-    // Only a miss with durable family evidence and no active recovery attempt
-    // is a replay. Failed and in-flight attempts remain non-revocation-eligible.
-    try {
-      if (consume.familyId && !(await markRefreshFamilyRevoked(deps, consume.familyId))) {
-        return temporaryAuthFailure();
-      }
-    } catch {
-      return temporaryAuthFailure();
-    }
-    return invalidRefreshGrant();
+    return answerRefreshMiss(consume, refreshToken, clientId, deps);
   }
 
   const refreshData = consume.refreshData as RefreshDataPro | RefreshDataLegacy;
   const attemptValue = consume.attemptValue;
+  const expiresAtMs = consume.expiresAtMs ?? null;
   if (!refreshData || typeof refreshData !== 'object') {
     return temporaryAuthFailure();
   }
@@ -650,6 +677,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'persist-family-pointer',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -672,6 +700,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'read-family-revocation',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -690,12 +719,14 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'client-validation',
+      expiresAtMs,
     );
     return restored ? clientCheck : temporaryAuthFailure();
   }
 
   const accessUuid = deps.randomUuid();
   const newRefreshUuid = deps.randomUuid();
+  const successorKey = refreshSuccessorKey(await sha256Hex(refreshToken));
 
   if (refreshData.kind === 'pro') {
     // F3 (U7+U8 review pass): branch on the discriminated-union result so
@@ -708,7 +739,10 @@ async function handleRefreshToken(
     // ever returns a different user for this tokenId (impossible under
     // U1's schema, but cheap), refuse rather than silently rotate to the
     // wrong identity.
-    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
+    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(
+      refreshData.mcpTokenId,
+      { recordUsage: false },
+    );
 
     if (validation.ok === 'transient') {
       // Restore the user's refresh token after the claim because Convex has not
@@ -726,6 +760,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'convex-transient',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -749,6 +784,7 @@ async function handleRefreshToken(
       clientId,
       scope,
       refreshData.family_id,
+      refreshSuccessorWrite(successorKey, clientId, accessUuid, newRefreshUuid, scope),
     );
     if (!stored) {
       await restoreRefreshAttempt(
@@ -758,6 +794,7 @@ async function handleRefreshToken(
         refreshData,
         refreshData.family_id,
         'store-rotated-token',
+        expiresAtMs,
       );
       return temporaryAuthFailure();
     }
@@ -782,6 +819,7 @@ async function handleRefreshToken(
     scope,
     refreshData.family_id,
     refreshData.kind,
+    refreshSuccessorWrite(successorKey, clientId, accessUuid, newRefreshUuid, scope),
   );
   if (!stored) {
     await restoreRefreshAttempt(
@@ -791,6 +829,7 @@ async function handleRefreshToken(
       refreshData,
       refreshData.family_id,
       'store-rotated-token',
+      expiresAtMs,
     );
     return temporaryAuthFailure();
   }
@@ -802,6 +841,114 @@ async function handleRefreshToken(
     refresh_token: newRefreshUuid,
     scope,
   });
+}
+
+/**
+ * A refresh token that is not on file. Order matters: grace evidence first,
+ * then in-flight evidence, then proven replay.
+ *
+ * 1. Replay grace (SM-092). A successor record means this token was rotated
+ *    less than REFRESH_REPLAY_GRACE_SECONDS ago. The client that rotated it
+ *    gets the same pair back while the successor refresh token is still
+ *    unused, so a retry after a lost response, a lost finalize, or a duplicate
+ *    concurrent refresh converges on the live pair instead of revoking it.
+ * 2. In-flight or failed recovery keeps the retryable answer.
+ * 3. An orphaned claim (attempt expired, marker still present) is a lost
+ *    consume response: nothing rotated, nobody holds a successor. The token
+ *    is gone, but that is not reuse.
+ * 4. Everything else is reuse of a rotated token (GHSA-f6gj): outside the
+ *    window, from a different client, or after the successor itself rotated.
+ *    Revoke the family so neither the attacker's nor the victim's chain
+ *    survives. Unknown revocation state stays fail-closed and retryable.
+ */
+async function answerRefreshMiss(
+  consume: RefreshConsumeMiss,
+  refreshToken: string,
+  clientId: string,
+  deps: TokenHandlerDeps,
+): Promise<Response> {
+  let successor: Response | null;
+  try {
+    successor = await replayRefreshSuccessor(refreshToken, clientId, deps);
+  } catch {
+    return temporaryAuthFailure();
+  }
+  if (successor) return successor;
+
+  if (consume.recoveryPending) return temporaryAuthFailure();
+  if (consume.attemptMarkerPresent) return invalidRefreshGrant();
+
+  try {
+    if (consume.familyId && !(await markRefreshFamilyRevoked(deps, consume.familyId))) {
+      return temporaryAuthFailure();
+    }
+  } catch {
+    return temporaryAuthFailure();
+  }
+  return invalidRefreshGrant();
+}
+
+/**
+ * The successor pair for a token rotated inside the grace window, or null when
+ * there is no honourable grace evidence. Throws on transport failure so the
+ * caller can stay retryable rather than guess at replay.
+ */
+async function replayRefreshSuccessor(
+  refreshToken: string,
+  clientId: string,
+  deps: TokenHandlerDeps,
+): Promise<Response | null> {
+  const record = parseRefreshSuccessor(
+    await deps.redisGet(refreshSuccessorKey(await sha256Hex(refreshToken))),
+  );
+  if (!record || record.client_id !== clientId) return null;
+
+  // Only an unused successor is handed back. Once it has been consumed (a
+  // live record is replaced by the in-flight marker, then deleted), the old
+  // token's holder is behind by two rotations: that is reuse, not a retry.
+  const successorRefresh = await deps.redisGet(`oauth:refresh:${record.refresh_token}`) as
+    | { kind?: string; family_id?: string }
+    | null;
+  if (!successorRefresh || typeof successorRefresh !== 'object' || successorRefresh.kind === 'refresh_attempt') {
+    return null;
+  }
+  // A family revoked meanwhile stays contained: the bearer resolver would
+  // already reject the pair, so do not hand it out in the first place.
+  if (
+    successorRefresh.family_id
+    && (await deps.redisGet(refreshFamilyRevocationKey(successorRefresh.family_id))) != null
+  ) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - record.issued_at) / 1000));
+  return jsonResp({
+    access_token: record.access_token,
+    token_type: 'Bearer',
+    expires_in: Math.max(1, TOKEN_TTL_SECONDS - elapsedSeconds),
+    refresh_token: record.refresh_token,
+    scope: record.scope,
+  });
+}
+
+/** Grace record for the pair that replaces the token at `key`, stamped with the rotation time. */
+function refreshSuccessorWrite(
+  key: string,
+  clientId: string,
+  accessToken: string,
+  refreshToken: string,
+  scope: string,
+): RefreshSuccessorWrite {
+  return {
+    key,
+    value: serializeRefreshSuccessor({
+      client_id: clientId,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      scope,
+      issued_at: Date.now(),
+    }),
+  };
 }
 
 function temporaryAuthFailure(): Response {
@@ -841,27 +988,35 @@ async function handleClientCredentials(
 }
 
 /**
- * Verify `oauth:client:<id>` exists; returns a Response on failure (caller
- * short-circuits) or null on success. Also fires the sliding-TTL EXPIRE.
+ * Verify the client still resolves — a DCR `oauth:client:<id>` row, or a CIMD
+ * document that is still trusted and valid (#9244), so a vendor revoking or
+ * changing its document takes effect on the next code exchange or refresh.
+ * Returns a Response on failure (caller short-circuits) or null on success.
+ * Also fires the DCR sliding-TTL EXPIRE.
  */
 async function checkClientExists(deps: TokenHandlerDeps, clientId: string): Promise<Response | null> {
-  let client: unknown;
-  try {
-    client = await deps.redisGet(`oauth:client:${clientId}`);
-  } catch {
-    return temporaryAuthFailure();
-  }
-  if (!client) {
+  const resolved = await resolveOAuthClient(clientId, {
+    redisGet: deps.redisGet,
+    redisSetEx: (key: string, value: unknown, ttl: number) =>
+      deps.redisPipeline([['SET', key, JSON.stringify(value), 'EX', ttl]]),
+    fetch: deps.fetchClientMetadata,
+  });
+  if (!resolved.ok) {
+    if (resolved.transient) return temporaryAuthFailure();
     return jsonResp(
       {
         error: 'invalid_client',
-        error_description: 'Client registration not found or expired. Please re-register.',
+        error_description: resolved.reason === 'unknown_client'
+          ? 'Client registration not found or expired. Please re-register.'
+          : 'Client metadata document is not accepted.',
       },
       401,
     );
   }
   // Extend client TTL (sliding 90-day window) — fire-and-forget
-  deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  if (!resolved.client.cimd) {
+    deps.redisPipeline([['EXPIRE', `oauth:client:${clientId}`, CLIENT_TTL_SECONDS]]).catch(() => {});
+  }
   return null;
 }
 
@@ -890,7 +1045,7 @@ async function applyRateLimit(
   }
   try {
     // Unvalidated credentials and client IDs must not select their own abuse budget.
-    const result = await rl.limit(`ip:${getClientIp(req)}`);
+    const result = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
     // @upstash/ratelimit v2 races Redis against an internal timeout and
     // RESOLVES `{ success: true, reason: 'timeout' }` rather than rejecting,
     // so a slow Redis is indistinguishable from a genuine allow unless we
@@ -927,7 +1082,7 @@ export async function tokenHandler(req: Request, deps: TokenHandlerDeps): Promis
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
-    return jsonResp({ error: 'method_not_allowed' }, 405);
+    return jsonResponse({ error: 'method_not_allowed' }, 405, { ...corsHeaders, ...NO_STORE, Allow: 'POST, OPTIONS' });
   }
 
   const startedAt = Date.now();

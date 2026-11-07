@@ -7,6 +7,7 @@ import {
   COVERED_MARKETS,
   OECD_LT_KEY,
   findCoveredMarket,
+  oecdLtSourceForCountry,
   govYieldCanonicalKey,
   govYieldCurveFromLatest,
   govYieldCurvesFromShards,
@@ -26,7 +27,7 @@ import { parseBundesbankCsv } from '../scripts/lib/yield-curves/bundesbank.mjs';
 import { parseBoeNominalWorkbook } from '../scripts/lib/yield-curves/boe.mjs';
 import { fetchBoeCurve } from '../scripts/seed-yield-curve-gb.mjs';
 import { latestTransform } from '../scripts/seed-oecd-lt-rates.mjs';
-import { parseRbaWorkbook } from '../scripts/lib/yield-curves/rba.mjs';
+import { parseRbaCsv } from '../scripts/lib/yield-curves/rba.mjs';
 import { parseSnbConfederationCsv } from '../scripts/lib/yield-curves/snb.mjs';
 import { parseNorgesZeroCouponCsv } from '../scripts/lib/yield-curves/norges.mjs';
 import { parseRiksbankObservations } from '../scripts/lib/yield-curves/riksbank.mjs';
@@ -197,11 +198,8 @@ describe('per-source parsers (captured fixtures)', () => {
     assert.ok(Object.keys(first.tenors).includes('9m'), 'short-end months are folded in');
   });
 
-  it('parses the RBA F2 workbook: four nominal tenors, indexed bond excluded', async () => {
-    const { default: ExcelJS } = await import('exceljs');
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(readFileSync(new URL('./fixtures/yield-curves/rba-f02d.xlsx', import.meta.url)));
-    const curves = parseRbaWorkbook(workbook);
+  it('parses the RBA F2 CSV: four nominal tenors, indexed bond excluded', () => {
+    const curves = parseRbaCsv(fixture('rba-f2-data.csv'));
     assert.equal(curves.length, 4);
     assert.equal(curves[0].date, '2013-05-20');
     // 2013-05-20 carried only the 10Y print.
@@ -264,7 +262,7 @@ describe('per-source parsers (captured fixtures)', () => {
     assert.equal(points.length, 4);
     assert.equal(points[0].date, '1956-05-01');
     assert.equal(points[0].value, 6.4);
-    const payload = buildOecdLtPayload({ DE: points });
+    const payload = buildOecdLtPayload({ fred: { DE: points }, ecb: null });
     assert.deepEqual(payload.countries.DE.curves.at(-1)!.tenors, { '10y': 3.18 });
     assert.equal(declareOecdRecords(payload), 4);
     assert.equal(declareOecdRecords({ countries: {} }), 0);
@@ -283,15 +281,16 @@ describe('seeder wiring', () => {
   });
 
   it('counts each country in the OECD latest payload', () => {
-    const history = buildOecdLtPayload(Object.fromEntries(
+    const history = buildOecdLtPayload({ fred: Object.fromEntries(
       Object.keys(OECD_LT_MARKETS).map((country) => [country, [
         { date: '2026-06-01', value: 3.5 },
         { date: '2026-07-01', value: 3.6 },
       ]]),
-    ));
+    ), ecb: null });
     const latest = latestTransform(history);
     assert.equal(declareOecdRecords(latest), Object.keys(OECD_LT_MARKETS).length);
     assert.deepEqual(latest.countries.IT.curves, [{ date: '2026-07-01', tenors: { '10y': 3.6 } }]);
+    assert.equal(latest.countries.IT.source, 'oecd-mei-monthly');
     assert.equal(declareOecdRecords(latestTransform({ countries: {} })), 0);
   });
 
@@ -454,6 +453,8 @@ describe('GetGovernmentYieldCurve handler', () => {
     assert.equal(res.unavailable, false);
     assert.equal(res.measure, 'benchmark');
     assert.deepEqual(res.curves.map((c) => new Date(c.date).toISOString().slice(0, 10)), ['2013-05-20', '2024-06-03']);
+    const bounded = await getGovernmentYieldCurve({} as never, { country: 'AU', history: true, limit: 1 });
+    assert.deepEqual(bounded, { ...res, curves: res.curves.slice(-1) });
   });
 
   it('falls back to OECD monthly for an uncovered market', async () => {
@@ -484,6 +485,37 @@ describe('GetGovernmentYieldCurve handler', () => {
     const history = await getGovernmentYieldCurve({} as never, { country: 'IT', history: true });
     assert.equal(history.curves.length, 2);
     assert.deepEqual(history.curves.map((c) => c.tenors['10y']), [3.7, 3.8]);
+    const bounded = await getGovernmentYieldCurve({} as never, { country: 'IT', history: true, limit: 1 });
+    assert.deepEqual(bounded, { ...history, curves: history.curves.slice(-1) });
+  });
+
+  it('echoes the provenance recorded by the OECD seeder, defaulting legacy payloads to OECD', async () => {
+    redisEnv();
+    const entry = { source: 'ecb-irs-monthly', sources: ['ecb-irs-monthly', 'oecd-mei-monthly'], curves: [
+      { date: '2026-09-01', tenors: { '10y': 4.362 } },
+    ] };
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      const path = decodeURIComponent(String(url));
+      if (path.includes('economic:yield-curve:oecd-lt:v1')) {
+        return redisResult({ countries: { IT: entry, NL: { curves: [{ date: '2026-08-01', tenors: { '10y': 3.285 } }] } } });
+      }
+      return redisResult(null);
+    }) as typeof fetch;
+
+    const latest = await getGovernmentYieldCurve({} as never, { country: 'IT', history: false });
+    assert.equal(latest.source, 'ecb-irs-monthly');
+    assert.equal(latest.measure, 'monthly-10y');
+    assert.equal(latest.curves[0].tenors['10y'], 4.362);
+    const history = await getGovernmentYieldCurve({} as never, { country: 'IT', history: true });
+    assert.equal(history.source, 'ecb-irs-monthly');
+    const legacy = await getGovernmentYieldCurve({} as never, { country: 'NL', history: false });
+    assert.equal(legacy.source, 'oecd-mei-monthly');
+
+    const value = { countries: { IT: entry, NL: { source: '', curves: [] }, BE: { source: 7, curves: [] } } };
+    assert.equal(oecdLtSourceForCountry(value, 'it'), 'ecb-irs-monthly');
+    assert.equal(oecdLtSourceForCountry(value, 'NL'), 'oecd-mei-monthly');
+    assert.equal(oecdLtSourceForCountry(value, 'BE'), 'oecd-mei-monthly');
+    assert.equal(oecdLtSourceForCountry(null, 'IT'), 'oecd-mei-monthly');
   });
 
   it('returns unavailable for a market with neither daily nor monthly data', async () => {

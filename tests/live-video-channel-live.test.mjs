@@ -141,6 +141,18 @@ describe('readChannelLivePage', () => {
     assert.equal(readChannelLivePage(SORRY_PAGE, CHANNEL).reason, 'bot-wall');
   });
 
+  it('reads a capped page of unclosed <link or <form openers in linear time', () => {
+    // Each unclosed opener used to rescan the rest of the page: seconds at 4 MiB.
+    const size = 4 * 1024 * 1024;
+    for (const unit of ['<link ', '<form ']) {
+      const page = unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
+      const started = performance.now();
+      assert.equal(readChannelLivePage(page, CHANNEL).reason, 'no-canonical', unit);
+      const elapsed = performance.now() - started;
+      assert.ok(elapsed < 250, `${unit}: ${elapsed.toFixed(0)} ms`);
+    }
+  });
+
   it('never throws on input that is not a page', () => {
     for (const junk of [null, undefined, 42, {}, '<link rel="canonical" href="https://www.youtube.com/watch?v=short">']) {
       assert.equal(readChannelLivePage(junk, CHANNEL).status, 'unreadable');
@@ -338,6 +350,26 @@ describe('proxy session rotation', () => {
     assert.deepEqual([limited.reason, limited.proxyFailure], ['http-429', undefined], 'an origin status is not a proxy failure');
     const direct = await fetchChannelLivePage(CHANNEL, { fetchImpl: async () => { throw new Error('proxy fetch timeout'); } });
     assert.equal(direct.proxyFailure, undefined, 'without a proxy nothing is a proxy failure');
+  });
+
+  // 2026-09-27: a lapsed Decodo login answered 407 on every exit, and each of 28
+  // channels was re-fetched on up to 14 sessions before failing anyway.
+  it('does not rotate sessions for a rejected proxy login, which fails on every exit', async () => {
+    const ports = [];
+    const proxyFetchImpl = async (_url, proxy) => {
+      ports.push(proxy.port);
+      throw Object.assign(new Error(`Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required for ${USER}:${PASS}`), {
+        proxyConnect: true, proxyFailure: { stage: 'proxy_connect', httpStatus: null, proxyConnectStatus: 407 },
+      });
+    };
+    const result = await fetchChannelLivePage(CHANNEL, { proxyUrl: RAW, attempt: 0, proxyFetchImpl });
+    assert.deepEqual([result.status, result.reason, result.proxyFailure], ['unreadable', 'fetch-error', undefined]);
+    assert.match(result.detail, /407/);
+    assert.doesNotMatch(JSON.stringify(result), LEAK);
+    const session = { current: 0 };
+    await resolveChannelsLive([CHANNEL], { fetchPage: (id, { attempt }) => fetchChannelLivePage(id, { proxyUrl: RAW, attempt, proxyFetchImpl }), session });
+    assert.deepEqual(ports, [10001, 10001], 'one fetch per call, no rotation');
+    assert.equal(session.current, 0);
   });
 
   it('resolves a channel on the next sticky session when the first one fails CONNECT', async () => {

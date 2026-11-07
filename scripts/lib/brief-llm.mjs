@@ -127,7 +127,7 @@ const WHY_MATTERS_CONCURRENCY = 5;
 
 // Pin to openrouter. Ollama isn't deployed in Railway, and pinning keeps the
 // brief's editorial voice on one model across environments instead of drifting
-// to the groq fallback.
+// to a fallback provider.
 const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
 
 // The brief names its own model rather than inheriting the llm-chain default

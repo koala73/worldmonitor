@@ -1,9 +1,9 @@
-import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from '../../api/_crypto.js';
-import { validateBearerToken } from '../auth-session';
+import { validateBearerToken } from '../auth-session.js';
 import {
   classifyBillingVerification,
   getEntitlements,
@@ -11,24 +11,65 @@ import {
   unverifiableEntitlementDenial,
   type BillingVerificationDenial,
   type BillingVerificationInput,
-} from './entitlement-check';
+} from './entitlement-check.js';
 import {
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
-} from './mcp-internal-hmac';
-import { validateUserApiKey } from './user-api-key';
+} from './mcp-internal-hmac.js';
+import { validateUserApiKeyPrincipal } from './user-api-key.js';
+import { isApiOnlyPath } from './api-only-paths.js';
+import {
+  DESKTOP_KEY_CLIENT_ERROR,
+  admitsDesktopKeyClientRequest,
+  resolveUserKeyEntitlement,
+  resolveUserKeyScope,
+} from './desktop-key-principal.js';
+import type { DesktopKeyMeterEntitlement } from './desktop-key-meter.js';
 import {
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   resolveActiveDirectLlmLimit,
-} from './direct-llm-quota';
+} from './direct-llm-quota.js';
+import { OPERATOR_KEY_DAILY_CEILINGS, operatorKeyQuotaPrincipal } from './high-usage-alarm.js';
+import { hashKeySync } from './usage-identity.js';
+
+/** Operator keys are premium but metered per key against a circuit breaker. */
+async function operatorKeyIdentity(key: string): Promise<PremiumCallerIdentity> {
+  return {
+    isPremium: true,
+    userId: null,
+    kind: 'enterprise',
+    quotaExempt: false,
+    quotaUserId: await operatorKeyQuotaPrincipal(key),
+    alarmPrincipal: hashKeySync(key),
+    directLlmDailyLimit: OPERATOR_KEY_DAILY_CEILINGS.directLlmCalls,
+  };
+}
 
 export type PremiumCallerIdentity =
   | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
   | {
       isPremium: true;
       userId: string;
-      kind: 'user-api-key' | 'bearer';
+      /**
+       * `desktop-key` (plan 2026-10-25-001): a desktop principal — a `desktop`
+       * key, or a downgraded owner's `api` key within `maxDesktopKeys` — with
+       * Pro-session treatment: the owner's tier decides, limits come from the
+       * owner's plan, and the API-only set is denied before this arm.
+       */
+      kind: 'user-api-key' | 'bearer' | 'desktop-key';
+      /**
+       * Present on `desktop-key` only: what the per-account desktop meter
+       * (KTD6 / R6) needs — the owner's plan and its sold limits — so a
+       * standalone edge (api/mcp-proxy.ts, api/chat-analyst.ts) can charge
+       * `chargeDesktopKeyBudget` without a second entitlement read. The meter
+       * is NOT charged here: gateway-served handlers resolve this identity too
+       * and the gateway has already charged them; charging twice would halve
+       * every desktop allowance. REQUIRED on that arm for the same reason
+       * `directLlmDailyLimit` is — an edge that forgets it would serve
+       * unmetered — and the type below pins the pairing.
+       */
+      desktopKeyMeter?: NonNullable<DesktopKeyMeterEntitlement>;
       quotaExempt: false;
       /**
        * Daily direct-LLM budget for this caller. `null` is unlimited.
@@ -40,8 +81,28 @@ export type PremiumCallerIdentity =
        * source it from `resolveActiveDirectLlmLimit`.
        */
       directLlmDailyLimit: number | null;
+      /**
+       * True for a catalog Enterprise (tier 3) row, whose daily limits are
+       * circuit breakers that should page before they trip. REQUIRED for the
+       * same reason as `directLlmDailyLimit`.
+       */
+      enterprisePlan: boolean;
     }
-  | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
+  | {
+      isPremium: true;
+      userId: null;
+      kind: 'enterprise';
+      quotaExempt: false;
+      /**
+       * Operator keys carry no account, so their direct-LLM spend is metered
+       * per key under this principal (`operatorKeyQuotaPrincipal`) — never the
+       * raw key — against a circuit-breaker ceiling.
+       */
+      quotaUserId: string;
+      /** Principal for logs and alarms: the gateway's `hashKeySync` of the key. */
+      alarmPrincipal: string;
+      directLlmDailyLimit: number;
+    }
   | {
     isPremium: false;
     userId: null;
@@ -88,6 +149,14 @@ export type PremiumCallerIdentity =
      * classification only exists once a userId was resolved and looked up.
      */
     unauthenticated?: true;
+    /**
+     * True when a valid desktop key arrived from a client other than the
+     * desktop app or a self-hosted relay while `DESKTOP_KEY_CLIENT_CHECK` is
+     * enforced. The owner has Pro, so the answer is "use an API plan"
+     * (`DESKTOP_KEY_CLIENT_ERROR`), not the Pro upsell. Optional and additive
+     * like the fields above.
+     */
+    desktopClientDenied?: true;
   };
 
 /** The deny arm of the union, named so `{ ...DENIED, billingDenial }` stays in it. */
@@ -107,6 +176,12 @@ const DENIED: DeniedIdentity = Object.freeze({
   userId: null,
   kind: null,
   quotaExempt: false,
+});
+
+/** Deny a desktop key sent by a script (`desktopClientDenied`). */
+const DESKTOP_CLIENT_DENIED: DeniedIdentity = Object.freeze({
+  ...DENIED,
+  desktopClientDenied: true,
 });
 
 /**
@@ -217,6 +292,7 @@ export async function requirePremiumRpcAccess<T extends RpcApiErrorLike>(
 
   const billingError = createPremiumRpcBillingDenialError(identity, ApiErrorConstructor);
   if (billingError) throw billingError;
+  if (identity.desktopClientDenied) throw new ApiErrorConstructor(403, DESKTOP_KEY_CLIENT_ERROR, '');
   throw new ApiErrorConstructor(403, fallbackMessage, '');
 }
 
@@ -277,8 +353,8 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
   // Browser tester keys — validateApiKey returns required:false for trusted origins
   // even when a valid key is present, so we check the header directly first.
   const wmKey =
-    request.headers.get('X-WorldMonitor-Key') ??
-    request.headers.get('X-Api-Key') ??
+    request.headers.get('X-WorldMonitor-Key') ||
+    request.headers.get('X-Api-Key') ||
     '';
   // Set when the wm_-key lookup could not COMPLETE (below). Read only at the
   // terminal fall-through, so a co-present bearer still wins if it resolves.
@@ -287,7 +363,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
     if (await timingSafeIncludes(wmKey, validKeys)) {
-      return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+      return operatorKeyIdentity(wmKey);
     }
 
     // Check user-owned API keys (wm_ prefix) via Convex lookup.
@@ -296,18 +372,43 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     // treat them as invalid keys; fall through so a co-present bearer can still
     // grant premium, and fail closed for the user-key path itself.
     try {
-      const userKey = await validateUserApiKey(wmKey);
+      // Desktop-aware (KTD3): returns `api` and `desktop` keys with their
+      // kind; the scope resolver decides what the kind may reach (KTD4/KTD5).
+      const userKey = await validateUserApiKeyPrincipal(wmKey);
       if (userKey) {
-        const ent = await getEntitlements(userKey.userId);
-        if (hasCurrentEntitlementCoverage(ent) && ent.features.apiAccess === true) {
+        // One cached read; a pre-deploy entry that cannot answer the desktop
+        // decision is refetched through Convex (desktop-key-principal.ts).
+        const ent = await resolveUserKeyEntitlement(userKey.userId, userKey);
+        const keyScope = resolveUserKeyScope(userKey, ent);
+        if (keyScope.scope === 'api' && ent) {
           return {
             isPremium: true,
             userId: userKey.userId,
             kind: 'user-api-key',
             quotaExempt: false,
             directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+            enterprisePlan: ent.features.tier >= 3,
           };
         }
+        if (keyScope.scope === 'desktop' && ent) {
+          // KTD7: the API-only set is closed to desktop principals. This is a
+          // scope verdict, not a billing one, so it carries no retry/upsell tag.
+          if (isApiOnlyPath(new URL(request.url).pathname)) return DENIED;
+          // Scripts reusing a desktop key need an API plan (DESKTOP_KEY_CLIENT_CHECK).
+          if (!admitsDesktopKeyClientRequest(request)) return DESKTOP_CLIENT_DENIED;
+          return {
+            isPremium: true,
+            userId: userKey.userId,
+            kind: 'desktop-key',
+            desktopKeyMeter: { planKey: ent.planKey, features: { planLimits: ent.features.planLimits } },
+            quotaExempt: false,
+            directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+            enterprisePlan: ent.features.tier >= 3,
+          };
+        }
+        // A key beyond the owner's desktop cap is a scope verdict too (AE6):
+        // the subscription is fine, this key is just not one of the oldest.
+        if (keyScope.scope === 'denied' && keyScope.reason === 'over_cap') return DENIED;
         // Preserve main's billing-verification tag on confirmed denials (#5622).
         return denyFor(ent);
       }
@@ -324,11 +425,16 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
     }
   }
 
-  const keyCheck = (await validateApiKey(request, {})) as { valid: boolean; required: boolean };
+  const keyCheck = (await validateApiKey(request, {})) as {
+    valid: boolean;
+    required: boolean;
+    credential?: string;
+  };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
-  if (keyCheck.valid && keyCheck.required) {
-    return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+  // Every valid `required: true` result is an operator key and names it.
+  if (keyCheck.valid && keyCheck.required && keyCheck.credential) {
+    return operatorKeyIdentity(keyCheck.credential);
   }
 
   const authHeader = request.headers.get('Authorization');
@@ -360,6 +466,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
         kind: 'bearer',
         quotaExempt: false,
         directLlmDailyLimit: DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
+        enterprisePlan: false,
       };
     }
     // Clerk role isn't 'pro' — check Dodo entitlement tier as second signal.
@@ -373,6 +480,7 @@ export async function resolvePremiumCallerIdentity(request: Request): Promise<Pr
           kind: 'bearer',
           quotaExempt: false,
           directLlmDailyLimit: resolveActiveDirectLlmLimit(ent),
+          enterprisePlan: ent.features.tier >= 3,
         };
       }
       return denyFor(ent);

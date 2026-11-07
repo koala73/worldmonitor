@@ -46,7 +46,7 @@ function proShapedEntitlements() {
   };
 }
 
-function makeSetChannelRequest(webhookEnvelope: string): Request {
+function makeSetChannelRequest(webhookEnvelope: string, channelType = 'slack'): Request {
   return new Request('https://worldmonitor.app/api/notification-channels', {
     method: 'POST',
     headers: {
@@ -56,7 +56,7 @@ function makeSetChannelRequest(webhookEnvelope: string): Request {
     },
     body: JSON.stringify({
       action: 'set-channel',
-      channelType: 'slack',
+      channelType,
       webhookEnvelope,
     }),
   });
@@ -91,6 +91,7 @@ function installDeps(mod: {
   const relayCalls: RelayCall[] = [];
   installDnsFetch();
   mod.__setNotificationChannelsDepsForTests({
+    checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
     validateBearerToken: async () => ({ valid: true, userId: 'user-webhook-envelope' }),
     getEntitlements: async () => proShapedEntitlements(),
     fetch: async (input: string | URL | Request, init?: RequestInit) => {
@@ -156,5 +157,77 @@ describe('set-channel webhookEnvelope guard symmetry (#7207)', () => {
       /^v1:/,
       'the persisted envelope is the encrypted form',
     );
+  });
+});
+
+describe('set-channel webhook signing secret', () => {
+  it('issues a one-time secret and persists only its encrypted form', async () => {
+    const mod = await importFreshNotificationChannels();
+    const relayCalls = installDeps(mod);
+
+    const res = await mod.default(makeSetChannelRequest('https://hooks.example.com/in', 'webhook'), ctx);
+
+    assert.equal(res.status, 200);
+    const { signingSecret } = (await res.json()) as { signingSecret?: string };
+    assert.match(String(signingSecret), /^whsec_[A-Za-z0-9_-]{43}$/);
+    const setChannel = relayCalls.find((call) => call.body.action === 'set-channel');
+    assert.ok(setChannel);
+    const stored = String(setChannel.body.webhookSecret);
+    assert.match(stored, /^v1:/);
+    assert.ok(!stored.includes(String(signingSecret)), 'plaintext must not reach Convex');
+    // The relay must be able to decrypt what the gateway stored.
+    const { createRequire } = await import('node:module');
+    const { decrypt } = createRequire(import.meta.url)('../scripts/lib/crypto.cjs');
+    assert.equal(decrypt(stored), signingSecret);
+  });
+
+  it('a second registration issues a different secret (rotation)', async () => {
+    const mod = await importFreshNotificationChannels();
+    installDeps(mod);
+    const first = (await (await mod.default(makeSetChannelRequest('https://hooks.example.com/in', 'webhook'), ctx)).json()) as { signingSecret: string };
+    const second = (await (await mod.default(makeSetChannelRequest('https://hooks.example.com/in', 'webhook'), ctx)).json()) as { signingSecret: string };
+    assert.notEqual(first.signingSecret, second.signingSecret);
+  });
+
+  it('never caches the secret-bearing response for idempotent replay', async () => {
+    const mod = await importFreshNotificationChannels();
+    installDeps(mod);
+    // Stand in for Upstash: the idempotency claim succeeds, then record every
+    // command so we can see whether the response was written back.
+    const redisCommands: unknown[][] = [];
+    const dnsFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url === 'https://upstash.test/pipeline') {
+        const commands = JSON.parse(String(init?.body)) as unknown[][];
+        redisCommands.push(...commands);
+        return Response.json(commands.map((cmd) => (
+          cmd[0] === 'SET' && cmd.includes('NX') ? { result: 'OK' } : { result: JSON.stringify({ state: 'processing' }) }
+        )));
+      }
+      return dnsFetch(input, init);
+    }) as typeof fetch;
+
+    const req = makeSetChannelRequest('https://hooks.example.com/in', 'webhook');
+    req.headers.set('Idempotency-Key', 'webhook-save-1');
+    const res = await mod.default(req, ctx);
+
+    assert.equal(res.status, 200);
+    const { signingSecret } = (await res.json()) as { signingSecret: string };
+    assert.match(signingSecret, /^whsec_/);
+    assert.ok(redisCommands.some((cmd) => cmd[0] === 'SET' && cmd.includes('NX')), 'the key was claimed');
+    assert.ok(
+      !redisCommands.some((cmd) => JSON.stringify(cmd).includes(signingSecret)),
+      'the plaintext secret must not be written to Redis',
+    );
+    assert.ok(redisCommands.some((cmd) => cmd[0] === 'DEL'), 'the processing marker is released');
+  });
+
+  it('non-webhook channels get no secret', async () => {
+    const mod = await importFreshNotificationChannels();
+    const relayCalls = installDeps(mod);
+    const res = await mod.default(makeSetChannelRequest('https://hooks.slack.com/services/T000/B000/XXXX'), ctx);
+    assert.equal(((await res.json()) as { signingSecret?: string }).signingSecret, undefined);
+    assert.equal(relayCalls.find((call) => call.body.action === 'set-channel')?.body.webhookSecret, undefined);
   });
 });

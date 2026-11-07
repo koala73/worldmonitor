@@ -239,15 +239,22 @@ test.describe('DeckGL map harness', () => {
     expect(runtimeVariant).toBe(expectedVariant);
   });
 
-  test('renders localized layer warning copy only at the performance threshold', async ({ page }) => {
+  test('opens the localized layer warning only when the visitor adds a layer past the threshold', async ({ page }) => {
     await waitForHarnessReady(page);
 
     const warning = page.locator('.layer-warn-dialog');
-    const activeLayerCount = await page.locator('.deckgl-layer-toggles .layer-toggle input:checked').count();
-    if (activeLayerCount < 13) {
-      await expect(warning).toHaveCount(0);
-      return;
-    }
+    const checked = page.locator('.deckgl-layer-toggles .layer-toggle input:checked');
+    // The layers a page starts with are a baseline, not an increase.
+    await expect(warning).toHaveCount(0);
+    // Variants with 13 or fewer picker layers (tech, happy) cannot pass the threshold.
+    if (await checked.count() <= 13) return;
+
+    // Toggles are hidden in deterministic mode, so drive them from the page.
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('.deckgl-layer-toggles .layer-toggle input:checked');
+      input?.click();
+      input?.click();
+    });
 
     await expect(warning).toBeVisible();
     await expect(warning.locator('.layer-warn-text strong')).toHaveText('Performance notice');
@@ -528,6 +535,20 @@ test.describe('DeckGL map harness', () => {
   test('matches golden screenshots per layer and zoom', async ({ page }) => {
     test.setTimeout(180_000);
 
+    // These are overlay goldens. Live provider tiles/labels made them depend on
+    // network timing (a loaded vector basemap versus the blank reference).
+    await page.addInitScript(() => {
+      localStorage.setItem('wm-map-provider', 'carto');
+      localStorage.setItem('wm-map-theme:carto', 'dark-matter');
+    });
+    await page.route('https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', route => route.fulfill({
+      json: {
+        version: 8,
+        sources: {},
+        layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#0b100d' } }],
+      },
+    }));
+
     await waitForHarnessReady(page);
 
     await page.evaluate(() => {
@@ -789,7 +810,6 @@ test('military bases retain the current viewport after reverse RPC completion', 
   await page.route('**/api/military/v1/list-military-bases**', async (route) => { requests.push(route); });
   await page.goto('/tests/map-harness.html?serverBases=1');
   await expect.poll(() => page.evaluate(() => (window as HarnessWindow).__mapHarness?.ready)).toBe(true);
-  await page.locator('.layer-warn-ok').click();
   await expect(page.locator('.layer-warn-dialog')).toHaveCount(0);
   await page.evaluate(() => {
     const harness = (window as HarnessWindow).__mapHarness!;

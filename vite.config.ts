@@ -1,13 +1,15 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { VitePWA } from 'vite-plugin-pwa';
+import { appChunkRuntimeCache, createDashboardPrecache } from './shared/pwa-precache';
 import type { OutputBundle } from 'rollup';
-import { resolve, dirname, extname } from 'path';
+import { resolve, dirname, extname, basename, posix } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { getSentryBuildMetadata } from './shared/sentry-build-metadata';
+import { removeSourceMaps, shouldEmitPublicSourceMaps, viteSourcemapSetting } from './shared/source-map-policy';
 import { appendChunkOwnership, chunkHasFirstPartyModule } from './shared/chunk-ownership';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 import {
@@ -127,7 +129,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
   OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
   StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
-  UcdpEvents: 'panels-defense',
+  UcdpEvents: 'panels-defense', UkmtoIncidents: 'panels-defense',
   // News / feeds / briefs
   BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
   DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
@@ -227,11 +229,40 @@ function brotliPrecompressPlugin(): Plugin {
   };
 }
 
+// Fail-safe for builds whose maps must not be served: after every other plugin
+// (including the Sentry upload and its own deletion) has finished, delete any
+// source map left anywhere in the output, including copied public/ trees.
+function stripPrivateSourceMapsPlugin(): Plugin {
+  let outDir = 'dist';
+  return {
+    name: 'wm-strip-private-source-maps',
+    apply: 'build',
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir);
+    },
+    closeBundle: {
+      order: 'post',
+      sequential: true,
+      async handler() {
+        const removed = await removeSourceMaps(outDir);
+        if (removed.length > 0) {
+          console.warn(`[wm-strip-private-source-maps] removed ${removed.length} source map(s) from ${outDir}`);
+        }
+      },
+    },
+  };
+}
+
+// Pages whose title, description and canonical are their own; the dashboard
+// brand meta below would otherwise mark them duplicates of /dashboard, or title
+// the desktop sign-in tab as the dashboard.
+const PAGES_WITH_OWN_HEAD_META = new Set(['verify.html', 'desktop-sign-in.html']);
+
 function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDesktopBuild: boolean): Plugin {
   return {
     name: 'html-variant',
-    transformIndexHtml(html) {
-      let result = html
+    transformIndexHtml(html, ctx) {
+      let result = PAGES_WITH_OWN_HEAD_META.has(basename(ctx.filename)) ? html : html
         .replace(/<title>.*?<\/title>/, `<title>${activeMeta.title}</title>`)
         .replace(/<meta name="title" content=".*?" \/>/, `<meta name="title" content="${activeMeta.title}" />`)
         .replace(/<meta name="description" content=".*?" \/>/, `<meta name="description" content="${activeMeta.description}" />`)
@@ -691,6 +722,9 @@ function sebufApiPlugin(): Plugin {
               headers[key] = value.join(', ');
             }
           }
+          delete headers['x-user-id'];
+          delete headers['x-wm-mcp-internal-verified'];
+          delete headers['x-wm-rl-principal'];
 
           const webRequest = new Request(url.toString(), {
             method: req.method,
@@ -770,6 +804,35 @@ function sebufApiPlugin(): Plugin {
   };
 }
 
+function miitNewsPlugin(): Plugin {
+  return {
+    name: 'miit-news',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (req.url?.split('?')[0] !== '/api/miit-news') return next();
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.statusCode = 405;
+          res.end();
+          return;
+        }
+        try {
+          const { default: handler } = await server.ssrLoadModule('/api/miit-news.js');
+          const headers = new Headers();
+          if (typeof req.headers.origin === 'string') headers.set('Origin', req.headers.origin);
+          const response: Response = await handler(new Request(`http://localhost${req.url}`, { headers }));
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => res.setHeader(key, value));
+          res.end(req.method === 'HEAD' ? undefined : await response.text());
+        } catch (error) {
+          console.error('[miit-news]', error);
+          res.statusCode = 502;
+          res.end();
+        }
+      });
+    },
+  };
+}
+
 function rssProxyPlugin(): Plugin {
   return {
     name: 'rss-proxy',
@@ -790,7 +853,7 @@ function rssProxyPlugin(): Plugin {
 
         try {
           const parsed = new URL(feedUrl);
-          if (!isAllowedDomain(parsed.hostname)) {
+          if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password || !isAllowedDomain(parsed.hostname)) {
             res.statusCode = 403;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: `Domain not allowed: ${parsed.hostname}` }));
@@ -801,16 +864,38 @@ function rssProxyPlugin(): Plugin {
           const timeout = feedUrl.includes('news.google.com') ? 20000 : 12000;
           const timer = setTimeout(() => controller.abort(), timeout);
 
-          const response = await fetch(feedUrl, {
-            signal: controller.signal,
-            headers: rssFetchHeadersForHost(parsed.hostname),
-            redirect: 'follow',
-          });
-          clearTimeout(timer);
+          let response: Response;
+          try {
+            let current = parsed;
+            for (let hop = 0; ; hop++) {
+              response = await fetch(current.href, {
+                signal: controller.signal,
+                headers: rssFetchHeadersForHost(current.hostname),
+                redirect: 'manual',
+              });
+              if (![301, 302, 303, 307, 308].includes(response.status)) break;
+              const location = response.headers.get('location');
+              await response.body?.cancel();
+              if (!location || hop >= 5) throw new Error('Invalid RSS redirect');
+              const nextUrl = new URL(location, current);
+              if (nextUrl.protocol !== 'https:' || nextUrl.port || nextUrl.username || nextUrl.password || !isAllowedDomain(nextUrl.hostname)) {
+                res.statusCode = 403;
+                res.end(JSON.stringify({ error: 'Redirect not allowed' }));
+                return;
+              }
+              current = nextUrl;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
 
           const data = await response.text();
           res.statusCode = response.status;
-          res.setHeader('Content-Type', 'application/xml');
+          // Same isolation as api/rss-proxy.js: callers parse response.text(),
+          // so feed bytes must never render as a same-origin document.
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+          res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
           res.setHeader('Cache-Control', 'public, max-age=300');
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.end(data);
@@ -861,8 +946,13 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        let pathname = (req.url ?? '/').split(/[?#]/, 1)[0];
+        try { pathname = decodeURI(pathname); } catch { /* Vite handles malformed paths. */ }
+        pathname = posix.normalize(pathname).replace(/\/$/, '') || '/';
         const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        if (pathname === '/wm-widget-sandbox.html') {
+          res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;");
+        }
         res.setHeader('Origin-Agent-Cluster', '?1');
         res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
         next();
@@ -872,6 +962,7 @@ function webMcpDevSecurityHeadersPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
+  const dashboardPrecache = createDashboardPrecache();
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
   // This ensures that API keys and other secrets in .env.local are
@@ -891,8 +982,8 @@ export default defineConfig(({ mode }) => {
   const isDesktopBuild = process.env.VITE_DESKTOP_RUNTIME === '1';
   const activeVariant = process.env.VITE_VARIANT || 'full';
   const activeMeta = VARIANT_META[activeVariant] || VARIANT_META.full;
-  const emitPublicSourceMaps = process.env.WM_EMIT_SOURCEMAPS === '1'
-    || process.env.VERCEL_ENV === 'preview';
+  // Production deploys never publish maps; see shared/source-map-policy.ts.
+  const emitPublicSourceMaps = shouldEmitPublicSourceMaps(process.env);
   // Sentry source-map upload. Gated on the token so a build without it (local,
   // fork, CI) behaves exactly as before rather than failing. Matching is by
   // debug ID — the plugin stamps the same id into the bundle and its map.
@@ -962,6 +1053,7 @@ export default defineConfig(({ mode }) => {
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
       firstPartyChunkManifestPlugin(),
+      dashboardPrecache.plugin,
       chunkSizeWarningPolicyPlugin(),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
       // Variant subdomain SEO pages only make sense on the web deployment,
@@ -971,9 +1063,11 @@ export default defineConfig(({ mode }) => {
       webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
+      miitNewsPlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
       brotliPrecompressPlugin(),
+      ...(emitPublicSourceMaps ? [] : [stripPrivateSourceMapsPlugin()]),
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
@@ -1000,38 +1094,55 @@ export default defineConfig(({ mode }) => {
           theme_color: '#0a0f0a',
           background_color: '#0a0f0a',
           categories: activeMeta.categories,
+          screenshots: [
+            {
+              src: '/pwa/dashboard-wide.jpg',
+              sizes: '1440x900',
+              type: 'image/jpeg',
+              form_factor: 'wide',
+              label: 'World Monitor desktop dashboard with conflict zones, intelligence hotspots, and live news',
+            },
+            {
+              src: '/pwa/dashboard-narrow.jpg',
+              sizes: '390x844',
+              type: 'image/jpeg',
+              form_factor: 'narrow',
+              label: 'World Monitor mobile map with conflict zones and intelligence hotspots',
+            },
+          ],
+          shortcuts: [
+            {
+              name: 'Dashboard',
+              description: 'Open the live global intelligence dashboard',
+              url: '/dashboard',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+            {
+              name: 'Stocks',
+              description: 'Open stock research and market data',
+              url: '/stocks',
+              icons: [{ src: '/favico/android-chrome-96x96.png', sizes: '96x96', type: 'image/png' }],
+            },
+          ],
           icons: [
             { src: '/favico/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/favico/android-chrome-384x384.png', sizes: '384x384', type: 'image/png' },
             { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-            { src: '/favico/android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-icon-1024.png', sizes: '1024x1024', type: 'image/png' },
+            { src: '/favico/worldmonitor-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-384.png', sizes: '384x384', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: '/favico/worldmonitor-maskable-1024.png', sizes: '1024x1024', type: 'image/png', purpose: 'maskable' },
           ],
         },
 
         workbox: {
-          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: [
-            '**/ml*.js',
-            '**/onnx*.wasm',
-            '**/locale-*.js',
-            '**/clerk-*.js',
-            // Fonts are fetched only when their stylesheet applies. Precache
-            // would pull every local weight into the first mobile visit.
-            '**/*.woff2',
-            // Keep off-page/static-heavy public assets out of the dashboard's
-            // first-visit precache. The small root favicons above remain
-            // explicit includeAssets entries.
-            'pro/**',
-            'favico/**',
-            'textures/**',
-            // #4891: blog OG covers + post images are generated into the prod
-            // build (absent locally), and the png glob was precaching all ~40
-            // of them (~700KB) on every first dashboard visit — and again on
-            // each SW update after a blog deploy. Blog pages fetch their own
-            // images on demand; the dashboard never needs them.
-            'blog/**',
-          ],
-          // globe.gl + three.js grows main bundle past the 2 MiB default limit
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+          // The service worker is generated after the Sentry upload has run,
+          // so its map is never uploaded; outside previews it is just a
+          // public file. Production served /sw.js.map until this was set.
+          sourcemap: emitPublicSourceMaps,
+          globPatterns: ['assets/**/*.{js,css}'],
+          manifestTransforms: [dashboardPrecache.manifestTransform],
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -1097,6 +1208,7 @@ export default defineConfig(({ mode }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
+            appChunkRuntimeCache,
             {
               urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
               handler: 'StaleWhileRevalidate',
@@ -1129,13 +1241,19 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       // Uploading requires the maps to exist. When they are not also being
-      // published deliberately, the Sentry plugin deletes them after upload so
-      // production keeps shipping no public maps.
-      sourcemap: emitPublicSourceMaps || uploadSourceMapsToSentry,
+      // published deliberately they are 'hidden' (no sourceMappingURL), the
+      // Sentry plugin deletes them after upload, and
+      // stripPrivateSourceMapsPlugin removes anything left.
+      sourcemap: viteSourcemapSetting(process.env),
       // Vite's global threshold accommodates the known lazy GlobeMap bundle.
       // wm-chunk-size-warning-policy keeps the 1200 kB default for every other
       // chunk so unrelated regressions between 1200 and 2000 kB remain visible.
       chunkSizeWarningLimit: 2000,
+      // The gzip column in Vite's build report cost 15s per build on CI (about
+      // 400 files) and nothing reads it: the bundle budgets gate raw bytes and
+      // compute their own sizes, and the brotli plugin writes the shipped .br
+      // files separately.
+      reportCompressedSize: false,
       // Vite 6 hoists every dynamic chunk's STATIC deps into the entry HTML's
       // modulepreload list to avoid latency on the first dynamic import. For the
       // map stack that defeats the whole point of dynamic-importing MapContainer:
@@ -1178,6 +1296,8 @@ export default defineConfig(({ mode }) => {
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
+          verify: resolve(__dirname, 'verify.html'),
+          desktopSignIn: resolve(__dirname, 'desktop-sign-in.html'),
         },
         output: {
           // onlyExplicitManualChunks keeps the panel clusters from forming

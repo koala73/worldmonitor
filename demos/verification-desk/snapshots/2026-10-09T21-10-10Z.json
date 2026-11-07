@@ -1,0 +1,825 @@
+{
+ "_provenance": "Real WorldMonitor data, read through the World Monitor MCP connector (get_news_clusters, get_news_intelligence) on 2026-10-09 between 21:00 and 21:15 UTC. Fields not returned by the projected calls (tiers, keywords) are null or empty, never guessed.",
+ "takenAt": "2026-10-09T21:10:10.756Z",
+ "clusters": [
+  {
+   "id": "wm-trump-lifts-us-sanctions-on-russian-diesel-exports-amid-pric",
+   "title": "Trump lifts US sanctions on Russian diesel exports amid price surge",
+   "primarySource": "The National",
+   "link": "https://www.thenationalnews.com/business/energy/2026/10/09/trump-putin-diesel-russia/",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "The National"
+   ],
+   "publishers": [
+    {
+     "name": "The National",
+     "tier": null,
+     "labels": [
+      "The National"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:17:08.000Z",
+   "lastUpdated": "2026-10-09T20:17:08.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-u-s-lifts-sanctions-on-sale-of-russian-diesel-in-global-mark",
+   "title": "U.S. lifts sanctions on sale of Russian diesel in global markets",
+   "primarySource": "The Hindu",
+   "link": "https://www.thehindu.com/news/international/us-lifts-sanctions-on-sale-of-russian-diesel-in-global-markets/article71565823.ece",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "The Hindu"
+   ],
+   "publishers": [
+    {
+     "name": "The Hindu",
+     "tier": null,
+     "labels": [
+      "The Hindu"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:07:53.000Z",
+   "lastUpdated": "2026-10-09T20:07:53.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-announces-deal-for-russian-diesel-as-zelensky-criticis",
+   "title": "Trump announces deal for Russian diesel as Zelensky criticises 'gift to Putin'",
+   "primarySource": "BBC World",
+   "link": "https://www.bbc.co.uk/news/articles/cm1dwgr666wno",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "BBC World"
+   ],
+   "publishers": [
+    {
+     "name": "BBC",
+     "tier": null,
+     "labels": [
+      "BBC World"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:03:55.000Z",
+   "lastUpdated": "2026-10-09T20:03:55.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-strikes-deal-with-putin-to-supply-russian-diesel-to-u",
+   "title": "Trump strikes deal with Putin to supply Russian diesel to U.S. and global markets",
+   "primarySource": "CNBC",
+   "link": "https://www.cnbc.com/2026/10/09/trump-putin-russian-diesel-us-global-markets.html",
+   "memberCount": 2,
+   "distinctSourceCount": 2,
+   "sources": [
+    "CNBC",
+    "Meduza"
+   ],
+   "publishers": [
+    {
+     "name": "CNBC",
+     "tier": null,
+     "labels": [
+      "CNBC"
+     ]
+    },
+    {
+     "name": "Meduza",
+     "tier": null,
+     "labels": [
+      "Meduza"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 2
+   },
+   "firstSeen": "2026-10-09T19:32:27.000Z",
+   "lastUpdated": "2026-10-09T20:03:03.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-strikes-diesel-deal-with-putin-reversing-years-of-pres",
+   "title": "Trump strikes diesel deal with Putin, reversing years of pressure on Russia over Ukraine war",
+   "primarySource": "France 24",
+   "link": "https://www.france24.com/en/europe/20261009-trump-strikes-diesel-deal-with-putin-reversing-years-of-pressure-on-russia-over-ukraine-war",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "France 24"
+   ],
+   "publishers": [
+    {
+     "name": "France 24",
+     "tier": null,
+     "labels": [
+      "France 24"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:00:24.000Z",
+   "lastUpdated": "2026-10-09T20:00:24.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-agrees-deal-with-putin-for-russia-to-release-diesel",
+   "title": "Trump agrees deal with Putin for Russia to release diesel",
+   "primarySource": "Financial Times",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Financial Times"
+   ],
+   "publishers": [
+    {
+     "name": "Financial Times",
+     "tier": null,
+     "labels": [
+      "Financial Times"
+     ]
+    }
+   ],
+   "publishersUnlisted": 1,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 2
+   },
+   "firstSeen": "2026-10-09T19:31:36.000Z",
+   "lastUpdated": "2026-10-09T19:31:36.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-the-global-diesel-crisis-explained",
+   "title": "The Global Diesel Crisis, Explained",
+   "primarySource": "Foreign Policy",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Foreign Policy"
+   ],
+   "publishers": [
+    {
+     "name": "Foreign Policy",
+     "tier": null,
+     "labels": [
+      "Foreign Policy"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T19:21:33.000Z",
+   "lastUpdated": "2026-10-09T19:21:33.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-says-russia-will-supply-300k-tons-of-diesel-despite-gl",
+   "title": "Trump says Russia will supply 300K tons of diesel despite global sanctions",
+   "primarySource": "Global News",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Global News"
+   ],
+   "publishers": [
+    {
+     "name": "Global News",
+     "tier": null,
+     "labels": [
+      "Global News"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T19:18:10.000Z",
+   "lastUpdated": "2026-10-09T19:18:10.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trump-eases-russia-sanctions-says-putin-will-release-diesel",
+   "title": "Trump eases Russia sanctions, says Putin will release diesel amid massive price spike",
+   "primarySource": "NBC News",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "NBC News"
+   ],
+   "publishers": [
+    {
+     "name": "NBC News",
+     "tier": null,
+     "labels": [
+      "NBC News"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T18:56:21.000Z",
+   "lastUpdated": "2026-10-09T18:56:21.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-trucking-industry-hit-by-string-of-bankruptcy-filings-as-die",
+   "title": "Trucking industry hit by string of bankruptcy filings as diesel costs surge",
+   "primarySource": "Fox Business",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Fox Business"
+   ],
+   "publishers": [
+    {
+     "name": "Fox Business",
+     "tier": null,
+     "labels": [
+      "Fox Business"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T13:49:49.000Z",
+   "lastUpdated": "2026-10-09T13:49:49.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-31-civilians-killed-in-rsf-drone-strike-on-sudan-displacemen",
+   "title": "31 civilians killed in RSF drone strike on Sudan displacement camp",
+   "primarySource": "Daily Sabah",
+   "link": "https://www.dailysabah.com/world/africa/31-civilians-killed-in-rsf-drone-strike-on-sudan-displacement-camp",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Daily Sabah"
+   ],
+   "publishers": [
+    {
+     "name": "Daily Sabah",
+     "tier": 2,
+     "labels": [
+      "Daily Sabah"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T17:39:00.000Z",
+   "lastUpdated": "2026-10-09T17:39:00.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-drone-strikes-and-deadly-explosions-kill-scores-of-civilians",
+   "title": "Drone strikes and deadly explosions kill scores of civilians across Sudan",
+   "primarySource": "Dabanga Sudan",
+   "link": "https://www.dabangasudan.org/en/all-news/article/drone-strikes-and-deadly-explosions-kill-scores-of-civilians-across-sudan",
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Dabanga Sudan"
+   ],
+   "publishers": [
+    {
+     "name": "Dabanga Sudan",
+     "tier": null,
+     "labels": [
+      "Dabanga Sudan"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T16:49:50.000Z",
+   "lastUpdated": "2026-10-09T16:49:50.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-sudan-war-four-women-killed-in-drone-strikes-on-ed-damazin-b",
+   "title": "Sudan war: Four women killed in drone strikes on Ed Damazin, Blue Nile",
+   "primarySource": "Dabanga Sudan",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Dabanga Sudan"
+   ],
+   "publishers": [
+    {
+     "name": "Dabanga Sudan",
+     "tier": null,
+     "labels": [
+      "Dabanga Sudan"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-07T13:38:05.000Z",
+   "lastUpdated": "2026-10-07T13:38:05.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-international-criminal-court-firmly-rejects-new-us-sanctions",
+   "title": "International Criminal Court 'firmly rejects' new US sanctions",
+   "primarySource": "The Hill",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "The Hill"
+   ],
+   "publishers": [
+    {
+     "name": "The Hill",
+     "tier": null,
+     "labels": [
+      "The Hill"
+     ]
+    }
+   ],
+   "publishersUnlisted": 5,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 6
+   },
+   "firstSeen": "2026-10-09T20:25:03.000Z",
+   "lastUpdated": "2026-10-09T20:25:03.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-us-announces-sanctions-on-icc-hours-after-nobel-award-to-for",
+   "title": "US announces sanctions on ICC, hours after Nobel award to former judge",
+   "primarySource": "CNA",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "CNA"
+   ],
+   "publishers": [
+    {
+     "name": "CNA",
+     "tier": null,
+     "labels": [
+      "CNA"
+     ]
+    }
+   ],
+   "publishersUnlisted": 2,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 3
+   },
+   "firstSeen": "2026-10-09T20:18:40.000Z",
+   "lastUpdated": "2026-10-09T20:18:40.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-exclusive-us-imposes-sanctions-on-icc-hours-after-former-jud",
+   "title": "EXCLUSIVE: US imposes sanctions on ICC hours after former judge wins Nobel Peace Prize - Reuters",
+   "primarySource": "Reuters US",
+   "link": null,
+   "memberCount": 3,
+   "distinctSourceCount": 2,
+   "sources": [
+    "Reuters India",
+    "Amu TV",
+    "Reuters US"
+   ],
+   "publishers": [
+    {
+     "name": "Reuters",
+     "tier": null,
+     "labels": [
+      "Reuters India",
+      "Reuters US"
+     ]
+    },
+    {
+     "name": "Amu TV",
+     "tier": null,
+     "labels": [
+      "Amu TV"
+     ]
+    }
+   ],
+   "publishersUnlisted": 5,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 7
+   },
+   "firstSeen": "2026-10-09T09:41:48.000Z",
+   "lastUpdated": "2026-10-09T19:58:50.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-powerful-magnitude-7-7-earthquake-hits-panama-damaging-build",
+   "title": "Powerful magnitude 7.7 earthquake hits Panama, damaging buildings",
+   "primarySource": "BBC World",
+   "link": null,
+   "memberCount": 3,
+   "distinctSourceCount": 3,
+   "sources": [
+    "BBC World",
+    "The National",
+    "Guardian Americas"
+   ],
+   "publishers": [
+    {
+     "name": "BBC",
+     "tier": null,
+     "labels": [
+      "BBC World"
+     ]
+    },
+    {
+     "name": "The National",
+     "tier": null,
+     "labels": [
+      "The National"
+     ]
+    },
+    {
+     "name": "The Guardian",
+     "tier": null,
+     "labels": [
+      "Guardian Americas"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 3
+   },
+   "firstSeen": "2026-10-09T19:39:17.000Z",
+   "lastUpdated": "2026-10-09T19:52:48.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-panama-struck-by-magnitude-7-7-earthquake-u-s-geological-sur",
+   "title": "Panama struck by magnitude 7.7 earthquake, U.S. Geological Survey says",
+   "primarySource": "CBS News",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "CBS News"
+   ],
+   "publishers": [
+    {
+     "name": "CBS News",
+     "tier": null,
+     "labels": [
+      "CBS News"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T19:55:06.000Z",
+   "lastUpdated": "2026-10-09T19:55:06.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-katie-zacharia-tapped-as-next-white-house-press-secretary",
+   "title": "Katie Zacharia tapped as next White House press secretary",
+   "primarySource": "Axios",
+   "link": null,
+   "memberCount": 3,
+   "distinctSourceCount": 3,
+   "sources": [
+    "Axios",
+    "CNBC",
+    "CNN World"
+   ],
+   "publishers": [
+    {
+     "name": "Axios",
+     "tier": null,
+     "labels": [
+      "Axios"
+     ]
+    },
+    {
+     "name": "CNBC",
+     "tier": null,
+     "labels": [
+      "CNBC"
+     ]
+    },
+    {
+     "name": "CNN World",
+     "tier": null,
+     "labels": [
+      "CNN World"
+     ]
+    }
+   ],
+   "publishersUnlisted": 3,
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 6
+   },
+   "firstSeen": "2026-10-09T18:28:54.000Z",
+   "lastUpdated": "2026-10-09T20:03:05.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-tesla-s-full-self-driving-becomes-assisted-driving-in-europe",
+   "title": "Tesla's 'Full Self-Driving' Becomes 'Assisted Driving' in Europe",
+   "primarySource": "Wired",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Wired"
+   ],
+   "publishers": [
+    {
+     "name": "Wired",
+     "tier": null,
+     "labels": [
+      "Wired"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:18:15.000Z",
+   "lastUpdated": "2026-10-09T20:18:15.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-nvidia-s-head-of-corporate-communications-has-left-after-rou",
+   "title": "Nvidia's head of corporate communications has left after roughly four months",
+   "primarySource": "Business Insider",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "Business Insider"
+   ],
+   "publishers": [
+    {
+     "name": "Business Insider",
+     "tier": null,
+     "labels": [
+      "Business Insider"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:35:32.000Z",
+   "lastUpdated": "2026-10-09T20:35:32.000Z",
+   "topKeywords": []
+  },
+  {
+   "id": "wm-french-nba-star-wembanyama-expresses-support-for-student-pro",
+   "title": "French NBA star Wembanyama expresses support for student protests",
+   "primarySource": "The Hill",
+   "link": null,
+   "memberCount": 1,
+   "distinctSourceCount": 1,
+   "sources": [
+    "The Hill"
+   ],
+   "publishers": [
+    {
+     "name": "The Hill",
+     "tier": null,
+     "labels": [
+      "The Hill"
+     ]
+    }
+   ],
+   "publishersUnlisted": 0,
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "firstSeen": "2026-10-09T20:46:56.000Z",
+   "lastUpdated": "2026-10-09T20:46:56.000Z",
+   "topKeywords": []
+  }
+ ],
+ "intelligenceStories": [
+  {
+   "primaryTitle": "US hits International Criminal Court with sweeping sanctions as part of drive to dismantle tribunal - AP News",
+   "primarySource": "AP News",
+   "uniqueSourceCount": 6,
+   "corroborationSourceCount": 0,
+   "entityCorroboration": false,
+   "sourceCount": 7,
+   "sources": [
+    "AP News",
+    "CBC News",
+    "Reuters US",
+    "State Dept",
+    "UN News",
+    "The Hill"
+   ],
+   "corroboration": {
+    "state": "corroborated",
+    "publishers": 6
+   },
+   "pubDate": 1791571560000,
+   "lastUpdated": "2026-10-09T20:25:03.000Z",
+   "memberTitles": [
+    "US hits International Criminal Court with sweeping sanctions as part of drive to dismantle tribunal - AP News",
+    "Trump administration hits International Criminal Court with sweeping sanctions",
+    "International Criminal Court 'firmly rejects' new US sanctions",
+    "Reactions to US imposing sanctions on International Criminal Court - Reuters",
+    "Imposing Sanctions on the International Criminal Court - U.S. Department of State (.gov)",
+    "Imposing Sanctions on the International Criminal Court - U.S. Department of State (.gov)",
+    "‘Serious blow’: Guterres condemns new US sanctions on International Criminal Court"
+   ]
+  },
+  {
+   "primaryTitle": "31 civilians killed in RSF drone strike on Sudan displacement camp",
+   "primarySource": "Daily Sabah",
+   "primaryLink": "https://www.dailysabah.com/world/africa/31-civilians-killed-in-rsf-drone-strike-on-sudan-displacement-camp",
+   "uniqueSourceCount": 1,
+   "corroborationSourceCount": 0,
+   "entityCorroboration": false,
+   "sourceCount": 1,
+   "sources": [
+    "Daily Sabah"
+   ],
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "pubDate": 1791567540000,
+   "memberTitles": [
+    "31 civilians killed in RSF drone strike on Sudan displacement camp"
+   ],
+   "stateAffiliated": "Turkey",
+   "credibilityScore": 52
+  },
+  {
+   "primaryTitle": "Ukraine strikes Russian tech giant Yandex’s data centers for a second straight day as new peace talks involving Kyiv, the U.S., and Europe get underway in Miami",
+   "primarySource": "Meduza",
+   "uniqueSourceCount": 1,
+   "corroborationSourceCount": 2,
+   "entityCorroboration": true,
+   "sourceCount": 1,
+   "sources": [
+    "Meduza"
+   ],
+   "corroboration": {
+    "state": "single-publisher",
+    "publishers": 1
+   },
+   "pubDate": 1791569642000,
+   "memberTitles": [
+    "Ukraine strikes Russian tech giant Yandex’s data centers for a second straight day as new peace talks involving Kyiv, the U.S., and Europe get underway in Miami"
+   ]
+  }
+ ],
+ "gdeltArticles": [
+  {
+   "title": "Trump Announces Diesel Deal With Russia | News Radio 101.9 Big WAAX",
+   "url": "https://1019bigwaax.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump Announces Diesel Deal With Russia",
+   "url": "https://kfbk.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump Announces Diesel Deal With Russia | KFYR 550 AM / 99.7 FM",
+   "url": "https://kfyr.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump Announces Diesel Deal With Russia | Newsradio 600 KOGO",
+   "url": "https://kogo.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump Announces Diesel Deal With Russia | NewsRadio 910 WLTP",
+   "url": "https://newsradio910wltp.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump Announces Diesel Deal With Russia",
+   "url": "https://wjno.iheart.com/content/2026-10-09-trump-announces-diesel-deal-with-russia/"
+  },
+  {
+   "title": "Trump says US to get diesel from Russia, relaxing pressure on Moscow to ease prices before midterms",
+   "url": "http://www.bozemandailychronicle.com/wire/business/trump-says-us-to-get-diesel-from-russia-relaxing-pressure-on-moscow-to-ease-prices/article_100c0b9f-4f64-5658-b299-f83f8458222d.html"
+  },
+  {
+   "title": "Trump says US to get diesel from Russia, relaxing pressure on Moscow to ease prices before midterms",
+   "url": "http://www.goskagit.com/news/ap_business/trump-says-us-to-get-diesel-from-russia-relaxing-pressure-on-moscow-to-ease-prices/article_d2c0683e-5698-5bf5-a628-e98aaf5cd2f6.html"
+  },
+  {
+   "title": "Hurricane Isaias threatens strained Gulf oil industry",
+   "url": "https://bakersfieldnow.com/news/nation-world/hurricane-isaias-threatens-strained-gulf-oil-industry-florida-president-donald-trump"
+  },
+  {
+   "title": "Hurricane Isaias threatens strained Gulf oil industry",
+   "url": "https://upnorthlive.com/news/nation-world/hurricane-isaias-threatens-strained-gulf-oil-industry-florida-president-donald-trump"
+  },
+  {
+   "title": "Estonia Minister",
+   "url": "http://www.japanherald.com/news/279362073/estonia-minister-warmly-welcomes-indian-talent-under-e-residency-programme-as-us-suspends-perm"
+  },
+  {
+   "title": "Estonia Minister",
+   "url": "http://www.newyorktelegraph.com/news/279362073/estonia-minister-warmly-welcomes-indian-talent-under-e-residency-programme-as-us-suspends-perm"
+  }
+ ],
+ "brief": {
+  "headlines": [
+   "Ukraine strikes Yandex data centers for a second day as peace talks start in Miami.",
+   "US hits International Criminal Court with sweeping sanctions as part of drive to dismantle tribunal.",
+   "31 civilians killed in RSF drone strike on Sudan displacement camp."
+  ],
+  "topStories": [
+   {
+    "corroboration": {
+     "state": "single-publisher",
+     "publishers": 1
+    }
+   },
+   {
+    "corroboration": {
+     "state": "corroborated",
+     "publishers": 6
+    }
+   },
+   {
+    "corroboration": {
+     "state": "single-publisher",
+     "publishers": 1
+    }
+   }
+  ],
+  "generatedAt": "2026-10-09T21:10:10.756Z"
+ },
+ "errors": []
+}

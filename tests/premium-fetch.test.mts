@@ -16,6 +16,11 @@ import assert from 'node:assert/strict';
 import { describe, it, before, after, mock } from 'node:test';
 import { premiumFetch, proFreshRpcFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
 import { hasPremiumIntent } from '@/services/premium-intent';
+import {
+  _resetSentryDeferStateForTests,
+  _setSentryLoaderForTests,
+  scheduleSentryInit,
+} from '@/bootstrap/sentry-defer';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,7 +41,7 @@ function sentHeaders(callIndex = 0): Headers {
 // injection is now path-gated. Using `some-premium-rpc` (a non-existent
 // path) made every "Clerk Bearer attached" assertion silently fail under
 // the new logic. See PREMIUM_RPC_PATHS in src/shared/premium-paths.ts.
-const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pressure';
+const TARGET = 'https://api.worldmonitor.app/api/economic/v1/list-global-tenders';
 // A real PUBLIC path used to verify the path-gating bypass: hits below
 // fetch the same way but should NOT see Bearer attached.
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
@@ -144,6 +149,13 @@ describe('premiumFetch', () => {
     const res = await premiumFetch(TARGET);
     assert.equal(res.status, 403);
     assert.equal(fetchMock.mock.calls.length, 1, 'Should not retry on 403');
+  });
+
+  it('Clerk transport deadlines propagate without an unauthenticated replay', async () => {
+    const error = new DOMException('deadline', 'TimeoutError');
+    setup({ clerkToken: 'fixture-jwt', fetchImpl: async () => { throw error; } });
+    await assert.rejects(premiumFetch(TARGET, { method: 'POST', forcePremium: true }), error);
+    assert.equal(fetchMock.mock.calls.length, 1);
   });
 
   it('tester key: AbortError propagates to caller (not swallowed)', async () => {
@@ -260,6 +272,17 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('Authorization'), 'Bearer insider-clerk-token');
     await proFreshRpcFetch(PREMIUM_INSIDER_TRANSACTIONS_TARGET);
     assert.equal(sentHeaders(1).get('Authorization'), 'Bearer insider-clerk-token');
+  });
+
+  it('country history attaches paid credentials while retaining anonymous session recovery', async () => {
+    const target = 'https://api.worldmonitor.app/api/intelligence/v1/get-country-history?country=US&days=90';
+    setup({ clerkToken: 'history-clerk-token' });
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), 'Bearer history-clerk-token');
+    setup();
+    await proFreshRpcFetch(target);
+    assert.equal(sentHeaders().get('Authorization'), null);
+    assert.equal(hasPremiumIntent(fetchMock.mock.calls[0].arguments[1] as RequestInit), false);
   });
 
   it('non-premium path: tester key still attached (works on any path)', async () => {
@@ -449,6 +472,216 @@ describe('premiumFetch', () => {
     assert.equal(sentHeaders().get('Authorization'), null);
   });
 
+  // -------------------------------------------------------------------------
+  // Sentry WORLDMONITOR-1CM: a Pro user's country-brief burst went out with a
+  // bearer the edge had stopped accepting (the client judged it unexpired, but
+  // the tab was resumed from a freeze), so eight tier-gated calls 401'd while
+  // a request sent 300 ms later on a refreshed token returned 200. premiumFetch
+  // handed the 401 straight to the panel. A bearer 401 is a statement about
+  // the token: refresh it once and replay.
+  // -------------------------------------------------------------------------
+
+  it('premium path: a bearer 401 refreshes the Clerk token once and replays', async () => {
+    const rejected: string[] = [];
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async (token) => { rejected.push(token); return 'fresh-jwt'; },
+    });
+    let n = 0;
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(n++ === 0 ? 401 : 200)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 200, 'the replay on a fresh token must reach the caller');
+    assert.deepEqual(rejected, ['stale-jwt'], 'the rejected token is the one handed to the refresh');
+    assert.equal(fetchMock.mock.calls.length, 2);
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer stale-jwt');
+    assert.equal(sentHeaders(1).get('Authorization'), 'Bearer fresh-jwt');
+  });
+
+  it('premium path: a bearer 401 with no different token returns the 401 without replaying', async () => {
+    // Genuinely signed out or revoked: the refresh yields nothing new, so the
+    // gateway's answer stands and there is exactly one request.
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => null,
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay without a new token');
+  });
+
+  it('premium path: a replayed 401 is final — the token is refreshed at most once', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return `fresh-jwt-${refreshes}`; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(refreshes, 1);
+    assert.equal(fetchMock.mock.calls.length, 2, 'one original request and one replay, never a loop');
+  });
+
+  it('premium path: aborting while the token refresh is pending rejects at once, with no replay', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      // Clerk never answers: the caller's own signal is the only way out.
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+
+    const pending = premiumFetch(TARGET, { signal: controller.signal });
+    await started;
+    controller.abort();
+
+    await assert.rejects(pending, (err: unknown) => (err as Error).name === 'AbortError');
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay after the caller gave up');
+  });
+
+  it('premium path: a Request input aborted during the refresh rejects, with no replay', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+
+    const pending = premiumFetch(new Request(TARGET, { signal: controller.signal }));
+    await started;
+    controller.abort();
+
+    await assert.rejects(pending, (err: unknown) => (err as Error).name === 'AbortError');
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
+  it('premium path: a custom abort reason during the refresh propagates as-is', async () => {
+    let refreshStarted!: () => void;
+    const started = new Promise<void>((resolve) => { refreshStarted = resolve; });
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: () => { refreshStarted(); return new Promise<string | null>(() => {}); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+    const controller = new AbortController();
+    const reason = new Error('panel closed');
+
+    const pending = premiumFetch(TARGET, { signal: controller.signal });
+    await started;
+    controller.abort(reason);
+
+    await assert.rejects(pending, (err: unknown) => err === reason);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay and no anonymous fallback');
+  });
+
+  for (const name of ['AbortError', 'TimeoutError']) {
+    it(`premium path: a replay cancelled with ${name} rejects, with no third request`, async () => {
+      _setTestProviders({
+        getTesterKeys: () => [],
+        getClerkToken: async () => 'stale-jwt',
+        refreshClerkTokenAfterRejection: async () => 'fresh-jwt',
+      });
+      let n = 0;
+      fetchMock.mock.resetCalls();
+      fetchMock.mock.mockImplementation(() => (n++ === 0
+        ? Promise.resolve(fakeRes(401))
+        : Promise.reject(new DOMException('cancelled', name))));
+
+      await assert.rejects(premiumFetch(TARGET), (err: unknown) => (err as Error).name === name);
+      assert.equal(fetchMock.mock.calls.length, 2);
+    });
+  }
+
+  it('premium path: a refresh that throws returns the 401, never an anonymous third request', async () => {
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { throw new Error('clerk down'); },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 1, 'no replay and no anonymous fallback');
+  });
+
+  it('premium path: a replay that fails on the network returns the 401, never an anonymous third request', async () => {
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => 'fresh-jwt',
+    });
+    let n = 0;
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => (n++ === 0
+      ? Promise.resolve(fakeRes(401))
+      : Promise.reject(new TypeError('Failed to fetch'))));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 401);
+    assert.equal(fetchMock.mock.calls.length, 2, 'the original and the failed replay only');
+  });
+
+  it('premium path: a 403 is an entitlement answer, not a stale token — no refresh', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'clerk-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return 'fresh-jwt'; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(403)));
+
+    const res = await premiumFetch(TARGET);
+
+    assert.equal(res.status, 403);
+    assert.equal(refreshes, 0);
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
+  it('premium path: a bearer 401 on a non-replayable body is returned as-is', async () => {
+    let refreshes = 0;
+    _setTestProviders({
+      getTesterKeys: () => [],
+      getClerkToken: async () => 'stale-jwt',
+      refreshClerkTokenAfterRejection: async () => { refreshes++; return 'fresh-jwt'; },
+    });
+    fetchMock.mock.resetCalls();
+    fetchMock.mock.mockImplementation(() => Promise.resolve(fakeRes(401)));
+
+    const res = await premiumFetch(TARGET, { method: 'POST', body: new ReadableStream() });
+
+    assert.equal(res.status, 401);
+    assert.equal(refreshes, 0, 'a consumed stream cannot be resent, so do not spend a refresh');
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
   it('a rejected Clerk-authenticated fetch still falls through to the unauthenticated path', async () => {
     // The Bearer attempt lives inside a try whose catch falls through to the
     // anonymous request. Pinned because routing that attempt through a shared
@@ -529,6 +762,46 @@ describe('reportServerError', () => {
     });
     reportServerError(res, PUBLIC_TARGET, enqueue);
     assert.equal(calls.length, 0, 'rate-limit degradation must not be captured again by every browser');
+  });
+
+  // api/mcp-proxy answers an upstream MCP server timeout with its own 504 and
+  // has already captured it server-side at warning. Reporting it again here
+  // filed it as an origin `API 504: /api/mcp-proxy` error (WORLDMONITOR-17A).
+  it('skips the mcp-proxy 504 that relays an upstream MCP server timeout', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response(JSON.stringify({ error: 'MCP server timed out' }), {
+      status: 504,
+      headers: { 'Content-Type': 'application/json', 'X-Wm-Upstream-Timeout': '1' },
+    });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 0, 'an upstream MCP timeout is not an origin 5xx');
+  });
+
+  it('still reports an unmarked 504 from the proxy path', () => {
+    const { calls, enqueue } = makeSpy();
+    const res = new Response('', { status: 504 });
+    reportServerError(res, 'https://api.worldmonitor.app/api/mcp-proxy', enqueue);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].msg, 'API 504: /api/mcp-proxy');
+  });
+
+  // WORLDMONITOR-ZH: closing the country deep-dive aborts its signal while
+  // withBillingVerificationRetry waits out Retry-After, and the wrapper hands
+  // back the FIRST 503. Nobody waited for the retry, so whether the outage was
+  // sustained is unknown — the canary must not count it.
+  it('skips a 503 handed back to a caller that already aborted', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    controller.abort();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 0, 'an abandoned retry wait is not an origin outage');
+  });
+
+  it('still captures a 503 when the caller signal is live', () => {
+    const { calls, enqueue } = makeSpy();
+    const controller = new AbortController();
+    reportServerError(new Response('{}', { status: 503 }), PUBLIC_TARGET, enqueue, controller.signal);
+    assert.equal(calls.length, 1, 'a caller still waiting must keep the canary');
   });
 
   // -------------------------------------------------------------------------
@@ -666,5 +939,73 @@ describe('reportServerError', () => {
     assert.equal(classOf(527), 'api-cf-5xx', '527 is the last Cloudflare code');
     assert.equal(classOf(528), 'api-5xx', '528 is above the Cloudflare window');
     assert.equal(classOf(530), 'api-5xx', 'CF 530 is deliberately outside the transient-transport window');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// premiumFetch → reportServerError signal forwarding (WORLDMONITOR-ZH).
+//
+// The reportServerError tests above pass the signal by hand, so they would
+// still pass if premiumFetch stopped forwarding the caller's signal. These go
+// through premiumFetch and the real enqueueSentryCall, with a recording SDK
+// loaded the way tests/stale-bundle-check.test.mts drains deferred calls.
+// ---------------------------------------------------------------------------
+describe('premiumFetch forwards the caller signal to the 5xx report', () => {
+  const captured: string[] = [];
+  let mock503: FetchMock;
+
+  before(async () => {
+    _resetSentryDeferStateForTests();
+    const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    const previousSetTimeout = Object.getOwnPropertyDescriptor(globalThis, 'setTimeout');
+    let delayedCallback: (() => void) | null = null;
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { addEventListener() {}, removeEventListener() {} },
+    });
+    Object.defineProperty(globalThis, 'setTimeout', {
+      configurable: true,
+      value: (cb: () => void) => { delayedCallback = cb; return 1; },
+    });
+    _setSentryLoaderForTests(async () => ({
+      captureMessage(message: string) { captured.push(message); },
+    } as never));
+    try {
+      const initPromise = scheduleSentryInit();
+      delayedCallback?.();
+      await initPromise;
+    } finally {
+      for (const [name, descriptor] of [['window', previousWindow], ['setTimeout', previousSetTimeout]] as const) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else Reflect.deleteProperty(globalThis, name);
+      }
+    }
+    mock503 = mock.method(globalThis, 'fetch', () => Promise.resolve(fakeRes(503)));
+  });
+
+  after(() => {
+    mock503.mock.restore();
+    _resetSentryDeferStateForTests();
+  });
+
+  it('does not report the 503 when the caller aborted', async () => {
+    captured.length = 0;
+    const controller = new AbortController();
+    controller.abort();
+    const res = await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: controller.signal,
+    });
+    assert.equal(res.status, 503, 'the caller still receives the response');
+    assert.deepEqual(captured, [], 'an abandoned request must not reach Sentry');
+  });
+
+  it('reports the 503 when the caller is still waiting', async () => {
+    captured.length = 0;
+    await premiumFetch(TARGET, {
+      headers: { Authorization: 'Bearer existing-token' },
+      signal: new AbortController().signal,
+    });
+    assert.deepEqual(captured, ['API 503: /api/economic/v1/list-global-tenders']);
   });
 });

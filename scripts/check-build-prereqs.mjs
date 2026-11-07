@@ -102,6 +102,15 @@ export const BUILD_PREREQS = [
     hint: 'Ships with rustup; if rustc exists but cargo does not, run `rustup component add cargo`.',
   },
   {
+    id: 'gpg',
+    scope: 'desktop',
+    why: 'GnuPG verifies the signed Node.js checksums before bundling',
+    probe: { kind: 'command', command: 'gpg' },
+    bundleOnly: true,
+    packages: { debian: 'gnupg', fedora: 'gnupg2', arch: 'gnupg', suse: 'gpg2' },
+    hint: 'Install GnuPG: https://gnupg.org/download/ (macOS: brew install gnupg; Windows: https://gpg4win.org/).',
+  },
+  {
     id: 'pkg-config',
     scope: 'desktop',
     platform: 'linux',

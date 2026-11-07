@@ -33,15 +33,25 @@ services:
       WORLDMONITOR_VALID_KEYS: "${WORLDMONITOR_VALID_KEYS:-}"
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
+      # Desktop-key relay. A browser user who enters their own paid desktop key
+      # in Settings gets Pro panels: this server forwards their Pro requests to
+      # the World Monitor cloud with that key, metered on their account's
+      # desktop allocation. Nothing leaves the install until a user enters a
+      # key. Set to "off" to disable the relay and the Settings entry.
+      WORLDMONITOR_SELFHOST_RELAY: "${WORLDMONITOR_SELFHOST_RELAY:-}"
+      # Set to 1 when users reach this install over HTTPS through an outer
+      # TLS proxy (nginx inside the container then sees plain http), so the
+      # desktop-key cookie is marked Secure.
+      WORLDMONITOR_PUBLIC_HTTPS: "${WORLDMONITOR_PUBLIC_HTTPS:-}"
       # LLM provider (any OpenAI-compatible endpoint)
       LLM_API_URL: "${LLM_API_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
       LLM_MODEL: "${LLM_MODEL:-}"
-      GROQ_API_KEY: "${GROQ_API_KEY:-}"
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
       # Data source API keys (optional — features degrade gracefully)
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"
       FINNHUB_API_KEY: "${FINNHUB_API_KEY:-}"
+      ALPHA_VANTAGE_API_KEY: "${ALPHA_VANTAGE_API_KEY:-}"
       EIA_API_KEY: "${EIA_API_KEY:-}"
       FRED_API_KEY: "${FRED_API_KEY:-}"
       ACLED_EMAIL: "${ACLED_EMAIL:-}"
@@ -55,7 +65,7 @@ services:
     # Create secrets/ dir with one file per key, then uncomment below.
     # See SELF_HOSTING.md or docker-compose.override.yml for details.
     # secrets:
-    #   - GROQ_API_KEY
+    #   - OPENROUTER_API_KEY
     #   - AISSTREAM_API_KEY
     #   - FINNHUB_API_KEY
     #   - FRED_API_KEY
@@ -85,6 +95,7 @@ services:
       UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
       # Optional: Jev shadows the classify seed and records disagreements; it decides nothing.
       TYPESAFE_API_KEY: "${TYPESAFE_API_KEY:-}"
+      TYPESAFE_BASE_URL: "${TYPESAFE_BASE_URL:-}"
       # Classify reads list-feed-digest from this install, not production (#7437).
       # Do not depends_on worldmonitor here — the app already depends_on ais-relay.
       # Transient connection retries cover the compose boot race instead.
@@ -138,10 +149,10 @@ services:
     restart: unless-stopped
 
 # Docker secrets — uncomment and point to your secret files.
-# Example: echo "gsk_abc123" > secrets/groq_api_key.txt
+# Example: echo "sk-or-abc123" > secrets/openrouter_api_key.txt
 # secrets:
-#   GROQ_API_KEY:
-#     file: ./secrets/groq_api_key.txt
+#   OPENROUTER_API_KEY:
+#     file: ./secrets/openrouter_api_key.txt
 #   AISSTREAM_API_KEY:
 #     file: ./secrets/aisstream_api_key.txt
 #   FINNHUB_API_KEY:

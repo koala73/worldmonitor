@@ -1,0 +1,1217 @@
+{
+  "description": "Frozen #7071 replay: production forecasts that carried, or would carry, a market anchor, plus every market the pre-#7071 or post-#7071 matcher selected. internalProbability is reconstructed as marketPrice + drift. Market-copy rows (question titles) carry the prediction_market signal detectFromPredictionMarkets always sets; rows reconstructed without signals get a placeholder one (#9010).",
+  "capturedAt": "2026-10-06T00:41:29.395Z",
+  "forecasts": [
+    {
+      "domain": "conflict",
+      "region": "Brazil",
+      "title": "Active armed conflict: Brazil",
+      "timeHorizon": "30d",
+      "internalProbability": 0.85,
+      "signals": [],
+      "legacyAnchor": "US strike on Cuba by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Colombia",
+      "title": "Active armed conflict: Colombia",
+      "timeHorizon": "30d",
+      "internalProbability": 0.85,
+      "signals": [],
+      "legacyAnchor": "US strike on Colombia by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Israel",
+      "title": "Active armed conflict: Israel",
+      "timeHorizon": "30d",
+      "internalProbability": 0.639,
+      "signals": [],
+      "legacyAnchor": "US strike on Cuba by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Mexico",
+      "title": "Active armed conflict: Mexico",
+      "timeHorizon": "30d",
+      "internalProbability": 0.85,
+      "signals": [],
+      "legacyAnchor": "US strike on Cuba by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Philippines",
+      "title": "Active armed conflict: Philippines",
+      "timeHorizon": "30d",
+      "internalProbability": 0.356,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "Syria",
+      "title": "Active armed conflict: Syria",
+      "timeHorizon": "30d",
+      "internalProbability": 0.636,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "Yemen (North Yemen)",
+      "title": "Active armed conflict: Yemen (North Yemen)",
+      "timeHorizon": "30d",
+      "internalProbability": 0.644,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "China",
+      "title": "Escalation risk: China",
+      "timeHorizon": "7d",
+      "internalProbability": 0.252,
+      "signals": [],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Iran",
+      "title": "Escalation risk: Iran",
+      "timeHorizon": "7d",
+      "internalProbability": 0.62,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Israel",
+      "title": "Escalation risk: Israel",
+      "timeHorizon": "7d",
+      "internalProbability": 0.392,
+      "signals": [],
+      "legacyAnchor": "US strike on Cuba by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Mexico",
+      "title": "Escalation risk: Mexico",
+      "timeHorizon": "7d",
+      "internalProbability": 0.34,
+      "signals": [],
+      "legacyAnchor": "US strike on Cuba by December 31?"
+    },
+    {
+      "domain": "conflict",
+      "region": "Russia",
+      "title": "Escalation risk: Russia",
+      "timeHorizon": "7d",
+      "internalProbability": 0.304,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "Syria",
+      "title": "Escalation risk: Syria",
+      "timeHorizon": "7d",
+      "internalProbability": 0.444,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "Ukraine",
+      "title": "Escalation risk: Ukraine",
+      "timeHorizon": "7d",
+      "internalProbability": 0.68,
+      "signals": [
+        {
+          "type": "cii",
+          "value": "Ukraine CII 90 (critical)",
+          "weight": 0.4
+        },
+        {
+          "type": "ucdp",
+          "value": "485 UCDP events",
+          "weight": 0.2
+        },
+        {
+          "type": "news_corroboration",
+          "value": "7 headline(s) mention Ukraine or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "conflict",
+      "region": "Middle East",
+      "title": "Will Israel strike 4 countries in 2026?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.785,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "cyber",
+      "region": "China",
+      "title": "Cyber threat concentration: China",
+      "timeHorizon": "7d",
+      "internalProbability": 0.424,
+      "signals": [],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "cyber",
+      "region": "Russia",
+      "title": "Cyber threat concentration: Russia",
+      "timeHorizon": "7d",
+      "internalProbability": 0.128,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "cyber",
+      "region": "Taiwan",
+      "title": "Cyber threat concentration: Taiwan",
+      "timeHorizon": "7d",
+      "internalProbability": 0.033,
+      "signals": [],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "cyber",
+      "region": "United States",
+      "title": "Cyber threat concentration: United States",
+      "timeHorizon": "7d",
+      "internalProbability": 0.5,
+      "signals": [
+        {
+          "type": "cyber",
+          "value": "109 threats (CYBER_THREAT_TYPE_MALWARE_HOST)",
+          "weight": 0.5
+        },
+        {
+          "type": "news_corroboration",
+          "value": "3 headline(s) mention United States or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "infrastructure",
+      "region": "Ukraine",
+      "title": "Infrastructure cascade risk: Ukraine",
+      "timeHorizon": "24h",
+      "internalProbability": 0.31,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Iran",
+      "title": "Energy repricing risk from Iran security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.658,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "market",
+      "region": "Afghanistan",
+      "title": "FX stress from Afghanistan security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.752,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Americas",
+      "title": "FX stress from Americas governance pressure state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.797,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Iran",
+      "title": "FX stress from Iran political instability state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.607,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "market",
+      "region": "Iran",
+      "title": "FX stress from Iran security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.677,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "market",
+      "region": "Israel/Gaza",
+      "title": "FX stress from Israel/Gaza security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.691,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Mexico",
+      "title": "FX stress from Mexico security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.709,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Middle East",
+      "title": "FX stress from Middle East security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.731,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Afghanistan",
+      "title": "Sovereign risk repricing from Afghanistan security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.675,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Brazil",
+      "title": "Sovereign risk repricing from Brazil security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.655,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Iran",
+      "title": "Sovereign risk repricing from Iran security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.688,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "market",
+      "region": "Israel/Gaza",
+      "title": "Sovereign risk repricing from Israel/Gaza security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.708,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Mexico",
+      "title": "Sovereign risk repricing from Mexico security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.67,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Middle East",
+      "title": "Sovereign risk repricing from Middle East security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.687,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Syria",
+      "title": "Sovereign risk repricing from Syria security escalation state",
+      "timeHorizon": "30d",
+      "internalProbability": 0.655,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Americas",
+      "title": "US x China tariff agreement by December 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.893,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Tariff increase on Canada in effect by December 31, 2026?"
+    },
+    {
+      "domain": "market",
+      "region": "Asia-Pacific",
+      "title": "Will China’s 2026 annual GDP growth (Y/Y) be between 4.0% and 5.0%?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.9,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "market",
+      "region": "Europe",
+      "title": "Will UK annual GDP growth in 2026 be between 1% and 2%?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "polymarket: 90%",
+          "weight": 0.8
+        },
+        {
+          "type": "news_corroboration",
+          "value": "1 headline(s) mention Europe or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "legacyAnchor": "Will UK annual GDP growth in 2026 be between 1% and 2%?"
+    },
+    {
+      "domain": "military",
+      "region": "Northern Europe",
+      "title": "Elevated military air activity near Baltic Theater",
+      "timeHorizon": "7d",
+      "internalProbability": 0.285,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Israel/Gaza",
+      "title": "Elevated military air activity near Israel/Gaza",
+      "timeHorizon": "7d",
+      "internalProbability": 0.41,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Black Sea",
+      "title": "Military posture escalation: Black Sea",
+      "timeHorizon": "7d",
+      "internalProbability": 0.41,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Eastern Mediterranean",
+      "title": "Military posture escalation: Eastern Mediterranean",
+      "timeHorizon": "7d",
+      "internalProbability": 0.41,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Israel/Gaza",
+      "title": "Military posture escalation: Israel/Gaza",
+      "timeHorizon": "7d",
+      "internalProbability": 0.41,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Middle East",
+      "title": "Military posture escalation: Middle East",
+      "timeHorizon": "7d",
+      "internalProbability": 0.486,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Northern Europe",
+      "title": "Military posture escalation: Northern Europe",
+      "timeHorizon": "7d",
+      "internalProbability": 0.41,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "military",
+      "region": "Middle East",
+      "title": "Qatar-linked airlift surge near Iran Theater",
+      "timeHorizon": "7d",
+      "internalProbability": 0.714,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "How much will the US acquire Greenland for?: $0 / No Acquisition",
+      "timeHorizon": "30d",
+      "internalProbability": 0.9,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "How much will the US acquire Greenland for?: $0 / No Acquisition"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Hamas Ceasefire Phase II by December 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.805,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Israel x Hamas Ceasefire Phase II by December 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Iran ceasefire continues through August 2?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.815,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Iran ceasefire continues through August 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.865,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Iran ceasefire continues through July 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Iran ceasefire continues through October 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.835,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "polymarket: 84%",
+          "weight": 0.8
+        },
+        {
+          "type": "news_corroboration",
+          "value": "5 headline(s) mention Middle East or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Israel x Iran ceasefire continues through September 30?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Israel x Iran ceasefire continues through October 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Saudi Oil Pipeline (East-West) restarts by September 30?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.875,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Iran leadership change by December 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "US ceasefire against Iran continues through August 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "US x Iran ceasefire continues through September 30?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.89,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "US x Iran diplomatic meeting by September 30, 2026?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.88,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "US x Iran Effective Ceasefire by August 31?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "US x Iran Effective Ceasefire by September 30?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.9,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Asia-Pacific",
+      "title": "Who will become Prime Minister of India after next general election?: Rahul Gandhi",
+      "timeHorizon": "30d",
+      "internalProbability": 0.88,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "political",
+      "region": "Asia-Pacific",
+      "title": "Will Kuomintang (KMT) win the most head of local government elections in the 2026 Taiwan local elect",
+      "timeHorizon": "30d",
+      "internalProbability": 0.875,
+      "signals": [],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Will Mojtaba Khamenei be head of state in Iran end of 2026?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.88,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "polymarket: 88%",
+          "weight": 0.8
+        },
+        {
+          "type": "news_corroboration",
+          "value": "5 headline(s) mention Middle East or linked entities",
+          "weight": 0.15
+        }
+      ],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will no qualifying diplomatic US-Iran meeting occur by September 30, 2026?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.862,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will the Bank of Canada make no change to the target for the overnight rate at the October interest ",
+      "timeHorizon": "30d",
+      "internalProbability": 0.896,
+      "signals": [],
+      "legacyAnchor": "Tariff increase on Canada in effect by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Middle East",
+      "title": "Will the Bank of Israel make no change to the Bank of Israel Interest Rate after the October decisio",
+      "timeHorizon": "30d",
+      "internalProbability": 0.89,
+      "signals": [],
+      "legacyAnchor": "Iran leadership change by December 31?"
+    },
+    {
+      "domain": "political",
+      "region": "Europe",
+      "title": "Will the ECB announce a 25 bps increase at the September 2026 meeting?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.885,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will Russia capture all of Stepnohirsk by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Europe",
+      "title": "Will the ECB announce no change at the October 2026 meeting?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.875,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will Russia capture all of Stepnohirsk by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will the median home value in the US be less than $419,000 on September 30?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "political",
+      "region": "Asia-Pacific",
+      "title": "Will the Reserve Bank of India make no change to the policy repo rate after the August Meeting?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will China invade Taiwan by December 31, 2027?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will Trump and Putin not meet?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.645,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will Trump buy at least part of Greenland?: Before January 20, 2029"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will Utah use a new congressional map for the 2026 United States midterm elections?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.9,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "US-Iran Final Nuclear Deal by December 31, 2026?"
+    },
+    {
+      "domain": "political",
+      "region": "Americas",
+      "title": "Will Xi Jinping visit US before 2027?",
+      "timeHorizon": "30d",
+      "internalProbability": 0.895,
+      "signals": [
+        {
+          "type": "prediction_market",
+          "value": "reconstructed",
+          "weight": 0.8
+        }
+      ],
+      "legacyAnchor": "Will Kash Patel leave the Trump administration before 2027?"
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Black Sea",
+      "title": "GPS interference in Black Sea shipping zone",
+      "timeHorizon": "7d",
+      "internalProbability": 0.5,
+      "signals": [
+        {
+          "type": "gps_jamming",
+          "value": "188 jamming hexes in Black Sea",
+          "weight": 0.5
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Eastern Mediterranean",
+      "title": "GPS interference in Eastern Mediterranean shipping zone",
+      "timeHorizon": "7d",
+      "internalProbability": 0.5,
+      "signals": [
+        {
+          "type": "gps_jamming",
+          "value": "60 jamming hexes in Eastern Mediterranean",
+          "weight": 0.5
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Persian Gulf",
+      "title": "GPS interference in Persian Gulf shipping zone",
+      "timeHorizon": "7d",
+      "internalProbability": 0.5,
+      "signals": [
+        {
+          "type": "gps_jamming",
+          "value": "59 jamming hexes in Persian Gulf",
+          "weight": 0.5
+        }
+      ],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Black Sea",
+      "title": "Maritime energy flow disruption from Black Sea maritime disruption state (market)",
+      "timeHorizon": "7d",
+      "internalProbability": 0.576,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Maritime energy flow disruption from Red Sea maritime disruption state (market)",
+      "timeHorizon": "7d",
+      "internalProbability": 0.574,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Black Sea",
+      "title": "Supply chain disruption risk from Black Sea maritime disruption state",
+      "timeHorizon": "7d",
+      "internalProbability": 0.623,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Black Sea",
+      "title": "Supply chain disruption risk from Black Sea maritime disruption state (market)",
+      "timeHorizon": "7d",
+      "internalProbability": 0.369,
+      "signals": [],
+      "legacyAnchor": null
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Supply chain disruption risk from Red Sea maritime disruption state",
+      "timeHorizon": "7d",
+      "internalProbability": 0.523,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    },
+    {
+      "domain": "supply_chain",
+      "region": "Red Sea",
+      "title": "Supply chain disruption risk from Red Sea maritime disruption state (market)",
+      "timeHorizon": "7d",
+      "internalProbability": 0.475,
+      "signals": [],
+      "legacyAnchor": "Will Mojtaba Khamenei be head of state in Iran end of 2026?"
+    }
+  ],
+  "markets": {
+    "geopolitical": [
+      {
+        "title": "US strike on Cuba by December 31?",
+        "yesPrice": 10.5,
+        "volume": 7572563,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "cuba",
+          "venezuela",
+          "geopolitics"
+        ],
+        "regions": [
+          "america"
+        ]
+      },
+      {
+        "title": "Iran leadership change by December 31?",
+        "yesPrice": 11.5,
+        "volume": 26893121,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "politics",
+          "iran",
+          "iranian-leadership-regime",
+          "geopolitics",
+          "mojtaba",
+          "ayatollah",
+          "khamenei",
+          "mojtaba-khamenei",
+          "khamenei-out",
+          "mojtaba-out"
+        ],
+        "regions": [
+          "mena"
+        ]
+      },
+      {
+        "title": "Will Mojtaba Khamenei be head of state in Iran end of 2026?",
+        "yesPrice": 88.3,
+        "volume": 39859535,
+        "source": "polymarket",
+        "endDate": "2026-12-31T17:00:00Z",
+        "tags": [
+          "middle-east",
+          "iran",
+          "world",
+          "geopolitics",
+          "politics",
+          "iranian-leadership-regime",
+          "rewards-50-4pt5-100"
+        ],
+        "regions": [
+          "mena"
+        ]
+      },
+      {
+        "title": "US-Iran Final Nuclear Deal by December 31, 2026?",
+        "yesPrice": 12.5,
+        "volume": 19585845,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "iran",
+          "us-iran",
+          "peace-deal",
+          "geopolitics",
+          "middle-east",
+          "diplomacy-ceasefire"
+        ],
+        "regions": [
+          "america",
+          "mena"
+        ]
+      },
+      {
+        "title": "Will the U.S. invade Iran before 2027?",
+        "yesPrice": 14.5,
+        "volume": 72100004,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "military-strikes",
+          "politics",
+          "geopolitics",
+          "world",
+          "middle-east",
+          "israel",
+          "iran",
+          "trump"
+        ],
+        "regions": [
+          "mena"
+        ]
+      },
+      {
+        "title": "Will China invade Taiwan by December 31, 2027?",
+        "yesPrice": 11.5,
+        "volume": 3383243,
+        "source": "polymarket",
+        "endDate": "2028-01-01T04:59:00Z",
+        "tags": [
+          "china",
+          "politics",
+          "world",
+          "geopolitics"
+        ],
+        "regions": [
+          "asia"
+        ]
+      },
+      {
+        "title": "Israel x Hamas Ceasefire Phase II by December 31?",
+        "yesPrice": 12.5,
+        "volume": 2890436,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "politics",
+          "gaza",
+          "geopolitics",
+          "israel",
+          "middle-east",
+          "world",
+          "trump",
+          "trump-presidency",
+          "trump-netanyahu"
+        ],
+        "regions": [
+          "mena"
+        ]
+      },
+      {
+        "title": "Israel x Iran ceasefire continues through October 31?",
+        "yesPrice": 83.5,
+        "volume": 32710151,
+        "source": "polymarket",
+        "endDate": "2026-10-31T20:29:00Z",
+        "tags": [
+          "iran",
+          "israel",
+          "geopolitics",
+          "israel-x-iran",
+          "israel-election"
+        ],
+        "regions": [
+          "mena"
+        ]
+      },
+      {
+        "title": "Will Russia capture all of Stepnohirsk by December 31, 2026?",
+        "yesPrice": 12,
+        "volume": 2275581,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "politics",
+          "putin",
+          "russia-capture",
+          "ukraine-map",
+          "russia",
+          "geopolitics",
+          "military-action"
+        ],
+        "regions": []
+      },
+      {
+        "title": "US strike on Colombia by December 31?",
+        "yesPrice": 14.5,
+        "volume": 2204881,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "politics",
+          "geopolitics",
+          "venezuela",
+          "trump"
+        ],
+        "regions": [
+          "america",
+          "latam"
+        ]
+      }
+    ],
+    "tech": [],
+    "finance": [
+      {
+        "title": "Will Trump buy at least part of Greenland?: Before January 20, 2029",
+        "yesPrice": 14,
+        "volume": 3512739,
+        "source": "kalshi",
+        "endDate": "2029-01-20T15:00:00Z",
+        "tags": [],
+        "regions": [
+          "america"
+        ]
+      },
+      {
+        "title": "How much will the US acquire Greenland for?: $0 / No Acquisition",
+        "yesPrice": 89,
+        "volume": 868054,
+        "source": "kalshi",
+        "endDate": "2029-01-22T04:59:00Z",
+        "tags": [],
+        "regions": [
+          "america"
+        ]
+      },
+      {
+        "title": "Will UK annual GDP growth in 2026 be between 1% and 2%?",
+        "yesPrice": 89.7,
+        "volume": 105773,
+        "source": "polymarket",
+        "endDate": "2027-02-12T00:00:00Z",
+        "tags": [
+          "gdp",
+          "economy",
+          "macro-indicators",
+          "united-kingdom"
+        ],
+        "regions": [
+          "eu"
+        ]
+      },
+      {
+        "title": "Will Kash Patel leave the Trump administration before 2027?",
+        "yesPrice": 19,
+        "volume": 1429031,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "politics",
+          "trump"
+        ],
+        "regions": [
+          "america"
+        ]
+      },
+      {
+        "title": "Tariff increase on Canada in effect by December 31, 2026?",
+        "yesPrice": 11.5,
+        "volume": 56665,
+        "source": "polymarket",
+        "endDate": "2027-01-01T04:59:00Z",
+        "tags": [
+          "trump",
+          "economy",
+          "china",
+          "politics",
+          "tariffs",
+          "canada"
+        ],
+        "regions": [
+          "america"
+        ]
+      }
+    ]
+  }
+}

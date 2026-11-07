@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { buildEuGasStoragePayload, declareRecords } from '../scripts/seed-gie-gas-storage.mjs';
 import { classifyInputs } from '../scripts/regional-snapshot/freshness.mjs';
 import { runSeed } from '../scripts/_seed-utils.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 function makeEntries(today = '2024-05-20', yesterday = '2024-05-19') {
   return [
@@ -166,7 +167,7 @@ describe('runSeed boundary — publish-path freshness fields (#3788 review round
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
     recordedCalls = [];
 
-    globalThis.fetch = async (url, opts = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, opts = {}) => {
       const body = opts?.body
         ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })()
         : null;
@@ -178,7 +179,7 @@ describe('runSeed boundary — publish-path freshness fields (#3788 review round
       }
       // Default: SET / EVAL / DEL → {result:'OK'}.
       return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-    };
+    });
 
     // runSeed exits 0 on the success path; convert to a throw so the test
     // can resume and inspect recordedCalls.

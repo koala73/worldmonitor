@@ -9,11 +9,11 @@ import { expect, test, type Page } from '@playwright/test';
 // mobile run. Anything the block resolves differently from the sheet reflows
 // at the swap, and every pixel of that reflow is CLS.
 //
-// The block's region mirrors are all scoped to `main` / `nav[data-wm-nav]`,
-// but index.html's crawlable #root markup puts its <h1> OUTSIDE <main>, so
-// only the @layer base reset reaches it. When that reset omitted Tailwind
-// preflight's heading, margin/padding, and list-style rules, the swap moved
-// all 80 elements of the block and DebugBear scored /pro 0.28 CLS on mobile.
+// When the @layer base reset omitted Tailwind preflight's heading,
+// margin/padding, and list-style rules, the swap moved all 80 elements of
+// /pro's crawlable block and DebugBear scored /pro 0.28 CLS on mobile. /pro now
+// also paints a prerendered nav + hero above that block, whose wider-viewport
+// classes (`md:` sizes, the desktop nav row) only a desktop width exercises.
 //
 // This drives the built bytes rather than asserting on the CSS text, so a
 // Tailwind upgrade that adds a geometry reset, or new crawlable markup that
@@ -26,10 +26,12 @@ const STYLESHEET_DELAY_MS = 400;
 // DebugBear's mobile profile. The narrower the viewport, the more lines an
 // unreset <h1> wraps to and the further everything under it travels.
 const MOBILE_VIEWPORT = { width: 360, height: 640 };
+const DESKTOP_VIEWPORT = { width: 1280, height: 800 };
 
 const PRO_PAGES = [
-  { relPath: 'public/pro/index.html', label: '/pro' },
-  { relPath: 'public/pro/welcome.html', label: '/' },
+  { relPath: 'public/pro/index.html', label: '/pro', viewport: MOBILE_VIEWPORT },
+  { relPath: 'public/pro/index.html', label: '/pro', viewport: DESKTOP_VIEWPORT },
+  { relPath: 'public/pro/welcome.html', label: '/', viewport: MOBILE_VIEWPORT },
 ];
 
 type ShiftSource = { node: string; dy: number; dh: number };
@@ -76,11 +78,9 @@ const observeLayoutShifts = (page: Page) => page.addInitScript(() => {
   }).observe({ type: 'layout-shift', buffered: true });
 });
 
-test.use({ viewport: MOBILE_VIEWPORT });
-
 test.describe('pro critical CSS causes no layout shift when the deferred stylesheet lands', () => {
-  for (const { relPath, label } of PRO_PAGES) {
-    test(`${label} paints its final geometry before the stylesheet arrives`, async ({ page }) => {
+  for (const { relPath, label, viewport } of PRO_PAGES) {
+    test(`${label} paints its final geometry before the stylesheet arrives at ${viewport.width}px`, async ({ page }) => {
       const htmlPath = resolve(repoRoot, relPath);
       expect(
         existsSync(htmlPath),
@@ -106,6 +106,7 @@ test.describe('pro critical CSS causes no layout shift when the deferred stylesh
         return route.abort();
       });
 
+      await page.setViewportSize(viewport);
       await observeLayoutShifts(page);
       await page.goto(`${ORIGIN}/pro`, { waitUntil: 'load' });
       await expect
@@ -131,9 +132,86 @@ test.describe('pro critical CSS causes no layout shift when the deferred stylesh
       expect(
         cls,
         `${label} shifted when the deferred stylesheet applied. Mirror the missing `
-        + `Tailwind preflight declarations into CRITICAL_CSS's @layer base in `
+        + `Tailwind preflight declarations into CRITICAL_CSS's @layer base, or a `
+        + `prerendered /pro nav/hero utility into PRO_CRITICAL_CSS, in `
         + `pro-test/prerender.mjs.\n${detail}`,
       ).toBe(0);
+    });
+  }
+});
+
+test.describe('welcome safe areas', () => {
+  const cases = [
+    { name: 'iPhone portrait', width: 393, height: 852, top: 59, right: 0, bottom: 34, left: 0 },
+    { name: 'iPhone landscape left', width: 852, height: 393, top: 0, right: 59, bottom: 21, left: 59 },
+    { name: 'asymmetric landscape', width: 852, height: 393, top: 0, right: 59, bottom: 21, left: 0 },
+    { name: 'desktop', width: 1440, height: 900, top: 0, right: 0, bottom: 0, left: 0 },
+    { name: 'Android', width: 412, height: 915, top: 0, right: 0, bottom: 0, left: 0 },
+  ];
+
+  for (const device of cases) {
+    test(`${device.name} protects edge content before and after stylesheet load`, async ({ page, context }, testInfo) => {
+      const html = readFileSync(resolve(repoRoot, 'public/pro/welcome.html'), 'utf8');
+      const href = deferredStylesheetHref(html);
+      const css = readFileSync(resolve(repoRoot, 'public', href.replace(/^\//, '')), 'utf8');
+      // Keep the actual full sheet pending until the critical-only geometry is checked.
+      let releaseStyle!: () => void;
+      const styleReady = new Promise<void>((done) => { releaseStyle = done; });
+      await page.route('**/*', async (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin !== ORIGIN) return route.abort();
+        if (url.pathname === href) {
+          await styleReady;
+          return route.fulfill({ contentType: 'text/css', body: css });
+        }
+        if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+        return route.abort();
+      });
+      await page.setViewportSize({ width: device.width, height: device.height });
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+        insets: { top: device.top, right: device.right, bottom: device.bottom, left: device.left },
+      });
+      await page.goto(ORIGIN, { waitUntil: 'domcontentloaded' });
+      const measure = () => page.evaluate(() => {
+        const nav = document.querySelector('nav[data-wm-nav]')!;
+        const hero = document.querySelector('[data-wm-hero]')!;
+        const root = nav.closest('.welcome-page');
+        const rect = (element: Element) => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const { x, y, width } = rect(hero);
+        return {
+          nav: rect(nav), hero: { x, y, width },
+          logo: rect(nav.querySelector('a')!),
+          cta: rect(nav.querySelector('[data-umami-event-target="welcome-nav"]')!),
+          rootPadding: root ? getComputedStyle(root).paddingBottom : null,
+          navPadding: getComputedStyle(nav).paddingTop,
+          heroPadding: getComputedStyle(hero).paddingTop,
+        };
+      });
+      try {
+        await page.screenshot({ path: testInfo.outputPath('critical.png') });
+        expect(await page.locator('meta[name="viewport"]').getAttribute('content')).toContain('viewport-fit=cover');
+        const before = await measure();
+        expect(before.navPadding).toBe(`${device.top}px`);
+        expect(before.rootPadding).toBe(`${device.bottom}px`);
+        expect(before.heroPadding).toBe(`${(device.width >= 640 ? 128 : 112) + device.top}px`);
+        expect(before.logo.x).toBeGreaterThanOrEqual(device.left + 16);
+        expect(before.logo.y).toBeGreaterThanOrEqual(device.top);
+        expect(before.cta.x + before.cta.width).toBeLessThanOrEqual(device.width - device.right - 16);
+        releaseStyle();
+        await expect.poll(() => page.evaluate(() => document.styleSheets.length > 1)).toBe(true);
+        expect(await measure()).toEqual(before);
+        await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
+        const skip = await page.getByRole('link', { name: 'Skip to content', exact: true }).boundingBox();
+        expect(skip!.x).toBeGreaterThanOrEqual(device.left);
+        expect(skip!.y).toBeGreaterThanOrEqual(device.top);
+        await page.screenshot({ path: testInfo.outputPath('styled.png') });
+      } finally {
+        releaseStyle();
+      }
     });
   }
 });

@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { macroHistoryWindow } from './macro-history-window';
 import {
   RATE_SERIES,
   RATES_CANONICAL_KEY,
@@ -40,6 +41,7 @@ export async function getUsInterestRates(
   _ctx: ServerContext,
   req: GetUsInterestRatesRequest,
 ): Promise<GetUsInterestRatesResponse> {
+  const recent = macroHistoryWindow(req.limit);
   try {
     const snapshot = snapshotFromSeed(await getCachedJson(RATES_CANONICAL_KEY, true));
     if (req.history !== true) {
@@ -51,7 +53,8 @@ export async function getUsInterestRates(
     // the snapshot into that empty history would emit latest-only points with
     // unavailable=false, which the daily gateway cache can store as "full history".
     if (!hasHistoryPoints(histories)) return UNAVAILABLE;
-    return buildUsInterestRates(snapshot, histories, true);
+    const response = buildUsInterestRates(snapshot, histories, true);
+    return { ...response, series: response.series.map(series => ({ ...series, points: recent(series.points) })) };
   } catch {
     return UNAVAILABLE;
   }

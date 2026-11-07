@@ -6,7 +6,7 @@
 
 import type { NewsItem, ClusteredEvent } from '@/types';
 import { getSourceTier } from '@/config';
-import { countPublisherFamilies } from '../../shared/publisher-families.js';
+import { clusterPublisherCount } from '../../shared/news-clustering-core.js';
 import { analysisWorker } from './analysis-worker';
 import { aggregateThreats, clusterNewsCore } from './analysis-core';
 import { mlWorker } from './ml-worker';
@@ -205,7 +205,8 @@ function mergeSemanticallySimilarClusters(
       // #6428: recomputed over the MERGED item list, not summed from the
       // parts — two merged clusters can share a publisher, and adding their
       // counts would re-create the double-count this field exists to prevent.
-      uniquePublisherCount: countPublisherFamilies(allItems.map(i => i.source)),
+      // #9095: same detector as clusterNewsCore, so reprints stay counted once.
+      uniquePublisherCount: clusterPublisherCount(allItems),
       topSources: sortedTopSources,
       allItems,
       firstSeen,

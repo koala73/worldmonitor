@@ -48,7 +48,23 @@ export const TIER_DOCS_PATH = '/docs/data-sources#source-credibility-%26-feed-ti
  * source that no table says.
  */
 export function declaredSourceTier(sourceName: string): DeclaredTier | null {
-  if (!Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)) return null;
-  const tier = SOURCE_TIERS[sourceName];
+  const tier = Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName)
+    ? SOURCE_TIERS[sourceName]
+    : declaredTierByNormalizedName().get(normalizeSourceName(sourceName));
   return tier === 1 || tier === 2 || tier === 3 || tier === 4 ? tier : null;
+}
+
+// Publisher families fold case and trim, so a label that differs from its table
+// key only in case must resolve to the same declared tier. Exact keys still win.
+const normalizeSourceName = (name: string) => name.trim().toLowerCase();
+let normalizedTiers: Map<string, number> | null = null;
+function declaredTierByNormalizedName(): Map<string, number> {
+  if (!normalizedTiers) {
+    normalizedTiers = new Map();
+    for (const [name, tier] of Object.entries(SOURCE_TIERS)) {
+      const key = normalizeSourceName(name);
+      if (!normalizedTiers.has(key)) normalizedTiers.set(key, tier);
+    }
+  }
+  return normalizedTiers;
 }

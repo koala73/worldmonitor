@@ -54,8 +54,12 @@ const CURATED = (() => {
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
   const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
   assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
-  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
-  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  // Opt-in providers (reachable only by name, e.g. through a customer AI
+  // routing policy) are still valid LlmProviderName values.
+  const llmOptInProviders = llmSrc.match(/const OPT_IN_PROVIDERS = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmOptInProviders, 'expected OPT_IN_PROVIDERS in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\] \| typeof OPT_IN_PROVIDERS\[number\];/);
+  const llmProviders = new Set([...`${llmProviderChain[1]}${llmOptInProviders[1]}`.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
@@ -647,12 +651,12 @@ function honeypotRequestViolations(spec, label) {
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
-    assert.equal(serviceSpecs.length, 38, `expected 38 service specs, found ${serviceSpecs.length}`);
+    assert.equal(serviceSpecs.length, 39, `expected 39 service specs, found ${serviceSpecs.length}`);
     const total = serviceSpecs.reduce((sum, file) => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 237, `expected 237 OpenAPI operations, found ${total}`);
+    assert.equal(total, 260, `expected 260 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -664,9 +668,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 237);
+    assert.equal(totals.operations, 260);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 237);
+    assert.equal(totals.responseExpected, 260);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -705,14 +709,36 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 237);
+    assert.equal(operations, 260);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 237);
-    assert.equal(result.responseExpected, 237);
+    assert.equal(result.operations, 260);
+    assert.equal(result.responseExpected, 260);
+  });
+
+  it('labels aircraft emergency examples synthetic and documents projected response shapes', () => {
+    const specs = [
+      JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8')),
+      loadYaml(readFileSync(resolve(apiDir, 'AviationService.openapi.yaml'), 'utf8')),
+      loadUnifiedOpenApiSpec(),
+    ];
+    for (const spec of specs) {
+      const operation = spec.paths['/api/aviation/v1/list-aircraft-emergencies'].get;
+      const example = operation.responses['200'].content['application/json'].example;
+      assert.equal(example.feeds[0].squawk, '7500');
+      assert.equal(example.feeds[0].status, 'available');
+      assert.equal(example.feeds[0].source, 'adsb.lol');
+      assert.equal(example.observations[0].address, 'a00001');
+      assert.equal(example.observations[0].squawk, '7500');
+      assert.equal(example.observations[0].observedAt, 0);
+      assert.equal(example.observations[0].militaryFlag, 'unknown');
+      assert.match(example.observations[0].description, /Synthetic example/);
+      assert.match(operation.description, /200 schema describes the unprojected response/);
+      assert.match(operation.description, /array, scalar, or null/);
+    }
   });
 
   // A honeypot field (hidden anti-bot input) is silently discarded by the
@@ -753,6 +779,26 @@ describe('OpenAPI examples contract', () => {
 });
 
 describe('OpenAPI curated example values', () => {
+  it('shows USD gold reserve quantities as unmeasured in all published examples', () => {
+    const specs = [
+      ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
+      ['MarketService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MarketService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/market/v1/get-gold-intelligence'].get.responses['200'].content[JSON_MEDIA].example;
+      assert.equal(example.cbReserves.indicator, 'IRFCLDT1_IRFCL56_USD', label);
+      assert.equal(example.cbReserves.valueIsOunces, false, label);
+      assert.equal(example.cbReserves.totalTonnes, 0, label);
+      assert.equal(example.cbReserves.topHolders[0].tonnes, 0, label);
+      assert.ok(example.cbReserves.topHolders[0].pctOfReserves > 0, label);
+      assert.deepEqual(example.cbReserves.topBuyers12m, [], label);
+      assert.deepEqual(example.cbReserves.topSellers12m, [], label);
+      assert.ok(example.goldPrice > 0, label);
+      assert.equal(example.unavailable, false, label);
+    }
+  });
+
   // These parameters have accepted-value sets the field-name heuristic can't
   // infer; the injector's override map pins each to a real value the handlers
   // accept. Guards against a regression to a rejected placeholder.
@@ -802,11 +848,53 @@ describe('OpenAPI curated example values', () => {
     }
   });
 
-  it('uses an ISO datetime example for webcam lastUpdated', () => {
-    const spec = JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'));
-    const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
-      ?.responses?.['200']?.content?.[JSON_MEDIA]?.example?.lastUpdated;
-    assert.equal(example, '2026-01-15T12:00:00.000Z');
+  it('keeps every probability example inside [0, 1]', () => {
+    const outOfRange = [];
+    const walk = (value, path) => {
+      if (Array.isArray(value)) return value.forEach((item, index) => walk(item, `${path}[${index}]`));
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (/probability$/i.test(key) && typeof child === 'number' && (child < 0 || child > 1)) outOfRange.push(`${path}.${key}=${child}`);
+        walk(child, `${path}.${key}`);
+      }
+    };
+    for (const file of serviceSpecs) walk(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')).paths, file);
+    assert.deepEqual(outOfRange, []);
+  });
+
+  it('publishes a consistent successful webcam snapshot example', () => {
+    const specs = [
+      ['WebcamService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'WebcamService.openapi.json'), 'utf8'))],
+      ['WebcamService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'WebcamService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths?.['/api/webcam/v1/get-webcam-image']?.get
+        ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.mediaType, 'snapshot', `${label}: media type`);
+      assert.equal(example?.playerUrl, '', `${label}: snapshot has no player`);
+      assert.equal(example?.error, '', `${label}: successful response has no error`);
+      assert.match(example?.thumbnailUrl, /^https:\/\//, `${label}: snapshot image`);
+      assert.match(example?.windyUrl, /^https:\/\/www\.windy\.com\/webcams\/\d+$/, `${label}: provider link`);
+      assert.equal(example?.lastUpdated, '2026-01-15T12:00:00.000Z', `${label}: capture time`);
+      assert.ok(Number.isFinite(example?.resolvedAt), `${label}: resolution timestamp`);
+      assert.ok(example.resolvedAt >= Date.parse(example.lastUpdated), `${label}: resolution follows capture`);
+    }
+  });
+
+  it('uses an ISO3 country and a real DTM operation for GetInternalDisplacement', () => {
+    const specs = [
+      ['DisplacementService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'DisplacementService.openapi.json'), 'utf8'))],
+      ['DisplacementService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'DisplacementService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const op = spec.paths?.['/api/displacement/v1/get-internal-displacement']?.get;
+      assert.equal(op?.parameters?.find((p) => p.name === 'country_code')?.example, 'SDN', `${label}: country_code`);
+      const example = op?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+      assert.equal(example?.operations?.[0]?.countryCode, 'SDN', `${label}: operation country`);
+      assert.equal(example?.operations?.[0]?.regions?.[0]?.pcode, 'SD11', `${label}: region P-code`);
+    }
   });
 
   it('uses a published wire id and UTC-midnight epoch for GetUsInterestRates', () => {
@@ -944,6 +1032,33 @@ describe('OpenAPI curated example values', () => {
 
     for (const [label, spec] of specs) {
       assertScenarioStatusPollExample(spec, label);
+    }
+  });
+
+  it('uses valid available demographics observations in each published example', () => {
+    const specs = [
+      ['ResilienceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ResilienceService.openapi.json'), 'utf8'))],
+      ['ResilienceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ResilienceService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadUnifiedOpenApiSpec()],
+    ];
+    for (const [label, spec] of specs) {
+      const example = spec.paths['/api/resilience/v1/get-demographics-capability'].get.responses['200'].content[JSON_MEDIA].example;
+      let checked = 0;
+      for (const group of Object.values(example)) {
+        if (!group || typeof group !== 'object' || Array.isArray(group)) continue;
+        for (const [field, observation] of Object.entries(group)) {
+          if (!observation || typeof observation !== 'object' || observation.available !== true) continue;
+          checked += 1;
+          assert.ok(Number.isInteger(observation.year) && observation.year >= 1900
+            && observation.year <= new Date().getUTCFullYear() + 50, `${label}: ${field} needs a valid source year`);
+          assert.ok(Number.isFinite(observation.value) && observation.value >= 0, `${label}: ${field} needs a valid value`);
+          assert.ok(observation.source?.trim(), `${label}: ${field} needs source attribution`);
+          const unit = field.endsWith('Years') ? 'years' : field.endsWith('People') ? 'people'
+            : field === 'researchersPerMillion' ? 'people per million' : 'percent';
+          assert.equal(observation.unit, unit, `${label}: ${field} unit must match the reader contract`);
+        }
+      }
+      assert.ok(checked > 0, `${label}: expected available observations`);
     }
   });
 

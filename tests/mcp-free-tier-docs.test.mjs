@@ -28,7 +28,9 @@ describe('MCP free-tier discovery parity', () => {
       registryFreeTools,
       'server-card free access must derive from the same registry roster as tools/list',
     );
-    assert.deepEqual(cardFreeTools, ['get_sources'], 'get_sources must remain the sole free data tool');
+    // get_sources is the sole free DATA tool. report_issue is free so keyless
+    // agents can report problems; it reads no data (#8721).
+    assert.deepEqual(cardFreeTools, ['get_sources', 'report_issue'], 'get_sources must remain the sole free data tool');
   });
 
   it('does not advertise describe_tool as anonymous', () => {
@@ -63,14 +65,17 @@ describe('MCP free-tier discovery parity', () => {
     // calls/day; pin both halves so the card cannot drift from the catalog again.
     const starter = PRODUCT_CATALOG.api_starter.features.planLimits;
     const business = PRODUCT_CATALOG.api_business.features.planLimits;
+    const enterprise = PRODUCT_CATALOG.enterprise.features.planLimits;
     assert.equal(starter.mcpCallsPerDay, SHARED_API_BUDGET, 'API Starter shares its REST budget');
     assert.equal(business.mcpCallsPerDay, SHARED_API_BUDGET, 'API Business shares its REST budget');
+    assert.equal(enterprise.mcpCallsPerDay, SHARED_API_BUDGET, 'Enterprise shares its REST budget');
     assert.equal(card.rateLimits.dailyByPlan.apiStarter, starter.apiRequestsPerDay);
     assert.equal(card.rateLimits.dailyByPlan.apiBusiness, business.apiRequestsPerDay);
+    assert.equal(card.rateLimits.dailyByPlan.enterprise, enterprise.apiRequestsPerDay);
     assert.equal(card.rateLimits.dailyByPlan.pro, PRODUCT_CATALOG.pro_monthly.features.planLimits.mcpCallsPerDay);
     assert.deepEqual(
       card.rateLimits.dailyBudgetSharedWithRestByPlan,
-      ['apiStarter', 'apiBusiness'],
+      ['apiStarter', 'apiBusiness', 'enterprise'],
       'the card must say WHICH plans share, or 1000 reads as a separate MCP allowance',
     );
     assert.doesNotMatch(overview, /wm_….*no MCP daily reservation/i);

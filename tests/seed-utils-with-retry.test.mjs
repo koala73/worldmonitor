@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   withRetry,
+  parseRedisCommandResponse,
   parseRetryAfterMs,
   PERMANENT_4XX_STATUSES,
   getResponseHeader,
@@ -71,6 +72,32 @@ describe('parseRetryAfterMs', () => {
 });
 
 describe('withRetry', () => {
+  it('caps exponential waits with jitter and preserves longer provider cooldowns', async t => {
+    const sleeps = [];
+    t.mock.method(globalThis, 'setTimeout', (callback, ms) => {
+      sleeps.push(ms);
+      queueMicrotask(callback);
+      return 0;
+    });
+    const random = t.mock.method(Math, 'random', () => 0);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [40_000, 48_000, 48_000]);
+    sleeps.length = 0;
+    random.mock.mockImplementation(() => 1);
+    await assert.rejects(withRetry(async () => { throw new Error('transient'); }, 3, 40_000), /transient/);
+    assert.deepEqual(sleeps, [50_000, 60_000, 60_000]);
+    sleeps.length = 0;
+    await assert.rejects(withRetry(async () => {
+      throw Object.assign(new Error('quota'), { retryAfterMs: 120_000 });
+    }, 1), /quota/);
+    assert.deepEqual(sleeps, [120_000], 'provider cooldowns must not be undercut');
+  });
+
+  it('rejects unbounded retry configurations before calling the operation', async () => {
+    for (const retries of [Infinity, -1, 11, 1.5]) {
+      await assert.rejects(withRetry(() => assert.fail('must not dispatch'), retries), RangeError);
+    }
+  });
   it('short-circuits on err.nonRetryable instead of burning the retry budget', async () => {
     let attempts = 0;
     const t0 = Date.now();
@@ -181,7 +208,7 @@ describe('withRetry', () => {
 // without hitting a real Redis. atomicPublish's three calls (staging
 // SET, canonical SET, staging DEL) all go through the same fetch.
 
-import { atomicPublish } from '../scripts/_seed-utils.mjs';
+import { atomicPublish, MAX_PAYLOAD_BYTES, MAX_SEEDED_VALUE_BYTES } from '../scripts/_seed-utils.mjs';
 
 function mockFetch(responses) {
   let i = 0;
@@ -214,6 +241,49 @@ describe('atomicPublish retry-on-transient (WM 2026-05-10 incident fix)', () => 
     if (ORIG_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
     else process.env.UPSTASH_REDIS_REST_TOKEN = ORIG_TOKEN;
   }
+
+  it('keeps the default 5 MiB policy and bounds an explicit larger payload budget', async () => {
+    let calls = 0;
+    setup(async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ result: 'OK' }));
+    });
+    try {
+      const data = { evidence: 'x'.repeat(MAX_PAYLOAD_BYTES) };
+      await assert.rejects(atomicPublish('test:ledger', data), /5MB limit/);
+      assert.equal(calls, 0);
+      const result = await atomicPublish('test:ledger', data, null, undefined, { maxPayloadBytes: MAX_SEEDED_VALUE_BYTES });
+      assert.ok(result.payloadBytes > MAX_PAYLOAD_BYTES);
+      assert.equal(calls, 3);
+      await assert.rejects(atomicPublish('test:ledger', { evidence: 'x'.repeat(MAX_SEEDED_VALUE_BYTES) }, null, undefined, {
+        maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
+      }), /8MB limit/);
+      for (const maxPayloadBytes of [0, -1, NaN, Infinity, MAX_SEEDED_VALUE_BYTES + 1]) {
+        await assert.rejects(atomicPublish('test:ledger', {}, null, undefined, { maxPayloadBytes }), /Invalid maxPayloadBytes/);
+      }
+      assert.equal(calls, 3, 'rejected payloads never reach Redis');
+    } finally {
+      teardown();
+    }
+  });
+
+  it('rejects an escaped Redis request above 10 MB before staging a larger ledger', async () => {
+    let calls = 0;
+    setup(async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ result: 'OK' }));
+    });
+    try {
+      const data = { evidence: '"'.repeat(2_700_000) };
+      assert.ok(Buffer.byteLength(JSON.stringify(data)) < MAX_SEEDED_VALUE_BYTES);
+      await assert.rejects(atomicPublish('test:ledger', data, null, 60, {
+        maxPayloadBytes: MAX_SEEDED_VALUE_BYTES,
+      }), /Redis publish request too large:.*10000000-byte limit/);
+      assert.equal(calls, 0, 'neither staging nor canonical writes start');
+    } finally {
+      teardown();
+    }
+  });
 
   it('succeeds without retry when all calls return 200 (happy path unchanged)', async () => {
     let calls = 0;
@@ -431,7 +501,7 @@ describe('httpRetryError', () => {
 // than this". Neither answers the question that actually matters when a
 // provider hands back a long Retry-After: is there any point retrying at all?
 //
-// Production (seed-insights, 2026-08-03 12:10Z/12:20Z): groq returned 429 with
+// Production (seed-insights, 2026-08-03 12:10Z/12:20Z): a provider returned 429 with
 // "tokens per day (TPD): Limit 100000, Used 100000 ... try again in 20m13.92s".
 // The 1213s hint was clamped to the 10s ceiling and retried twice, burning 20s
 // of a 60s LLM budget and a 120s seed lock against a wall that could not move
@@ -523,7 +593,7 @@ describe('httpRetryError — remainingBudgetMs (#6110)', () => {
 
   // Review caught this: `parseRetryAfterMs` clamps at MAX_RETRY_AFTER_MS (60s),
   // so judging futility on the PARSED value silently reinstated the bug for any
-  // caller with a budget >= 60s — groq's 1213s reads as 60s there, and 60s is
+  // caller with a budget >= 60s — a 1213s hint reads as 60s there, and 60s is
   // not > 60s. The verdict now uses the uncapped hint. Both live callers happen
   // to cap usable budget below 60s (insights 55s, narrative 40s), so this was
   // latent rather than live — and would have shipped as a comment claiming a
@@ -609,4 +679,15 @@ describe('createLlmBudgetError / isLlmBudgetError', () => {
     assert.equal(isLlmBudgetError(new Error('boom')), false);
     assert.equal(isLlmBudgetError(null), false);
   });
+});
+
+it('does not shorten a Redis provider cooldown beyond the operation wait budget', async () => {
+  for (const hint of ['120', new Date(Date.now() + 120_000).toUTCString()]) {
+    let calls = 0;
+    await assert.rejects(withRetry(async () => {
+      calls++;
+      return parseRedisCommandResponse(new Response('', { status: 429, headers: { 'Retry-After': hint } }));
+    }), error => error.nonRetryable && error.retryAfterMs > 60_000);
+    assert.equal(calls, 1, 'must not issue an early retry');
+  }
 });

@@ -17,7 +17,7 @@ describe('lcp attribution helpers', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
-        location: { href: 'https://worldmonitor.app/dashboard' },
+        location: new URL('https://worldmonitor.app/dashboard'),
         get sessionStorage() { throw new Error('storage blocked'); },
         get localStorage() { throw new Error('storage blocked'); },
       },
@@ -119,7 +119,7 @@ describe('lcp attribution helpers', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
-        location: { href: 'https://worldmonitor.app/dashboard?wm_lcp_debug=1' },
+        location: new URL('https://worldmonitor.app/dashboard?wm_lcp_debug=1'),
         sessionStorage: { getItem: () => null },
         localStorage: { getItem: () => null },
       },
@@ -136,7 +136,7 @@ describe('lcp attribution helpers', () => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: {
-        location: { href: 'https://worldmonitor.app/dashboard?wm_lcp_text=1' },
+        location: new URL('https://worldmonitor.app/dashboard?wm_lcp_text=1'),
         sessionStorage: { getItem: () => null },
         localStorage: { getItem: () => null },
       },

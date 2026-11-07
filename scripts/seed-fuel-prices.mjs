@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import ExcelJS from 'exceljs';
+import { unzipSync, strFromU8 } from 'fflate';
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, getSharedFxRates, SHARED_FX_FALLBACKS, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -12,7 +13,7 @@ if (_proxyAuth) {
   const hostHint = _proxyAuth.split('@').pop().split(':')[0];
   console.log(`  [PROXY] configured via PROXY_URL (host=${hostHint})`);
 } else {
-  console.warn(`  [PROXY] NOT configured — PROXY_URL empty; datacenter-blocked sources (NZ/BR/MX) will fail`);
+  console.warn(`  [PROXY] NOT configured — PROXY_URL empty; datacenter-blocked sources (BR/MX) will fail`);
 }
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -64,7 +65,7 @@ async function fetchWithProxyFallback(url, { timeoutMs = 20_000, accept = 'text/
 }
 
 // Proxy-first: try proxy, fall back to direct. Use for sources known to block
-// datacenter IPs (NZ MBIE via Cloudflare, gov.br TLS failures from Railway,
+// datacenter IPs (gov.br TLS failures from Railway,
 // MX CRE with intermittent IPv4 routing). Saves a failed direct call every run.
 async function fetchWithProxyPreferred(url, { timeoutMs = 20_000, accept = 'text/csv,text/plain,*/*' } = {}) {
   if (_proxyAuth) {
@@ -130,7 +131,8 @@ const EU_COUNTRY_INFO = {
   SE: { name: 'Sweden',       currency: 'SEK', flag: '🇸🇪' },
 };
 
-function toUsdPerLiter(localPrice, currency, fxRates) {
+/** Convert local currency per litre with shared FX, or return null when no rate exists. */
+export function toUsdPerLiter(localPrice, currency, fxRates) {
   if (currency === 'USD') return localPrice;
   const rate = fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? null;
   if (!rate) return null;
@@ -513,54 +515,138 @@ async function fetchBrazil() {
   }
 }
 
-async function fetchNewZealand() {
-  // Direct MBIE CSV. Filter: Variable='Board price', Region='National', latest week.
-  // Fuel: 'Regular Petrol' -> gasoline, 'Diesel' -> diesel. Unit: NZD/litre.
-  const url = 'https://www.mbie.govt.nz/assets/Data-Files/Energy/Weekly-fuel-price-monitoring/weekly-table.csv';
-  try {
-    console.log(`  [NZ] CSV: ${url}`);
-    // MBIE's CDN 403s Railway datacenter IPs (Cloudflare IP reputation). Proxy-preferred + retry.
-    const resp = await withFuelRetry('NZ', () => fetchWithProxyPreferred(url, { timeoutMs: 30000 }));
-    const text = await resp.text();
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return [];
+// New Zealand: the Commerce Commission's fuel price monitoring data (CC BY 4.0).
+// MBIE's weekly CSV, the previous source, sits behind an Incapsula JS bot wall
+// (#4010). The regulator publishes a spreadsheet of daily national average retail
+// prices (NZ c/L) with each fortnightly report, under a dated file name, so the
+// newest link is read from the reports page.
+const COMCOM_ORIGIN = 'https://www.comcom.govt.nz';
+const COMCOM_FUEL_PAGE = `${COMCOM_ORIGIN}/regulated-industries/fuel/quarterly-monitoring-reports/`;
+const HONEST_UA = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
+const NZ_MAX_AGE_DAYS = 35;
+const XLSX_MAX_COLUMNS = 16_384;
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
-    // MBIE data uses simple numeric values — no quoted commas in value fields, bare split is safe.
-    // Live header (as of 2026): Week,Date,Fuel,Variable,Value,Unit,Status — no Region column.
-    // Values are in NZD c/L (cents per litre) — divide by 100 for NZD/L.
-    const header = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
-    const weekIdx = header.indexOf('week');
-    const varIdx = header.indexOf('variable');
-    const fuelIdx = header.indexOf('fuel');
-    const valIdx = header.indexOf('value');
-    if ([weekIdx, varIdx, fuelIdx, valIdx].includes(-1)) {
-      console.warn('  [NZ] CSV header missing expected columns:', header.join(','));
+export function latestComComFuelDataUrl(html) {
+  let best = null;
+  for (const m of String(html).matchAll(/href="(\/assets\/[^"]*?Fuel-price-monitoring-Data-to-(\d{1,2})-([A-Za-z]+)-(\d{4})\.xlsx)"/g)) {
+    const month = MONTHS.indexOf(m[3].toLowerCase());
+    if (month < 0) continue;
+    const time = Date.UTC(Number(m[4]), month, Number(m[2]));
+    if (!best || time > best.time) best = { time, url: COMCOM_ORIGIN + m[1] };
+  }
+  return best?.url ?? null;
+}
+
+function xmlText(s) {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => {
+    const k = e.toLowerCase();
+    if (k[0] === '#') return String.fromCodePoint(k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10));
+    return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[k];
+  });
+}
+
+function joinedText(xml) {
+  return [...xml.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)].map(m => xmlText(m[1])).join('');
+}
+
+// Reads the first worksheet as rows of strings. ExcelJS cannot load workbooks whose
+// SpreadsheetML elements carry a namespace prefix (<x:worksheet>, as the OpenXML SDK
+// writes them), so this reads the parts directly and accepts either form.
+export function readXlsxFirstSheet(bytes) {
+  const files = unzipSync(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+  const part = name => (files[name] ? strFromU8(files[name]) : null);
+  let sheetPath = 'xl/worksheets/sheet1.xml';
+  const workbook = part('xl/workbook.xml');
+  const rels = part('xl/_rels/workbook.xml.rels');
+  const firstSheetId = workbook?.match(/<(?:\w+:)?sheet\b[^>]*?\br:id="([^"]+)"/)?.[1];
+  if (firstSheetId && rels) {
+    const target = [...rels.matchAll(/<Relationship\b[^>]*>/g)].map(m => m[0])
+      .find(tag => tag.includes(`Id="${firstSheetId}"`))?.match(/Target="([^"]+)"/)?.[1];
+    if (target) sheetPath = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
+  }
+  const sheet = part(sheetPath);
+  if (!sheet) throw new Error(`worksheet ${sheetPath} missing`);
+  const shared = [...(part('xl/sharedStrings.xml') ?? '').matchAll(/<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g)].map(m => joinedText(m[1]));
+  const rows = [];
+  for (const rowMatch of sheet.matchAll(/<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
+    const row = [];
+    let position = 0;
+    for (const cell of rowMatch[1].matchAll(/<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g)) {
+      const attrs = cell[1];
+      const ref = attrs.match(/\br="([A-Z]+)\d+"/)?.[1];
+      const col = ref ? [...ref].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1 : position;
+      // Excel stops at column XFD (16,384). A larger index would pad the row
+      // until the heap runs out, which no try/catch can recover from.
+      if (col >= XLSX_MAX_COLUMNS) throw new Error(`cell column ${ref ?? col} is past the last Excel column`);
+      position = col + 1;
+      const body = cell[2] ?? '';
+      const type = attrs.match(/\bt="([^"]+)"/)?.[1];
+      const raw = body.match(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/)?.[1];
+      let value = '';
+      if (type === 's' && raw != null) value = shared[Number(raw)] ?? '';
+      else if (type === 'inlineStr') value = joinedText(body);
+      else if (raw != null) value = xmlText(raw);
+      while (row.length < col) row.push('');
+      row[col] = value;
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// rows: [DATE, FUEL_TYPE, REFINED_COSTS, RETAIL_PRICES_AVG], DATE as d/mm/yyyy and
+// prices in NZ cents per litre. Returns the latest day carrying both 91 and diesel.
+export function parseNzComComFuel(rows, nowMs = Date.now()) {
+  const header = (rows?.[0] ?? []).map(h => String(h).trim().toUpperCase());
+  if (header.join('|') !== 'DATE|FUEL_TYPE|REFINED_COSTS|RETAIL_PRICES_AVG') return null;
+  const byDay = new Map();
+  for (const [date, fuel, , retail] of rows.slice(1)) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(date ?? '').trim());
+    if (!m) continue;
+    const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    const day = byDay.get(iso) ?? {};
+    // Blank cells read as '' and must stay missing, not become 0.
+    day[String(fuel).trim()] = String(retail ?? '').trim() === '' ? NaN : Number(retail);
+    byDay.set(iso, day);
+  }
+  // NZ pump prices run roughly 150-500 c/L; anything far outside means a unit
+  // change or a bad cell. Only a day where both prices pass is used, so a bad
+  // newest row falls back to the day before instead of publishing a null fuel.
+  const plausible = cents => Number.isFinite(cents) && cents >= 50 && cents <= 1000;
+  const latest = [...byDay.keys()].sort().reverse().find(iso => plausible(byDay.get(iso)['91']) && plausible(byDay.get(iso).Diesel));
+  if (!latest || nowMs - Date.parse(`${latest}T00:00:00Z`) > NZ_MAX_AGE_DAYS * 86_400_000) return null;
+  const litre = cents => +(cents / 100).toFixed(4);
+  return {
+    code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
+    gasoline: { localPrice: litre(byDay.get(latest)['91']), grade: 'Regular 91', source: 'comcom.govt.nz', observedAt: latest },
+    diesel: { localPrice: litre(byDay.get(latest).Diesel), grade: 'Diesel', source: 'comcom.govt.nz', observedAt: latest },
+  };
+}
+
+async function fetchComCom(url, accept) {
+  const r = await globalThis.fetch(url, { headers: { 'User-Agent': HONEST_UA, Accept: accept }, signal: AbortSignal.timeout(30_000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+
+async function fetchNewZealand() {
+  try {
+    const page = await withFuelRetry('NZ', () => fetchComCom(COMCOM_FUEL_PAGE, 'text/html'));
+    const url = latestComComFuelDataUrl(await page.text());
+    if (!url) {
+      console.warn('  [NZ] no fuel price data spreadsheet linked from the Commerce Commission page');
       return [];
     }
-
-    const rows = lines.slice(1).map(l => l.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
-    // All rows are national averages (no region column); filter to Board price only
-    const boardRows = rows.filter(r => r[varIdx] === 'Board price');
-    if (!boardRows.length) return [];
-
-    const maxWeek = boardRows.map(r => r[weekIdx]).filter(Boolean).sort().at(-1);
-    const latest = boardRows.filter(r => r[weekIdx] === maxWeek);
-
-    const gasRow = latest.find(r => r[fuelIdx] === 'Regular Petrol');
-    const dslRow = latest.find(r => r[fuelIdx] === 'Diesel');
-    // Values are c/L — divide by 100 to get NZD/L
-    const gasPrice = gasRow ? (parseFloat(gasRow[valIdx]) || null) && +(parseFloat(gasRow[valIdx]) / 100).toFixed(4) : null;
-    const dslPrice = dslRow ? (parseFloat(dslRow[valIdx]) || null) && +(parseFloat(dslRow[valIdx]) / 100).toFixed(4) : null;
-
-    const dateIdx = header.indexOf('date');
-    const obsDate = dateIdx >= 0 ? (latest[0]?.[dateIdx] ?? maxWeek) : maxWeek;
-
-    console.log(`  [NZ] Gasoline=${gasPrice} NZD/L, Diesel=${dslPrice} NZD/L (week=${maxWeek})`);
-    return [{
-      code: 'NZ', name: 'New Zealand', currency: 'NZD', flag: '🇳🇿',
-      gasoline: gasPrice != null ? { localPrice: gasPrice, grade: 'Regular', source: 'mbie.govt.nz', observedAt: obsDate } : null,
-      diesel: dslPrice != null ? { localPrice: dslPrice, grade: 'Diesel', source: 'mbie.govt.nz', observedAt: obsDate } : null,
-    }];
+    console.log(`  [NZ] XLSX: ${url}`);
+    const resp = await withFuelRetry('NZ', () => fetchComCom(url, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*'));
+    const entry = parseNzComComFuel(readXlsxFirstSheet(new Uint8Array(await resp.arrayBuffer())));
+    if (!entry) {
+      console.warn('  [NZ] spreadsheet layout changed or latest day older than 35 days');
+      return [];
+    }
+    console.log(`  [NZ] Gasoline=${entry.gasoline?.localPrice} NZD/L, Diesel=${entry.diesel?.localPrice} NZD/L (${entry.gasoline?.observedAt ?? entry.diesel?.observedAt})`);
+    return [entry];
   } catch (err) {
     console.warn(`  [NZ] fetchNewZealand error: ${err.message}`);
     return [];
@@ -621,6 +707,254 @@ async function fetchUK_DESNZ() {
   }
 }
 
+// Retail prices the regional energy feeds already publish under
+// energy:regional:<id>:v1 (scripts/_regional-energy-source.mjs, #9893, #10051). Reading
+// them from Redis keeps each provider fetched once. ANP backs up fetchBrazil,
+// which runs first and wins when it succeeds.
+const LITRES_PER_US_GALLON = 3.785411784;
+const REGIONAL_FUEL_SOURCES = [
+  {
+    id: 'mem', code: 'GT', name: 'Guatemala', currency: 'GTQ', flag: '🇬🇹', source: 'mem.gob.gt', maxAgeDays: 21,
+    // Averages MEM monitors in Guatemala City, per US gallon.
+    gasoline: { area: 'Gasolina Regular; Guatemala City', unit: 'GTQ/gal', grade: 'Regular', perLitre: 1 / LITRES_PER_US_GALLON },
+    diesel: { area: 'Diésel; Guatemala City', unit: 'GTQ/gal', grade: 'Diesel', perLitre: 1 / LITRES_PER_US_GALLON },
+  },
+  {
+    // Schedule 1 is Viti Levu within 3 km of a public road, the main schedule.
+    id: 'fccc', code: 'FJ', name: 'Fiji', currency: 'FJD', flag: '🇫🇯', source: 'fccc.gov.fj', maxAgeDays: 45,
+    gasoline: { area: 'Motor Spirit; Schedule 1', unit: 'FJD/l', grade: 'Motor Spirit' },
+    diesel: { area: 'Diesel; Schedule 1', unit: 'FJD/l', grade: 'Diesel' },
+  },
+  {
+    id: 'iccc', code: 'PG', name: 'Papua New Guinea', currency: 'PGK', flag: '🇵🇬', source: 'iccc.gov.pg', maxAgeDays: 45,
+    gasoline: { area: 'Petrol; Port Moresby', unit: 'PGK/l', grade: 'Petrol' },
+    diesel: { area: 'Diesel; Port Moresby', unit: 'PGK/l', grade: 'Diesel' },
+  },
+  {
+    id: 'anp', code: 'BR', name: 'Brazil', currency: 'BRL', flag: '🇧🇷', source: 'gov.br/anp', maxAgeDays: 21,
+    gasoline: { area: 'GASOLINA COMUM', unit: 'BRL/l', grade: 'Regular' },
+    diesel: { area: 'OLEO DIESEL', unit: 'BRL/l', grade: 'Diesel' },
+  },
+
+  // Batch 3 (#10051). Timor-Leste's ANP lists every station with no national
+  // price, so it is served on the energy profile only.
+  {
+    id: 'qatarenergy', code: 'QA', name: 'Qatar', currency: 'QAR', flag: '🇶🇦', source: 'qatarenergy.qa', maxAgeDays: 45,
+    gasoline: { area: 'Gasoline Super', unit: 'QAR/l', grade: 'Super 95' },
+    diesel: { area: 'Diesel', unit: 'QAR/l', grade: 'Diesel' },
+  },
+  {
+    id: 'erb', code: 'ZM', name: 'Zambia', currency: 'ZMW', flag: '🇿🇲', source: 'erb.org.zm', maxAgeDays: 45,
+    gasoline: { area: 'Petrol', unit: 'ZMW/l', grade: 'Petrol' },
+    diesel: { area: 'Diesel', unit: 'ZMW/l', grade: 'Diesel' },
+  },
+  {
+    // The NPA lists every marketer; its average row is the headline.
+    id: 'npa', code: 'GH', name: 'Ghana', currency: 'GHS', flag: '🇬🇭', source: 'npa.gov.gh', maxAgeDays: 21,
+    gasoline: { area: 'Regular Petrol RON 91; average of OMCs', unit: 'GHS/l', grade: 'RON 91' },
+    diesel: { area: 'Diesel; average of OMCs', unit: 'GHS/l', grade: 'Diesel' },
+  },
+  {
+    // Prices are set by joint order and hold until the next one, so the age budget is long.
+    id: 'sonabhy', code: 'BF', name: 'Burkina Faso', currency: 'XOF', flag: '🇧🇫', source: 'sonabhy.bf', maxAgeDays: 400,
+    gasoline: { area: 'Super 91; Ouagadougou', unit: 'XOF/l', grade: 'Super 91' },
+    diesel: { area: 'Gazoil; Ouagadougou', unit: 'XOF/l', grade: 'Diesel' },
+  },
+  {
+    id: 'zera', code: 'ZW', name: 'Zimbabwe', currency: 'USD', flag: '🇿🇼', source: 'zera.co.zw', maxAgeDays: 45,
+    gasoline: { area: 'Petrol Blend (E20)', unit: 'USD/l', grade: 'E20' },
+    diesel: { area: 'Diesel (D50)', unit: 'USD/l', grade: 'D50' },
+  },
+  {
+    // The DOE monitors Metro Manila by city; the capital's common price is the headline.
+    id: 'doe', code: 'PH', name: 'Philippines', currency: 'PHP', flag: '🇵🇭', source: 'doe.gov.ph', maxAgeDays: 21,
+    gasoline: { area: 'RON 91; Manila City; common price', unit: 'PHP/l', grade: 'RON 91' },
+    diesel: { area: 'Diesel; Manila City; common price', unit: 'PHP/l', grade: 'Diesel' },
+  },
+  {
+    id: 'creg', code: 'CO', name: 'Colombia', currency: 'COP', flag: '🇨🇴', source: 'creg.gov.co', maxAgeDays: 45,
+    gasoline: { area: 'Gasolina MC; Bogotá', unit: 'COP/gal', grade: 'Regular', perLitre: 1 / LITRES_PER_US_GALLON },
+    diesel: { area: 'ACPM; Bogotá', unit: 'COP/gal', grade: 'Diesel', perLitre: 1 / LITRES_PER_US_GALLON },
+  },
+  {
+    // The Executive's maximum pump prices, which the stations charge.
+    id: 'ursea', code: 'UY', name: 'Uruguay', currency: 'UYU', flag: '🇺🇾', source: 'gub.uy/ursea', maxAgeDays: 45,
+    gasoline: { area: 'Gasolina Súper 95', unit: 'UYU/l', grade: 'Super 95' },
+    diesel: { area: 'Gas Oil 50S', unit: 'UYU/l', grade: 'Diesel 50S' },
+  },
+];
+export const REGIONAL_FUEL_CURRENCIES = [...new Set(REGIONAL_FUEL_SOURCES.map(s => s.currency))];
+
+// getSharedFxRates fetches only the first five currencies from Yahoo when the shared
+// cache lacks them; the rest use SHARED_FX_FALLBACKS. Currencies with no fallback go
+// first so their countries are not dropped for want of a rate, then EUR, which prices
+// every EU row. (EU rows are all published as EUR, so no BGN quote is needed.)
+export const FUEL_FX_CURRENCIES = (() => {
+  const all = [...new Set(['EUR', 'MYR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BRL', 'NZD', 'GBP', 'NOK', 'ISK', 'TWD', ...REGIONAL_FUEL_CURRENCIES])];
+  return [...all.filter(c => SHARED_FX_FALLBACKS[c] == null), ...all.filter(c => SHARED_FX_FALLBACKS[c] != null)];
+})();
+
+/** Accept a real observation day within its source's age limit, never a future day. */
+function fuelDateIsFresh(date, maxAgeDays, nowMs) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) return false;
+  const ms = Date.parse(`${date}T00:00:00Z`);
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === date
+    && ms <= nowMs && nowMs - ms <= maxAgeDays * 86400000;
+}
+
+/** Read the newest SSB month in NOK/l, retaining its month start and publication lag. */
+export function parseNorwayFuel(data, nowMs = Date.now()) {
+  // PxWeb JSON keys follow the declared dimension order; never assume row order.
+  const dimensions = data?.columns?.filter(c => c.type !== 'c').map(c => c.code);
+  if (dimensions?.length !== 2 || !dimensions.includes('PetroleumProd') || !dimensions.includes('Tid')
+    || data.columns.find(c => c.type === 'c')?.code !== 'Priser' || !Array.isArray(data.data)) return null;
+  const productIndex = dimensions.indexOf('PetroleumProd'), monthIndex = dimensions.indexOf('Tid');
+  const rows = data.data.filter(r => /^\d{4}M(0[1-9]|1[0-2])$/.test(r.key?.[monthIndex] ?? ''));
+  // Keep the actual month start as observedAt. Age from month end accommodates
+  // SSB's monthly cadence and roughly three-week publication lag.
+  const latest = rows.map(r => r.key[monthIndex]).sort().at(-1);
+  if (!latest) return null;
+  const [year, month] = latest.split('M').map(Number);
+  const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  if (!fuelDateIsFresh(monthEnd, 65, nowMs)) return null;
+  const observedAt = `${year}-${String(month).padStart(2, '0')}-01`;
+  const pick = (product, grade) => {
+    const raw = rows.find(r => r.key[productIndex] === product && r.key[monthIndex] === latest)?.values?.[0];
+    const price = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+    return Number.isFinite(price) && price >= 5 && price <= 60
+      ? { localPrice: price, grade, source: 'Statistics Norway (SSB), table 09654', observedAt } : null;
+  };
+  const gasoline = pick('031', 'RON95 (monthly mean)'), diesel = pick('035', 'Diesel (monthly mean)');
+  return gasoline || diesel ? { code: 'NO', name: 'Norway', currency: 'NOK', flag: '🇳🇴', gasoline, diesel } : null;
+}
+
+/** Query SSB table 09654 for the latest three petrol/diesel months without credentials. */
+export async function fetchNorway() {
+  const response = await globalThis.fetch('https://data.ssb.no/api/v0/en/table/09654', {
+    method: 'POST', headers: { 'User-Agent': CHROME_UA, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(20000),
+    body: JSON.stringify({ query: [
+      { code: 'PetroleumProd', selection: { filter: 'item', values: ['031', '035'] } },
+      { code: 'ContentsCode', selection: { filter: 'item', values: ['Priser'] } },
+      { code: 'Tid', selection: { filter: 'top', values: ['3'] } },
+    ], response: { format: 'json' } }),
+  });
+  if (!response.ok) throw new Error(`SSB HTTP ${response.status}`);
+  const entry = parseNorwayFuel(await response.json());
+  return entry ? [entry] : [];
+}
+
+/** Average ordinary ISK/l station prices using the pinned file revision as the data date. */
+export function parseIcelandFuel(data, revisionDate, nowMs = Date.now()) {
+  const observedAt = revisionDate?.slice(0, 10);
+  if (!fuelDateIsFresh(observedAt, 14, nowMs) || !Array.isArray(data?.stations)) return null;
+  // Ordinary pump prices only; discount/key-card prices are not generally available.
+  const mean = (field, grade) => {
+    const prices = data.stations.map(s => s[field]).filter(v => Number.isFinite(v) && v >= 50 && v <= 600);
+    return prices.length ? { localPrice: +(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(4),
+      grade, source: 'Gasvaktin (community; station mean)', observedAt } : null;
+  };
+  const gasoline = mean('bensin95', 'RON95'), diesel = mean('diesel', 'Diesel');
+  return gasoline || diesel ? { code: 'IS', name: 'Iceland', currency: 'ISK', flag: '🇮🇸', gasoline, diesel } : null;
+}
+
+/** Fetch Gasvaktin at a dated Git revision, omitting it when ISK conversion is unavailable. */
+export async function fetchIceland(fxRates) {
+  // ISK has no static shared fallback. Do not count a source as successful when
+  // neither price can be converted; the cold-cache FX budget requests ISK first.
+  if (!(fxRates.ISK > 0)) return [];
+  const commits = await fetchDirect('https://api.github.com/repos/gasvaktin/gasvaktin/commits?path=vaktin/gas.min.json&per_page=1',
+    { timeoutMs: 20000, accept: 'application/vnd.github+json' });
+  const revision = (await commits.json())?.[0];
+  if (!/^[a-f0-9]{40}$/.test(revision?.sha ?? '')) throw new Error('Gasvaktin revision missing');
+  // Pin content to its date: fetching master after commit discovery could race an update.
+  const response = await fetchDirect(`https://raw.githubusercontent.com/gasvaktin/gasvaktin/${revision.sha}/vaktin/gas.min.json`,
+    { timeoutMs: 20000, accept: 'application/json' });
+  const entry = parseIcelandFuel(await response.json(), revision.commit?.committer?.date);
+  return entry ? [entry] : [];
+}
+
+/** Derive a weekly TWD/l mean weighted by group report counts; reject unusable surveys. */
+export function parseTaiwanFuel(payload, oil, nowMs = Date.now()) {
+  const data = payload?.data;
+  if (payload?.res !== '01' || !Array.isArray(data?.gasoline)
+    || !data.title?.includes(oil === '01' ? '92無鉛汽油' : '柴油')) return null;
+  const period = /^(\d{4})\/(\d{2})\/(\d{2}) ~ (\d{4})\/(\d{2})\/(\d{2})$/.exec(data.start ?? '');
+  if (!period) return null;
+  const start = period.slice(1, 4).join('-'), observedAt = period.slice(4, 7).join('-');
+  if (!fuelDateIsFresh(start, 28, nowMs) || !fuelDateIsFresh(observedAt, 21, nowMs)
+    || Date.parse(observedAt) - Date.parse(start) !== 6 * 86400000) return null;
+  // Weight all surveyed groups by reports, rather than averaging county means
+  // or treating the mainland-only Aavg as a national price. B/C can be absent.
+  let total = 0, count = 0;
+  for (const group of ['A', 'B', 'C']) {
+    const n = data[`${group}num`], price = data[`${group}avg`];
+    if (!Number.isInteger(n) || n < 0) return null;
+    if (n === 0) continue;
+    if (!Number.isFinite(price) || price < 5 || price > 100) return null;
+    total += price * n;
+    count += n;
+  }
+  return count ? { localPrice: +(total / count).toFixed(4), grade: oil === '01' ? 'RON92 (survey mean)' : 'Diesel (survey mean)',
+    source: 'Taiwan MOEA Energy Administration oil111', observedAt } : null;
+}
+
+/** Retry each oil111 grade independently so one outage cannot discard the other grade. */
+export async function fetchTaiwan({ baseDelayMs } = {}) {
+  const results = await Promise.allSettled(['01', '04'].map(oil => withFuelRetry(`TW-${oil}`, async () => {
+    const body = new FormData();
+    body.set('unit', 'week'); body.set('oil', oil); body.set('start', 'lastone');
+    const response = await globalThis.fetch('https://www2.moeaea.gov.tw/oil111/Gasoline/CountyCityAvg/load', {
+      method: 'POST', body, headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) throw new Error(`Taiwan oil111 HTTP ${response.status}`);
+    return parseTaiwanFuel(await response.json(), oil);
+  }, { baseDelayMs })));
+  const [gasoline, diesel] = results.map((result, i) => {
+    if (result.status === 'fulfilled') return result.value;
+    console.warn(`  [TW-${['01', '04'][i]}] request failed: ${result.reason?.message ?? result.reason}`);
+    return null;
+  });
+  return gasoline || diesel ? [{ code: 'TW', name: 'Taiwan', currency: 'TWD', flag: '🇹🇼', gasoline, diesel }] : [];
+}
+
+// snapshots maps a feed id to its cached record (or null). Returns fuel-panel
+// entries with each fuel's newest retail price, or none when it is stale, its
+// unit changed or the record belongs to another feed.
+export function regionalFuelEntries(snapshots, nowMs = Date.now()) {
+  const entries = [];
+  for (const src of REGIONAL_FUEL_SOURCES) {
+    const record = snapshots?.[src.id];
+    if (record?.sourceId !== src.id || !Array.isArray(record.observations)) continue;
+    const pick = fuel => {
+      const newest = record.observations
+        .filter(p => p?.metric === 'fuel.retail_price' && p.area === fuel.area && p.unit === fuel.unit
+          && Number.isFinite(p.value) && p.value > 0 && /^\d{4}-\d{2}-\d{2}$/.test(p.period ?? ''))
+        .sort((a, b) => b.period.localeCompare(a.period))[0];
+      if (!newest || nowMs - Date.parse(`${newest.period}T00:00:00Z`) > src.maxAgeDays * 86400000) return null;
+      return { localPrice: +(newest.value * (fuel.perLitre ?? 1)).toFixed(4), grade: fuel.grade, source: src.source, observedAt: newest.period };
+    };
+    const gasoline = pick(src.gasoline), diesel = pick(src.diesel);
+    if (!gasoline && !diesel) continue;
+    entries.push({ code: src.code, name: src.name, currency: src.currency, flag: src.flag, gasoline, diesel });
+  }
+  return entries;
+}
+
+// GTQ, FJD and PGK have no shared fallback rate. Without a live quote a row
+// would publish with no USD price, so it is left out.
+async function fetchRegionalFuel(fxRates) {
+  const snapshots = {};
+  for (const { id } of REGIONAL_FUEL_SOURCES) snapshots[id] = await readSeedSnapshot(`energy:regional:${id}:v1`);
+  const entries = regionalFuelEntries(snapshots).filter(e => {
+    if (fxRates[e.currency] ?? SHARED_FX_FALLBACKS[e.currency]) return true;
+    console.warn(`  [${e.code}] no ${e.currency}/USD rate — skipping`);
+    return false;
+  });
+  for (const e of entries) console.log(`  [${e.code}] Gasoline=${e.gasoline?.localPrice} ${e.currency}/L (${e.gasoline?.observedAt}), Diesel=${e.diesel?.localPrice} ${e.currency}/L (${e.diesel?.observedAt}) via ${e.gasoline?.source ?? e.diesel?.source}`);
+  return entries;
+}
+
 // Pure helpers exported for unit testing. Must stay above the isMain guard
 // so `import` from tests doesn't trigger the imperative seed run below.
 
@@ -639,20 +973,17 @@ export function parseCREStationPrices(xml) {
 // working route is found, gating publish on Brazil's freshness means every
 // run exits 1 → Railway "Deployment crashed" banner + STALE_SEED flip.
 //
-// New Zealand (MBIE) joined this set 2026-06-01: mbie.govt.nz moved its ENTIRE
-// domain (apex, data page, and the weekly-table.csv asset) behind an Incapsula
-// (Imperva) JS bot-wall ~2026-05-20. It now returns HTTP 200 text/html (~212B,
-// `_Incapsula_Resource` stub) instead of the CSV — verified blocked from a
-// residential IP, a datacenter IP, AND the Decodo residential proxy, so the
-// older "proxy-preferred + retry" path (written for an IP-reputation 403)
-// cannot pass it. A plain fetch can't solve a JS challenge from any IP, and
-// data.govt.nz / figure.nz fallbacks are also Incapsula-walled. Until NZ is
-// restored via a headless/challenge-solver fetch (tracked separately), gating
-// publish on NZ rejected the whole multi-source fuel-prices snapshot every run
-// (validation failed → seed-meta never refreshed → 12d STALE_SEED), even though
-// ≥30 countries + US/GB/MY were present. fetchNewZealand() still runs and
-// carries NZ automatically the moment the source returns CSV again.
-const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand']);
+// New Zealand stays tolerated: MBIE's weekly CSV went behind an Incapsula JS
+// bot wall ~2026-05-20 (#4010) and gating on NZ left the whole snapshot stale
+// for 12 days. NZ now comes from the Commerce Commission's fortnightly data
+// spreadsheet, which has no wall, but one regulator file published every two
+// weeks is still not worth failing a 35-country publish over.
+// Regional feeds (FJ, PG, GT and the ANP backup for BR) come from other
+// seeders' Redis keys. A missing or stale feed drops those rows but must not
+// block the multi-country snapshot.
+// These additions are optional coverage: outages/stale data omit their rows and
+// remain visible in failedSources/allSourcesFresh without blocking core coverage.
+const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
@@ -679,11 +1010,43 @@ export function validateFuel(d) {
   return total >= 30 && criticalPresent && untoleratedFailures.length === 0;
 }
 
+/** Merge usable prices by source priority; return whether this entry has any valid USD price. */
+export function mergeFuelCountry(countryMap, entry, fxRates) {
+  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
+  const existing = countryMap.get(code) ?? { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 };
+  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
+  let validEntry = false;
+
+  if (gas != null) {
+    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.gasoline == null) existing.gasoline = { ...gas, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (dsl != null) {
+    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
+    if (isSaneUsd(usdPrice)) {
+      validEntry = true;
+      if (existing.diesel == null) existing.diesel = { ...dsl, usdPrice };
+    } else if (usdPrice != null) {
+      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
+    }
+  }
+  if (validEntry) {
+    existing.fxRate = fxRate;
+    countryMap.set(code, existing);
+  }
+  return validEntry;
+}
+
 async function main() {
 const prevSnapshot = await readSeedSnapshot(`${CANONICAL_KEY}:prev`);
 
 const fxSymbols = {};
-for (const ccy of ['MYR', 'EUR', 'MXN', 'PLN', 'CZK', 'DKK', 'HUF', 'RON', 'SEK', 'BGN', 'BRL', 'NZD', 'GBP']) {
+for (const ccy of FUEL_FX_CURRENCIES) {
   fxSymbols[ccy] = `${ccy}USD=X`;
 }
 
@@ -698,50 +1061,26 @@ const fetchResults = await Promise.allSettled([
   fetchBrazil(),
   fetchNewZealand(),
   fetchUK_DESNZ(),
+  fetchRegionalFuel(fxRates),
+  withFuelRetry('NO', fetchNorway),
+  withFuelRetry('IS', () => fetchIceland(fxRates)),
+  fetchTaiwan(),
 ]);
 
-const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ'];
+const sourceNames = ['Malaysia', 'Mexico', 'US-EIA', 'EU-CSV', 'Brazil', 'New Zealand', 'UK-DESNZ', 'Regional feeds', 'Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'];
 let successfulSources = 0;
 const failedSources = [];
 
 const countryMap = new Map();
 
-function mergeCountry(entry, fxRates) {
-  const { code, name, currency, flag, gasoline: gas, diesel: dsl } = entry;
-  if (!countryMap.has(code)) {
-    countryMap.set(code, { code, name, currency, flag, gasoline: null, diesel: null, fxRate: 0 });
-  }
-  const existing = countryMap.get(code);
-  const fxRate = currency === 'USD' ? 1 : (fxRates[currency] ?? SHARED_FX_FALLBACKS[currency] ?? 0);
-  existing.fxRate = fxRate;
-
-  if (gas != null && existing.gasoline == null) {
-    const usdPrice = gas.usdPrice ?? toUsdPerLiter(gas.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.gasoline = { ...gas, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} gasoline USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-  if (dsl != null && existing.diesel == null) {
-    const usdPrice = dsl.usdPrice ?? toUsdPerLiter(dsl.localPrice, currency, fxRates);
-    if (isSaneUsd(usdPrice)) {
-      existing.diesel = { ...dsl, usdPrice };
-    } else if (usdPrice != null) {
-      console.warn(`  [SANITY] ${code} diesel USD/L=${usdPrice} out of range — dropping`);
-    }
-  }
-}
-
 for (let i = 0; i < fetchResults.length; i++) {
   const result = fetchResults[i];
   const name = sourceNames[i];
-  if (result.status === 'fulfilled' && result.value.length > 0) {
+  const accepted = result.status === 'fulfilled'
+    ? result.value.filter(entry => mergeFuelCountry(countryMap, entry, fxRates)) : [];
+  if (accepted.length > 0) {
     successfulSources++;
-    for (const entry of result.value) {
-      mergeCountry(entry, fxRates);
-    }
-    console.log(`  [SOURCE] ${name}: ${result.value.length} countries`);
+    console.log(`  [SOURCE] ${name}: ${accepted.length} countries`);
   } else {
     failedSources.push(name);
     if (result.status === 'rejected') {

@@ -36,6 +36,22 @@ vi.mock('@/services/panel-gating', async (importOriginal) => ({
   hasPremiumAccess: () => gateMocks.isPro,
 }));
 
+// The panel's English copy, interpolated, so the label test reads what a viewer reads.
+// `catalogLoaded` false mimics first paint: only the eager en.shell.json subset resolves.
+const i18nMocks = vi.hoisted(() => ({ catalogLoaded: true }));
+vi.mock('@/services/i18n', async (importOriginal) => {
+  const { readFileSync } = await import('node:fs');
+  const en = JSON.parse(readFileSync('src/locales/en.json', 'utf8'));
+  const shell = JSON.parse(readFileSync('src/locales/en.shell.json', 'utf8'));
+  const lookupIn = (catalog: unknown, key: string): unknown => key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], catalog);
+  return {
+    ...await importOriginal<typeof import('@/services/i18n')>(),
+    t: (key: string, params: Record<string, unknown> = {}) =>
+      String(lookupIn(i18nMocks.catalogLoaded ? en : shell, key) ?? key)
+        .replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(params[name] ?? '')),
+  };
+});
+
 vi.mock('@/services/hormuz-tracker', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/hormuz-tracker')>(),
   fetchHormuzTracker: serviceMocks.fetchTracker,
@@ -85,6 +101,7 @@ const dependencyResponse = {
 };
 
 beforeEach(() => {
+  i18nMocks.catalogLoaded = true;
   document.body.replaceChildren();
   localStorage.clear();
   gateMocks.isPro = true;
@@ -307,5 +324,173 @@ describe('HormuzPanel progressive vulnerability loading', () => {
     resolveDependencies(dependencyResponse);
     await Promise.resolve();
     await Promise.resolve();
+  });
+});
+
+describe('HormuzPanel dates from a tracker payload stored before the ISO seeder fix', () => {
+  const storedPayload = {
+    ...tracker,
+    updatedDate: '21.09.2026',
+    charts: [
+      {
+        label: 'crude_oil_outbound',
+        title: 'Crude Oil Outbound Shipments',
+        series: [
+          { date: 'November-01-2026', value: 4 },
+          { date: 'October-30-2026', value: 12 },
+          { date: 'October-31-2026', value: 7 },
+        ],
+      },
+      {
+        label: 'agriculture_inbound',
+        title: 'Agriculture Inbound Shipments',
+        series: [
+          { date: '2026-November-01', value: 0 },
+          { date: '2026-November-02', value: 5 },
+          { date: '2026-October-30', value: 164 },
+          { date: '2026-October-31', value: 82 },
+        ],
+      },
+    ],
+  };
+
+  async function serveFromRedis(stored: unknown): Promise<unknown> {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.test');
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'test-token');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ result: JSON.stringify(stored) }), { status: 200 })));
+    try {
+      // @ts-expect-error api/ edge handlers are plain JS without declaration files.
+      const { default: handler } = await import('../../api/supply-chain/hormuz-tracker.js');
+      const response: Response = await handler(new Request('https://www.worldmonitor.app/api/supply-chain/hormuz-tracker'));
+      expect(response.status).toBe(200);
+      return await response.json();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  }
+
+  it('labels each chart with the latest day as MM-DD and draws bars oldest first', async () => {
+    gateMocks.isPro = false;
+    serviceMocks.fetchTracker.mockResolvedValue(await serveFromRedis(storedPayload));
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => {
+      expect(panel.getElement().querySelectorAll('.hz-chart')).toHaveLength(2);
+    });
+    const charts = [...panel.getElement().querySelectorAll('.hz-chart')];
+    const latestLabels = charts.map((chart) => chart.querySelector(':scope > div > span:last-child')?.textContent?.split('·').pop()?.trim());
+    expect(latestLabels).toEqual(['11-01', '11-02']);
+    const barDates = charts.map((chart) => [...chart.querySelectorAll('rect.hbar')].map((bar) => bar.getAttribute('data-date')));
+    expect(barDates).toEqual([
+      ['2026-10-30', '2026-10-31', '2026-11-01'],
+      ['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-02'],
+    ]);
+  });
+});
+
+describe('HormuzPanel shipment index labels', () => {
+  it('labels the WTO series as a Jan–Mar 2025-based index and dates the WTO analysis', async () => {
+    serviceMocks.fetchTracker.mockResolvedValue({
+      ...tracker,
+      updatedDate: '2026-09-21',
+      status: 'disrupted' as const,
+      charts: [
+        { label: 'crude_oil_outbound', title: 'Crude Oil Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] },
+        { label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] },
+      ],
+    });
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Crude Oil Outbound Shipments'));
+    const text = panel.getElement().textContent ?? '';
+    expect(text, 'the WTO series are an index, not tonnage').not.toMatch(/kt\/day|\bunits\b/);
+    expect(text, 'WTO bases the index on January–March 2025').toContain('Jan–Mar 2025 average = 100');
+    expect(text).toContain('WTO analysis 2026-09-21');
+  });
+
+  it('relabels the tracker when the full English catalog lands after it rendered', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    i18nMocks.catalogLoaded = false;
+    serviceMocks.fetchTracker.mockResolvedValue({
+      ...tracker,
+      updatedDate: '2026-09-21',
+      charts: [{ label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] }],
+    });
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('components.hormuzTracker.analysisDate'));
+
+    i18nMocks.catalogLoaded = true;
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('WTO analysis 2026-09-21'));
+    expect(panel.getElement().textContent).not.toContain('components.hormuzTracker.');
+    panel.destroy();
+  });
+
+  it('keeps the error and its retry when the catalog lands after a failed refresh', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    serviceMocks.fetchTracker.mockResolvedValueOnce({
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] }],
+    }).mockResolvedValueOnce(null);
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Outbound Shipments'));
+    expect(await panel.fetchData()).toBe(false);
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('Hormuz data unavailable'));
+
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+    // Panel content writes commit after a 150ms debounce; let any redraw land.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const text = panel.getElement().textContent ?? '';
+    expect(text, 'the failed refresh stays visible').toContain('Hormuz data unavailable');
+    expect(text, 'the old snapshot is not shown as current').not.toContain('LNG Outbound Shipments');
+    panel.destroy();
+  });
+
+  it('leaves an in-flight refresh loading when the catalog lands', async () => {
+    const { I18N_RESOURCES_LOADED_EVENT } = await import('@/services/i18n');
+    const fresh = {
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Fresh Shipments', series: [{ date: '2026-11-02', value: 3 }] }],
+    };
+    let resolveRefresh: (value: typeof fresh) => void = () => undefined;
+    serviceMocks.fetchTracker.mockResolvedValueOnce({
+      ...tracker,
+      charts: [{ label: 'lng_outbound', title: 'LNG Outbound Shipments', series: [{ date: '2026-11-01', value: 0 }] }],
+    }).mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    serviceMocks.fetchDependencies.mockResolvedValue(dependencyResponse);
+
+    const panel = new HormuzPanel();
+    document.body.append(panel.getElement());
+    await panel.fetchData();
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Outbound Shipments'));
+    const refresh = panel.fetchData();
+
+    window.dispatchEvent(new CustomEvent(I18N_RESOURCES_LOADED_EVENT, { detail: { language: 'en' } }));
+    // Panel content writes commit after a 150ms debounce; let any redraw land.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(panel.getElement().textContent, 'the old snapshot does not replace the loading state').not.toContain('LNG Outbound Shipments');
+
+    resolveRefresh(fresh);
+    expect(await refresh).toBe(true);
+    await vi.waitFor(() => expect(panel.getElement().textContent).toContain('LNG Fresh Shipments'));
+    panel.destroy();
   });
 });

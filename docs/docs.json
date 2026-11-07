@@ -77,6 +77,7 @@
                 "pages": [
                   "documentation",
                   "getting-started",
+                  "self-hosting",
                   "architecture"
                 ]
               },
@@ -127,6 +128,7 @@
                   "methodology/five-factor-scorecard",
                   "methodology/demographics-capability",
                   "methodology/food-stocks",
+                  "methodology/capital-flows",
                   "methodology/defense-industrial-base",
                   "methodology/mineral-production",
                   "methodology/supply-vulnerability",
@@ -136,6 +138,7 @@
                   "methodology/shortages",
                   "methodology/disruptions",
                   "methodology/cii-risk-scores",
+                  "methodology/country-history",
                   "methodology/disease-alert-level",
                   "methodology/thermal-escalation",
                   "methodology/physical-divergence-index",
@@ -149,6 +152,7 @@
                 "group": "Workflows",
                 "pages": [
                   "embed-live-map",
+                  "morning-world-risk-brief",
                   "route-explorer",
                   "scenario-engine"
                 ]
@@ -210,7 +214,8 @@
                   "panels/oref-sirens",
                   "panels/telegram-intel",
                   "panels/x-intel",
-                  "panels/fsi"
+                  "panels/fsi",
+                  "panels/news-market-correlation"
                 ]
               },
               {
@@ -233,10 +238,12 @@
                   "agent-skills",
                   "mcp-quickstart",
                   "cli",
+                  "cli-dashboard",
                   "sdks",
                   "mcp-overview",
                   "webmcp",
                   "mcp-apps",
+                  "gemini-antigravity",
                   "mcp-tools-reference",
                   "mcp-jmespath",
                   "mcp-error-catalog",
@@ -248,6 +255,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "api-platform",
+                  "incident-feed",
                   "api-brief",
                   "api-commerce",
                   "api-scenarios",
@@ -558,6 +566,7 @@
                 "pages": [
                   "zh/documentation",
                   "zh/getting-started",
+                  "zh/self-hosting",
                   "zh/architecture"
                 ]
               },
@@ -605,6 +614,7 @@
                   "zh/methodology/five-factor-scorecard",
                   "zh/methodology/demographics-capability",
                   "zh/methodology/food-stocks",
+                  "zh/methodology/capital-flows",
                   "zh/methodology/defense-industrial-base",
                   "zh/methodology/mineral-production",
                   "zh/methodology/supply-vulnerability",
@@ -614,6 +624,7 @@
                   "zh/methodology/shortages",
                   "zh/methodology/disruptions",
                   "zh/methodology/cii-risk-scores",
+                  "zh/methodology/country-history",
                   "zh/methodology/disease-alert-level",
                   "zh/methodology/thermal-escalation",
                   "zh/methodology/physical-divergence-index",
@@ -627,6 +638,7 @@
                 "group": "工作流",
                 "pages": [
                   "zh/embed-live-map",
+                  "zh/morning-world-risk-brief",
                   "zh/route-explorer",
                   "zh/scenario-engine"
                 ]
@@ -688,7 +700,8 @@
                   "zh/panels/oref-sirens",
                   "zh/panels/telegram-intel",
                   "zh/panels/x-intel",
-                  "zh/panels/fsi"
+                  "zh/panels/fsi",
+                  "zh/panels/news-market-correlation"
                 ]
               },
               {
@@ -711,10 +724,12 @@
                   "zh/agent-skills",
                   "zh/mcp-quickstart",
                   "zh/cli",
+                  "zh/cli-dashboard",
                   "zh/sdks",
                   "zh/mcp-overview",
                   "zh/webmcp",
                   "zh/mcp-apps",
+                  "zh/gemini-antigravity",
                   "zh/mcp-tools-reference",
                   "zh/mcp-jmespath",
                   "zh/mcp-error-catalog",
@@ -726,6 +741,7 @@
                 "group": "HTTP API",
                 "pages": [
                   "zh/api-platform",
+                  "zh/incident-feed",
                   "zh/api-brief",
                   "zh/api-commerce",
                   "zh/api-scenarios",

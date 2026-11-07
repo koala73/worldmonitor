@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.economic.v1;
 
+import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 // One published US interest rate. Percent per year. Zero is a real print.
@@ -27,6 +28,12 @@ message UsInterestRateSeries {
 message GetUsInterestRatesRequest {
   // When true, return every stored observation. When false, return the latest point of each series.
   bool history = 1 [(sebuf.http.query) = {name: "history"}];
+  // Maximum recent observations per series, up to 366. Omit or use zero for the full stored history.
+  optional int32 limit = 2 [
+    (sebuf.http.query) = {name: "limit"},
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 366
+  ];
 }
 
 // GetUsInterestRatesResponse is the US rate basket for the requested window.

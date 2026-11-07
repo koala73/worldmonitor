@@ -690,11 +690,14 @@ export async function runBundle(label, sections, opts = {}) {
       const now = Date.now();
       const elapsed = now - freshness.fetchedAt;
       const retryDue = Number.isFinite(freshness.retryAt) && now >= freshness.retryAt;
-      earlyRetry = elapsed < section.intervalMs * 0.8 && retryDue;
-      if (elapsed < section.intervalMs * 0.8 && !retryDue) {
+      const eligibilityMs = section.intervalMs * 0.8;
+      earlyRetry = elapsed < eligibilityMs && retryDue;
+      if (elapsed < eligibilityMs && !retryDue) {
         const agoMin = Math.round(elapsed / 60_000);
         const intervalMin = Math.round(section.intervalMs / 60_000);
-        console.log(`  [${section.label}] Skipped, last seeded ${agoMin}min ago (interval: ${intervalMin}min)`);
+        const nextEligibleAt = Math.min(freshness.fetchedAt + eligibilityMs,
+          Number.isFinite(freshness.retryAt) ? freshness.retryAt : Infinity);
+        console.log(`  [${section.label}] Skipped, last seeded ${agoMin}min ago (interval: ${intervalMin}min); eligible after: ${eligibilityMs / 60_000}min; next eligible at: ${new Date(nextEligibleAt).toISOString()}`);
         skipped++;
         continue;
       }

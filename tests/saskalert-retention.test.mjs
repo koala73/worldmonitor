@@ -6,6 +6,7 @@ import { runSeed } from '../scripts/_seed-utils.mjs';
 import { CANADA_ALERT_SOURCES, CANADA_ALERTS_KEY, rebuildCanadaAlertsUnion } from '../scripts/lib/canada-alerts-union.mjs';
 import { __testing__ } from '../api/health.js';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const feed = JSON.parse(readFileSync(new URL('./fixtures/saskalert-feed.json', import.meta.url)));
 const cap = JSON.parse(readFileSync(new URL('./fixtures/saskalert-cap-active.json', import.meta.url)));
@@ -42,7 +43,7 @@ async function fixture(fn) {
     if (op === 'EVAL') return 1;
     throw new Error(`Unexpected Redis command ${op}`);
   }
-  globalThis.fetch = async (url, options = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, options = {}) => {
     const parsed = new URL(url);
     if (parsed.hostname === 'redis.fixture') {
       if (state.rejectRead && parsed.pathname === `/get/${encodeURIComponent(SOURCE.key)}`) return new Response('{}', { status: 403 });
@@ -55,7 +56,7 @@ async function fixture(fn) {
     if (String(url) === sask.SASKALERT_FEED_URL) return new Response(JSON.stringify(state.feed));
     if (state.fail && (!state.failUrl || String(url) === state.failUrl)) return new Response('private upstream body', { status: 503 });
     return new Response(JSON.stringify(cap));
-  };
+  });
   for (const source of CANADA_ALERT_SOURCES.filter(s => s.province !== 'SK')) {
     values.set(source.key, JSON.stringify({ alerts: [] }));
     values.set(source.metaKey, JSON.stringify({ fetchedAt: NOW, recordCount: 0, sourceState: 'ok' }));

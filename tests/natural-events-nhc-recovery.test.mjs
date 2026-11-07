@@ -166,7 +166,8 @@ test('retains validated NHC coverage after required point requests fail without 
   assert.deepEqual(calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
   assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 1);
-  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 215 * MIN).toISOString());
+  // The miss at +5 min stays pending for 60 min, past the next */30 run.
+  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 65 * MIN).toISOString());
 });
 
 test('one failed required point layer rejects the whole current NHC slice', async () => {
@@ -342,6 +343,31 @@ test('valid identity and earlier wind rejection do not emit identity diagnostics
   assert.equal(logs.some(line => line.startsWith('[NHC identity] ')), false);
 });
 
+test('uses tau including zero before fcstprd for current and future NHC positions', async () => {
+  const point = (tau, fcstprd, lat) => ({
+    ...currentStormPoint,
+    geometry: { type: 'Point', coordinates: [-60, lat] },
+    properties: { ...currentStormPoint.properties, tau, fcstprd },
+  });
+  const payload = await runNhc({
+    previous: null,
+    nhc: async (_input, id) => Response.json(collection(id === 6 ? [
+      point(24, 0, 24),
+      point(null, 36, 26),
+      point(0, 120, 20),
+      point(undefined, 12, 22),
+    ] : [])),
+  });
+  const storm = payload.events.find(event => event.sourceName === 'NHC');
+  assert.equal(storm.lat, 20);
+  assert.deepEqual(storm.forecastTrack.map(({ hour, lat }) => ({ hour, lat })), [
+    { hour: 12, lat: 22 },
+    { hour: 24, lat: 24 },
+    { hour: 36, lat: 26 },
+  ]);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+});
+
 test('accepts time-first advisory dates across NHC time zones', async () => {
   for (const [advdate, expectedDate] of [
     ['800 AM PDT Mon Sep 07 2026', '2026-09-07T15:00:00.000Z'],
@@ -371,6 +397,60 @@ test('accepts time-first advisory dates across NHC time zones', async () => {
     assert.equal(storm.id, 'nhc-EP13-26');
     assert.equal(storm.date, Date.parse(expectedDate));
     assert.equal(payload._nhcSnapshot.errorCode, null);
+  }
+});
+
+test('publishes Gonzalo from an NHC CVT advisory without retaining the previous storm', async () => {
+  const now = Date.parse('2026-09-25T07:02:25.376Z');
+  const point = {
+    ...currentStormPoint,
+    geometry: { type: 'Point', coordinates: [-22.3, 13.7] },
+    properties: {
+      ...currentStormPoint.properties,
+      stormname: 'Tropical Storm Gonzalo', stormnum: 7, advisnum: '1A',
+      advdate: '500 AM CVT Fri Sep 25 2026', maxwind: 40, tau: 0, fcstprd: 120,
+    },
+  };
+  const payload = await runNhc({
+    now,
+    previous: { ...previousNhcSnapshot, fetchedAt: now - MIN, lastAttemptAt: now - MIN, retainedUntil: now + MIN },
+    nhc: async (_input, id) => Response.json(collection(id === 32 ? [point] : [])),
+  });
+  const storms = payload.events.filter(event => event.sourceName === 'NHC');
+  assert.deepEqual(storms.map(event => event.id), ['nhc-AL07-1A']);
+  assert.equal(storms[0].title, 'Tropical Storm Gonzalo');
+  assert.equal(storms[0].description, 'Tropical Storm Gonzalo, Max wind 40 kt');
+  assert.equal(storms[0].stormName, 'Tropical Storm Gonzalo');
+  assert.equal(storms[0].date, Date.parse('2026-09-25T06:00:00.000Z'));
+  assert.equal(payload._nhcSnapshot.fetchedAt, now);
+  assert.equal(payload._nhcSnapshot.retainedUntil, now + 540 * MIN);
+  assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+  assert.equal(verdict(payload, now).status, 'OK');
+});
+
+test('adds only a missing matching NHC classification prefix and preserves the supplied storm name', async () => {
+  for (const [stormname, stormtype, title] of [
+    ['Hurricane Trudy', 'HU', 'Hurricane Trudy'],
+    ['  hurricane Trudy  ', 'HU', '  hurricane Trudy  '],
+    ['Hurricane\tTrudy', 'HU', 'Hurricane\tTrudy'],
+    ['Trudy', 'HU', 'Hurricane Trudy'],
+    ['Tropical Storm Trudy', 'HU', 'Hurricane Tropical Storm Trudy'],
+    ['Hurricane-like Trudy', 'HU', 'Hurricane Hurricane-like Trudy'],
+  ]) {
+    const point = { ...currentStormPoint, properties: { ...currentStormPoint.properties, stormname, stormtype } };
+    const payload = await runNhc({ previous: null,
+      nhc: async (_input, id) => Response.json(collection(id === 6 ? [point] : [])),
+    });
+    const storm = payload.events.find(event => event.sourceName === 'NHC');
+    assert.ok(storm, stormname);
+    assert.equal(storm.title, title, stormname);
+    assert.equal(storm.description, `${title}, Max wind 45 kt`, stormname);
+    assert.equal(storm.stormName, stormname);
+    assert.equal(storm.id, 'nhc-AL01-7');
+    assert.equal(storm.date, NOW);
+    assert.equal(storm.windKt, 45);
+    assert.equal(storm.closed, false);
   }
 });
 
@@ -595,12 +675,23 @@ async function seedProcess(initial, now, {
       if (url.pathname.startsWith('/get/')) {
         return Response.json({ result: store.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
       }
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (failStateWrite && body[0] === 'SET' && body[1] === 'natural:events:nhc-snapshot:v1') {
         return new Response('', { status: 403 });
       }
       if (failSourceStateWrite && body[0] === 'SET' && body[1] === 'natural:events:source-snapshots:v1') {
         return new Response('', { status: 403 });
+      }
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
       }
       return Response.json(Array.isArray(body[0])
         ? body.map(command => ({ result: redis(command) }))

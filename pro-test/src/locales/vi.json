@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "Nhiễu",
     "signalWord": "Tín hiệu",
-    "valueProps": "Lớp AI địa chính trị — hãy hỏi nó, đăng ký, xây dựng trên đó.",
+    "valueProps": "Hỏi một nhà phân tích AI, đặt quy tắc cảnh báo, nhận báo cáo tình hình, và sử dụng trong Claude.",
     "launchingDate": "Hiện có sẵn",
     "tryFreeDashboard": "Dùng thử bảng điều khiển miễn phí",
     "choosePlan": "Chọn gói",
-    "signIn": "Đăng nhập",
     "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "wired": {
     "asFeaturedIn": "Được giới thiệu trên"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "AI phân tích viên của bạn. Một bàn làm việc tình báo cá nhân. Một nền tảng bạn có thể phát triển trên đó. Một khóa trên các dịch vụ trực tiếp.",
-    "proF1": "WM Analyst chat — truy vấn các dịch vụ trực tiếp một cách thoại",
-    "proF2": "AI digest — hàng ngày, hai lần mỗi ngày hoặc hàng tuần — đến Slack, Discord, Telegram, Email hoặc webhook",
-    "proF3": "Custom Widget Builder — HTML/CSS/JS với chỉnh sửa hỗ trợ AI",
-    "proF4": "Bộ kết nối MCP — cắm WorldMonitor vào Claude, GPT hoặc LLM tùy chỉnh",
-    "proF5": "Equity research, phân tích cổ phiếu và backtesting",
-    "proF6": "Tìm chuyến bay và so sánh giá",
-    "proF7": "Động cơ quy tắc cảnh báo — trình kích hoạt tùy chỉnh, giờ yên lặng, kênh mã hóa AES-256",
-    "proF8": "Watchlist thị trường, theo dõi vĩ mô và ngân hàng trung ương",
-    "proF9": "Hàm ý thị trường AI & Thông tin tình báo khu vực",
-    "choosePlan": "Chọn gói",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "Dành cho các nhóm cần giám sát chia sẻ, truy cập API, các tùy chọn triển khai, ứng dụng TV và hỗ trợ trực tiếp.",
-    "entF1": "Tất cả trong Pro, cộng thêm:",
-    "entF2": "Hình ảnh vệ tinh trực tiếp và SAR",
-    "entF3": "AI agents với persona nhà đầu tư và MCP",
-    "entF4": "Tài sản cơ sở hạ tầng được ánh xạ",
-    "entF5": "Các kết nối dữ liệu (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhook + xuất hàng loạt",
-    "entF7": "Không gian làm việc nhóm với SSO/MFA/RBAC",
-    "entF8": "White-label và bảng có thể nhúng",
-    "entF9": "Ứng dụng Android TV cho tường SOC và sàn giao dịch",
-    "entF10": "Triển khai đám mây, on-premises hoặc air-gapped",
-    "entF11": "Onboarding và hỗ trợ chuyên trách",
-    "entCta": "Liên hệ kinh doanh",
-    "freeF2": "Các nguồn cấp được chọn lọc, nguồn được quy định và lớp bản đồ",
-    "proF10": "Bộ nhớ Intel — tìm kiếm lịch sử, dòng thời gian & tra cứu sự kiện tương tự"
-  },
   "whyUpgrade": {
-    "title": "Tại sao nâng cấp lên World Monitor Pro?",
+    "title": "Biết trước khi tin tức đưa tin",
     "noiseTitle": "Biết đầu tiên",
     "noiseDesc": "Bất thường AIS → Brent tăng đột biến → Slack của bạn dưới một phút. Tín hiệu, không phải tiêu đề.",
     "fasterTitle": "Hỏi bất cứ điều gì",
@@ -88,10 +57,7 @@
     "uniqueVisitors": "Khách truy cập duy nhất",
     "peakDailyUsers": "Người dùng hàng ngày (đỉnh)",
     "countriesReached": "Quốc gia đã tiếp cận",
-    "liveDataSources": "Nguồn dữ liệu trực tiếp",
-    "quote": "Thị trường, chính sách tiền tệ, địa chính trị, năng lượng — bây giờ tất cả chuyển động cùng nhau. Tôi cần một thứ gì đó cho thấy các lực lượng này liên kết như thế nào theo thời gian thực, không chỉ các tiêu đề mà cả động lực ẩn sau.",
-    "ceo": "CEO của",
-    "asToldTo": "kể cho"
+    "liveDataSources": "Nguồn dữ liệu trực tiếp"
   },
   "audience": {
     "title": "World Monitor được xây dựng cho ai?",
@@ -146,7 +112,7 @@
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
-    "title": "Trí tuệ nhân tạo phân tích của World Monitor hoạt động như thế nào?",
+    "title": "Nhà phân tích AI cho cổ phiếu, vĩ mô và địa chính trị",
     "subtitle": "Bảng điều khiển miễn phí cho bạn thấy thế giới. Pro cho bạn một nhà phân tích để hỏi, một digest để đăng ký và các nguyên thủy để xây dựng. Cổ phiếu, vĩ mô, rủi ro địa chính trị — và các kết nối giữa chúng.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Phân tích cổ phiếu toàn cầu với trực quan hóa tài chính, mục tiêu giá của nhà phân tích và chỉ số định giá. Theo dõi những gì di chuyển thị trường.",
@@ -249,7 +215,7 @@
     "f5_15min": "5-15 phút",
     "fLt60s": "<60 giây",
     "fPerRequest": "Theo yêu cầu",
-    "fLiveEdge": "Live-edge",
+    "fLiveEdge": "Trực tiếp",
     "f50panels": "Bảng điều khiển",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
@@ -257,7 +223,7 @@
     "fAgentsPersonas": "Agents + persona",
     "fDailyFlash": "Hàng ngày + flash",
     "fTeamDist": "Phân phối nhóm",
-    "fSlackTgWa": "Slack/Discord/TG/Email/Webhook",
+    "fSlackTgWa": "Slack/Discord/TG/email/webhook",
     "fWebhook": "Webhook",
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
@@ -267,8 +233,8 @@
     "fPassAlerts": "Cảnh báo đi qua + phân tích",
     "fImagerySar": "Hình ảnh + SAR",
     "f100plus": "Có sẵn",
-    "fCloud": "Cloud",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
+    "fCloud": "Đám mây",
+    "fCloudOnPrem": "Đám mây/on-prem/air-gap",
     "fStandard": "Tiêu chuẩn",
     "fKeyAuth": "Xác thực khóa",
     "fSsoMfa": "SSO/MFA/RBAC/kiểm toán",
@@ -307,11 +273,11 @@
     "q7": "Tôi vẫn có thể sử dụng khóa API của riêng mình?",
     "a7": "Có. Mang khóa của riêng bạn luôn hoạt động. Pro đơn giản có nghĩa là bạn không phải đăng ký các dịch vụ riêng biệt.",
     "q8": "MCP là gì?",
-    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng WorldMonitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
+    "a8": "MCP cho phép các tác nhân AI — Claude, GPT, các LLM tùy chỉnh — sử dụng World Monitor làm công cụ, truy vấn các dịch vụ đã đăng ký. Bao gồm trong Pro. Enterprise thêm các máy chủ MCP riêng và triển khai tùy chỉnh.",
     "q9": "Tôi có thể xây dựng các bảng của riêng mình không?",
     "a9": "Có. Pro bao gồm Custom Widget Builder — xây dựng bảng từ HTML, CSS và JavaScript, với chỉnh sửa hỗ trợ AI.",
-    "q10": "Tôi có thể kết nối Claude hoặc GPT với WorldMonitor không?",
-    "a10": "Có. MCP được bao gồm trong Pro — kết nối WorldMonitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
+    "q10": "Tôi có thể kết nối Claude hoặc GPT với World Monitor không?",
+    "a10": "Có. MCP được bao gồm trong Pro — kết nối World Monitor với Claude, GPT hoặc bất kỳ LLM nào tương thích MCP như một công cụ trực tiếp.",
     "q11": "Digest được cá nhân hóa như thế nào?",
     "a11": "Chọn lịch của bạn — hàng ngày, hai lần mỗi ngày hoặc hàng tuần. Chúng tôi cho mỗi bài báo theo dõi được chấm điểm lại so với các quy tắc cảnh báo và danh sách theo dõi của bạn, loại bỏ trùng lặp trên các nguồn, và gửi lên đến 30 mục xếp hạng với Đánh giá AI và Tín hiệu cần theo dõi được viết vào ngữ cảnh của bạn. Cảnh báo thời gian thực cũng có sẵn cho các sự kiện quan trọng.",
     "q12": "Tốc độ làm mới là bao nhiêu?",
@@ -331,9 +297,9 @@
   },
   "soonBadge": "Sắp ra mắt",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | Tình báo AI và MCP",
     "description": "World Monitor Pro thêm nhà phân tích AI, bản tóm tắt tình báo theo lịch trình, widget tùy chỉnh, nghiên cứu thị trường và quyền truy cập MCP vào dữ liệu địa chính trị và tài chính trực tiếp.",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | AI địa chính trị",
     "ogDescription": "Hỏi nó, đăng ký nó, phát triển trên nó. WM Analyst chat, một bản tóm tắt AI theo lịch của bạn (hàng ngày, hai lần mỗi ngày hoặc hàng tuần), trình tạo widget tùy chỉnh, và MCP cho Claude/GPT — trên các dịch vụ trực tiếp dưới một khóa."
   },
   "pricing": {
@@ -372,7 +338,8 @@
           "Dữ liệu sự phân kỳ kim loại vật lý, tập trung khoáng sản & nợ chủ quyền",
           "Bản tóm tắt AI theo lịch trình + công cụ quy tắc cảnh báo",
           "Truy cập MCP + SDK cho Claude Desktop & các ứng dụng AI khác (50 lệnh gọi/ngày)",
-          "Tiện ích tùy chỉnh & 10 bảng điều khiển (so với 3)"
+          "Tiện ích tùy chỉnh & 10 bảng điều khiển (so với 3)",
+          "Khóa Desktop cho ứng dụng desktop (2 khóa)"
         ],
         "highlightFeatures": [
           "Giấy phép cá nhân",
@@ -382,22 +349,23 @@
       "api": {
         "description": "Xây dựng công cụ nội bộ trên dữ liệu thông minh trực tiếp",
         "features": [
+          "Dashboard Pro đầy đủ (1 người dùng được đặt tên)",
           "REST API + SDK chính thức (npm, PyPI, RubyGems, Go)",
-          "Bao gồm khóa bản quyền / API",
+          "Bao gồm License / API key",
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
-          "1.000 yêu cầu/ngày (REST + MCP kết hợp; một cuộc gọi MCP trực tiếp tính là 2-3)",
+          "Bao gồm 1.000 yêu cầu/ngày (REST + MCP kết hợp; một lệnh gọi MCP trực tiếp tính là 2-3)",
           "Thông báo Webhook"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại — cho tổ chức của bạn"
+          "Sử dụng thương mại — chỉ nội bộ, không dành cho khách hàng"
         ]
       },
       "enterprise": {
         "description": "Giải pháp tùy chỉnh cho các tổ chức",
         "features": [
           "Tất cả trong Pro + API",
-          "Yêu cầu API không giới hạn",
+          "10,000 yêu cầu API mỗi ngày, có thể tăng thêm theo hợp đồng",
           "Hỗ trợ chuyên dụng",
           "Tích hợp tùy chỉnh",
           "Bảo đảm SLA",
@@ -411,7 +379,7 @@
         "cta": "Liên hệ Phòng bán hàng"
       },
       "apiBusiness": {
-        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu WorldMonitor",
+        "description": "Khởi chạy sản phẩm của riêng bạn trên dữ liệu World Monitor",
         "features": [
           "Tất cả trong API Starter",
           "Quyền phân phối lại R1–R3 cho các sản phẩm hướng tới khách hàng",
@@ -421,7 +389,7 @@
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
-          "Giấy phép thương mại — cho khách hàng của bạn"
+          "Sử dụng thương mại — trong các sản phẩm hướng tới khách hàng của bạn"
         ]
       },
       "proBusiness": {
@@ -432,6 +400,7 @@
           "Xuất dữ liệu — báo cáo CSV, JSON & PDF",
           "25 bảng điều khiển tùy chỉnh (so với 10)",
           "MCP + SDK: 250 lệnh gọi/ngày (so với 50)",
+          "Khóa Desktop cho ứng dụng desktop (3 khóa)",
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [
@@ -447,17 +416,18 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, khách hàng & sản phẩm"
+    "axisCommercialNote": "công việc, khách hàng & sản phẩm",
+    "cancelAnytime": "Hủy bất cứ lúc nào từ tài khoản của bạn. Bạn vẫn có quyền truy cập cho đến hết kỳ thanh toán của mình."
   },
   "welcome": {
     "meta": {
-      "title": "World Monitor — Bảng điều khiển tình báo toàn cầu trực tiếp miễn phí",
-      "description": "Khi tin tức xuất hiện, bạn đã biết rồi. Xung đột, điểm thắt cổ chai vận chuyển, chuyến bay quân sự, thị trường và an ninh mạng trên một bản đồ trực tiếp miễn phí, có phân tích AI. Không cần đăng ký.",
-      "ogTitle": "World Monitor — Khi tin tức xuất hiện, bạn đã biết rồi.",
-      "ogDescription": "Các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — trên một bản đồ tình báo trực tiếp miễn phí, có AI để phát hiệ khi chúng hội tụ. Miễn phí, không cần đăng ký."
+      "title": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "description": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP.",
+      "ogTitle": "World Monitor: Bảng tình báo địa chính trị miễn phí",
+      "ogDescription": "World Monitor: bảng tình báo địa chính trị thời gian thực. Bản đồ trực tiếp miễn phí: xung đột, hàng hải, chuyến bay, thị trường, an ninh mạng; có API và MCP."
     },
     "nav": {
-      "useCases": "Tương quan",
+      "useCases": "Trường hợp sử dụng",
       "firstFive": "5 phút đầu",
       "depth": "Chi tiết",
       "pricing": "Giá cả",
@@ -466,25 +436,27 @@
       "launch": "Khởi chạy bảng điều khiển",
       "blog": "Blog",
       "menu": "Menu",
-      "agents": "Dành cho AI agents"
+      "agents": "Dành cho AI agents",
+      "skipToContent": "Bỏ qua đến nội dung"
     },
     "hero": {
       "eyebrow": "Bảng điều khiển tình báo toàn cầu miễn phí · đang hoạt động",
-      "headline1": "Khi tin tức xuất hiện,",
-      "headline2": "bạn đã biết rồi.",
-      "sub": "Tin tức là độ trễ. World Monitor truyền phát các tín hiệu thô của thế giới — tàu, máy bay, còi báo động, cáp, thị trường — lên một bản đồ trực tiếp, với AI phát hiệ khi chúng hội tụ thành một điều quan trọng.",
+      "headline1": "Bảng tình báo địa chính trị",
+      "headline2": "theo thời gian thực",
+      "sub": "Khi tin tức xuất hiện, bạn đã biết rồi.",
       "ctaPrimary": "Khởi chạy bảng điều khiển",
       "ctaFree": "Miễn phí · Không cần đăng ký · Tải trong vài giây",
-      "ctaSecondary": "Xem cách mọi người sử dụng nó ↓",
       "trustUsers": "2 triệu+ người dùng",
       "trustOpenSource": "Mã nguồn mở · AGPL-3.0",
       "screenshotAlt": "Bảng điều khiển tình báo trực tiếp World Monitor — bản đồ toàn cầu với các lớp xung đột, vận chuyển và thị trường",
       "plateNote": "Được chụp từ bản đồ trực tiếp — bấm để mở",
       "trustBuild": "Xây dựng trên nó:",
-      "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
-      "asOf": "Tính đến 8 tháng 9 năm 2026",
+      "positioningLink": "World Monitor không phải là Palantir mã nguồn mở",
+      "asOf": "Tính đến {{date}}",
       "whatIsTitle": "World Monitor là gì?",
-      "whatIsBody": "World Monitor là một dashboard miễn phí, mã nguồn mở truyền tín hiệu địa chính trị, thị trường, vận tải biển, hàng không, cơ sở hạ tầng và an ninh mạng lên một bản đồ thế giới trực tiếp. Nó tương quan các nguồn cấp dữ liệu riêng biệt thành một bức tranh hoạt động thống nhất và cảnh báo sự hội tụ trước tiêu đề, với mọi con số được trích dẫn nguồn và mọi phương pháp được ghi chép."
+      "whatIsBody": "World Monitor là một dashboard miễn phí ($0), mã nguồn mở (AGPL-3.0) được sử dụng bởi hơn 2 triệu người. Nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi nguồn lên một bản đồ thế giới trực tiếp với {{mapLayers}} loại lớp bản đồ, bao gồm địa chính trị, thị trường, vận tải biển, hàng không và mạng. Nó tương quan chúng để các sự kiện hội tụ được nổi lên trước khi có tiêu đề. Mỗi con số đều có nguồn gốc và mỗi phương pháp đều được ghi chép.",
+      "whatIsBestFor": "Phù hợp nhất với nhà phân tích, nhà báo, nhà giao dịch và nhà phát triển cần tín hiệu địa chính trị trực tiếp.",
+      "ctaPro": "Pro từ {{price}}/tháng"
     },
     "live": {
       "eyebrow": "Trực tiếp ngay bây giờ",
@@ -504,12 +476,13 @@
       "marketWeakest": "Yếu nhất",
       "trendRising": "tăng",
       "trendFalling": "giảm",
-      "trendStable": "ổn định"
+      "trendStable": "ổn định",
+      "situationLink": "Theo dõi tình hình: khủng hoảng, tin tức chính, điểm nghẽn và sự cố trên một bảng"
     },
     "moments": {
       "eyebrow": "Công cụ tương quan",
       "title": "World Monitor liên kết các tín hiệu như thế nào?",
-      "sub": "Bạn có thể tìm thấy luồng dữ liệu ở hàng trăm nơi. Lợi thế là một bề mặt duy nhất nơi địa chính trị, vận tải hàng hải, hàng hóa, vĩ mô, thị trường, thời tiết, cơ sở hạ tầng, an ninh mạng, tin tức và rủi ro quốc gia có thể giải thích cho nhau.",
+      "sub": "Nó đặt {{mapLayers}} loại lớp bản đồ trên một bề mặt để địa chính trị, vận tải biển, hàng hóa, vĩ mô, thị trường, thời tiết, cơ sở hạ tầng, an ninh mạng, tin tức và rủi ro quốc gia có thể giải thích cho nhau. Bất kỳ ai cũng có thể thu thập các nguồn; việc nhìn thấy chúng di chuyển cùng nhau trên một bản đồ là điểm khác biệt.",
       "signalStack": "Tín hiệu tích hợp",
       "correlation": "Tương quan",
       "bridge1": "Không phải danh sách luồng dữ liệu.",
@@ -518,7 +491,7 @@
         "kicker": "Địa chính trị + thị trường + vĩ mô",
         "title1": "Biến động thị trường",
         "title2": "có một bản đồ.",
-        "s1": "Rủi ro quốc gia, các biện pháp trừng phạt, tăng cường điểm nóng, cảnh báo chính thức và tốc độ tin tức cho thấy nơi áp lực địa chính trị đang gia tăng.",
+        "s1": "Rủi ro quốc gia, biện pháp trừng phạt, leo thang trên {{hotspots}} điểm nóng được tính điểm, cảnh báo chính thức và tốc độ tin tức cho thấy nơi áp lực địa chính trị đang gia tăng.",
         "s2": "Tàu, điểm nghẽn, chuyến bay, cáp và sự gần gũi cơ sở hạ tầng cho thấy liệu áp lực đó có thể tác động đến các tuyến cung cấp, thương mại hoặc vốn.",
         "s3": "Lãi suất, FX, cổ phiếu, tiền điện tử, năng lượng và tài sản an toàn cho thấy chế độ thị trường nào đang được định giá lại.",
         "s4": "Lợi thế là nhìn thấy áp lực địa chính trị, đường truyền dẫn và hành động giá cùng nhau trước khi nó trở thành một ghi chú đồng thuận.",
@@ -532,7 +505,7 @@
         "kicker": "Hàng hóa + điểm nghẽn + thời tiết",
         "title1": "Biến động hàng hóa bắt đầu",
         "title2": "trong thế giới vật chất.",
-        "s1": "AIS, cảng, đường ống, LNG, nhà máy lọc dầu, đường thủy nội địa và điểm nghẽn cho thấy khi cung cấp đang chậm lại, thay đổi đường hay tập trung.",
+        "s1": "AIS, cảng, ống dẫn, LNG, nhà máy lọc dầu, tuyến đường thủy và {{chokepoints}} điểm nghẽn cho thấy khi cung cấp đang chậm lại, thay đổi tuyến hoặc tập trung.",
         "s2": "Thời tiết, cháy rừng, động đất, mất điện và lớp xung đột cho thấy các sự kiện vật lý có thể tác động đến sản xuất hoặc vận chuyển.",
         "s3": "Dầu, khí đốt, vàng, ngũ cốc, công ty khai thác và tiền tệ liên kết hàng hóa cho thấy cách sốc định giá qua.",
         "s4": "Thông tin hàng hóa chỉ hoạt động khi luồng vật lý, tín hiệu gián đoạn và chênh lệch thị trường hiển thị cùng nhau.",
@@ -546,7 +519,7 @@
         "kicker": "Cơ sở hạ tầng AI + năng lượng + khí hậu",
         "title1": "Sự bùng nổ AI có",
         "title2": "một bảng cân đối kế toán vật lý.",
-        "s1": "Các trung tâm dữ liệu AI nằm cạnh lưới điện, đường ống, LNG, cơ sở hạt nhân, vùng đám mây và margen thị trường điện.",
+        "s1": "{{aiDatacenters}} trung tâm dữ liệu AI nằm cạnh lưới điện, ống dẫn, LNG, cơ sở hạt nhân, vùng cloud và mức độ tiếp xúc với thị trường điện.",
         "s2": "Căng thẳng lưới, mất điện, nhiệt, lửa và lớp thời tiết cho thấy các hành lang tính toán nào đang chịu áp lực ngày hôm nay.",
         "s3": "Bảng công ty, sàn giao dịch và vĩ mô cho thấy ai bị phơi nhiễm khi năng lượng, tính toán và vốn va chạm.",
         "s4": "Rủi ro cơ sở hạ tầng AI chỉ xuất hiện khi tài sản vật lý, tín hiệu khí hậu và thị trường chia sẻ một màn hình.",
@@ -559,7 +532,7 @@
       "m4": {
         "kicker": "Cáp + mất điện + thương mại",
         "title": "Sự cố cáp trở thành hiệu ứng dây chuyền",
-        "s1": "Cáp biển, trạm đổi bộ, cảng, đường ống và điểm choke được ánh xạ cùng nhau.",
+        "s1": "{{submarineCables}} cáp dưới biển, trạm hạ cáp, cảng, ống dẫn và điểm nghẽn được lập bản đồ cùng nhau.",
         "s2": "Nguồn cấp dữ liệu bất thường Internet và BGP cho thấy liệu một lỗi vật lý có trở thành mất điện kỹ thuật số hay không.",
         "s3": "Dữ liệu về các hành lang thương mại, khả năng phục hồi của quốc gia và dự phòng cho thấy ai mất các tuyến dự phòng trước tiên.",
         "s4": "Hư hại cáp có ý nghĩa khi dự phòng viễn thông, hành lang thương mại và tiếp xúc quốc gia xếp chồng lên nhau.",
@@ -573,17 +546,17 @@
     "firstFive": {
       "eyebrow": "Từ không biết gì đến định hướng",
       "title": "Điều gì xảy ra trong năm phút đầu tiên của bạn trên bản đồ?",
-      "sub": "Không có tour, không có trạng thái trống, không có tường paywall. Đây là những gì thực sự xảy ra.",
+      "sub": "Không có hướng dẫn, không có trạng thái trống, không có tường đăng ký. Đây là những gì thực sự xảy ra trong 5 phút đầu tiên.",
       "f1Title": "Bản đồ đang chuyển động",
       "f1Desc": "Xung đột, tàu, chuyến bay, cháy và mất điện hiển thị khi trang tải. Không cần cấu hình trước.",
       "f2Title": "Nhấp vào bất kỳ quốc gia nào",
-      "f2Desc": "Một hồ sơ đầy đủ sẽ mở ra: điểm số bất ổn định với các thành phần của nó, tóm tắt AI có trích dẫn tiêu đề, tín hiệu hoạt động, dòng thời gian 7 ngày.",
+      "f2Desc": "Một hồ sơ đầy đủ mở ra cho quốc gia đó: điểm số bất ổn định được chia thành các thành phần đằng sau nó, một bản tóm tắt AI trích dẫn từ các tiêu đề nó được rút ra, các tín hiệu hoạt động trên bản đồ, và một dòng thời gian 7 ngày về những gì đã thay đổi. Không cần phải thiết lập gì trước; một cú nhấp chuột mở tất cả.",
       "f3Title": "Nhấn ⌘K / Ctrl-K",
-      "f3Desc": "Các lệnh. Chuyển đến bất kỳ lớp, bảng điều khiển hoặc quốc gia nào mà không cần học UI trước tiên.",
+      "f3Desc": "{{commands}} lệnh. Nhảy đến bất kỳ lớp, bảng điều khiển hoặc quốc gia nào mà không cần học UI trước.",
       "f4Title": "Chọn lăng kính của bạn",
-      "f4Desc": "Thế giới, Công nghệ, Tài chính, Hàng hóa, Năng lượng hoặc Happy — cùng một công cụ, giám sát được điều chỉnh, một cú nhấp chuột.",
+      "f4Desc": "Thế giới, Công nghệ, Tài chính, Hàng hóa, Năng lượng hoặc Vui vẻ — cùng một động cơ, sáu màn hình được tinh chỉnh, cách nhau một clic.",
       "f5Title": "Bạn có thể đã thấy khoảng một phần mười",
-      "f5Desc": "Phần còn lại xuất hiện khi thế giới di chuyển — vượt qua vệ tinh, gây nhiễu GPS, tàu tối, cụm biểu tình, cảnh báo còi.",
+      "f5Desc": "Khi bản đồ mở trên máy tính để bàn, {{defaultOnLayers}} trong số {{mapLayers}} loại lớp bản đồ, khoảng {{defaultOnLayerPct}}%, được bật. Phần còn lại xuất hiện khi thế giới chuyển động: các lượt vệ tinh đi qua, gây nhiễu GPS, tàu tối được đánh dấu từ khoảng trống AIS, các cụm biểu tình và cảnh báo còi báo động phòng vệ dân sự. Hầu hết có thể được bật từ menu lớp hoặc bảng lệnh ⌘K.",
       "cta": "Bắt đầu tính giờ"
     },
     "depth": {
@@ -606,17 +579,17 @@
       "s14l": "Ngôn ngữ · Hỗ trợ RTL",
       "s15l": "Nguồn cảnh báo độc lập",
       "n1Title": "Theo dõi vệ tinh",
-      "n1Desc": "Vị trí quỹ đạo tính toán trực tiếp trong trình duyệt bằng SGP4 — theo dõi ISS, Starlink và các vệ tinh quân sự phía trên đầu.",
+      "n1Desc": "Vị trí quỹ đạo trực tiếp được tính trong trình duyệt bằng SGP4 và cập nhật mỗi 3 giây — vệ tinh quân sự và quan sát Trái Đất từ CelesTrak, làm mới mỗi 2 giờ.",
       "n2Title": "Vùng gây nhiễu GPS",
-      "n2Desc": "Bản đồ RF-interference trực tiếp cho thấy nơi GPS đang bị suy giảm hoặc giả mạo ngay bây giờ.",
+      "n2Desc": "Bản đồ nhiễu RF hàng ngày từ báo cáo của máy bay: các ô nơi ít nhất 2% máy bay phát hiện GPS suy giảm được đánh dấu, trên 10% được đánh dấu cao. Các ô này là hình lục giác được xây dựng lại một lần mỗi ngày từ những báo cáo đó, do đó bản đồ hiển thị nơi các chuyến bay gặp gây nhiễu hoặc giả mạo trong ngày gần nhất, không phải phút này.",
       "n3Title": "Thông tin chuyên chở tại điểm nghẽn",
       "n3Desc": "Số lượng tàu thuyền qua Hormuz, Suez, Bab el-Mandeb và 10 eo biển khác — kèm theo chỉ số gián đoạn.",
       "n4Title": "Bản đồ trung tâm dữ liệu AI",
-      "n4Desc": "313 trung tâm dữ liệu AI được lập bản đồ với siêu dữ liệu nguồn điện và nhà khai thác — lớp vật lý của cuộc chạy đua AI.",
+      "n4Desc": "{{aiDatacenters}} trung tâm dữ liệu AI được lập bản đồ với dữ liệu điện và nhà khai thác — lớp vật lý của cuộc đua AI.",
       "n5Title": "Cáp dưới biển",
-      "n5Desc": "Cáp dưới biển mang internet, được phủ lên các tín hiệu mất điện và đe dọa.",
+      "n5Desc": "{{submarineCables}} cáp dưới nước mang internet, được che phủ bởi các tín hiệu sự cố và mối đe dọa.",
       "n6Title": "Theo dõi biểu tình",
-      "n6Desc": "Phát hiện biểu tình song phương với khử trùng lặp giữa các nguồn — tín hiệu, không phải đồn đại.",
+      "n6Desc": "Phát hiện biểu tình từ ACLED và GDELT; các báo cáo từ một nguồn trong cùng ô lưới 0,1° vào cùng ngày được gộp thành một sự kiện — tín hiệu, không phải tin đồn.",
       "faith": "Đừng tin vào các con số —",
       "faithCta": "hãy mở ứng dụng và kiểm đếm.",
       "faithNote": "Nguồn được trích dẫn trên mọi bảng điều khiển."
@@ -624,8 +597,8 @@
     "agents": {
       "eyebrow": "Cho những người xây dựng & tác nhân AI",
       "title": "Làm cách nào tôi xây dựng trên World Monitor từ ngăn xếp của riêng tôi?",
-      "sub": "Mọi thứ trên bản đồ cũng là một API. Kết nối nó vào Claude qua MCP, gọi các điểm cuối REST từ bất cứ đâu, hoặc cài đặt máy khách gốc cho Python, Ruby, Go hoặc JavaScript — mã của bạn nghiên cứu bằng dữ liệu trực tiếp thay vì ký ức dữ liệu đào tạo.",
-      "b1": "Các công cụ MCP — điểm rủi ro, các điểm nghẽn, xung đột, thị trường, bản tóm tắt",
+      "sub": "Mọi thứ trên bản đồ cũng là một API. Kết nối nó vào Claude qua MCP với {{mcpTools}} công cụ trực tiếp, gọi các điểm cuối REST từ bất kỳ đâu, hoặc cài đặt ứng dụng khách gốc cho Python, Ruby, Go hoặc JavaScript — mã của bạn nghiên cứu với dữ liệu trực tiếp thay vì bộ nhớ dữ liệu huấn luyện. Truy cập MCP đi kèm với Pro, từ ${{proMonthlyPrice}}/tháng.",
+      "b1": "{{mcpTools}} công cụ MCP — điểm số rủi ro, điểm thắt cổ chai, xung đột, thị trường, bản tin",
       "b2": "REST API được ghi chép — một thông số kỹ thuật OpenAPI 3.1, một khóa",
       "b3": "SDK chính thức trên npm, PyPI, RubyGems và Go — không phụ thuộc, MCP-first",
       "b4": "Phép chiếu JMESPath trên mọi cuộc gọi — tìm nạp chính xác các trường bạn cần",
@@ -647,14 +620,14 @@
       "eyebrow": "Truy cập",
       "title1": "Miễn phí là đài quan sát.",
       "title2": "Pro là phòng hoạt động.",
-      "sub": "Bảng điều khiển là miễn phí — mọi lớp bản đồ ngoại trừ Resilience, mọi nguồn cấp dữ liệu, không cần đăng ký. Pro thêm lớp quyết định.",
-      "freeTitle": "Miễn phí",
-      "freeDesc": "Gói miễn phí là một sản phẩm hoàn chỉnh, không phải bản dùng thử. Mọi lớp bản đồ ngoại trừ Resilience, mọi nguồn cấp dữ liệu, mọi công cụ giám sát — không cần đăng ký, không có hạn thời gian dùng thử.",
+      "sub": "Dashboard miễn phí $0 — mọi lớp bản đồ trừ Resilience, không cần đăng ký. Pro thêm lớp quyết định.",
+      "freeTitle": "Gói Miễn phí",
+      "freeDesc": "Bản miễn phí là một sản phẩm đầy đủ, không phải bản dùng thử. Mọi lớp bản đồ trừ Resilience, cả sáu bộ theo dõi — không cần đăng ký, không có đồng hồ dùng thử.",
       "freeF1": "Tất cả các lớp bản đồ ngoại trừ Resilience & các nguồn cấp được chọn lọc",
       "freeF2": "Tóm tắt quốc gia, điểm nóng, chỉ số bất ổn định",
       "freeF3": "Điểm nghẽn, cáp, phân tích tầng vòng",
       "freeF4": "Đường dẫn cảnh báo break & danh sách theo dõi",
-      "proTitle": "Pro",
+      "proTitle": "Gói Pro",
       "proDesc": "Hành động ngay. Lớp quyết định được sử dụng trong những khoảnh khắc trên:",
       "proF1": "WM Analyst — chat trên các dịch vụ trực tiếp, với trích dẫn",
       "proF2": "Scenario engine & Route Explorer — mô phỏng các sự cố trước khi chúng xảy ra",
@@ -662,37 +635,41 @@
       "proF4": "MCP, REST API & SDKs chính thức — các công cụ trực tiếp dưới một khóa",
       "proF5": "Trình xây dựng tiện ích tùy chỉnh cho bảng điều khiển của bạn",
       "cta": "Xem các gói & giá cả",
-      "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm"
+      "note": "Từ $39.99/tháng · Miễn phí 3 tháng khi thanh toán hàng năm",
+      "disclaimer": "World Monitor chỉ phục vụ mục đích cung cấp thông tin và không phải là tư vấn về tài chính, đầu tư, pháp lý, an ninh hoặc an toàn. Vui lòng xác minh những gì quý vị thấy và tham khảo ý kiến của chuyên gia có đủ trình độ trước khi đưa ra các quyết định mà sai sót có thể gây tổn thất hoặc tổn hại."
     },
     "faq": {
       "eyebrow": "Không có điều kiện kèm theo",
       "title": "Các câu hỏi phổ biến về World Monitor là gì?",
       "q1": "World Monitor có thực sự miễn phí không?",
-      "a1": "Có. Bản đồ trực tiếp — mọi lớp ngoại trừ Resilience, các nguồn cấp được chọn lọc, bản tóm tắt quốc gia, cảnh báo đột phá, và các bề mặt giám sát — là miễn phí mà không cần đăng ký và không có đồng hồ dùng thử. Pro thanh toán cho các nguồn cấp: nó thêm WM Analyst, công cụ tình huống, Route Explorer, bản tóm tắt được lên lịch, quyền truy cập MCP cho các khách hàng AI và lớp bản đồ Resilience. Không có quảng cáo, và không có tài khoản có nghĩa là không có dữ liệu người dùng để bán.",
+      "a1": "Có. Bản đồ trực tiếp miễn phí $0 không cần đăng ký và không có thời hạn dùng thử: {{mapLayers}} loại lớp bản đồ, tất cả trừ Resilience, cộng với các feed được lựa chọn, tóm tắt quốc gia, cảnh báo đột phát và các bề mặt giám sát. Pro hỗ trợ các feed: thêm WM Analyst, công cụ kịch bản, Route Explorer, các bản tóm tắt theo lịch, truy cập MCP cho các client AI và lớp bản đồ Resilience. Không có quảng cáo, và không có tài khoản có nghĩa là không có dữ liệu người dùng để bán.",
       "q2": "Bảng điều khiển trí tuệ toàn cầu là gì?",
       "a2": "Một chế độ xem trực tiếp duy nhất hợp nhất các tín hiệu mà hầu hết các công cụ giữ riêng: sự kiện xung đột, theo dõi tàu và máy bay, các điểm nghẽn vận chuyển, vệ tinh, cáp dưới biển, đường ống, thị trường và mối đe doạ mạng — trên một bản đồ thế giới thời gian thực, với điểm số AI và tóm tắt ở trên cùng. World Monitor là một cái miễn phí.",
       "q3": "Dữ liệu đến từ đâu?",
-      "a3": "Các nhà cung cấp được đặt tên bao gồm ACLED và UCDP cho xung đột, AISStream cho các tàu trực tiếp, OpenSky cho máy bay, NASA FIRMS cho cháy, USGS cho động đất, IMF, BIS, FRED và Finnhub cho thị trường và vĩ mô — cộng với các nguồn cấp tin tức được chọn lọc. Mỗi bảng điều khiển trích dẫn các nguồn và dấu thời gian của nó ở dòng lệnh.",
+      "a3": "Từ {{providers}} nhà cung cấp được xác định. Những cái được đặt tên bao gồm ACLED và UCDP cho xung đột, AISStream cho tàu trực tiếp, OpenSky cho máy bay, NASA FIRMS cho cháy rừng, USGS cho động đất, IMF, BIS, FRED và Finnhub cho thị trường và vĩ mô — cộng với các luồng tin được curation. Mỗi bảng điều khiển trích dẫn nguồn và dấu thời gian của nó trực tiếp.",
       "q4": "Tôi có thể theo dõi các điểm nghẽn như Hormuz hoặc Bab el-Mandeb trong thời gian thực không?",
-      "a4": "Có. Các điểm nghẽn được theo dõi với số lượng tàu AIS trực tiếp, thay đổi quá cảnh tuần qua và chấm điểm xáo trộn — và các bất thường mật độ được gắn cờ so với đường cơ sở lăn của từng eo biển.",
+      "a4": "Có. {{chokepoints}} điểm nghẽn, bao gồm eo biển và kênh đào, từ Hormuz và Bab el-Mandeb đến Suez, được theo dõi với số lượng tàu AIS live, thay đổi quá cảnh theo tuần và điểm rối loạn — và các bất thường mật độ được gắn cờ so với baseline quay của mỗi điểm nghẽn.",
       "q5": "Điều này khác với bản đồ xung đột như Liveuamap như thế nào?",
-      "a5": "Xung đột là một lớp bản đồ. World Monitor kết hợp xung đột với vận tải biển, các chuyến bay quân sự, cơ sở hạ tầng, thị trường và an ninh mạng — sau đó AI đánh giá sự hội tụ: chỉ số bất ổn định, nóng điểm leo thang, các cảnh báo phá vỡ được xác nhận và các bản tóm tắt hàng ngày. So sánh World Monitor với Liveuamap và các bản đồ xung đột khác: worldmonitor.app/compare/liveuamap-alternatives.",
+      "a5": "Xung đột là một lớp bản đồ. World Monitor kết hợp xung đột với vận tải hàng hải, các chuyến bay quân sự, cơ sở hạ tầng, thị trường và an ninh mạng — rồi AI đánh giá sự hội tụ: chỉ số bất ổn, tăng cường điểm nóng, cảnh báo phá vỡ được xác nhận và các báo cáo hàng ngày. So sánh World Monitor với Liveuamap và các bản đồ xung đột khác: worldmonitor.app/compare/liveuamap-alternatives. Để biết thêm tùy chọn giám sát, xem worldmonitor.app/compare/best-geopolitical-risk-dashboards.",
       "q6": "Tại sao tôi nên tin tưởng một cảnh báo?",
-      "a6": "Một biểu ngữ phá vỡ chỉ phát ra khi các loại nguồn gốc độc lập xác nhận — phân loại tin tức, vận tốc từ khóa, leo thang điểm nóng, sự tăng vọt quân sự, còi chính thức — loại trùng và giới hạn tỷ lệ. Ít cảnh báo hơn, những cảnh báo thực sự.",
+      "a6": "Vì một banner phải vượt qua các cổng cố định. Nó kích hoạt cho các câu chuyện tin tức được phân loại là mối đe dọa quan trọng hoặc cao, và cho các còi báo động dân sự chính thức. Một cảnh báo tin tức phải dưới 15 phút tuổi, cùng một câu chuyện bị giữ lại trong 30 phút, và một thời gian chờ 60 giây theo sau bất kỳ cảnh báo nào trừ khi cảnh báo mới nghiêm trọng hơn. Các kết quả chỉ từ khóa từ các cửa hàng cấp thấp hơn cũng cần xác nhận AI. Còi báo động bỏ qua các cổng tuổi và thời gian chờ vì chúng quan trọng về thời gian.",
       "q7": "Các agent AI như Claude hoặc GPT có thể sử dụng nó không?",
-      "a7": "Có. World Monitor cung cấp một máy chủ MCP với bộ công cụ trực tiếp, do đó Claude, GPT hoặc bất kỳ tác nhân nào tương thích MCP có thể truy vấn điểm số rủi ro trực tiếp, trạng thái điểm bế tắc, xung đột, thị trường và bản tóm tắt — với phép chiếu JMESPath để các tác nhân tìm nạp chính xác những gì họ cần.",
+      "a7": "Có. Máy chủ MCP của World Monitor hiển thị {{mcpTools}} công cụ trực tiếp, vì vậy Claude, GPT hoặc bất kỳ tác nhân tương thích MCP nào có thể truy vấn điểm số rủi ro, trạng thái điểm thắt cổ chai, xung đột, thị trường và bản tin — với phép chiếu JMESPath để các tác nhân tìm nạp chính xác những gì họ cần.",
       "q8": "Tôi có cần một tài khoản không?",
       "a8": "Không. Bảng điều khiển hoạt động ngay lập tức mà không cần đăng ký. Một tài khoản chỉ quan trọng khi bạn nâng cấp lên Pro hoặc muốn cài đặt được đồng bộ hóa trên các thiết bị.",
       "q9": "Nó có mã nguồn mở không?",
-      "a9": "Có — mã nguồn mở theo AGPL-3.0 trên GitHub: đọc mã, tự lưu trữ hoặc xây dựng dựa trên nó. Các ứng dụng máy tính để bàn gốc cho Windows, macOS và Linux cũng có sẵn, cùng với ứng dụng Android TV cho hiển thị tường.",
+      "a9": "Có — mã nguồn mở theo AGPL-3.0 trên GitHub: đọc mã, tự lưu trữ hoặc xây dựng dựa trên nó. Pro và Pro Business bao gồm khóa desktop, vì vậy bản dựng desktop riêng của bạn có thể tải dữ liệu Pro cloud; các bản sao Docker chạy trên dữ liệu riêng của chúng. Các ứng dụng desktop gốc cho Windows, macOS và Linux cũng có sẵn, cùng với ứng dụng Android TV cho màn hình tường.",
       "q10": "Tại sao World Monitor không phải là Palantir?",
       "a10": "Palantir làm cho dữ liệu riêng của một tổ chức hoạt động bên trong tổ chức đó. World Monitor bắt đầu từ phía khác: nó sắp xếp, chuẩn hóa, tương quan và giám sát dữ liệu công cộng trên thế giới, sau đó công bố lớp tình báo đó thông qua một bảng điều khiển miễn phí và mã nguồn mở. Công việc khác nhau, sản phẩm khác nhau.",
-      "q11": "Which World Monitor license do I need?",
-      "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
+      "q11": "Tôi cần giấy phép World Monitor nào?",
+      "a11": "Hãy chọn theo người sẽ dùng kết quả. Giấy phép cá nhân của Pro dành cho một người dùng World Monitor để nghiên cứu và tự quyết định. Pro Business cho phép một người dùng được cấp phép dùng nó cho công việc công ty hoặc khách hàng, công cụ nội bộ và báo cáo. API Starter bao gồm việc dùng API bên trong một tổ chức, không phân phối lại cho khách hàng. API Business cho phép tổ chức đó nhúng dữ liệu World Monitor vào sản phẩm và dịch vụ cho khách hàng của mình. Enterprise bao gồm suất tùy chỉnh, White-label và triển khai. Các giấy phép đăng ký này tách biệt với giấy phép mã nguồn AGPL/MIT. Điều khoản đầy đủ: worldmonitor.app/docs/terms.",
+      "sub": "{{answers}} câu trả lời trực tiếp về giá cả, dữ liệu, cảnh báo và truy cập AI. Tóm lại: dashboard có giá $0, không cần tài khoản, và mã nguồn mở theo AGPL-3.0.",
+      "q12": "Phần mềm tốt nhất để theo dõi các khủng hoảng và biến động toàn cầu trên tin tức là gì?",
+      "a12": "World Monitor là một lựa chọn miễn phí và mã nguồn mở: nó phát trực tiếp {{feeds}} nguồn tin tức và OSINT từ {{providers}} nhà cung cấp được ghi rõ nguồn lên một bản đồ thế giới trực tiếp duy nhất với {{mapLayers}} loại lớp bản đồ, bao quát địa chính trị, thị trường, vận tải biển, hàng không và an ninh mạng. Nó liên kết các nguồn này để những biến động xảy ra đồng thời lộ diện trước khi lên các tiêu đề báo. Để so sánh với các công cụ khác, xem worldmonitor.app/compare/best-geopolitical-risk-dashboards."
     },
     "cta": {
       "title": "Làm cách nào tôi bắt đầu theo dõi bản đồ thế giới?",
-      "subtitle": "Trong khi bạn đọc trang này, nó vẫn tiếp tục thay đổi — eo biển, điểm nóng, thị trường, nguồn cấp được quản lý. Một trong số đó sẽ là trang đầu tiên ngày mai. Tìm thấy nó trước — miễn phí, không cần tài khoản.",
+      "subtitle": "Mở worldmonitor.app/dashboard trong bất kỳ trình duyệt nào với $0, không cần tài khoản: {{mapLayers}} loại lớp bản đồ, mỗi loại ngoại trừ Resilience đều có thể bật. Nhấp vào bất kỳ quốc gia nào để xem bản tóm tắt của nó, hoặc nhấn ⌘K / Ctrl-K để mở bảng lệnh. Bản đồ đã tiếp tục cập nhật trong khi bạn đọc trang này.",
       "button": "Tìm thấy nó trước",
       "note": "Miễn phí · Không đăng ký · Tải trong vài giây",
       "secondary": "Hoặc xem các gói Pro →"
@@ -700,28 +677,40 @@
     "tasks": {
       "eyebrow": "Bắt đầu với câu hỏi",
       "title": "Bạn đang cố gắng tìm ra điều gì?",
-      "sub": "Chọn đường dấu vết chứng cứ phù hợp với nhiệm vụ của bạn. Mỗi lộ trình mở một khung nhìn được hỗ trợ bởi nguồn dữ liệu, không phải một dashboard trống.",
+      "sub": "Chọn bất kỳ tuyến bằng chứng nào trong {{routes}} tuyến phù hợp với công việc trước mắt bạn. Mỗi tuyến mở ra một chế độ xem có nguồn hỗ trợ, không phải một dashboard trống.",
       "verifyTitle": "Xác minh một sự kiện đột phát",
       "verifyDesc": "Kiểm tra các bộ theo dõi khủng hoảng hiện tại, số liệu có ngày tháng và bối cảnh được trích dẫn trước khi tin tưởng một tuyên bố đột phá.",
       "chokepointTitle": "Kiểm tra một điểm nghẽn",
-      "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu, và rủi ro trên các eo biển hạn chế quan trọng.",
+      "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu và rủi ro trên {{chokepoints}} tuyến đường hàng hải quan trọng.",
       "countryRiskTitle": "Giải thích một bước ngoặt rủi ro quốc gia",
-      "countryRiskDesc": "Truy vết các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau sự thay đổi của một quốc gia.",
-      "open": "Mở chứng cứ"
+      "countryRiskDesc": "Theo dõi các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau sự thay đổi của một quốc gia. Khả năng phục hồi được xếp hạng cho {{resilienceRanked}} trong số {{resilienceUniverse}} quốc gia, tức khoảng {{resilienceRankedPct}}%, giúp diễn giải một biến động dựa trên nền tảng cấu trúc dài hạn của quốc gia đó thay vì chỉ dựa vào các tiêu đề tin tức trong tuần này.",
+      "open": "Mở chứng cứ",
+      "workflow": "Quy trình từng bước"
+    },
+    "voices": {
+      "eyebrow": "Bằng lời của họ",
+      "title": "Mọi người nói gì về World Monitor",
+      "sub": "{{users}} người tại {{countries}} quốc gia đã dùng World Monitor. The Atlantic đã viết về World Monitor vào ngày 14 tháng 3 năm 2026 và El País viết về nó hai ngày sau đó. WIRED, The Economic Times, Arabian Business và L'Orient Today cũng đã đưa tin về World Monitor. Đây là những gì báo chí và một số người dùng đã nói.",
+      "translatedJa": "Dịch từ tiếng Nhật",
+      "prev": "Trích dẫn trước",
+      "next": "Thêm trích dẫn"
     }
   },
   "whatsNew": {
     "eyebrow": "Nhật ký vận tải",
-    "title": "Có gì mới trong WorldMonitor",
+    "title": "Có gì mới trong World Monitor",
     "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
     "proTag": "PRO",
-    "m1": "Chỉ số sự phân kỳ phí bảo hiểm vật lý — SGE so với COMEX, có lịch sử",
-    "m2": "Xếp hạng lỗ hổng cung ứng hàng hóa — quạt phân kỳ phụ thuộc điểm tắc nghẽn",
-    "m3": "Tập trung sản xuất khoáng sản & cơ sở công nghiệp quốc phòng",
-    "m4": "Thẻ điểm kiên cường năm yếu tố với điểm cấp chỉ báo",
-    "m5": "Danh sách theo dõi kênh Telegram tùy chỉnh",
-    "m6": "Đăng nhập bằng Passkey",
-    "m7": "Các tác nhân AI có thể điều khiển bảng điều khiển — các bảng, tab, lớp bản đồ & nhiệm vụ",
-    "m8": "Các trang kiên cường quốc gia phong phú hơn"
+    "m1": "Góc nhìn truyền thông — báo chí từng nước đưa tin về bất kỳ quốc gia nào ra sao, cho tác tử AI và API",
+    "m2": "/verify — thẻ bằng chứng cho mọi tuyên bố, trích dẫn các bài kiểm chứng đã công bố",
+    "m3": "Số nguồn xác nhận trên cảnh báo, bản tin tổng hợp và cửa sổ bản đồ, cùng trang /trust công khai",
+    "m4": "Theo dõi tấn công tự động — rủi ro quốc gia tăng khi bị tấn công và giảm khi các cuộc tấn công dừng",
+    "m5": "Đóng cửa không phận từ NOTAM của FAA và lớp bản đồ các sự cố khẩn cấp máy bay được báo cáo",
+    "m6": "Bản đồ hoạt động công nghiệp từ dữ liệu NO2 của vệ tinh Sentinel-5P",
+    "m7": "Dòng vốn của 230 nền kinh tế và mọi cặp quốc gia, cho tác tử AI và API",
+    "m8": "Bảng điều khiển trong terminal và bản đồ CLI phóng to được — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Các nguồn chúng tôi theo dõi"
   }
 }

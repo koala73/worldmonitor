@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '../src/utils/keyword-match.ts';
-import { getGeoHubById } from '../src/services/geo-hub-index.ts';
+import { getGeoHubById, inferGeoHubsFromTitle } from '../src/services/geo-hub-index.ts';
 
 // --- Tokenizer tests ---
 
@@ -385,5 +385,78 @@ describe('edge cases', () => {
     assert.ok(matchKeyword(t, 'iran'));
     assert.ok(matchKeyword(t, 'IRAN'));
     assert.ok(matchKeyword(t, 'Iran'));
+  });
+});
+
+// --- Issue #9706: hyphens, diacritics, non-Latin scripts ---
+
+describe('unicode and compound tokens (#9706)', () => {
+  const m = (title: string, kw: string) => matchKeyword(tokenizeForMatch(title), kw);
+
+  it('hyphenated headline matches phrase keyword', () => {
+    assert.ok(m('North-Korea launches missile', 'north korea'));
+    assert.ok(m('North Korea launches missile', 'north-korea'));
+    assert.ok(m('Al-Shabaab attack in Mogadishu', 'al-shabaab'));
+  });
+
+  it('diacritics fold in both directions', () => {
+    assert.ok(m('Café bombing', 'cafe'));
+    assert.ok(m('Turkiye responds', 'türkiye'));
+    assert.ok(m('Türkiye responds', 'turkiye'));
+    assert.ok(m('Türkiye responds', 'türkiye'));
+    assert.ok(m('Protests in São Tomé', 'sao tome'));
+    assert.ok(m('Protests in Sao Tome', 'são tomé'));
+    assert.ok(m('Curaçao refinery fire', 'curacao'));
+    assert.ok(m('Storm hits Réunion', 'reunion'));
+  });
+
+  it('non-Latin scripts tokenize and match', () => {
+    const t = tokenizeForMatch('إيران تطلق صاروخا');
+    assert.ok(t.ordered.length === 3);
+    assert.ok(m('إيران تطلق صاروخا', 'إيران'));
+    assert.ok(m('Москва заявила о ракетах', 'москва'));
+    assert.ok(m('МОСКВА заявила', 'Москва'));
+  });
+
+  it('curly apostrophe possessive', () => {
+    assert.ok(m('Assad\u2019s forces advance', 'assad'));
+    assert.ok(m("Assad's forces advance", 'assad forces'));
+  });
+
+  it('matches identical phrase keywords with apostrophes and possessives', () => {
+    assert.ok(m("Assad's forces advance", "assad's forces"));
+    assert.ok(m('Assad\u2019s forces advance', "assad's forces"));
+    assert.ok(m("Cote d'Ivoire holds elections", "cote d'ivoire"));
+    assert.ok(m('Côte d’Ivoire holds elections', "cote d'ivoire"));
+    assert.ok(m("Assad's forces advance", "assad's"));
+    assert.ok(m("Cote d'Ivoire holds elections", "d'ivoire"));
+  });
+
+  it('preserves meaningful marks in non-Latin words', () => {
+    assert.ok(m('काला', 'काला'));
+    assert.ok(!m('काला', 'कल'));
+    assert.ok(!m('कल', 'काला'));
+    assert.ok(m('काला सागर', 'काला सागर'));
+    assert.ok(m('কি', 'কি'));
+    assert.ok(!m('কি', 'ক'));
+    assert.ok(m('й', 'и\u0306'));
+    assert.ok(!m('й', 'и'));
+  });
+
+  it('matches curated geo hubs through the title inference path', () => {
+    const fixtures = [
+      { title: 'North-Korea launches missile', hubId: 'pyongyang' },
+      { title: 'Élysée announces new talks', hubId: 'paris' },
+    ];
+    for (const { title, hubId } of fixtures) {
+      assert.ok(inferGeoHubsFromTitle(title).some(match => match.hubId === hubId), title);
+    }
+    assert.ok(!inferGeoHubsFromTitle('Ambassador discusses warehouse rights').some(match => match.hubId === 'damascus'));
+  });
+
+  it('false-positive guards hold', () => {
+    assert.ok(!m('Ambassador meets officials', 'assad'));
+    assert.ok(!m('Warehouse fire downtown', 'house'));
+    assert.ok(!m('Ambassadors meet', 'assad'));
   });
 });

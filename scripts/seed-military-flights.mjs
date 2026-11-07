@@ -3,6 +3,7 @@
 import { loadEnvFile, CHROME_UA, getRedisCredentials, parseRedisCommandResponse, redisCommand, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl, getResponseHeader } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { lookupPlaneAlertAircraft } from './_plane-alert-registry.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -1477,8 +1478,10 @@ function summarizeClassificationAudit(rawStates, flights, rejected, stageCounter
   let typedFlights = 0;
   let operatorResolved = 0;
   let highConfidenceFlights = 0;
+  let watchlistMatched = 0;
 
   for (const flight of flights) {
+    if (flight.watchlist) watchlistMatched += 1;
     admittedByReason[flight.admissionReason] = (admittedByReason[flight.admissionReason] || 0) + 1;
     if (flight.aircraftTypeInferenceReason === 'callsign_pattern' || flight.classificationReason === 'callsign_pattern') typedByCallsign += 1;
     if (flight.aircraftTypeInferenceReason === 'source_metadata' || flight.operatorInferenceReason === 'source_metadata' || flight.classificationReason === 'source_metadata') typedBySource += 1;
@@ -1507,6 +1510,8 @@ function summarizeClassificationAudit(rawStates, flights, rejected, stageCounter
     hexOnlyAdmissions: hexOnly,
     operatorOtherRate: flights.length ? Number((operatorOther / flights.length).toFixed(3)) : 0,
     unknownTypeRate: flights.length ? Number((unknownType / flights.length).toFixed(3)) : 0,
+    watchlistMatched,
+    watchlistMatchRate: flights.length ? Number((watchlistMatched / flights.length).toFixed(3)) : 0,
     stageWaterfall: {
       rawStates,
       positionEligible: stageCounters.positionEligible,
@@ -1690,6 +1695,11 @@ function buildMilitaryFlightRecord(state, classified, sourceHints) {
   const isInteresting = (hotspot && hotspot.priority === 'high') ||
     classified.aircraftType === 'bomber' || classified.aircraftType === 'reconnaissance' || classified.aircraftType === 'awacs';
   const sourcePrefix = getSourcePrefix(state);
+  // Static hex join over the vendored plane-alert-db watchlist (#6228). This
+  // annotates; it does not change admission or the operator/type enums, so a
+  // listed aircraft the heuristics already classified keeps that
+  // classification and gains a name beside it.
+  const listed = lookupPlaneAlertAircraft(icao24);
 
   return {
     id: `${sourcePrefix}-${icao24}`,
@@ -1704,6 +1714,14 @@ function buildMilitaryFlightRecord(state, classified, sourceHints) {
     onGround: state[8],
     squawk: state[14] || undefined,
     ...classified,
+    watchlist: listed ? {
+      operator: listed.operator,
+      category: listed.category,
+      registration: listed.registration,
+      aircraftModel: listed.type,
+      icaoType: listed.icaoType,
+      group: listed.group,
+    } : undefined,
     sourceMeta: summarizeSourceMeta(state[15] || {}),
     sourceHints: {
       authoritativeMilitary: sourceHints.authoritativeMilitary,
@@ -1840,6 +1858,25 @@ export async function redisGet(url, token, key) {
   }
 }
 
+// The stale key is the 24h last-good fallback readers use for viewports the
+// live payload does not cover. A regional tick (adsb.lol failed, Wingbits only)
+// must not replace a global snapshot there, or every request outside the two
+// Wingbits regions loses its fallback until adsb.lol recovers. The global
+// snapshot keeps its original TTL, so it still expires 24h after it was taken.
+export async function publishStaleFlightSnapshot(url, token, payload) {
+  if (payload.coverage !== 'global') {
+    let existing = null;
+    try {
+      existing = await redisGet(url, token, STALE_KEY);
+    } catch (err) {
+      console.warn(`  ${STALE_KEY}: unreadable (${err.message || err}); publishing regional snapshot`);
+    }
+    if (existing?.coverage === 'global') return 'kept';
+  }
+  await redisSet(url, token, STALE_KEY, payload, STALE_TTL);
+  return 'written';
+}
+
 const MILITARY_PUBLICATION_TTL_GROUPS = [
   { keys: [LIVE_KEY, 'seed-meta:military:flights'], ttl: LIVE_TTL },
   {
@@ -1969,11 +2006,11 @@ async function main() {
     };
 
     await redisSet(url, token, LIVE_KEY, payload, LIVE_TTL);
-    await redisSet(url, token, STALE_KEY, payload, STALE_TTL);
+    const staleResult = await publishStaleFlightSnapshot(url, token, payload);
     await redisSet(url, token, MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY, { fetchedAt: assessedAt, sourceVersion: source || '', ...classificationAudit }, MILITARY_CLASSIFICATION_AUDIT_LIVE_TTL);
     await redisSet(url, token, MILITARY_CLASSIFICATION_AUDIT_STALE_KEY, { fetchedAt: assessedAt, sourceVersion: source || '', ...classificationAudit }, MILITARY_CLASSIFICATION_AUDIT_STALE_TTL);
     console.log(`  ${LIVE_KEY}: written`);
-    console.log(`  ${STALE_KEY}: written`);
+    console.log(`  ${STALE_KEY}: ${staleResult === 'kept' ? 'kept global last-good (regional tick)' : 'written'}`);
     console.log(`  ${MILITARY_CLASSIFICATION_AUDIT_LIVE_KEY}: written`);
 
     await writeFreshnessMetadata('military', 'flights', flights.length, source);

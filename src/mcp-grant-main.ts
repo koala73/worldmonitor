@@ -1,3 +1,4 @@
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Apex `/mcp-grant` page bootstrap.
  *
@@ -6,8 +7,10 @@
  * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
- *   1. Boot Clerk; if signed-out, openSignIn(). On sign-in, the modal
- *      closes and we re-enter via subscribeClerk().
+ *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
+ *      On sign-in, the modal closes and we re-enter via subscribeClerk(). A
+ *      modal dismissed without a session leaves the sign-in view up with a
+ *      "Sign in" button (watchSignInDismissal).
  *   2. Read `?nonce=<n>` from the query string.
  *   3. GET /api/internal/mcp-grant-context?nonce=<n> with Bearer JWT to
  *      load the REAL `client_name` + `redirect_host`.
@@ -18,15 +21,26 @@
  *      apex page never controls the host).
  */
 
-import { initClerk, getClerkToken, getCurrentClerkUser, openSignIn, subscribeClerk } from '@/services/clerk';
+import {
+  initClerk,
+  getClerkSessionToken,
+  getCurrentClerkUser,
+  isClerkSignInOpen,
+  openSignIn,
+  subscribeClerk,
+} from '@/services/clerk';
 import {
   classifyGrantDenial,
   describeGrantDelay,
+  grantClientDisplay,
   retryableGrantDelayMs,
   routeGrantContextDenial,
   shouldWaitInline,
+  type GrantClientContext,
   type GrantMintPhase,
 } from '@/services/mcp-grant-denial';
+import { watchSignInDismissal, type SignInDismissalWatch } from '@/services/sign-in-dismissal';
+import type { McpAboutYouSection } from '@/services/mcp-grant-about-you';
 
 // Apply user's saved theme preference. Inlined here (not the index.html head)
 // because the page's global CSP is hash-allowlisted and adding per-page
@@ -41,10 +55,57 @@ try {
 
 const API_BASE = ''; // same-origin (apex)
 
-interface ContextResponse {
-  client_name: string;
-  redirect_host: string;
+/** How long the optional About-you questions may take to appear (KTD7). */
+const ABOUT_YOU_STATUS_TIMEOUT_MS = 3_000;
+/** How long a successful grant waits for the profile write before redirecting. */
+const ABOUT_YOU_REDIRECT_WAIT_MS = 1_500;
+/** The account the section was started for; a different user restarts it. */
+let aboutYouUserId: string | null = null;
+let aboutYouGeneration = 0;
+let aboutYouSection: McpAboutYouSection | null = null;
+
+/**
+ * Add the optional About-you questions under the consent details when the
+ * account has not answered or skipped. Loaded lazily and never awaited by the
+ * consent flow: the card is already on screen, and a slow or failed read
+ * simply renders nothing.
+ */
+async function startAboutYou(): Promise<void> {
+  const userId = getCurrentClerkUser()?.id ?? null;
+  if (userId === aboutYouUserId) return;
+  // The account changed (or signed out): the old section's callbacks write
+  // against the previous user, so drop it before anything else.
+  aboutYouSection?.destroy();
+  aboutYouSection = null;
+  aboutYouUserId = userId;
+  const generation = ++aboutYouGeneration;
+  if (!userId) return;
+  try {
+    const [profile, view] = await Promise.all([
+      import('@/services/audience-profile'),
+      import('@/services/mcp-grant-about-you'),
+    ]);
+    if (generation !== aboutYouGeneration) return;
+    const section = await view.mountMcpAboutYou(
+      $('aboutYouMount'),
+      {
+        loadStatus: () => profile.loadAboutYouStatus(userId),
+        recordAnswers: (answers) => profile.recordAboutYouAnswers(userId, 'mcp-connect', answers),
+        skip: () => profile.skipAboutYou(userId, 'mcp-connect'),
+      },
+      ABOUT_YOU_STATUS_TIMEOUT_MS,
+    );
+    if (generation !== aboutYouGeneration) {
+      section?.destroy();
+      return;
+    }
+    aboutYouSection = section;
+  } catch (error) {
+    console.warn('[mcp-grant] About-you questions unavailable', error);
+  }
 }
+
+type ContextResponse = GrantClientContext;
 
 interface MintResponse {
   redirect: string;
@@ -76,8 +137,10 @@ function hide(id: string): void { $(id).hidden = true; }
  */
 function showErrorView(message: string, title: string): void {
   resetMintPhase();
+  stopSignInWatch();
   hide('loading');
   hide('consent');
+  hide('signInView');
   hide('retryContextBtn');
   setText('errorTitle', title);
   setText('errorBody', message);
@@ -86,8 +149,10 @@ function showErrorView(message: string, title: string): void {
 
 function showRetryableContextView(message: string): void {
   resetMintPhase();
+  stopSignInWatch();
   hide('loading');
   hide('consent');
+  hide('signInView');
   setText('errorTitle', 'Authorization temporarily unavailable');
   setText('errorBody', message);
   show('retryContextBtn');
@@ -97,8 +162,66 @@ function showRetryableContextView(message: string): void {
 function showContextLoading(): void {
   hide('errorView');
   hide('consent');
+  hide('signInView');
   setText('loadingBody', 'Loading authorization request…');
   show('loading');
+}
+
+const SIGN_IN_CANCELLED_MESSAGE = 'Sign-in was cancelled. Try again or use your email code.';
+const SIGN_IN_NOT_OPENED_MESSAGE = 'The sign-in window did not open. Try again.';
+
+let signInWatch: SignInDismissalWatch | null = null;
+/**
+ * Set by every prompt, automatic or not. Clerk emits on every client change,
+ * including the abandoned attempt a dismissed modal leaves behind and a stale
+ * user being cleared after a context 401. Re-opening the modal on those
+ * signed-out emissions would override the user's dismissal, so the page opens
+ * it unprompted at most once; after that the "Sign in" button is the way back.
+ */
+let signInPrompted = false;
+
+function stopSignInWatch(): void {
+  signInWatch?.cancel();
+  signInWatch = null;
+}
+
+function showSignInView(message: string | null): void {
+  // A context load still in flight belongs to the session that just went away;
+  // retire it so its late response cannot paint consent over this view.
+  contextLoadGeneration += 1;
+  resetMintPhase();
+  hide('loading');
+  hide('consent');
+  hide('errorView');
+  setText('signInMessage', message ?? '');
+  if (message) show('signInMessage');
+  else hide('signInMessage');
+  show('signInView');
+}
+
+/**
+ * Open the Clerk modal over an actionable page. The sign-in view sits behind
+ * the modal rather than the spinner, so a dismissal (2026-10-19: an interrupted
+ * passkey prompt closed the modal at `needs_first_factor` with no session)
+ * returns the user to a "Sign in" button. Clerk has no close callback, so the
+ * watcher notices the modal leaving; a completed sign-in moves the page off this
+ * view through `reactToAuth` first, which is what tells the two apart.
+ */
+function promptSignIn(): void {
+  signInPrompted = true;
+  stopSignInWatch();
+  showSignInView(null);
+  const watch = watchSignInDismissal({
+    isOpen: isClerkSignInOpen,
+    onDismissed: (reason) => {
+      if (signInWatch !== watch) return;
+      signInWatch = null;
+      if ($('signInView').hidden) return;
+      showSignInView(reason === 'closed' ? SIGN_IN_CANCELLED_MESSAGE : SIGN_IN_NOT_OPENED_MESSAGE);
+    },
+  });
+  signInWatch = watch;
+  openSignIn();
 }
 
 function getNonceFromQuery(): string | null {
@@ -108,10 +231,12 @@ function getNonceFromQuery(): string | null {
 }
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getClerkToken();
+  // Standard session token (carries `sid`): the grant mint confirms the session
+  // is live at Clerk, and JWT-template tokens omit that claim.
+  const token = await getClerkSessionToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`${API_BASE}${path}`, { ...init, headers });
+  return fetch(`${API_BASE}${path}`, { ...init, signal: createRequestTimeoutSignal(`${API_BASE}${path}`, init, path.startsWith('/api/internal/mcp-grant-context') ? 35_000 : 120_000), headers });
 }
 
 /**
@@ -133,11 +258,34 @@ function resetMintPhase(): void {
 }
 
 const CONTEXT_AUTO_RETRY_BUDGET = 1;
+const CONTEXT_LOAD_TIMEOUT_MS = 30_000;
 let contextLoadGeneration = 0;
+let contextLoadInFlight: { generation: number; userId: string | undefined; promise: Promise<void> } | null = null;
 
 async function loadContext(nonce: string): Promise<void> {
+  const userId = getCurrentClerkUser()?.id;
+  if (contextLoadInFlight?.generation === contextLoadGeneration && contextLoadInFlight.userId === userId) return contextLoadInFlight.promise;
   const generation = ++contextLoadGeneration;
-  await loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation);
+  let timeout: number | undefined;
+  const deadline = new Promise<void>(resolve => {
+    timeout = window.setTimeout(() => {
+      if (generation === contextLoadGeneration) {
+        contextLoadGeneration += 1;
+        if (mintPhase === 'idle' || !$('loading').hidden) {
+          showRetryableContextView('The authorization service took too long to respond. Try again.');
+        }
+      }
+      resolve();
+    }, CONTEXT_LOAD_TIMEOUT_MS);
+  });
+  const promise = Promise.race([loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation), deadline]);
+  contextLoadInFlight = { generation, userId, promise };
+  try {
+    await promise;
+  } finally {
+    window.clearTimeout(timeout);
+    if (contextLoadInFlight?.promise === promise) contextLoadInFlight = null;
+  }
 }
 
 async function loadContextAttempt(
@@ -167,12 +315,13 @@ async function loadContextAttempt(
   if (!resp.ok) {
     let body: ApiError | null = null;
     try { body = (await resp.json()) as ApiError; } catch { /* ignore */ }
+    if (generation !== contextLoadGeneration) return;
     const verdict = classifyGrantDenial(resp.status, body?.error);
     const action = routeGrantContextDenial(verdict.action, mintPhase, retriesRemaining);
     switch (action) {
       case 'sign_in':
         // Token went stale between page load and fetch — re-prompt.
-        openSignIn();
+        promptSignIn();
         return;
       case 'preserve_consent':
         return;
@@ -219,10 +368,21 @@ async function loadContextAttempt(
 
   setText('clientName', ctx.client_name);
   setText('clientHost', ctx.redirect_host);
+  const display = grantClientDisplay(ctx);
+  if (display.clientIdHost) {
+    setText('clientIdHost', display.clientIdHost);
+    show('clientIdHostLine');
+  } else {
+    hide('clientIdHostLine');
+  }
+  if (display.showLocalhostWarning) show('localhostWarn');
+  else hide('localhostWarn');
   const u = getCurrentClerkUser();
   setText('userEmail', u?.email ?? 'your account');
   hide('loading');
+  hide('signInView');
   show('consent');
+  void startAboutYou();
 }
 
 async function onAuthorizeClick(nonce: string): Promise<void> {
@@ -237,6 +397,9 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Authorizing…';
   hide('mintError');
+  // Separate write: the mint below never waits on it (KTD7). Only the final
+  // redirect waits, bounded, for it to settle.
+  aboutYouSection?.submit();
 
   let resp: Response;
   mintPhase = 'in_flight';
@@ -323,6 +486,9 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
     return;
   }
 
+  // The profile write runs beside the mint; give it a bounded moment so the
+  // navigation does not cut it off.
+  await aboutYouSection?.settle(ABOUT_YOU_REDIRECT_WAIT_MS);
   window.location.assign(target.toString());
 }
 
@@ -342,10 +508,16 @@ async function bootstrap(): Promise<void> {
 
   const reactToAuth = async (): Promise<void> => {
     if (!getCurrentClerkUser()) {
-      // Open sign-in modal; on success subscribeClerk() fires reactToAuth again.
-      openSignIn();
+      if (!signInPrompted) {
+        // On success subscribeClerk() fires reactToAuth again with a user.
+        promptSignIn();
+        return;
+      }
+      if ($('signInView').hidden) showSignInView(null);
       return;
     }
+    stopSignInWatch();
+    if (!$('signInView').hidden) showContextLoading();
     await loadContext(nonce);
   };
 
@@ -361,6 +533,7 @@ async function bootstrap(): Promise<void> {
     void loadContext(nonce);
   });
   $('authorizeBtn').addEventListener('click', () => { void onAuthorizeClick(nonce); });
+  $('signInBtn').addEventListener('click', () => { promptSignIn(); });
 
   subscribeClerk(() => { void reactToAuth(); });
   await reactToAuth();

@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { getYoutubeLiveStreamInfo } from '../server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts';
-import { ApiError, createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
+import { createAviationServiceRoutes } from '../src/generated/server/worldmonitor/aviation/v1/service_server.ts';
 import { aviationHandler } from '../server/worldmonitor/aviation/v1/handler.ts';
 import { createDomainGateway, serverOptions } from '../server/gateway.ts';
 import { __resetRateLimitForTest, ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { issueSessionToken } from '../api/_session.js';
+import { validationFailure } from './helpers/validation-failure.mts';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -65,7 +66,7 @@ describe('YouTube public RPC input boundary and retired channel detection', () =
     ['videoId', 'short'], ['videoId', 'x'.repeat(1000)], ['videoId', 'abcdefghi?x'],
   ]) {
     it(`rejects malformed ${field} before cache or provider I/O: ${value.slice(0, 24)}`, async () => {
-      await assert.rejects(getYoutubeLiveStreamInfo(ctx(), { channel: '@ValidHandle', videoId: '', [field]: value }), (error: unknown) => error instanceof ApiError && error.statusCode === 400);
+      await assert.rejects(getYoutubeLiveStreamInfo(ctx(), { channel: '@ValidHandle', videoId: '', [field]: value }), validationFailure(field === 'videoId' ? 'video_id' : field));
       assert.equal(calls.length, 0);
       assert.equal(redis.redis.size, 0);
     });

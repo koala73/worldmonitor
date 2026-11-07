@@ -66,8 +66,12 @@ const CANADA_SECTIONS = [
   { label: 'VIA-Rail-Live', script: 'seed-viarail-live.mjs', seedMetaKey: 'seed-meta:transit:viarail-live', canonicalKey: 'transit:viarail:live', intervalMs: 15 * MIN, timeoutMs: 60_000 },
   // seed-meta key is `transit:ttc-alerts` because runSeed derives it from
   // (domain, resource) = ('transit', 'ttc-alerts'). It is NOT the canonical key
-  // with :v1 stripped.
-  { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  // with :v1 stripped. afterPublish records the per-mode fallback in seed-meta,
+  // so the completion marker attests the run finished that write (#6960).
+  // 75s: runSeed keeps 40s for publish, leaving 35s to fetch, enough for the
+  // combined request and the parallel per-mode fallback to each hit the 15s
+  // GTFS-RT timeout.
+  { label: 'TTC-Alerts', script: 'seed-ttc-alerts.mjs', seedMetaKey: 'seed-meta:transit:ttc-alerts', canonicalKey: 'transit:ttc:alerts:v1', completionMetaKey: 'seed-completion:transit:ttc-alerts', intervalMs: 5 * MIN, timeoutMs: 75_000 },
   // Official TFS live CAD XML. Own key; 5min matches the source update cycle
   // and a durable activation marker makes the first-deploy health bridge strict
   // after the first successful canonical publish.
@@ -86,7 +90,7 @@ const CANADA_SECTIONS = [
   //
   // WHY THE CAPACITY OBJECTION NO LONGER APPLIES: the adapter header rules this
   // out on the cost of a full 486k-row MCI walk (~243 pages), which the adapter
-  // never performs — it is a bounded worker (90-day lookback, maxPages 3,
+  // never performs — it is a bounded worker (30-day lookback, maxPages 3,
   // 2,000-row page cap). Measured live 2026-09-04: MCI 3,195 records in 7.9s,
   // Calls 5,982 in 7.1s, 22.1s for the pair — ~4% of this runner's 570s budget,
   // against the ~33s this bundle already accepts for the rest of the pack.

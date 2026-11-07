@@ -8,6 +8,7 @@ export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
  */
 
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
@@ -164,6 +165,11 @@ const EVENTS = {
   'webcam-fullscreen': true,
   // Downloads / banners
   'download-clicked': true,
+  'pwa-install-entry-shown': true,
+  'pwa-install-clicked': true,
+  'pwa-install-outcome': true,
+  'pwa-installed': true,
+  'pwa-ios-sheet-opened': true,
   'critical-banner': true,
   // AI widget
   'widget-ai-open': true,
@@ -191,8 +197,16 @@ const EVENTS = {
   // Auth (wired in PR #1812 — do not remove)
   'sign-in': true,
   'sign-up': true,
+  // Sign-up resume funnel (#8577): started once per attempt, resumed after a
+  // reload, dismissed by the user; `sign-up` carries `resumed`.
+  'sign-up-started': true,
+  'sign-up-resumed': true,
+  'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
+  // Free-user Pro strip call to action. Views are gate-hit feature=pro-banner;
+  // clicks / views is the strip's click-through. `state` is upgrade | lapsed.
+  'pro-banner-click': true,
   // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
   // checkout-success is the end-to-end funnel; the /pro page fires its own
   // checkout-start via the raw tracker (separate build, same event name).
@@ -252,6 +266,11 @@ const EVENTS = {
   'pro-preview-cta': true,
   'pro-preview-dismissed': true,
   'mission-returned-after-purchase': true,
+  // About-you questionnaire (plan 2026-11-02-001). Carries the surface, the
+  // card mode, and the question id, never the answer or the free text.
+  'about-you-shown': true,
+  'about-you-answered': true,
+  'about-you-skipped': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -328,7 +347,11 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {
     noteProFunnelReplayDelivered();
   }
-  if (outcome.eventName === 'checkout-start' || outcome.eventName === 'checkout-failed') {
+  if (
+    outcome.eventName === 'checkout-start'
+    || outcome.eventName === 'checkout-failed'
+    || outcome.eventName === 'pro-banner-click'
+  ) {
     forgetPendingConversion(outcome.eventName);
   }
 }
@@ -721,7 +744,7 @@ export function initAuthAnalytics(): void {
         !hasTrackedSignupInSession(nextUserId) &&
         isLikelyFreshSignup(prevUserId, nextUserId, getClerkUserCreatedAt(), Date.now())
       ) {
-        trackSignUp('clerk');
+        trackSignUp('clerk', { resumed: consumeSignUpResumed() });
         markSignupTrackedInSession(nextUserId);
       }
     }
@@ -754,8 +777,43 @@ export function trackSignIn(method: string): void {
   track('sign-in', { method });
 }
 
-export function trackSignUp(method: string): void {
-  track('sign-up', { method });
+export function trackSignUp(method: string, opts?: { resumed?: boolean }): void {
+  track('sign-up', { method, resumed: opts?.resumed === true });
+}
+
+/**
+ * Sign-up funnel: started -> (resumed) -> sign-up. Abandonment is
+ * started minus sign-up; resume effectiveness is sign-up{resumed} over resumed.
+ * `started` fires once per attempt id (the resume service keeps the marker),
+ * so a reload mid-attempt does not count a second start.
+ */
+export function trackSignUpStarted(): void {
+  track('sign-up-started');
+}
+
+export function trackSignUpResumed(props: { trigger: 'hydration' | 'user'; code: 'live' | 'expired'; sinceBootMs: number }): void {
+  track('sign-up-resumed', { trigger: props.trigger, code: props.code, since_boot_ms: props.sinceBootMs });
+}
+
+export function trackSignUpResumeDismissed(): void {
+  track('sign-up-resume-dismissed');
+}
+
+/**
+ * Set when the resumed verify card mounts; read and cleared by the completion
+ * `sign-up` event on the next page load. localStorage rather than session
+ * scope for the same cross-tab reason as `wm-signup-tracked:`.
+ */
+const SIGNUP_RESUMED_KEY = 'wm-signup-resumed';
+
+export function markSignUpResumed(): void {
+  safeStorageSet(SIGNUP_RESUMED_KEY, '1');
+}
+
+export function consumeSignUpResumed(): boolean {
+  const resumed = safeStorageGet(SIGNUP_RESUMED_KEY) === '1';
+  if (resumed) safeStorageRemove(SIGNUP_RESUMED_KEY);
+  return resumed;
 }
 
 export function trackAnalystControlAction(actionType: string, status: string, reason?: string): void {
@@ -951,7 +1009,7 @@ const CONVERSION_PENDING_KEY = 'wm-conversion-pending';
 const CONVERSION_PENDING_LIMIT = 5;
 
 type PendingConversion = {
-  event: 'checkout-start' | 'checkout-failed';
+  event: 'checkout-start' | 'checkout-failed' | 'pro-banner-click';
   data: Record<string, unknown>;
 };
 
@@ -969,7 +1027,7 @@ function readPendingConversions(): PendingConversion[] {
     return items.filter((item): item is PendingConversion => {
       if (!item || typeof item !== 'object') return false;
       const { event, data } = item as { event?: unknown; data?: unknown };
-      return (event === 'checkout-start' || event === 'checkout-failed')
+      return (event === 'checkout-start' || event === 'checkout-failed' || event === 'pro-banner-click')
         && Boolean(data) && typeof data === 'object';
     }).slice(0, CONVERSION_PENDING_LIMIT);
   } catch {
@@ -1018,6 +1076,9 @@ function sanitizePendingConversionData(
   event: PendingConversion['event'],
   data: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (event === 'pro-banner-click') {
+    return { state: data.state === 'lapsed' ? 'lapsed' : 'upgrade' };
+  }
   if (event === 'checkout-failed') {
     const status = data.status;
     return {
@@ -1293,6 +1354,17 @@ export function replayPendingProFunnelEvents(): void {
 const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'canceled']);
 
 /** Fired when a checkout return reconciles as failed/declined/cancelled. */
+/**
+ * A click on the free-user Pro strip. It navigates straight to /pro, often
+ * before the deferred tracker loads, so a durable copy replays on the next
+ * dashboard boot until the collector confirms the write.
+ */
+export function trackProBannerClick(state: 'upgrade' | 'lapsed'): void {
+  const data = { state };
+  rememberPendingConversion('pro-banner-click', data);
+  track('pro-banner-click', data);
+}
+
 export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   rememberPendingConversion('checkout-failed', { status });

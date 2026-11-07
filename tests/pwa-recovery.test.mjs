@@ -7,6 +7,12 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+function browserInlineScriptHash(scriptText) {
+  const browserText = scriptText.replace(/\r\n?/g, '\n');
+  return `'sha256-${createHash('sha256').update(browserText).digest('base64')}'`;
+}
+
 const navigationSource = readFileSync(resolve(ROOT, 'public/sw-navigation.js'), 'utf8');
 
 function createNavigationHarness({ fetchImpl, offlineResponse = { offline: true }, cacheNames = [] } = {}) {
@@ -138,7 +144,20 @@ describe('offline Retry CSP', () => {
   const offlineHtml = readFileSync(resolve(ROOT, 'public/offline.html'), 'utf8');
   const inlineScripts = [...offlineHtml.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
   const retryButton = offlineHtml.match(/<button\b[^>]*\bid=["']t-retry["'][^>]*>/i)?.[0] ?? '';
-  const scriptHash = `'sha256-${createHash('sha256').update(inlineScripts[0]?.[1] ?? '').digest('base64')}'`;
+  const scriptHash = browserInlineScriptHash(inlineScripts[0]?.[1] ?? '');
+
+  it('hashes LF, CRLF, and CR script text the same and rejects a script edit', () => {
+    const script = inlineScripts[0][1];
+    const lf = script.replace(/\r\n?/g, '\n');
+    const crlf = lf.replace(/\n/g, '\r\n');
+    const cr = lf.replace(/\n/g, '\r');
+    const expected = browserInlineScriptHash(lf);
+    assert.equal(browserInlineScriptHash(crlf), expected);
+    assert.equal(browserInlineScriptHash(cr), expected);
+    const edited = lf.replace('location.reload()', 'location.assign("/")');
+    assert.notEqual(edited, lf);
+    assert.notEqual(browserInlineScriptHash(edited), expected);
+  });
 
   it('binds Retry from the trusted inline script instead of an inline event attribute', () => {
     assert.equal(inlineScripts.length, 1, 'offline page should contain one CSP-hashed inline script');

@@ -133,11 +133,15 @@ test('every API capture has an explicit stable fingerprint', async () => {
   const userPrefs = await readFile(join(apiRoot, 'user-prefs.ts'), 'utf8');
   assert.match(userPrefs, /fingerprint:\s*\['api\/user-prefs', opts\.method, errorShape\]/);
   const notificationChannels = await readFile(join(apiRoot, 'notification-channels.ts'), 'utf8');
-  assert.equal(
-    (notificationChannels.match(/captureEdgeException\([^\n]+ctx, \[/g) ?? []).length,
-    2,
-    'notification GET and POST must pass fingerprints to the legacy adapter',
-  );
+  const notificationCaptures = captures(notificationChannels);
+  for (const method of ['GET', 'POST']) {
+    const stable = new RegExp(`fingerprint:\\s*\\['api/notification-channels', '${method}', err instanceof Error \\? err\\.name : 'Error'\\]`);
+    assert.equal(
+      notificationCaptures.filter((call) => stable.test(call)).length,
+      1,
+      `notification ${method} catch must capture with its explicit stable fingerprint`,
+    );
+  }
   const sentryEdge = await readFile(join(apiRoot, '_sentry-edge.js'), 'utf8');
   assert.match(sentryEdge, /captureSilentError\(err, \{ extra: context, ctx: vctx, fingerprint \}\)/);
   assert.match(

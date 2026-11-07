@@ -1,17 +1,7 @@
 /// <reference lib="es2022.intl" />
-/**
- * Travelpayouts Cached Data API provider
- * Auth: X-Access-Token header
- * All results are indicative (cached), bookingUrl/checkoutRef left empty.
- *
- * Endpoints:
- *   v2/prices/latest           — cheapest tickets found recently for a route
- *   v2/prices/month-matrix     — cheapest by day for a month
- *   v3/prices_for_dates        — specific date range (day-precision, one-way/return)
- */
 
 import type { PriceQuote, CabinClass, Carrier } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { ApiError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { ValidationError } from '../../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../../_shared/redis';
 import { CHROME_UA } from '../../../../_shared/constants';
 import { normalizeCountryToIso2 } from '../../../../_shared/country-normalize';
@@ -20,15 +10,20 @@ import { IATA_RE } from '../_shared';
 const BASE_V2 = 'https://api.travelpayouts.com/v2/prices';
 const BASE_V3 = 'https://api.travelpayouts.com/v3';
 
-// Cache key for 7-day price snapshots
 const SNAPSHOT_PREFIX = 'aviation:price-snapshot';
 
-// Travelpayouts trip_class codes
+// Premium economy has no code, so the request asks for economy.
 const CABIN_CLASS_MAP: Record<string, number> = {
     CABIN_CLASS_ECONOMY: 0,
-    CABIN_CLASS_PREMIUM_ECONOMY: 1,
-    CABIN_CLASS_BUSINESS: 2,
-    CABIN_CLASS_FIRST: 2,  // treat as business — most caches lack separate FIRST
+    CABIN_CLASS_PREMIUM_ECONOMY: 0,
+    CABIN_CLASS_BUSINESS: 1,
+    CABIN_CLASS_FIRST: 2,
+};
+
+const TRIP_CLASS_CABIN: Partial<Record<number, CabinClass>> = {
+    0: 'CABIN_CLASS_ECONOMY',
+    1: 'CABIN_CLASS_BUSINESS',
+    2: 'CABIN_CLASS_FIRST',
 };
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency').map(code => code.toLowerCase()));
@@ -40,8 +35,6 @@ function validDate(value: string): boolean {
     const parsed = new Date(`${date}T00:00:00Z`);
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 }
-
-// ---- Internal response shapes ----
 
 interface TpLatestTicket {
     origin?: string;
@@ -55,8 +48,8 @@ interface TpLatestTicket {
     distance?: number;
     gate?: string;
     airline?: string;
-    expires_at?: string;    // ISO-8601
-    class?: number;
+    expires_at?: string;
+    trip_class?: number;
 }
 
 interface TpMonthMatrixTicket {
@@ -65,7 +58,9 @@ interface TpMonthMatrixTicket {
     depart_date?: string;
     return_date?: string;
     number_of_changes?: number;
+    value?: number;
     price?: number;
+    trip_class?: number;
     airline?: string;
     duration?: number;
     expires_at?: string;
@@ -85,8 +80,6 @@ interface TpV3Ticket {
     expires_at?: string;
 }
 
-// ---- Normalisers ----
-
 function expiresMs(isoStr?: string): number {
     if (!isoStr) return 0;
     try { return new Date(isoStr).getTime(); } catch { return 0; }
@@ -94,6 +87,17 @@ function expiresMs(isoStr?: string): number {
 
 function parseCarrier(iata?: string): Carrier {
     return { iataCode: iata ?? '', icaoCode: '', name: iata ?? '' };
+}
+
+function cabinFromTripClass(code: unknown): CabinClass {
+    if (typeof code !== 'number' || !Number.isInteger(code)) return 'CABIN_CLASS_UNSPECIFIED';
+    return TRIP_CLASS_CABIN[code] ?? 'CABIN_CLASS_UNSPECIFIED';
+}
+
+function fareAmount(value: unknown, legacyPrice: unknown): number | null {
+    const amount = value ?? legacyPrice;
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return null;
+    return amount;
 }
 
 function fromLatest(t: TpLatestTicket, origin: string, destination: string, currency: string, now: number): PriceQuote {
@@ -106,7 +110,7 @@ function fromLatest(t: TpLatestTicket, origin: string, destination: string, curr
         carrier: parseCarrier(t.airline),
         priceAmount: t.value ?? 0,
         currency: (t.currency ?? currency).toUpperCase(),
-        cabin: 'CABIN_CLASS_ECONOMY',
+        cabin: cabinFromTripClass(t.trip_class),
         stops: t.number_of_changes ?? 0,
         durationMinutes: t.duration ?? 0,
         bookingUrl: '',
@@ -118,7 +122,9 @@ function fromLatest(t: TpLatestTicket, origin: string, destination: string, curr
     };
 }
 
-function fromMonthMatrix(t: TpMonthMatrixTicket, origin: string, destination: string, currency: string, now: number): PriceQuote {
+function fromMonthMatrix(t: TpMonthMatrixTicket, origin: string, destination: string, currency: string, now: number): PriceQuote | null {
+    const priceAmount = fareAmount(t.value, t.price);
+    if (priceAmount === null) return null;
     return {
         id: `tp-month-${t.origin ?? origin}-${t.destination ?? destination}-${t.depart_date ?? ''}`,
         origin: t.origin ?? origin,
@@ -126,9 +132,9 @@ function fromMonthMatrix(t: TpMonthMatrixTicket, origin: string, destination: st
         departureDate: t.depart_date ?? '',
         returnDate: t.return_date ?? '',
         carrier: parseCarrier(t.airline),
-        priceAmount: t.price ?? 0,
+        priceAmount,
         currency: currency.toUpperCase(),
-        cabin: 'CABIN_CLASS_ECONOMY',
+        cabin: cabinFromTripClass(t.trip_class),
         stops: t.number_of_changes ?? 0,
         durationMinutes: t.duration ?? 0,
         bookingUrl: '',
@@ -163,8 +169,6 @@ function fromV3(t: TpV3Ticket, origin: string, destination: string, currency: st
     };
 }
 
-// ---- Fetch helpers ----
-
 function makeHeaders(token: string): Record<string, string> {
     return {
         'X-Access-Token': token,
@@ -185,7 +189,7 @@ async function fetchTp<T>(url: string, token: string): Promise<T | null> {
             return null;
         }
         const json = await resp.json() as { data?: T; success?: boolean };
-        // v2 wraps in { success, data }, v3 wraps in { data }
+        // v2 sets success. v3 returns data without that flag.
         if ('success' in json && !json.success) return null;
         return (json.data ?? json) as T;
     } catch (err) {
@@ -193,8 +197,6 @@ async function fetchTp<T>(url: string, token: string): Promise<T | null> {
         return null;
     }
 }
-
-// ---- Main search function ----
 
 export interface TravelpayoutsResult {
     quotes: PriceQuote[];
@@ -225,38 +227,27 @@ export async function searchPricesTravelpayouts(opts: {
     const cabin = !opts.cabin || opts.cabin === 'CABIN_CLASS_UNSPECIFIED' ? 'CABIN_CLASS_ECONOMY' : opts.cabin;
     const currency_ = (opts.currency || 'usd').trim().toLowerCase();
     const market_ = (opts.market || inferMarket(origin)).trim().toLowerCase();
-    // Validate before constructing cache keys or accessing the provider. Unknown
-    // cabin strings otherwise issue the same economy query under unique keys.
-    if (!IATA_RE.test(origin) || !IATA_RE.test(destination)
-        || !validDate(departureDate) || !validDate(returnDate)
-        || !Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin)
-        || !CURRENCIES.has(currency_)
-        || !/^[a-z]{2}$/.test(market_) || !normalizeCountryToIso2(market_)) {
-        throw new ApiError(400, 'Invalid flight search airport, date, cabin, currency or market', '');
-    }
+    // Validate before cache keys. An unknown cabin would otherwise store an economy query under its own key.
+    const invalidField = [
+        ['origin', IATA_RE.test(origin), 'Expected a three-letter airport code'],
+        ['destination', IATA_RE.test(destination), 'Expected a three-letter airport code'],
+        ['departure_date', validDate(departureDate), 'Expected a YYYY-MM-DD date'],
+        ['return_date', validDate(returnDate), 'Expected a YYYY-MM-DD date'],
+        ['cabin', Object.prototype.hasOwnProperty.call(CABIN_CLASS_MAP, cabin), 'Unsupported cabin class'],
+        ['currency', CURRENCIES.has(currency_), 'Unsupported currency'],
+        ['market', /^[a-z]{2}$/.test(market_) && Boolean(normalizeCountryToIso2(market_)), 'Expected a two-letter market country code'],
+    ].find(([, valid]) => !valid) as [string, boolean, string] | undefined;
+    if (invalidField) throw new ValidationError([{ field: invalidField[0], description: invalidField[2] }]);
     const now = Date.now();
     const tripClass = CABIN_CLASS_MAP[cabin]!;
 
-    // Determine query style:
-    // - Day-precision date given → v3 prices_for_dates (most precise)
-    // - Month-precision (YYYY-MM) → v2 month-matrix
-    // - No date / fuzzy → v2 latest
     const isDayPrecision = /^\d{4}-\d{2}-\d{2}$/.test(departureDate);
     const isMonthPrecision = /^\d{4}-\d{2}$/.test(departureDate);
 
     let quotes: PriceQuote[] = [];
-    // Track whether the underlying fetchTp call returned null (upstream
-    // HTTP/network failure). Pre-#3795-review-2, the fetcher wrapper did
-    // `.then(d => d ?? [])`, converting null to [], which (a) caused
-    // cachedFetchJson to write the empty array to Redis with the normal
-    // 1-hour TTL instead of the 2-minute NEG_SENTINEL TTL, and (b) hid
-    // the upstream failure from the handler. Now we pass null through
-    // unchanged so cachedFetchJson short-caches the NEG_SENTINEL and we
-    // can distinguish upstream failure from genuine no-results.
     let upstreamFailed = false;
 
     if (isDayPrecision) {
-        // v3: prices_for_dates
         const params = new URLSearchParams({
             origin,
             destination,
@@ -279,7 +270,6 @@ export async function searchPricesTravelpayouts(opts: {
         if (data === null) upstreamFailed = true;
         else quotes = data.slice(0, maxResults).map(t => fromV3(t, origin, destination, currency_, cabin, now));
     } else if (isMonthPrecision) {
-        // v2: month-matrix
         const params = new URLSearchParams({
             currency: currency_,
             origin,
@@ -298,10 +288,13 @@ export async function searchPricesTravelpayouts(opts: {
             upstreamFailed = true;
         } else {
             const rows = nonstopOnly ? data.filter(r => (r.number_of_changes ?? 0) === 0) : data;
-            quotes = rows.slice(0, maxResults).map(t => fromMonthMatrix(t, origin, destination, currency_, now));
+            const priced = rows.flatMap(row => {
+                const quote = fromMonthMatrix(row, origin, destination, currency_, now);
+                return quote ? [quote] : [];
+            });
+            quotes = priced.slice(0, maxResults);
         }
     } else {
-        // v2: latest
         const params = new URLSearchParams({
             currency: currency_,
             origin,
@@ -327,14 +320,13 @@ export async function searchPricesTravelpayouts(opts: {
         }
     }
 
-    // Save 7-day price snapshot for diff display
     try {
         const snapshotKey = `${SNAPSHOT_PREFIX}:${origin}-${destination}:${departureDate.slice(0, 7)}:${cabin}:v1`;
         await cachedFetchJson(snapshotKey, 7 * 24 * 3600, async () => ({
             quotes: quotes.map(q => ({ price: q.priceAmount, carrier: q.carrier?.iataCode })),
             savedAt: now,
         }));
-    } catch { /* non-critical */ }
+    } catch { /* snapshot failure must not fail the search */ }
 
     return { quotes, isDemoMode: false, upstreamFailed };
 }

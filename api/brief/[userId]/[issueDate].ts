@@ -25,12 +25,14 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
 import {
   BRIEF_PUBLIC_POINTER_PREFIX,
   buildPublicBriefUrl,
   encodePublicPointer,
+  publicBaseUrl,
 } from '../../../server/_shared/brief-share-url';
 
 const HTML_HEADERS = {
@@ -164,7 +166,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return new Response('Method not allowed', { status: 405, headers: cors });
+    return new Response('Method not allowed', { status: 405, headers: { ...cors, Allow: 'GET, HEAD, OPTIONS' } });
   }
 
   const secret = process.env.BRIEF_URL_SIGNING_SECRET ?? '';
@@ -184,8 +186,15 @@ export default async function handler(
   if (parts.length !== 4 || root !== 'api' || route !== 'brief' || !rawUserId || !rawIssueDate) {
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
-  const userId = decodeURIComponent(rawUserId);
-  const issueDate = decodeURIComponent(rawIssueDate);
+  // A malformed percent-escape is a bad link, not a server fault.
+  let userId: string;
+  let issueDate: string;
+  try {
+    userId = decodeURIComponent(rawUserId);
+    issueDate = decodeURIComponent(rawIssueDate);
+  } catch {
+    return htmlResponse(req, 404, EXPIRED_PAGE);
+  }
   const token = url.searchParams.get('t') ?? '';
 
   let verified: boolean;
@@ -245,7 +254,7 @@ export default async function handler(
       const built = await buildPublicBriefUrl({
         userId,
         issueDate,
-        baseUrl: new URL(req.url).origin,
+        baseUrl: publicBaseUrl(req),
         secret: shareSecret,
       });
       // Idempotent pointer write: same hash every call, so SET just
@@ -264,7 +273,7 @@ export default async function handler(
       }
     } catch (err) {
       console.warn('[api/brief] share URL derive failed:', (err as Error).message);
-      captureSilentError(err, { tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
+      captureSilentError(err, { level: 'warning', tags: { route: 'api/brief', step: 'share-url-derive', severity: 'warn' }, fingerprint: ['api/brief', 'share-url-derive', err instanceof Error ? err.name : 'Error'], ctx });
     }
   }
 
@@ -282,7 +291,7 @@ export default async function handler(
   try {
     html = renderBriefMagazine(
       envelope as Parameters<typeof renderBriefMagazine>[0],
-      { shareUrl, followedCountries },
+      { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)
@@ -296,5 +305,6 @@ export default async function handler(
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
-  return htmlResponse(req, 200, html);
+  // The page links a different font file set per platform (brief-font-platform.js).
+  return htmlResponse(req, 200, html, { Vary: 'User-Agent' });
 }

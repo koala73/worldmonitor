@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nonDefaultLandingLocales } from '../../shared/indexable-landing-locales.ts';
 import { guardBuiltOutput, shouldSkipBuiltOutput } from './built-output-guard.mjs';
 
 // public/pro/ stopped being committed in #6898 — `npm run build:pro` produces it
@@ -27,6 +28,19 @@ export function shouldSkipProBuiltOutput() {
   return shouldSkipBuiltOutput(PRO_BUILT_MARKER);
 }
 
+// prerender.mjs writes each localized landing document outside public/pro/
+// (its URL is /es/, not /pro/...) in the same build step, before welcome.html,
+// so the welcome marker above also proves these exist.
+export function landingBuiltOutputPath(locale) {
+  return locale.isDefault ? 'public/pro/welcome.html' : `public${locale.canonicalPath}index.html`;
+}
+
+const LOCALIZED_LANDING_BUILT_PATHS = new Set(nonDefaultLandingLocales().map(landingBuiltOutputPath));
+
+export function isProBuiltOutputPath(path) {
+  return path.startsWith('public/pro/') || LOCALIZED_LANDING_BUILT_PATHS.has(path);
+}
+
 export function guardProBuiltOutput() {
   guardBuiltOutput(PRO_BUILT_MARKER, undefined, REBUILD_HINT);
 }
@@ -37,7 +51,7 @@ export function guardProBuiltOutput() {
 // guardProBuiltOutput() still fails the suite outright when CI says it built.
 export function withoutUnbuiltProPaths(paths) {
   if (!shouldSkipProBuiltOutput()) return paths;
-  const remaining = paths.filter((path) => !path.startsWith('public/pro/'));
+  const remaining = paths.filter((path) => !isProBuiltOutputPath(path));
   // Filtering to nothing would turn the caller's `for` loop into zero
   // iterations and pass silently -- the exact vacuum this helper exists to
   // avoid. A caller with only public/pro/ paths wants shouldSkipProBuiltOutput()

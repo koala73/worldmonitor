@@ -27,9 +27,23 @@ vi.mock('../_shared/rate-limit', async (importActual) => {
     ...actual,
     checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
     checkEndpointRateLimit: (...a: unknown[]) => checkEndpointRateLimit(...a),
+    checkFailClosedScopedIpRateLimit: async () => null,
     hasEndpointRatePolicy: () => false,
   };
 });
+
+vi.mock('../_shared/user-api-key', () => ({
+  validateUserApiKeyPrincipal: async (key: string) => ({ userId: 'same-account', keyId: key, keyKind: 'api', keyHash: key.slice(3), activeKeyRank: 0 }),
+}));
+vi.mock('../_shared/desktop-key-principal', async (importActual) => ({
+  ...await importActual<typeof import('../_shared/desktop-key-principal')>(),
+  resolveUserKeyEntitlement: async () => ({ validUntil: Date.now() + 60000, planKey: 'api_starter', features: { tier: 1, apiAccess: true, apiRateLimit: 0 } }),
+  resolveUserKeyScope: () => ({ scope: 'api' }),
+}));
+vi.mock('../_shared/entitlement-check', async (importActual) => ({
+  ...await importActual<typeof import('../_shared/entitlement-check')>(),
+  checkEntitlementDetailed: async () => ({ response: null, entitlements: null }),
+}));
 
 import { createDomainGateway } from '../gateway';
 import { IDEMPOTENCY_HEADER, IDEMPOTENT_REPLAYED_HEADER } from '../_shared/idempotency';
@@ -76,6 +90,33 @@ beforeEach(() => {
 });
 
 describe('gateway Idempotency-Key', () => {
+  test('webhook responses replay only for the credential that owns the webhook', async () => {
+    const records = new Map<string, string>();
+    runRedisPipeline.mockImplementation(async (commands: string[][]) => commands.map(([verb, key, value, ...options]) => {
+      if (verb === 'GET') return { result: records.get(key) ?? null };
+      if (verb === 'SET') {
+        if (options.includes('NX') && records.has(key)) return { result: null };
+        records.set(key, value);
+        return { result: 'OK' };
+      }
+      return { result: 1 };
+    }));
+    const path = '/api/v2/shipping/webhooks';
+    let executions = 0;
+    const gateway = createDomainGateway([{ method: 'POST', path, handler: async () => Response.json({ signingSecret: `secret-${++executions}` }) }]);
+    const request = (digit: string) => new Request(`https://www.worldmonitor.app${path}`, {
+      method: 'POST', headers: { 'X-Api-Key': `wm_${digit.repeat(40)}`, 'Content-Type': 'application/json', 'Idempotency-Key': 'known-key' }, body: '{}',
+    });
+    const first = await gateway(request('a'), ctx);
+    expect(first.status).toBe(200);
+    const secretA = await first.json();
+    const second = await gateway(request('b'), ctx);
+    expect(second.status).toBe(200);
+    expect(await second.json()).not.toEqual(secretA);
+    const replay = await gateway(request('a'), ctx);
+    expect(await replay.json()).toEqual(secretA);
+    expect(executions).toBe(2);
+  });
   test('POST without the header is untouched (no Redis, no echo header)', async () => {
     const res = await makeGateway()(post(undefined), ctx);
     expect(handler).toHaveBeenCalledTimes(1);

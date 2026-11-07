@@ -53,11 +53,14 @@ function unreadable(channelId, reason, detail) {
 
 const notLive = (channelId, reason, videoId = null, title = null) => ({ status: 'not-live', reason, videoId, channelId, title });
 
-const CONSENT_WALL = [/<form[^>]+action="https:\/\/consent\.youtube\.com\//i, /<title>\s*Before you continue to YouTube/i];
+const CONSENT_WALL = [/<form[^<>]+action="https:\/\/consent\.youtube\.com\//i, /<title>\s*Before you continue to YouTube/i];
 const BOT_WALL = [/confirm you(?:'|’|\\u2019)re not a bot/i, /google\.com\/sorry\//i, /detected unusual traffic from your computer network/i];
 
 function canonicalHref(html) {
-  for (const [tag] of html.matchAll(/<link\b[^>]*>/gi)) {
+  // Only text up to the last '>' can hold a whole tag. Scanning past it made
+  // every unclosed `<link` rescan the rest of the page.
+  const closed = html.slice(0, html.lastIndexOf('>') + 1);
+  for (const [tag] of closed.matchAll(/<link\b[^>]*>/gi)) {
     if (!/\brel\s*=\s*["']canonical["']/i.test(tag)) continue;
     return /\bhref\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1] ?? null;
   }
@@ -151,10 +154,13 @@ function redact(text, proxy) {
 const isTimeout = (error) => error?.name === 'TimeoutError'
   || /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/.test(String(error?.message ?? ''));
 
+/** The proxy refused our login (CONNECT 407): every exit will refuse it too, so rotating cannot help. */
+const isProxyAuthFailure = (error) => error?.proxyFailure?.proxyConnectStatus === 407;
+
 /** A fetch that failed at the proxy exit rather than at YouTube: another exit may well succeed. */
-const isProxyFailure = (error) => error?.proxyConnect === true
+const isProxyFailure = (error) => !isProxyAuthFailure(error) && (error?.proxyConnect === true
   || PROXY_STAGES.has(error?.proxyFailure?.stage)
-  || /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/.test(String(error?.message ?? ''));
+  || /^(?:proxy fetch timeout|CONNECT tunnel timeout)$/.test(String(error?.message ?? '')));
 
 /**
  * The proxy route for one attempt, from the raw proxy value (any form parseProxyConfig reads). A Decodo sticky port

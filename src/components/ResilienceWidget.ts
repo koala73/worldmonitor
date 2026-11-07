@@ -10,8 +10,6 @@ import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics'
 import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
-import { createCheckoutConsentElement } from '@/utils/legal-links';
-import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import {
   type DimensionConfidence,
   LOCKED_PREVIEW,
@@ -33,6 +31,7 @@ import {
   getStalenessLabel,
   shouldRenderResilienceBaselineStress,
 } from './resilience-widget-utils';
+import { CountrySectionError } from '@/services/country-brief-error';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
 
 // LOCKED_PREVIEW lives in resilience-widget-utils.ts so tests and
@@ -65,31 +64,34 @@ export class ResilienceWidget {
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
   private errorMessage: string | null = null;
+  private accessDenied = false;
   private requestVersion = 0;
   private energyMixData: CountryEnergyProfileData | null = null;
 
-  constructor(countryCode?: string | null) {
+  constructor(countryCode?: string | null, private readonly managed?: { load: (code: string) => Promise<ResilienceScoreResponse> }) {
     this.element = document.createElement('section');
     this.element.className = 'cdp-card resilience-widget';
-    this.unsubscribeAuth = subscribeAuthState((state) => {
-      this.authState = state;
-      this.reactToAccessChange();
-    });
+    if (!this.managed) {
+      this.unsubscribeAuth = subscribeAuthState((state) => {
+        this.authState = state;
+        this.reactToAccessChange();
+      });
 
-    // The entitlement snapshot lands on its own channel — production fires no
-    // auth event when it arrives. Subscribing to auth alone meant the access
-    // verdict computed during the pre-snapshot window was never revisited, so
-    // a paying user did not merely see the wrong CTA for a moment, they kept
-    // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
-    // this widget still uses getPanelGateReason, not the billing-aware
-    // refinement panel-layout.ts applies.
-    this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
-    // The terminal "no snapshot is coming" outcome arrives ONLY here — see
-    // isAccessStillResolving. Without this subscription the widget would still
-    // hang on the waiting state until some unrelated event forced a re-render.
-    this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
-    this.unsubscribeMission = onMissionPresetChange(() => this.render());
+      // The entitlement snapshot lands on its own channel — production fires no
+      // auth event when it arrives. Subscribing to auth alone meant the access
+      // verdict computed during the pre-snapshot window was never revisited, so
+      // a paying user did not merely see the wrong CTA for a moment, they kept
+      // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
+      // this widget still uses getPanelGateReason, not the billing-aware
+      // refinement panel-layout.ts applies.
+      this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
+      // The terminal "no snapshot is coming" outcome arrives ONLY here — see
+      // isAccessStillResolving. Without this subscription the widget would still
+      // hang on the waiting state until some unrelated event forced a re-render.
+      this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
+      this.unsubscribeMission = onMissionPresetChange(() => this.render());
 
+    }
     this.setCountryCode(countryCode ?? null);
   }
 
@@ -122,7 +124,7 @@ export class ResilienceWidget {
       return;
     }
 
-    if (this.authState.isPending || this.getGateReason() !== PanelGateReason.NONE) {
+    if ((!this.managed && this.authState.isPending) || this.getGateReason() !== PanelGateReason.NONE) {
       this.render();
       return;
     }
@@ -130,10 +132,11 @@ export class ResilienceWidget {
     const requestVersion = ++this.requestVersion;
     this.loading = true;
     this.errorMessage = null;
+    this.accessDenied = false;
     this.render();
 
     try {
-      const response = await getResilienceScore(this.currentCountryCode);
+      const response = await (this.managed ? this.managed.load(this.currentCountryCode) : getResilienceScore(this.currentCountryCode));
       if (requestVersion !== this.requestVersion) return;
       this.currentData = response;
       this.loading = false;
@@ -143,6 +146,7 @@ export class ResilienceWidget {
       if (requestVersion !== this.requestVersion) return;
       this.loading = false;
       this.currentData = null;
+      this.accessDenied = error instanceof CountrySectionError && error.state === 'locked';
       this.errorMessage = error instanceof Error ? error.message : 'Unable to load resilience score.';
       this.render();
     }
@@ -203,13 +207,13 @@ export class ResilienceWidget {
    * behaves today while still fixing the common one.
    */
   private isAccessStillResolving(): boolean {
-    if (isProTierResolved()) return false;
+    if (this.managed || isProTierResolved()) return false;
     const status = getEntitlementVerificationStatus();
     return status === 'idle' || status === 'pending';
   }
 
   private getGateReason(): PanelGateReason {
-    return getPanelGateReason(this.authState, true);
+    return this.managed ? PanelGateReason.NONE : getPanelGateReason(this.authState, true);
   }
 
   private render(): void {
@@ -255,7 +259,7 @@ export class ResilienceWidget {
     // Same class as the 2026-04-17/18 panel-overlay incident fixed in
     // panel-gating.ts and the renderPlanCheckingState guard in
     // UnifiedSettings.ts; this is the third surface.
-    if (this.authState.isPending || this.isAccessStillResolving()) {
+    if ((!this.managed && this.authState.isPending) || this.isAccessStillResolving()) {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
     }
 
@@ -267,6 +271,7 @@ export class ResilienceWidget {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Loading resilience score…'));
     }
 
+    if (this.accessDenied) return h('div', { className: 'cdp-card-body resilience-widget__locked', 'data-brief-state': 'locked' }, this.makeEmpty(this.errorMessage ?? 'This connection is not authorized for resilience data.'));
     if (this.errorMessage) {
       return this.renderError(this.errorMessage);
     }
@@ -323,12 +328,6 @@ export class ResilienceWidget {
       { className: 'cdp-card-body resilience-widget__locked' },
       preview,
       h('div', { className: 'panel-locked-desc resilience-widget__gate-desc' }, description),
-      // Assent above the CTA (#6976) — only on the upgrade branch. The
-      // ANONYMOUS branch opens Clerk sign-in, which carries its own Terms and
-      // Privacy links via the appearance layout options.
-      ...(gateReason === PanelGateReason.ANONYMOUS
-        ? []
-        : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       button,
     );
   }
@@ -620,8 +619,8 @@ export class ResilienceWidget {
   }
 
   private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
-    const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
-    await openUpgradeCheckout(
+    const { openUpgradePlans } = await import('@/services/upgrade-flow');
+    await openUpgradePlans(
       crisisDeskAttribution ? { missionId: 'crisis-desk', panelKey: 'cii' } : undefined,
     );
   }

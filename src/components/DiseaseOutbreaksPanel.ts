@@ -181,7 +181,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       const label = alertLabel(o.alertLevel);
       const age = relativeTime(o.publishedAt);
       const sourceLink = o.sourceUrl
-        ? `<a href="${escapeHtml(sanitizeUrl(o.sourceUrl))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:none;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">${escapeHtml(o.sourceName || t('components.diseaseOutbreaks.sourceFallback'))}</a>`
+        ? `<a href="${escapeHtml(sanitizeUrl(o.sourceUrl))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">${escapeHtml(o.sourceName || t('components.diseaseOutbreaks.sourceFallback'))}</a>`
         : (o.sourceName ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(o.sourceName)}</span>` : '');
 
       return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
@@ -209,7 +209,7 @@ export class DiseaseOutbreaksPanel extends Panel {
 
     this.setSafeContent(unsafeRawHtml(`
       ${filterBar}
-      <div style="overflow-y:auto;max-height:420px">
+      <div>
         ${rows || empty}
       </div>
       <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.diseaseOutbreaks.attribution'))}</div>

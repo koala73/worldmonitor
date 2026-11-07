@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -22,6 +23,7 @@ interface CbMover { iso3: string; name: string; deltaTonnes12m: number }
 interface CbReserves {
   asOfMonth: string;
   totalTonnes: number;
+  valueIsOunces?: boolean;
   topHolders: CbHolder[];
   topBuyers12m: CbMover[];
   topSellers12m: CbMover[];
@@ -148,34 +150,42 @@ function returnChip(label: string, pct: number): string {
 
 export class GoldIntelligencePanel extends Panel {
   private _hasData = false;
+  private _lastData: GoldIntelligenceData | null = null;
 
   constructor() {
     super({ id: 'gold-intelligence', title: t('panels.goldIntelligence'), infoTooltip: t('components.goldIntelligence.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
-    this.showLoading();
+    if (!this._hasData) this.showLoading();
     try {
       const url = toApiUrl('/api/market/v1/get-gold-intelligence');
-      const resp = await fetch(url);
+      const resp = await fetch(url, { signal: createTimeoutSignal(15_000) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data: GoldIntelligenceData = await resp.json();
 
       if (data.unavailable) {
         if (!this._hasData) this.showError('Gold data unavailable', () => void this.fetchData());
+        else this.retainLastData();
         return false;
       }
 
       if (!this.element?.isConnected) return false;
       this._hasData = true;
+      this._lastData = data;
       this.render(data);
       return true;
     } catch (e) {
-      if (this.isAbortError(e)) return false;
       if (!this.element?.isConnected) return false;
       if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      else this.retainLastData();
       return false;
     }
+  }
+
+  /** Keep the last price visible but re-render so its freshness label shows its real age. */
+  private retainLastData(): void {
+    if (this._lastData && this.element?.isConnected) this.render(this._lastData);
   }
 
   private renderHeader(d: GoldIntelligenceData): string {
@@ -212,7 +222,7 @@ export class GoldIntelligencePanel extends Panel {
       ? `<div style="display:flex;gap:4px;margin-top:6px">
           ${returnChip('1W', d.returns.w1)}
           ${returnChip('1M', d.returns.m1)}
-          ${returnChip('YTD', d.returns.ytd)}
+          ${returnChip('Year to date', d.returns.ytd)}
           ${returnChip('1Y', d.returns.y1)}
         </div>`
       : '';
@@ -316,7 +326,7 @@ export class GoldIntelligencePanel extends Panel {
 
     const holderRow = (h: CbHolder, rank: number) => `<div style="display:flex;justify-content:space-between;font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:1px 0">
       <span style="color:var(--text-dim)">${rank}. ${escapeHtml(h.name)}</span>
-      <span style="font-weight:600">${h.tonnes > 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
+      <span style="font-weight:600">${cb.valueIsOunces === true && Number.isFinite(h.tonnes) && h.tonnes >= 0 ? `${h.tonnes.toFixed(1)}t` : '—'}</span>
     </div>`;
     const moverRow = (m: CbMover) => {
       const color = m.deltaTonnes12m >= 0 ? '#2ecc71' : '#e74c3c';
@@ -328,8 +338,8 @@ export class GoldIntelligencePanel extends Panel {
     };
 
     const holders = cb.topHolders.slice(0, 10).map((h, i) => holderRow(h, i + 1)).join('');
-    const buyers = cb.topBuyers12m.slice(0, 5).map(moverRow).join('');
-    const sellers = cb.topSellers12m.slice(0, 5).map(moverRow).join('');
+    const buyers = cb.valueIsOunces === true ? cb.topBuyers12m.slice(0, 5).map(moverRow).join('') : '';
+    const sellers = cb.valueIsOunces === true ? cb.topSellers12m.slice(0, 5).map(moverRow).join('') : '';
 
     const moversHtml = (buyers || sellers)
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">

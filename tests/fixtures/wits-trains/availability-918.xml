@@ -1,0 +1,345 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<wits:datasource datasourcecode="TRN" datasourcename="WITS - UNTCTAD TRAINS" language="en" total="34" xmlns:wits="http://wits.worldbank.org">
+  <wits:dataavailability>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1988</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>5</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G20;L20;N01;N33;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1989</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>2</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G20;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>No</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1990</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>3</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;N01;N08;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1991</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>3</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G20;N33;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1992</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>5</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;470;G20;N01;N34;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1993</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>9</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;470;G20;L20;N01;N08;N33;N34;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1994</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>6</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G20;L20;N08;N33;N34;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1995</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H0">Harmonized System 1988/92</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>4</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G21;L21;N08;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1996</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>38</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;031;051;112;156;188;196;203;222;268;304;320;340;348;376;398;400;410;417;422;446;470;498;504;558;591;616;643;703;710;756;760;762;788;792;804;818;G22;L22;N08;N34;N93;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1997</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>110</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;012;020;032;050;052;070;072;076;084;100;112;152;156;178;191;196;203;233;234;242;254;275;348;352;356;360;376;384;388;398;400;404;410;422;428;438;440;446;450;454;458;470;480;484;504;516;520;578;586;608;616;642;643;659;674;702;703;705;716;740;748;756;760;764;780;788;792;800;804;807;818;834;858;891;894;898;G23;L23;N08;N19;N93;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1998</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>14</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;012;203;348;376;400;504;616;703;760;788;818;G24;L24;N08;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>1999</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>14</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;012;203;348;376;400;504;616;703;760;788;818;G25;L25;N08;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2000</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>100</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;012;020;050;052;070;072;084;100;116;178;191;196;203;233;234;242;254;348;352;356;376;384;388;400;404;418;422;428;438;440;450;454;470;480;484;504;516;524;578;586;598;616;642;659;690;703;705;710;716;740;748;756;760;780;788;792;800;807;818;834;891;894;G26;L26;N08;N22;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2001</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H1">Harmonized System 1996</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>2</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;G26;L27;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2002</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>43</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;031;032;051;070;076;096;100;104;112;152;156;158;191;196;203;233;234;268;275;304;344;348;352;356;360;376;398;400;417;422;428;434;440;446;458;470;484;498;504;578;608;616;642;643;682;703;704;705;710;756;760;762;764;788;792;795;804;807;818;860;862;891;G26;L27;N08;N93;P01;P02;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2003</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>44</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;031;032;051;070;076;096;100;104;112;152;156;158;191;196;203;233;234;268;275;304;344;348;352;356;360;376;398;400;417;422;428;434;438;440;446;458;470;484;498;504;578;608;616;642;643;682;703;705;710;756;760;762;764;788;792;795;804;807;818;860;890;G26;L27;N08;P01;P02;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2004</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>34</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;100;152;191;234;275;352;356;376;400;422;438;484;504;578;586;642;674;710;756;760;788;792;807;818;890;G27;L28;N08;P01;P02;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2005</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>36</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;012;020;031;051;070;076;100;112;152;156;191;234;268;275;304;352;356;360;376;398;400;417;422;434;438;458;484;498;504;578;586;642;643;674;682;710;756;760;762;764;788;792;795;804;807;818;860;898;G27;L28;N08;N80;N93;P00;P01;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2006</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H2">Harmonized System 2002</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>34</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;100;152;191;234;275;352;356;376;400;422;438;484;504;578;586;642;674;710;756;760;788;792;807;818;890;G27;L28;N08;P00;P01;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2007</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>33</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;076;152;156;191;234;274;352;356;376;400;422;438;484;499;504;578;586;674;688;710;756;760;788;792;807;818;G27;L28;N08;P00;P01;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2008</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>41</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;076;152;156;191;234;274;352;356;360;376;400;422;438;458;484;498;499;504;578;586;643;674;688;710;756;760;764;788;792;807;818;895;G27;L28;N08;P00;P01;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2009</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>36</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;152;191;234;274;352;356;376;400;422;438;484;498;499;504;578;586;674;688;710;756;760;788;792;807;818;895;G27;L28;L85;M02;P00;P01;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2010</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>38</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;152;191;234;274;352;356;376;400;422;438;484;498;499;504;578;586;598;674;688;710;756;760;788;792;807;818;895;L28;L85;M02;P00;P01;P23;P24;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2011</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H3">Harmonized System 2007</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>38</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;152;191;234;274;352;356;376;400;410;422;438;484;498;499;504;578;586;598;674;688;710;756;760;788;792;807;818;G27;L28;L85;M02;P00;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2012</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>43</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;076;152;156;191;234;274;352;356;360;376;400;410;422;438;458;484;498;499;504;578;586;598;674;688;710;756;760;788;792;807;818;895;G27;L28;L85;M02;P00;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2013</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>41</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;152;191;234;274;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;807;818;895;A04;G27;L28;L85;M02;P00;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2014/08/04</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2014</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>43</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;152;170;234;275;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;804;807;818;895;A04;A18;A34;L85;M02;N34;P01;P02;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2015/08/20</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2015</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>47</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;120;152;170;218;234;242;268;275;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;804;807;818;895;A04;A60;A67;L20;L85;M02;N34;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2016/04/01</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2016</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H4">Harmonized System 2012</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>47</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;120;152;170;218;234;242;268;275;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;804;807;818;895;A04;A18;A67;A83;L85;M02;N34;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2017/07/14</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2017</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>51</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;120;152;170;218;234;242;268;275;288;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;702;710;756;760;788;792;804;807;818;895;A04;A18;A36;B06;B08;B17;B27;B29;B31;P01;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2018/11/21</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2018</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>50</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;120;124;152;170;218;234;242;268;275;288;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;804;807;818;895;A04;A18;A36;B17;B27;B31;C07;C11;C12;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2019/07/03</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2019</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>51</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;120;124;152;170;218;234;242;268;275;288;352;356;376;400;410;422;438;484;498;499;504;578;586;598;604;674;688;710;756;760;788;792;804;807;818;882;895;A04;A36;B17;B27;B31;C11;C12;C51;C52;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2020/10/12</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2020</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>56</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;090;120;124;152;170;218;234;242;268;275;288;352;356;376;392;400;410;422;438;484;498;499;504;578;586;598;604;674;688;702;704;710;732;756;760;788;792;804;807;818;882;895;A36;B12;B17;B27;B31;C11;C12;C65;C66;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2021/08/30</wits:lastupdateddate>
+    </wits:reporter>
+    <wits:reporter countrycode="918" iso3Code="EUN" isgroup="No" grouptype="N/A">
+      <wits:name>European Union</wits:name>
+      <wits:year>2021</wits:year>
+      <wits:reporternernomenclature reporternernomenclaturecode="H5">Harmonized System 2017</wits:reporternernomenclature>
+      <wits:numberofpreferentialagreement>57</wits:numberofpreferentialagreement>
+      <wits:partnerlist>000;008;012;020;070;090;120;124;152;170;218;234;242;268;275;288;352;356;376;392;400;410;422;438;484;498;499;504;578;586;598;604;674;688;702;704;710;732;756;760;788;792;804;807;818;826;882;895;A84;A87;A88;A93;B17;B27;B31;B36;C65;P29;</wits:partnerlist>
+      <wits:isspecificdutyexpressionestimatedavailable>Yes</wits:isspecificdutyexpressionestimatedavailable>
+      <wits:notes />
+      <wits:lastupdateddate>2022/09/09</wits:lastupdateddate>
+    </wits:reporter>
+  </wits:dataavailability>
+</wits:datasource>

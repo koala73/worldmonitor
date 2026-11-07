@@ -53,10 +53,12 @@
 //      lives in the CDN and is invisible to every in-process test, so the
 //      probe warms the cache with the plain GET first and only then issues
 //      the SSE GET.
-//   6. Listed production aliases (www, api, and the dashboard variants) are a
+//   6. Retired production aliases (www and the dashboard variants) are a
 //      client-migration surface: ordinary GET/HEAD 308 to apex, transport
 //      POST/SSE/replay 410. They are not additional servers and do not get a
-//      second capability walk.
+//      second capability walk. The served alias (api) keeps the transport for
+//      connectors already configured with it; it gets only the connect-time
+//      challenge probe, which must name its own OAuth document.
 //   7. Direct www `/api/mcp-proxy` liveness (OPTIONS 204 + anonymous GET 401).
 //      An apex redirect alone does not prove that function is healthy.
 //
@@ -86,6 +88,8 @@
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the canonical host list.
 //   MCP_SMOKE_ALIAS_HOSTS / MCP_SMOKE_VARIANT_HOSTS  override alias hosts
 //     (`tech` or a full origin). Empty string skips the alias group.
+//   MCP_SMOKE_SERVED_ALIAS_HOSTS  overrides the served-alias origin list. It
+//     defaults to api only when no host or alias override is set.
 //   MCP_SMOKE_PROXY_HOSTS  overrides the proxy liveness origin list.
 
 import { execFileSync } from 'node:child_process';
@@ -108,7 +112,10 @@ import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 const CANONICAL_ORIGIN = 'https://worldmonitor.app';
 const CANONICAL_MCP = `${CANONICAL_ORIGIN}/mcp`;
 const CANONICAL_LINK_RE = /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i;
-const DEFAULT_ALIAS_LABELS = ['www', 'api', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+const DEFAULT_ALIAS_LABELS = ['www', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+// Served aliases keep the transport (shared/mcp-host-policy.ts). The smoke
+// checks their connect-time challenge names the alias's own OAuth document.
+const DEFAULT_SERVED_ALIAS_LABELS = ['api'];
 
 function csvList(raw) {
   return String(raw ?? '').split(',').map((part) => part.trim()).filter(Boolean);
@@ -132,6 +139,16 @@ if (aliasOverride !== undefined) {
   ALIAS_HOSTS = DEFAULT_ALIAS_LABELS.map(toOrigin);
 }
 
+const servedAliasOverride = process.env.MCP_SMOKE_SERVED_ALIAS_HOSTS;
+let SERVED_ALIAS_HOSTS;
+if (servedAliasOverride !== undefined) {
+  SERVED_ALIAS_HOSTS = csvList(servedAliasOverride).map(toOrigin);
+} else if (hostsOverride || aliasOverride !== undefined) {
+  SERVED_ALIAS_HOSTS = [];
+} else {
+  SERVED_ALIAS_HOSTS = DEFAULT_SERVED_ALIAS_LABELS.map(toOrigin);
+}
+
 let PROXY_HOSTS;
 if (process.env.MCP_SMOKE_PROXY_HOSTS !== undefined) {
   PROXY_HOSTS = csvList(process.env.MCP_SMOKE_PROXY_HOSTS);
@@ -142,6 +159,7 @@ if (process.env.MCP_SMOKE_PROXY_HOSTS !== undefined) {
 }
 
 const TIMEOUT_MS = 15_000;
+const TRANSPORT_RETRIES = 1;
 // The workflow job has a 12 minute hard limit. Keep the request walk within
 // ten minutes so normal failure handling can write its report and GitHub can
 // upload it before the job is terminated. A request is never started unless
@@ -217,13 +235,31 @@ const requestTimedFetch = createTimedFetch({
   onRecord: (record) => requests.push(record),
 });
 
-async function timedFetch(...args) {
+function assertRunBudgetFitsRequest() {
   const remainingMs = runDeadlineAt === null ? 0 : runDeadlineAt - Date.now();
   if (remainingMs < TIMEOUT_MS) {
     runBudgetError ??= new RunBudgetExhaustedError(remainingMs);
     throw runBudgetError;
   }
-  return requestTimedFetch(...args);
+}
+
+// A connection dropped before or during the response (`fetch failed`,
+// `terminated`) is retried once: on the shared GitHub runner egress these
+// blips red the scheduled run about weekly with production healthy. Every
+// attempt is still recorded in the report. A timeout is a HANG and an HTTP
+// status is an answer, so neither is retried.
+async function timedFetch(...args) {
+  for (let attempt = 1; ; attempt += 1) {
+    assertRunBudgetFitsRequest();
+    try {
+      return await requestTimedFetch(...args);
+    } catch (err) {
+      const record = requests.at(-1);
+      const retryable = record?.outcome === 'transport_error' && record.stage !== 'parse';
+      if (attempt > TRANSPORT_RETRIES || !retryable) throw err;
+      console.log(`  ↻ [${safeUrlLabel(args[0])}] retrying once after a transport error: ${formatSafeError(err)}`);
+    }
+  }
 }
 
 let nextId = 1;
@@ -286,7 +322,7 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
 //    so an unauthenticated initialize MUST be refused — with the challenge that
 //    names this path's protected-resource document, and with the request id
 //    echoed (the header is checked first: a CDN-fabricated 401 lacks it).
-async function probeConnectChallenge(host) {
+async function probeConnectChallenge(host, group = 'canonical') {
   const check = `initialize on ${TRANSPORT_PATH} (anon → 401 challenge)`;
   checks += 1;
   const id = nextId++;
@@ -299,7 +335,7 @@ async function probeConnectChallenge(host) {
         jsonrpc: '2.0', id, method: 'initialize',
         params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'wm-mcp-live-smoke', version: '1.0' } },
       }),
-    }, { group: 'canonical', rpcMethod: 'initialize' }));
+    }, { group, rpcMethod: 'initialize' }));
   } catch (err) {
     throwIfRunBudgetExhausted(err);
     fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
@@ -513,6 +549,26 @@ async function walkHost(host) {
     throwIfRunBudgetExhausted(err);
     fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
+  }
+  // agent_auth.skill must equal <issuer>/auth.md and be served there without
+  // a redirect. On the apex that depends on the /auth.md exemption in the
+  // Cloudflare apex→www rule, which no in-process test can see.
+  checks += 1;
+  const skill = meta.agent_auth?.skill;
+  if (skill !== `${meta.issuer}/auth.md`) {
+    fail(host, 'agent_auth skill', `expected ${meta.issuer}/auth.md, got ${safeUrlLabel(skill)}`);
+  } else {
+    try {
+      const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });
+      if (res.status !== 200 || !/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+        fail(host, 'agent_auth skill', `expected 200 markdown, got ${res.status} ${res.headers.get('content-type')} → ${safeUrlLabel(res.headers.get('location'))}`);
+      } else {
+        ok(host, 'agent_auth skill', '200 markdown on the issuer origin');
+      }
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, 'agent_auth skill', `HANG/transport error: ${formatSafeError(err)}`);
+    }
   }
   for (const key of ['registration_endpoint', 'token_endpoint']) {
     checks += 1;
@@ -879,6 +935,10 @@ async function main() {
       await probeAliasMigration(host);
       stopIfRunBudgetExhausted();
     }
+    for (const host of SERVED_ALIAS_HOSTS) {
+      await probeConnectChallenge(host, 'aliases');
+      stopIfRunBudgetExhausted();
+    }
     completeGroup('aliases');
 
     console.log('\n── proxy ──');
@@ -892,7 +952,7 @@ async function main() {
     fail(RUNNER_LABEL, 'execution', formatSafeError(error));
   }
 
-  console.log(`\n${checks} checks across ${HOSTS.length} canonical, ${ALIAS_HOSTS.length} alias, ${PROXY_HOSTS.length} proxy origin(s); ${failures.length} failure(s).`);
+  console.log(`\n${checks} checks across ${HOSTS.length} canonical, ${ALIAS_HOSTS.length} alias, ${SERVED_ALIAS_HOSTS.length} served alias, ${PROXY_HOSTS.length} proxy origin(s); ${failures.length} failure(s).`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
     for (const failure of failures) console.log(`  [${failure.host}] ${failure.check}: ${failure.detail}`);

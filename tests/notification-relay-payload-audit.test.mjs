@@ -31,6 +31,8 @@ const PRODUCER_FILES = [
   { path: 'scripts/ais-relay.cjs',                     expected: 'domain' },
   { path: 'scripts/seed-aviation.mjs',                  expected: 'domain' },
   { path: 'scripts/regional-snapshot/alert-emitter.mjs', expected: 'domain' },
+  // Builds the chokepoint_disruption payload that ais-relay.cjs publishes.
+  { path: 'scripts/lib/chokepoint-disruption-alerts.cjs', expected: 'domain' },
   // Browser-side RSS producer
   { path: 'src/services/breaking-news-alerts.ts',       expected: 'rss' },
   // Server-side RSS producer: watchlist_story_alert events built from
