@@ -3236,9 +3236,17 @@ describe('security header guardrails', () => {
     );
     // Zod v4 runs its `new Function` probe when a z.object() is constructed,
     // so any script module evaluated before zod-csp could trip the CSP.
-    const scriptImports = [...mainSource.matchAll(/^import\s.*?['"]([^'"]+)['"];?$/gm)]
-      .map((match) => match[1])
-      .filter((specifier) => !specifier.endsWith('.css'));
+    // Spans lines so `import {\n  a,\n} from 'x';` counts as an import of 'x'.
+    const scriptImportsOf = (source) =>
+      [...source.matchAll(/^import\s(?:[^'";]*?\sfrom\s)?['"]([^'"]+)['"]/gm)]
+        .map((match) => match[1])
+        .filter((specifier) => !specifier.endsWith('.css'));
+    assert.deepEqual(
+      scriptImportsOf("import './a.css';\nimport {\n  one,\n  two,\n} from './early';\nimport type { T } from './t';\nimport './bootstrap/zod-csp';\n"),
+      ['./early', './t', './bootstrap/zod-csp'],
+      'the import scan must see multiline and type-only declarations'
+    );
+    const scriptImports = scriptImportsOf(mainSource);
     assert.equal(
       scriptImports[0],
       './bootstrap/zod-csp',
