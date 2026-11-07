@@ -233,7 +233,7 @@ describe('free alert ladder UI (#4273)', () => {
       '#usNotifCountryPicker .us-notif-country-chip-on',
     )!.click();
     await vi.advanceTimersByTimeAsync(1000);
-    const paused = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { enabled: boolean; countries: string[] };
+    const paused = channelMocks.saveAlertRules.mock.lastCall?.[0] as { enabled: boolean; countries: string[] };
     expect(paused.countries).toEqual([]);
     expect(paused.enabled).toBe(false);
     // Picking a country re-enables: the toggle still reads on.
@@ -241,7 +241,7 @@ describe('free alert ladder UI (#4273)', () => {
       '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
     )!.click();
     await vi.advanceTimersByTimeAsync(1000);
-    const resumed = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { enabled: boolean; countries: string[] };
+    const resumed = channelMocks.saveAlertRules.mock.lastCall?.[0] as { enabled: boolean; countries: string[] };
     expect(resumed.countries).toHaveLength(1);
     expect(resumed.enabled).toBe(true);
     vi.useRealTimers();
@@ -257,7 +257,7 @@ describe('free alert ladder UI (#4273)', () => {
     await vi.waitFor(() => {
       expect(channelMocks.saveAlertRules).toHaveBeenCalled();
     });
-    const payload = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { channels: string[] };
+    const payload = channelMocks.saveAlertRules.mock.lastCall?.[0] as { channels: string[] };
     expect(payload.channels).toContain('slack');
   });
 
@@ -287,7 +287,7 @@ describe('free alert ladder UI (#4273)', () => {
     toggle.checked = true;
     change(toggle);
     await vi.advanceTimersByTimeAsync(1000);
-    const payload = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { channels: string[] };
+    const payload = channelMocks.saveAlertRules.mock.lastCall?.[0] as { channels: string[] };
     expect(payload.channels).not.toContain('slack');
     vi.useRealTimers();
   });
