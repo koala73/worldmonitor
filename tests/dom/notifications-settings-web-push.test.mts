@@ -6,6 +6,7 @@ import { IncompatibleDeliveryError } from '@/services/notification-channels';
 import { initTestI18n, tt } from './helpers/i18n.mts';
 
 const pushState = vi.hoisted(() => ({
+  configured: true,
   supported: true,
   permission: 'default' as 'default' | 'granted' | 'denied' | 'unsupported',
   subscribeToPush: vi.fn<() => Promise<unknown>>(),
@@ -19,6 +20,8 @@ const channelMocks = vi.hoisted(() => ({
   startSlackOAuth: vi.fn(),
   startDiscordOAuth: vi.fn(),
 }));
+
+vi.mock('@/config/push', () => ({ isWebPushConfigured: () => pushState.configured }));
 
 vi.mock('@/services/push-notifications', () => ({
   isWebPushSupported: () => pushState.supported,
@@ -111,6 +114,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   pushState.supported = true;
+  pushState.configured = true;
   pushState.permission = 'default';
   pushState.subscribeToPush.mockReset();
   pushState.subscribeToPush.mockResolvedValue({
@@ -243,6 +247,23 @@ describe('notification Settings browser push', () => {
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
   });
 
+  it('does not promise alerts after installation when push is unconfigured', async () => {
+    pushState.configured = false;
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    for (const data of [EMPTY_DATA, CONNECTED_WEB_PUSH]) {
+      const container = await mount(data);
+      const row = webPushRow(container);
+      expect(row.textContent).toContain('does not support web push notifications');
+      expect(row.querySelector('[data-ios-install]')).toBeNull();
+      expect(row.querySelector('#usConnectWebPush')).toBeNull();
+      if (data === CONNECTED_WEB_PUSH) expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+      container.remove();
+    }
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
   it.each(['15.4', '16.3'])('does not promise installation enables alerts on iOS %s', async version => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
       `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
@@ -261,6 +282,8 @@ describe('notification Settings browser push', () => {
   });
 
   it.each(['16.4', '18.0'])('links iPhone Safari %s alerts to the shared install sheet', async version => {
+    pushState.supported = false;
+    pushState.permission = 'unsupported';
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
       `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
     );

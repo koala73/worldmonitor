@@ -1,4 +1,5 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { isWebPushConfigured } from '@/config/push';
 import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
@@ -113,7 +114,7 @@ function browserPushBlockedMessage(): string {
 
 function needsIosAlertsInstall(): boolean {
   const version = /Version\/(\d+)(?:\.(\d+))?/.exec(navigator.userAgent);
-  return needsIosInstall() && version !== null
+  return isWebPushConfigured() && needsIosInstall() && version !== null
     && (Number(version[1]) > 16 || (Number(version[1]) === 16 && Number(version[2] ?? 0) >= 4));
 }
 
