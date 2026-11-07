@@ -137,13 +137,17 @@ function levelCell(advice, source) {
  * Map colours for the figure the page builds around its world map (outside
  * this section): one rule per country, so the middleware's swap recolours the
  * map together with the table. The map shows the US levels.
+ *
+ * The built figure draws outlines only. "No US advisory" is a claim, so the
+ * base fill for unlisted countries comes from here and only with a reading;
+ * it follows the figure's own style in the document and wins by source order.
  */
 function mapStyle(record) {
   const rules = record.countries
     .filter((country) => country.US)
     .map((country) => `.advisory-map [data-iso2="${country.code}"]{fill:var(--lvl-${RANK[country.US.level]})}`)
     .join('');
-  return `        <style>${rules}</style>`;
+  return `        <style>.advisory-map path{fill:var(--lvl-none);stroke:#050807}${rules}</style>`;
 }
 
 export function travelAdvisoriesBody(record) {
@@ -201,7 +205,7 @@ ${allRows}
 const FIGURE_STYLE = `      <style>
         .advisory-figure { --lvl-1: #3f9d63; --lvl-2: #d4b13f; --lvl-3: #e07b32; --lvl-4: #e5484d; --lvl-none: #24342b; --issuer: #6b7f74; margin: 24px 0 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
         .advisory-map { display: block; width: 100%; height: auto; }
-        .advisory-map path { fill: var(--lvl-none); stroke: #050807; stroke-width: 0.6; }
+        .advisory-map path { fill: transparent; stroke: var(--lvl-none); stroke-width: 0.6; }
         .advisory-map [data-iso2="US"] { fill: var(--issuer); }
         .advisory-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--muted); }
         .advisory-legend li { display: inline-flex; align-items: center; gap: 6px; }

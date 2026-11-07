@@ -12,11 +12,11 @@ import {
 
 const ADVISORY_KEY = 'intelligence:advisories:v1';
 
-/** The seed's ISO fetch time, or '' when absent or unparseable. */
-function fetchedAtIso(value: unknown): string {
+/** The seed's fetch time in Unix epoch ms, or 0 when absent or unparseable. */
+function fetchedAtMs(value: unknown): number {
   const raw = (value as { fetchedAt?: unknown } | null)?.fetchedAt;
   const ms = typeof raw === 'number' ? raw : Date.parse(String(raw ?? ''));
-  return Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : '';
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 export async function listSecurityAdvisories(
@@ -28,7 +28,7 @@ export async function listSecurityAdvisories(
   const data = await readRequiredSeed(ADVISORY_KEY, (value) => {
     const snapshot = normalizeAdvisorySnapshot(value);
     return snapshot
-      ? { ...snapshot, registerLevels: normalizeAdvisoryRegisterLevels(value), fetchedAt: fetchedAtIso(value) }
+      ? { ...snapshot, registerLevels: normalizeAdvisoryRegisterLevels(value), fetchedAt: fetchedAtMs(value) }
       : undefined;
   });
   return {

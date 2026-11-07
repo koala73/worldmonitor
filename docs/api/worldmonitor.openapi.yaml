@@ -18329,7 +18329,7 @@ paths:
                                       "source": "example"
                                 "byCountry":
                                     "exampleKey": "example"
-                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "fetchedAt": 1717200000000
                                 "registerLevels":
                                     - "country": "US"
                                       "level": "example"
@@ -51377,7 +51377,9 @@ components:
                     items:
                         $ref: '#/components/schemas/worldmonitor_intelligence_v1_SecurityAdvisoryItem'
                 fetchedAt:
-                    type: string
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse_ByCountryEntry:
             type: object
             properties:

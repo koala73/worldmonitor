@@ -48,7 +48,7 @@ function payload(overrides: Record<string, unknown> = {}) {
     advisories: [],
     byCountry: {},
     registerLevels: [...register('US', usLevel), ...register('AU', auLevel)],
-    fetchedAt: new Date(NOW - 40 * 60_000).toISOString(),
+    fetchedAt: NOW - 40 * 60_000,
     ...overrides,
   };
 }
@@ -157,7 +157,7 @@ describe('travel advisory map section', () => {
     const style = section.match(/<style>([^<]*)<\/style>/)?.[1] ?? '';
     assert.match(style, /\.advisory-map \[data-iso2="AF"\]\{fill:var\(--lvl-4\)\}/);
     assert.match(style, /\.advisory-map \[data-iso2="RU"\]\{fill:var\(--lvl-4\)\}/);
-    assert.equal((style.match(/\{fill:/g) || []).length, CODES.length, 'one rule per country with a US level');
+    assert.equal((style.match(/\[data-iso2="[A-Z]{2}"\]\{fill:/g) || []).length, CODES.length, 'one rule per country with a US level');
     assert.doesNotMatch(style, /[<>]/);
   });
 
@@ -175,6 +175,15 @@ describe('travel advisory map page', () => {
     breadcrumbLd: () => ({}),
     pageDocument: ({ body }: { body: string }) => `<!doctype html><html><body><main>${body}</main></body></html>`,
   };
+
+  it('does not paint the built map as "no US advisory" when there is no reading', () => {
+    const noLevel = /\.advisory-map path\s*\{[^}]*fill:\s*var\(--lvl-none\)/;
+    const empty = renderLiveTopicPage({ page: travelAdvisoriesPage, record: null, baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
+    assert.doesNotMatch(empty, noLevel, 'without a reading every country would claim no US advisory');
+    const filled = renderLiveTopicPage({ page: travelAdvisoriesPage, record: read(payload()), baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
+    const sectionAt = filled.indexOf('<!--wm-live:travel-advisory-map-->');
+    assert.match(filled.slice(sectionAt), noLevel, 'a reading marks unlisted countries from inside the live section');
+  });
 
   it('draws the major countries with ISO codes and builds the map outside the live section', () => {
     const codes = new Set(worldMapShapes().map((shape) => shape.iso2));

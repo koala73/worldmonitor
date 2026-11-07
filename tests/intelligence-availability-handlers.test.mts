@@ -48,7 +48,7 @@ for (const [name, call, empty, present, malformed, mixed] of [
     () => listSecurityAdvisories({} as never, {}),
     // The response always carries the register fields; a confirmed-empty seed
     // serves them empty.
-    { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: '' },
+    { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: 0 },
     { advisories: [advisory], byCountry: coveredByCountry },
     [{ advisories: [{ ...advisory, pubDate: 'bad' }], byCountry: coveredByCountry }, { advisories: [advisory], byCountry: { UA: 'caution' } }],
     { advisories: [advisory, { ...advisory, pubDate: 'bad' }, null], byCountry: coveredByCountry },
@@ -91,11 +91,11 @@ test('advisories: serves each register level with the read time, drops invalid r
   };
   const response = await listSecurityAdvisories({} as never, {});
   assert.deepEqual(response.registerLevels, [usMexico, auMexico]);
-  assert.equal(response.fetchedAt, '2026-11-07T10:00:00.000Z');
+  assert.equal(response.fetchedAt, Date.parse('2026-11-07T10:00:00.000Z'));
   redis.value = { advisories: [advisory], byCountry: coveredByCountry };
   const legacy = await listSecurityAdvisories({} as never, {});
   assert.deepEqual(legacy.registerLevels, []);
-  assert.equal(legacy.fetchedAt, '');
+  assert.equal(legacy.fetchedAt, 0);
 });
 
 test('GDELT topics distinguish empty matches from unavailable or malformed seed and read errors', async t => {
@@ -135,7 +135,7 @@ test('generated intelligence routes preserve unavailable HTTP status and success
   const redis = mockRedis(t);
   for (const [suffix, empty, malformed] of [
     ['list-satellites', { satellites: [] }, { satellites: [null] }],
-    ['list-security-advisories', { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: '' }, { advisories: [null], byCountry: coveredByCountry }],
+    ['list-security-advisories', { advisories: [], byCountry: {}, registerLevels: [], fetchedAt: 0 }, { advisories: [null], byCountry: coveredByCountry }],
   ] as const) {
     const route = routes.find(candidate => candidate.path.endsWith(suffix))!;
     for (const unavailable of [null, malformed]) {

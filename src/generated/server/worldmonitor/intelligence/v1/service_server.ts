@@ -721,7 +721,7 @@ export interface ListSecurityAdvisoriesResponse {
   advisories: SecurityAdvisoryItem[];
   byCountry: Record<string, string>;
   registerLevels: SecurityAdvisoryItem[];
-  fetchedAt: string;
+  fetchedAt: number;
 }
 
 export interface SecurityAdvisoryItem {

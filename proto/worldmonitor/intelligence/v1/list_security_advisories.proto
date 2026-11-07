@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package worldmonitor.intelligence.v1;
 
+import "sebuf/http/annotations.proto";
 
 message SecurityAdvisoryItem {
   string title = 1;
@@ -25,5 +26,5 @@ message ListSecurityAdvisoriesResponse {
   // (docs/perf/openapi-bundle-capacity-2026-08-13.md).
 
   repeated SecurityAdvisoryItem register_levels = 3;
-  string fetched_at = 4;
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
