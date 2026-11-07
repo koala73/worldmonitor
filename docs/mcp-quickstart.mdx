@@ -11,24 +11,63 @@ World Monitor plugs into your AI assistant as a connector. You paste one address
 There is no API key to copy and nothing to install. You sign in with the same email you use on worldmonitor.app.
 </Info>
 
+## Connect in one click
+
+Each button opens the app with World Monitor already filled in. You confirm, then sign in with your World Monitor account.
+
+<CardGroup cols={3}>
+  <Card title="Add to Claude" icon="plug" href="https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=World%20Monitor&connectorUrl=https%3A%2F%2Fworldmonitor.app%2Fmcp">
+    Desktop, web and mobile. Click **Continue**, then **Add**.
+  </Card>
+  <Card title="Add to Cursor" icon="plug" href="https://cursor.com/install-mcp?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0%3D">
+    Installs the server. Click **Needs login** to sign in.
+  </Card>
+  <Card title="Add to VS Code" icon="plug" href="https://vscode.dev/redirect/mcp/install?name=worldmonitor&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fworldmonitor.app%2Fmcp%22%7D">
+    Installs for GitHub Copilot. Sign in when asked.
+  </Card>
+</CardGroup>
+
+Terminal agents take one command:
+
+<CodeGroup>
+```bash Claude Code
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+```bash Codex
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp && codex mcp login worldmonitor
+```
+
+```bash Gemini CLI
+gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.app/mcp
+```
+</CodeGroup>
+
+ChatGPT, Grok, Perplexity and other apps take the address `https://worldmonitor.app/mcp` as a custom connector; per-app steps are below.
+
+<Tip>
+Signed in on the [dashboard](https://www.worldmonitor.app/dashboard)? **Settings → AI Agents** has the same buttons and commands, and lists the agents you have connected.
+</Tip>
+
 ## Claude
 
 Works in the Claude desktop app, on claude.ai and in the mobile apps. You add the connector once and every Claude app on your account can use it.
 
 <Steps>
-  <Step title="Open Add custom connector">
-    In Claude, open **Customize → Connectors**, click **+ Add**, then **Add custom connector**.
-
-    <Frame>
-      <img src="/images/mcp/claude-add-menu.webp" alt="Claude Customize page, Connectors tab, with the + Add menu open on Add custom connector" />
-    </Frame>
-  </Step>
-  <Step title="Paste the address">
-    Name it `World Monitor` and paste `https://worldmonitor.app/mcp`. Click **Continue**. Claude detects the right sign-in settings on the next screen, so just click **Add**.
+  <Step title="Open Claude with World Monitor filled in">
+    Click **[Add World Monitor to Claude](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=World%20Monitor&connectorUrl=https%3A%2F%2Fworldmonitor.app%2Fmcp)**. Claude opens the **Add custom connector** dialog with the name and address already in place. Claude notes that the link came from outside; check that the address reads `https://worldmonitor.app/mcp`, click **Continue**, then **Add**.
 
     <Frame>
       <img width="520" src="/images/mcp/claude-add-dialog.webp" alt="Add custom connector dialog with the name World Monitor and the URL https://worldmonitor.app/mcp filled in" />
     </Frame>
+
+    <Accordion title="Add it by hand instead">
+      In Claude, open **Customize → Connectors**, click **+ Add**, then **Add custom connector**. Name it `World Monitor`, paste `https://worldmonitor.app/mcp`, click **Continue**, then **Add**.
+
+      <Frame>
+        <img src="/images/mcp/claude-add-menu.webp" alt="Claude Customize page, Connectors tab, with the + Add menu open on Add custom connector" />
+      </Frame>
+    </Accordion>
   </Step>
   <Step title="Sign in with World Monitor">
     A World Monitor window opens. Click **Sign in with WorldMonitor Pro**, sign in with your email code or passkey, then click **Authorize**.
@@ -99,7 +138,7 @@ Then type `/mcp` in Claude Code, pick `worldmonitor`, and choose **Authenticate*
 
 ## Cursor
 
-[Add World Monitor to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0=) with one click, or put this in `~/.cursor/mcp.json`:
+[Add World Monitor to Cursor](https://cursor.com/install-mcp?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0%3D) with one click, or put this in `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -111,9 +150,21 @@ Then type `/mcp` in Claude Code, pick `worldmonitor`, and choose **Authenticate*
 
 Cursor shows **Needs login** next to the server under **Settings → MCP**. Click it to sign in.
 
+## VS Code
+
+[Add World Monitor to VS Code](https://vscode.dev/redirect/mcp/install?name=worldmonitor&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fworldmonitor.app%2Fmcp%22%7D) with one click. VS Code opens, installs the server for GitHub Copilot, and asks you to sign in.
+
+## Gemini CLI
+
+```bash
+gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+Then start `gemini`, trust the folder when asked, and run `/mcp auth worldmonitor` to sign in.
+
 ## Other apps
 
-Perplexity, Mistral Le Chat, Grok, Microsoft 365 Copilot, VS Code, Gemini CLI and most other assistants that support MCP take the same address as a custom connector or remote server. See [client setup](/mcp-overview#client-setup) for per-app notes.
+Perplexity, Mistral Le Chat, Grok, Microsoft 365 Copilot and most other assistants that support MCP take the same address as a custom connector or remote server. See [client setup](/mcp-overview#client-setup) for per-app notes.
 
 ## Questions to try
 

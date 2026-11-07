@@ -38,7 +38,7 @@ test('UMAMI_DOMAINS covers the canonical www host', () => {
 
 test('funnel events exist in the typed catalog', () => {
   const src = read('src/services/analytics.ts');
-  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed', 'api-action']) {
+  for (const ev of ['checkout-start', 'checkout-success', 'checkout-failed', 'api-action', 'agent-connect']) {
     assert.ok(src.includes(`'${ev}': true`), `event '${ev}' missing from EVENTS catalog`);
   }
 });
