@@ -3234,6 +3234,16 @@ describe('security header guardrails', () => {
       /import '\.\/bootstrap\/zod-csp';/,
       'main.ts must apply the Zod CSP bootstrap before the app graph'
     );
+    // Zod v4 runs its `new Function` probe when a z.object() is constructed,
+    // so any script module evaluated before zod-csp could trip the CSP.
+    const scriptImports = [...mainSource.matchAll(/^import\s.*?['"]([^'"]+)['"];?$/gm)]
+      .map((match) => match[1])
+      .filter((specifier) => !specifier.endsWith('.css'));
+    assert.equal(
+      scriptImports[0],
+      './bootstrap/zod-csp',
+      'zod-csp must be the first script import in main.ts so no module graph evaluates before it'
+    );
     assert.match(
       zodCspSource,
       /configureZod\(\{\s*jitless:\s*true\s*\}\)/,
