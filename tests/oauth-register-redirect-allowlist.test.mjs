@@ -77,6 +77,14 @@ const LOOPBACK = [
   'http://localhost:6274/oauth/callback', // MCP Inspector
   'http://[::1]/oauth_callback', // goose, IPv6 loopback
   'http://[::1]:33418/callback',
+  // Path and query stay free: clients round-trip their own state this way, and
+  // authorize.js sets code/state through searchParams, which overwrites rather
+  // than appends. Only the fragment and userinfo are refused (#RFC 6749 3.1.2).
+  'http://localhost:4200/callback?flow=desktop',
+  // A bare '#' parses to an empty hash, so it carries nothing and stays
+  // accepted — the same boundary the CIMD path draws with its `u.hash` check.
+  // Pinned so the two paths cannot drift apart silently.
+  'http://localhost:8787/callback#',
 ];
 
 const REJECTED = {
@@ -118,6 +126,16 @@ const REJECTED = {
   'https loopback': 'https://localhost:8787/callback',
   'loopback lookalike host': 'http://localhost.evil.example/callback',
   'loopback userinfo smuggling': 'http://localhost@evil.example/callback',
+  // RFC 6749 §3.1.2: "The redirection endpoint URI MUST NOT include a
+  // fragment component." The hosted entries above are refused incidentally,
+  // by exact match; the loopback branch matched on host and scheme alone, so
+  // DCR — the path open to anyone — accepted what the CIMD path next to it
+  // (api/oauth/_client-metadata.js) already refused.
+  'loopback with a fragment': 'http://localhost:8787/callback#x',
+  'loopback IPv4 with a fragment': 'http://127.0.0.1:33418/#evil',
+  'loopback IPv6 with a fragment': 'http://[::1]/oauth_callback#x',
+  'loopback carrying credentials': 'http://user:pw@localhost:8787/callback',
+  'loopback carrying a bare username': 'http://user@localhost:8787/callback',
   'Vercel Connect callback with a trailing slash': 'https://connect.vercel.com/callback/',
   'other path on connect.vercel.com': 'https://connect.vercel.com/evil',
   'vercel.com without the connect subdomain': 'https://vercel.com/callback',
