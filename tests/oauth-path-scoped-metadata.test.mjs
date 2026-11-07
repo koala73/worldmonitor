@@ -176,8 +176,21 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
     );
   });
 
+  // api. is a served alias: its own discovery documents name it as the
+  // resource, so its transport must challenge rather than refuse.
+  for (const path of ['/mcp', '/api/mcp']) {
+    it(`the served api. alias challenges ${path} with its own path-scoped document`, async () => {
+      const res = await call(`https://${'api'}.worldmonitor.app${path}`, 'api.worldmonitor.app');
+      assert.equal(res.status, 401);
+      assert.equal(
+        res.headers.get('www-authenticate'),
+        `Bearer realm="worldmonitor", resource_metadata="https://${'api'}.worldmonitor.app/.well-known/oauth-protected-resource${path}"`,
+      );
+    });
+  }
+
   it('a retired /api/mcp transport request gets the migration error before auth', async () => {
-    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp`, 'api.worldmonitor.app');
+    const res = await call(`https://${'www'}.worldmonitor.app/api/mcp`, 'www.worldmonitor.app');
     assert.equal(res.status, 410);
     assert.deepEqual(await res.json(), {
       jsonrpc: '2.0',
@@ -209,7 +222,7 @@ describe('the MCP 401 challenge points at the path-scoped document', () => {
   }
 
   it('a query parameter cannot bypass the /api/mcp migration response', async () => {
-    const res = await call(`https://${'api'}.worldmonitor.app/api/mcp?transport=mcp`, 'api.worldmonitor.app');
+    const res = await call(`https://${'www'}.worldmonitor.app/api/mcp?transport=mcp`, 'www.worldmonitor.app');
     assert.equal(res.status, 410);
     assert.equal((await res.json()).error?.data?.reason, 'canonical_endpoint_required');
   });
