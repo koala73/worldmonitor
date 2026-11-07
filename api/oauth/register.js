@@ -8,6 +8,7 @@ import { jsonResponse } from '../_json-response.js';
 import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
 import { upstashRedisOptions } from '../_upstash-redis-options.js';
 import { isAllowedRedirectUri } from './_redirect-uri.js';
+import { oauthRateLimitHeaders } from './_rate-limit-headers.js';
 
 export const config = { runtime: 'edge' };
 
@@ -132,7 +133,11 @@ export default async function handler(req, ctx) {
     }, 503, { ...corsHeaders, ...RATE_LIMIT_DEGRADED_HEADERS, 'Cache-Control': 'no-store' });
   }
   if (!admission.success) {
-    return jsonResp({ error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' }, 429);
+    return jsonResponse(
+      { error: 'rate_limit_exceeded', error_description: 'Too many registration requests.' },
+      429,
+      { ...corsHeaders, ...oauthRateLimitHeaders(admission), 'Cache-Control': 'no-store' },
+    );
   }
 
   let body;

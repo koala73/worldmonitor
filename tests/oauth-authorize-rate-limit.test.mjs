@@ -63,7 +63,16 @@ it('limits GET by trusted IP before client reads or nonce writes, even when clie
     assert.equal((await handler(request('192.0.2.1', `client-${i}`))).status, 200);
   }
   commands.length = 0;
-  assert.equal((await handler(request('192.0.2.1', 'another-client'))).status, 429);
+  const limited = await handler(request('192.0.2.1', 'another-client'));
+  assert.equal(limited.status, 429);
+  // The refusal is plain text, but it still owes the caller a pace.
+  const retryAfter = Number(limited.headers.get('retry-after'));
+  assert.ok(
+    Number.isInteger(retryAfter) && retryAfter >= 1 && retryAfter <= 60,
+    `Retry-After must be whole seconds within the 60 s window, got ${limited.headers.get('retry-after')}`,
+  );
+  assert.equal(limited.headers.get('cache-control'), 'no-store');
+  assert.equal(limited.headers.get('ratelimit-remaining'), '0');
   assert.ok(commands.every((c) => !['GET', 'SET'].includes(c[0])));
   assert.equal((await handler(request('192.0.2.2'))).status, 200);
 });
