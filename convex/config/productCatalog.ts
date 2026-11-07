@@ -270,7 +270,7 @@ export interface CatalogEntry {
 // Alert ladder (#4273). This catalog stays import-free (the product-config
 // generator consumes it), so these literals are the authoritative copy and
 // shared/alert-capabilities.ts carries the matching fallback constants;
-// convex/__tests__/alert-capabilities.test.ts pins the two together.
+// convex/__tests__/alertRules-free-ladder.test.ts pins the two together.
 // Free `alertDigestModes` opens with realtime only: the digest cron
 // (scripts/seed-digest-notifications.mjs) still delivers to tier >= 1, and
 // advertising a daily digest it would drop is a silent lie. Widen to

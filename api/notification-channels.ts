@@ -607,24 +607,24 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
     if (callerIsFree) {
       const freeChannels = new Set<string>(FREE_ALERT_CHANNELS);
       if (action === 'create-pairing-token') {
-        return json({
+        return finish(json({
           error: 'pro_required',
           reason: 'channel_not_in_plan',
           channel: 'telegram',
           message: 'Telegram delivery is available on the Pro plan.',
           upgradeUrl: ALERT_UPGRADE_URL,
-        }, 403, corsHeaders);
+        }, 403, corsHeaders));
       }
       if (action === 'set-channel' && typeof (body as { channelType?: unknown }).channelType === 'string'
         && !freeChannels.has((body as { channelType: string }).channelType)) {
         const channel = (body as { channelType: string }).channelType;
-        return json({
+        return finish(json({
           error: 'pro_required',
           reason: 'channel_not_in_plan',
           channel,
           message: `The ${channel} channel is available on the Pro plan.`,
           upgradeUrl: ALERT_UPGRADE_URL,
-        }, 403, corsHeaders);
+        }, 403, corsHeaders));
       }
     }
 
