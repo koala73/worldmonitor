@@ -87,6 +87,21 @@ const LOOPBACK = [
   'http://localhost:8787/callback#',
 ];
 
+// RFC 6749 §3.1.2: "The redirection endpoint URI MUST NOT include a fragment
+// component." The hosted entries below are refused incidentally, by exact
+// match; the loopback branch matched on host and scheme alone, so DCR — the
+// path open to anyone — accepted what the CIMD path next to it
+// (api/oauth/_client-metadata.js) already refused. Shared with the route
+// block below, so each case is proven at both levels: a later change that
+// only loosened the route would still be caught.
+const LOOPBACK_COMPONENT_SMUGGLING = {
+  'loopback with a fragment': 'http://localhost:8787/callback#x',
+  'loopback IPv4 with a fragment': 'http://127.0.0.1:33418/#evil',
+  'loopback IPv6 with a fragment': 'http://[::1]/oauth_callback#x',
+  'loopback carrying credentials': 'http://user:pw@localhost:8787/callback',
+  'loopback carrying a bare username': 'http://user@localhost:8787/callback',
+};
+
 const REJECTED = {
   'arbitrary https host': 'https://evil.example/callback',
   'cursor.com without www': 'https://cursor.com/agents/mcp/oauth/callback',
@@ -131,11 +146,7 @@ const REJECTED = {
   // by exact match; the loopback branch matched on host and scheme alone, so
   // DCR — the path open to anyone — accepted what the CIMD path next to it
   // (api/oauth/_client-metadata.js) already refused.
-  'loopback with a fragment': 'http://localhost:8787/callback#x',
-  'loopback IPv4 with a fragment': 'http://127.0.0.1:33418/#evil',
-  'loopback IPv6 with a fragment': 'http://[::1]/oauth_callback#x',
-  'loopback carrying credentials': 'http://user:pw@localhost:8787/callback',
-  'loopback carrying a bare username': 'http://user@localhost:8787/callback',
+  ...LOOPBACK_COMPONENT_SMUGGLING,
   'Vercel Connect callback with a trailing slash': 'https://connect.vercel.com/callback/',
   'other path on connect.vercel.com': 'https://connect.vercel.com/evil',
   'vercel.com without the connect subdomain': 'https://vercel.com/callback',
@@ -301,6 +312,31 @@ describe('POST /oauth/register', () => {
     assert.equal(json.token_endpoint_auth_method, 'none');
     assert.deepEqual(json.grant_types, ['authorization_code', 'refresh_token']);
     assert.equal(stored.length, 1);
+  });
+
+  // The allowlist block above proves isAllowedRedirectUri refuses these. The
+  // route is what actually persists a client, so prove the refusal there too:
+  // a later change that loosened only this path would otherwise store a
+  // callback the validator rejects, with every unit case still green.
+  for (const [why, uri] of Object.entries(LOOPBACK_COMPONENT_SMUGGLING)) {
+    it(`refuses to register ${why}: ${uri}`, async () => {
+      stubRedis();
+      const res = await register({ client_name: 'Smuggler', redirect_uris: [uri] });
+      assert.equal(res.status, 400);
+      assert.equal((await res.json()).error, 'invalid_redirect_uri');
+      assert.equal(stored.length, 0, 'a refused registration must persist nothing');
+    });
+  }
+
+  it('registers a loopback callback whose path and query are preserved verbatim', async () => {
+    stubRedis();
+    // The tightening is scoped to fragment and userinfo. Path and query stay
+    // free, and the stored value must be byte-identical to what was sent.
+    const redirect_uris = ['http://localhost:4200/callback?flow=desktop'];
+    const res = await register({ client_name: 'Desktop', redirect_uris });
+    assert.equal(res.status, 201);
+    assert.deepEqual((await res.json()).redirect_uris, redirect_uris);
+    assert.deepEqual(JSON.parse(stored[0][2]).redirect_uris, redirect_uris);
   });
 
   it('still caps redirect_uris per registration', async () => {
