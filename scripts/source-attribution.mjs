@@ -1181,6 +1181,10 @@ const EXCLUDED_HOSTS = new Set([
   // ingested as data.
   'claude.ai',
   'chatgpt.com',
+  // One-click MCP install links in Settings → AI Agents
+  // (src/config/mcp-agent-clients.ts). Navigation targets, never fetched.
+  'cursor.com',
+  'vscode.dev',
   'searchconsole.googleapis.com',
   'www.googleapis.com',
   'yandex.com',
