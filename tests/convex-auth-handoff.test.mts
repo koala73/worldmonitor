@@ -100,9 +100,9 @@ async function waitForCondition(
   message: string,
   timeoutMs = 1_000,
 ): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   while (!condition()) {
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       assert.fail(message);
     }
     await new Promise<void>((resolve) => {
