@@ -847,6 +847,110 @@ function collectDockerfiles(): string[] {
     .sort();
 }
 
+function collectActionFiles(repoRoot: string): string[] {
+  const workflows = readdirSync(resolve(repoRoot, '.github/workflows'))
+    .filter((name) => /\.ya?ml$/.test(name))
+    .map((name) => `.github/workflows/${name}`);
+  const collectDefinitions = (dir: string): string[] => {
+    if (!existsSync(resolve(repoRoot, dir))) return [];
+    return readdirSync(resolve(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return collectDefinitions(path);
+      return /^action\.ya?ml$/.test(entry.name) ? [path] : [];
+    });
+  };
+  return [...workflows, ...collectDefinitions('.github/actions')].sort();
+}
+
+function unpinnedActionUses(source: string): string[] {
+  type Step = { uses?: unknown; steps?: Step[]; parallel?: Step[] };
+  const document = YAML.parse(source) as {
+    jobs?: Record<string, Step>;
+    runs?: { steps?: Step[] };
+  } | null;
+  const steps = [
+    ...Object.values(document?.jobs ?? {}).flatMap((job) => [job, ...(job.steps ?? [])]),
+    ...(document?.runs?.steps ?? []),
+  ];
+  const expandGroups = (entries: Step[]): Step[] => entries.flatMap((step) => [step, ...expandGroups(step.parallel ?? [])]);
+  return expandGroups(steps).flatMap(({ uses }) => {
+    if (uses === undefined) return [];
+    if (typeof uses !== 'string') return [String(uses)];
+    if (uses.startsWith('./')) return [];
+    const pinned = uses.startsWith('docker://')
+      ? /^docker:\/\/[^@\s]+@sha256:[0-9a-f]{64}$/i.test(uses)
+      : /^[^@\s]+@[0-9a-f]{40}$/i.test(uses);
+    return pinned ? [] : [uses];
+  });
+}
+
+describe('GitHub Actions pinning guard', () => {
+  const sha = 'a'.repeat(40);
+  const workflow = (uses: string) => `jobs:\n  check:\n    steps:\n      - uses: ${uses}\n`;
+
+  it('rejects mutable actions in list entries, quoted values and flow mappings', () => {
+    for (const source of [
+      workflow('example/action@v1'),
+      workflow('"example/action@main"'),
+      'jobs: { check: { steps: [{ uses: example/action@v1 }] } }',
+      workflow('example/action@abcdef0'),
+      workflow('example/action'),
+    ]) {
+      assert.equal(unpinnedActionUses(source).length, 1, source);
+    }
+  });
+
+  it('checks reusable workflow jobs and composite action steps', () => {
+    assert.equal(unpinnedActionUses('jobs:\n  call:\n    uses: example/repo/.github/workflows/check.yml@main\n').length, 1);
+    assert.equal(unpinnedActionUses('runs:\n  using: composite\n  steps:\n    - uses: example/action@v1\n').length, 1);
+  });
+
+  it('checks actions inside parallel groups in workflows and composites', () => {
+    const steps = [{ parallel: [
+      { name: 'Mutable action', uses: 'example/action@v1' },
+      { parallel: [{ uses: 'example/action@main' }, { uses: `example/action@${sha}` }] },
+    ] }];
+    for (const document of [{ jobs: { check: { steps } } }, { runs: { using: 'composite', steps } }]) {
+      assert.deepEqual(unpinnedActionUses(YAML.stringify(document)), ['example/action@v1', 'example/action@main']);
+    }
+  });
+
+  it('allows full commit SHAs, local actions and immutable Docker actions', () => {
+    for (const uses of [`example/action@${sha}`, `"example/action@${sha}"`, './.github/actions/local', `docker://alpine@sha256:${'b'.repeat(64)}`]) {
+      assert.deepEqual(unpinnedActionUses(workflow(uses)), [], uses);
+    }
+    assert.deepEqual(unpinnedActionUses(`jobs:\n  call:\n    uses: example/repo/.github/workflows/check.yml@${sha}\n`), []);
+  });
+
+  it('rejects mutable Docker actions and malformed YAML', () => {
+    assert.equal(unpinnedActionUses(workflow('docker://alpine:latest')).length, 1);
+    assert.throws(() => unpinnedActionUses('jobs: [invalid'));
+  });
+
+  it('flags non-string uses values instead of skipping them', () => {
+    assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - uses:\n'), ['null']);
+    assert.deepEqual(unpinnedActionUses(workflow('123')), ['123']);
+  });
+
+  it('ignores uses text inside shell scripts and action inputs', () => {
+    assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - run: |\n          uses: example/action@v1\n      - uses: ./.github/actions/local\n        with:\n          uses: example/input@v1\n'), []);
+  });
+
+  it('discovers workflows and nested composite definitions with either YAML extension', () => {
+    const dir = mkdtempSync(resolve(tmpdir(), 'wm-action-pins-'));
+    try {
+      const files = ['.github/workflows/check.yml', '.github/workflows/release.yaml', '.github/actions/local/action.yml', '.github/actions/nested/local/action.yaml'];
+      for (const file of [...files, '.github/actions/local/README.md']) {
+        mkdirSync(dirname(resolve(dir, file)), { recursive: true });
+        writeFileSync(resolve(dir, file), '');
+      }
+      assert.deepEqual(collectActionFiles(dir), files.sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 function securityAuditSteps() {
   const job = YAML.parse(securityAuditWorkflow).jobs['audit-lockfile'];
   assert.equal(job.strategy, undefined, 'lockfile audits must share one job without matrix fan-out');
@@ -2613,32 +2717,14 @@ describe('CI workflow coverage', () => {
   });
 
   it('keeps GitHub Actions external uses pinned to commit SHAs', () => {
-    const failures: string[] = [];
-    const workflowFiles = readdirSync(workflowsDir)
-      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-      .sort();
-
-    for (const workflowFile of workflowFiles) {
-      const source = readFileSync(resolve(workflowsDir, workflowFile), 'utf8');
-      const lines = source.split('\n');
-
-      lines.forEach((line, index) => {
-        const match = line.match(/^\s*uses:\s*([^@\s#]+)@([^\s#]+)/);
-        if (!match) return;
-
-        const [, action, ref] = match;
-        if (action.startsWith('./') || action.startsWith('docker://')) return;
-
-        if (!/^[0-9a-f]{40}$/i.test(ref)) {
-          failures.push(`${workflowFile}:${index + 1} ${line.trim()}`);
-        }
-      });
-    }
+    const failures = collectActionFiles(root).flatMap((file) =>
+      unpinnedActionUses(read(resolve(root, file))).map((uses) => `${file}: ${uses}`),
+    );
 
     assert.deepEqual(
       failures,
       [],
-      `GitHub Actions uses refs must be 40-character commit SHAs:\n${failures.join('\n')}`,
+      `GitHub Actions uses refs must be full commit SHAs or Docker digests:\n${failures.join('\n')}`,
     );
   });
 });
