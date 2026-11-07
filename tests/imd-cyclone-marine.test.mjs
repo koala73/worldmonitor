@@ -619,11 +619,16 @@ test('Kerala fallback rejects invalid responses and does not replace successful 
         return response();
       },
     });
-    assert.deepEqual(result, { status: 'failed', reason: 'BULLETIN_SYNOPTIC_MISSING', fallbackFailure });
-    const snapshot = assembleImdSnapshot({ pageResults: { coastalBulletin: { [page.key]: result } } });
+    // The rejected PDF never supplies records; the blank-synoptic HTML areas do.
+    assert.equal(result.status, 'parsed');
+    assert.equal(result.fallbackUsed, undefined);
+    assert.equal(result.synopticOmitted, true);
+    assert.equal(result.fallbackFailure, fallbackFailure);
+    const snapshot = assembleImdSnapshot({ pageResults: { coastalBulletin: { [page.key]: result } }, now: Date.parse('2026-10-22T02:00:00Z') });
     assert.equal(snapshot.products.coastalBulletin.requestCount, IMD_PRODUCTS.coastalBulletin.pages.length + 1);
     assert.equal(snapshot.products.coastalBulletin.pages[page.key].fallbackFailure, fallbackFailure);
-    assert.equal(snapshot.coastalBulletins.length, 0);
+    assert.ok(snapshot.coastalBulletins.length > 0);
+    assert.ok(snapshot.coastalBulletins.every((row) => row.sourceUrl === page.url && row.synopticSituation === null));
   }
   let calls = 0;
   const good = await fetchImdBulletinPage('coastalBulletin', page, { fetchFn: async () => {
@@ -633,6 +638,40 @@ test('Kerala fallback rejects invalid responses and does not replace successful 
   assert.equal(good.status, 'parsed');
   assert.equal(calls, 1);
   assert.equal(good.fallbackUsed, undefined);
+});
+
+test('a blank synoptic row keeps the complete HTML areas when the Kerala PDF cannot supply one', async () => {
+  // IMD Thiruvananthapuram now uploads a browser print of the same HTML page as
+  // its PDF (live 2026-11-06 21:19 IST), so both copies carry an empty synoptic
+  // row. The four area forecasts are complete; a blank narrative must not drop them.
+  const page = IMD_PRODUCTS.coastalBulletin.pages.find((entry) => entry.fallbackUrl);
+  const blank = fixture('coastalBulletin-kerala-missing-synoptic.html');
+  const now = Date.parse('2026-10-22T02:00:00Z');
+  const fetchWith = (html) => async (url) => (url === page.fallbackUrl
+    ? new Response('%PDF-invalid', { headers: { 'Content-Type': 'application/pdf' } })
+    : new Response(html));
+  const result = await fetchImdBulletinPage('coastalBulletin', page, { fetchFn: fetchWith(blank), delayMs: 0 });
+  assert.equal(result.status, 'parsed');
+  assert.equal(result.synopticOmitted, true);
+  assert.equal(result.primaryFailure, 'BULLETIN_SYNOPTIC_MISSING');
+  assert.equal(result.fallbackFailure, 'IMD_FETCH_FAILED');
+  assert.equal(result.bulletin.synopticSituation, null);
+  assert.equal(result.bulletin.areas.length, 4);
+  const snapshot = assembleImdSnapshot({ pageResults: { coastalBulletin: { [page.key]: result } }, now });
+  const health = snapshot.products.coastalBulletin.pages[page.key];
+  assert.equal(health.status, 'ok');
+  assert.equal(health.synopticOmitted, true);
+  const rows = snapshot.coastalBulletins.filter((row) => row.page === page.key);
+  assert.equal(rows.length, 4);
+  for (const row of rows) {
+    assert.equal(row.synopticSituation, null);
+    assert.equal(row.sourceUrl, page.url);
+  }
+
+  // A page with no synoptic row at all is a changed layout and still fails closed.
+  const noRow = blank.replace('Synoptic Situation', 'Outlook');
+  const changed = await fetchImdBulletinPage('coastalBulletin', page, { fetchFn: fetchWith(noRow), delayMs: 0 });
+  assert.deepEqual(changed, { status: 'failed', reason: 'BULLETIN_SYNOPTIC_MISSING', fallbackFailure: 'IMD_FETCH_FAILED' });
 });
 
 test('failed acquisition retains replay inputs without extra requests or public payload changes', async () => {
