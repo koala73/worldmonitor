@@ -485,6 +485,8 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/dompurify-regression.spec.ts',
   'e2e/a11y-axe-scan.spec.ts',
   'e2e/map-overlay-marker-budget.spec.ts',
+  'e2e/mobile-displacement.spec.ts',
+  'e2e/map-distance.spec.ts',
   'e2e/mcp-market-built.spec.ts',
   'e2e/live-panel-layout-8276.spec.ts',
   'e2e/panel-grid-no-overlap.spec.ts',
@@ -3329,6 +3331,7 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
       'e2e/pro-hero-animation.spec.ts',
       'e2e/pro-hero-lcp.spec.ts',
       'e2e/pro-pricing-anchor.spec.ts',
+      'e2e/welcome-nav-fit.spec.ts',
     ];
     const script = packageScripts['test:e2e:pro-gates'] ?? '';
     assert.match(script, /^cross-env VITE_VARIANT=full playwright test /);

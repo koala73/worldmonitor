@@ -9769,6 +9769,34 @@
           "serverOrder": 31
         }
       ]
+    },
+    {
+      "name": "Deutschlandfunk",
+      "url": "https://www.deutschlandfunk.de/nachrichten-100.rss",
+      "lang": "de",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "serverOrder": 102,
+          "browserOrder": 102
+        }
+      ]
+    },
+    {
+      "name": "ZDFheute",
+      "url": "https://www.zdfheute.de/rss/zdf/nachrichten",
+      "lang": "de",
+      "fetchInAllLanguages": true,
+      "placements": [
+        {
+          "edition": "full",
+          "category": "europe",
+          "serverOrder": 103,
+          "browserOrder": 103
+        }
+      ]
     }
   ]
 }

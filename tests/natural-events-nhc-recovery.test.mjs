@@ -674,12 +674,23 @@ async function seedProcess(initial, now, {
       if (url.pathname.startsWith('/get/')) {
         return Response.json({ result: store.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
       }
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (failStateWrite && body[0] === 'SET' && body[1] === 'natural:events:nhc-snapshot:v1') {
         return new Response('', { status: 403 });
       }
       if (failSourceStateWrite && body[0] === 'SET' && body[1] === 'natural:events:source-snapshots:v1') {
         return new Response('', { status: 403 });
+      }
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
       }
       return Response.json(Array.isArray(body[0])
         ? body.map(command => ({ result: redis(command) }))

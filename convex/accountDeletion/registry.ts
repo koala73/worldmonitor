@@ -88,6 +88,17 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
   { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
+  {
+    target: "enterpriseMembers",
+    action: "delete",
+    notes: "This user's seats in Enterprise accounts by userId, and invites to their verified email; the account and other members stay",
+  },
+  {
+    target: "enterpriseAccounts",
+    action: "retain",
+    notes: "Contract account (customer company terms); holds no userId, so a member's deletion leaves it",
+  },
+  { target: "enterpriseAccountLocks", action: "skip", notes: "Per-account OCC locks; no userId" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },

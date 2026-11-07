@@ -40,6 +40,7 @@ import {
   clearClerkTokenCache,
   getClerkSessionToken,
   getClerkToken,
+  refreshClerkTokenAfterRejection,
   shouldReuseCachedClerkToken,
 } from '../src/services/clerk.ts';
 
@@ -54,9 +55,9 @@ function tokenExpiringAt(expMs: number): string {
   return tokenWithClaims({ exp: expMs });
 }
 
-function tokenWithClaims(claims: { exp: number; iat?: number }): string {
+function tokenWithClaims(claims: { exp: number; iat?: number; sub?: string }): string {
   const payload = Buffer.from(JSON.stringify({
-    sub: 'user_1',
+    sub: claims.sub ?? 'user_1',
     exp: Math.floor(claims.exp / 1_000),
     ...(claims.iat === undefined ? {} : { iat: Math.floor(claims.iat / 1_000) }),
   }))
@@ -693,5 +694,146 @@ describe('getClerkToken', () => {
     } finally {
       Date.now = originalNow;
     }
+  });
+});
+
+// Sentry WORLDMONITOR-1CM (2026-11-06): the edge 401'd a burst of country-brief
+// calls carrying a cached token the client still judged unexpired. premiumFetch
+// replays a bearer 401 once on the token this returns.
+describe('refreshClerkTokenAfterRejection', () => {
+  function clerkWith(tokens: { cached: string; fresh: string }) {
+    const calls: Array<{ template?: string; skipCache?: boolean }> = [];
+    const session = {
+      async getToken(options: { template?: string; skipCache?: boolean } = {}) {
+        calls.push(options);
+        return options.skipCache ? tokens.fresh : tokens.cached;
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+    return calls;
+  }
+
+  it('returns null when Clerk hands back the refused token', async () => {
+    const now = Date.now();
+    const cached = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    const fresh = tokenWithClaims({ iat: now + 1_000, exp: now + 61_000 });
+    const calls = clerkWith({ cached, fresh });
+    // Calibration on the first call already forces skipCache, so serve the
+    // cached token from then on to model the cache the edge refused.
+    assert.equal(await getClerkToken(), fresh);
+    calls.length = 0;
+    assert.equal(await getClerkToken(), fresh, 'served from cache');
+    assert.equal(calls.length, 0);
+
+    assert.equal(await refreshClerkTokenAfterRejection(fresh), null,
+      'Clerk handing back the same token is not a replacement');
+  });
+
+  it('forces an uncached fetch and shares it across a burst of rejections', async () => {
+    const now = Date.now();
+    const stale = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000 });
+    const fresh = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    let skipCacheCalls = 0;
+    let first = true;
+    const session = {
+      async getToken(options: { skipCache?: boolean } = {}) {
+        if (options.skipCache) { skipCacheCalls++; return first ? stale : fresh; }
+        return stale;
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+    // Seed the cache with `stale` (the calibration fetch returns it).
+    assert.equal(await getClerkToken(), stale);
+    first = false;
+    skipCacheCalls = 0;
+
+    const burst = await Promise.all(Array.from({ length: 8 }, () => refreshClerkTokenAfterRejection(stale)));
+
+    assert.deepEqual(burst, Array(8).fill(fresh), 'every sibling gets the replacement');
+    assert.equal(skipCacheCalls, 1, 'one uncached Clerk fetch for the whole burst');
+    assert.equal(await getClerkToken(), fresh, 'the replacement is what the cache now serves');
+
+    // A straggler 401 on the same refused token after the refresh settled
+    // gets the cached replacement, not another Clerk round trip.
+    assert.equal(await refreshClerkTokenAfterRejection(stale), fresh);
+    assert.equal(skipCacheCalls, 1, 'still one uncached Clerk fetch');
+  });
+
+  it('returns null when nobody is signed in', async () => {
+    __setClerkInstanceForTests(null);
+    assert.equal(await refreshClerkTokenAfterRejection('anything'), null);
+  });
+
+  it('never hands back another account\'s token for a request the first account sent', async () => {
+    // A signs out and B signs in while A's request is on the wire; its 401
+    // arrives afterwards. Replaying A's request as B would act for B.
+    const now = Date.now();
+    const tokenA = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000, sub: 'user_a' });
+    const tokenB = tokenWithClaims({ iat: now, exp: now + 60_000, sub: 'user_b' });
+    __setClerkInstanceForTests({ session: { getToken: async () => tokenB } } as never);
+
+    assert.equal(await refreshClerkTokenAfterRejection(tokenA), null);
+  });
+
+  it('does not join a fetch that started before the rejection, nor let it re-cache the refused token', async () => {
+    const now = Date.now();
+    const refused = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000 });
+    const fresh = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    let releaseOld!: (token: string) => void;
+    let skipCacheCalls = 0;
+    const session = {
+      getToken(options: { skipCache?: boolean } = {}): Promise<string> {
+        if (!options.skipCache) return Promise.resolve(refused);
+        skipCacheCalls++;
+        // The first forced fetch belongs to the call already in flight and is
+        // held open; every later one is the post-rejection refresh.
+        if (skipCacheCalls === 1) return new Promise((resolve) => { releaseOld = resolve; });
+        return Promise.resolve(fresh);
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    const older = getClerkToken();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(skipCacheCalls, 1, 'the older call is parked on its forced fetch');
+
+    const replacement = refreshClerkTokenAfterRejection(refused);
+    assert.equal(await replacement, fresh, 'the refresh fetched on its own');
+
+    releaseOld(refused);
+    await older;
+    assert.equal(await getClerkToken(), fresh, 'the older call did not overwrite the cache or clock');
+  });
+
+  it('does not let an older failed calibration clear the replacement', async () => {
+    const now = Date.now();
+    const refused = tokenWithClaims({ iat: now - 30_000, exp: now + 30_000 });
+    const fresh = tokenWithClaims({ iat: now, exp: now + 60_000 });
+    let releaseOld!: (token: string | null) => void;
+    let skipCacheCalls = 0;
+    const session = {
+      getToken(options: { skipCache?: boolean } = {}): Promise<string | null> {
+        if (!options.skipCache) return Promise.resolve(refused);
+        skipCacheCalls++;
+        // 1: the older call's forced fetch, held open. 2: the post-rejection
+        // refresh. Later: Clerk unavailable, so the older call's template
+        // fallback fails too and its calibration genuinely fails.
+        if (skipCacheCalls === 1) return new Promise((resolve) => { releaseOld = resolve; });
+        return Promise.resolve(skipCacheCalls === 2 ? fresh : null);
+      },
+    };
+    __setClerkInstanceForTests({ session } as never);
+
+    const older = getClerkToken();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await refreshClerkTokenAfterRejection(refused), fresh);
+
+    // The older call's forced fetch fails: on its own epoch that would set the
+    // retry-after backoff and clear the cache.
+    releaseOld(null);
+    await older;
+    const callsBefore = skipCacheCalls;
+    assert.equal(await getClerkToken(), fresh, 'the replacement stays cached');
+    assert.equal(skipCacheCalls, callsBefore, 'served from cache, no new Clerk fetch');
   });
 });

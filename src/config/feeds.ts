@@ -402,6 +402,9 @@ export const MAJOR_PUBLISHER_DEFAULT_SOURCES = [
  */
 export const BBC_UK_DEFAULT_SOURCES = ['BBC UK'] as const;
 
+/** German defaults, available as explicit opt-ins in every UI language. */
+export const GERMAN_RSS_SOURCES = ['Deutschlandfunk', 'ZDFheute'] as const;
+
 /**
  * The Science panel's sources (2026-10-17 audit). The panel is opt-in, but its
  * sources are EN default-on so it has content when enabled. The free-tier cap
@@ -529,6 +532,16 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
   },
   {
     introducedNames: [...SCIENCE_DEFAULT_SOURCES],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    introducedNames: [...GERMAN_RSS_SOURCES],
     protectedNames: [
       ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
       ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,

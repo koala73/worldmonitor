@@ -151,3 +151,46 @@ it('returns a defined unknown publish outcome without replaying a timed-out writ
   assert.equal(response.headers.get('Retry-After'), '180');
   assert.equal(calls, 1);
 });
+
+it('keeps the Idempotency-Key marker after a timed-out push, so a retry cannot publish twice', async () => {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  installDeps({ allowed: true, limit: NOTIFY_WRITE_RATE_LIMIT, reset: 0, degraded: false });
+
+  // Minimal Upstash pipeline: the handler only needs GET, SET (NX/EX) and DEL.
+  const store = new Map<string, string>();
+  const commands: string[] = [];
+  let pushes = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/lpush/')) {
+      pushes++;
+      // The push may have committed before the deadline fired.
+      throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    }
+    assert.ok(url.endsWith('/pipeline'), `unexpected Redis call ${url}`);
+    const batch = JSON.parse(String(init?.body)) as string[][];
+    return Response.json(batch.map(([op, key, value, ...flags]) => {
+      commands.push(op!);
+      if (op === 'GET') return { result: store.get(key!) ?? null };
+      if (op === 'DEL') return { result: store.delete(key!) ? 1 : 0 };
+      if (op === 'SET') {
+        if (flags.includes('NX') && store.has(key!)) return { result: null };
+        store.set(key!, value!);
+        return { result: 'OK' };
+      }
+      throw new Error(`unexpected Redis op ${op}`);
+    }));
+  }) as typeof fetch;
+
+  const headers = { 'Idempotency-Key': IDEMPOTENCY_KEY };
+  const first = await handler(makePost(undefined, headers));
+  assert.equal(first.status, 503);
+  assert.equal(first.headers.get('Retry-After'), '180');
+  assert.equal(commands.includes('DEL'), false, 'an unknown outcome must not release the processing marker');
+
+  const retry = await handler(makePost(undefined, headers));
+  assert.equal(retry.status, 409, 'the retry must see the in-flight marker, not replay the push');
+  assert.equal((await retry.json()).error, 'idempotency_conflict');
+  assert.equal(pushes, 1);
+});

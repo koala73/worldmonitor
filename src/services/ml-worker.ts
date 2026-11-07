@@ -177,6 +177,7 @@ export class MLWorkerManager {
     return this.waiterPromise(caller);
   }
 
+  /** Retain one waiter per caller and settle any superseded promise false. */
   private waiterPromise(caller: string): Promise<boolean> {
     // A caller that re-registers while a waiter under its label is still
     // pending replaces that entry — at most one pending continuation per
@@ -184,6 +185,9 @@ export class MLWorkerManager {
     // pins the lifecycle generation seen at registration; a terminate in the
     // meantime resolves it false instead of reviving the new lifecycle.
     return new Promise<boolean>((resolve) => {
+      // Replacing an entry must also settle its promise: cleanup can only
+      // reach the resolver still held in the map.
+      this.readyWaiters.get(caller)?.resolve(false);
       this.readyWaiters.set(caller, {
         resolve,
         lifecycleGeneration: this.lifecycleGeneration,

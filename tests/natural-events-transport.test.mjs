@@ -170,7 +170,11 @@ test('EONET decoded-size rejection cancels acquisition and preserves last-good w
   assert.equal(result._eonetFailed, true);
   assert.equal(transport.calls.get('eonet'), 1);
   assert.equal(cancelled, true);
-  assert.deepEqual(result._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+  const { consecutiveFailures, firstFailureAt, lastAttemptAt, ...retained } = result._sourceSnapshots.eonet;
+  const { consecutiveFailures: _c, firstFailureAt: _f, lastAttemptAt: _l, ...original } = first._sourceSnapshots.eonet;
+  assert.deepEqual(retained, original);
+  assert.deepEqual({ consecutiveFailures, firstFailureAt, lastAttemptAt },
+    { consecutiveFailures: 1, firstFailureAt: NOW + 1000, lastAttemptAt: NOW + 1000 });
 });
 
 test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', async () => {

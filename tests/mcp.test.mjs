@@ -4683,6 +4683,41 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(a, 'a=1&b=2');
   });
 
+  it('canonicalQueryString orders repeated values, so an edge that sorts the query still verifies (WORLDMONITOR-1CJ)', async () => {
+    // Cloudflare in front of api.worldmonitor.app sorts query values before the
+    // request reaches Vercel: ?symbols=AAPL&symbols=NVDA&symbols=AMZN arrives as
+    // AAPL, AMZN, NVDA. A key-only sort kept the caller's value order and
+    // 401'd every multi-symbol tool call whose symbols were not already sorted.
+    const { canonicalQueryString, signInternalMcpRequest, buildInternalMcpHeaders, verifyInternalMcpRequestDetailed } =
+      await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    assert.equal(
+      canonicalQueryString('?symbols=AAPL&symbols=NVDA&symbols=AMZN&limit=4'),
+      canonicalQueryString('?limit=4&symbols=AAPL&symbols=AMZN&symbols=NVDA'),
+    );
+
+    const path = 'https://api.worldmonitor.app/api/market/v1/get-stock-analysis-history';
+    const signed = await signInternalMcpRequest({
+      method: 'GET',
+      url: `${path}?symbols=AAPL&symbols=NVDA&symbols=AMZN&symbols=MSFT&include_news=false&limit_per_symbol=4`,
+      body: null,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+    });
+    const delivered = new Request(
+      `${path}?include_news=false&limit_per_symbol=4&symbols=AAPL&symbols=AMZN&symbols=MSFT&symbols=NVDA&rpc=get-stock-analysis-history`,
+      { headers: buildInternalMcpHeaders(signed) },
+    );
+    const result = await verifyInternalMcpRequestDetailed(delivered, HMAC_SECRET);
+    assert.equal(result.ok, true, `edge-sorted delivery must verify, got ${result.failure}`);
+
+    // A different value set is still a different signature.
+    const tampered = new Request(
+      `${path}?include_news=false&limit_per_symbol=4&symbols=AAPL&symbols=AMZN&symbols=MSFT&symbols=TSLA`,
+      { headers: buildInternalMcpHeaders(signed) },
+    );
+    assert.equal((await verifyInternalMcpRequestDetailed(tampered, HMAC_SECRET)).failure, 'signature_mismatch');
+  });
+
   it('canonicalQueryString URL-encodes values', async () => {
     const { canonicalQueryString } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
     const c = canonicalQueryString('?q=hello world&special=a%2Fb');

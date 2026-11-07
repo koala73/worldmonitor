@@ -8,6 +8,7 @@
 
 import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { isIosLikeUserAgent } from './platform-ua';
+import { installPageUnloadSignal, isPageUnloading } from './page-unload-signal';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata, isolateNonProductionSentryEvent } from '../../shared/sentry-build-metadata';
 import { scrubSentryCredentials } from '../../shared/sensitive-url-params';
@@ -466,6 +467,15 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       }
       const msg = event.exception?.values?.[0]?.value ?? '';
       if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
+      // A reload or navigation aborts every in-flight fetch, and the rejections
+      // land while the page is going away. A `kind` claim does not rescue them:
+      // the owner is reporting the teardown, not an outage (WORLDMONITOR-1AY).
+      // Only the three engines' fetch-failure wordings, only as a TypeError.
+      if (
+        isPageUnloading()
+        && (event.exception?.values?.[0]?.type === 'TypeError' || msg.startsWith('TypeError: '))
+        && /^(?:TypeError: )?(?:Load failed|Failed to fetch|NetworkError when attempting to fetch resource\.?)(?: \(.*\))?$/.test(msg)
+      ) return null;
       // WebKit's wording for a failed fetch, relocated verbatim from
       // `ignoreErrors`. Reach is unchanged — still only a `TypeError` whose
       // message is exactly `Load failed`, optionally with a parenthesised
@@ -791,10 +801,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Error` and synthesizes exactly ONE document-URL frame for it, and that
       // error can be ours — Firefox's `uncaught exception: [object Object]`
       // (WORLDMONITOR-106) is a bundle throwing a non-Error.
+      //
+      // An `EvalError` joins on the same multi-frame terms. Our CSP has no
+      // 'unsafe-eval', our bundle's evals would ride an `/assets/*.js` frame,
+      // and no inline script in our HTML entries evaluates a string (pinned by
+      // tests/sentry-beforesend.test.mjs). WORLDMONITOR-161 / -1CQ: Firefox's
+      // `call to eval() blocked by CSP` from a ~300 KB injected script at
+      // `/dashboard` 47:309244, where the served line 47 is a short meta tag.
+      // Chrome's wording of the same refusal is already in ignoreErrors.
       const isNonScriptUrlFrame = (filename: string) =>
         !/\.(?:m|c)?[jt]sx?(?:[?#]|$)/.test(filename)
         && (/^\/(?!\/)/.test(filename) || /^https?:\/\//.test(filename));
-      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || (excType === 'Error' && nonInfraFrames.length > 1))
+      if ((excType === 'TypeError' || /^TypeError:/.test(msg) || ((excType === 'Error' || excType === 'EvalError') && nonInfraFrames.length > 1))
           && !hasFirstParty
           && nonInfraFrames.length > 0
           && nonInfraFrames.every(f => isNonScriptUrlFrame(f.filename ?? ''))) return null;
@@ -1337,6 +1355,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
 }
 
 export async function loadAndInitSentry(): Promise<SentryNs> {
+  installPageUnloadSignal();
   const ns = await import('@sentry/browser');
   ns.init(buildSentryInitOptions());
   return ns;

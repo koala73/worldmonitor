@@ -131,6 +131,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.onagri.nat.tn', 'finance'],
   ['www.pbs.gov.pk', 'finance'],
   ['hormuz.data-tracking.net', 'infrastructure'],
+  // NGA broadcast warnings feed chokepoint status and cable health from server/_shared.
+  ['msi.nga.mil', 'infrastructure'],
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],

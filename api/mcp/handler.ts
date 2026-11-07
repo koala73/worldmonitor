@@ -675,7 +675,9 @@ async function handleAuthenticatedSseReplay(
   // No `id` argument on purpose (#7818): the SSE replay channel is a GET with
   // no JSON-RPC body, so there is no request id to echo and the denial keeps
   // the spec's null. Every POST caller below passes the parsed `body.id`.
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
+  // A replay serves no data, so an Enterprise contract member stays on the
+  // per-user limiter rather than spending the account's REST-shared burst.
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute, null);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -1334,7 +1336,12 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
-    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id);
+    // Only a data-bearing resources/read spends an Enterprise contract
+    // account's burst (shared with its REST requests); the account status
+    // read and unsupported methods stay on the per-user limiter. tools/call
+    // takes its burst in dispatchToolsCall.
+    const dataResourceRead = method === 'resources/read' && !isAccountResourceRead;
+    const limited = method === 'tools/call' ? null : await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute, id, undefined, dataResourceRead ? budget?.account : undefined);
     if (limited) {
       usage.phase = 'limit';
       return limited;

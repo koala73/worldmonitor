@@ -336,6 +336,38 @@ describe('chokepoint source availability', () => {
     assert.equal(meta.uncoveredChokepoints, undefined);
   });
 
+  it('reads chokepoint warnings from the daily memoranda while the MSI API is in maintenance', async () => {
+    const memoDir = new URL('./fixtures/nga-daily-memos/', import.meta.url);
+    // Fixtures are "IN FORCE AS OF 061440Z NOV 26".
+    Date.now = () => Date.UTC(2026, 10, 6, 20, 0);
+    const harness = redisHarness(async (url) => {
+      if (url.startsWith('https://msi.nga.mil/apology_objects/')) {
+        return new Response(await readFile(new URL(url.slice(url.lastIndexOf('/') + 1), memoDir), 'utf8'));
+      }
+      if (url.includes('msi.nga.mil')) return new Response('MSI IS CURRENTLY UNDER MAINTENANCE', { status: 503 });
+      if (url.startsWith('https://relay.test/ais/snapshot')) {
+        return Response.json({
+          density: [],
+          disruptions: [],
+          snapshotAt: Date.now(),
+          status: { connected: true, vessels: 10, messages: 20 },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({
+      summaries: completeTransitSummaries(),
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+
+    assert.equal(response.chokepoints.length, 13);
+    assert.equal(response.upstreamUnavailable, false);
+    assert.ok(response.chokepoints.every((row) => row.navigationalWarningsAvailable === true));
+    assert.equal(response.chokepoints.find((row) => row.id === 'hormuz_strait')?.activeWarnings, 1);
+  });
+
   it('qualifies quiet rows that are missing from a partial transit payload', async () => {
     Date.now = () => Date.parse('2026-03-05T00:00:00.000Z');
     const harness = redisHarness(async (url) => {

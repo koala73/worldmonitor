@@ -1165,6 +1165,15 @@ describe('public OpenAPI dedupe (real bundle)', () => {
         '`node scripts/openapi-capacity-report.mjs` ranks what is worth collapsing next.',
     );
   });
+
+  it('keeps popup network enrichment in the full spec while excluding it from the scanner bundle', () => {
+    const path = '/api/cyber/v1/get-network-info';
+    const full = loadUnifiedOpenApiSpec();
+    assert.ok(full.paths[path]?.get, 'the endpoint remains documented in the YAML bundle');
+    const { spec } = buildBundle({ spec: full });
+    assert.equal(spec.paths[path], undefined);
+    assert.ok(spec.paths['/api/cyber/v1/list-cyber-threats']?.get, 'the cyber data API remains discoverable');
+  });
 });
 
 function referencedSecuritySchemes(spec) {

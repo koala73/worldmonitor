@@ -949,12 +949,28 @@ const SEED_META = {
   naturalEvents:    {
     key: 'seed-meta:natural:events',
     maxStaleMin: 540, // 3h Railway climate bundle; 3x cadence preserves a full missed run.
-    sourceFailure: {
-      warnAfterConsecutive: 2,
-      maxPendingMin: 210,
-      successAtField: 'lastSourceSuccessAt',
-      failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
-    },
+    sourceFailure: [
+      {
+        warnAfterConsecutive: 2,
+        maxPendingMin: 210,
+        successAtField: 'lastSourceSuccessAt',
+        failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
+      },
+      // WORLDMONITOR-1AG: a single GDACS type or EONET miss whose validated
+      // records are retained (9h / 18h) is pending, not an incident; the second
+      // consecutive miss alarms. Requires a per-source failure clock on every
+      // failed source, so an unretained source, an NHC failure in the same run,
+      // or every source failing at once alarms on the first miss.
+      {
+        warnAfterConsecutive: 2,
+        // The bundle reruns this section 144 min (0.8 x 3h) after a publish, on a
+        // */5 tick, for up to 180 s; 210 holds past that next verdict.
+        maxPendingMin: 210,
+        successAtField: 'lastSourceSuccessAt',
+        sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
+        failureCodePattern: /^(GDACS_TYPE_COVERAGE_INCOMPLETE|EONET_SOURCE_FAILED)$/,
+      },
+    ],
   },
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
   // #6987: moved off seed-meta:aviation:faa, which carries the FAA-ONLY alert
@@ -5754,14 +5770,18 @@ function computeOverallStatus(counts, totalChecks) {
 }
 
 // Failure-log / ?history=1 problem set. Distinct from the compact `problems` map
-// because EMPTY_ON_DEMAND and active stale-content grace are not active faults.
-// Both remain visible in diagnostics without polluting the incident signature.
+// because EMPTY_ON_DEMAND, active stale-content grace and an in-window rollout
+// are not active faults. All remain visible in diagnostics without polluting
+// the incident signature. ROLLOUT_PENDING keeps its warn bucket for
+// availability (#6059); only its incident is deferred, because a producer that
+// never publishes reads EMPTY once `rolloutPendingUntil` passes and alerts then.
 function collectFailureLogProblems(checks, now = Date.now()) {
   const entries = Object.entries(checks)
     .filter(([, c]) => (
       isProblemStatus(c.status)
       && healthStatusBucket(c, now) !== 'ok'
       && c.status !== 'EMPTY_ON_DEMAND'
+      && !(c.status === 'ROLLOUT_PENDING' && !isExpiredDeadline(c.rolloutPendingUntil, now))
     ));
   return {
     problemKeys: entries.map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`),

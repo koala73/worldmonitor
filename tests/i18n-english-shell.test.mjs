@@ -235,6 +235,7 @@ describe('English i18n shell split', () => {
       'components.newsPanel.sortNewest',
       'components.newsPanel.sortRelevance',
       'components.webcams.previewStatus',
+      'components.webcams.play',
       'dashboardTabs.defaultName',
       // Body-mounted breaking-news live region is constructed during Phase 2,
       // before the full English chunk is guaranteed, and the healer does not

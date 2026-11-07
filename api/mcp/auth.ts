@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -11,7 +12,8 @@ import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { resolveMcpBudget } from './quota';
+import { resolveAccountMcpBudget, resolveMcpBudget, type McpBudget } from './quota';
+import { checkBurst } from '../../server/_shared/api-key-rate-limit';
 import {
   getBillingVerificationDenial,
   getEntitlements,
@@ -77,7 +79,7 @@ function getMcpRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp',
     analytics: false,
@@ -124,7 +126,7 @@ function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   const limiter = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
@@ -139,7 +141,7 @@ function getMcpAnonRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpAnonRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp:anon',
     analytics: false,
@@ -725,16 +727,20 @@ async function checkMcpEntitlementGate(
   // per-plan (API Business sells 300/min, everyone else 60), and a second
   // lookup on the hot path to learn it would be the round-trip KTD6 removed.
   const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
+  // An Enterprise contract member draws on the account's pool (shared with
+  // REST and with every other member) whatever API_RATE_LIMIT_ENFORCE says,
+  // and its burst is the account's.
+  const accountBudget = resolveAccountMcpBudget(ent?.account);
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    budget: {
+    budget: accountBudget ?? {
       ...resolveMcpBudget(
         ent?.features?.planLimits?.mcpCallsPerDay,
         ent?.features?.planLimits?.apiRequestsPerDay,
       ),
       ...((ent?.features?.tier ?? 0) >= 3 ? { enterprisePlan: true as const } : {}),
     },
-    burstPerMinute,
+    burstPerMinute: accountBudget?.account?.perMinuteBurst ?? burstPerMinute,
     ...(typeof ent?.planKey === 'string' ? { planKey: ent.planKey } : {}),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
@@ -900,13 +906,18 @@ export async function runContextPreChecks(
  *  with its pending request; the MCP schema's `RequestId` union is
  *  `string | number`, so a null id there fails client-side response validation
  *  outright. It defaults to null for the GET/SSE replay caller, which is a
- *  transport-level request carrying no JSON-RPC id to echo. */
+ *  transport-level request carrying no JSON-RPC id to echo.
+ *  `account` (an Enterprise contract member's budget pool): the call spends the
+ *  account's burst bucket — the same `checkBurst(perMinuteBurst, 'acct:<id>')`
+ *  bucket the gateway charges for the members' REST requests — instead of the
+ *  per-user MCP limiter. Protocol and panel scopes keep their own buckets. */
 export async function applyPerMinuteLimit(
   context: McpAuthContext,
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
   id: unknown = null,
   scope?: McpMinuteScope,
+  account?: McpBudget['account'],
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
@@ -945,6 +956,22 @@ export async function applyPerMinuteLimit(
     // bounded. Keying an anonymous caller into the per-USER limiter would be
     // worse than useless — every free caller would share one bucket.
     return null;
+  }
+  if (account && !scope) {
+    // Fails open on an unavailable limiter like the per-user bucket below.
+    const burst = await checkBurst(account.perMinuteBurst, account.identity);
+    if (burst.ok !== false) return null;
+    emitMcpRateLimitHit(context, {
+      dimension: 'mcp_minute_burst',
+      limit: account.perMinuteBurst,
+      windowSeconds: 60,
+    });
+    return rpcError(
+      id,
+      -32029,
+      `Rate limit exceeded. Max ${account.perMinuteBurst} requests per minute per account, shared with REST API requests.`,
+      { ...headers, 'X-RateLimit-Limit': String(account.perMinuteBurst), 'X-RateLimit-Remaining': '0' },
+    );
   }
   if (scope?.kind === 'protocol') perMinute = MCP_PROTOCOL_BURST_PER_MINUTE;
   const rl = getMcpProMinRatelimit(perMinute);
@@ -1021,7 +1048,7 @@ function getMcpFreeTierRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpFreeTierRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false, signal: () => AbortSignal.timeout(3_000) }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(FREE_TIER_LIMIT_PER_MINUTE, '60 s'),
     prefix: 'rl:mcp:free',
     analytics: false,

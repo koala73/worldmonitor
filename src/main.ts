@@ -401,6 +401,11 @@ function shouldSuppressCspViolation(
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      // Google Fonts' legacy Early Access sheets (`/earlyaccess/<family>.css`),
+      // the same vendor and the same injection class. J0 round 7: Chrome desktop
+      // and Chrome iOS both loading `notosansmalayalam.css`, a family no surface
+      // of ours references.
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/earlyaccess\/[a-z0-9]+\.css$/.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
@@ -556,15 +561,16 @@ import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
-import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 
-// Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
+// Auto-reload once per build on stale chunk 404s after deployment (Vite fires
+// `vite:preloadError` for failed dynamic imports and modulepreloads).
+installChunkReloadGuard(__BUILD_HASH__);
 
 // First-touch agent link (`?ref=agent-claude`). Read before App.ts referral
 // capture strips `ref` from the URL; recorded as the sign-up source on the
@@ -685,9 +691,6 @@ if (urlParams.get('settings') === '1') {
     resolveBindings(app.getWebMcpBindings());
     app
       .init(webMcpController)
-      .then(() => {
-        clearChunkReloadGuard(chunkReloadStorageKey);
-      })
       .catch((error: unknown) => {
         console.error(error);
         try {

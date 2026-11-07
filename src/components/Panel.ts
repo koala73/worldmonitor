@@ -904,8 +904,15 @@ export class Panel {
       return { ok: false, persisted: false };
     }
     this._applyCollapsed(this._collapseBtn, collapsed);
+    this.onCollapsedChange(collapsed);
     return { ok: true, persisted: true };
   }
+
+  /**
+   * Runs after the viewer collapses or expands the panel. Not called when the saved state is
+   * restored in the constructor, before subclass fields exist.
+   */
+  protected onCollapsedChange(_collapsed: boolean): void {}
 
   /** Override in panels that expose a fullscreen control. */
   public supportsFullscreen(): boolean {

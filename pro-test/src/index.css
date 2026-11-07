@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./welcome/safe-area.css";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;

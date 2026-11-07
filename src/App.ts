@@ -128,6 +128,7 @@ import {
   CANADA_DEPTH_OPT_IN_SOURCES,
   CRISIS_FLOOR_OPT_IN_SOURCES,
   CURATED_REGIONAL_OPT_IN_SOURCES,
+  GERMAN_RSS_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -235,6 +236,7 @@ import {
   migrateCanadaDepthOptInsV7,
   migrateCrisisDeskOptInsV8,
   migrateCuratedRegionalOptInsV9,
+  migrateGermanRssSourcesV10,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1522,6 +1524,18 @@ export class App {
         }
         if (persisted) safeStorageSet(curatedRegionalOptInKey, 'done');
       }
+      const germanRssKey = 'worldmonitor-german-rss-sources-v1';
+      if (!safeStorageGet(germanRssKey)) {
+        // Missing preferences need persisted defaults; a saved [] is an explicit enable-all choice.
+        const current = loadFromStorage<string[] | null>(STORAGE_KEYS.disabledFeeds, null);
+        const blob = { [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current ?? computeDefaultDisabledSources(userLang)) };
+        const migrated = migrateGermanRssSourcesV10(blob, GERMAN_RSS_SOURCES, userLang);
+        const persisted = (current !== null && migrated === blob) || saveToStorage(
+          STORAGE_KEYS.disabledFeeds,
+          JSON.parse(migrated[STORAGE_KEYS.disabledFeeds] as string) as string[],
+        );
+        if (persisted) safeStorageSet(germanRssKey, 'done');
+      }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
       // Language) before falling back to navigator. Mirrors the i18n.ts:99
@@ -2779,6 +2793,7 @@ export class App {
         void startAccountAuthHandoff({
           userId,
           isCurrent: () => (
+            !this.state.isDestroyed &&
             handoffGeneration === _convexWatchHandoffGeneration &&
             getAuthState().user?.id === userId
           ),
@@ -2859,20 +2874,32 @@ export class App {
             // Clerk switched accounts meanwhile, so record acceptance here.
             let acceptedByServer = false;
             let failureKind: string | null = null;
+            // Enterprise account invites share this capture and lifecycle;
+            // only the mutation and the success copy differ.
+            const isEnterpriseInvite = pendingBusinessInvite.kind === 'enterprise';
+            const operation = isEnterpriseInvite
+              ? 'accepting the Enterprise account invite'
+              : 'accepting the Business Pro seat invite';
             try {
               await settleAccountOperation(
                 userId,
-                'accepting the Business Pro seat invite',
-                () => client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
-                  grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
-                  token: pendingBusinessInvite.token,
-                }).then((result) => {
+                operation,
+                () => (isEnterpriseInvite
+                  ? client.mutation(api.enterpriseSeats.acceptInvite, {
+                    memberId: pendingBusinessInvite.grantId as Id<'enterpriseMembers'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                  : client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                    grantId: pendingBusinessInvite.grantId as Id<'businessProGrants'>,
+                    token: pendingBusinessInvite.token,
+                  })
+                ).then((result) => {
                   acceptedByServer = true;
                   return result;
                 }),
               );
-              assertAccountStillCurrent(userId, 'accepting the Business Pro seat invite');
-              showToast('Pro seat activated');
+              assertAccountStillCurrent(userId, operation);
+              showToast(isEnterpriseInvite ? 'You have joined the Enterprise account' : 'Pro seat activated');
             } catch (err) {
               const kind = businessInviteErrorKind(err);
               failureKind = kind;
@@ -2883,6 +2910,10 @@ export class App {
                 showToast('This invite has expired');
               } else if (kind === 'BUSINESS_NOT_ACTIVE') {
                 showToast('The Business plan that sent this invite is no longer active');
+              } else if (kind === 'CONTRACT_ENDED') {
+                showToast('The Enterprise contract that sent this invite has ended');
+              } else if (kind === 'ALREADY_MEMBER_OF_ANOTHER_ACCOUNT') {
+                showToast('This account already belongs to another Enterprise account');
               } else if (kind === 'INVITE_ALREADY_USED') {
                 showToast('This invite has already been used');
               } else {

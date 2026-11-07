@@ -206,6 +206,7 @@
 /* ── Content area ── */
 .settings-content {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: 20px 24px;
   scrollbar-width: thin;
@@ -734,14 +735,32 @@
 }
 
 .settings-diagnostics {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 240px;
   border: 1px solid var(--settings-border);
   background: var(--settings-surface);
   border-radius: 8px;
   padding: 14px 16px;
 }
 
+/* Fill spare height on Debug & Logs; short windows still scroll the content
+   above the fixed footer. Other Settings sections keep their normal flow. */
+.settings-content:has(> .settings-diagnostics) {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-content:has(> .settings-diagnostics) > * {
+  flex-shrink: 0;
+}
+
 .diag-header {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
@@ -756,6 +775,7 @@
 
 .diag-toggles {
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
 }
 
@@ -774,6 +794,9 @@
 
 .diag-traffic-bar {
   display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 10px;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
@@ -823,7 +846,8 @@
 }
 
 .diag-traffic-log {
-  max-height: 300px;
+  flex: 1;
+  min-height: 120px;
   overflow-y: auto;
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   scrollbar-width: thin;

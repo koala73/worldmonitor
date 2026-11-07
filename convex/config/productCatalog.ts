@@ -390,26 +390,28 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   dataExport: true,
 };
 
-// Enterprise is sold as "Unlimited API requests" under fair use. The daily
-// numbers below are circuit breakers against a leaked key, not plan limits:
-// every one is at least 2.5× the largest self-serve plan, and the high-usage
-// alarm (server/_shared/high-usage-alarm.ts) pages at a quarter of each. An
-// unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
-// payments/subscriptionHelpers.ts), so "unlimited" was reachable without a
-// sales contract. Pinned by tests/high-usage-alarm.test.mts.
+// Enterprise is sold by contract. These numbers are the contract default —
+// 10,000 requests a day and 300 a minute, the same as API Business, with MCP
+// charged to the REST budget — and apply to every Enterprise user outside a
+// pooled enterprise account. Larger allowances are set per contract, not here.
+// An unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
+// payments/subscriptionHelpers.ts), so this must stay a finite, sellable
+// default. The read-time merge (lib/entitlements.ts) applies these numbers to
+// stored Enterprise rows too. Pinned by tests/high-usage-alarm.test.mts and
+// convex/__tests__/entitlement-merge-enterprise.test.ts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
   historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
-  apiRateLimit: 1000,
-  apiDailyAllowance: 100_000,
+  apiRateLimit: 300,
+  apiDailyAllowance: 10_000,
   planLimits: {
-    apiRequestsPerDay: 100_000,
-    apiBurstRequestsPerMinute: 1000,
-    mcpCallsPerDay: 25_000,
-    dashboardAiCallsPerDay: 25_000,
-    mcpBurstRequestsPerMinute: 1000,
+    apiRequestsPerDay: 10_000,
+    apiBurstRequestsPerMinute: 300,
+    mcpCallsPerDay: SHARED_API_BUDGET,
+    dashboardAiCallsPerDay: 10_000,
+    mcpBurstRequestsPerMinute: 300,
     desktopKeyRequestsPerDay: 0,
     desktopKeyBurstPerMinute: 0,
   },
@@ -643,7 +645,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
       "Everything in Pro + API",
-      "Unlimited API requests",
+      "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
       "SLA guarantee",

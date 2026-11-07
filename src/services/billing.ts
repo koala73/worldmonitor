@@ -59,6 +59,7 @@ let subscriptionLoaded = false;
 const listeners = new Set<(sub: SubscriptionInfo | null) => void>();
 let initialized = false;
 let unsubscribeConvex: (() => void) | null = null;
+let subscriptionGeneration = 0;
 
 // Convex/Clerk bootstrap rarely rejects with a non-Error value (undefined, null, string).
 // Sentry serializes those as synthetic `Error: undefined` with zero frames — uninvestigable.
@@ -91,7 +92,10 @@ async function requireCurrentConvexUser(
   action: string,
 ): Promise<void> {
   if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error(`Account changed while ${action}. Try again.`);
+    // A failed or unconfirmed auth handshake for the same signed-in user is
+    // not an account switch (Sentry WORLDMONITOR-1CP).
+    assertAccountStillCurrent(userId, action);
+    throw new Error(`Authentication unavailable while ${action}. Try again.`);
   }
   assertAccountStillCurrent(userId, action);
 }
@@ -105,8 +109,10 @@ export async function initSubscriptionWatch(
   _userId?: string,
   isCurrent: () => boolean = () => true,
 ): Promise<void> {
+  const generation = subscriptionGeneration;
   const isExpectedAccount = (): boolean => (
-    isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
+    generation === subscriptionGeneration
+    && isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
   );
   if (initialized || !isExpectedAccount()) return;
 
@@ -126,16 +132,17 @@ export async function initSubscriptionWatch(
       console.warn('[billing] Could not load Convex API -- skipping subscription watch');
       return;
     }
-    if (!isExpectedAccount()) return;
+    // Another initializer can attach while this one awaits the client/API.
+    if (initialized || !isExpectedAccount()) return;
 
-    unsubscribeConvex = client.onUpdate(
+    const unsubscribe = client.onUpdate(
       api.payments.billing.getSubscriptionForUser,
       {},
       (result: SubscriptionInfo | null) => {
         if (!isExpectedAccount()) return;
         currentSubscription = result;
         subscriptionLoaded = true;
-        for (const cb of listeners) cb(result);
+        notifySubscriptionListeners(result);
       },
       (err: Error) => {
         if (!isExpectedAccount()) return;
@@ -143,10 +150,16 @@ export async function initSubscriptionWatch(
         // Clear stale cached value so getSubscription() returns null (not old plan).
         currentSubscription = null;
         subscriptionLoaded = true;
-        for (const cb of listeners) cb(null);
+        notifySubscriptionListeners(null);
       },
     );
 
+    // onUpdate may synchronously notify a consumer that tears us down.
+    if (!isExpectedAccount()) {
+      unsubscribe();
+      return;
+    }
+    unsubscribeConvex = unsubscribe;
     initialized = true;
   } catch (err) {
     console.error('[billing] Failed to initialize subscription watch:', err);
@@ -156,6 +169,17 @@ export async function initSubscriptionWatch(
       initErr,
       { tags: { component: 'dodo-billing', action: 'initSubscriptionWatch' } },
     ));
+  }
+}
+
+/** Deliver committed billing state to independent consumers even if one throws. */
+function notifySubscriptionListeners(subscription: SubscriptionInfo | null): void {
+  for (const cb of listeners) {
+    try {
+      cb(subscription);
+    } catch (err) {
+      console.warn('[billing] listener threw; continuing fan-out:', err);
+    }
   }
 }
 
@@ -183,6 +207,8 @@ export function onSubscriptionChange(
  * Tear down the subscription watch. Call from PanelLayout.destroy() for cleanup.
  */
 export function destroySubscriptionWatch(): void {
+  // Retire pending initialization and queued callbacks, including same-account rebinds.
+  subscriptionGeneration += 1;
   if (unsubscribeConvex) {
     unsubscribeConvex();
     unsubscribeConvex = null;
@@ -581,6 +607,80 @@ export async function updateBillingEmail(email: string): Promise<{ email: string
     userId,
     'updating the billing email',
     () => client.action(api.payments.billing.updateBillingEmail, { email }),
+  );
+}
+
+export interface EnterpriseSeat {
+  memberId: string;
+  email: string | null;
+  status: 'active' | 'pending' | 'expired';
+  role: 'admin' | 'member';
+  isSelf: boolean;
+  invitedAt: number | null;
+  joinedAt: number | null;
+  inviteExpiresAt: number | null;
+  /** The invite email could not be sent; withdraw and invite again. */
+  emailFailed: boolean;
+}
+
+export interface EnterpriseSeatsView {
+  accountName: string;
+  isAdmin: boolean;
+  seatCap: number;
+  seatsUsed: number;
+  contractEnd: number;
+  contractEnded: boolean;
+  /** The full roster for the admin; empty for other members. */
+  seats: EnterpriseSeat[];
+}
+
+/** The caller's Enterprise account seat view, or null when they are not an active member. */
+export async function listEnterpriseSeats(): Promise<EnterpriseSeatsView | null> {
+  const userId = getCurrentClerkUser()?.id;
+  if (!userId) return null;
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) return null;
+  if (!await waitForConvexAuthForUser(userId)) {
+    assertAccountStillCurrent(userId, 'loading Enterprise seats');
+    throw new Error('Authentication unavailable while loading Enterprise seats. Try again.');
+  }
+  return settleAccountOperation(
+    userId,
+    'loading Enterprise seats',
+    () => client.query(api.enterpriseSeats.listMySeats, {}),
+  );
+}
+
+/** Admin-only: invite people to the Enterprise account by email. */
+export async function inviteEnterpriseMembers(emails: string[]): Promise<{
+  invited: Array<{ email: string; memberId: string; status: 'created' | 'already_pending' | 'already_active' }>;
+}> {
+  const userId = requireSignedInUserId('invite people to the Enterprise account');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'inviting people to the Enterprise account');
+  return settleAccountOperation(
+    userId,
+    'inviting people to the Enterprise account',
+    () => client.mutation(api.enterpriseSeats.inviteMembers, { emails }),
+  );
+}
+
+/** Admin-only: remove a member or withdraw an invite. */
+export async function removeEnterpriseMember(
+  memberId: string,
+): Promise<{ ok: true; status: 'removed' | 'already_removed' }> {
+  const userId = requireSignedInUserId('remove an Enterprise member');
+  const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+  if (!client || !api) throw new Error('Convex unavailable');
+  await requireCurrentConvexUser(userId, 'removing an Enterprise member');
+  return settleAccountOperation(
+    userId,
+    'removing an Enterprise member',
+    () => client.mutation(
+      api.enterpriseSeats.removeMember,
+      { memberId: memberId as Id<'enterpriseMembers'> },
+    ),
   );
 }
 

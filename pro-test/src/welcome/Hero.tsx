@@ -15,6 +15,7 @@ import {
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 import heroProofStats from '../generated/hero-stats.json';
 import depthProofStats from '../generated/depth-stats.json';
+import copyStats from '../generated/copy-stats.json';
 import { PUBLISHED_PULSE_DATE, formatLocalizedDate } from '../services/teasers';
 
 // The screenshot is the LCP element on phones as well as desktop. On a phone
@@ -36,7 +37,7 @@ const HERO_PROOF_STATS = [
     labelKey: 'welcome.depth.s3l',
     href: '/sources/',
   },
-  { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
+  { value: String(depthProofStats.mcpTools), labelKey: 'welcome.depth.s12l' },
 ] as const;
 
 const HeroProofRail = () => (
@@ -116,18 +117,16 @@ export const Hero = () => (
     <div className="max-w-5xl mx-auto text-center">
       <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="mb-6 font-mono text-xs text-wm-muted">{t('welcome.hero.eyebrow')}</div>
-        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-medium tracking-tight leading-[1.05]">
+        {/* Dutch "inlichtingendashboard" is ~335px at 36px, wider than a 320px
+            phone's column: hyphenate it, or break it where hyphenation is
+            unavailable. */}
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-display font-medium tracking-tight leading-[1.05] break-words hyphens-auto">
           {t('welcome.hero.headline1')}
           <br />
           <span className="text-wm-green">{t('welcome.hero.headline2')}</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-base md:text-lg text-wm-muted">
           {t('welcome.hero.sub')}
-        </p>
-        <p className="mt-2 font-mono text-xs text-wm-muted">
-          <time dateTime={PUBLISHED_PULSE_DATE}>
-            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
-          </time>
         </p>
       </motion.div>
 
@@ -140,11 +139,14 @@ export const Hero = () => (
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
+        {/* The first screen's only sign that a paid plan exists. */}
         <a
-          href="#moments"
-          className="inline-flex min-h-12 py-3 items-center justify-center rounded-md px-4 text-sm font-medium text-wm-text transition-colors hover:bg-white/[0.06]"
+          href="/pro#pricing"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-hero-pro"
+          className="inline-flex min-h-12 py-3 items-center justify-center gap-2 rounded-md border border-wm-border px-5 text-sm font-medium text-wm-text transition-colors hover:border-wm-green hover:text-wm-green"
         >
-          {t('welcome.hero.ctaSecondary')}
+          {t('welcome.hero.ctaPro', { price: `$${copyStats.proMonthlyPrice}` })} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
       </div>
       <div className="mt-4 font-mono text-xs text-wm-muted">
@@ -195,6 +197,14 @@ export const Hero = () => (
         >
           {t('welcome.hero.positioningLink')} <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </a>
+        {/* The page's published-data date, equal to lastmod and dateModified (#8701).
+            Under the tagline it read as "this site is days old" above a live dashboard,
+            and beside the figures rail it would date figures generated separately. */}
+        <p className="mt-4 font-mono text-xs text-wm-muted">
+          <time dateTime={PUBLISHED_PULSE_DATE}>
+            {t('welcome.hero.asOf', { date: formatLocalizedDate(PUBLISHED_PULSE_DATE, currentLanguageBase()) })}
+          </time>
+        </p>
       </div>
     </div>
   </section>
