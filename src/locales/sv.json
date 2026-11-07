@@ -4742,7 +4742,7 @@
         "category": "Naturkatastrofer",
         "purpose": "Visar jordbävningar, svåra katastrofvarningar och aktiva jordobservationshändelser för lägesbilden.",
         "source": "Jordbävningar från USGS, varningar från GDACS och händelser från NASA EONET, sammanslagna i tjänsten för naturliga händelser.",
-        "freshness": "Naturliga händelser matas in var 3:e timme. För USGS-jordbävningar är den dokumenterade förväntan en källtakt på ungefär 5 minuter.",
+        "freshness": "Naturliga händelser matas in var 30:e minut. För USGS-jordbävningar är den dokumenterade förväntan en källtakt på ungefär 5 minuter.",
         "confidence": "Starkt för upptäckta offentliga katastrofsignaler. Tillförlitligheten varierar med farotyp och källans rapporteringsfördröjning.",
         "limitations": {
           "0": "GDACS-varningar med låg allvarlighetsgrad filtreras bort så att kartan ska gå att läsa.",

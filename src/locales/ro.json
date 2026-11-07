@@ -4763,7 +4763,7 @@
         "category": "Dezastre naturale",
         "purpose": "Arată cutremure, alerte severe de dezastru și evenimente active de observare a Pământului, pentru imaginea situației.",
         "source": "Cutremure USGS, alerte GDACS și evenimente NASA EONET, reunite în serviciul de evenimente naturale.",
-        "freshness": "Evenimentele naturale se alimentează la fiecare 3 ore. Pentru cutremurele USGS, așteptarea documentată este o cadență a sursei de aproximativ 5 minute.",
+        "freshness": "Evenimentele naturale se alimentează la fiecare 30 de minute. Pentru cutremurele USGS, așteptarea documentată este o cadență a sursei de aproximativ 5 minute.",
         "confidence": "Puternic pentru semnalele publice de dezastru detectate. Încrederea variază după tipul de hazard și latența raportării la sursă.",
         "limitations": {
           "0": "Alertele GDACS de severitate mică sunt filtrate, ca harta să rămână lizibilă.",
