@@ -72,13 +72,16 @@ jobs:
           period=$(date -u +%G-W%V)
           branch="automation/crawlable-pulse-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          # A fork PR can carry the same head branch name. Only a branch in this
+          # repository is the workflow's own, so only that PR may be skipped or armed.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Weekly pulse PR #${existing_pr} already exists."
             # Re-arm auto-merge in case the run that opened the PR failed to.
             # A merged, closed or draft PR is left alone.
-            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft,isCrossRepository --jq '.state == "OPEN" and (.isDraft | not) and (.isCrossRepository | not)')" = "true" ]; then
               gh pr merge --auto --squash "$existing_pr"
             fi
             exit 0
@@ -223,16 +226,17 @@ jobs:
             # test fix, a generator fix or a hand re-capture all land here.
             body="$(printf '%s\n\n%s' "$body" "**Verification failed** in ${RUN_URL}, so this draft carries the capture instead of losing it to a re-freeze. Fix the failing test or generator in this branch and push (a push runs CI on this PR), then mark it ready. A re-capture for this week also goes into this branch: the workflow will not re-freeze a period whose PR exists.")"
           fi
-          gh pr create \
+          pr_url=$(gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
             --body "$body" \
-            "${draft[@]}"
+            "${draft[@]}")
+          echo "$pr_url"
           # A draft carries a capture whose verification failed; it merges
           # only after a fix lands and someone marks it ready.
           if [ "$VERIFY_OUTCOME" = "success" ]; then
-            gh pr merge --auto --squash "$BRANCH_NAME"
+            gh pr merge --auto --squash "$pr_url"
           fi
 
   # Dispatches Deploy Gate for the new PR directly rather than waiting on the

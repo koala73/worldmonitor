@@ -84,14 +84,16 @@ jobs:
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           # Only an open or merged PR means this week is done. A closed one was
           # rejected, so the week is collected again.
-          existing_pr=$(gh pr list --state all --head "$branch" --json number,state \
-            --jq '[.[] | select(.state != "CLOSED")][0].number // empty')
+          # A fork PR can carry the same head branch name, so only a PR from this
+          # repository counts.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,state,isCrossRepository \
+            --jq '[.[] | select(.state != "CLOSED" and (.isCrossRepository | not))][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
             # Re-arm auto-merge in case the run that opened the PR failed to.
             # A merged, closed or draft PR is left alone.
-            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft,isCrossRepository --jq '.state == "OPEN" and (.isDraft | not) and (.isCrossRepository | not)')" = "true" ]; then
               gh pr merge --auto --squash "$existing_pr"
             fi
             exit 0
@@ -212,7 +214,7 @@ jobs:
           else
             baseline_note="Also regenerates the AI-visibility baseline and scorecard (baselines/${snapshot_date}.json, scorecards/${snapshot_date}.md) from these snapshots, compared with the previous baseline. A source without a snapshot is unavailable with a reason, never zero, and the AI-answer surfaces are unavailable because the manual panel was dropped (#10024)."
           fi
-          gh pr create \
+          pr_url=$(gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
@@ -222,8 +224,9 @@ jobs:
               "$bing_note" \
               "$umami_note" \
               "$baseline_note" \
-              "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")"
-          gh pr merge --auto --squash "$BRANCH_NAME"
+              "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")")
+          echo "$pr_url"
+          gh pr merge --auto --squash "$pr_url"
 
   # Dispatches Deploy Gate for the new PR directly rather than waiting on the
   # workflow_run event or the gate's 30-minute sweep.

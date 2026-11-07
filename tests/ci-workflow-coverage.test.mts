@@ -1353,7 +1353,7 @@ describe('CI workflow coverage', () => {
     }
     assert.match(
       openPrStep,
-      /if \[ "\$VERIFY_OUTCOME" = "success" \]; then\n\s+gh pr merge --auto --squash "\$BRANCH_NAME"/,
+      /if \[ "\$VERIFY_OUTCOME" = "success" \]; then\n\s+gh pr merge --auto --squash "\$pr_url"/,
       'auto-merge only a verified capture, never the draft',
     );
   });

@@ -40,11 +40,13 @@ describe('bot-PR workflows', () => {
       const text = read(file);
       assert.doesNotMatch(text, /github\.token/, 'the Actions token opens PRs that get no CI');
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
-      assert.match(text, /gh pr merge --auto --squash "\$BRANCH_NAME"/);
+      assert.doesNotMatch(text, /gh pr merge[^\n]*BRANCH_NAME/, 'a branch name can also match a fork PR');
+      assert.match(text, /gh pr merge --auto --squash "\$(pr_url|\(tail -n 1 "\$RUNNER_TEMP\/snapshot-pr\.out"\))"/, 'merge the PR this run created');
+      assert.match(text, /select\([^)]*\.isCrossRepository \| not/, 'a fork PR on the same branch name is never this workflow\'s PR');
       assert.match(
         text,
-        /--jq '\.state == "OPEN" and \(\.isDraft \| not\)'\)" = "true" \]; then\n\s+gh pr merge --auto --squash "\$existing_pr"/,
-        'a rerun re-arms auto-merge on an open, non-draft PR',
+        /--jq '\.state == "OPEN" and \(\.isDraft \| not\) and \(\.isCrossRepository \| not\)'\)" = "true" \]; then\n\s+gh pr merge --auto --squash "\$existing_pr"/,
+        'a rerun re-arms auto-merge only on an open, non-draft PR from this repository',
       );
     });
   }

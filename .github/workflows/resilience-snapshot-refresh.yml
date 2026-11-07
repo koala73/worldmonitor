@@ -35,14 +35,17 @@ jobs:
           period=$(date -u +%Y-%m)
           branch="automation/resilience-snapshot-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
-          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          # A fork PR can carry the same head branch name. Only a branch in this
+          # repository is the workflow's own, so only that PR may be skipped or armed.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "existing_pr=true" >> "$GITHUB_OUTPUT"
             echo "Monthly snapshot PR #${existing_pr} already exists."
             # Re-arm auto-merge in case the run that opened the PR failed to.
             # A merged, closed or draft PR is left alone.
-            if [ "$(gh pr view "$existing_pr" --json state,isDraft --jq '.state == "OPEN" and (.isDraft | not)')" = "true" ]; then
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft,isCrossRepository --jq '.state == "OPEN" and (.isDraft | not) and (.isCrossRepository | not)')" = "true" ]; then
               gh pr merge --auto --squash "$existing_pr"
             fi
             exit 0
@@ -149,7 +152,7 @@ jobs:
               --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and both agent files (llms.txt and llms-full.txt)." \
               > "$RUNNER_TEMP/snapshot-pr.out" 2> "$RUNNER_TEMP/snapshot-pr.err"; then
             cat "$RUNNER_TEMP/snapshot-pr.out" >> "$GITHUB_STEP_SUMMARY"
-            gh pr merge --auto --squash "$BRANCH_NAME"
+            gh pr merge --auto --squash "$(tail -n 1 "$RUNNER_TEMP/snapshot-pr.out")"
           elif grep -Fq 'GitHub Actions is not permitted to create or approve pull requests' "$RUNNER_TEMP/snapshot-pr.err"; then
             echo "manual=true" >> "$GITHUB_OUTPUT"
             echo "::warning title=Snapshot needs maintainer review::Repository policy blocks bot PR creation; use the retained patch or compare link."

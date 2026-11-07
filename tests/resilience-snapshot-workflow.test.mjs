@@ -78,7 +78,7 @@ it('records normal PR delivery and keeps unexpected failures fatal', () => {
   assert.equal(success.status, 0, success.stderr);
   assert.match(success.summary, /https:\/\/github.com\/fixture\/repo\/pull\/1/);
   assert.doesNotMatch(success.output, /manual=true/);
-  assert.match(success.calls, /pr merge --auto --squash automation\/resilience-snapshot-2026-09/);
+  assert.match(success.calls, /pr merge --auto --squash https:\/\/github\.com\/fixture\/repo\/pull\/1/);
   const failed = execute('Open the monthly snapshot PR', { policy: 'Bad credentials' });
   assert.notEqual(failed.status, 0);
   assert.doesNotMatch(failed.output, /manual=true/);
