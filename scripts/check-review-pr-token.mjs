@@ -36,6 +36,7 @@ async function main() {
         Accept: 'application/vnd.github+json',
         'User-Agent': 'worldmonitor-review-token-check',
       },
+      signal: AbortSignal.timeout(15_000),
     });
     status = res.status;
     expiration = res.headers.get('github-authentication-token-expiration');
