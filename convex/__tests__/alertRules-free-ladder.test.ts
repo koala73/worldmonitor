@@ -282,6 +282,75 @@ describe("setNotificationConfigForUser — free alert ladder (#4273)", () => {
 // operator cleanup stays open (see the INTENTIONAL test in alertRules.test.ts).
 // ---------------------------------------------------------------------------
 
+describe("free ladder — country rung is account-wide across variants (#4273, Strix review 6)", () => {
+  // `variant` keys one row per dashboard variant and a variant-less event
+  // matches every row, so a free account writing 3 fresh countries per
+  // registry variant would union to 6× the ladder's cap. Free writes are
+  // judged on the cross-variant union; paid rows keep the per-row cap.
+  const freeShaped = (variant: string, countries: string[]) => ({
+    userId: USER.subject,
+    variant,
+    enabled: true,
+    sensitivity: "critical" as const,
+    digestMode: "realtime" as const,
+    channels: ["web_push"] as Array<"web_push">,
+    countries,
+  });
+
+  test("a second variant with fresh countries → ALERT_COUNTRIES_UPGRADE_REQUIRED", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await expect(
+      t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"])),
+    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+  });
+
+  test("a second variant reusing the same countries stays inside the ladder", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["UA", "TW"]));
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", USER.subject))
+        .collect(),
+    );
+    expect(rows).toHaveLength(2);
+  });
+
+  test("disabling the other variant frees its country slots", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: false,
+    });
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"]));
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", "tech"))
+        .collect(),
+    );
+    expect(rows[0]?.countries).toEqual(["IL", "PL", "FR"]);
+  });
+
+  test("pro accounts keep the per-row cap across variants", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"]));
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user", (q) => q.eq("userId", USER.subject))
+        .collect(),
+    );
+    expect(rows).toHaveLength(2);
+  });
+});
+
 describe("enforceEntitlement flag on the relay-path mutations", () => {
   test("setAlertRulesForUser enforces the ladder only when flagged", async () => {
     const t = convexTest(schema, modules);

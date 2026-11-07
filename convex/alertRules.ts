@@ -18,7 +18,7 @@ import {
   type AlertRuleShapeCode,
 } from "../shared/alert-rule-shape";
 import { mergeEntitlementFeatures } from "./lib/entitlements";
-import { assertAlertCapabilities, loadAlertCapabilities } from "./lib/alertCapabilities";
+import { assertAlertCapabilities, freeAccountCountryUnionCount, loadAlertCapabilities } from "./lib/alertCapabilities";
 
 type DigestMode = "realtime" | "daily" | "twice_daily" | "weekly";
 type Sensitivity = "all" | "high" | "critical";
@@ -102,8 +102,26 @@ async function assertAlertCapabilitiesFor(
   ctx: MutationCtx,
   userId: string,
   state: Parameters<typeof assertAlertCapabilities>[1],
+  // Present when the call writes a country scope: the row's variant and the
+  // normalized incoming list. Free callers are then judged on the account's
+  // cross-variant union instead of this one row's count, or six registry
+  // variants would stack to 6× the ladder's cap (#4273, Strix review 6).
+  // Paid callers keep the per-row count already in `state`.
+  countryUnion?: { variant: string; countries: readonly string[] },
 ): Promise<void> {
-  assertAlertCapabilities(await loadAlertCapabilities(ctx, userId), state);
+  const caps = await loadAlertCapabilities(ctx, userId);
+  if (countryUnion && caps.requireCountryScope) {
+    state = {
+      ...state,
+      countriesCount: await freeAccountCountryUnionCount(
+        ctx,
+        userId,
+        countryUnion.variant,
+        countryUnion.countries,
+      ),
+    };
+  }
+  assertAlertCapabilities(caps, state);
 }
 
 // Cross-field invariant enforcement for (digestMode, sensitivity).
@@ -318,7 +336,9 @@ export const setAlertRulesForUser = internalMutation({
         // setNotificationConfigForUser.
         enabled: rest.enabled,
         effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
-      });
+      }, normalizedCountries !== undefined
+        ? { variant: rest.variant, countries: normalizedCountries }
+        : undefined);
     }
     const normalizedTickers = rest.tickers !== undefined
       ? normalizeTickers(rest.tickers)
@@ -439,7 +459,9 @@ export const setDigestSettingsForUser = internalMutation({
       await assertAlertCapabilitiesFor(ctx, userId, {
         digestMode: pair.digestMode,
         ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
-      });
+      }, normalizedCountries !== undefined
+        ? { variant, countries: normalizedCountries }
+        : undefined);
     }
     if (existing) {
       const patch: Record<string, unknown> = { ...digest, updatedAt: now };
@@ -501,7 +523,7 @@ export const setQuietHoursForUser = internalMutation({
       // countries update, so that is all this path validates.
       await assertAlertCapabilitiesFor(ctx, userId, {
         countriesCount: normalizedCountries.length,
-      });
+      }, { variant: rest.variant, countries: normalizedCountries });
     }
     const patch = {
       quietHoursEnabled: rest.quietHoursEnabled,
@@ -623,7 +645,9 @@ export const setNotificationConfigForUser = internalMutation({
       // ladder does not include. Disables stay allowed.
       enabled: args.enabled ?? existing?.enabled ?? true,
       effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
-    });
+    }, normalizedCountries !== undefined
+      ? { variant, countries: normalizedCountries }
+      : undefined);
 
     const now = Date.now();
 

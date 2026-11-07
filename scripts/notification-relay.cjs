@@ -2070,7 +2070,10 @@ async function processEvent(event) {
 
     let deliveryText = text;
     let impactText = '';
-    if (AI_IMPACT_ENABLED) {
+    // #4273: the AI-composed impact block is paid output — the free catalog
+    // grants no AI allowance, so tier-0 delivery must not trigger LLM
+    // inference now that free rules reach this loop (Strix review 6).
+    if (AI_IMPACT_ENABLED && userTier >= 1) {
       const impact = sanitizeImpactText(await generateEventImpact(event, rule));
       if (impact) {
         impactText = impact;

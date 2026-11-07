@@ -47,3 +47,31 @@ export function assertAlertCapabilities(
   const violation = firstAlertCapabilityViolation(state, caps);
   if (violation) throw new ConvexError({ ...violation });
 }
+
+/**
+ * The account-wide country count a FREE caller's write is judged on
+ * (#4273, Strix review 6). `variant` keys one alertRules row per dashboard
+ * variant and a variant-less relay event matches EVERY row, so judging one
+ * row's `countries.length` would let a free account union up to
+ * (registry variants × cap) countries across rows. Free writes are judged on
+ * the union of the incoming scope with every OTHER enabled row's scope;
+ * disabling a row frees its slots. Paid plans keep the long-standing
+ * per-row cap, so this is only called when `caps.requireCountryScope`.
+ */
+export async function freeAccountCountryUnionCount(
+  ctx: MutationCtx,
+  userId: string,
+  variant: string,
+  incomingCountries: readonly string[],
+): Promise<number> {
+  const rows = await ctx.db
+    .query("alertRules")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const union = new Set<string>(incomingCountries);
+  for (const row of rows) {
+    if (row.variant === variant || row.enabled === false) continue;
+    for (const country of row.countries ?? []) union.add(country);
+  }
+  return union.size;
+}

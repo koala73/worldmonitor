@@ -164,6 +164,13 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       /drainTier < 1 && \(!drainScope\.ok \|\| !eventMatchesCountryScope\(ev, \{ countries: drainScope\.countries \}\)\)/,
       'the held-queue drain must re-apply the free country rung per entry',
     );
+    // Strix review 6 on #10303: the AI-composed impact block is paid output;
+    // tier-0 delivery must not trigger LLM inference.
+    assert.match(
+      relaySrc,
+      /AI_IMPACT_ENABLED && userTier >= 1/,
+      'AI impact generation must be gated on a paid tier',
+    );
   });
 });
 
