@@ -118,6 +118,27 @@ test('a late correlation run still classifies as STALE_SEED, not EMPTY', () => {
   }
 });
 
+test('every correlation key published by the run shares that one TTL', () => {
+  // The argument above only holds if the four per-domain extra keys expire
+  // with the canonical one. If any of them took a literal instead, it would
+  // disappear early and the panel would show a partial card set while health
+  // still read OK. runSeed's descriptor sits behind an argv guard, so this
+  // reads the source, the same technique the DDOS/ANOMALIES cases above use.
+  const source = readFileSync(new URL('../scripts/seed-correlation.mjs', import.meta.url), 'utf8');
+  for (const domain of ['military', 'escalation', 'economic', 'disaster']) {
+    assert.match(
+      source,
+      new RegExp(`key:\\s*'correlation:${domain}:v1',\\s*ttl:\\s*CACHE_TTL\\b`),
+      `correlation:${domain}:v1 must expire with the canonical key, not on a literal of its own`,
+    );
+  }
+  assert.match(
+    source,
+    /ttlSeconds:\s*CACHE_TTL\b/,
+    'the canonical key must take the same constant',
+  );
+});
+
 test('the correlation cards key survives more than one missed bundle tick', () => {
   // seed-bundle-derived-signals runs every 5min and Railway SKIPs a whole tick
   // while the previous bundle is in flight, which is what produced the 9-19min
