@@ -59,7 +59,7 @@ description: "WorldMonitor MCP 服务器可能返回的每一种错误形态的�
 
 ### `-32000` —— 必须使用规范端点
 
-已列出的生产别名（`www`、`api`、`tech`、`finance`、`commodity`、`happy`、`energy`，均在 `worldmonitor.app` 下）是客户端迁移面，不是额外的服务器。这些主机上的传输层 POST、SSE 与 replay 已退役：handler 在鉴权、配额、会话或分发之前以 HTTP **410** 和 JSON-RPC `-32000` 作答。常量位于 `shared/mcp-host-policy.ts`（`MCP_CANONICAL_ENDPOINT_ERROR_CODE = -32000`）；发出站点是 `api/mcp/handler.ts`（`mcpAliasRpcError`）。
+已退役的生产别名（`www`、`tech`、`finance`、`commodity`、`happy`、`energy`，均在 `worldmonitor.app` 下）是客户端迁移面，不是额外的服务器。`api` 别名仍提供传输路径（`MCP_SERVED_ALIAS_LABELS`），因此在 `/mcp` 或 `/api/mcp` 上不会返回此错误。这些主机上的传输层 POST、SSE 与 replay 已退役：handler 在鉴权、配额、会话或分发之前以 HTTP **410** 和 JSON-RPC `-32000` 作答。常量位于 `shared/mcp-host-policy.ts`（`MCP_CANONICAL_ENDPOINT_ERROR_CODE = -32000`）；发出站点是 `api/mcp/handler.ts`（`mcpAliasRpcError`）。
 
 POST 故意**不是** 308。对 POST 做 308 会变成 GET（#4938），从而丢掉 JSON-RPC 请求体并破坏握手。这些主机上的普通 GET/HEAD 发现是可缓存的 308，指向 `https://worldmonitor.app/mcp`（或规范源上对应的 well-known 路径），不属于本代码。
 

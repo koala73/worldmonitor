@@ -10,7 +10,7 @@ import {
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
-import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+import { isMcpProductionAliasPath, normalizeMcpHost } from './shared/mcp-host-policy';
 import { chokepointStatusViewModel } from './scripts/crawlable-live-tools.mjs';
 import {
   chokepointPulseRecord,
@@ -225,11 +225,12 @@ export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
-  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
-    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
+  const aliasMcpRequest = isMcpProductionAliasPath(url.hostname, path)
+    || isMcpProductionAliasPath(request.headers.get('host') ?? '', path);
 
-  // Product MCP aliases are migration-only surfaces. Let every policy request
-  // reach the handler so it returns the protocol-shaped response and emits one
+  // Product MCP aliases (retired, or served like api.) are owned by the MCP
+  // handler. Let every policy request reach it so it either serves the
+  // transport or returns the protocol-shaped migration response and emits one
   // bounded migration event. This bypass must precede generic crawler/API bot
   // gates, which otherwise turn direct alias transport calls into a 403.
   // The handler repeats the policy because dotted well-known paths bypass this
