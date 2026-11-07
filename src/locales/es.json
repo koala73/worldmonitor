@@ -4858,5 +4858,14 @@
     "happy": {
       "map": "Mapa de Buenas Noticias"
     }
+  },
+  "pwaInstall": {
+    "title": "Instalar aplicación",
+    "share": "En Safari, toca Compartir (el cuadrado con una flecha hacia arriba). Quizá debas abrir primero el menú Más.",
+    "add": "Elige Añadir a pantalla de inicio.",
+    "confirm": "Toca Añadir y abre World Monitor desde la pantalla de inicio.",
+    "close": "Cerrar",
+    "alertsHint": "Instala World Monitor en tu pantalla de inicio para recibir alertas en este iPhone o iPad.",
+    "how": "Cómo instalar"
   }
 }

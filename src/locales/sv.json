@@ -4837,5 +4837,14 @@
     "happy": {
       "map": "Karta över goda nyheter"
     }
+  },
+  "pwaInstall": {
+    "title": "Installera app",
+    "share": "Tryck på Dela i Safari (fyrkanten med en uppåtpil). Du kan behöva öppna menyn Mer först.",
+    "add": "Välj Lägg till på hemskärmen.",
+    "confirm": "Tryck på Lägg till och öppna World Monitor från hemskärmen.",
+    "close": "Stäng",
+    "alertsHint": "Installera World Monitor på hemskärmen för att få aviseringar på denna iPhone eller iPad.",
+    "how": "Så installerar du"
   }
 }

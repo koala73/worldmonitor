@@ -4858,5 +4858,14 @@
     "happy": {
       "map": "Harta Știrilor Bune"
     }
+  },
+  "pwaInstall": {
+    "title": "Instalează aplicația",
+    "share": "În Safari, atinge Partajare (pătratul cu o săgeată în sus). Poate fi necesar să deschizi mai întâi meniul Mai multe.",
+    "add": "Alege Adăugați pe ecranul principal.",
+    "confirm": "Atinge Adăugați, apoi deschide World Monitor de pe ecranul principal.",
+    "close": "Închide",
+    "alertsHint": "Instalează World Monitor pe ecranul principal pentru a primi alerte pe acest iPhone sau iPad.",
+    "how": "Cum se instalează"
   }
 }

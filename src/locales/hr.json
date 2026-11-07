@@ -4869,5 +4869,14 @@
     "happy": {
       "map": "Mapa dobrih vijesti"
     }
+  },
+  "pwaInstall": {
+    "title": "Instaliraj aplikaciju",
+    "share": "U Safariju dodirnite Dijeli (kvadrat sa strelicom prema gore). Možda prvo trebate otvoriti izbornik Više.",
+    "add": "Odaberite Dodaj na početni zaslon.",
+    "confirm": "Dodirnite Dodaj i otvorite World Monitor s početnog zaslona.",
+    "close": "Zatvori",
+    "alertsHint": "Instalirajte World Monitor na početni zaslon kako biste primali upozorenja na ovom iPhoneu ili iPadu.",
+    "how": "Kako instalirati"
   }
 }

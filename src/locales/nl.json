@@ -4837,5 +4837,14 @@
     "happy": {
       "map": "Goed nieuws-kaart"
     }
+  },
+  "pwaInstall": {
+    "title": "App installeren",
+    "share": "Tik in Safari op Delen (het vierkant met een pijl omhoog). Mogelijk moet je eerst het menu Meer openen.",
+    "add": "Kies Zet op beginscherm.",
+    "confirm": "Tik op Voeg toe en open World Monitor vanaf je beginscherm.",
+    "close": "Sluiten",
+    "alertsHint": "Installeer World Monitor op je beginscherm om meldingen te ontvangen op deze iPhone of iPad.",
+    "how": "Installatie-instructies"
   }
 }

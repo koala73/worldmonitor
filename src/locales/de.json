@@ -4837,5 +4837,14 @@
     "happy": {
       "map": "Karte der guten Nachrichten"
     }
+  },
+  "pwaInstall": {
+    "title": "App installieren",
+    "share": "Tippen Sie in Safari auf Teilen (das Quadrat mit dem Pfeil nach oben). Öffnen Sie bei Bedarf zuerst das Menü Mehr.",
+    "add": "Wählen Sie Zum Home-Bildschirm.",
+    "confirm": "Tippen Sie auf Hinzufügen und öffnen Sie World Monitor über den Home-Bildschirm.",
+    "close": "Schließen",
+    "alertsHint": "Installieren Sie World Monitor auf dem Home-Bildschirm, um auf diesem iPhone oder iPad Warnungen zu erhalten.",
+    "how": "Installationsanleitung"
   }
 }

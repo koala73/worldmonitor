@@ -1,4 +1,5 @@
 import './styles/base-layer.css';
+import { initPwaInstall } from '@/services/pwa-install';
 import './bootstrap/zod-csp';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
@@ -16,6 +17,8 @@ import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 import { captureAgentRefFromSearch } from '../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
+
+initPwaInstall();
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the

@@ -4816,5 +4816,14 @@
     "happy": {
       "map": "Bản đồ Tin tức Tích cực"
     }
+  },
+  "pwaInstall": {
+    "title": "Cài đặt ứng dụng",
+    "share": "Trong Safari, chạm vào Chia sẻ (hình vuông có mũi tên hướng lên). Bạn có thể cần mở menu Thêm trước.",
+    "add": "Chọn Thêm vào Màn hình chính.",
+    "confirm": "Chạm vào Thêm, rồi mở World Monitor từ Màn hình chính.",
+    "close": "Đóng",
+    "alertsHint": "Cài đặt World Monitor vào Màn hình chính để nhận cảnh báo trên iPhone hoặc iPad này.",
+    "how": "Cách cài đặt"
   }
 }

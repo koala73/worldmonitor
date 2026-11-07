@@ -4816,5 +4816,14 @@
     "happy": {
       "map": "好訊息地圖"
     }
+  },
+  "pwaInstall": {
+    "title": "安裝應用",
+    "share": "在 Safari 中輕點分享（帶向上箭頭的方框）。你可能需要先開啟更多選單。",
+    "add": "選擇新增到主螢幕。",
+    "confirm": "輕點新增，然後從主螢幕開啟 World Monitor。",
+    "close": "關閉",
+    "alertsHint": "將 World Monitor 安裝到主螢幕，以便在此 iPhone 或 iPad 上接收提醒。",
+    "how": "如何安裝"
   }
 }

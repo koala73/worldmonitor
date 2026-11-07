@@ -4858,5 +4858,14 @@
     "happy": {
       "map": "Mappa Buone Notizie"
     }
+  },
+  "pwaInstall": {
+    "title": "Installa app",
+    "share": "In Safari, tocca Condividi (il quadrato con una freccia verso l'alto). Potrebbe essere necessario aprire prima il menu Altro.",
+    "add": "Scegli Aggiungi alla schermata Home.",
+    "confirm": "Tocca Aggiungi, poi apri World Monitor dalla schermata Home.",
+    "close": "Chiudi",
+    "alertsHint": "Installa World Monitor sulla schermata Home per ricevere avvisi su questo iPhone o iPad.",
+    "how": "Come installare"
   }
 }
