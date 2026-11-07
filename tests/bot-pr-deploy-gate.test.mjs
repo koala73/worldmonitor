@@ -161,7 +161,6 @@ describe('dispatch-bot-pr-gate.sh', () => {
 describe('review-PR workflows dispatch Deploy Gate', () => {
   const openers = {
     'crawlable-pulse-refresh.yml': 'refresh',
-    'open-data-chokepoints.yml': 'publish',
     'seo-gsc-weekly.yml': 'collect',
     'resilience-snapshot-refresh.yml': 'refresh',
     'github-stars-refresh.yml': 'refresh',
