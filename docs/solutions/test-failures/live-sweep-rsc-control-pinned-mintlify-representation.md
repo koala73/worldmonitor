@@ -35,16 +35,20 @@ flight. Mintlify moved the docs origin off Next.js, the origin began answering
 
 ## Investigation
 
-1. **Through our edge.** `curl -H 'RSC: 1' https://www.worldmonitor.app/docs/documentation`
-   returned `text/html` with `cf-cache-status: DYNAMIC`. The failure message implies a
+1. **Through our edge.** `curl -sD - -o /dev/null -H 'RSC: 1' https://www.worldmonitor.app/docs/documentation`
+   (prints the response headers only) returned `text/html` with `cf-cache-status: DYNAMIC`. The failure message implies a
    cached HTML document, but Cloudflare had not cached the request, so this was not
    cache poisoning.
 2. **At the upstream origin.** The `/docs/:match*` rewrite in `vercel.json` points at
    `https://worldmonitor.mintlify.dev/docs/:match*`. The same request sent straight to
-   that host also returned `text/html`, which rules out our proxy and Cloudflare.
+   that host also returned `text/html`. That request bypasses both Cloudflare and our
+   Vercel project, so neither layer produced the HTML. It does not rule out a cache on
+   Mintlify's side: the response carried `age: 14099`.
 3. **Renderer markers.** The origin HTML contained `/_mintlify/assets` paths and no
    `_next/static` or `self.__next_f` markers. Mintlify had replaced its Next.js
-   renderer, so there was no flight left to negotiate. Adding `?_rsc=` and
+   renderer, so there was no flight left to negotiate. This is the evidence that
+   does not depend on any cache: even a fresh render of the page is no longer a
+   Next.js document. Adding `?_rsc=` and
    `Next-Router-State-Tree` changed nothing.
 
 ## Solution
