@@ -150,6 +150,20 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       /freeTierAllowsChannel\(drainTier, c\.channelType\)/,
       'the quiet-hours held-queue drain must apply the same free channel clamp',
     );
+    // Strix review 4 on #10303: held entries are clamped at HOLD time against
+    // the tier the account had then, so the drain must re-apply the severity
+    // and country rungs against the CURRENT tier, or a downgrade inside the
+    // hold window delivers past-the-ladder alerts.
+    assert.match(
+      relaySrc,
+      /freeTierAllowsEvent\(drainTier, ev\.severity \?\? 'high'\)/,
+      'the held-queue drain must re-apply the free severity rung per entry',
+    );
+    assert.match(
+      relaySrc,
+      /drainTier < 1 && \(!drainScope\.ok \|\| !eventMatchesCountryScope\(ev, \{ countries: drainScope\.countries \}\)\)/,
+      'the held-queue drain must re-apply the free country rung per entry',
+    );
   });
 });
 

@@ -465,7 +465,8 @@ function formatHeldAlertLines(events) {
 // Delivers (or discards) the held queue for a single user+variant.
 // Used by both drainBatchOnWake (wake-up) and processFlushQuietHeld (settings change).
 // allowedChannelTypes: which channels to attempt delivery on; null = use rule's channels.
-async function drainHeldForUser(userId, variant, allowedChannelTypes) {
+// ruleCountries: the holding rule's country scope, re-clamped at drain time for free tiers.
+async function drainHeldForUser(userId, variant, allowedChannelTypes, ruleCountries) {
   const key = `digest:quiet-held:${userId}:${variant}`;
   const len = await upstashRest('LLEN', key);
   if (!len || len === 0) return;
@@ -474,10 +475,20 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
   if (!Array.isArray(items) || items.length === 0) return;
 
   const parsedEvents = items.map(i => { try { return JSON.parse(i); } catch { return null; } }).filter(Boolean);
+  // #4273: held entries were severity/scope-clamped at HOLD time, against the
+  // tier the account had then. An account that downgrades while events sit in
+  // the queue must not receive past-the-ladder alerts at drain time, so the
+  // severity and country rungs are re-applied per entry here against the tier
+  // the account has NOW (Strix review 4); the channel rung is applied below.
+  // Paid tiers pass through unchanged.
+  const drainTier = (await getUserTier(userId)) ?? 0;
+  const drainScope = freeTierCountryScope(drainTier, ruleCountries);
   // Re-check the operator set: a link blocked while the event sat in the
   // queue must not go out in the batch (#8401).
   const events = [];
   for (const ev of parsedEvents) {
+    if (!freeTierAllowsEvent(drainTier, ev.severity ?? 'high')) continue;
+    if (drainTier < 1 && (!drainScope.ok || !eventMatchesCountryScope(ev, { countries: drainScope.countries }))) continue;
     if ((await suppressedLinksFor(ev, 1, 'stage=quiet-hours-drain')).length === 0) events.push(ev);
   }
   if (events.length === 0) { await upstashRest('DEL', key); return; }
@@ -502,11 +513,9 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     return;
   }
 
-  // #4273: the held-queue flush delivers like the realtime path, so it takes
-  // the same free-ladder channel clamp. Held events are severity- and
-  // scope-clamped at hold time (the clamps run before the quiet-hours hold);
-  // entries queued before that deploy age out on the queue's own TTL.
-  const drainTier = (await getUserTier(userId)) ?? 0;
+  // #4273: the held-queue flush delivers like the realtime path — the
+  // severity and country rungs are re-applied per held entry above, and the
+  // same free-ladder channel clamp here.
   const verifiedChannels = channels.filter(c =>
     c.verified &&
     freeTierAllowsChannel(drainTier, c.channelType) &&
@@ -592,7 +601,7 @@ async function drainBatchOnWake() {
     r.quietHoursEnabled && r.quietHoursOverride === 'batch_on_wake' && !isInQuietHours(r),
   );
   for (const rule of batchRules) {
-    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null);
+    await drainHeldForUser(rule.userId, rule.variant ?? 'full', rule.channels ?? null, rule.countries ?? null);
   }
 }
 
@@ -606,6 +615,7 @@ async function processFlushQuietHeld(event) {
   // getByEnabled is an internalQuery (GHSA-r649-4cqj-w93h), unreachable via
   // ConvexHttpClient.
   let allowedChannels = null;
+  let ruleCountries = null;
   try {
     const allRules = await fetchEnabledRules(true);
     const rule = Array.isArray(allRules)
@@ -613,6 +623,7 @@ async function processFlushQuietHeld(event) {
       : null;
     if (rule && Array.isArray(rule.channels) && rule.channels.length > 0) {
       allowedChannels = rule.channels;
+      ruleCountries = Array.isArray(rule.countries) ? rule.countries : null;
     }
   } catch (err) {
     // If the lookup fails, deliver nothing rather than fan out to wrong channels.
@@ -624,7 +635,7 @@ async function processFlushQuietHeld(event) {
     console.log(`[relay] flush_quiet_held: no active rule with channels for ${userId} (${variant}) — held alerts preserved`);
     return;
   }
-  await drainHeldForUser(userId, variant, allowedChannels);
+  await drainHeldForUser(userId, variant, allowedChannels, ruleCountries);
 }
 
 // ── Delivery: Telegram ────────────────────────────────────────────────────────
