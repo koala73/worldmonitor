@@ -1,6 +1,7 @@
 import { OverviewView } from './overview.mjs';
 import { MapView } from './map.mjs';
 import { BriefView } from './brief.mjs';
+import { PhenomenaView } from './phenomena.mjs';
 import { NewsView } from './news.mjs';
 import { MarketsView } from './markets.mjs';
 import { ConflictView } from './conflict.mjs';
@@ -17,6 +18,7 @@ export function createViews(app) {
     new OverviewView(app),
     new MapView(app),
     new BriefView(app),
+    new PhenomenaView(app),
     new NewsView(app),
     new MarketsView(app),
     new ConflictView(app),
