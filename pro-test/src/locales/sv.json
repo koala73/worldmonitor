@@ -226,7 +226,7 @@
     "q3": "Vem är Enterprise för?",
     "a3": "Enterprise är för team som behöver delad användning, API:er, integrationer, deployment-alternativ och direkt support.",
     "q4": "Kan jag börja med Pro och uppgradera senare?",
-    "a4": "Ja. Pro är för personligt bruk. Pro Business ($49,99/mån) lägger till den kommersiella licensen, dataexport, 25 instrumentpaneler och 250 MCP-samtal/dag. API-planer täcker programmatisk åtkomst och Enterprise täcker anpassade distributioner. För att gå från Pro till Pro Business väljer du Pro Business när du är inloggad: prenumerationen byts med en proportionell avgift för resten av faktureringsperioden.",
+    "a4": "Ja. Pro är för personligt bruk. Pro Business ($49,99/mån) lägger till den kommersiella licensen, dataexport, 25 instrumentpaneler och 250 MCP-samtal/dag. API-planer täcker programmatisk åtkomst och Enterprise täcker anpassade distributioner. För att gå från Pro till Pro Business väljer du Pro Business när du är inloggad: prenumerationen byts, du ser dagens belopp innan du bekräftar och faktureringsperioden börjar om den dagen.",
     "q5": "Är detta bara för konfliktövervakning?",
     "a5": "Nej. World Monitor är främst en global intelligence-plattform som täcker aktiemarknader, makroekonomi, geopolitisk analys, energi, infrastruktur och mer. Konfliktspårning är en av många förmågor — inte fokus.",
     "q6": "Varför behålla kärnplattformen gratis?",
