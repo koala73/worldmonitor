@@ -61,8 +61,13 @@ export interface DigestCoverageSummary {
   itemsConsidered: number;
   /** Distinct publishers among those items; 0 when unreported. */
   publishersConsidered: number;
-  /** Who is serving old content: the server replaying, or this browser's saved copy. */
-  staleCause: 'server' | 'device' | null;
+  /**
+   * Who is serving old content: the server replaying, this browser after its
+   * request failed, or this browser while a language switch loads.
+   */
+  staleCause: 'server' | 'device' | 'switching' | null;
+  /** Server stale reason: build-error | empty-rebuild | gate-held ('' otherwise). */
+  staleReason: string;
   /** Age of the shown content in seconds, when known. */
   contentAgeSeconds: number | null;
 }
@@ -86,9 +91,21 @@ function staleExplanation(coverage: DigestCoverageSummary): string {
   const age = coverage.contentAgeSeconds !== null && coverage.contentAgeSeconds >= 0
     ? ` from ${formatAge(coverage.contentAgeSeconds)} ago`
     : '';
-  return coverage.staleCause === 'device'
-    ? `the news service did not respond, so this is the copy saved on this device${age}`
-    : `showing content${age}; the latest rebuild failed`;
+  if (coverage.staleCause === 'device') {
+    return `the news service did not respond, so this is the copy saved on this device${age}`;
+  }
+  if (coverage.staleCause === 'switching') {
+    return `showing the copy saved on this device${age} while this language loads`;
+  }
+  // gate-held: the rebuild succeeded but the acceptance gate kept the
+  // incumbent content live. It is not a failure.
+  if (coverage.staleReason === 'gate-held') {
+    return `showing content${age}; the latest rebuild was held back by a quality check`;
+  }
+  if (coverage.staleReason === 'empty-rebuild') {
+    return `showing content${age}; the latest rebuild came back empty`;
+  }
+  return `showing content${age}; the latest rebuild failed`;
 }
 
 export class StatusPanel extends Panel {

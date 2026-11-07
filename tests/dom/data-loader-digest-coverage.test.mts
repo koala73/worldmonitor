@@ -347,6 +347,7 @@ describe('digest coverage follows the selected browser response', () => {
     expect(updateDigestCoverage).toHaveBeenCalledWith(expect.objectContaining({
       state: 'stale',
       staleCause: 'server',
+      staleReason: 'build-error',
       contentAgeSeconds: 1800,
       itemsConsidered: 40,
       publishersConsidered: 12,
@@ -395,11 +396,14 @@ describe('digest coverage follows the selected browser response', () => {
     expect(updateDigestCoverage).toHaveBeenCalledWith(expect.objectContaining({
       state: 'stale',
       itemsServed: 1,
+      // The service answered; the answer was for the previous language.
+      staleCause: 'switching',
     }));
     expect(updateDigestCoverage).not.toHaveBeenCalledWith(expect.objectContaining({
       state: 'complete',
       itemsServed: 4,
     }));
+    expect(mocks.enqueueSentryCall).not.toHaveBeenCalled();
   });
 
   it('a late stale load cannot replace or alert over a newer fresh commit (#7084)', async () => {

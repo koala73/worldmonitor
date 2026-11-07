@@ -62,22 +62,16 @@ message DigestCoverage {
   int32 dropped_undated = 11;
   int32 dropped_freshness = 12;
   int32 dropped_category_cap = 13;
-  // Durable last-good serving (#7084): true exactly when accepted older
-  // content is replayed after a failed or gate-held attempt. The content counts
-  // above still describe the served body; attempted_at names that latest
-  // attempt, so it and generated_at diverge on a replay.
+  // True when accepted older content is replayed after a failed or gate-held
+  // attempt (#7084); counts still describe the served body.
   bool served_stale = 14;
-  // Age of the served content since acceptance, in seconds (0 when fresh).
-  // Bounded at 21600 (six hours): past that window the service reports
-  // state=unavailable rather than serving older content.
+  // Content age since acceptance, seconds (0 when fresh, at most 21600).
   int32 stale_age_seconds = 15;
   // Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).
   string stale_reason = 16;
-  // Items that reached ranking (past the feed, undated and freshness gates)
-  // before the category cap, and distinct publishers among them. Detached
-  // from the fields: the public OpenAPI bundle has no byte headroom for it.
-
+  // Items ranked before the category cap (served count on old replays).
   int32 items_considered = 17;
+  // Distinct publishers among those ranked items.
   int32 publishers_considered = 18;
 }
 

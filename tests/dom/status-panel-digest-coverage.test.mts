@@ -25,6 +25,7 @@ function coverage(state: DigestCoverageSummary['state']): DigestCoverageSummary 
     itemsConsidered: 0,
     publishersConsidered: 0,
     staleCause: state === 'stale' ? 'server' : null,
+    staleReason: state === 'stale' ? 'build-error' : '',
     contentAgeSeconds: state === 'stale' ? 1800 : null,
   };
 }
@@ -127,6 +128,24 @@ describe('StatusPanel digest coverage breadth and stale cause', () => {
     expect(text).toContain('saved on this device');
     expect(text).toContain('from 2 h ago');
     expect(text).not.toContain('rebuild');
+  });
+
+  it('does not call a rebuild the gate refused a failure', () => {
+    const text = rowText({ ...coverage('stale'), staleReason: 'gate-held' });
+    expect(text).toContain('held back by a quality check');
+    expect(text).not.toContain('failed');
+  });
+
+  it('names an empty rebuild as empty', () => {
+    const text = rowText({ ...coverage('stale'), staleReason: 'empty-rebuild' });
+    expect(text).toContain('latest rebuild came back empty');
+  });
+
+  it('does not blame the service while a language switch is loading', () => {
+    const text = rowText({ ...coverage('stale'), staleCause: 'switching', contentAgeSeconds: 600 });
+    expect(text).toContain('saved on this device');
+    expect(text).toContain('while this language loads');
+    expect(text).not.toContain('did not respond');
   });
 
   it('omits the age when it is unknown', () => {

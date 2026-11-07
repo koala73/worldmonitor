@@ -854,7 +854,7 @@ export class DataLoaderManager implements AppModule {
         // scope's persistent cache, but it must not become live data or an
         // in-memory fallback for the language now active.
         const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
-        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
+        this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable', 'switching');
         return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
@@ -955,6 +955,9 @@ export class DataLoaderManager implements AppModule {
   private reportDigestCoverage(
     digest: ListFeedDigestResponse | null,
     stateOverride?: 'stale' | 'unavailable',
+    // Why this browser is showing its own copy: its request failed, or the
+    // request answered for a language the user has since left.
+    deviceCause: 'device' | 'switching' = 'device',
   ): void {
     const cov = digest?.coverage;
     const generatedMs = digest ? Date.parse(digest.generatedAt) : NaN;
@@ -964,7 +967,7 @@ export class DataLoaderManager implements AppModule {
     // A client override means THIS browser fell back to a retained or saved
     // copy; the server may be perfectly healthy.
     const deviceStale = stateOverride === 'stale'
-      ? { staleCause: 'device' as const, contentAgeSeconds: contentAgeFromGeneratedAt }
+      ? { staleCause: deviceCause, staleReason: '', contentAgeSeconds: contentAgeFromGeneratedAt }
       : null;
     if (!cov || typeof cov.state !== 'string') {
       const categoryEntries = digest ? Object.entries(digest.categories) : [];
@@ -983,6 +986,7 @@ export class DataLoaderManager implements AppModule {
         itemsConsidered: 0,
         publishersConsidered: 0,
         staleCause: deviceStale?.staleCause ?? null,
+        staleReason: '',
         contentAgeSeconds: deviceStale?.contentAgeSeconds ?? null,
       });
       return;
@@ -1004,8 +1008,12 @@ export class DataLoaderManager implements AppModule {
       itemsConsidered: Number(cov.itemsConsidered) || 0,
       publishersConsidered: Number(cov.publishersConsidered) || 0,
       ...(deviceStale ?? (state === 'stale'
-        ? { staleCause: 'server' as const, contentAgeSeconds: Number(cov.staleAgeSeconds) || contentAgeFromGeneratedAt }
-        : { staleCause: null, contentAgeSeconds: null })),
+        ? {
+          staleCause: 'server' as const,
+          staleReason: typeof cov.staleReason === 'string' ? cov.staleReason : '',
+          contentAgeSeconds: Number(cov.staleAgeSeconds) || contentAgeFromGeneratedAt,
+        }
+        : { staleCause: null, staleReason: '', contentAgeSeconds: null })),
     });
   }
 
