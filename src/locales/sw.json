@@ -4743,7 +4743,7 @@
         "category": "Maafa ya asili",
         "purpose": "Inaonyesha matetemeko ya ardhi, tahadhari kali za maafa, na matukio amilifu ya uchunguzi wa Dunia kwa ufahamu wa hali.",
         "source": "Matetemeko ya USGS, tahadhari za GDACS, na matukio ya NASA EONET yaliyounganishwa katika huduma ya matukio ya asili.",
-        "freshness": "Matukio ya asili hupandwa kila saa 3. Matarajio ya matetemeko ya USGS yameandikwa kwa kasi ya chanzo ya karibu dakika 5.",
+        "freshness": "Matukio ya asili hupandwa kila dakika 30. Matarajio ya matetemeko ya USGS yameandikwa kwa kasi ya chanzo ya karibu dakika 5.",
         "confidence": "Imara kwa ishara za umma za maafa zilizogunduliwa. Uhakika hutofautiana kwa aina ya hatari na ucheleweshaji wa taarifa ya chanzo.",
         "limitations": {
           "0": "Tahadhari za GDACS za ukali mdogo huondolewa ili ramani ibaki inasomeka.",

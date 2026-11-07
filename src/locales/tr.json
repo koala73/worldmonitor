@@ -4743,7 +4743,7 @@
         "category": "Doğal afetler",
         "purpose": "Durum farkındalığı için depremleri, ciddi afet uyarılarını ve etkin Yer gözlem olaylarını gösterir.",
         "source": "USGS depremleri, GDACS uyarıları ve NASA EONET olayları doğal olay hizmetinde birleştirilir.",
-        "freshness": "Doğal olaylar her 3 saatte bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
+        "freshness": "Doğal olaylar her 30 dakikada bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
         "confidence": "Kamuya açıklanmış afet sinyalleri için güçlüdür. Güvenilirlik, tehlike türüne ve kaynağın bildirim gecikmesine göre değişir.",
         "limitations": {
           "0": "Düşük şiddetli GDACS uyarıları, harita okunaklı kalsın diye elenir.",

@@ -4743,7 +4743,7 @@
         "category": "Természeti katasztrófák",
         "purpose": "Földrengéseket, súlyos katasztrófariasztásokat és aktív földmegfigyelési eseményeket mutat a helyzet áttekintéséhez.",
         "source": "USGS-földrengések, GDACS-riasztások és NASA EONET események, a természeti események szolgáltatásában összevonva.",
-        "freshness": "A természeti események 3 óránként töltődnek fel. Az USGS-földrengéseknél a leírt várakozás nagyjából 5 perces forrásütem.",
+        "freshness": "A természeti események 30 percenként töltődnek fel. Az USGS-földrengéseknél a leírt várakozás nagyjából 5 perces forrásütem.",
         "confidence": "Erős a kimutatott nyilvános katasztrófajeleknél. A megbízhatóság a veszély típusától és a forrás jelentési késésétől függ.",
         "limitations": {
           "0": "Az alacsony súlyosságú GDACS-riasztások kiszűrődnek, hogy a térkép olvasható maradjon.",

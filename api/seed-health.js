@@ -78,6 +78,7 @@ const SEED_DOMAINS = {
   // publisher alarms as missing/stale instead of reverting to pending.
   'news:feed-health':         { key: 'seed-meta:news:feed-health',         intervalMin: 1440, activationKey: 'seed-activated:news:feed-health' },
   'news:recall-benchmark':    { key: 'seed-meta:news:recall-benchmark',    intervalMin: 1440, activationKey: 'seed-activated:news:recall-benchmark' },
+  'open-data:chokepoints':    { key: 'seed-meta:open-data:chokepoints',    intervalMin: 1440, activationKey: 'seed-activated:open-data:chokepoints' },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },

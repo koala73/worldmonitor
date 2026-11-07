@@ -59,6 +59,9 @@ RUN test -s dist/dashboard.html
 # `location ^~ /pro` regardless (#6898). Without this an outDir/publicDir change
 # ships a green image that 404s behind a live route.
 RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
+# nginx.conf.template's error_page points 5xx at /500.html; if the copy ever
+# breaks, nginx silently falls back to its stock error page.
+RUN test -s dist/500.html
 
 
 # Stage 2: Serve the built assets from nginx.

@@ -45,8 +45,8 @@ The top-level `status` describes user-visible platform availability, not perfect
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN | REFRESH_PENDING",
   "dataStatus": "OK | DEGRADED | CRITICAL",
   "summary": {
-    "total": 414,
-    "ok": 413,
+    "total": 415,
+    "ok": 414,
     "warn": 0,
     "containedWarn": 0,
     "onDemandWarn": 1,
@@ -183,7 +183,7 @@ New successful EONET observations can remain available for 18 hours. This is an 
 
 EONET acquisition keeps a 15-second header deadline and the shared 30.5-second request budget, including retry delay. A progressing body can use the remaining budget, but five seconds without a decoded body chunk aborts the attempt. Decoded responses are limited to 2 MiB. These limits address local acquisition behavior; they do not establish the cause of upstream delays. GDACS and NHC retention and transport limits are unchanged.
 
-Natural-event publishers emit one `natural_source_receipt` JSON log from the post-publication hook. It contains the run ID, Railway service, deployment and revision when available, canonical count, source freshness clock, and the same per-type health map returned for seed metadata. Successful, retained, and unavailable sources keep their actual success and expiry clocks. The receipt describes the published source state. Pair it with the subsequent `seed_complete` for that run to confirm execution completed. Completion alone does not prove metadata persistence. Check for a `WARNING: seed-meta write` message and verify the stored metadata, since the dedicated worker can complete after a best-effort metadata write fails. Logs remain available only for the hosting platform's retention period; this does not add a Redis archive. Both the dedicated worker and climate bundle use the hook.
+Natural-event publishers emit one `natural_source_receipt` JSON log from the post-publication hook. It contains the run ID, Railway service, deployment and revision when available, canonical count, source freshness clock, and the same per-type health map returned for seed metadata. Successful, retained, and unavailable sources keep their actual success and expiry clocks. The receipt describes the published source state. Pair it with the subsequent `seed_complete` for that run to confirm execution completed. Completion alone does not prove metadata persistence. Check for a `WARNING: seed-meta write` message and verify the stored metadata, since the dedicated worker can complete after a best-effort metadata write fails. Logs remain available only for the hosting platform's retention period; this does not add a Redis archive. The dedicated `seed-natural-events` worker (every 30 minutes) is the only publisher.
 
 Request-failure `progress` includes a local request UUID and UTC start time for each observed redirect hop. HTTP responses add status, a recognized content type, and bounded `x-request-id` or `cf-ray` values when present. The local UUID is not sent upstream. Provider correlation requires the response ID or the request timestamp and worker identity. Bodies, cookies, authorization headers, URLs, and peer addresses are not logged. No response metadata is invented when headers never arrive. These facts help correlate existing provider traces but cannot alone establish the cause of a pre-header timeout.
 

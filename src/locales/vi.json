@@ -4722,7 +4722,7 @@
         "category": "Thiên tai",
         "purpose": "Hiển thị động đất, cảnh báo thảm họa nghiêm trọng và sự kiện quan sát Trái Đất đang diễn ra, để nắm tình hình.",
         "source": "Động đất của USGS, cảnh báo GDACS và sự kiện NASA EONET, được gộp vào dịch vụ sự kiện tự nhiên.",
-        "freshness": "Sự kiện tự nhiên được nạp mỗi 3 giờ. Kỳ vọng về động đất USGS được ghi trong tài liệu là nhịp nguồn khoảng 5 phút.",
+        "freshness": "Sự kiện tự nhiên được nạp mỗi 30 phút. Kỳ vọng về động đất USGS được ghi trong tài liệu là nhịp nguồn khoảng 5 phút.",
         "confidence": "Mạnh với các tín hiệu thảm họa công khai đã được phát hiện. Độ tin cậy thay đổi theo loại hiểm họa và độ trễ báo cáo ở thượng nguồn.",
         "limitations": {
           "0": "Cảnh báo GDACS mức thấp bị lọc bỏ để bản đồ dễ đọc.",

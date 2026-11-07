@@ -7,6 +7,8 @@
 //
 // Usage:
 //   node scripts/build-open-data-chokepoints.mjs [--out <dir>] [--date YYYY-MM-DD] [--input <file>] [--save-input <file>] [--dry-run]
+//   node scripts/build-open-data-chokepoints.mjs --publish-redis [--date YYYY-MM-DD] [--input <file>]
+//   node scripts/build-open-data-chokepoints.mjs --import-dir <dir>
 //   API_BASE=https://www.worldmonitor.app WORLDMONITOR_API_KEY=<optional> node scripts/build-open-data-chokepoints.mjs
 //
 // --save-input writes the API response the run used, so a later run can rebuild
@@ -20,7 +22,7 @@ import { parseArgs } from 'node:util';
 import { loadEnvFile, withRetry } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
-loadEnvFile(import.meta.url, { only: ['WORLDMONITOR_API_KEY', 'API_BASE'] });
+loadEnvFile(import.meta.url, { only: ['WORLDMONITOR_API_KEY', 'API_BASE', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] });
 
 export const SCHEMA_VERSION = '1.0.0';
 export const DATASET_ID = 'worldmonitor-chokepoint-status';
@@ -342,25 +344,35 @@ async function existingSnapshotDates(outDir) {
 }
 
 // latest.* only moves forward: replaying an older capture backfills its dated
-// files without regressing what consumers of latest.json see. A dated file
+// files without regressing what consumers of latest.json see. A dated snapshot
 // that already exists is replaced only while it is still the newest one, so a
-// same-day rerun can correct today but history behind it never changes.
-async function planSnapshotFiles(outDir, snapshot) {
+// same-day rerun can correct today but history behind it never changes. The
+// file writer and the Redis publisher both apply this one plan.
+export function planSnapshot(existingDates, snapshot) {
   const date = snapshot.snapshot_date;
-  const existing = await existingSnapshotDates(outDir);
-  const dates = [...new Set([...existing, date])].sort();
+  const dates = [...new Set([...existingDates, date])].sort();
   const latest = dates.at(-1);
-  if (date !== latest && existing.includes(date)) {
+  if (date !== latest && existingDates.includes(date)) {
     throw new Error(`refusing to rewrite ${date}.json: a later snapshot (${latest}) already exists`);
   }
-  const json = toJson(snapshot);
-  const csv = toCsv(snapshot);
+  return {
+    date,
+    latest,
+    dates,
+    json: toJson(snapshot),
+    csv: toCsv(snapshot),
+    index: toJson({ schema_version: SCHEMA_VERSION, dataset: DATASET_ID, latest, dates }),
+  };
+}
+
+async function planSnapshotFiles(outDir, snapshot) {
+  const plan = planSnapshot(await existingSnapshotDates(outDir), snapshot);
   const files = [
-    [`${date}.json`, json],
-    [`${date}.csv`, csv],
-    ...(date === latest ? [['latest.json', json], ['latest.csv', csv]] : []),
+    [`${plan.date}.json`, plan.json],
+    [`${plan.date}.csv`, plan.csv],
+    ...(plan.date === plan.latest ? [['latest.json', plan.json], ['latest.csv', plan.csv]] : []),
     ['schema.json', toJson(buildJsonSchema())],
-    ['index.json', toJson({ schema_version: SCHEMA_VERSION, dataset: DATASET_ID, latest, dates })],
+    ['index.json', plan.index],
   ];
   return files.map(([name, contents]) => ({ path: path.join(outDir, name), contents }));
 }
@@ -381,6 +393,103 @@ export async function writeSnapshotFiles(outDir, snapshot) {
   const files = await planSnapshotFiles(outDir, snapshot);
   for (const file of files) await writeFileAtomic(file.path, file.contents);
   return files.map((file) => file.path);
+}
+
+// Redis is the published store: api/open-data-chokepoints.js serves
+// /data/v1/chokepoints/* from these keys. A day key holds the exact JSON and
+// CSV bytes for that date. The index key holds the exact index.json bytes, and
+// its dates list is the archive manifest the publisher plans against. Neither
+// carries a TTL: the archive is permanent.
+export const REDIS_KEYS = Object.freeze({
+  index: 'open-data:chokepoints:v1:index',
+  dayPrefix: 'open-data:chokepoints:v1:day:',
+  seedMeta: 'seed-meta:open-data:chokepoints',
+  // Durable "has ever published" marker: /api/health reads a missing seed-meta
+  // as pending only while this is absent (#10284).
+  activation: 'seed-activated:open-data:chokepoints',
+});
+const SEED_META_TTL_SECONDS = 7 * 86_400;
+
+export function createUpstashClient({ url, token, fetchImpl = (...args) => globalThis.fetch(...args) }) {
+  if (!url || !token) throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required to publish');
+  const post = async (route, body) => {
+    const response = await fetchImpl(`${url.replace(/\/+$/, '')}${route}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': DEFAULT_USER_AGENT },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`Upstash ${route} returned HTTP ${response.status}`);
+    return response.json();
+  };
+  const unwrap = (entry, label) => {
+    if (!entry || typeof entry !== 'object' || 'error' in entry) {
+      throw new Error(`Upstash ${label} failed: ${JSON.stringify(entry?.error ?? entry)}`);
+    }
+    return entry.result;
+  };
+  return {
+    async command(args) {
+      return unwrap(await post('', args), args[0]);
+    },
+    // Upstash /multi-exec runs the commands as one MULTI/EXEC transaction, so
+    // a day key never lands without the index that lists it.
+    async transaction(commands) {
+      const replies = await post('/multi-exec', commands);
+      if (!Array.isArray(replies) || replies.length !== commands.length) {
+        throw new Error(`Upstash /multi-exec returned ${JSON.stringify(replies)}`);
+      }
+      return replies.map((reply, i) => unwrap(reply, commands[i][0]));
+    },
+  };
+}
+
+async function readIndexDates(redis) {
+  const raw = await redis.command(['GET', REDIS_KEYS.index]);
+  if (raw === null) return [];
+  const dates = JSON.parse(raw)?.dates;
+  if (!Array.isArray(dates) || !dates.every((date) => SNAPSHOT_DATE_RE.test(date))) {
+    throw new Error(`${REDIS_KEYS.index} has no valid dates list; refusing to publish over it`);
+  }
+  return dates;
+}
+
+const dayBody = (json, csv) => JSON.stringify({ json, csv });
+
+async function writeSeedMeta(redis, dates) {
+  const meta = { fetchedAt: Date.now(), recordCount: dates.length, latest: dates.at(-1) };
+  await redis.command(['SET', REDIS_KEYS.seedMeta, JSON.stringify(meta), 'EX', String(SEED_META_TTL_SECONDS)]);
+  await redis.command(['SET', REDIS_KEYS.activation, '1']);
+}
+
+export async function publishSnapshotToRedis(redis, snapshot) {
+  const plan = planSnapshot(await readIndexDates(redis), snapshot);
+  await redis.transaction([
+    ['SET', `${REDIS_KEYS.dayPrefix}${plan.date}`, dayBody(plan.json, plan.csv)],
+    ['SET', REDIS_KEYS.index, plan.index],
+  ]);
+  await writeSeedMeta(redis, plan.dates);
+  return plan;
+}
+
+// One-time move of a committed file archive into Redis. Dated files are copied
+// byte for byte, and a date Redis already holds is left as it is.
+export async function importSnapshotDirToRedis(redis, dir) {
+  const fileDates = (await existingSnapshotDates(dir)).sort();
+  if (fileDates.length === 0) throw new Error(`${dir} holds no dated snapshot files`);
+  const redisDates = await readIndexDates(redis);
+  const commands = [];
+  for (const date of fileDates) {
+    const json = await fs.readFile(path.join(dir, `${date}.json`), 'utf8');
+    const csv = await fs.readFile(path.join(dir, `${date}.csv`), 'utf8');
+    if (JSON.parse(json).snapshot_date !== date) throw new Error(`${date}.json carries a different snapshot_date`);
+    commands.push(['SET', `${REDIS_KEYS.dayPrefix}${date}`, dayBody(json, csv), 'NX']);
+  }
+  const dates = [...new Set([...redisDates, ...fileDates])].sort();
+  const index = toJson({ schema_version: SCHEMA_VERSION, dataset: DATASET_ID, latest: dates.at(-1), dates });
+  await redis.transaction([...commands, ['SET', REDIS_KEYS.index, index]]);
+  await writeSeedMeta(redis, dates);
+  return { dates, imported: fileDates.filter((date) => !redisDates.includes(date)) };
 }
 
 async function requestJson(fetchImpl, url, init) {
@@ -438,9 +547,21 @@ async function main(argv) {
       input: { type: 'string' },
       'save-input': { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
+      'publish-redis': { type: 'boolean', default: false },
+      'import-dir': { type: 'string' },
     },
     strict: true,
   });
+  if (values['dry-run'] && (values['publish-redis'] || values['import-dir'])) {
+    throw new Error('--dry-run cannot be combined with --publish-redis or --import-dir; both write to Redis');
+  }
+  const redis = () =>
+    createUpstashClient({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+  if (values['import-dir']) {
+    const { dates, imported } = await importSnapshotDirToRedis(redis(), path.resolve(values['import-dir']));
+    console.log(`imported ${imported.length} dates (${imported.join(', ') || 'none'}); index now lists ${dates.length}, latest ${dates.at(-1)}`);
+    return;
+  }
   const outDir = values.out ? path.resolve(values.out) : path.join(REPO_ROOT, DEFAULT_OUT_DIR);
   const apiBase = process.env.API_BASE || DEFAULT_API_BASE;
   const response = values.input
@@ -462,6 +583,11 @@ async function main(argv) {
   console.log(
     `chokepoints=${snapshot.chokepoints.length} snapshot_date=${snapshot.snapshot_date} source_fetched_at=${snapshot.source_fetched_at}`,
   );
+  if (values['publish-redis']) {
+    const plan = await publishSnapshotToRedis(redis(), snapshot);
+    console.log(`published ${plan.date} to Redis; index lists ${plan.dates.length} dates, latest ${plan.latest}`);
+    return;
+  }
   if (values['dry-run']) {
     for (const file of await planSnapshotFiles(outDir, snapshot)) console.log(`would write ${file.path}`);
     return;

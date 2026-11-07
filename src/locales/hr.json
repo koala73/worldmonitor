@@ -4775,7 +4775,7 @@
         "category": "Prirodne katastrofe",
         "purpose": "Prikazuje potrese, teška upozorenja na katastrofe i aktivne događaje promatranja Zemlje za pregled situacije.",
         "source": "Potresi USGS, upozorenja GDACS i događaji NASA EONET, spojeni u usluzi prirodnih događaja.",
-        "freshness": "Prirodni događaji pune se svaka 3 sata. Za potrese USGS opisano očekivanje je ritam izvora otprilike svakih 5 minuta.",
+        "freshness": "Prirodni događaji pune se svakih 30 minuta. Za potrese USGS opisano očekivanje je ritam izvora otprilike svakih 5 minuta.",
         "confidence": "Jako za otkrivene javne signale katastrofa. Pouzdanost ovisi o vrsti opasnosti i kašnjenju prijave na izvoru.",
         "limitations": {
           "0": "Upozorenja GDACS niske ozbiljnosti filtriraju se da karta ostane čitljiva.",

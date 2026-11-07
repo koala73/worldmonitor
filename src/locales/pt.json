@@ -4764,7 +4764,7 @@
         "category": "Desastres naturais",
         "purpose": "Mostra terremotos, alertas de desastre grave e eventos ativos de observação da Terra, para a consciência situacional.",
         "source": "Terremotos do USGS, alertas GDACS e eventos NASA EONET, reunidos no serviço de eventos naturais.",
-        "freshness": "Os eventos naturais são carregados a cada 3 horas. O ritmo de origem esperado para os terremotos do USGS está documentado em cerca de 5 minutos.",
+        "freshness": "Os eventos naturais são carregados a cada 30 minutos. O ritmo de origem esperado para os terremotos do USGS está documentado em cerca de 5 minutos.",
         "confidence": "Forte para os sinais públicos de desastre que foram detectados. A confiança varia conforme o tipo de perigo e a demora do relato na origem.",
         "limitations": {
           "0": "Os alertas GDACS de baixa gravidade são filtrados para o mapa continuar legível.",

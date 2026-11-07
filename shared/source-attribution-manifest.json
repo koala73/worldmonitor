@@ -2143,9 +2143,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/live-video-sources.ts"
         }
       ]
     },
@@ -11820,6 +11817,20 @@
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "www.bloomberg.com",
+      "provider": "www.bloomberg.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
+      "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/live-video-sources.ts"
+        }
+      ]
     },
     {
       "host": "www.brasilparalelo.com.br",
