@@ -111,13 +111,19 @@ function browserPushBlockedMessage(): string {
   });
 }
 
+function needsIosAlertsInstall(): boolean {
+  const version = /Version\/(\d+)(?:\.(\d+))?/.exec(navigator.userAgent);
+  return needsIosInstall() && version !== null
+    && (Number(version[1]) > 16 || (Number(version[1]) === 16 && Number(version[2] ?? 0) >= 4));
+}
+
 function browserPushUnsupportedMessage(): string {
-  if (needsIosInstall()) return t('pwaInstall.alertsHint');
+  if (needsIosAlertsInstall()) return t('pwaInstall.alertsHint');
   return 'This browser or in-app webview does not support web push notifications.';
 }
 
 function iosInstallLink(): string {
-  return needsIosInstall()
+  return needsIosAlertsInstall()
     ? `<button type="button" class="us-notif-ch-btn" data-ios-install>${escapeHtml(t('pwaInstall.how'))}</button>`
     : '';
 }
@@ -190,9 +196,9 @@ function showWebPushUnsupportedState(rowEl: HTMLElement): void {
     'unsupported',
     browserPushUnsupportedMessage(),
     'us-notif-ch-badge',
-    needsIosInstall() ? t('pwaInstall.title') : WEB_PUSH_UNSUPPORTED_BADGE,
+    needsIosAlertsInstall() ? t('pwaInstall.title') : WEB_PUSH_UNSUPPORTED_BADGE,
   );
-  if (needsIosInstall()) {
+  if (needsIosAlertsInstall()) {
     rowEl.querySelector('.us-notif-ch-badge')?.remove();
     const button = document.createElement('button');
     button.type = 'button';
@@ -347,7 +353,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           } else if (type === 'web_push') {
             sub = escapeHtml(webPushDeviceLabel(channel));
             if (needsIosInstall()) {
-              installHint = `<div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(t('pwaInstall.alertsHint'))}</div>`;
+              installHint = `<div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>`;
               manageLink = iosInstallLink();
             }
           } else {
@@ -467,7 +473,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>
               </div>
               <div class="us-notif-ch-actions">
-                ${needsIosInstall() ? '' : `<span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>`}
+                ${needsIosAlertsInstall() ? '' : `<span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>`}
                 ${iosInstallLink()}
               </div>
             </div>`;

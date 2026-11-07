@@ -243,9 +243,26 @@ describe('notification Settings browser push', () => {
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
   });
 
-  it('links iPhone Safari alerts to the shared install sheet', async () => {
+  it.each(['15.4', '16.3'])('does not promise installation enables alerts on iOS %s', async version => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
-      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+      `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
+    );
+    for (const data of [EMPTY_DATA, CONNECTED_WEB_PUSH]) {
+      const container = await mount(data);
+      const row = webPushRow(container);
+      expect(row.textContent).toContain('does not support web push notifications');
+      expect(row.textContent).not.toContain(tt('pwaInstall.alertsHint'));
+      expect(row.querySelector('[data-ios-install]')).toBeNull();
+      expect(row.querySelector('#usConnectWebPush')).toBeNull();
+      if (data === CONNECTED_WEB_PUSH) expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+      container.remove();
+    }
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it.each(['16.4', '18.0'])('links iPhone Safari %s alerts to the shared install sheet', async version => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      `iPhone AppleWebKit/605.1.15 Version/${version} Mobile/15E148 Safari/604.1`,
     );
     const container = await mount();
     const row = webPushRow(container);
