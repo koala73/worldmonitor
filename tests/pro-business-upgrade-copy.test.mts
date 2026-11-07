@@ -61,6 +61,12 @@ describe('buildUpgradePreviewBody', () => {
     assert.equal(formatMinorAmount(1234, 'NOTACURRENCY'), '12.34 NOTACURRENCY');
   });
 
+  it('uses each currency\'s minor-unit exponent', () => {
+    assert.equal(formatMinorAmount(667, 'USD'), '$6.67');
+    assert.equal(formatMinorAmount(1000, 'JPY'), '¥1,000');
+    assert.equal(formatMinorAmount(12345, 'KWD').replace(/\s/g, ' '), 'KWD 12.345');
+  });
+
   it('upgrades only the plans the server maps', () => {
     assert.deepEqual([...IN_PLACE_UPGRADE_SOURCE_PLANS].sort(), ['pro_annual', 'pro_monthly']);
     const billing = readFileSync(resolve(root, 'convex/payments/billing.ts'), 'utf8');

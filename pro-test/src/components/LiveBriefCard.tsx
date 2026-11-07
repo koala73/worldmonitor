@@ -36,7 +36,9 @@ export const LiveBriefCard = () => {
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
-    fetchLiveTeasers().then(next => { if (!cancelled) setTeasers(next); });
+    fetchLiveTeasers()
+      .then(next => { if (!cancelled) setTeasers(next); })
+      .catch(() => { /* keep the published-pulse fallback */ });
     return () => { cancelled = true; };
   }, []);
 

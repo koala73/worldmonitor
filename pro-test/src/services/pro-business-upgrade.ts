@@ -22,11 +22,13 @@ interface UpgradePreview {
 }
 
 function formatMinorAmount(amount: number, currency: string): string {
-  const major = amount / 100;
   try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(major);
+    const formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency });
+    // Dodo amounts are in the currency's minor unit: cents for USD, whole yen for JPY.
+    const digits = formatter.resolvedOptions().maximumFractionDigits ?? 2;
+    return formatter.format(amount / 10 ** digits);
   } catch {
-    return `${major.toFixed(2)} ${currency}`;
+    return `${(amount / 100).toFixed(2)} ${currency}`;
   }
 }
 
