@@ -375,6 +375,42 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     });
   });
 
+  it('a free user asking for a teams send-test is denied before the queue (#4273, Strix review 7)', async () => {
+    // send-test never reaches Convex — the edge queues the welcome itself —
+    // so the free precheck is the only gate on this teams-only action. A
+    // downgraded account with a legacy verified Teams row must not keep
+    // driving that paid channel.
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
+      validateBearerToken: async () => ({ valid: true, userId: 'user-free-send-test' }),
+      getEntitlements: async () => freeShapedEntitlements({}),
+      fetch: async () => {
+        throw new Error('the welcome queue must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(new Request('https://worldmonitor.app/api/notification-channels', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: 'Bearer clerk-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'send-test', channelType: 'teams' }),
+    }), ctx);
+
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), {
+      error: 'pro_required',
+      reason: 'channel_not_in_plan',
+      channel: 'teams',
+      message: 'The teams channel is available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+    });
+  });
+
   it('a free user writing a free-ladder email channel reaches the relay (#4273)', async () => {
     const mod = await importFreshNotificationChannels();
     const relayFetch = mock.fn(async (_url: string, init?: RequestInit) => {

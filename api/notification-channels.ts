@@ -626,6 +626,20 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           upgradeUrl: ALERT_UPGRADE_URL,
         }, 403, corsHeaders));
       }
+      // `send-test` never reaches Convex — the edge queues the welcome event
+      // itself and the action only accepts teams, which is not on the free
+      // ladder. Without this precheck, a downgraded account with a legacy
+      // verified Teams row could keep driving that paid channel (Strix
+      // review 7).
+      if (action === 'send-test') {
+        return finish(json({
+          error: 'pro_required',
+          reason: 'channel_not_in_plan',
+          channel: 'teams',
+          message: 'The teams channel is available on the Pro plan.',
+          upgradeUrl: ALERT_UPGRADE_URL,
+        }, 403, corsHeaders));
+      }
     }
 
     // session.userId is narrowed to string by the auth guard above, but
