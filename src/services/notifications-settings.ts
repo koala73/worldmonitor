@@ -285,16 +285,31 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // delegates to the replacement's, so the host's single cleanup handle
       // stays valid across any number of flips.
       let replacementCleanup: (() => void) | null = null;
-      const offEntitlement = onEntitlementChange(() => {
+      // onEntitlementChange replays the current snapshot synchronously on
+      // subscribe, so this handler can run before the subscription returns
+      // (panel rendered against one paid-ness, snapshot flipped before a
+      // deferred attach). Keep the unsubscribe handle in a `let` the handler
+      // reads optionally, and settle the subscription up after it returns —
+      // a `const` self-reference would throw a ReferenceError in that replay.
+      let offEntitlement: (() => void) | null = null;
+      const onEntitlementFlip = (): void => {
         if (replacementCleanup !== null || signal.aborted) return;
         if ((signedIn && hasTier(1)) === isPro) return;
-        offEntitlement();
+        offEntitlement?.();
         ac.abort();
         const next = renderNotificationsSettings(host);
         setTrustedHtml(container, trustedHtml(next.html, 'entitlement flip re-render (#4273)'));
         replacementCleanup = next.attach(container);
-      });
-      signal.addEventListener('abort', offEntitlement);
+      };
+      offEntitlement = onEntitlementChange(onEntitlementFlip);
+      if (signal.aborted) {
+        // The synchronous replay already flipped and replaced this attach:
+        // the abort event fired before a listener could be added, so
+        // unsubscribe directly.
+        offEntitlement();
+      } else {
+        signal.addEventListener('abort', offEntitlement);
+      }
 
       // Every locked rung routes here — the per-rung CTA is the upsell.
       container.addEventListener('click', (e) => {

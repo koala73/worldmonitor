@@ -16,6 +16,9 @@ import { initTestI18n } from './helpers/i18n.mts';
 
 const gate = vi.hoisted(() => ({
   tier: false,
+  // Mirrors the real service: when true, subscribing replays the current
+  // snapshot synchronously before onEntitlementChange returns.
+  replayOnSubscribe: false,
   listeners: [] as Array<(state: unknown) => void>,
 }));
 
@@ -63,6 +66,7 @@ vi.mock('@/services/entitlements', () => ({
   getEntitlementState: () => (gate.tier ? { features: { tier: 1 } } : null),
   onEntitlementChange: (cb: (state: unknown) => void) => {
     gate.listeners.push(cb);
+    if (gate.replayOnSubscribe && gate.tier) cb({ features: { tier: 1 } });
     return () => {
       gate.listeners = gate.listeners.filter(l => l !== cb);
     };
@@ -127,6 +131,7 @@ beforeEach(() => {
   while (cleanups.length) cleanups.pop()?.();
   document.body.replaceChildren();
   gate.tier = false;
+  gate.replayOnSubscribe = false;
   gate.listeners = [];
   channelMocks.getChannelsData.mockReset();
   channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
@@ -312,6 +317,25 @@ describe('free alert ladder UI (#4273)', () => {
     // cadences are selectable.
     expect(container.querySelector('#usConnectSlack')).not.toBeNull();
     expect(container.querySelector<HTMLOptionElement>('#usDigestMode option[value="daily"]')?.disabled).toBe(false);
+  });
+
+  it('survives the synchronous subscribe replay when paid-ness flipped before a deferred attach', async () => {
+    // The real onEntitlementChange replays the current snapshot before the
+    // subscription returns. Render as free, flip to paid, THEN attach: the
+    // replay must rebuild the panel instead of throwing on a not-yet-
+    // initialized unsubscribe handle.
+    gate.replayOnSubscribe = true;
+    channelMocks.getChannelsData.mockResolvedValue(data());
+    const rendered = renderNotificationsSettings({ isSignedIn: true });
+    gate.tier = true;
+    const container = document.createElement('div');
+    container.innerHTML = rendered.html;
+    document.body.appendChild(container);
+    cleanups.push(rendered.attach(container));
+    await vi.waitFor(() => {
+      expect(container.querySelector('.us-notif-ladder-banner')).toBeNull();
+      expect(container.querySelector('#usConnectSlack')).not.toBeNull();
+    });
   });
 
   it('keeps the paid surface unchanged for a pro account', async () => {
