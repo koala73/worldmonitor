@@ -5754,14 +5754,18 @@ function computeOverallStatus(counts, totalChecks) {
 }
 
 // Failure-log / ?history=1 problem set. Distinct from the compact `problems` map
-// because EMPTY_ON_DEMAND and active stale-content grace are not active faults.
-// Both remain visible in diagnostics without polluting the incident signature.
+// because EMPTY_ON_DEMAND, active stale-content grace and an in-window rollout
+// are not active faults. All remain visible in diagnostics without polluting
+// the incident signature. ROLLOUT_PENDING keeps its warn bucket for
+// availability (#6059); only its incident is deferred, because a producer that
+// never publishes reads EMPTY once `rolloutPendingUntil` passes and alerts then.
 function collectFailureLogProblems(checks, now = Date.now()) {
   const entries = Object.entries(checks)
     .filter(([, c]) => (
       isProblemStatus(c.status)
       && healthStatusBucket(c, now) !== 'ok'
       && c.status !== 'EMPTY_ON_DEMAND'
+      && !(c.status === 'ROLLOUT_PENDING' && !isExpiredDeadline(c.rolloutPendingUntil, now))
     ));
   return {
     problemKeys: entries.map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`),
