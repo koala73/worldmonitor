@@ -423,7 +423,7 @@ const payload = {
   missingSources,
   countDrift,
   totals: { rawRules: all.length, capabilities: caps.size, exclusions: exclusions.length, unmappedGates: unmapped.length },
-  capabilities: [...caps.values()].sort((a, b) => a.id.localeCompare(b.id)),
+  capabilities: [...caps.values()].sort((a, b) => a.id.localeCompare(b.id, 'en-US')),
   exclusions,
   unmapped,
 };
