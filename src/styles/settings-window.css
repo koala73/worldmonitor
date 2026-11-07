@@ -5,8 +5,8 @@
   --settings-surface-inset: var(--surface);
   --settings-border: var(--overlay-medium);
   --settings-border-strong: var(--overlay-heavy);
-  --settings-text: #e8eaed;
-  --settings-text-secondary: #9aa0a6;
+  --settings-text: var(--text);
+  --settings-text-secondary: var(--text-secondary);
   --settings-accent: var(--semantic-info);
   --settings-green: #34d399;
   --settings-yellow: #fbbf24;
@@ -588,7 +588,7 @@
 }
 
 .settings-secret-row select[data-model-select] option {
-  background: #1e1e2e;
+  background: var(--settings-bg);
   color: var(--settings-text);
 }
 

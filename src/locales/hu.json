@@ -1347,6 +1347,7 @@
       }
     },
     "countryBrief": {
+      "moreActions": "További műveletek",
       "shareLink": "Hivatkozás megosztása",
       "shareStory": "Történet megosztása",
       "printPdf": "Nyomtatás / PDF",

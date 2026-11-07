@@ -1394,6 +1394,7 @@
     },
     "countryBrief": {
       "shareLink": "Share link",
+      "moreActions": "More actions",
       "shareStory": "Share story",
       "printPdf": "Print / PDF",
       "exportData": "Export data"

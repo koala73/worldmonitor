@@ -1355,6 +1355,7 @@
       }
     },
     "countryBrief": {
+      "moreActions": "Інші дії",
       "shareLink": "Поділитися посиланням",
       "shareStory": "Поділитися новиною",
       "printPdf": "Друк / PDF",

@@ -209,9 +209,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
     html += `</div>`;
   } else {
-    html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
-    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
+    html += `<div class="wm-pref-group-content wm-notif-tab-content panel-locked-state settings-access-gate">`;
+    html += `<h3>Intelligence alerts</h3>`;
+    html += `<p class="panel-locked-desc">Get alerts in Telegram, Slack, Discord or email. Choose your sensitivity, quiet hours and digest schedule.</p>`;
+    html += `<p class="panel-locked-desc">${host.isSignedIn ? 'Notifications require Pro.' : 'Sign in to configure notifications. Notifications require Pro.'}</p>`;
+    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">${host.isSignedIn ? 'Upgrade to Pro' : 'Sign In'}</button>`;
     html += `</div>`;
   }
 
