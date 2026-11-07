@@ -934,6 +934,9 @@
           "path": "api/_github-release.js"
         },
         {
+          "path": "scripts/check-review-pr-token.mjs"
+        },
+        {
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
