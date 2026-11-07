@@ -381,6 +381,21 @@ describe('free alert ladder UI (#4273)', () => {
     vi.useRealTimers();
   });
 
+  it('does not re-send a save at close when the debounce already fired', async () => {
+    // A fired debounce must null its handle; otherwise every close after a
+    // completed edit flushes a duplicate write (Strix review 7).
+    vi.useFakeTimers();
+    const container = await mount(data());
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    cleanups.pop()!();
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('skips the close-time flush when the Clerk session no longer matches the rendered account', async () => {
     // Direct A -> B multi-session switch: the host re-renders (aborting this
     // panel) while the DOM still holds A's form state. Flushing then would

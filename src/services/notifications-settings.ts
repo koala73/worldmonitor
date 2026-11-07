@@ -941,6 +941,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               // Debounced save through the existing alertRule pipeline.
               if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
               alertRuleDebounceTimer = setTimeout(() => {
+                alertRuleDebounceTimer = null;
                 saveCurrentAlertRule();
               }, 800);
             },
@@ -1141,6 +1142,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       const saveQuietHours = () => {
         if (qhDebounceTimer) clearTimeout(qhDebounceTimer);
         qhDebounceTimer = setTimeout(() => {
+          qhDebounceTimer = null;
           sendQuietHoursNow();
         }, 800);
       };
@@ -1161,6 +1163,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       const saveDigestSettings = () => {
         if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
         digestDebounceTimer = setTimeout(() => {
+          digestDebounceTimer = null;
           sendDigestSettingsNow();
         }, 800);
       };
@@ -1259,6 +1262,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
           if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
           digestDebounceTimer = setTimeout(() => {
+            digestDebounceTimer = null;
             void (async () => {
               try {
                 const state = getCurrentAlertRuleFormState();
@@ -1315,6 +1319,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usAiDigestEnabled') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             // Override aiDigestEnabled with the just-toggled value (the helper
             // reads from the DOM, which has already been updated by the time
@@ -1334,6 +1339,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts' || target.id === 'usChokepointAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
             fireForgetSave(saveAlertRules({
@@ -1358,6 +1364,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           chokepointChip.setAttribute('aria-pressed', String(on));
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
+            alertRuleDebounceTimer = null;
             saveCurrentAlertRule();
           }, 800);
           return;
