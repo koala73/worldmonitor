@@ -4836,5 +4836,14 @@
     "happy": {
       "map": "Jó Hírek Térképe"
     }
+  },
+  "pwaInstall": {
+    "title": "Alkalmazás telepítése",
+    "share": "A Safariban koppintson a Megosztás ikonra (négyzet felfelé mutató nyíllal). Előfordulhat, hogy előbb a Továbbiak menüt kell megnyitnia.",
+    "add": "Válassza a Főképernyőhöz adás lehetőséget.",
+    "confirm": "Koppintson a Hozzáadás gombra, majd nyissa meg a World Monitort a főképernyőről.",
+    "close": "Bezárás",
+    "alertsHint": "Telepítse a World Monitort a főképernyőre, hogy értesítéseket kapjon ezen az iPhone-on vagy iPaden.",
+    "how": "Telepítési útmutató"
   }
 }

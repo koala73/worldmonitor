@@ -28,6 +28,7 @@ import {
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+import { mountInstallEntry } from '@/services/pwa-install';
 import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
 import { declareOverlay } from '@/utils/open-modal';
 
@@ -226,6 +227,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
   const currentLang = getCurrentLanguageTag();
   let html = '';
+  if (!host.isDesktopApp) html += '<div data-pwa-install-entry></div>';
 
   // ── Display group ──
   html += `<details class="wm-pref-group" open>`;
@@ -560,6 +562,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
 
       const ac = new AbortController();
       const { signal } = ac;
+      const installEntry = container.querySelector<HTMLElement>('[data-pwa-install-entry]');
+      if (installEntry) signal.addEventListener('abort', mountInstallEntry(installEntry), { once: true });
 
       window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
         const select = container.querySelector<HTMLSelectElement>('#us-font-scale');

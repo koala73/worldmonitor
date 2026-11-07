@@ -1,4 +1,5 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
 import { renderSVG } from 'uqr';
@@ -111,7 +112,14 @@ function browserPushBlockedMessage(): string {
 }
 
 function browserPushUnsupportedMessage(): string {
+  if (needsIosInstall()) return t('pwaInstall.alertsHint');
   return 'This browser or in-app webview does not support web push notifications.';
+}
+
+function iosInstallLink(): string {
+  return needsIosInstall()
+    ? `<button type="button" class="us-notif-ch-btn" data-ios-install>${escapeHtml(t('pwaInstall.how'))}</button>`
+    : '';
 }
 
 // User-Agent is long and ugly. Surface a short label only: "Chrome",
@@ -123,6 +131,7 @@ function webPushDeviceLabel(channel: NotificationChannel): string {
 }
 
 async function readWebPushSettingsState(): Promise<WebPushSettingsState> {
+  if (needsIosInstall()) return 'unsupported';
   try {
     const { getPushPermission, isWebPushSupported } = await import('@/services/push-notifications');
     if (!isWebPushSupported()) return 'unsupported';
@@ -181,8 +190,16 @@ function showWebPushUnsupportedState(rowEl: HTMLElement): void {
     'unsupported',
     browserPushUnsupportedMessage(),
     'us-notif-ch-badge',
-    WEB_PUSH_UNSUPPORTED_BADGE,
+    needsIosInstall() ? t('pwaInstall.title') : WEB_PUSH_UNSUPPORTED_BADGE,
   );
+  if (needsIosInstall()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'us-notif-ch-btn';
+    button.dataset.iosInstall = '';
+    button.textContent = t('pwaInstall.how');
+    rowEl.querySelector('.us-notif-ch-actions')?.append(button);
+  }
 }
 
 function getTelegramBotUsername(): string {
@@ -443,7 +460,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>
               </div>
               <div class="us-notif-ch-actions">
-                <span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>
+                <span class="us-notif-ch-badge">${needsIosInstall() ? escapeHtml(t('pwaInstall.title')) : WEB_PUSH_UNSUPPORTED_BADGE}</span>
+                ${iosInstallLink()}
               </div>
             </div>`;
           }
@@ -1098,6 +1116,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       container.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+
+        if (target.closest('[data-ios-install]')) {
+          openIosInstallSheet();
+          return;
+        }
 
         const chokepointChip = target.closest<HTMLElement>('#usChokepointScope [data-chokepoint-id]');
         if (chokepointChip) {

@@ -165,6 +165,11 @@ const EVENTS = {
   'webcam-fullscreen': true,
   // Downloads / banners
   'download-clicked': true,
+  'pwa-install-entry-shown': true,
+  'pwa-install-clicked': true,
+  'pwa-install-outcome': true,
+  'pwa-installed': true,
+  'pwa-ios-sheet-opened': true,
   'critical-banner': true,
   // AI widget
   'widget-ai-open': true,

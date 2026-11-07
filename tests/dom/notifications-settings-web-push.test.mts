@@ -243,6 +243,37 @@ describe('notification Settings browser push', () => {
     expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
   });
 
+  it('links iPhone Safari alerts to the shared install sheet', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    const container = await mount();
+    const row = webPushRow(container);
+    expect(row.textContent).toContain(tt('pwaInstall.alertsHint'));
+    expect(row.textContent).not.toContain('Not supported');
+    expect(row.querySelector('#usConnectWebPush')).toBeNull();
+    row.querySelector<HTMLButtonElement>('[data-ios-install]')!.click();
+    expect(document.querySelector('#pwa-install-sheet')?.textContent).toContain(tt('pwaInstall.share'));
+    document.querySelector<HTMLButtonElement>('#pwa-install-sheet button')!.click();
+    expect(document.querySelector('#pwa-install-sheet')).toBeNull();
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
+  it('keeps installed iPhone apps on the supported subscription path', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    try {
+      const container = await mount();
+      expect(container.querySelector('[data-ios-install]')).toBeNull();
+      container.querySelector<HTMLButtonElement>('#usConnectWebPush')!.click();
+      await vi.waitFor(() => expect(pushState.subscribeToPush).toHaveBeenCalledOnce());
+    } finally {
+      delete (navigator as Navigator & { standalone?: boolean }).standalone;
+    }
+  });
+
   it('becomes non-actionable if support disappears before the click', async () => {
     const container = await mount();
     pushState.supported = false;

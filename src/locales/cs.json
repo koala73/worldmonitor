@@ -4878,5 +4878,14 @@
     "happy": {
       "map": "Mapa dobrých zpráv"
     }
+  },
+  "pwaInstall": {
+    "title": "Nainstalovat aplikaci",
+    "share": "V Safari klepněte na Sdílet (čtverec se šipkou nahoru). Možná budete muset nejprve otevřít nabídku Více.",
+    "add": "Vyberte Přidat na plochu.",
+    "confirm": "Klepněte na Přidat a otevřete World Monitor z plochy.",
+    "close": "Zavřít",
+    "alertsHint": "Nainstalujte World Monitor na plochu, abyste na tomto iPhonu nebo iPadu dostávali upozornění.",
+    "how": "Jak nainstalovat"
   }
 }

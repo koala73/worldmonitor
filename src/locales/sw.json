@@ -4836,5 +4836,14 @@
     "happy": {
       "map": "Ramani ya Habari Nzuri"
     }
+  },
+  "pwaInstall": {
+    "title": "Sakinisha programu",
+    "share": "Katika Safari, gusa Shiriki (mraba wenye mshale unaoelekea juu). Huenda ukahitaji kufungua menyu ya Zaidi kwanza.",
+    "add": "Chagua Ongeza kwenye Skrini ya Mwanzo.",
+    "confirm": "Gusa Ongeza, kisha ufungue World Monitor kutoka kwenye Skrini ya Mwanzo.",
+    "close": "Funga",
+    "alertsHint": "Sakinisha World Monitor kwenye Skrini ya Mwanzo ili kupata arifa kwenye iPhone au iPad hii.",
+    "how": "Jinsi ya kusakinisha"
   }
 }

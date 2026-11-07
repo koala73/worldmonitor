@@ -4836,5 +4836,14 @@
     "happy": {
       "map": "İyi Haberler Haritası"
     }
+  },
+  "pwaInstall": {
+    "title": "Uygulamayı yükle",
+    "share": "Safari'de Paylaş'a (yukarı oklu kare) dokunun. Önce Daha Fazla menüsünü açmanız gerekebilir.",
+    "add": "Ana Ekrana Ekle'yi seçin.",
+    "confirm": "Ekle'ye dokunun, ardından World Monitor'ı ana ekranınızdan açın.",
+    "close": "Kapat",
+    "alertsHint": "Bu iPhone veya iPad'de uyarı almak için World Monitor'ı ana ekranınıza yükleyin.",
+    "how": "Nasıl yüklenir"
   }
 }

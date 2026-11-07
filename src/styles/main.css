@@ -21010,6 +21010,44 @@ button.popup-link {
 
 /* ============ Unified Settings Modal ============ */
 
+.pwa-install-entry {
+  margin-block-end: 16px;
+}
+
+.pwa-install-sheet {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.pwa-install-sheet::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.pwa-install-sheet h2 {
+  margin-block: 0 16px;
+  font-size: 18px;
+}
+
+.pwa-install-sheet ol {
+  padding-inline-start: 24px;
+  line-height: 1.6;
+}
+
+.pwa-install-sheet li {
+  margin-block-end: 12px;
+}
+
 .unified-settings-btn {
   display: inline-flex;
   align-items: center;
@@ -28929,6 +28967,16 @@ body.map-width-resizing {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-body {
+  flex-basis: calc(100% - 38px);
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-actions {
+  margin-inline-start: 38px;
+  flex-wrap: wrap;
+  flex-shrink: 1;
 }
 
 .us-notif-ch-badge {
