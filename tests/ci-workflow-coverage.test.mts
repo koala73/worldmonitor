@@ -1347,10 +1347,15 @@ describe('CI workflow coverage', () => {
     for (const stepName of ['Reconcile the weekly review branch', 'Open the weekly pulse PR']) {
       assert.match(
         workflowStepBlock(pulseWorkflow, stepName),
-        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \|\| github\.token \}\}/,
-        `${stepName} must open the PR with a user or app token when one is configured, so the PR gets CI`,
+        /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/,
+        `${stepName} must open the PR with REVIEW_PR_TOKEN, so the PR gets CI`,
       );
     }
+    assert.match(
+      openPrStep,
+      /if \[ "\$VERIFY_OUTCOME" = "success" \]; then\n\s+gh pr merge --auto --squash "\$pr_url"/,
+      'auto-merge only a verified capture, never the draft',
+    );
   });
 
   it('runs the proto breaking check against the full main history (#6114)', () => {
