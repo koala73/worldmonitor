@@ -214,6 +214,20 @@ describe("upgradeToProBusiness action", () => {
     expect(await claim(NOW + PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS)).toBe(true);
   });
 
+  test("an account past the admission window limit is refused before Dodo", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    await t.run((ctx) => ctx.db.insert("proBusinessUpgradeAdmissions", {
+      userId: USER.subject,
+      windowStart: Date.now(),
+      count: 10,
+    }));
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: false }),
+    ).rejects.toThrow(/UPGRADE_RATE_LIMITED/);
+    expect(previewChangePlan).not.toHaveBeenCalled();
+  });
+
   test("provider failures surface as a structured error", async () => {
     const t = convexTest(schema, modules);
     await seed(t);

@@ -3903,6 +3903,32 @@ const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
 /** Longer than retrieve + changePlan at their timeouts, so a live claim is never stolen. */
 export const PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS = 120_000;
 
+const PRO_BUSINESS_UPGRADE_ADMISSION_LIMIT = 10;
+const PRO_BUSINESS_UPGRADE_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Per-account fixed window over previews and confirms, shared by the dashboard
+ * action and the /pro relay. Every admitted call reaches the Dodo API.
+ */
+export const admitProBusinessUpgrade = internalMutation({
+  args: { userId: v.string(), now: v.number() },
+  handler: async (ctx, { userId, now }): Promise<boolean> => {
+    const row = await ctx.db
+      .query("proBusinessUpgradeAdmissions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (row && now < row.windowStart + PRO_BUSINESS_UPGRADE_ADMISSION_WINDOW_MS) {
+      if (row.count >= PRO_BUSINESS_UPGRADE_ADMISSION_LIMIT) return false;
+      await ctx.db.patch(row._id, { count: row.count + 1 });
+    } else if (row) {
+      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
+    } else {
+      await ctx.db.insert("proBusinessUpgradeAdmissions", { userId, windowStart: now, count: 1 });
+    }
+    return true;
+  },
+});
+
 /** Serializes confirms per subscription. Returns false while another confirm holds a live claim. */
 export const claimProBusinessUpgrade = internalMutation({
   args: { dodoSubscriptionId: v.string(), now: v.number() },
@@ -3955,6 +3981,13 @@ export async function runProBusinessUpgrade(
   );
   if (!candidate.ok) {
     throw new ConvexError({ kind: candidate.reason });
+  }
+  const admitted = await ctx.runMutation(internal.payments.billing.admitProBusinessUpgrade, {
+    userId,
+    now: Date.now(),
+  });
+  if (!admitted) {
+    throw new ConvexError({ kind: "UPGRADE_RATE_LIMITED" });
   }
 
   const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });

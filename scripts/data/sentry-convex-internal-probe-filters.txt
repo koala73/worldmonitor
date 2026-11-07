@@ -221,6 +221,7 @@
 *Could not find public function for 'notificationChannels:stagePairingToken'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:backfill'*
 *Could not find public function for 'payments/backfillCustomerNormalizedEmail:countPending'*
+*Could not find public function for 'payments/billing:admitProBusinessUpgrade'*
 *Could not find public function for 'payments/billing:applyBillingEmailUpdate'*
 *Could not find public function for 'payments/billing:applyDodoSubscriptionReconciliation'*
 *Could not find public function for 'payments/billing:backfillMissingCustomers'*
