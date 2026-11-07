@@ -43,7 +43,7 @@ jobs:
       - name: Reconcile the monthly review branch
         id: reconcile
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           period=$(date -u +%Y-%m)
           branch="automation/github-stars-${period}"
@@ -65,6 +65,8 @@ jobs:
               --head "$branch" \
               --title "chore(geo): refresh github-stars snapshot ${period}" \
               --body "Monthly public GitHub star-count freeze for the homepage InteractionCounter (#7641)."
+            BRANCH_NAME="$branch"
+            gh pr merge --auto --squash "$BRANCH_NAME"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -95,7 +97,7 @@ jobs:
       - name: Open the monthly snapshot PR
         if: steps.reconcile.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
           snapshot_date=$(date -u +%F)
@@ -111,9 +113,10 @@ jobs:
             --head "$BRANCH_NAME" \
             --title "chore(geo): refresh github-stars snapshot ${snapshot_date}" \
             --body "Monthly public GitHub star-count freeze for the homepage InteractionCounter (#7641)."
+          gh pr merge --auto --squash "$BRANCH_NAME"
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: refresh
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')

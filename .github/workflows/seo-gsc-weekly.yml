@@ -13,7 +13,8 @@ name: Weekly Search Console Snapshot
 # was skipped and the collect job never starts. A missing secret is a pending
 # prerequisite, not a failure, so this workflow stays green in the meantime.
 #
-# It never merges. It opens the PR and reports it as ready; a human merges.
+# It opens the PR with REVIEW_PR_TOKEN and arms auto-merge, so the PR merges
+# itself once the required checks pass.
 
 on:
   schedule:
@@ -70,12 +71,11 @@ jobs:
       - name: Reconcile the weekly review branch
         id: reconcile
         env:
-          # Prefer a user or app token when one is configured. A PR opened with
-          # github.token needs the repository setting that lets Actions create
-          # pull requests, and it triggers no CI, which the required checks on
-          # main then block. With REVIEW_PR_TOKEN unset this falls back to
-          # github.token.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # A PR opened with the Actions token gets no CI, so the required
+          # checks never report and the PR waits for a human. REVIEW_PR_TOKEN
+          # opens it with CI and arms auto-merge; review-pr-token-check.yml
+          # alarms before it expires.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           # ISO year-week keys the branch, so a rerun in the same week updates
           # that week rather than opening a second PR.
@@ -160,8 +160,8 @@ jobs:
       - name: Open the weekly snapshot PR
         if: steps.collect.outcome == 'success'
         env:
-          # Same preference as the reconcile step, for the same reasons.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # Same token as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BING_OUTCOME: ${{ steps.bing.outcome }}
@@ -217,10 +217,11 @@ jobs:
               "$bing_note" \
               "$umami_note" \
               "$baseline_note" \
-              "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
+              "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")"
+          gh pr merge --auto --squash "$BRANCH_NAME"
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: collect
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')

@@ -21,6 +21,7 @@ if [[ "$*" == 'pr create '* ]]; then
   if [[ -n "$POLICY_ERROR" ]]; then printf '%s\\n' "$POLICY_ERROR" >&2; exit 1; fi
   printf '%s\\n' 'https://github.com/fixture/repo/pull/1'; exit 0
 fi
+if [[ "$*" == 'pr merge '* ]]; then exit 0; fi
 exit 2
 `);
     writeFileSync(git, `#!/bin/bash
@@ -63,6 +64,7 @@ it('hands off a reviewable patch when repository policy blocks bot PR creation',
   assert.match(result.summary, /Maintainer action required/);
   assert.match(result.summary, /compare\/main\.\.\.automation\/resilience-snapshot-2026-09/);
   assert.match(result.calls, /diff --binary/);
+  assert.doesNotMatch(result.calls, /pr merge/);
   const upload = step('Retain the monthly snapshot handoff');
   assert.match(upload.if, /steps\.delivery\.outputs\.manual == 'true'/);
   assert.match(upload.with.path, /resilience-snapshot\.patch/);
@@ -74,6 +76,7 @@ it('records normal PR delivery and keeps unexpected failures fatal', () => {
   assert.equal(success.status, 0, success.stderr);
   assert.match(success.summary, /https:\/\/github.com\/fixture\/repo\/pull\/1/);
   assert.doesNotMatch(success.output, /manual=true/);
+  assert.match(success.calls, /pr merge --auto --squash automation\/resilience-snapshot-2026-09/);
   const failed = execute('Open the monthly snapshot PR', { policy: 'Bad credentials' });
   assert.notEqual(failed.status, 0);
   assert.doesNotMatch(failed.output, /manual=true/);

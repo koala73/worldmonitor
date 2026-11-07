@@ -59,12 +59,11 @@ jobs:
       - name: Reconcile the weekly review branch
         id: reconcile
         env:
-          # Prefer a user or app token when one is configured. A PR opened
-          # with github.token needs the repository setting that lets Actions
-          # create pull requests (the block that ended every refresh run,
-          # #8417) and triggers no CI, which the required checks on main then
-          # block. With REVIEW_PR_TOKEN unset this falls back to github.token.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # A PR opened with the Actions token gets no CI, so the required
+          # checks never report and the PR waits for a human. REVIEW_PR_TOKEN
+          # opens it with CI and arms auto-merge; review-pr-token-check.yml
+          # alarms before it expires.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           # ISO year-week, not year-month: the branch key is what makes the
           # run idempotent, so a month-keyed name under a weekly cron would
@@ -85,6 +84,8 @@ jobs:
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
               --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, llms-full forecast-accuracy section, and the homepage welcome-teaser strip (#7608, #8070)."
+            BRANCH_NAME="$branch"
+            gh pr merge --auto --squash "$BRANCH_NAME"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -183,8 +184,8 @@ jobs:
       - name: Open the weekly pulse PR
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
-          # Same preference as the reconcile step, for the same reasons.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # Same token as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -224,9 +225,14 @@ jobs:
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
             --body "$body" \
             "${draft[@]}"
+          # A draft carries a capture whose verification failed; it merges
+          # only after a fix lands and someone marks it ready.
+          if [ "$VERIFY_OUTCOME" = "success" ]; then
+            gh pr merge --auto --squash "$BRANCH_NAME"
+          fi
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: refresh
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')

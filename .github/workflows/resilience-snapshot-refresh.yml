@@ -30,7 +30,7 @@ jobs:
       - name: Reconcile the monthly review branch
         id: reconcile
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           period=$(date -u +%Y-%m)
           branch="automation/resilience-snapshot-${period}"
@@ -104,7 +104,7 @@ jobs:
       - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
           snapshot_date=$(date -u +%F)
@@ -132,7 +132,7 @@ jobs:
         id: delivery
         if: steps.reconcile.outputs.existing_pr != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
           git fetch --no-tags origin "$BRANCH_NAME"
@@ -144,6 +144,7 @@ jobs:
               --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and both agent files (llms.txt and llms-full.txt)." \
               > "$RUNNER_TEMP/snapshot-pr.out" 2> "$RUNNER_TEMP/snapshot-pr.err"; then
             cat "$RUNNER_TEMP/snapshot-pr.out" >> "$GITHUB_STEP_SUMMARY"
+            gh pr merge --auto --squash "$BRANCH_NAME"
           elif grep -Fq 'GitHub Actions is not permitted to create or approve pull requests' "$RUNNER_TEMP/snapshot-pr.err"; then
             echo "manual=true" >> "$GITHUB_OUTPUT"
             echo "::warning title=Snapshot needs maintainer review::Repository policy blocks bot PR creation; use the retained patch or compare link."
@@ -169,8 +170,8 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: refresh
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
