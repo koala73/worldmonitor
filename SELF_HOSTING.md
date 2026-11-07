@@ -10,6 +10,14 @@ Run the full World Monitor stack locally with Docker/Podman.
 
 ## 🚀 Quick Start
 
+Prefer a single command? This does steps 1–4 below (clone, `npm ci`, secrets, start, seed) and is safe to re-run. The `npm ci` and seed steps need Node.js 22.19 or newer on the host; without it the installer starts the stack and skips seeding:
+
+```bash
+curl -fsSL https://www.worldmonitor.app/install.sh | bash
+```
+
+Options: `--dir`, `--port`, `--no-seed`, `--no-build`. Pass them after `bash -s --`, for example `curl -fsSL https://www.worldmonitor.app/install.sh | bash -s -- --port 8080`. Run `scripts/install.sh --help` in a checkout for details. Or follow the manual steps:
+
 ```bash
 # 1. Clone and enter the repo
 git clone https://github.com/koala73/worldmonitor.git
