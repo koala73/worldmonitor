@@ -78,7 +78,9 @@ export default async function handler(
 
   let confirm: boolean;
   try {
-    const body = await req.json() as { confirm?: unknown } | null;
+    // Read a clone: the idempotency helpers hash the original body, and a
+    // consumed body would make them fall back to "disabled" (no replay lock).
+    const body = await req.clone().json() as { confirm?: unknown } | null;
     if (!body || typeof body !== 'object' || typeof body.confirm !== 'boolean') {
       return json({ error: 'INVALID_BODY' }, 400, cors);
     }

@@ -41,6 +41,15 @@ export const LiveBriefCard = () => {
   }, []);
 
   const live = teasers.headlines.live && teasers.chokepoints.live && teasers.quotes.live;
+  // Blocks refresh independently. When only some went live, each block names
+  // its own source so a live headline never sits under the snapshot date.
+  const mixed = !live && (teasers.headlines.live || teasers.chokepoints.live || teasers.quotes.live);
+  const pulseLabel = t('welcome.live.pulseBadge', { date: formatSnapshotDate(teasers.capturedAt) });
+  const blockTag = (isLive: boolean) => (mixed ? (
+    <span className="ml-2 font-mono text-xs uppercase tracking-wider text-gray-500">
+      {isLive ? t('welcome.live.liveBadge') : pulseLabel}
+    </span>
+  ) : null);
   const newest = teasers.headlines.items.reduce((max, h) => Math.max(max, h.publishedAt || 0), 0);
   // Clock times depend on the reader's time zone, so they only render after
   // mount; the prerendered HTML carries the published-pulse date instead.
@@ -72,16 +81,16 @@ export const LiveBriefCard = () => {
                   <span className="w-1.5 h-1.5 rounded-full bg-wm-green animate-pulse" aria-hidden="true" />
                   {t('welcome.live.liveBadge')}
                 </span>
-              ) : (
+              ) : mixed ? null : (
                 <span className="text-xs font-mono uppercase tracking-wider text-gray-500">
-                  {t('welcome.live.pulseBadge', { date: formatSnapshotDate(teasers.capturedAt) })}
+                  {pulseLabel}
                 </span>
               )}
             </div>
 
             <div className="space-y-4">
               <div className="pl-3 border-l-2 border-blue-500">
-                <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardHeadlines')}</span>
+                <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardHeadlines')}</span>{blockTag(teasers.headlines.live)}
                 <ul className="mt-1 space-y-2">
                   {teasers.headlines.items.slice(0, 3).map((h, i) => (
                     <li key={i} className="text-gray-300 leading-snug">
@@ -99,7 +108,7 @@ export const LiveBriefCard = () => {
               </div>
 
               <div className="pl-3 border-l-2 border-orange-500">
-                <span className="text-orange-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardChokepoints')}</span>
+                <span className="text-orange-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardChokepoints')}</span>{blockTag(teasers.chokepoints.live)}
                 <p className="text-sm text-gray-300 mt-1 leading-snug">
                   {t('welcome.live.chokeSummary', { disrupted: teasers.chokepoints.disrupted, total: teasers.chokepoints.total })}
                   {disrupted.length > 0 && `: ${disrupted.map(c => c.name).join(', ')}`}
@@ -107,7 +116,7 @@ export const LiveBriefCard = () => {
               </div>
 
               <div className="pl-3 border-l-2 border-yellow-500">
-                <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardMarkets')}</span>
+                <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">{t('welcome.live.cardMarkets')}</span>{blockTag(teasers.quotes.live)}
                 <ul className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                   {teasers.quotes.items.slice(0, 4).map(q => (
                     <li key={q.symbol} className="flex justify-between gap-2 font-mono text-xs">

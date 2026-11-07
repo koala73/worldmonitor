@@ -797,7 +797,7 @@ const ProShowcase = () => (
         </div>
       </div>
 
-      <Suspense fallback={null}><LiveBriefCard /></Suspense>
+      <Suspense fallback={<div className="min-h-[460px]" aria-hidden="true" />}><LiveBriefCard /></Suspense>
     </div>
   </section>
 );

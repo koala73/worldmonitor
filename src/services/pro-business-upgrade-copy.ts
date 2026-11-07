@@ -52,5 +52,9 @@ export const UPGRADE_SUCCESS_BODY =
 export const UPGRADE_CANCEL_SCHEDULED_BODY =
   'Your Pro subscription is set to cancel at the end of this period. Resume it in the billing portal first, then upgrade to Pro Business.';
 
+// A lost response can follow an accepted change, so this never promises "no charge".
 export const UPGRADE_FAILED_BODY =
-  'The upgrade did not go through and you have not been charged for it. Try again in a minute, or email support@worldmonitor.app.';
+  'We could not confirm the upgrade. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
+
+export const UPGRADE_ACCOUNT_CHANGED_BODY =
+  'You switched accounts after this quote. Start the upgrade again from the account you want to upgrade.';

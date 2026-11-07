@@ -526,6 +526,7 @@ async function doCheckout(
             apiBase: API_BASE,
             planDisplayName: resolveProPlanDisplayName(planKey),
             getToken: getAuthToken,
+            getUserId: async () => (await ensureClerk().catch(() => null))?.user?.id ?? null,
             openPortal: () => {
               const reservedWin = prereserveBillingPortalTab();
               void getAuthToken().then((freshToken) => {

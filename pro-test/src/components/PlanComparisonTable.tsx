@@ -149,7 +149,8 @@ export const PlanComparisonTable = () => {
         <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">{t('pricingTable.title')}</h2>
       </div>
       <p className="lg:hidden text-center font-mono text-xs text-wm-muted mb-3">{t('pricingTable.scrollHint')}</p>
-      <div className="overflow-x-auto border border-wm-border rounded-sm">
+      {/* relative: positioned descendants (sticky cells) must resolve inside the scroll box, or a phone lays the whole page out at the table's 820px width. */}
+      <div className="relative overflow-x-auto border border-wm-border rounded-sm">
         <table className="w-full min-w-[820px] border-collapse text-sm">
           <caption className="sr-only">{t('pricingTable.title')}</caption>
           <thead>

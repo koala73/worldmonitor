@@ -58,6 +58,9 @@ for (const { width, lang } of CASES) {
       const apiSample = page.locator('#api pre');
       await expect(apiSample).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
+      // The plan comparison table loads lazily and is wider than any phone;
+      // measure after it renders so a scroll box that leaks its width fails here.
+      await expect(page.locator('section table').first()).toBeAttached();
 
       const layout = await page.evaluate(() => ({
         innerWidth: window.innerWidth,

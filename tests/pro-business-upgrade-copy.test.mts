@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   IN_PLACE_UPGRADE_SOURCE_PLANS,
+  UPGRADE_ACCOUNT_CHANGED_BODY,
   UPGRADE_CANCEL_SCHEDULED_BODY,
   UPGRADE_FAILED_BODY,
   UPGRADE_SUCCESS_BODY,
@@ -51,6 +52,11 @@ describe('buildUpgradePreviewBody', () => {
     assert.ok(unknown.includes('then the Pro Business price from your next renewal'));
   });
 
+  it('never promises "no charge" for an unconfirmed outcome', () => {
+    assert.doesNotMatch(UPGRADE_FAILED_BODY, /not been charged|no charge/i);
+    assert.match(UPGRADE_FAILED_BODY, /could not confirm/);
+  });
+
   it('formats an unknown currency code without throwing', () => {
     assert.equal(formatMinorAmount(1234, 'NOTACURRENCY'), '12.34 NOTACURRENCY');
   });
@@ -73,6 +79,7 @@ describe('cross-app copy parity (dashboard vs /pro)', () => {
     UPGRADE_SUCCESS_BODY,
     UPGRADE_CANCEL_SCHEDULED_BODY,
     UPGRADE_FAILED_BODY,
+    UPGRADE_ACCOUNT_CHANGED_BODY,
   ];
   for (const sentence of shared) {
     it(`/pro mirrors: ${sentence.slice(0, 48)}`, () => {

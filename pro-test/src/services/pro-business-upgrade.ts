@@ -49,7 +49,9 @@ const UPGRADE_SUCCESS_BODY =
 const UPGRADE_CANCEL_SCHEDULED_BODY =
   'Your Pro subscription is set to cancel at the end of this period. Resume it in the billing portal first, then upgrade to Pro Business.';
 const UPGRADE_FAILED_BODY =
-  'The upgrade did not go through and you have not been charged for it. Try again in a minute, or email support@worldmonitor.app.';
+  'We could not confirm the upgrade. Check your plan in the billing portal before you try again, or email support@worldmonitor.app.';
+const UPGRADE_ACCOUNT_CHANGED_BODY =
+  'You switched accounts after this quote. Start the upgrade again from the account you want to upgrade.';
 
 // One shape rather than a union: this build's tsconfig does not narrow on `ok`.
 interface UpgradeCallResult {
@@ -169,11 +171,14 @@ export async function runProBusinessUpgradeFlow(options: {
   apiBase: string;
   planDisplayName: string;
   getToken: () => Promise<string | null>;
+  /** Signed-in Clerk user id; the confirm must come from the account that saw the quote. */
+  getUserId: () => Promise<string | null>;
   openPortal: () => void;
   fallback: () => void;
 }): Promise<void> {
+  const previewUserId = await options.getUserId();
   const token = await options.getToken();
-  if (!token) {
+  if (!token || !previewUserId) {
     options.fallback();
     return;
   }
@@ -220,6 +225,16 @@ export async function runProBusinessUpgradeFlow(options: {
     dismissLabel: 'Not now',
     onConfirm: () => {
       void (async () => {
+        if (await options.getUserId() !== previewUserId) {
+          showDialog({
+            title: 'Account changed',
+            body: UPGRADE_ACCOUNT_CHANGED_BODY,
+            confirmLabel: 'Close',
+            dismissLabel: 'Dismiss',
+            onConfirm: () => {},
+          });
+          return;
+        }
         // Clerk tokens live ~60 s; the user may have read the dialog longer.
         const freshToken = await options.getToken();
         const applied = freshToken
@@ -240,7 +255,7 @@ export async function runProBusinessUpgradeFlow(options: {
           tags: { surface: 'pro-marketing', code: applied.error },
         });
         showDialog({
-          title: 'Upgrade not completed',
+          title: 'Upgrade not confirmed',
           body: UPGRADE_FAILED_BODY,
           confirmLabel: 'Close',
           dismissLabel: 'Dismiss',

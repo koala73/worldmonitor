@@ -724,6 +724,7 @@ export async function startCheckout(
             planDisplayName,
             fallback: showGuidedDuplicateDialog,
             requestUpgrade: requestProBusinessUpgrade,
+            currentUserId: () => getCurrentClerkUser()?.id,
             openPortal: () => {
               const reservedWin = prereserveBillingPortalTab();
               void openBillingPortal(reservedWin);

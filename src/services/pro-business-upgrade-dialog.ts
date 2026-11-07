@@ -17,6 +17,7 @@ import type { ProBusinessUpgradeResponse } from './billing';
 import type { CheckoutConfirmDialogOptions } from './checkout-dialog-factory';
 import {
   IN_PLACE_UPGRADE_SOURCE_PLANS,
+  UPGRADE_ACCOUNT_CHANGED_BODY,
   UPGRADE_CANCEL_SCHEDULED_BODY,
   UPGRADE_FAILED_BODY,
   UPGRADE_SUCCESS_BODY,
@@ -34,6 +35,8 @@ export interface ProBusinessUpgradeFlowOptions {
   /** Renders the guided cancel-then-rebuy dialog. */
   fallback: () => void;
   requestUpgrade: (confirm: boolean) => Promise<ProBusinessUpgradeResponse>;
+  /** Signed-in Clerk user id; the confirm must come from the account that saw the quote. */
+  currentUserId: () => string | null | undefined;
   openPortal: () => void;
   showDialog: (options: CheckoutConfirmDialogOptions) => void;
   /** Structured ConvexError kind, e.g. PRO_CANCEL_SCHEDULED. */
@@ -60,6 +63,12 @@ export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowO
     });
   };
 
+  const previewUserId = options.currentUserId();
+  if (!previewUserId) {
+    options.fallback();
+    return;
+  }
+
   let preview: ProBusinessUpgradeResponse;
   try {
     preview = await options.requestUpgrade(false);
@@ -85,12 +94,16 @@ export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowO
     dismissLabel: 'Not now',
     onConfirm: () => {
       void (async () => {
+        if (options.currentUserId() !== previewUserId) {
+          showResult('Account changed', UPGRADE_ACCOUNT_CHANGED_BODY);
+          return;
+        }
         try {
           await options.requestUpgrade(true);
           showResult(UPGRADE_SUCCESS_TITLE, UPGRADE_SUCCESS_BODY, () => window.location.reload(), 'Reload');
         } catch (err) {
           options.reportError('applyProBusinessUpgrade', err);
-          showResult('Upgrade not completed', UPGRADE_FAILED_BODY);
+          showResult('Upgrade not confirmed', UPGRADE_FAILED_BODY);
         }
       })();
     },
