@@ -2984,6 +2984,18 @@ describe('document-URL-only CSP EvalError (WORLDMONITOR-161)', () => {
     assert.ok(beforeSend(makeEvent(MSG, 'EvalError', [])) !== null);
   });
 
+  // Calling Function without `new` builds a function from a string just as `new Function` does.
+  const STRING_EVAL = /\beval\s*\(|\bnew\s+Function\b|\bFunction\s*\(|\bset(?:Timeout|Interval)\s*\(\s*['"`]/;
+
+  it('recognises every string-evaluating call the licence pin guards', () => {
+    for (const body of ['eval("x")', 'new Function("x")', 'Function("return 1")()', 'window.Function("x")', 'setTimeout("x()", 1)']) {
+      assert.ok(STRING_EVAL.test(body), body);
+    }
+    for (const body of ['isFunction(x)', 'setTimeout(run, 1)', 'typeof Function']) {
+      assert.ok(!STRING_EVAL.test(body), body);
+    }
+  });
+
   it('pins the licence: no inline script in an HTML entry evaluates a string', () => {
     const root = resolve(__dirname, '..');
     const offenders = readdirSync(root)
@@ -2991,7 +3003,7 @@ describe('document-URL-only CSP EvalError (WORLDMONITOR-161)', () => {
       .flatMap((name) => {
         const html = readFileSync(join(root, name), 'utf-8');
         return [...html.matchAll(/<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
-          .filter(([, body]) => /\beval\s*\(|\bnew\s+Function\b|\bset(?:Timeout|Interval)\s*\(\s*['"`]/.test(body))
+          .filter(([, body]) => STRING_EVAL.test(body))
           .map(() => name);
       });
     assert.deepEqual(offenders, [],
