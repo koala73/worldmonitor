@@ -187,12 +187,12 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price": "Custom",
       "contact": "enterprise@worldmonitor.app",
       "features": [
-        "SSO/MFA/RBAC",
         "team workspaces",
         "white-label",
         "on-premises",
         "air-gapped",
-        "dedicated support"
+        "dedicated support",
+        "SSO/MFA/RBAC (by contract)"
       ]
     }
   ]

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, lazy, Suspense, type ReactElement, type ReactNode } from 'react';
+import { Component, useState, useEffect, useRef, createContext, useContext, lazy, Suspense, type ReactElement, type ReactNode } from 'react';
 import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
@@ -34,6 +34,14 @@ import { VoiceCards } from './components/Voices';
 // Below the fold: loaded on demand so the published-pulse JSON, the live
 // feed client and the plan table stay out of the initial /pro chunk.
 const LiveBriefCard = lazy(() => import('./components/LiveBriefCard').then((m) => ({ default: m.LiveBriefCard })));
+// A failed lazy import (stale deploy hash, flaky network) must not unmount the
+// whole page with its pricing cards and checkout; the section just goes missing.
+class LazySectionBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  declare props: { children: ReactNode };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? null : this.props.children; }
+}
 const PlanComparisonTable = lazy(() => import('./components/PlanComparisonTable').then((m) => ({ default: m.PlanComparisonTable })));
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
@@ -797,7 +805,7 @@ const ProShowcase = () => (
         </div>
       </div>
 
-      <Suspense fallback={<div className="min-h-[460px]" aria-hidden="true" />}><LiveBriefCard /></Suspense>
+      <LazySectionBoundary><Suspense fallback={<div className="min-h-[460px]" aria-hidden="true" />}><LiveBriefCard /></Suspense></LazySectionBoundary>
     </div>
   </section>
 );
@@ -1379,7 +1387,7 @@ export default function App() {
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
           desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
         />
-        <Suspense fallback={null}><PlanComparisonTable /></Suspense>
+        <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />
         <EnterpriseShowcase />
         <FAQ />

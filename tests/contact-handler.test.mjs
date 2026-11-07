@@ -163,8 +163,10 @@ describe('LeadsService.submitContact', () => {
         }
         return new Response('{}');
       };
-      for (const phone of ['', '   ']) {
-        const res = await submitContact(makeCtx(), validReq({ phone }));
+      const withoutPhone = validReq();
+      delete withoutPhone.phone;
+      for (const req of [withoutPhone, validReq({ phone: '' }), validReq({ phone: '   ' })]) {
+        const res = await submitContact(makeCtx(), req);
         assert.equal(res.status, 'sent');
         assert.equal('phone' in convexBody, false, 'an empty phone must not reach Convex');
         assert.equal(resendBody.html.includes('>Phone<'), false, 'the ops email must not show an empty Phone row');

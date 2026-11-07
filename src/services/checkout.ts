@@ -718,8 +718,13 @@ export async function startCheckout(
         // change); the guided dialog stays the fallback when no preview comes back.
         // The plan check lives in the lazy chunk to keep this one small.
         if (isProBusinessUpgrade) {
-          const { runProBusinessUpgradeFlow } = await import('./pro-business-upgrade-dialog');
-          await runProBusinessUpgradeFlow({
+          // A failed chunk load (stale deploy, flaky network) still gets the guided dialog.
+          const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+          if (!upgradeModule) {
+            showGuidedDuplicateDialog();
+            return false;
+          }
+          await upgradeModule.runProBusinessUpgradeFlow({
             planKey,
             planDisplayName,
             fallback: showGuidedDuplicateDialog,

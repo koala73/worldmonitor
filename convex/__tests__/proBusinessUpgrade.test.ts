@@ -156,6 +156,17 @@ describe("upgradeToProBusiness action", () => {
     expect(changePlan).not.toHaveBeenCalled();
   });
 
+  test("confirm refuses when the provider row moved off the quoted Pro product", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    retrieve.mockResolvedValue({ product_id: PRODUCT_CATALOG.api_starter!.dodoProductId });
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
+    expect(changePlan).not.toHaveBeenCalled();
+  });
+
   test("provider failures surface as a structured error", async () => {
     const t = convexTest(schema, modules);
     await seed(t);

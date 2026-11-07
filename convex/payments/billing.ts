@@ -3954,6 +3954,11 @@ export async function runProBusinessUpgrade(
     if (remote.product_id === candidate.toProductId) {
       return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
     }
+    // The quote was for the Pro product this row held; a provider-side change
+    // since then (portal, support) means the previewed charge no longer holds.
+    if (remote.product_id !== candidate.fromProductId) {
+      throw new Error(`subscription product changed since preview: ${remote.product_id}`);
+    }
     await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
   } catch (err) {
     console.error(
