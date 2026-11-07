@@ -1384,7 +1384,8 @@
       "skipToStart": "Ir al inicio",
       "previous": "Anterior",
       "next": "Siguiente",
-      "skipToEnd": "Ir al final"
+      "skipToEnd": "Ir al final",
+      "storageUnavailable": "La reproducción no está disponible porque este navegador está bloqueando el almacenamiento del sitio. Permite datos del sitio para este sitio para comenzar a guardar capturas."
     },
     "stablecoins": {
       "pegHealth": "Salud del anclaje",

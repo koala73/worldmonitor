@@ -513,7 +513,8 @@
       "skipToStart": "Ir para o início",
       "previous": "Anterior",
       "next": "Próximo",
-      "skipToEnd": "Ir para o fim"
+      "skipToEnd": "Ir para o fim",
+      "storageUnavailable": "A reprodução não está disponível porque este navegador está bloqueando o armazenamento do site. Permita dados do site para este site para começar a salvar snapshots."
     },
     "deckgl": {
       "views": {

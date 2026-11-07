@@ -5791,8 +5791,31 @@ a.item-title:hover {
   padding: 0;
 }
 
+.playback-notice {
+  margin: 0;
+  padding: 10px 12px 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.playback-notice[hidden] {
+  display: none;
+}
+
 .playback-slider-container {
   padding: 12px;
+}
+
+.playback-slider:disabled,
+.playback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.playback-btn:disabled:hover {
+  background: var(--panel-border);
+  color: var(--text);
 }
 
 .playback-slider {

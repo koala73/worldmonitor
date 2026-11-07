@@ -1091,7 +1091,8 @@
       "skipToStart": "最初へ移動",
       "previous": "前へ",
       "next": "次へ",
-      "skipToEnd": "最後へ移動"
+      "skipToEnd": "最後へ移動",
+      "storageUnavailable": "このブラウザがサイトストレージをブロックしているため、再生機能が利用できません。このサイトのサイトデータを許可して、スナップショットの保存を開始してください。"
     },
     "pizzint": {
       "indexSource": "指数: World Monitor",

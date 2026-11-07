@@ -1236,7 +1236,8 @@
       "skipToStart": "Ruka ili kuanza",
       "previous": "Iliyotangulia",
       "next": "Inayofuata",
-      "skipToEnd": "Ruka hadi mwisho"
+      "skipToEnd": "Ruka hadi mwisho",
+      "storageUnavailable": "Uchezaji upya haupatikani kwa sababu kivinjari hiki kinazuia hifadhi ya tovuti. Ruhusu data ya tovuti kwa tovuti hii ili kuanza kuhifadhi picha za hali."
     },
     "pizzint": {
       "indexSource": "Faharasa: World Monitor",

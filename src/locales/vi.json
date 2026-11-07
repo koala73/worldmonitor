@@ -1091,7 +1091,8 @@
       "skipToStart": "Về đầu",
       "previous": "Trước",
       "next": "Tiếp",
-      "skipToEnd": "Tới cuối"
+      "skipToEnd": "Tới cuối",
+      "storageUnavailable": "Phát lại không khả dụng vì trình duyệt này đang chặn lưu trữ trang web. Cho phép dữ liệu trang web cho trang này để bắt đầu lưu ảnh chụp nhanh."
     },
     "pizzint": {
       "indexSource": "Chỉ số: World Monitor",
