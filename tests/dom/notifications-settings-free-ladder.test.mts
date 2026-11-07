@@ -20,6 +20,11 @@ const gate = vi.hoisted(() => ({
   // snapshot synchronously before onEntitlementChange returns.
   replayOnSubscribe: false,
   listeners: [] as Array<(state: unknown) => void>,
+  // Entitlement verification progress (#4273 pre-hydration hold): the real
+  // onEntitlementVerificationChange always replays the current status
+  // synchronously on subscribe, so this mock does too.
+  verification: 'ready' as string,
+  verificationListeners: [] as Array<(status: string) => void>,
 }));
 
 const channelMocks = vi.hoisted(() => ({
@@ -69,6 +74,14 @@ vi.mock('@/services/entitlements', () => ({
     if (gate.replayOnSubscribe && gate.tier) cb({ features: { tier: 1 } });
     return () => {
       gate.listeners = gate.listeners.filter(l => l !== cb);
+    };
+  },
+  getEntitlementVerificationStatus: () => gate.verification,
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    gate.verificationListeners.push(cb);
+    cb(gate.verification);
+    return () => {
+      gate.verificationListeners = gate.verificationListeners.filter(l => l !== cb);
     };
   },
 }));
@@ -133,6 +146,8 @@ beforeEach(() => {
   gate.tier = false;
   gate.replayOnSubscribe = false;
   gate.listeners = [];
+  gate.verification = 'ready';
+  gate.verificationListeners = [];
   channelMocks.getChannelsData.mockReset();
   channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
   channelMocks.setNotificationConfig.mockReset().mockResolvedValue(undefined);
@@ -336,6 +351,56 @@ describe('free alert ladder UI (#4273)', () => {
       expect(container.querySelector('.us-notif-ladder-banner')).toBeNull();
       expect(container.querySelector('#usConnectSlack')).not.toBeNull();
     });
+  });
+
+  it('flushes a pending debounced save on close instead of dropping it', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data());
+    // Remove the only selected country: the panel shows "paused" at once and
+    // schedules the enabled:false save behind the 800ms debounce.
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip-on',
+    )!.click();
+    expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
+    // Close the panel inside the debounce window: the pause must still be
+    // persisted, and WITHOUT the panel's (now aborted) signal, which would
+    // cancel the request it rode on.
+    cleanups.pop()!();
+    expect(channelMocks.saveAlertRules).toHaveBeenCalledTimes(1);
+    const [payload, flushSignal] = channelMocks.saveAlertRules.mock.lastCall as [
+      { enabled: boolean; countries: string[] },
+      AbortSignal | undefined,
+    ];
+    expect(payload.enabled).toBe(false);
+    expect(payload.countries).toEqual([]);
+    expect(flushSignal).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('holds the loading state while entitlement verification is pending, then renders the settled ladder', async () => {
+    // `null` entitlement state is ambiguous (free, or paid still hydrating):
+    // while verification is pending the panel must not render the free clamp
+    // — an early autosave against it could narrow a paid account's stored
+    // scope with nothing left to restore from.
+    gate.verification = 'pending';
+    channelMocks.getChannelsData.mockResolvedValue(data());
+    const rendered = renderNotificationsSettings({ isSignedIn: true });
+    const container = document.createElement('div');
+    container.innerHTML = rendered.html;
+    document.body.appendChild(container);
+    cleanups.push(rendered.attach(container));
+    expect(container.querySelector('#usNotifLoading')).not.toBeNull();
+    expect(container.querySelector('.us-notif-ladder-banner')).toBeNull();
+    expect(channelMocks.getChannelsData).not.toHaveBeenCalled();
+    // Verification settles on a paid snapshot: the panel rebuilds as the
+    // paid surface, never having exposed the free clamp.
+    gate.tier = true;
+    gate.verification = 'ready';
+    for (const cb of [...gate.verificationListeners]) cb('ready');
+    await vi.waitFor(() => {
+      expect(container.querySelector('#usConnectSlack')).not.toBeNull();
+    });
+    expect(container.querySelector('.us-notif-ladder-banner')).toBeNull();
   });
 
   it('keeps the paid surface unchanged for a pro account', async () => {

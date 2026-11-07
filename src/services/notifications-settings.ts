@@ -26,7 +26,14 @@ import {
   type DigestMode,
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
-import { getEntitlementState, hasTier, onEntitlementChange } from '@/services/entitlements';
+import {
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  hasTier,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+  type EntitlementVerificationStatus,
+} from '@/services/entitlements';
 import { resolveAlertCapabilities } from '../../shared/alert-capabilities';
 import { t } from '@/services/i18n';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
@@ -232,17 +239,21 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
   const signedIn = !!host.isSignedIn;
   const isPro = signedIn && hasTier(1);
   // The ladder the panel clamps to (#4273). Mirrors the server's resolver: a
-  // missing or not-yet-hydrated entitlement resolves to the free ladder, so a
-  // paid account renders free for the instant before hydration and unlocks in
-  // place through the onEntitlementChange subscription below — strictly
-  // better than the pre-ladder behavior of a hard Pro lock in that window.
+  // missing entitlement resolves to the free ladder. `null` state alone is
+  // ambiguous, though — a free account, or a paid one whose snapshot is still
+  // hydrating — and clamping during that window would let an early autosave
+  // narrow a paid account's stored scope to the free cap with nothing left to
+  // restore from. While verification is still 'pending', hold the loading
+  // state (attach below re-renders once it settles); 'ready', 'unavailable'
+  // and 'idle' render the resolved ladder, failing closed to free.
+  const entitlementsPending = signedIn && getEntitlementVerificationStatus() === 'pending';
   const caps = resolveAlertCapabilities(signedIn ? (getEntitlementState()?.features ?? null) : null);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
 
   let html = '';
   if (signedIn) {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    if (!isPro) {
+    if (!isPro && !entitlementsPending) {
       html += `<div class="us-notif-ladder-banner">`;
       html += `<div class="us-notif-ladder-banner-text">Free plan: critical alerts for up to ${caps.maxCountries} countries over browser push and email. Pro unlocks Slack, Discord, Telegram, Teams and webhooks, all sensitivities, digests and worldwide scope.</div>`;
       html += `<button type="button" class="panel-locked-cta us-notif-ladder-cta" data-ladder-upgrade>Upgrade</button>`;
@@ -276,6 +287,36 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }, { signal });
         }
         return () => ac.abort();
+      }
+
+      // #4273: the snapshot is still hydrating, so which ladder to render is
+      // not yet known (see the render-time comment above). Keep the loading
+      // state on screen and rebuild once verification settles, through the
+      // same replacement mechanism as the entitlement flip below.
+      if (entitlementsPending) {
+        let replacementCleanup: (() => void) | null = null;
+        // onEntitlementVerificationChange replays the current status
+        // synchronously on subscribe — same let-handle pattern as
+        // onEntitlementFlip below, for the same TDZ reason.
+        let offVerification: (() => void) | null = null;
+        const onVerificationSettled = (status: EntitlementVerificationStatus): void => {
+          if (status === 'pending' || replacementCleanup !== null || signal.aborted) return;
+          offVerification?.();
+          ac.abort();
+          const next = renderNotificationsSettings(host);
+          setTrustedHtml(container, trustedHtml(next.html, 'entitlement verification settled re-render (#4273)'));
+          replacementCleanup = next.attach(container);
+        };
+        offVerification = onEntitlementVerificationChange(onVerificationSettled);
+        if (signal.aborted) {
+          offVerification();
+        } else {
+          signal.addEventListener('abort', offVerification);
+        }
+        return () => {
+          ac.abort();
+          if (replacementCleanup) replacementCleanup();
+        };
       }
 
       // #4273 live unlock: when the entitlement snapshot flips the paid-ness
@@ -1011,12 +1052,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // Read all current alert-rule fields off the DOM and POST through the
       // existing saveAlertRules pipeline. Sources its full payload from
       // getCurrentAlertRuleFormState so `countries` flows through every time.
-      function saveCurrentAlertRule(): void {
+      function saveCurrentAlertRule(opts?: { flush?: boolean }): void {
         const state = getCurrentAlertRuleFormState();
+        // flush: the panel is closing and `signal` is already aborted —
+        // passing it would cancel the very request the flush exists to send.
         fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        }, signal), 'save alert rules');
+        }, opts?.flush ? undefined : signal), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -1072,56 +1115,73 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }, signal), 'save alert rules');
       }
 
-      signal.addEventListener('abort', () => {
-        if (alertRuleDebounceTimer !== null) {
-          clearTimeout(alertRuleDebounceTimer);
-          alertRuleDebounceTimer = null;
-        }
-        if (qhDebounceTimer !== null) {
-          clearTimeout(qhDebounceTimer);
-          qhDebounceTimer = null;
-        }
-        if (digestDebounceTimer !== null) {
-          clearTimeout(digestDebounceTimer);
-          digestDebounceTimer = null;
-        }
-      });
+      const sendQuietHoursNow = (flush = false): void => {
+        const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
+        const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
+        const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
+        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+        const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
+        fireForgetSave(setQuietHours({
+          variant: SITE_VARIANT,
+          quietHoursEnabled: enabledEl?.checked ?? false,
+          quietHoursStart: startEl ? Number(startEl.value) : 22,
+          quietHoursEnd: endEl ? Number(endEl.value) : 7,
+          quietHoursTimezone: tzEl?.value || detectedTz,
+          quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+          countries: countryPicker ? countryPicker.getValue() : undefined,
+        }, flush ? undefined : signal), 'save quiet hours');
+      };
 
       const saveQuietHours = () => {
         if (qhDebounceTimer) clearTimeout(qhDebounceTimer);
         qhDebounceTimer = setTimeout(() => {
-          const enabledEl = container.querySelector<HTMLInputElement>('#usQhEnabled');
-          const startEl = container.querySelector<HTMLSelectElement>('#usQhStart');
-          const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
-          const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-          fireForgetSave(setQuietHours({
-            variant: SITE_VARIANT,
-            quietHoursEnabled: enabledEl?.checked ?? false,
-            quietHoursStart: startEl ? Number(startEl.value) : 22,
-            quietHoursEnd: endEl ? Number(endEl.value) : 7,
-            quietHoursTimezone: tzEl?.value || detectedTz,
-            quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
-            countries: countryPicker ? countryPicker.getValue() : undefined,
-          }, signal), 'save quiet hours');
+          sendQuietHoursNow();
         }, 800);
+      };
+
+      const sendDigestSettingsNow = (flush = false): void => {
+        const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
+        const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
+        const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
+        fireForgetSave(setDigestSettings({
+          variant: SITE_VARIANT,
+          digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
+          digestHour: hourEl ? Number(hourEl.value) : 8,
+          digestTimezone: tzEl?.value || detectedTz,
+          countries: countryPicker ? countryPicker.getValue() : undefined,
+        }, flush ? undefined : signal), 'save digest settings');
       };
 
       const saveDigestSettings = () => {
         if (digestDebounceTimer) clearTimeout(digestDebounceTimer);
         digestDebounceTimer = setTimeout(() => {
-          const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
-          const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
-          const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          fireForgetSave(setDigestSettings({
-            variant: SITE_VARIANT,
-            digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
-            digestHour: hourEl ? Number(hourEl.value) : 8,
-            digestTimezone: tzEl?.value || detectedTz,
-            countries: countryPicker ? countryPicker.getValue() : undefined,
-          }, signal), 'save digest settings');
+          sendDigestSettingsNow();
         }, 800);
       };
+
+      // A pending debounced autosave is the user's last edit: dropping it on
+      // close would un-save a change the panel already shows as applied (the
+      // free-ladder pause save among them, #4273). Flush it instead — without
+      // the panel's signal, which is aborting as this listener runs. The host
+      // tears the DOM down only after this cleanup, so the reads above still
+      // see the final form state.
+      signal.addEventListener('abort', () => {
+        if (alertRuleDebounceTimer !== null) {
+          clearTimeout(alertRuleDebounceTimer);
+          alertRuleDebounceTimer = null;
+          saveCurrentAlertRule({ flush: true });
+        }
+        if (qhDebounceTimer !== null) {
+          clearTimeout(qhDebounceTimer);
+          qhDebounceTimer = null;
+          sendQuietHoursNow(true);
+        }
+        if (digestDebounceTimer !== null) {
+          clearTimeout(digestDebounceTimer);
+          digestDebounceTimer = null;
+          sendDigestSettingsNow(true);
+        }
+      });
 
       container.addEventListener('change', (e) => {
         const target = e.target as HTMLInputElement;

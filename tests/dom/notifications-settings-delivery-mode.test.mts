@@ -56,6 +56,11 @@ vi.mock('@/services/entitlements', () => ({
   hasTier: () => gate.tier,
   getEntitlementState: () => (gate.tier ? { features: { tier: 1 } } : null),
   onEntitlementChange: () => () => {},
+  getEntitlementVerificationStatus: () => 'ready',
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    cb('ready');
+    return () => {};
+  },
 }));
 
 vi.mock('@/services/market-watchlist', () => ({

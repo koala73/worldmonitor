@@ -53,6 +53,11 @@ vi.mock('@/services/entitlements', () => ({
   hasTier: () => true,
   getEntitlementState: () => ({ features: { tier: 1 } }),
   onEntitlementChange: () => () => {},
+  getEntitlementVerificationStatus: () => 'ready',
+  onEntitlementVerificationChange: (cb: (status: string) => void) => {
+    cb('ready');
+    return () => {};
+  },
 }));
 
 vi.mock('@/services/market-watchlist', () => ({
