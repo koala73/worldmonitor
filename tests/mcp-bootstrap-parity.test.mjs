@@ -50,6 +50,8 @@ const EXCLUDED_FROM_MCP = new Map([
   // ===========================================================================
   ['news:feed-health:v1',
     'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['open-data:chokepoints:v1:index',
+    'published file archive: index of the daily CC BY 4.0 chokepoint open dataset served at /data/v1/chokepoints/; the same scores stay queryable through get_chokepoint_status.'],
   ['news:recall-benchmark:v1',
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['health:china-coverage:v1',
