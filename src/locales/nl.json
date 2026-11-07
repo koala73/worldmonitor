@@ -512,7 +512,8 @@
       "skipToStart": "Naar het begin",
       "previous": "Vorige",
       "next": "Volgende",
-      "skipToEnd": "Naar het einde"
+      "skipToEnd": "Naar het einde",
+      "storageUnavailable": "Afspelen is niet beschikbaar omdat deze browser siteopslag blokkeert. Sta sitegegevens voor deze site toe om snapshots op te slaan."
     },
     "deckgl": {
       "views": {

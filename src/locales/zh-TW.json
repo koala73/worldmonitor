@@ -1091,7 +1091,8 @@
       "skipToStart": "跳到開頭",
       "previous": "上一個",
       "next": "下一個",
-      "skipToEnd": "跳到結尾"
+      "skipToEnd": "跳到結尾",
+      "storageUnavailable": "回放功能不可用，因為瀏覽器正在阻止網站儲存。請允許此網站的網站資料以開始儲存快照。"
     },
     "pizzint": {
       "indexSource": "指數：World Monitor",

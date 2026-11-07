@@ -1091,7 +1091,8 @@
       "skipToStart": "처음으로 이동",
       "previous": "이전",
       "next": "다음",
-      "skipToEnd": "끝으로 이동"
+      "skipToEnd": "끝으로 이동",
+      "storageUnavailable": "이 브라우저가 사이트 저장소를 차단하고 있어서 재생을 사용할 수 없습니다. 스냅샷 저장을 시작하려면 이 사이트에 대해 사이트 데이터를 허용하세요."
     },
     "pizzint": {
       "indexSource": "지수: World Monitor",

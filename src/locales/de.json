@@ -1381,7 +1381,8 @@
       "skipToStart": "Zum Anfang springen",
       "previous": "Zurück",
       "next": "Weiter",
-      "skipToEnd": "Zum Ende springen"
+      "skipToEnd": "Zum Ende springen",
+      "storageUnavailable": "Die Wiedergabe ist nicht verfügbar, da dieser Browser die Website-Speicherung blockiert. Erlauben Sie Website-Daten für diese Website, um Snapshots zu speichern."
     },
     "stablecoins": {
       "pegHealth": "Peg-Stabilität",

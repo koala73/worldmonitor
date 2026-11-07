@@ -1088,7 +1088,8 @@
       "skipToStart": "Přejít na začátek",
       "previous": "Předchozí",
       "next": "Další",
-      "skipToEnd": "Přejít na konec"
+      "skipToEnd": "Přejít na konec",
+      "storageUnavailable": "Přehrávání není dostupné, protože tento prohlížeč blokuje ukládání dat na webu. Povolte ukládání dat na webu pro tuto stránku a začněte ukládat snímky."
     },
     "pizzint": {
       "indexSource": "Index: World Monitor",

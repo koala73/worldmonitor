@@ -75,19 +75,31 @@ export async function initDB(): Promise<IDBDatabase> {
 }
 
 /**
+ * Whether the database can be opened right now. False only when the browser
+ * has no IndexedDB or refuses it; other failures still reject. A failed open
+ * is not cached, so a later call retries.
+ */
+export async function isStorageAvailable(): Promise<boolean> {
+  try {
+    await initDB();
+    return true;
+  } catch (err) {
+    if (err instanceof IndexedDBUnavailableError) return false;
+    throw err;
+  }
+}
+
+/**
  * Open the database during dashboard boot. The database only holds baselines
  * and playback snapshots, so a browser that refuses storage must not stop the
  * app: report false and let reads degrade. Other failures still reject.
  */
 export async function openStorageForBoot(): Promise<boolean> {
-  try {
-    await initDB();
-    return true;
-  } catch (err) {
-    if (!(err instanceof IndexedDBUnavailableError)) throw err;
-    console.warn('[Storage] IndexedDB unavailable; baselines and snapshots are disabled:', err.cause ?? err.message);
-    return false;
+  const available = await isStorageAvailable();
+  if (!available) {
+    console.warn('[Storage] IndexedDB unavailable; baselines and snapshots are disabled');
   }
+  return available;
 }
 
 async function withTransaction<T>(
