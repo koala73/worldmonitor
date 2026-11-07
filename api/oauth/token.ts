@@ -43,6 +43,7 @@ import { jsonResponse } from '../_json-response.js';
 import { getOperatorKeys, keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
+import { oauthRateLimitHeaders } from './_rate-limit-headers.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
 import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 // @ts-expect-error — JS module, no declaration file
@@ -1062,9 +1063,14 @@ async function applyRateLimit(
     if (!result.success) {
       return {
         kind: 'limited',
-        response: jsonResp(
+        response: jsonResponse(
           { error: 'rate_limit_exceeded', error_description: 'Too many token requests. Try again later.' },
           429,
+          {
+            ...getPublicCorsHeaders('POST, OPTIONS'),
+            ...NO_STORE,
+            ...oauthRateLimitHeaders(result),
+          },
         ),
       };
     }
