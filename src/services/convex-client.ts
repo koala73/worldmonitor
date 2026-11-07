@@ -52,7 +52,12 @@ let recoveryUserId: string | null = null;
 let recoveryAttempts = 0;
 let recoveryCoolingDown = false;
 let recoveryInFlight: Promise<ConvexAuthBarrier | null> | null = null;
-let watchHandoffsInFlight = 0;
+// In-flight identity handoffs, by the Clerk user each one rebinds. Only a
+// handoff for the SAME user owns that user's rebind loop; an older account's
+// handoff still sleeping between retries must not suppress a newer user's
+// recovery (PR #10271 review).
+const watchHandoffsByUser = new Map<string, number>();
+const handoffInFlightFor = (userId: string): boolean => (watchHandoffsByUser.get(userId) ?? 0) > 0;
 
 // Per-Clerk-userId trigger for users:ensureRecord. The boolean flag is
 // per-app-lifetime; the userId guard is per-user. Sign-out clears the
@@ -146,7 +151,7 @@ function installConvexAuth(
         // owns the rebind loop, which retries on its own schedule.
         if (
           userId !== null &&
-          watchHandoffsInFlight === 0 &&
+          !handoffInFlightFor(userId) &&
           (recoveryUserId !== userId || recoveryAttempts < SAME_USER_RECOVERY_PROACTIVE_ATTEMPTS)
         ) {
           void recoverSameUserConvexAuth(userId);
@@ -203,7 +208,7 @@ function recoverSameUserConvexAuth(userId: string): Promise<ConvexAuthBarrier | 
     if (
       current?.userId === userId &&
       current.state === 'failed' &&
-      watchHandoffsInFlight === 0 &&
+      !handoffInFlightFor(userId) &&
       recoveryAttempts < SAME_USER_RECOVERY_PROACTIVE_ATTEMPTS
     ) {
       void recoverSameUserConvexAuth(userId);
@@ -470,29 +475,30 @@ export async function waitForConvexAuthForUser(
   // A failed config for this same user is not an account change: reinstall
   // auth once (coalesced and rate-limited) and wait on the new config within
   // this call's budget (Sentry WORLDMONITOR-1CP).
-  let remainingMs = timeoutMs;
+  // One deadline covers every wait in this call, so a recovery cannot extend
+  // the caller's budget (PR #10271 review).
+  const deadline = Date.now() + timeoutMs;
   let attemptedRecovery = false;
   for (;;) {
     if (barrier.state === 'failed' && authBarrier === barrier) {
       if (attemptedRecovery) return false;
       attemptedRecovery = true;
-      const startedAt = Date.now();
       const next = await recoverSameUserConvexAuth(userId);
-      remainingMs -= Date.now() - startedAt;
-      if (!next || remainingMs <= 0) return false;
+      if (!next || Date.now() >= deadline) return false;
       barrier = next;
       continue;
     }
-    const ready = await waitForAuthBarrier(barrier, Math.max(0, remainingMs));
+    const ready = await waitForAuthBarrier(barrier, Math.max(0, deadline - Date.now()));
     if (ready) break;
     // Only a config that failed is eligible for recovery; a timeout is not.
-    if (attemptedRecovery || barrier.state !== 'failed') return false;
+    if (attemptedRecovery || barrier.state !== 'failed' || Date.now() >= deadline) return false;
     const current = authBarrier;
     if (!current || current.userId !== userId) return false;
     if (current !== barrier) {
-      // The failure callback's own recovery already installed a replacement
-      // for this user; wait on it rather than starting another.
-      attemptedRecovery = true;
+      // A pending replacement means the failure callback's own recovery is
+      // already running: wait on it rather than starting another. A failed
+      // placeholder is still eligible for this call's own recovery.
+      if (current.state !== 'failed') attemptedRecovery = true;
       barrier = current;
     }
   }
@@ -582,11 +588,32 @@ export async function rebindConvexAuthForWatchHandoff(
     return true;
   };
 
-  watchHandoffsInFlight += 1;
+  const handoffUserId = getCurrentClerkUser()?.id ?? null;
+  if (handoffUserId !== null) {
+    watchHandoffsByUser.set(handoffUserId, (watchHandoffsByUser.get(handoffUserId) ?? 0) + 1);
+  }
   try {
     return await runWatchHandoff(isCurrent, attachIfCurrent, () => attached, timeoutMs, retryDelaysMs);
   } finally {
-    watchHandoffsInFlight = Math.max(0, watchHandoffsInFlight - 1);
+    if (handoffUserId !== null) {
+      const remaining = (watchHandoffsByUser.get(handoffUserId) ?? 1) - 1;
+      if (remaining > 0) watchHandoffsByUser.set(handoffUserId, remaining);
+      else watchHandoffsByUser.delete(handoffUserId);
+    }
+    // The handoff skipped proactive recovery while it owned the rebind loop.
+    // If it ended with the current user's config still failed, hand that
+    // config to the bounded same-user recovery instead of leaving it dead.
+    const current = authBarrier;
+    const currentUserId = getCurrentClerkUser()?.id ?? null;
+    if (
+      currentUserId !== null &&
+      current?.userId === currentUserId &&
+      current.state === 'failed' &&
+      !handoffInFlightFor(currentUserId) &&
+      (recoveryUserId !== currentUserId || recoveryAttempts < SAME_USER_RECOVERY_PROACTIVE_ATTEMPTS)
+    ) {
+      void recoverSameUserConvexAuth(currentUserId);
+    }
   }
 }
 
@@ -666,7 +693,7 @@ export function __setConvexClientForTests(
   authGeneration = 0;
   authRebindRequestGeneration = 0;
   resetSameUserRecovery(null);
-  watchHandoffsInFlight = 0;
+  watchHandoffsByUser.clear();
   forceSignedOutAuth = false;
   clientInitPromise = null;
   client = testClient as ConvexClient | null;

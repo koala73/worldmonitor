@@ -17,6 +17,7 @@ import {
   invalidateConvexAuthForSignOut,
   rebindConvexAuthForWatchHandoff,
   waitForConvexAuth,
+  waitForConvexAuthForUser,
 } from '../src/services/convex-client.ts';
 import { createEmbedKey } from '../src/services/embed-keys.ts';
 import { createApiKey, listApiKeys } from '../src/services/api-keys.ts';
@@ -1031,12 +1032,79 @@ describe('same-user Convex auth recovery after a terminal failure', () => {
 
     fake.authConfigs[1].onChange(false);
     assert.equal(await handoff, false);
-    assert.equal(fake.authConfigs.length, 2, 'the handoff owns retries while it runs');
 
+    // The exhausted handoff hands its failed config to same-user recovery,
+    // and the waiter shares that reinstall instead of starting another.
+    await waitForCondition(() => fake.authConfigs.length === 3, 'handoff exit should reinstall auth');
     const opening = openActivation();
-    await waitForCondition(() => fake.authConfigs.length === 3, 'the waiter should reinstall auth');
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 3);
     fake.authConfigs[2].onChange(true);
     assert.equal(await opening, 'opened');
+  });
+
+  it("does not let an older account's sleeping handoff block the current user's recovery", async () => {
+    let current = 'A';
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    const handoffA = rebindConvexAuthForWatchHandoff(() => current === 'A', () => {}, 1_000, [60_000]);
+    await flushMicrotasks();
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, "A's handoff sleeps before its retry");
+
+    current = 'B';
+    signIn('B');
+    const handoffB = rebindConvexAuthForWatchHandoff(() => current === 'B', () => {}, 1_000, []);
+    await flushMicrotasks();
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await handoffB, true);
+
+    fake.authConfigs[2].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 4, "B's failure should reinstall auth for B");
+    void handoffA;
+  });
+
+  it('a waiter that sees the failed placeholder during a handoff still runs its own recovery', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+    void rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, [60_000]);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+
+    const opening = openActivation();
+    await flushMicrotasks();
+    fake.authConfigs[1].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 3, 'the waiter should start one same-user recovery');
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await opening, 'opened');
+    assert.equal(fake.authConfigs.length, 3);
+  });
+
+  it('keeps one deadline across the original wait and the recovered config', async (t) => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    let now = 1_000_000;
+    t.mock.method(Date, 'now', () => now);
+
+    const waiting = waitForConvexAuthForUser('A', 1_000);
+    await flushMicrotasks();
+    assert.deepEqual(timers.pending().map((timer) => timer.ms), [1_000]);
+
+    now += 800;
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'failure should reinstall auth');
+    await flushMicrotasks();
+    assert.ok(
+      timers.pending().some((timer) => timer.ms === 200),
+      `the recovered wait gets the remaining 200 ms, saw ${JSON.stringify(timers.pending().map((x) => x.ms))}`,
+    );
+    fake.authConfigs[1].onChange(true);
+    assert.equal(await waiting, true);
   });
 
   it('bounds reinstalls when the token stays unavailable', async () => {
