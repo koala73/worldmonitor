@@ -197,7 +197,7 @@ function showWebPushUnsupportedState(rowEl: HTMLElement): void {
     'unsupported',
     browserPushUnsupportedMessage(),
     'us-notif-ch-badge',
-    needsIosAlertsInstall() ? t('pwaInstall.title') : WEB_PUSH_UNSUPPORTED_BADGE,
+    WEB_PUSH_UNSUPPORTED_BADGE,
   );
   if (needsIosAlertsInstall()) {
     rowEl.querySelector('.us-notif-ch-badge')?.remove();

@@ -3234,6 +3234,24 @@ describe('security header guardrails', () => {
       /import '\.\/bootstrap\/zod-csp';/,
       'main.ts must apply the Zod CSP bootstrap before the app graph'
     );
+    // Zod v4 runs its `new Function` probe when a z.object() is constructed,
+    // so any script module evaluated before zod-csp could trip the CSP.
+    // Spans lines so `import {\n  a,\n} from 'x';` counts as an import of 'x'.
+    const scriptImportsOf = (source) =>
+      [...source.matchAll(/^import\s(?:[^'";]*?\sfrom\s)?['"]([^'"]+)['"]/gm)]
+        .map((match) => match[1])
+        .filter((specifier) => !specifier.endsWith('.css'));
+    assert.deepEqual(
+      scriptImportsOf("import './a.css';\nimport {\n  one,\n  two,\n} from './early';\nimport type { T } from './t';\nimport './bootstrap/zod-csp';\n"),
+      ['./early', './t', './bootstrap/zod-csp'],
+      'the import scan must see multiline and type-only declarations'
+    );
+    const scriptImports = scriptImportsOf(mainSource);
+    assert.equal(
+      scriptImports[0],
+      './bootstrap/zod-csp',
+      'zod-csp must be the first script import in main.ts so no module graph evaluates before it'
+    );
     assert.match(
       zodCspSource,
       /configureZod\(\{\s*jitless:\s*true\s*\}\)/,
