@@ -869,7 +869,7 @@
         "asia": "亞洲",
         "space": "太空"
       },
-      "play": "播放",
+      "play": "觀看即時直播",
       "previewStatus": "準備播放",
       "connecting": "正在連線…",
       "unverified": "無法確認此直播流是否即時",
@@ -1202,6 +1202,7 @@
       "emojiKeyNaval": "海軍資產"
     },
     "countryBrief": {
+      "moreActions": "更多操作",
       "shareLink": "分享連結",
       "shareStory": "分享報道",
       "printPdf": "列印 / PDF",
@@ -1427,6 +1428,20 @@
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
         }
+      },
+      "measure": {
+        "title": "測量距離",
+        "units": "距離單位",
+        "pointA": "選擇點 A。點選地圖或按 Enter 鍵到地圖中心。",
+        "pointB": "選擇點 B。平移地圖並按 Enter 鍵使用其中心。",
+        "geodesic": "大地線距離",
+        "note": "基於點選的座標；不是路線或經過驗證的資產分離。按 Escape 退出。",
+        "cancel": "取消選擇",
+        "cancelShort": "取消",
+        "resetShort": "重置",
+        "exitShort": "退出",
+        "reset": "重置測量",
+        "exit": "退出測量"
       }
     },
     "cii": {
@@ -1478,8 +1493,8 @@
       "badgeAnimDesc": "在面板標題中顯示更新徽章動畫",
       "headlineMemoryLabel": "標題記憶",
       "headlineMemoryDesc": "記住已閱標題以突出顯示新內容",
-      "streamAlwaysOnLabel": "在儀表板上自動播放直播流",
-      "streamAlwaysOnDesc": "當 Live News 和 Live Webcams 可見時自動啟動。保持關閉則僅在點選“播放”後載入影片。",
+      "streamAlwaysOnLabel": "自動播放即時攝影機",
+      "streamAlwaysOnDesc": "直播攝影機影片出現在螢幕上時立即開始載入。保持關閉可僅在您手動啟動時載入影片。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每個面板啟用",
       "analysisFrameworksSkillLibrary": "技能庫",
@@ -1520,7 +1535,9 @@
       "briefStoryDetails": "報道詳情 ({{count}})",
       "streamIdleStopLabel": "空閒時停止即時影片",
       "streamIdleStopNever": "從不",
-      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。"
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。",
+      "liveNewsAutoplayLabel": "自動播放即時新聞",
+      "liveNewsAutoplayDesc": "即時新聞影片出現在螢幕上時自動開始播放，靜音狀態。關閉此選項可僅在您手動啟動時載入影片。"
     },
     "settings": {
       "exportSettings": "匯出設定",
@@ -2546,8 +2563,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro已上線",
-      "tagline": "更多訊號，更少噪音。更多AI簡報。專屬於您的地緣政治和股票研究員。",
+      "headline": "每日AI情報摘要，透過郵件或Slack接收",
+      "tagline": "另含WM Analyst、告警規則和適用於Claude的MCP",
       "cta": "升級到Pro →",
       "dismiss": "關閉"
     },
@@ -3164,7 +3181,44 @@
       "airborne": "空中"
     },
     "cyberThreat": {
-      "title": "網路威脅"
+      "title": "網路威脅",
+      "evidence": "威脅資料來源證據",
+      "firstSeen": "首次發現",
+      "explanations": {
+        "c2_server": "資料來源報告了用於向惡意軟體傳送指令的命令控制伺服器。",
+        "malware_host": "資料來源報告了用於託管惡意軟體的地址。",
+        "phishing": "資料來源報告了與釣魚攻擊相關的指標。",
+        "malicious_url": "資料來源報告了與惡意活動相關的URL。"
+      },
+      "downloadTag": "malware_download：來源報告的惡意軟體下載位置。",
+      "familyNote": "惡意軟體家族標籤來自威脅資料來源。它不用於標識個人或組織。",
+      "approximateLocation": "對映的位置是根據IP推導的近似上下文，而非已驗證的物理主機位置。",
+      "network": {
+        "title": "網路資訊",
+        "privacy": "展開以從RIPEstat請求被動網路資料。指標IP將與該提供商共享。",
+        "disclaimer": "網路註冊和路由資訊不能用於識別攻擊者或確定提供商對該活動的責任。",
+        "loading": "正在載入網路資訊…",
+        "unknown": "不可用",
+        "disabled": "網路查詢未啟用。",
+        "invalid": "網路查詢需要公網IP地址。",
+        "unavailable": "網路查詢失敗。關閉並重新開啟彈窗稍後重試。",
+        "rateLimited": "網路查詢暫時受限。請稍後重試。",
+        "noData": "提供商未返回此IP的網路資訊。",
+        "partial": "部分網路資訊無法檢索。",
+        "ip": "IP",
+        "asn": "源ASN",
+        "operator": "報告的ASN持有人/網路運營商",
+        "prefix": "報告的路由字首",
+        "hostname": "反向DNS主機名（rDNS）",
+        "lookupAt": "網路查詢時間",
+        "routingAt": "路由資料時間",
+        "broaderPrefix": "提供商匹配了更廣泛的路由字首。這不是精確的IP分配記錄。",
+        "rdnsNote": "rDNS是DNS標籤，不是所有權證明。此查詢不提供註冊組織和精確位置。",
+        "copy": "複製",
+        "copied": "已複製。",
+        "copyFailed": "複製失敗。請選中文字後複製。"
+      },
+      "firstSeenNote": "這是跨源和 World Monitor 觀察中最早可用的指標日期；可能與列出的源的日期不同。"
     },
     "nuclear": {
       "types": {
@@ -3334,6 +3388,28 @@
       "readReport": "閱讀完整報告"
     },
     "datacenter": {
+      "details": {
+        "more": "更多詳情",
+        "owner": "叢集所有者 / 提供商（資料集）",
+        "power": "資料集功率數值",
+        "powerCaveat": "功率容量可能為報告值或估算值。這不是當前用電量的測量值。",
+        "powerBasis": "功率數值依據",
+        "reported": "報告值",
+        "estimated": "估算值",
+        "notAvailable": "暫無資訊",
+        "location": "位置精度",
+        "locationUnknown": "未經核實的地圖點；請勿用作設施的準確地址。",
+        "site": "設施位置（來源已核實）",
+        "city": "僅城市",
+        "region": "僅地區",
+        "country": "僅國家",
+        "dataset": "Epoch AI GPU 叢集資料集",
+        "evidence": "佐證來源",
+        "sourceDate": "來源釋出日期",
+        "metadataReviewedAt": "後設資料核查日期",
+        "firstOperationalDate": "首次運營日期（資料集）",
+        "freshness": "已儲存的資料集快照。當前狀態和規格可能已發生變化。"
+      },
       "status": {
         "existing": "運營中",
         "planned": "計劃中",
@@ -3484,7 +3560,8 @@
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
       "trackedVessels": "跟蹤艦艇",
-      "showLess": "顯示更少"
+      "showLess": "顯示更少",
+      "backToGroup": "返回艦船組"
     },
     "naturalEvent": {
       "closed": "已結束",
@@ -4645,7 +4722,7 @@
         "category": "自然災害",
         "purpose": "顯示地震、嚴重災害警報和仍在持續的地球觀測事件，用於掌握態勢。",
         "source": "USGS地震、GDACS警報和NASA EONET事件，合併進自然事件服務。",
-        "freshness": "自然事件每3小時寫入一次種子。USGS地震的預期在文件中約為5分鐘的來源節奏。",
+        "freshness": "自然事件每30分鐘寫入一次種子。USGS地震的預期在文件中約為5分鐘的來源節奏。",
         "confidence": "對已探測到的公開災害訊號較強。置信度因災害型別和上游報告延遲而不同。",
         "limitations": {
           "0": "為保持地圖可讀，低嚴重程度的GDACS警報會被濾除。",
@@ -4739,5 +4816,14 @@
     "happy": {
       "map": "好訊息地圖"
     }
+  },
+  "pwaInstall": {
+    "title": "安裝應用",
+    "share": "在 Safari 中輕點分享（帶向上箭頭的方框）。你可能需要先開啟更多選單。",
+    "add": "選擇新增到主螢幕。",
+    "confirm": "輕點新增，然後從主螢幕開啟 World Monitor。",
+    "close": "關閉",
+    "alertsHint": "將 World Monitor 安裝到主螢幕，以便在此 iPhone 或 iPad 上接收提醒。",
+    "how": "如何安裝"
   }
 }

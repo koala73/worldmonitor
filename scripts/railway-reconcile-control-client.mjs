@@ -247,6 +247,7 @@ export class RailwayReconcileControlClient {
     const encodedBody = method === 'GET' ? '' : canonicalJson(addVersion(body));
     let lastError;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 100));
       try {
         return await this.#requestOnce(path, encodedBody, { method, ambiguous: !isRead });
       } catch (error) {

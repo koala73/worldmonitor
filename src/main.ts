@@ -1,4 +1,5 @@
 import './styles/base-layer.css';
+import { initPwaInstall } from '@/services/pwa-install';
 import './bootstrap/zod-csp';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
@@ -6,6 +7,7 @@ import { markLcpDebug } from '@/utils/lcp-debug';
 import { registerWebMcpTools, type WebMcpAppBindings } from '@/services/webmcp';
 import { safeStorageRemove } from '@/utils/safe-storage';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
+import { renderBootFailureScreen } from '@/bootstrap/boot-failure';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
@@ -15,6 +17,8 @@ import { installUtmInterceptor } from './utils/utm';
 import { captureContentAttributionFromUrl } from '../shared/content-attribution';
 import { captureAgentRefFromSearch } from '../shared/agent-client-source';
 import { agentRefStorage } from '@/services/agent-ref';
+
+initPwaInstall();
 
 if (SITE_VARIANT === 'happy') {
   // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
@@ -401,6 +405,11 @@ function shouldSuppressCspViolation(
     try {
       const url = new URL(blockedURI);
       if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      // Google Fonts' legacy Early Access sheets (`/earlyaccess/<family>.css`),
+      // the same vendor and the same injection class. J0 round 7: Chrome desktop
+      // and Chrome iOS both loading `notosansmalayalam.css`, a family no surface
+      // of ours references.
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/earlyaccess\/[a-z0-9]+\.css$/.test(url.pathname)) return true;
       // Chinese-market extension CDN injecting its overlay stylesheet
       // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
       // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
@@ -556,15 +565,16 @@ import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
-import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installBetaConsoleToggle } from '@/bootstrap/beta-console-toggle';
 import { installSwUpdateHandler, readServiceWorkerContainer } from '@/bootstrap/sw-update';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 
-// Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
-const chunkReloadStorageKey = installChunkReloadGuard(__BUILD_HASH__);
+// Auto-reload once per build on stale chunk 404s after deployment (Vite fires
+// `vite:preloadError` for failed dynamic imports and modulepreloads).
+installChunkReloadGuard(__BUILD_HASH__);
 
 // First-touch agent link (`?ref=agent-claude`). Read before App.ts referral
 // capture strips `ref` from the URL; recorded as the sign-up source on the
@@ -685,11 +695,13 @@ if (urlParams.get('settings') === '1') {
     resolveBindings(app.getWebMcpBindings());
     app
       .init(webMcpController)
-      .then(() => {
-        clearChunkReloadGuard(chunkReloadStorageKey);
-      })
       .catch((error: unknown) => {
         console.error(error);
+        // A handled init rejection never reaches the global startup error
+        // monitors, so report it explicitly or boot failures stay invisible.
+        enqueueSentryCall((s) => {
+          s.captureException(error, { tags: { kind: 'boot_failure' } });
+        });
         try {
           // init() owns the WebMCP controller before its first await. A failed
           // boot must run normal teardown so the browser cannot retain tools
@@ -699,6 +711,13 @@ if (urlParams.get('settings') === '1') {
           // Cleanup is best-effort on a partially initialised App; never replace
           // the original boot failure with an unhandled teardown rejection.
           console.error('[App] Failed to clean up after initialization failure:', cleanupError);
+        }
+        // After teardown, so the dead skeleton / half-rendered dashboard cannot
+        // paint over it. A render failure must not mask the boot error above.
+        try {
+          renderBootFailureScreen(error);
+        } catch (renderError) {
+          console.error('[App] Failed to render the boot-failure screen:', renderError);
         }
       });
   }).catch((error: unknown) => {

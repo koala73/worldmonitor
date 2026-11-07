@@ -869,7 +869,7 @@
         "asia": "아시아",
         "space": "우주"
       },
-      "play": "재생",
+      "play": "실시간 보기",
       "previewStatus": "재생 준비 완료",
       "connecting": "연결 중…",
       "unverified": "이 스트림이 실시간인지 확인할 수 없습니다",
@@ -1202,6 +1202,7 @@
       "emojiKeyNaval": "해상 자산"
     },
     "countryBrief": {
+      "moreActions": "추가 작업",
       "shareLink": "링크 공유",
       "shareStory": "기사 공유",
       "printPdf": "인쇄 / PDF",
@@ -1427,6 +1428,20 @@
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
         }
+      },
+      "measure": {
+        "title": "거리 측정",
+        "units": "거리 단위",
+        "pointA": "지점 A를 선택하세요. 지도를 클릭하거나 지도 중심에서 Enter를 누르세요.",
+        "pointB": "지점 B를 선택하세요. 지도를 이동한 후 Enter를 눌러 중심을 사용하세요.",
+        "geodesic": "측지선 거리",
+        "note": "클릭된 좌표 간의 거리이며, 경로 또는 검증된 자산 분리가 아닙니다. Escape를 눌러 종료합니다.",
+        "cancel": "선택 취소",
+        "cancelShort": "취소",
+        "resetShort": "초기화",
+        "exitShort": "종료",
+        "reset": "측정 초기화",
+        "exit": "측정 종료"
       }
     },
     "cii": {
@@ -1478,8 +1493,8 @@
       "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
       "headlineMemoryLabel": "헤드라인 메모리",
       "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조",
-      "streamAlwaysOnLabel": "대시보드에서 라이브 스트림 자동 재생",
-      "streamAlwaysOnDesc": "Live News와 Live Webcams가 표시될 때 자동으로 시작합니다. 동영상을 재생 클릭 후에만 로드하려면 꺼 둡니다.",
+      "streamAlwaysOnLabel": "라이브 웹캠 자동 재생",
+      "streamAlwaysOnDesc": "라이브 웹캠 영상이 화면에 나타나면 자동으로 시작됩니다. 직접 시작할 때만 로드하려면 이 옵션을 꺼두세요.",
       "analysisFrameworksLabel": "분석 프레임워크",
       "analysisFrameworksActivePerPanel": "패널당 활성",
       "analysisFrameworksSkillLibrary": "스킬 라이브러리",
@@ -1520,7 +1535,9 @@
       "briefStoryDetails": "기사 세부 정보 ({{count}})",
       "streamIdleStopLabel": "유휴 상태일 때 라이브 영상 중지",
       "streamIdleStopDesc": "활동이 없는 상태가 이 시간 동안 지속되면 Live News와 Live Webcams을 중지하고 패널에 알림을 표시합니다.",
-      "streamIdleStopNever": "사용 안 함"
+      "streamIdleStopNever": "사용 안 함",
+      "liveNewsAutoplayLabel": "라이브 뉴스 자동 재생",
+      "liveNewsAutoplayDesc": "라이브 뉴스 영상이 화면에 나타나면 음소거 상태로 자동 재생됩니다. 직접 시작할 때만 영상을 로드하려면 이 옵션을 끄세요."
     },
     "settings": {
       "exportSettings": "설정 내보내기",
@@ -2546,8 +2563,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro 출시됨",
-      "tagline": "더 많은 신호, 더 적은 잡음. 더 많은 AI 브리핑. 당신만을 위한 지정학 및 주식 연구원입니다.",
+      "headline": "매일 이메일 또는 Slack으로 받는 AI 브리핑",
+      "tagline": "WM Analyst, 알림 규칙, Claude용 MCP 포함",
       "cta": "Pro로 업그레이드 →",
       "dismiss": "닫기"
     },
@@ -3164,7 +3181,44 @@
       "airborne": "비행 중"
     },
     "cyberThreat": {
-      "title": "사이버 위협"
+      "title": "사이버 위협",
+      "evidence": "위협 피드 증거",
+      "firstSeen": "처음 탐지",
+      "explanations": {
+        "c2_server": "피드에서 악성코드에 명령을 전송하는 명령 및 제어 서버를 보고했습니다.",
+        "malware_host": "피드에서 악성코드를 호스팅하는 주소를 보고했습니다.",
+        "phishing": "피드에서 피싱과 관련된 지표를 보고했습니다.",
+        "malicious_url": "피드에서 악의적 활동과 관련된 URL을 보고했습니다."
+      },
+      "downloadTag": "malware_download: 출처에서 악성코드 다운로드 위치를 보고했습니다.",
+      "familyNote": "악성코드 계열 레이블은 위협 피드에서 제공됩니다. 개인이나 조직을 식별하지 않습니다.",
+      "approximateLocation": "표시된 위치는 IP 기반 근사 컨텍스트이며, 확인된 실제 호스트 위치가 아닙니다.",
+      "network": {
+        "title": "네트워크 정보",
+        "privacy": "확장하여 RIPEstat에서 수동 네트워크 데이터를 요청할 수 있습니다. 지표 IP가 해당 제공자와 공유됩니다.",
+        "disclaimer": "네트워크 등록 및 라우팅은 공격자를 식별하거나 제공자를 책임지지 않습니다.",
+        "loading": "네트워크 정보 로드 중…",
+        "unknown": "사용 불가",
+        "disabled": "네트워크 조회가 활성화되지 않았습니다.",
+        "invalid": "네트워크 조회에는 공개 IP 주소가 필요합니다.",
+        "unavailable": "네트워크 조회 실패. 팝업을 닫았다가 다시 열어 나중에 다시 시도하세요.",
+        "rateLimited": "네트워크 조회가 일시적으로 제한됩니다. 나중에 다시 시도하세요.",
+        "noData": "제공자가 이 IP에 대한 네트워크 정보를 반환하지 않았습니다.",
+        "partial": "일부 네트워크 정보를 검색할 수 없습니다.",
+        "ip": "IP",
+        "asn": "출처 ASN",
+        "operator": "보고된 ASN 보유자 / 네트워크 운영자",
+        "prefix": "보고된 라우팅 프리픽스",
+        "hostname": "역 DNS 호스트명(rDNS)",
+        "lookupAt": "네트워크 조회 시간",
+        "routingAt": "라우팅 데이터 시간",
+        "broaderPrefix": "제공자가 더 넓은 라우팅 프리픽스와 일치했습니다. 이는 정확한 IP 할당 기록이 아닙니다.",
+        "rdnsNote": "rDNS는 DNS 레이블이며 소유권의 증거가 아닙니다. 등록된 조직과 정확한 위치는 이 조회에서 제공되지 않습니다.",
+        "copy": "복사",
+        "copied": "복사되었습니다.",
+        "copyFailed": "복사 실패. 텍스트를 선택하여 복사하세요."
+      },
+      "firstSeenNote": "피드 또는 World Monitor 관찰 자료 전체에서 사용 가능한 가장 이른 지표 날짜입니다. 나열된 출처의 날짜와 다를 수 있습니다."
     },
     "nuclear": {
       "types": {
@@ -3334,6 +3388,28 @@
       "readReport": "전체 보고서 읽기"
     },
     "datacenter": {
+      "details": {
+        "more": "자세한 정보",
+        "owner": "클러스터 소유자 / 제공업체 (데이터셋)",
+        "power": "데이터셋 전력 수치",
+        "powerCaveat": "전력 용량은 보고값 또는 추정값일 수 있습니다. 현재 전력 소비량을 측정한 값이 아닙니다.",
+        "powerBasis": "전력 수치의 근거",
+        "reported": "보고값",
+        "estimated": "추정값",
+        "notAvailable": "정보 없음",
+        "location": "위치 정확도",
+        "locationUnknown": "확인되지 않은 지도상의 지점입니다. 시설의 정확한 주소로 사용하지 마세요.",
+        "site": "시설 (출처로 확인됨)",
+        "city": "도시 단위",
+        "region": "지역 단위",
+        "country": "국가 단위",
+        "dataset": "Epoch AI GPU 클러스터 데이터셋",
+        "evidence": "근거 출처",
+        "sourceDate": "출처 게시일",
+        "metadataReviewedAt": "메타데이터 확인일",
+        "firstOperationalDate": "최초 가동일 (데이터셋)",
+        "freshness": "저장된 데이터셋 스냅샷입니다. 현재 상태와 사양은 변경되었을 수 있습니다."
+      },
       "status": {
         "existing": "운영 중",
         "planned": "계획됨",
@@ -3484,7 +3560,8 @@
       "vesselsCount": "{{count}}척 함정",
       "vessels": "함정",
       "trackedVessels": "추적 중인 함정",
-      "showLess": "축소"
+      "showLess": "축소",
+      "backToGroup": "그룹으로 돌아가기"
     },
     "naturalEvent": {
       "closed": "종료",
@@ -4645,7 +4722,7 @@
         "category": "자연재해",
         "purpose": "상황 파악을 위해 지진, 심각한 재난 경보, 진행 중인 지구 관측 사건을 보여 줍니다.",
         "source": "USGS 지진, GDACS 경보, NASA EONET 사건입니다. 자연 사건 서비스로 합칩니다.",
-        "freshness": "자연 사건은 3시간마다 시드합니다. USGS 지진은 대략 5분 출처 주기로 문서화되어 있습니다.",
+        "freshness": "자연 사건은 30분마다 시드합니다. USGS 지진은 대략 5분 출처 주기로 문서화되어 있습니다.",
         "confidence": "감지된 공개 재난 신호에 대해서는 강합니다. 신뢰도는 재해 종류와 상위 보고 지연에 따라 달라집니다.",
         "limitations": {
           "0": "지도를 읽기 쉽게 하려고 심각도가 낮은 GDACS 경보는 뺍니다.",
@@ -4739,5 +4816,14 @@
     "happy": {
       "map": "긍정 뉴스 지도"
     }
+  },
+  "pwaInstall": {
+    "title": "앱 설치",
+    "share": "Safari에서 공유(위쪽 화살표가 있는 사각형)를 누르세요. 먼저 더 보기 메뉴를 열어야 할 수 있습니다.",
+    "add": "홈 화면에 추가를 선택하세요.",
+    "confirm": "추가를 누른 다음 홈 화면에서 World Monitor를 여세요.",
+    "close": "닫기",
+    "alertsHint": "이 iPhone 또는 iPad에서 알림을 받으려면 World Monitor를 홈 화면에 설치하세요.",
+    "how": "설치 방법"
   }
 }

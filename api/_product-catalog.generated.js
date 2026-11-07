@@ -160,20 +160,20 @@ export const PUBLIC_PRODUCT_FACTS = {
       "url": "https://www.worldmonitor.app/pro#pricing",
       "currentForCheckout": false,
       "selfServe": false,
-      "dashboardAiCallsPerDay": 25000,
-      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
+      "dashboardAiCallsPerDay": 10000,
+      "description": "Everything in Pro + API, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee (by contract), On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO and SCIM (by contract), Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
   "heroProofStats": {
     "mapLayers": 59,
-    "feeds": 468,
-    "providers": 844,
+    "feeds": 470,
+    "providers": 846,
     "alertOrigins": 5
   },
   "depthProofStats": {
     "mapLayers": 59,
-    "feeds": 468,
-    "providers": 844,
+    "feeds": 470,
+    "providers": 846,
     "alertOrigins": 5,
     "chokepoints": 13,
     "instabilityCountries": 31,
@@ -263,6 +263,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 3,
+    "dataExport": false,
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
@@ -296,6 +298,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 10,
+    "dataExport": false,
     "highlighted": true
   },
   "pro_business": {
@@ -325,6 +329,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_starter": {
@@ -353,12 +359,14 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_business": {
     "name": "API Business",
     "localeKey": "apiBusiness",
-    "description": "Launch your own product on WorldMonitor data",
+    "description": "Launch your own product on World Monitor data",
     "features": [
       "Everything in API Starter",
       "R1–R3 redistribution rights for customer-facing products",
@@ -380,6 +388,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 100,
+    "dataExport": true,
     "highlighted": false
   },
   "enterprise": {
@@ -388,27 +398,29 @@ export const TIER_CONFIG = {
     "description": "Custom solutions for organizations",
     "features": [
       "Everything in Pro + API",
-      "Unlimited API requests",
+      "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing"
     ],
     "planLimits": {
-      "apiRequestsPerDay": 100000,
-      "apiBurstRequestsPerMinute": 1000,
-      "mcpCallsPerDay": 25000,
-      "dashboardAiCallsPerDay": 25000,
-      "mcpBurstRequestsPerMinute": 1000,
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "dashboardAiCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300,
       "desktopKeyRequestsPerDay": 0,
       "desktopKeyBurstPerMinute": 0,
-      "mcpDailyBudgetSharedWithRest": false
+      "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": -1,
+    "dataExport": true,
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

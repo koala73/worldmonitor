@@ -1292,6 +1292,7 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 // generated route tables and fails when an entry is not a real RPC path, when
 // its handler reaches an upstream itself, or when a seed-only route is missing.
 const cloudPreferredExact = new Set([
+  '/api/cyber/v1/list-cyber-threats',
   '/api/maritime/v1/list-ukmto-incidents',
   '/api/bootstrap',
   '/api/aviation/v1/get-airport-ops-summary',
@@ -1427,7 +1428,6 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/climate/v1/',
   '/api/conflict/v1/',
   '/api/consumer-prices/v1/',
-  '/api/cyber/v1/',
   '/api/health/v1/',
   '/api/natural/v1/',
   '/api/positive-events/v1/',
@@ -1441,14 +1441,16 @@ const cloudPreferredSeedOnlyPrefixes = [
   '/api/wildfire/v1/',
 ];
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
-// Plain api/*.js routes whose answer lives in cloud-only state: session signing
+// Routes whose answer lives in cloud-only state: session signing
 // secrets, OAuth client records, operator Redis sets, cross-user aggregates and
 // the security-report sink. The sidecar holds none of it, so served locally
 // they answer 5xx or empty. Until #9906 they reached the cloud only by accident:
 // a static Upstash import kept them from loading on desktop at all.
 // reverse-geocode belongs here too: its shared Nominatim limiter fails closed
 // without Upstash (503 locally), and its geocode cache is the cloud's Redis.
+// Cyber network enrichment also needs cloud authorization and shared budgets.
 const cloudPreferredServerStateRoutes = new Set([
+  '/api/cyber/v1/get-network-info',
   '/api/analytics-health',
   '/api/notification-suppressions',
   '/api/oauth/authorize',
@@ -1697,6 +1699,8 @@ function makeCorsHeaders(req) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
   // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
   // with a validated address can instead pin its detected family below.
@@ -1718,6 +1722,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
+        signal,
         hostname: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
@@ -1732,6 +1737,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
+        res.on('error', reject);
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
           const body = Buffer.concat(chunks);
@@ -1766,15 +1772,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
     pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal: controller.signal };
-    if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
-    return await fetch(fetchUrl, requestOptions);
-  } finally {
-    clearTimeout(timer);
-  }
+  const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal };
+  if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
+  return fetch(fetchUrl, requestOptions);
 }
 
 function relayToHttpUrl(rawUrl) {
@@ -2600,6 +2600,7 @@ export const __testing__ = {
   canCompress,
   jsonForScript,
   isYahooFinanceHost,
+  fetchWithTimeout,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

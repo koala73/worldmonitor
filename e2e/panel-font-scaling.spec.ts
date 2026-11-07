@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { FONT_SCALE_STORAGE_KEY } from '../src/services/font-scale-settings';
+import { LIVE_NEWS_AUTOPLAY_STORAGE_KEY } from '../src/services/live-stream-settings';
 import { acceptTesterKeySession } from './helpers/accept-tester-key-session';
 
 const STEPS = ['0.9', '1', '1.1', '1.25', '1.5', '2'] as const;
@@ -8,7 +9,7 @@ const PANELS_STORAGE_KEY = 'worldmonitor-panels';
 const TABS_STORAGE_KEY = 'worldmonitor-tabs-v1:full';
 
 async function seedDashboard(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.addInitScript((autoplayKey) => {
     if (sessionStorage.getItem('__panel_font_scale_seeded__')) return;
     localStorage.clear();
     sessionStorage.clear();
@@ -18,7 +19,10 @@ async function seedDashboard(page: Page): Promise<void> {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-  });
+    // Live News autoplays by default (#10218); with it off the panel shows
+    // its click-to-play card, whose title is the panel body text measured here.
+    localStorage.setItem(autoplayKey, 'false');
+  }, LIVE_NEWS_AUTOPLAY_STORAGE_KEY);
   await acceptTesterKeySession(page);
 
   await page.route('**/api/market/v1/get-fear-greed-index', route => route.fulfill({
@@ -193,6 +197,7 @@ test.describe('panel font scaling', () => {
     await page.locator('#us-tab-panels').click();
 
     const panelScale = page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`);
+    await panelScale.locator('xpath=ancestor::details').locator('summary').click();
     await expect(panelScale).toBeVisible({ timeout: 15_000 });
     await expect(panelScale).toHaveValue('global');
     await panelScale.selectOption('0.9');

@@ -17,6 +17,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/open-data-chokepoints.js",
+      "category": "non-json",
+      "reason": "Serves the CC BY 4.0 chokepoint status open dataset at /data/v1/chokepoints/ as byte-exact dated JSON and CSV files from the Redis archive the daily open-data workflow publishes. The file contract is a published static-file layout, not an RPC envelope.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/miit-news.js",
       "category": "non-json",
       "reason": "Adapts the fixed official MIIT dated news listing to RSS/XML for the existing browser and server feed readers. Success responses use application/rss+xml; the RSS transport cannot use a JSON proto envelope.",
@@ -1000,6 +1007,13 @@
       "path": "api/customer-portal.ts",
       "category": "deferred",
       "reason": "Issues a Dodo customer-portal redirect URL. Paired with create-checkout.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/pro-business-upgrade.ts",
+      "category": "deferred",
+      "reason": "Previews or applies the in-place Pro to Pro Business Dodo plan change for /pro. Paired with create-checkout.ts and customer-portal.ts; migrate together.",
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },

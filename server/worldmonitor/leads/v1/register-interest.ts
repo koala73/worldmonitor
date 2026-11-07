@@ -64,6 +64,7 @@ async function sendConfirmationEmail(email: string, referralCode: string): Promi
   }
   try {
     const resendRes = await fetch('https://api.resend.com/emails', {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -8,6 +8,9 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
+      // Seed once per tab so a reload keeps what the test saved.
+      if (sessionStorage.getItem('e2e-mobile-nav-seeded')) return;
+      sessionStorage.setItem('e2e-mobile-nav-seeded', '1');
       localStorage.removeItem('mobile-map-collapsed');
       localStorage.setItem('wm-layer-warning-dismissed', 'true');
     });
@@ -18,7 +21,8 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
   test('uses Today as home and switches between Map, Search, Alerts, and More', async ({ page }) => {
     const tabs = page.locator('#mobileTabBar');
     await expect(tabs).toBeVisible();
-    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
+    // A first visit opens on the map; Today collapses it and keeps that choice.
+    await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
     await expect(page.locator('.site-footer')).toBeHidden();
     await expect(page.locator('.hamburger-btn')).toBeHidden();
     await expect(page.locator('#searchMobileFab')).toHaveCount(0);
@@ -50,6 +54,13 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
 
     await page.locator('[data-mobile-tab="alerts"]').click();
     await expect(page.locator('[data-mobile-tab="alerts"]')).toHaveAttribute('aria-current', 'page');
+
+    // Collapsing is the viewer's choice and survives a reload.
+    await page.locator('[data-mobile-tab="today"]').click();
+    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+    await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
   });
 
   test('keeps the account entry visible in the header before More opens', async ({ page }) => {

@@ -32,6 +32,18 @@ available without fabricating a baseline. During the first fourteen days of a
 month, unpublished Argentina archives can fall back to the previous month's
 dated reports; malformed current archives still fail closed.
 
+FEWS NET and MakStat never seeded from Railway: the FEWS Data Warehouse answers
+Railway's egress with HTTP 403 (200 from other networks) and Railway cannot
+resolve `makstat.stat.gov.mk` (ENOTFOUND, then connect timeouts). Their adapters
+set `proxy: true`, so `collectFoodSource` sends their requests proxy-first through
+`PROXY_URL` with the shared `proxyFetch` CONNECT tunnel, which resolves the
+publisher host at the proxy. Each request starts at a random Decodo sticky exit
+and moves to the next one on a tunnel failure, a timeout or a publisher 403, up
+to three exits. Each exit has its own timeout and a share of the remaining source
+budget, so one hung exit cannot use up the time the others need. A gateway 4xx stops at once. A direct request is made only when no exit
+reached the publisher. Without `PROXY_URL` (local runs) these sources fetch
+directly. Other food sources never use the proxy.
+
 Initial fetch failures write an NX error receipt without a success timestamp or
 activation marker, so health reports `SEED_ERROR` before the first publish while
 preserving any existing success metadata.

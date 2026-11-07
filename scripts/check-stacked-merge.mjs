@@ -535,6 +535,7 @@ function rerunLatestGuard({ gh, repository, headSha }) {
   // A newly created run can be absent from a stale index. Retry only the
   // visibility lookup; a failed POST must never cause a second rerun request.
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) sleepSync(Math.min(1_000, 100 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5));
     const raw = gh([
       'api',
       `repos/${repository}/actions/workflows/stacked-merge-guard.yml/runs?head_sha=${headSha}&event=pull_request&per_page=1`,

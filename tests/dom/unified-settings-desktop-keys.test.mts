@@ -306,7 +306,16 @@ describe('Settings -> API Keys: which section each plan sees', () => {
 
     const text = panel().textContent ?? '';
     expect(text).toContain('Desktop keys come with Pro');
-    expect(panel().querySelector('.upgrade-pro-cta')?.textContent).toContain('Upgrade to Pro');
+    const pro = panel().querySelector('.upgrade-pro-cta');
+    expect(pro?.textContent).toContain('Upgrade to Pro');
+    // "Upgrade to Pro" opens the /pro plan picker; only API Starter checks out
+    // here, so the one Terms line sits between the two, above API Starter.
+    const starter = panel().querySelector('.api-keys-gate-btn');
+    expect(starter?.textContent).toBe('Upgrade to API Starter');
+    const consents = panel().querySelectorAll('.checkout-consent');
+    expect(consents).toHaveLength(1);
+    expect(pro!.compareDocumentPosition(consents[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(consents[0]!.compareDocumentPosition(starter!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(createButton()).toBeNull();
     expect(listApiKeys).not.toHaveBeenCalled();
   });

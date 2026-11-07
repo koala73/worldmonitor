@@ -497,7 +497,7 @@
         "space": "RYMDEN"
       },
       "paused": "Webbkameror pausade",
-      "play": "Spela",
+      "play": "Se live",
       "previewStatus": "Redo att spela",
       "connecting": "Ansluter…",
       "unverified": "Kan inte bekräfta att denna ström är live",
@@ -720,6 +720,20 @@
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
         }
+      },
+      "measure": {
+        "title": "Mät avstånd",
+        "units": "Avståndsenheter",
+        "pointA": "Välj punkt A. Klicka på kartan eller tryck Enter vid kartans centrum.",
+        "pointB": "Välj punkt B. Panorera kartan och tryck Enter för att använda dess centrum.",
+        "geodesic": "Geodetiskt avstånd",
+        "note": "Mellan klickade koordinater; inte en rutt eller verifierad tillgångsseparation. Escape avslutar.",
+        "cancel": "Avbryt val",
+        "cancelShort": "Avbryt",
+        "resetShort": "Återställ",
+        "exitShort": "Avsluta",
+        "reset": "Återställ mätning",
+        "exit": "Avsluta mätning"
       }
     },
     "climate": {
@@ -752,6 +766,7 @@
       "shareStory": "Dela berättelse",
       "printPdf": "Skriv ut / PDF",
       "exportData": "Exportera data",
+      "moreActions": "Fler åtgärder",
       "shareLink": "Dela länk"
     },
     "relatedAssets": {
@@ -1312,8 +1327,8 @@
       "badgeAnimDesc": "Animera uppdateringsemblem i panelrubriker",
       "headlineMemoryLabel": "Rubrikminne",
       "headlineMemoryDesc": "Kom ihåg sedda rubriker för att markera nya",
-      "streamAlwaysOnLabel": "Spela upp liveströmmar automatiskt på instrumentpanelen",
-      "streamAlwaysOnDesc": "Startar Live News och Live Webcams automatiskt när de är synliga. Lämna avstängt för att ladda video först efter att du klickar på Spela.",
+      "streamAlwaysOnLabel": "Spela live-webbkameror automatiskt",
+      "streamAlwaysOnDesc": "Startar direktwebkameravideoerna så snart de visas på skärmen. Lämna detta avstängt för att endast ladda dem när du startar dem själv.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1362,7 +1377,9 @@
       "briefStoryDetails": "Detaljer om nyheten ({{count}})",
       "streamIdleStopLabel": "Stoppa livevideo när inaktiv",
       "streamIdleStopDesc": "Stoppar Live News och Live Webcams efter denna tid utan aktivitet och visar ett meddelande i panelen.",
-      "streamIdleStopNever": "Aldrig"
+      "streamIdleStopNever": "Aldrig",
+      "liveNewsAutoplayLabel": "Automatisk uppspelning av direktnyheter",
+      "liveNewsAutoplayDesc": "Startar direktnyhetsvideon, avstängd, så snart den visas på skärmen. Stäng av detta för att endast ladda videon när du startar den själv."
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -2172,8 +2189,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro är lanserad",
-      "tagline": "Mer signal, mindre brus. Fler AI-uppdateringar. En geopolitisk och aktieanalytiker bara för dig.",
+      "headline": "Dagliga AI-briefer via mejl eller Slack",
+      "tagline": "plus WM Analyst, varningsregler och MCP för Claude",
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
     },
@@ -2791,7 +2808,44 @@
       "open": "ÖPPEN"
     },
     "cyberThreat": {
-      "title": "CYBERHOT"
+      "title": "CYBERHOT",
+      "evidence": "Bevis från hotflöde",
+      "firstSeen": "Först sedd",
+      "explanations": {
+        "c2_server": "Flödet rapporterar en kommando- och kontrollserver som används för att skicka instruktioner till skadlig kod.",
+        "malware_host": "Flödet rapporterar en adress som används för att vara värd för skadlig kod.",
+        "phishing": "Flödet rapporterar en indikator kopplad till nätfiske.",
+        "malicious_url": "Flödet rapporterar en URL kopplad till skadlig aktivitet."
+      },
+      "downloadTag": "malware_download: källan rapporterar en plats för nedladdning av skadlig kod.",
+      "familyNote": "Etiketten för skadlig kodgrupp kommer från hotflödet. Den identifierar ingen person eller organisation.",
+      "approximateLocation": "Den kartlagda platsen är ungefärlig IP-härledd kontext, inte en verifierad fysisk värdplats.",
+      "network": {
+        "title": "Nätverksinformation",
+        "privacy": "Expandera för att begära passiv nätverksdata från RIPEstat. IP-indikatorn delas med denna leverantör.",
+        "disclaimer": "Nätverksregistrering och routning identifierar inte angriparen eller gör leverantören ansvarig för aktiviteten.",
+        "loading": "Laddar nätverksinformation…",
+        "unknown": "Inte tillgängligt",
+        "disabled": "Nätverkssökning är inte aktiverad.",
+        "invalid": "Nätverkssökning kräver en offentlig IP-adress.",
+        "unavailable": "Nätverkssökning misslyckades. Stäng och öppna popupen igen för att försöka senare.",
+        "rateLimited": "Nätverkssökning är tillfälligt begränsad. Försök igen senare.",
+        "noData": "Leverantören returnerade ingen nätverksinformation för denna IP.",
+        "partial": "En del nätverksinformation kunde inte hämtas.",
+        "ip": "IP",
+        "asn": "Ursprungs-ASN",
+        "operator": "Rapporterad ASN-innehavare / nätverksoperatör",
+        "prefix": "Rapporterad routningsprefix",
+        "hostname": "Omvänd DNS-värdnamn (rDNS)",
+        "lookupAt": "Tid för nätverkssökning",
+        "routingAt": "Tid för routningsdata",
+        "broaderPrefix": "Leverantören matchade en bredare routningsprefix. Detta är inte en exakt IP-allokeringspost.",
+        "rdnsNote": "rDNS är en DNS-etikett, inte bevis på äganderätt. Registrerad organisation och exakt plats tillhandahålls inte av denna sökning.",
+        "copy": "Kopiera",
+        "copied": "Kopierad.",
+        "copyFailed": "Kopiering misslyckades. Markera texten för att kopiera den."
+      },
+      "firstSeenNote": "Detta är det tidigaste tillgängliga indikatordatumet från feeds eller World Monitor observationer; det kan skilja sig från det angivna källdatumet."
     },
     "nuclear": {
       "types": {
@@ -2962,6 +3016,28 @@
       "readReport": "Läs hela rapporten"
     },
     "datacenter": {
+      "details": {
+        "more": "Mer information",
+        "owner": "Klusterägare / leverantör (dataset)",
+        "power": "Effektvärde i datasetet",
+        "powerCaveat": "Effektkapaciteten kan vara rapporterad eller uppskattad. Detta är inte en mätning av aktuell elförbrukning.",
+        "powerBasis": "Grund för effektvärdet",
+        "reported": "Rapporterad",
+        "estimated": "Uppskattad",
+        "notAvailable": "Inte tillgängligt",
+        "location": "Platsnoggrannhet",
+        "locationUnknown": "Obekräftad kartpunkt; använd inte som anläggningens exakta adress.",
+        "site": "Anläggning (verifierad av källa)",
+        "city": "Endast stad",
+        "region": "Endast region",
+        "country": "Endast land",
+        "dataset": "Epoch AI:s dataset för GPU-kluster",
+        "evidence": "Stödjande källa",
+        "sourceDate": "Källans publiceringsdatum",
+        "metadataReviewedAt": "Metadata kontrollerade",
+        "firstOperationalDate": "Datum för första drift (dataset)",
+        "freshness": "Sparad ögonblicksbild av datasetet. Aktuell status och specifikationer kan ha ändrats."
+      },
       "status": {
         "existing": "OPERATIV",
         "planned": "PLANERAD",
@@ -3112,7 +3188,8 @@
       "vesselsCount": "{{count}} FARTYG",
       "vessels": "FARTYG",
       "trackedVessels": "BÅRDA FARTYG",
-      "showLess": "Visa mindre"
+      "showLess": "Visa mindre",
+      "backToGroup": "Tillbaka till gruppen"
     },
     "naturalEvent": {
       "closed": "STÄNGD",
@@ -4666,7 +4743,7 @@
         "category": "Naturkatastrofer",
         "purpose": "Visar jordbävningar, svåra katastrofvarningar och aktiva jordobservationshändelser för lägesbilden.",
         "source": "Jordbävningar från USGS, varningar från GDACS och händelser från NASA EONET, sammanslagna i tjänsten för naturliga händelser.",
-        "freshness": "Naturliga händelser matas in var 3:e timme. För USGS-jordbävningar är den dokumenterade förväntan en källtakt på ungefär 5 minuter.",
+        "freshness": "Naturliga händelser matas in var 30:e minut. För USGS-jordbävningar är den dokumenterade förväntan en källtakt på ungefär 5 minuter.",
         "confidence": "Starkt för upptäckta offentliga katastrofsignaler. Tillförlitligheten varierar med farotyp och källans rapporteringsfördröjning.",
         "limitations": {
           "0": "GDACS-varningar med låg allvarlighetsgrad filtreras bort så att kartan ska gå att läsa.",
@@ -4760,5 +4837,14 @@
     "happy": {
       "map": "Karta över goda nyheter"
     }
+  },
+  "pwaInstall": {
+    "title": "Installera app",
+    "share": "Tryck på Dela i Safari (fyrkanten med en uppåtpil). Du kan behöva öppna menyn Mer först.",
+    "add": "Välj Lägg till på hemskärmen.",
+    "confirm": "Tryck på Lägg till och öppna World Monitor från hemskärmen.",
+    "close": "Stäng",
+    "alertsHint": "Installera World Monitor på hemskärmen för att få aviseringar på denna iPhone eller iPad.",
+    "how": "Så installerar du"
   }
 }

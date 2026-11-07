@@ -5,11 +5,13 @@
 # from the web application's root Dockerfile while retaining repo-root access to
 # the shared bootstrap tier registry.
 
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3
+FROM node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
 
 WORKDIR /app
+ENV npm_config_install_links=true
 
 COPY scripts/package.json scripts/package-lock.json ./scripts/
+COPY scripts/vendor/deepmerge/ ./scripts/vendor/deepmerge/
 RUN npm ci --prefix scripts --omit=dev --ignore-scripts
 
 COPY scripts/ ./scripts/

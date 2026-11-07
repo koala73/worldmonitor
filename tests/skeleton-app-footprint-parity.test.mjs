@@ -233,9 +233,11 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
       !runPrepaintBootScript(false).has('wm-map-collapsed'),
       'the inline pre-paint script must leave the expanded-map cohort unchanged',
     );
+    // Blocked storage falls back to the first-visit default, the expanded map,
+    // which isMobileMapCollapsedPreferred() also returns, so nothing snaps on boot.
     assert.ok(
-      runMapPreferencePrepaintScript({ storageThrows: true }).has('wm-map-collapsed'),
-      'blocked storage must keep the feed-first collapsed default on the first paint',
+      !runMapPreferencePrepaintScript({ storageThrows: true }).has('wm-map-collapsed'),
+      'blocked storage must keep the map-first default on the first paint',
     );
 
     const mobileMapToggle = classMethodBody(panelLayout, 'private setupMobileMapToggle()');
@@ -303,11 +305,12 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     // #5205 review P1: this read runs BEFORE the shell installs — a bare
     // localStorage access throws under blocked storage (SecurityError) and
     // would strand users on the boot skeleton. The helper must route through
-    // the try/catch-guarded loadFromStorage with the feed-first collapsed default.
+    // the try/catch-guarded loadFromStorage with the map-first default, the
+    // same default the pre-paint script uses when storage throws.
     assert.match(
       panelLayout,
-      /private static isMobileMapCollapsedPreferred\(\): boolean \{\s*return loadFromStorage<boolean>\('mobile-map-collapsed', true\) === true;/,
-      'the collapse-pref read must use guarded loadFromStorage, defaulting to the mobile Today state',
+      /private static isMobileMapCollapsedPreferred\(\): boolean \{\s*return loadFromStorage<boolean>\('mobile-map-collapsed', false\) === true;/,
+      'the collapse-pref read must use guarded loadFromStorage, defaulting to the expanded map',
     );
     assert.doesNotMatch(
       panelLayout,

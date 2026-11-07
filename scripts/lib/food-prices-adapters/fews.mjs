@@ -23,8 +23,9 @@ export function parseFews(payload, country) {
   return result.filter(row => row.date === latest);
 }
 
-/** Collect a bounded recent window of monthly prices for the configured FEWS country. */
-export const fewsAdapter = country => ({ collect: async ctx => {
+/** Collect a bounded recent window of monthly prices for the configured FEWS country. The Data Warehouse answers
+ * Railway's egress with HTTP 403 on every run (200 elsewhere), so requests take the shared proxy route. */
+export const fewsAdapter = country => ({ proxy: true, collect: async ctx => {
   const start = new Date(Date.UTC(ctx.now.getUTCFullYear(), ctx.now.getUTCMonth() - 3, 1)).toISOString().slice(0, 10);
   const url = `${URL_BASE}?${new URLSearchParams({ country_code: country, format: 'json', start_date: start })}`;
   return priceReport(parseFews(JSON.parse(await ctx.get(url)), country), url, ctx.now);

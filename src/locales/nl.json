@@ -497,7 +497,7 @@
         "space": "RUIMTE"
       },
       "paused": "Webcams gepauzeerd",
-      "play": "Afspelen",
+      "play": "Bekijk live",
       "previewStatus": "Klaar om af te spelen",
       "connecting": "Verbinding wordt tot stand gebracht…",
       "unverified": "Kan niet bevestigen dat deze stream live is",
@@ -720,6 +720,20 @@
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
         }
+      },
+      "measure": {
+        "title": "Afstand meten",
+        "units": "Afstandseenheden",
+        "pointA": "Selecteer punt A. Klik op de kaart of druk op Enter bij het kaartcentrum.",
+        "pointB": "Selecteer punt B. Verschuif de kaart en druk op Enter om het centrum te gebruiken.",
+        "geodesic": "Geodetische afstand",
+        "note": "Tussen geklikt coördinaten; geen route of geverifieerde activaseparatie. Escape sluit af.",
+        "cancel": "Selectie annuleren",
+        "cancelShort": "Annuleren",
+        "resetShort": "Opnieuw instellen",
+        "exitShort": "Afsluiten",
+        "reset": "Meting opnieuw instellen",
+        "exit": "Meting afsluiten"
       }
     },
     "climate": {
@@ -752,6 +766,7 @@
       "shareStory": "Deel verhaal",
       "printPdf": "Afdrukken / PDF",
       "exportData": "Gegevens exporteren",
+      "moreActions": "Meer acties",
       "shareLink": "Link delen"
     },
     "relatedAssets": {
@@ -1312,8 +1327,8 @@
       "badgeAnimDesc": "Update-badges in paneelkoppen animeren",
       "headlineMemoryLabel": "Koptekstgeheugen",
       "headlineMemoryDesc": "Gezien koppen onthouden om nieuwe te markeren",
-      "streamAlwaysOnLabel": "Livestreams automatisch afspelen op het dashboard",
-      "streamAlwaysOnDesc": "Start Live News en Live Webcams automatisch wanneer ze zichtbaar zijn. Laat uit om video pas te laden nadat je op Afspelen klikt.",
+      "streamAlwaysOnLabel": "Live webcams automatisch afspelen",
+      "streamAlwaysOnDesc": "Start de live webcamvideo's automatisch zodra deze op het scherm verschijnen. Laat dit uit om ze alleen te laden wanneer je deze zelf start.",
       "globeRenderScaleOptions": {
         "1": "Eco (1x)",
         "2": "4K (2x)",
@@ -1362,7 +1377,9 @@
       "briefStoryDetails": "Details van het bericht ({{count}})",
       "streamIdleStopLabel": "Livevideostream stoppen bij inactiviteit",
       "streamIdleStopDesc": "Stopt Live News en Live Webcams na deze periode zonder activiteit en toont een melding in het paneel.",
-      "streamIdleStopNever": "Nooit"
+      "streamIdleStopNever": "Nooit",
+      "liveNewsAutoplayLabel": "Automatisch afspelen van live nieuws",
+      "liveNewsAutoplayDesc": "Start de live nieuwsvideo automatisch, zonder geluid, zodra deze op het scherm verschijnt. Zet dit uit om de video alleen te laden wanneer je deze zelf start."
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -2172,8 +2189,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro is gelanceerd",
-      "tagline": "Meer signaal, minder ruis. Meer AI-briefings. Een geopolitieke & aandelenonderzoeker speciaal voor jou.",
+      "headline": "Dagelijkse AI-briefings per e-mail of Slack",
+      "tagline": "plus WM Analyst, waarschuwingsregels en MCP voor Claude",
       "cta": "Upgrade naar Pro →",
       "dismiss": "Verwijderen"
     },
@@ -2791,7 +2808,44 @@
       "open": "OPEN"
     },
     "cyberThreat": {
-      "title": "CYBERDREIGING"
+      "title": "CYBERDREIGING",
+      "evidence": "Bewijsmateriaal uit dreigingsfeed",
+      "firstSeen": "Eerst waargenomen",
+      "explanations": {
+        "c2_server": "De feed rapporteert een command-and-control-server die wordt gebruikt om instructies naar malware te sturen.",
+        "malware_host": "De feed rapporteert een adres dat wordt gebruikt om malware te hosten.",
+        "phishing": "De feed rapporteert een indicator die is gekoppeld aan phishing.",
+        "malicious_url": "De feed rapporteert een URL die is gekoppeld aan schadelijke activiteit."
+      },
+      "downloadTag": "malware_download: de bron rapporteert een downloadlocatie voor malware.",
+      "familyNote": "Het label voor de malwarefamilie komt uit de dreigingsfeed. Het identificeert geen persoon of organisatie.",
+      "approximateLocation": "De weergegeven locatie is geschatte IP-afgeleid contextgegevens, geen geverifieerde fysieke hostlocatie.",
+      "network": {
+        "title": "Netwerkgegevens",
+        "privacy": "Vouw uit om passieve netwerkgegevens van RIPEstat op te vragen. Het indicator-IP wordt met die provider gedeeld.",
+        "disclaimer": "Netwerkregistratie en routering identificeren de aanvaller niet en maken de provider niet verantwoordelijk voor de activiteit.",
+        "loading": "Netwerkgegevens laden…",
+        "unknown": "Niet beschikbaar",
+        "disabled": "Netwerkopzoeking is niet ingeschakeld.",
+        "invalid": "Netwerkopzoeking vereist een openbaar IP-adres.",
+        "unavailable": "Netwerkopzoeking mislukt. Sluit het popup en open het later opnieuw om het opnieuw te proberen.",
+        "rateLimited": "Netwerkopzoeking is tijdelijk beperkt. Probeer het later opnieuw.",
+        "noData": "De provider heeft geen netwerkgegevens voor dit IP geretourneerd.",
+        "partial": "Enkele netwerkgegevens konden niet worden opgehaald.",
+        "ip": "IP",
+        "asn": "Herkomst-ASN",
+        "operator": "Gerapporteerde ASN-houder / netwerkoperator",
+        "prefix": "Gerapporteerd routeringsprefix",
+        "hostname": "Reverse-DNS-hostnaam (rDNS)",
+        "lookupAt": "Opzoektijd netwerk",
+        "routingAt": "Routeringsgegevenstijd",
+        "broaderPrefix": "De provider kwam overeen met een breder routeringsprefix. Dit is geen exact IP-toewijzingsrecord.",
+        "rdnsNote": "rDNS is een DNS-label, geen bewijs van eigendom. Geregistreerde organisatie en precieze locatie worden niet verstrekt door deze opzoeking.",
+        "copy": "Kopiëren",
+        "copied": "Gekopieerd.",
+        "copyFailed": "Kopiëren mislukt. Selecteer de tekst om deze te kopiëren."
+      },
+      "firstSeenNote": "Dit is de vroegst beschikbare indicatordatum uit feeds of World Monitor-waarnemingen; deze kan afwijken van de datum van de vermelde bron."
     },
     "nuclear": {
       "types": {
@@ -2962,6 +3016,28 @@
       "readReport": "Lees het volledige rapport"
     },
     "datacenter": {
+      "details": {
+        "more": "Meer details",
+        "owner": "Clustereigenaar / aanbieder (dataset)",
+        "power": "Vermogenswaarde in dataset",
+        "powerCaveat": "De vermogenscapaciteit kan gemeld of geschat zijn. Dit is geen meting van het huidige elektriciteitsverbruik.",
+        "powerBasis": "Basis van vermogenswaarde",
+        "reported": "Gemeld",
+        "estimated": "Geschat",
+        "notAvailable": "Niet beschikbaar",
+        "location": "Locatienauwkeurigheid",
+        "locationUnknown": "Onbevestigd kaartpunt; niet gebruiken als exact adres van de faciliteit.",
+        "site": "Locatie (door bron bevestigd)",
+        "city": "Alleen stad",
+        "region": "Alleen regio",
+        "country": "Alleen land",
+        "dataset": "Epoch AI GPU-clusterdataset",
+        "evidence": "Ondersteunende bron",
+        "sourceDate": "Publicatiedatum van de bron",
+        "metadataReviewedAt": "Metagegevens gecontroleerd",
+        "firstOperationalDate": "Datum eerste ingebruikname (dataset)",
+        "freshness": "Opgeslagen momentopname van de dataset. De huidige status en specificaties kunnen gewijzigd zijn."
+      },
       "status": {
         "existing": "OPERATIONEEL",
         "planned": "GEPLAND",
@@ -3112,7 +3188,8 @@
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
       "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
-      "showLess": "Minder weergeven"
+      "showLess": "Minder weergeven",
+      "backToGroup": "Terug naar de groep"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",
@@ -4666,7 +4743,7 @@
         "category": "Natuurrampen",
         "purpose": "Toont aardbevingen, zware rampwaarschuwingen en actieve aardobservatiegebeurtenissen, voor situatiebewustzijn.",
         "source": "Aardbevingen van USGS, waarschuwingen van GDACS en gebeurtenissen van NASA EONET, samengevoegd in de dienst voor natuurlijke gebeurtenissen.",
-        "freshness": "Natuurlijke gebeurtenissen worden elke 3 uur geladen. Het verwachte bronritme voor aardbevingen van USGS is gedocumenteerd op ongeveer 5 minuten.",
+        "freshness": "Natuurlijke gebeurtenissen worden elke 30 minuten geladen. Het verwachte bronritme voor aardbevingen van USGS is gedocumenteerd op ongeveer 5 minuten.",
         "confidence": "Sterk voor gedetecteerde openbare rampsignalen. De betrouwbaarheid verschilt per gevaartype en door de meldingsvertraging bij de bron.",
         "limitations": {
           "0": "GDACS-waarschuwingen van lage ernst worden weggefilterd zodat de kaart leesbaar blijft.",
@@ -4760,5 +4837,14 @@
     "happy": {
       "map": "Goed nieuws-kaart"
     }
+  },
+  "pwaInstall": {
+    "title": "App installeren",
+    "share": "Tik in Safari op Delen (het vierkant met een pijl omhoog). Mogelijk moet je eerst het menu Meer openen.",
+    "add": "Kies Zet op beginscherm.",
+    "confirm": "Tik op Voeg toe en open World Monitor vanaf je beginscherm.",
+    "close": "Sluiten",
+    "alertsHint": "Installeer World Monitor op je beginscherm om meldingen te ontvangen op deze iPhone of iPad.",
+    "how": "Installatie-instructies"
   }
 }

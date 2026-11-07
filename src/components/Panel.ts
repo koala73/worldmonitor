@@ -8,8 +8,6 @@ import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
-import { createCheckoutConsentElement } from '@/utils/legal-links';
-import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -906,8 +904,15 @@ export class Panel {
       return { ok: false, persisted: false };
     }
     this._applyCollapsed(this._collapseBtn, collapsed);
+    this.onCollapsedChange(collapsed);
     return { ok: true, persisted: true };
   }
+
+  /**
+   * Runs after the viewer collapses or expands the panel. Not called when the saved state is
+   * restored in the constructor, before subclass fields exist.
+   */
+  protected onCollapsedChange(_collapsed: boolean): void {}
 
   /** Override in panels that expose a fullscreen control. */
   public supportsFullscreen(): boolean {
@@ -1226,15 +1231,11 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
-    // Assent immediately above the CTA (#6976). This button jumps straight to
-    // Dodo's hosted checkout, where Dodo (merchant of record) shows its terms
-    // and never ours — so ours are presented here, before the jump. The desktop
-    // branch below opens the /pro pricing page in the OS browser instead, and
-    // that page carries its own assent line above every tier CTA.
-    if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
+    // The CTA opens the /pro plan picker, which shows the Terms above every
+    // plan button (#6976), so no assent line is needed here.
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     ctaBtn.addEventListener('click', () => {
-      import('@/services/upgrade-flow').then((m) => m.openUpgradeCheckout()).catch(() => {
+      import('@/services/upgrade-flow').then((m) => m.openUpgradePlans()).catch(() => {
         window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       });
     });

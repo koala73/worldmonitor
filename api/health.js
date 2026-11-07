@@ -407,6 +407,10 @@ const BOOTSTRAP_KEYS = {
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
   ukmtoIncidents: 'maritime:ukmto-incidents:v1',
+  // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
+  // daily by .github/workflows/open-data-chokepoints.yml. Read only by
+  // api/open-data-chokepoints.js, never by the dashboard.
+  openDataChokepoints: 'open-data:chokepoints:v1:index',
   sanctionsChanges: 'sanctions:changes:v1',
   // NVD CVE reference store for the CISA KEV subset (#6229). Seeded daily by
   // scripts/seed-cve-reference.mjs; no dashboard consumer yet, so it is
@@ -948,13 +952,30 @@ const SEED_META = {
   stablecoinMarkets:{ key: 'seed-meta:market:stablecoins',      maxStaleMin: 60 },
   naturalEvents:    {
     key: 'seed-meta:natural:events',
-    maxStaleMin: 540, // 3h Railway climate bundle; 3x cadence preserves a full missed run.
-    sourceFailure: {
-      warnAfterConsecutive: 2,
-      maxPendingMin: 210,
-      successAtField: 'lastSourceSuccessAt',
-      failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
-    },
+    // Sole producer: the seed-natural-events Railway service, every 30 min.
+    // 120 = 4x cadence: two missed runs plus start jitter stay fresh; the third alarms.
+    maxStaleMin: 120,
+    sourceFailure: [
+      {
+        warnAfterConsecutive: 2,
+        // The next */30 run settles a single miss; 60 holds past it with jitter.
+        maxPendingMin: 60,
+        successAtField: 'lastSourceSuccessAt',
+        failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
+      },
+      // WORLDMONITOR-1AG: a single GDACS type or EONET miss whose validated
+      // records are retained (9h / 18h) is pending, not an incident; the second
+      // consecutive miss alarms. Requires a per-source failure clock on every
+      // failed source, so an unretained source, an NHC failure in the same run,
+      // or every source failing at once alarms on the first miss.
+      {
+        warnAfterConsecutive: 2,
+        maxPendingMin: 60, // the next */30 run settles a single miss, as for NHC above
+        successAtField: 'lastSourceSuccessAt',
+        sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
+        failureCodePattern: /^(GDACS_TYPE_COVERAGE_INCOMPLETE|EONET_SOURCE_FAILED)$/,
+      },
+    ],
   },
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
   // #6987: moved off seed-meta:aviation:faa, which carries the FAA-ONLY alert
@@ -1032,6 +1053,12 @@ const SEED_META = {
   // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
   newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },
   newsRecallBenchmark: { key: 'seed-meta:news:recall-benchmark', maxStaleMin: 2880 },
+  // Daily GH Actions publisher at 06:23 UTC; 2880 = 2x, so one fully missed day alarms.
+  openDataChokepoints: {
+    key: 'seed-meta:open-data:chokepoints', maxStaleMin: 2880,
+    activationKey: 'seed-activated:open-data:chokepoints',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10284, activationKey: 'seed-activated:open-data:chokepoints' },
+  },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   // #6235: the country-index RPC is seeded for every serviceable country in the
   // enum. The seeding pass is deliberately best-effort (one country's provider
@@ -2751,6 +2778,7 @@ const ON_DEMAND_KEYS = new Set([
   'globalTendersDominicanRepublicDgcp',
   'globalTendersMalaysiaMyprocurement',
   'ukmtoIncidents',
+  'openDataChokepoints',
   // Deployment-order bridge: Vercel can ship this reader before Railway's
   // hourly bundle publishes the first summary. The seeder writes a durable
   // activation marker after its first successful publish; after that, a
@@ -2974,6 +3002,7 @@ const ACTIVATION_MARKERS = {
   globalTendersDominicanRepublicDgcp: SEED_META.globalTendersDominicanRepublicDgcp.activationKey,
   globalTendersMalaysiaMyprocurement: SEED_META.globalTendersMalaysiaMyprocurement.activationKey,
   ukmtoIncidents: 'seed-activated:maritime:ukmto-incidents',
+  openDataChokepoints: SEED_META.openDataChokepoints.activationKey,
   chinaCoverage: 'seed-activated:health:china-coverage',
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
@@ -5754,14 +5783,18 @@ function computeOverallStatus(counts, totalChecks) {
 }
 
 // Failure-log / ?history=1 problem set. Distinct from the compact `problems` map
-// because EMPTY_ON_DEMAND and active stale-content grace are not active faults.
-// Both remain visible in diagnostics without polluting the incident signature.
+// because EMPTY_ON_DEMAND, active stale-content grace and an in-window rollout
+// are not active faults. All remain visible in diagnostics without polluting
+// the incident signature. ROLLOUT_PENDING keeps its warn bucket for
+// availability (#6059); only its incident is deferred, because a producer that
+// never publishes reads EMPTY once `rolloutPendingUntil` passes and alerts then.
 function collectFailureLogProblems(checks, now = Date.now()) {
   const entries = Object.entries(checks)
     .filter(([, c]) => (
       isProblemStatus(c.status)
       && healthStatusBucket(c, now) !== 'ok'
       && c.status !== 'EMPTY_ON_DEMAND'
+      && !(c.status === 'ROLLOUT_PENDING' && !isExpiredDeadline(c.rolloutPendingUntil, now))
     ));
   return {
     problemKeys: entries.map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`),

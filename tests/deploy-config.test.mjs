@@ -2171,11 +2171,10 @@ describe('welcome landing page routing', () => {
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
-      // Exact, not `[href*="moments"]`: since #7608 `main` also carries headline
-      // anchors whose href is a third-party article URL, and a substring match
-      // would paint any story slug containing "moments" as a hero CTA until the
-      // deferred stylesheet lands.
-      'main a[href="#moments"]',
+      // The Pro-price hero CTA, by marker: since #7608 `main` also carries
+      // headline anchors whose href is a third-party article URL, so an href
+      // substring rule could paint a story link as a hero CTA.
+      'main a[data-umami-event-target="welcome-hero-pro"]',
       // The analytics marker, not the aria-label: localized landings
       // translate the label ("Dashboard starten"), so an `aria-label*="Launch"`
       // rule left their Launch button unstyled until the stylesheet landed.
@@ -3659,6 +3658,25 @@ describe('self-hosted docker nginx SPA entry', () => {
       assert.match(src, /^\s*index dashboard\.html index\.html;/m, `${conf}: index directive must prefer dashboard.html then serve corpus index.html`);
       assert.match(src, /try_files \$uri \$uri\/ \$uri\/index\.html \/dashboard\.html;/, `${conf}: SPA fallback must serve corpus index.html before /dashboard.html`);
       assert.doesNotMatch(src, /try_files \$uri \$uri\/ \/index\.html;/, `${conf}: must not keep the broken /index.html SPA fallback`);
+    }
+  });
+
+  it('serves the branded 500 page on document routes only, never on /api/', () => {
+    // A server-level error_page is inherited by every location. On /api/ it
+    // swapped nginx's 502 for the HTML page and dropped the CORS header the
+    // template's /api/ sets with `always` (reproduced in nginx:alpine on #10290).
+    for (const conf of ['docker/nginx.conf', 'docker/nginx.conf.template']) {
+      const src = readFileSync(resolve(__dirname, `../${conf}`), 'utf-8');
+      const blocks = [...src.matchAll(/^ {4}location ([^{]+)\{\n([\s\S]*?)^ {4}\}/gm)]
+        .map(([, location, body]) => ({ location: location.trim(), body }));
+      const outsideLocations = src.replace(/^ {4}location [^{]+\{\n[\s\S]*?^ {4}\}/gm, '');
+      assert.doesNotMatch(outsideLocations, /\berror_page\b/, `${conf}: error_page must not sit at server level, where /api/ inherits it`);
+      const root = blocks.find((b) => b.location === '/');
+      assert.ok(root, `${conf}: must define location /`);
+      assert.match(root.body, /^\s*error_page 500 502 503 504 \/500\.html;/m, `${conf}: location / must serve the branded 500 page`);
+      for (const { location, body } of blocks.filter((b) => b.location.includes('/api'))) {
+        assert.doesNotMatch(body, /\berror_page\b/, `${conf}: ${location} must keep upstream and nginx error bodies`);
+      }
     }
   });
 });

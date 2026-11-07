@@ -501,7 +501,6 @@ export class SearchModal {
           <div class="search-sheet-handle"></div>
           <div class="search-mobile-ident">
             <span>WM // ${hasCommands ? 'COMMAND DECK' : escapeHtml(this.placeholder)}</span>
-            <span class="search-index-state"><i></i> LIVE</span>
           </div>
           <div class="search-sheet-header">
             <span class="search-sheet-icon" aria-hidden="true"></span>
@@ -543,7 +542,6 @@ export class SearchModal {
             <div class="search-command-ident">
               <span class="search-command-mark" aria-hidden="true"><i></i></span>
               <span>WM // ${hasCommands ? 'INTELLIGENCE COMMAND DECK' : escapeHtml(this.placeholder)}</span>
-              <span class="search-index-state"><i></i> INDEX ONLINE</span>
             </div>
             <div class="search-command-metrics" aria-label="Search index status">
               <span><strong data-search-entity-count>${this.getIndexedEntityCount()}</strong> SIGNALS</span>
@@ -559,7 +557,6 @@ export class SearchModal {
           <div class="search-results"></div>
           <div class="search-results-status wm-visually-hidden"></div>
           <div class="search-footer">
-            <span class="search-footer-ready"><i></i> READY FOR TASKING</span>
             <span><kbd>\u2191\u2193</kbd> ${t('modals.search.navigate')}</span>
             <span><kbd>\u21B5</kbd> ${t('modals.search.select')}</span>
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
@@ -607,6 +604,9 @@ export class SearchModal {
       this.debouncedSearch();
     });
     this.input?.addEventListener('keydown', (e) => this.handleKeydown(e));
+    this.overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && e.target !== this.input) this.handleKeydown(e);
+    });
     this.scopeContainer?.querySelectorAll<HTMLButtonElement>('[data-search-scope]').forEach((button) => {
       button.addEventListener('click', () => {
         const scope = button.dataset.searchScope as SearchScope | undefined;
@@ -810,7 +810,6 @@ export class SearchModal {
     let html = `
       <div class="search-section-header search-launch-header">
         <span>${this.getVisibleCommandCount() > 0 ? t('modals.search.empty') : escapeHtml(this.placeholder)}</span>
-        <span>${escapeHtml(SCOPE_LABELS[this.activeScope])} channel</span>
       </div>
       <div class="search-launch-grid">`;
     tips.forEach((tip, i) => {
@@ -1125,7 +1124,7 @@ export class SearchModal {
       return [{ label, value: label.toLowerCase() }];
     });
 
-    setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
+    setTrustedHtml(this.chipsContainer, trustedHtml(chips.slice(0, 2).map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
     ).join(''), "legacy direct innerHTML migration"));
 

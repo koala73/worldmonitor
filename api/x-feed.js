@@ -274,7 +274,7 @@ export default async function handler(req, ctx) {
       'Vary': VARY_CREDENTIAL,
     });
   } catch (error) {
-    const isTimeout = error?.name === 'AbortError';
+    const isTimeout = error?.name === 'AbortError' || error?.name === 'TimeoutError';
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
     }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });

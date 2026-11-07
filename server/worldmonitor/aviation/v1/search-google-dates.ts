@@ -10,6 +10,7 @@ import { getRelayBaseUrl, getRelayHeaders, relayFailureMessage } from '../../../
 import { parseStringArray } from '../../../_shared/parse-string-array';
 import { normalizePassengerCount } from '../../../_shared/passenger-count';
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
+import { clientSearchError } from './_search-error';
 
 // Medium-cache tier (10 min) — use cachedFetchJsonWithMeta for stampede protection.
 const CACHE_TTL = 600;
@@ -121,6 +122,6 @@ export async function searchGoogleDates(
         : data.degraded ? 'partial results: one or more date chunks failed' : '',
     };
   } catch (err) {
-    return { dates: [], degraded: true, error: err instanceof Error ? err.message : 'search failed' };
+    return { dates: [], degraded: true, error: clientSearchError('google-dates', err) };
   }
 }

@@ -940,6 +940,7 @@ test('decision calculations and their JSON download use the authenticated host s
   const host = await installCountryHost(page);
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
+  await frame.locator('.cdp-more-actions > summary').click();
   await frame.getByRole('button', { name: 'Decision brief', exact: true }).click();
   const output = frame.getByRole('region', { name: 'Decision brief', exact: true });
   await output.getByRole('button', { name: 'Capture / refresh both' }).click();

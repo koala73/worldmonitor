@@ -13,7 +13,7 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab } from './billing';
+import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -61,6 +61,8 @@ import {
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
+import { extractBillingErrorKind } from './_billing-error';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import {
@@ -694,11 +696,12 @@ export async function startCheckout(
         clearCheckoutAttempt('duplicate');
         const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
-        showDuplicateSubscriptionDialog({
+        const isProBusinessUpgrade = await isProBusinessCheckoutTarget(productId);
+        const showGuidedDuplicateDialog = (): void => showDuplicateSubscriptionDialog({
           planDisplayName,
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
-          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
+          isProBusinessUpgrade,
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -711,6 +714,39 @@ export async function startCheckout(
           },
           onDismiss: () => { /* user stays on the dashboard */ },
         });
+        // An active Pro moves to Pro Business in place (prorated Dodo plan
+        // change); the guided dialog stays the fallback when no preview comes back.
+        // The plan check lives in the lazy chunk to keep this one small.
+        if (isProBusinessUpgrade) {
+          // A failed chunk load (stale deploy, flaky network) still gets the guided dialog.
+          const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+          if (!upgradeModule) {
+            showGuidedDuplicateDialog();
+            return false;
+          }
+          await upgradeModule.runProBusinessUpgradeFlow({
+            planKey,
+            planDisplayName,
+            fallback: showGuidedDuplicateDialog,
+            requestUpgrade: requestProBusinessUpgrade,
+            currentUserId: () => getCurrentClerkUser()?.id,
+            openPortal: () => {
+              const reservedWin = prereserveBillingPortalTab();
+              void openBillingPortal(reservedWin);
+            },
+            showDialog: showCheckoutConfirmDialog,
+            errorKind: extractBillingErrorKind,
+            reportError: (action, err) => {
+              const kind = extractBillingErrorKind(err);
+              enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
+                tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
+                level: 'warning',
+              }));
+            },
+          });
+        } else {
+          showGuidedDuplicateDialog();
+        }
         return false;
       }
       // 409 payment-in-progress (#4438) — a recent same-tier 3DS payment is

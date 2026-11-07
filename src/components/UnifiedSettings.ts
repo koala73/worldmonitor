@@ -48,6 +48,7 @@ import {
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
+import { EnterpriseSeatsSection } from '@/components/EnterpriseSeatsSection';
 import {
   deriveBillingUxState,
   getReactivationHref,
@@ -210,6 +211,7 @@ export class UnifiedSettings {
   private planLimitNoticesError = '';
   // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
   private readonly businessSeatsSection: BusinessSeatsSection;
+  private readonly enterpriseSeatsSection: EnterpriseSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -247,6 +249,7 @@ export class UnifiedSettings {
     this.overlay.setAttribute('aria-label', t('header.settings'));
     this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
+    this.enterpriseSeatsSection = new EnterpriseSeatsSection(this.overlay);
 
     this.resetPanelDraft();
 
@@ -513,6 +516,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const enterpriseInviteBtn = target.closest<HTMLElement>('.enterprise-seats-invite-btn');
+      if (enterpriseInviteBtn) {
+        void this.enterpriseSeatsSection.handleInvite();
+        return;
+      }
+
+      const enterpriseRemoveBtn = target.closest<HTMLElement>('.enterprise-seat-remove-btn');
+      if (enterpriseRemoveBtn?.dataset.memberId) {
+        void this.enterpriseSeatsSection.handleRemove(enterpriseRemoveBtn.dataset.memberId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -553,6 +568,10 @@ export class UnifiedSettings {
         panel.fontScale = scale;
       }
 
+      const scaleSummary = select.closest('.panel-font-scale-details')?.querySelector('[data-panel-scale-summary]');
+      if (scaleSummary) scaleSummary.textContent = panel.fontScale === undefined
+        ? t('preferences.followGlobalFontScale', { defaultValue: 'Use global' })
+        : fontScaleLabel(panel.fontScale);
       this.panelsJustSaved = false;
       select.closest('.panel-settings-item')
         ?.querySelector('.panel-toggle-item')
@@ -610,6 +629,7 @@ export class UnifiedSettings {
     this.mcpQuota = null;
     this.stopMcpQuotaPolling();
     this.businessSeatsSection.resetForAccountChange();
+    this.enterpriseSeatsSection.resetForAccountChange();
 
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
@@ -669,7 +689,10 @@ export class UnifiedSettings {
         // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
         // Keep the marker through the reset(null) emission; the first real B
         // snapshot must rebuild once more before ordinary targeted refreshes.
-        if (state !== null) this.accountEntitlementRefreshPending = false;
+        if (state !== null) {
+          this.accountEntitlementRefreshPending = false;
+          this.loadEnterpriseSeats();
+        }
         this.render();
         return;
       }
@@ -705,6 +728,7 @@ export class UnifiedSettings {
         }
       }
       this.replaceUpgradeSection();
+      this.loadEnterpriseSeats();
     });
     this.unsubscribeEntitlementVerification?.();
     this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
@@ -724,6 +748,19 @@ export class UnifiedSettings {
     });
     if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
+    }
+    this.loadEnterpriseSeats();
+  }
+
+  /**
+   * Ask the server for the signed-in user's Enterprise seat view; it returns
+   * null for anyone who is not a member. Not gated on the current plan: after
+   * a contract ends its members lose the Enterprise plan but keep their seats,
+   * and the admin still needs the roster to remove people.
+   */
+  private loadEnterpriseSeats(): void {
+    if (getAuthState().user) {
+      void this.enterpriseSeatsSection.load();
     }
   }
 
@@ -962,6 +999,7 @@ export class UnifiedSettings {
             <p>See your current plan and manage payment details, invoices, or cancellation.</p>
           </div>
           ${this.renderUpgradeSection()}
+          <div id="usEnterpriseSeats">${this.enterpriseSeatsSection.renderContent()}</div>
           ${this.renderAccountDeletionSection()}
         </div>
         ` : ''}
@@ -1270,7 +1308,6 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
-        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -1450,14 +1487,7 @@ export class UnifiedSettings {
       return;
     }
     this.close();
-    if (this.config.isDesktopApp) {
-      // Desktop deliberately skips in-app checkout and sends the user to the
-      // pricing page — but a bare window.open only opens another WebView
-      // window. `openExternalUrl` hands it to the OS browser (#5911).
-      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
-      return;
-    }
-    import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+    import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
       void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
     });
   }
@@ -1540,13 +1570,15 @@ export class UnifiedSettings {
             <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
             ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
           </button>
-          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+          ${supportsPanelFontScale ? `<details class="panel-font-scale-details"${panel.fontScale === undefined ? '' : ' open'}>
+            <summary><span>${escapeHtml(panelFontScaleLabel)}</span><span data-panel-scale-summary>${escapeHtml(panel.fontScale === undefined ? followGlobalFontScaleLabel : fontScaleLabel(panel.fontScale))}</span></summary>
+            <label class="panel-font-scale-control">
             <span>${escapeHtml(panelFontScaleLabel)}</span>
             <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
               <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
               ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
             </select>
-          </label>` : ''}
+          </label></details>` : ''}
         </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
@@ -2273,9 +2305,11 @@ export class UnifiedSettings {
     if (!authState.user) {
       const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
       return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${lockIcon}</div>
-          <div class="panel-locked-desc">Sign in to unlock API Keys</div>
+        <div class="panel-locked-state settings-access-gate">
+          <div class="panel-locked-icon" aria-hidden="true">${lockIcon}</div>
+          <h3>API and desktop keys</h3>
+          <p class="panel-locked-desc">Connect your own tools to World Monitor data, or activate Pro in the desktop app.</p>
+          <p class="panel-locked-desc">Sign in to see the keys available with your plan.</p>
           <button class="panel-locked-cta api-keys-gate-btn">Sign In</button>
         </div>`;
     }
@@ -2286,12 +2320,13 @@ export class UnifiedSettings {
     if (mode === 'upgrade') {
       const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
       return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${upgradeIcon}</div>
+        <div class="panel-locked-state settings-access-gate">
+          <div class="panel-locked-icon" aria-hidden="true">${upgradeIcon}</div>
+          <h3>Choose the access you need</h3>
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
-          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
           <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }

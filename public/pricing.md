@@ -57,7 +57,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - License: Commercial license included — use WorldMonitor for client work, internal tools and reporting
 - Limits: 25 custom dashboards, 2,500 dashboard-AI requests/day, MCP + SDK 250 calls/day
 - Support: Priority support
-- Note: Pro and Pro Business are separate products, not a self-serve plan change. To move up, cancel Pro in the billing portal and start the Pro Business checkout; your Pro access runs to the end of the term you already paid for.
+- Upgrading from Pro: an active Pro subscription that is not set to cancel upgrades in place. Choose Pro Business while signed in at https://www.worldmonitor.app/pro or in the dashboard. The existing subscription moves to Pro Business with a prorated charge for the rest of the billing period; if that payment fails, it stays on Pro. A Pro subscription set to cancel must be resumed in the billing portal first; if the in-place preview is unavailable, checkout shows the cancel-then-subscribe steps instead.
 
 ## API Starter
 
@@ -86,7 +86,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: Custom
 - Contact: enterprise@worldmonitor.app
 - Best for: Governments, institutions, trading desks, SOCs, risk consultancies and organizations that need shared monitoring or deployment control
-- Includes: Everything in Pro and API, team workspaces, SSO/MFA/RBAC, dedicated support, white-label and embeddable panels, Android TV app, SIEM/connectors, bulk export and managed deployment options
+- Includes: Everything in Pro and API, team workspaces, dedicated support, white-label and embeddable panels, bulk export and managed deployment options
+- By contract: SLA guarantee, SAML SSO and SCIM, SSO/MFA/RBAC, an Android TV app, and SIEM and data connectors
 - Deployment options: Cloud, dedicated cloud tenant, on-premises or air-gapped
 - Security: AES-256 encrypted notification channels, audit trail, private MCP options and organization controls
 
@@ -186,12 +187,12 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price": "Custom",
       "contact": "enterprise@worldmonitor.app",
       "features": [
-        "SSO/MFA/RBAC",
         "team workspaces",
         "white-label",
         "on-premises",
         "air-gapped",
-        "dedicated support"
+        "dedicated support",
+        "SSO/MFA/RBAC (by contract)"
       ]
     }
   ]

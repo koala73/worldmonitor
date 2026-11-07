@@ -30,7 +30,9 @@ import {
   __setOAuthTokenRatelimitForTest,
 } from '../api/oauth/token.ts';
 import {
+  REFRESH_ATTEMPT_MARKER_TTL_SECONDS,
   REFRESH_ATTEMPT_TTL_SECONDS,
+  REFRESH_REPLAY_GRACE_SECONDS,
   rawRedisBeginRefreshAttempt,
   rawRedisFinalizeRefreshAttempt,
   rawRedisProtectFailedRefreshAttempt,
@@ -156,6 +158,7 @@ function makeRedis() {
             kind: 'miss',
             recoveryPending: store.has(attemptKey),
             familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
+            attemptMarkerPresent: true,
           };
         }
         store.set(attemptKey, attemptValue);
@@ -172,12 +175,16 @@ function makeRedis() {
         kind: 'miss',
         recoveryPending: store.has(attemptKey),
         familyId: parseStored(store.get(pointerKey))?.family_id ?? parseStored(store.get(pointerKey)) ?? null,
+        attemptMarkerPresent: false,
       };
     },
     redisRestoreRefreshAttempt: async (refreshToken, attemptValue, refreshData, familyId, expiresAtMs) => {
       const attemptKey = `oauth:famattempt:${refreshToken}`;
       ops.push({ kind: 'restore-refresh-attempt', refreshToken, attemptValue, expiresAtMs });
       if (store.get(attemptKey) !== attemptValue) return false;
+      // Mirror production: a restore undoes the rotation, so the grace record
+      // its storage pipeline may have committed goes with it.
+      store.delete(await successorKeyFor(refreshToken));
       store.set(`oauth:refresh:${refreshToken}`, JSON.stringify(refreshData));
       if (familyId) store.set(`oauth:famptr:${refreshToken}`, JSON.stringify(familyId));
       store.delete(attemptKey);
@@ -300,6 +307,20 @@ function makeReq(grantType, params) {
   });
 }
 
+async function successorKeyFor(refreshToken) {
+  return `oauth:famsucc:${await sha256Hex(refreshToken)}`;
+}
+
+/**
+ * Simulate REFRESH_REPLAY_GRACE_SECONDS passing after a rotation (SM-092). A
+ * rotated token presented again inside the window by the same client gets the
+ * successor pair back; the reuse-detection cases below exercise the replay
+ * that arrives after the window, which still revokes the family.
+ */
+async function closeReplayGrace(redis, refreshToken) {
+  redis.store.delete(await successorKeyFor(refreshToken));
+}
+
 it('preserves dashboard key identity through code exchange and refresh', async () => {
   const { redis, deps } = makeDeps();
   const keyHash = await sha256Hex(`wm_${'a'.repeat(40)}`);
@@ -408,8 +429,26 @@ describe('OAuth Redis refresh-attempt production contract', () => {
       assert.equal(command[6], JSON.stringify({ attempt_id: 'attempt-contract' }));
       assert.deepEqual(JSON.parse(command[7]), { kind: 'refresh_attempt', attempt_id: 'attempt-contract' });
       assert.equal(command[8], REFRESH_ATTEMPT_TTL_SECONDS);
+      assert.equal(command[9], REFRESH_ATTEMPT_MARKER_TTL_SECONDS, 'the marker outlives the claim by the grace window');
       assert.match(command[1], /local ttl = redis\.call\('PTTL', KEYS\[1\]\)/);
+      assert.match(command[1], /'SET', KEYS\[2\], ARGV\[1\], 'EX', ARGV\[3\]/);
+      assert.match(command[1], /'SET', KEYS\[1\], ARGV\[2\], 'EX', ARGV\[4\]/);
       assert.match(command[1], /return \{1, value, expiresAt\}/);
+      // Both miss branches report whether the in-flight marker was present.
+      assert.match(command[1], /return \{0, redis\.call\('EXISTS', KEYS\[2\]\), redis\.call\('GET', KEYS\[3\]\) or false, 1\}/);
+      assert.match(command[1], /return \{0, redis\.call\('EXISTS', KEYS\[2\]\), redis\.call\('GET', KEYS\[3\]\) or false, 0\}/);
+
+      for (const [reply, expected] of [
+        [[0, 0, false, 1], { recoveryPending: false, familyId: null, attemptMarkerPresent: true }],
+        [[0, 1, JSON.stringify('fam-miss'), 1], { recoveryPending: true, familyId: 'fam-miss', attemptMarkerPresent: true }],
+        [[0, 0, JSON.stringify('fam-miss'), 0], { recoveryPending: false, familyId: 'fam-miss', attemptMarkerPresent: false }],
+      ]) {
+        globalThis.fetch = async () => new Response(JSON.stringify({ result: reply }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+        assert.deepEqual(await rawRedisBeginRefreshAttempt('rt-miss', 'attempt-miss'), { kind: 'miss', ...expected });
+      }
     } finally {
       globalThis.fetch = realFetch;
       if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
@@ -451,13 +490,17 @@ describe('OAuth Redis refresh-attempt production contract', () => {
 
       const restore = JSON.parse(calls[0].init.body);
       assert.equal(restore[0], 'EVAL');
-      assert.deepEqual(restore.slice(3, 6), [
+      assert.equal(restore[2], '4');
+      assert.deepEqual(restore.slice(3, 7), [
         'oauth:refresh:rt-contract',
         'oauth:famptr:rt-contract',
         'oauth:famattempt:rt-contract',
+        await successorKeyFor('rt-contract'),
       ]);
-      assert.equal(restore[8], JSON.stringify('fam-contract'));
-      assert.equal(restore[10], 1700000000400);
+      assert.equal(restore[9], JSON.stringify('fam-contract'));
+      assert.equal(restore[11], 1700000000400);
+      // The grace record is dropped right after the fence, on every branch.
+      assert.match(restore[1], /^if redis\.call\('GET', KEYS\[3\]\) ~= ARGV\[1\] then return 0 end\nredis\.call\('DEL', KEYS\[4\]\)\n/);
       assert.match(restore[1], /local expiresAt = tonumber\(ARGV\[5\]\)/);
       assert.match(restore[1], /redis\.call\('PTTL', KEYS\[2\]\)/);
       assert.match(restore[1], /'PX', ttl\)/);
@@ -976,7 +1019,10 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.ok(redis.store.has(`oauth:famptr:${rotated}`), 'rotated token also gets a family pointer');
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'family not revoked yet');
 
-    // (2) Victim replays the now-stale rt-1 → GETDEL-miss → REUSE → revoke family.
+    // (2) Victim replays the now-stale rt-1 after the grace window → miss →
+    // REUSE → revoke family. (Inside the window the same client would get the
+    // successor pair back instead; see the SM-092 cases.)
+    await closeReplayGrace(redis, 'rt-1');
     const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-1', client_id: CLIENT_ID }), deps);
     assert.equal(r2.status, 400);
     assert.equal((await r2.json()).error, 'invalid_grant');
@@ -1008,6 +1054,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const rotated = (await r1.json()).refresh_token;
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-old', FAMILY, REFRESH_TTL_SECONDS);
 
+    await closeReplayGrace(redis, 'rt-old');
     const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
     assert.equal(r2.status, 400);
     assert.equal((await r2.json()).error, 'invalid_grant');
@@ -1039,6 +1086,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     const rotated = (await r1.json()).refresh_token;
     assertFamilyPointerSetEx(redis.ops, 'oauth:famptr:rt-legacy', FAMILY, REFRESH_TTL_SECONDS);
 
+    await closeReplayGrace(redis, 'rt-legacy');
     const r2 = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-legacy', client_id: CLIENT_ID }),
       deps,
@@ -1428,7 +1476,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
   });
 
-  it('an in-flight concurrent retry does not revoke, but replay after success still does', async () => {
+  it('an in-flight concurrent retry does not revoke, but replay after the grace window still does', async () => {
     await ensureFixtures();
     const redis = makeRedis();
     let signalValidationStarted;
@@ -1480,9 +1528,21 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
 
     releaseValidation();
-    assert.equal((await firstRedemption).status, 200);
+    const first = await firstRedemption;
+    assert.equal(first.status, 200);
     assert.equal(redis.store.has('oauth:famattempt:rt-concurrent'), false);
 
+    // The concurrent loser obeying Retry-After inside the grace window is the
+    // same client converging on the winner's pair, not reuse (SM-092).
+    const graceRetry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(graceRetry.status, 200);
+    assert.deepEqual(await graceRetry.json(), await first.json());
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+
+    await closeReplayGrace(redis, 'rt-concurrent');
     const replay = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-concurrent', client_id: CLIENT_ID }),
       deps,
@@ -1491,7 +1551,7 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'replay must still revoke the token family');
   });
 
-  it('a failed finalization cannot report success or create a refresh-TTL replay blind spot', async () => {
+  it('a failed finalization cannot report success, and replay detection resumes once the grace window closes', async () => {
     await ensureFixtures();
     const redis = makeRedis();
     redis.redisFinalizeRefreshAttempt = async () => false;
@@ -1516,25 +1576,41 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.ok(redis.store.has('oauth:famattempt:rt-finalize-fail'));
     assert.equal(redis.store.get('oauth:famptr:rt-finalize-fail'), JSON.stringify(FAMILY));
 
+    // The rotated pair was stored before finalization failed, so the retry the
+    // 503 invited receives it (SM-092) rather than another 503 or a revoke.
     const immediateRetry = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
       deps,
     );
-    assert.equal(immediateRetry.status, 503);
+    assert.equal(immediateRetry.status, 200);
+    const pair = await immediateRetry.json();
+    assert.ok(redis.store.has(`oauth:refresh:${pair.refresh_token}`));
     assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
 
-    // Production gives ordinary in-flight attempts a 60-second TTL. Once it
-    // expires, the canonical legacy pointer resumes normal replay detection.
+    // Production gives ordinary in-flight attempts and the successor record a
+    // 60-second TTL. Past both, the orphaned marker still says this claim never
+    // finalized, so the token is dead but the family is not branded replayed.
     redis.store.delete('oauth:famattempt:rt-finalize-fail');
+    await closeReplayGrace(redis, 'rt-finalize-fail');
     const afterAttemptExpiry = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
       deps,
     );
     assert.equal(afterAttemptExpiry.status, 400);
-    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'an orphaned claim is not proven reuse');
+
+    // The marker carries REFRESH_ATTEMPT_MARKER_TTL_SECONDS. Once it expires,
+    // the canonical legacy pointer resumes normal replay detection.
+    redis.store.delete('oauth:refresh:rt-finalize-fail');
+    const afterMarkerExpiry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-fail', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(afterMarkerExpiry.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'the blind spot is bounded by the marker TTL');
   });
 
-  it('a lost finalization response resumes replay detection immediately', async () => {
+  it('a lost finalization response resumes replay detection once the grace window closes', async () => {
     await ensureFixtures();
     const redis = makeRedis();
     const originalFinalize = redis.redisFinalizeRefreshAttempt;
@@ -1564,6 +1640,16 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     assert.equal(redis.store.has('oauth:refresh:rt-finalize-lost'), false);
     assert.equal(redis.store.get('oauth:famptr:rt-finalize-lost'), JSON.stringify(FAMILY));
 
+    // Redis finalized, the client only saw a 503: the retry it was told to make
+    // is indistinguishable from a clean rotation's retry and gets the pair.
+    const graceRetry = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-finalize-lost', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(graceRetry.status, 200);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+
+    await closeReplayGrace(redis, 'rt-finalize-lost');
     const replay = await tokenHandler(
       makeReq('refresh_token', { refresh_token: 'rt-finalize-lost', client_id: CLIENT_ID }),
       deps,
@@ -1588,6 +1674,372 @@ describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)
     // revoke an unrelated family by guessing token strings.
     const famrevKeys = [...redis.store.keys()].filter((k) => k.startsWith('oauth:famrev:'));
     assert.deepEqual(famrevKeys, [], 'a miss with no family pointer must not create a revocation marker');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refresh_token grant — same-client retry grace window (SM-092)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rotation answers ambiguous failures with 503 + Retry-After: 5, which invites
+ * the client to present the same refresh token again. Before this window, any
+ * miss on a token with live family evidence was proven replay, so a benign
+ * retry of a rotation whose response was lost (or a duplicate concurrent
+ * refresh, which MCP hosts issue) revoked the family and signed the connector
+ * out. These cases pin the window: within it, the same client gets the
+ * already-issued successor pair back; outside it, from another client, or once
+ * the successor has itself been used, reuse still revokes the family.
+ */
+function seedProRefresh(redis, token, familyId) {
+  redis.store.set(`oauth:refresh:${token}`, {
+    kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID,
+    scope: 'mcp_pro', family_id: familyId,
+  });
+  redis.store.set(`oauth:famptr:${token}`, JSON.stringify(familyId));
+  redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+}
+
+describe('SM-092 tokenHandler — same-client retries inside the replay grace window', () => {
+  it('a lost consume response leaves an orphaned attempt that a later retry must not treat as replay', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalBegin = redis.redisBeginRefreshAttempt;
+    let lose = true;
+    redis.redisBeginRefreshAttempt = async (...args) => {
+      const result = await originalBegin(...args); // Redis committed the consume...
+      if (lose) { lose = false; throw new Error('AbortSignal.timeout: response lost'); } // ...the edge never saw it
+      return result;
+    };
+    const { deps } = makeDeps({ redis });
+    const FAMILY = 'fam_begin_lost';
+    seedProRefresh(redis, 'rt-begin-lost', FAMILY);
+
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-begin-lost', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 503);
+    assert.equal(first.headers.get('Retry-After'), '5');
+
+    // The in-flight claim expires after REFRESH_ATTEMPT_TTL_SECONDS without a
+    // finalize or restore: nobody rotated this token, so nobody holds a
+    // successor. The retry cannot recover the token, but it is not reuse.
+    redis.store.delete('oauth:famattempt:rt-begin-lost');
+    const retry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-begin-lost', client_id: CLIENT_ID }), deps);
+    assert.equal(retry.status, 400);
+    assert.equal((await retry.json()).error, 'invalid_grant');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'an orphaned attempt must not revoke the family');
+  });
+
+  it('a lost finalize response returns the already-issued successor pair to an immediate retry', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalFinalize = redis.redisFinalizeRefreshAttempt;
+    redis.redisFinalizeRefreshAttempt = async (...args) => {
+      await originalFinalize(...args);
+      throw new Error('response lost after Redis committed finalization');
+    };
+    const { deps } = makeDeps({ redis });
+    const FAMILY = 'fam_finalize_lost_grace';
+    seedProRefresh(redis, 'rt-fin-lost', FAMILY);
+
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fin-lost', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 503);
+    assert.equal(first.headers.get('Retry-After'), '5');
+
+    const retry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fin-lost', client_id: CLIENT_ID }), deps);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'a retry after a lost finalize must not revoke the family');
+    assert.equal(retry.status, 200, 'the rotation committed, so the retry must receive its result');
+    const pair = await retry.json();
+    assert.ok(redis.store.has(`oauth:refresh:${pair.refresh_token}`), 'the returned refresh token is the live successor');
+    assert.ok(redis.store.has(`oauth:token:${pair.access_token}`), 'the returned access token is the live successor');
+  });
+
+  it('the loser of a duplicate concurrent refresh gets the winner\'s pair when it obeys Retry-After', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    let signalStarted;
+    const started = new Promise((resolve) => { signalStarted = resolve; });
+    let release;
+    const released = new Promise((resolve) => { release = resolve; });
+    const { deps } = makeDeps({
+      redis,
+      validateProMcpToken: async () => { signalStarted(); await released; return { ok: 'valid', userId: USER_ID }; },
+    });
+    const FAMILY = 'fam_dup';
+    seedProRefresh(redis, 'rt-dup', FAMILY);
+
+    const winnerPending = tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-dup', client_id: CLIENT_ID }), deps);
+    await started;
+    const loser = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-dup', client_id: CLIENT_ID }), deps);
+    assert.equal(loser.status, 503);
+    assert.equal(loser.headers.get('Retry-After'), '5');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'overlap alone does not revoke');
+    release();
+    const winner = await winnerPending;
+    assert.equal(winner.status, 200);
+    const winnerPair = await winner.json();
+
+    // The loser obeys Retry-After with the token it still holds.
+    const loserRetry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-dup', client_id: CLIENT_ID }), deps);
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'the loser\'s retry must not revoke the winner\'s tokens');
+    assert.equal(loserRetry.status, 200);
+    assert.deepEqual(await loserRetry.json(), winnerPair, 'both callers of one host end up holding the same live pair');
+  });
+
+  it('a rotation writes the successor record keyed by the old token hash, bound to the client, for the grace TTL only', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    seedProRefresh(redis, 'rt-succ-shape', 'fam_succ_shape');
+    const before = Date.now();
+    const rotated = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-succ-shape', client_id: CLIENT_ID }), deps);
+    assert.equal(rotated.status, 200);
+    const pair = await rotated.json();
+
+    const key = await successorKeyFor('rt-succ-shape');
+    const cmd = findSetCommand(redis.ops, key);
+    assert.ok(cmd, 'the successor record is written in the rotation pipeline');
+    assert.deepEqual(cmd.slice(3), ['EX', REFRESH_REPLAY_GRACE_SECONDS]);
+    assert.ok(REFRESH_REPLAY_GRACE_SECONDS <= 60, 'the window is bounded');
+    assert.equal(REFRESH_ATTEMPT_MARKER_TTL_SECONDS, REFRESH_ATTEMPT_TTL_SECONDS + REFRESH_REPLAY_GRACE_SECONDS);
+    const record = JSON.parse(cmd[2]);
+    assert.equal(record.kind, 'refresh_successor');
+    assert.equal(record.client_id, CLIENT_ID);
+    assert.equal(record.access_token, pair.access_token);
+    assert.equal(record.refresh_token, pair.refresh_token);
+    assert.equal(record.scope, 'mcp_pro');
+    assert.ok(record.issued_at >= before && record.issued_at <= Date.now());
+    assert.equal(
+      [...redis.store.keys()].some((k) => k.includes('rt-succ-shape') && k.startsWith('oauth:famsucc:')),
+      false,
+      'the record key never carries the raw token',
+    );
+  });
+
+  it('a legacy rotation writes the successor record too; a code exchange writes none', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    redis.store.set('oauth:refresh:rt-legacy-succ', {
+      client_id: CLIENT_ID, api_key_hash: ENV_KEY_HASH, scope: 'mcp', family_id: 'fam_legacy_succ',
+    });
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+    const rotated = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-legacy-succ', client_id: CLIENT_ID }), deps);
+    assert.equal(rotated.status, 200);
+    const pair = await rotated.json();
+    const record = JSON.parse(redis.store.get(await successorKeyFor('rt-legacy-succ')));
+    assert.equal(record.refresh_token, pair.refresh_token);
+    assert.equal(record.scope, 'mcp');
+
+    redis.ops.length = 0;
+    redis.store.set('oauth:code:no-succ', {
+      kind: 'pro', userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, client_id: CLIENT_ID,
+      redirect_uri: REDIRECT_URI, code_challenge: CODE_CHALLENGE, scope: 'mcp_pro',
+    });
+    const issued = await tokenHandler(makeReq('authorization_code', {
+      code: 'no-succ', code_verifier: CODE_VERIFIER, client_id: CLIENT_ID, redirect_uri: REDIRECT_URI,
+    }), deps);
+    assert.equal(issued.status, 200);
+    assert.equal(
+      redis.ops.some((op) => op.kind === 'pipeline' && String(op.cmd[1]).startsWith('oauth:famsucc:')),
+      false,
+      'a code exchange replaces no token and leaves no grace record',
+    );
+  });
+
+  it('the grace replay reports the remaining access-token lifetime, not a fresh one', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+    redis.store.set('oauth:famptr:rt-aged-succ', JSON.stringify('fam_aged_succ'));
+    redis.store.set('oauth:refresh:rt-aged-next', {
+      kind: 'pro', client_id: CLIENT_ID, userId: USER_ID, mcpTokenId: MCP_TOKEN_ID, scope: 'mcp_pro', family_id: 'fam_aged_succ',
+    });
+    redis.store.set(await successorKeyFor('rt-aged-succ'), JSON.stringify({
+      kind: 'refresh_successor', client_id: CLIENT_ID, access_token: 'at-aged-next',
+      refresh_token: 'rt-aged-next', scope: 'mcp_pro', issued_at: Date.now() - 20_000,
+    }));
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-aged-succ', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 200);
+    const pair = await replay.json();
+    assert.equal(pair.access_token, 'at-aged-next');
+    assert.equal(pair.refresh_token, 'rt-aged-next');
+    assert.equal(pair.token_type, 'Bearer');
+    assert.equal(pair.scope, 'mcp_pro');
+    assert.ok(pair.expires_in <= TOKEN_TTL_SECONDS - 20 && pair.expires_in >= TOKEN_TTL_SECONDS - 21, `expires_in=${pair.expires_in}`);
+    assert.equal(redis.store.has('oauth:famrev:fam_aged_succ'), false);
+  });
+
+  it('reuse from a different client inside the window is replay and revokes the family', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_other_client';
+    seedProRefresh(redis, 'rt-other-client', FAMILY);
+    redis.store.set('oauth:client:client_other', { client_name: 'Other', redirect_uris: [REDIRECT_URI] });
+
+    const rotated = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-other-client', client_id: CLIENT_ID }), deps);
+    assert.equal(rotated.status, 200);
+    const pair = await rotated.json();
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-other-client', client_id: 'client_other' }), deps);
+    assert.equal(replay.status, 400);
+    assert.equal((await replay.json()).error, 'invalid_grant');
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'the window never hands tokens to another client');
+
+    const victim = await tokenHandler(makeReq('refresh_token', { refresh_token: pair.refresh_token, client_id: CLIENT_ID }), deps);
+    assert.equal(victim.status, 400, 'the rotated chain is contained like any revoked family');
+  });
+
+  it('reuse after the successor has itself rotated is replay and revokes the family, even inside the window', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_successor_used';
+    seedProRefresh(redis, 'rt-gen1', FAMILY);
+
+    const gen2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-gen1', client_id: CLIENT_ID }), deps);
+    assert.equal(gen2.status, 200);
+    const gen2Pair = await gen2.json();
+    const gen3 = await tokenHandler(makeReq('refresh_token', { refresh_token: gen2Pair.refresh_token, client_id: CLIENT_ID }), deps);
+    assert.equal(gen3.status, 200);
+    const gen3Pair = await gen3.json();
+    assert.ok(redis.store.has(await successorKeyFor('rt-gen1')), 'the gen1 grace record is still inside its window');
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-gen1', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'two generations behind is reuse, not a retry');
+
+    const contained = await tokenHandler(makeReq('refresh_token', { refresh_token: gen3Pair.refresh_token, client_id: CLIENT_ID }), deps);
+    assert.equal(contained.status, 400, 'the live chain dies with the family');
+  });
+
+  it('a successor that is mid-rotation counts as used', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_successor_inflight';
+    seedProRefresh(redis, 'rt-inflight-old', FAMILY);
+    const gen2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-inflight-old', client_id: CLIENT_ID }), deps);
+    const gen2Pair = await gen2.json();
+    // Claim gen2 the way the consume script does, and leave it in flight.
+    await redis.redisBeginRefreshAttempt(gen2Pair.refresh_token, 'attempt-inflight');
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-inflight-old', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('an unreadable grace record keeps the retryable answer and never revokes on a guess', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_grace_read_fail';
+    seedProRefresh(redis, 'rt-grace-read', FAMILY);
+    const rotated = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-grace-read', client_id: CLIENT_ID }), deps);
+    assert.equal(rotated.status, 200);
+    const originalGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key.startsWith('oauth:famsucc:')) throw new Error('redis down');
+      return originalGet(key);
+    };
+
+    const retry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-grace-read', client_id: CLIENT_ID }), deps);
+    assert.equal(retry.status, 503);
+    assert.equal(retry.headers.get('Retry-After'), '5');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'unknown grace state is not evidence of reuse');
+  });
+
+  it('a malformed grace record is ignored, so the miss is judged on the family pointer alone', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_grace_malformed';
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+    redis.store.set('oauth:famptr:rt-malformed', JSON.stringify(FAMILY));
+    redis.store.set(await successorKeyFor('rt-malformed'), JSON.stringify({
+      kind: 'refresh_successor', client_id: CLIENT_ID, access_token: 'at-x', scope: 'mcp_pro', issued_at: Date.now(),
+    }));
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-malformed', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+  });
+
+  it('a restore removes the grace record its pipeline committed, so retries cannot fork into two chains', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    let reportFailureOnce = true;
+    redis.redisPipeline = async (commands) => {
+      const results = await originalPipeline(commands); // Redis committed every SET...
+      if (reportFailureOnce && commands.some((cmd) => String(cmd[1]).startsWith('oauth:famsucc:'))) {
+        reportFailureOnce = false;
+        return null; // ...but the edge never saw the pipeline response.
+      }
+      return results;
+    };
+    let validations = 0;
+    let signalSecondStarted;
+    const secondStarted = new Promise((resolve) => { signalSecondStarted = resolve; });
+    let releaseSecond;
+    const secondReleased = new Promise((resolve) => { releaseSecond = resolve; });
+    const { deps } = makeDeps({
+      redis,
+      validateProMcpToken: async () => {
+        validations += 1;
+        if (validations === 2) { signalSecondStarted(); await secondReleased; }
+        return { ok: 'valid', userId: USER_ID };
+      },
+    });
+    const FAMILY = 'fam_restore_fork';
+    seedProRefresh(redis, 'rt-fork', FAMILY);
+
+    // Pair B is stored, the response is lost, the handler restores A.
+    const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(first.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-fork'), 'A is restored');
+    assert.equal(redis.store.has(await successorKeyFor('rt-fork')), false, 'the stale record for B is gone with the restore');
+
+    // A second caller consumes restored A and pauses mid-validation; an
+    // overlapping third caller must wait, not be handed B.
+    const secondPending = tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    await secondStarted;
+    const third = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(third.status, 503);
+    releaseSecond();
+    const second = await secondPending;
+    assert.equal(second.status, 200);
+    const pairC = await second.json();
+
+    const thirdRetry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-fork', client_id: CLIENT_ID }), deps);
+    assert.equal(thirdRetry.status, 200);
+    assert.deepEqual(await thirdRetry.json(), pairC, 'every retry converges on the one chain that finalized');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false);
+  });
+
+  it('a successor in a family revoked meanwhile is not handed back', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_revoked_meanwhile';
+    seedProRefresh(redis, 'rt-revoked-meanwhile', FAMILY);
+    const rotated = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-revoked-meanwhile', client_id: CLIENT_ID }), deps);
+    assert.equal(rotated.status, 200);
+    redis.store.set(`oauth:famrev:${FAMILY}`, '1');
+
+    const retry = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-revoked-meanwhile', client_id: CLIENT_ID }), deps);
+    assert.equal(retry.status, 400);
+    assert.equal((await retry.json()).error, 'invalid_grant');
+  });
+
+  it('a successor whose refresh record is gone is not handed back', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_successor_gone';
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+    redis.store.set('oauth:famptr:rt-gone', JSON.stringify(FAMILY));
+    redis.store.set(await successorKeyFor('rt-gone'), JSON.stringify({
+      kind: 'refresh_successor', client_id: CLIENT_ID, access_token: 'at-gone', refresh_token: 'rt-gone-next',
+      scope: 'mcp_pro', issued_at: Date.now(),
+    }));
+
+    const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-gone', client_id: CLIENT_ID }), deps);
+    assert.equal(replay.status, 400);
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+    assert.equal(redis.store.has('oauth:token:at-gone'), false);
   });
 });
 
@@ -2471,6 +2923,7 @@ describe('refresh-token idle window', () => {
     const first = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
     assert.equal(first.status, 200);
     redis.ops.length = 0;
+    await closeReplayGrace(redis, 'rt-window');
     const replay = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-window', client_id: CLIENT_ID }), deps);
     assert.equal(replay.status, 400);
     assert.equal((await replay.json()).error, 'invalid_grant');

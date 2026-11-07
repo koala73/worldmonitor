@@ -1307,6 +1307,9 @@
           "path": "scripts/seed-economic-calendar.mjs"
         },
         {
+          "path": "scripts/seed-oecd-lt-rates.mjs"
+        },
+        {
           "path": "scripts/seed-us-cpi.mjs"
         },
         {
@@ -2140,9 +2143,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/live-video-sources.ts"
         }
       ]
     },
@@ -6873,10 +6873,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/infrastructure/v1/get-cable-health.ts"
-        },
-        {
-          "path": "server/worldmonitor/maritime/v1/list-navigational-warnings.ts"
+          "path": "server/_shared/nga-broadcast-warnings.ts"
         }
       ]
     },
@@ -9374,6 +9371,24 @@
       ]
     },
     {
+      "host": "stat.ripe.net",
+      "provider": "stat.ripe.net",
+      "kind": "structured",
+      "observed": true,
+      "catalogActive": false,
+      "license": "RIPEstat Service Terms section 3.3: commercial reuse and redistribution require prior written RIPE NCC permission. Integration disabled by default until authorized.",
+      "attribution": "RIPEstat / RIPE NCC; routing origins from RIS and ASN holders from WHOIS; optional reverse DNS. Not attacker attribution. See https://www.ripe.net/about-us/legal/ripestat-service-terms-and-conditions/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
+          "path": "src/components/cyber-network-info.ts"
+        }
+      ]
+    },
+    {
       "host": "stat.uz",
       "provider": "stat.uz",
       "kind": "structured",
@@ -11804,6 +11819,20 @@
       "status": "excluded"
     },
     {
+      "host": "www.bloomberg.com",
+      "provider": "www.bloomberg.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
+      "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
       "host": "www.brasilparalelo.com.br",
       "provider": "www.brasilparalelo.com.br",
       "kind": "feed",
@@ -12338,6 +12367,20 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.defenseone.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "www.deutschlandfunk.de",
+      "provider": "www.deutschlandfunk.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.deutschlandfunk.de and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -15418,6 +15461,9 @@
           "path": "server/_shared/deprecation-policy.ts"
         },
         {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
           "path": "server/worldmonitor/intelligence/v1/_country-brief-evidence.ts"
         },
         {
@@ -15540,6 +15586,20 @@
         },
         {
           "path": "src/services/live-video/session.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.zdfheute.de",
+      "provider": "www.zdfheute.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.zdfheute.de and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
         }
       ]
     },

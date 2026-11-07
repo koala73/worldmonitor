@@ -878,7 +878,7 @@
         "space": "VESMÍR"
       },
       "paused": "Webkamery pozastaveny",
-      "play": "Přehrát",
+      "play": "Sledujte naživo",
       "previewStatus": "Připraveno k přehrání",
       "connecting": "Připojování…",
       "unverified": "Nelze potvrdit, že je tento stream živý",
@@ -1202,6 +1202,7 @@
       "shareStory": "Sdílet příběh",
       "printPdf": "Tisk / PDF",
       "exportData": "Exportovat data",
+      "moreActions": "Další akce",
       "shareLink": "Sdílet odkaz"
     },
     "relatedAssets": {
@@ -1424,6 +1425,20 @@
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
         }
+      },
+      "measure": {
+        "title": "Měřit vzdálenost",
+        "units": "Jednotky vzdálenosti",
+        "pointA": "Vyberte bod A. Klikněte na mapu nebo stiskněte Enter v jejím středu.",
+        "pointB": "Vyberte bod B. Posouváním upravte mapu a stisknutím Enter použijte její střed.",
+        "geodesic": "Geodetická vzdálenost",
+        "note": "Mezi kliknutými souřadnicemi; není to trasa ani ověřená separace majetku. Escape ukončí.",
+        "cancel": "Zrušit výběr",
+        "cancelShort": "Zrušit",
+        "resetShort": "Resetovat",
+        "exitShort": "Ukončit",
+        "reset": "Resetovat měření",
+        "exit": "Ukončit měření"
       }
     },
     "cii": {
@@ -1468,8 +1483,8 @@
       "badgeAnimDesc": "Animovat odznáčky aktualizací v záhlaví panelů",
       "headlineMemoryLabel": "Paměť titulků",
       "headlineMemoryDesc": "Zapamatovat si zobrazené titulky pro zvýraznění nových",
-      "streamAlwaysOnLabel": "Automaticky přehrávat živé streamy na dashboardu",
-      "streamAlwaysOnDesc": "Spustí Live News a Live Webcams automaticky, když jsou viditelné. Nechte vypnuto, aby se video načetlo až po kliknutí na Přehrát.",
+      "streamAlwaysOnLabel": "Automatické přehrávání živých kamer",
+      "streamAlwaysOnDesc": "Spustí živá videa z webkamer, jakmile se zobrazí na obrazovce. Ponechte vypnuté, chcete-li je načíst pouze sami.",
       "globeRenderScaleOptions": {
         "1": "Eko (1x)",
         "2": "4K (2x)",
@@ -1520,7 +1535,9 @@
       "briefStoryDetails": "Podrobnosti zprávy ({{count}})",
       "streamIdleStopLabel": "Zastavit živé video při nečinnosti",
       "streamIdleStopDesc": "Zastaví Live News a Live Webcams po této době bez aktivity a zobrazí upozornění na panelu.",
-      "streamIdleStopNever": "Nikdy"
+      "streamIdleStopNever": "Nikdy",
+      "liveNewsAutoplayLabel": "Automatické přehrávání živých zpráv",
+      "liveNewsAutoplayDesc": "Spustí video živých zpráv ztlumeně, jakmile se zobrazí na obrazovce. Vypněte, chcete-li video načíst pouze sami."
     },
     "cascade": {
       "filters": {
@@ -2576,8 +2593,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro je spuštěn",
-      "tagline": "Více signálu, méně šumu. Více AI briefingů. Geopolitický a akciový analytik jen pro vás.",
+      "headline": "Denní AI briefingy e-mailem nebo Slackem",
+      "tagline": "plus WM Analyst, pravidla upozornění a MCP pro Claude",
       "cta": "Upgradovat na Pro →",
       "dismiss": "Zavřít"
     },
@@ -3216,7 +3233,44 @@
       "open": "OTEVŘENO"
     },
     "cyberThreat": {
-      "title": "KYBERNETICKÁ HROZBA"
+      "title": "KYBERNETICKÁ HROZBA",
+      "evidence": "Důkazy z threat-feedu",
+      "firstSeen": "Poprvé viděno",
+      "explanations": {
+        "c2_server": "Feed hlásí příkazový server (C2) používaný k zasílání instrukcí malwaru.",
+        "malware_host": "Feed hlásí adresu používanou k hostování malwaru.",
+        "phishing": "Feed hlásí indikátor související s phishingem.",
+        "malicious_url": "Feed hlásí URL adresu související se škodlivou aktivitou."
+      },
+      "downloadTag": "malware_download: zdroj hlásí místo stažení malwaru.",
+      "familyNote": "Označení rodiny malwaru pochází z threat-feedu. Neidentifikuje osobu ani organizaci.",
+      "approximateLocation": "Mapovaná poloha je přibližný kontext odvozený z IP adresy, nikoli ověřená fyzická poloha hostitele.",
+      "network": {
+        "title": "Informace o síti",
+        "privacy": "Rozbalte pro vyžádání pasivních síťových dat od RIPEstat. Indikátor IP je sdílen s tímto poskytovatelem.",
+        "disclaimer": "Registrace sítě a směrování neidentifikují útočníka a neučiňují poskytovatele odpovědným za aktivitu.",
+        "loading": "Načítání informací o síti…",
+        "unknown": "Není dostupné",
+        "disabled": "Vyhledávání v síti není povoleno.",
+        "invalid": "Vyhledávání v síti vyžaduje veřejnou IP adresu.",
+        "unavailable": "Vyhledávání v síti se nezdařilo. Zavřete a znovu otevřete popup a zkuste to později.",
+        "rateLimited": "Vyhledávání v síti je dočasně omezeno. Zkuste to později.",
+        "noData": "Poskytovatel nevrátil žádné informace o síti pro tuto IP adresu.",
+        "partial": "Některé informace o síti se nepodařilo načíst.",
+        "ip": "IP adresa",
+        "asn": "Původní ASN",
+        "operator": "Hlášený operátor sítě / držitel ASN",
+        "prefix": "Hlášený směrovací prefix",
+        "hostname": "Název hostitele podle reverzního DNS (rDNS)",
+        "lookupAt": "Čas vyhledání v síti",
+        "routingAt": "Čas dat o směrování",
+        "broaderPrefix": "Poskytovatel nalezl širší směrovací prefix. Nejedná se o přesný záznam alokace IP.",
+        "rdnsNote": "rDNS je jmenovka DNS, ne důkaz vlastnictví. Registrovaná organizace a přesná poloha nejsou z tohoto vyhledání poskytnuty.",
+        "copy": "Kopírovat",
+        "copied": "Zkopírováno.",
+        "copyFailed": "Kopírování se nezdařilo. Vyberte text, abyste ho mohli zkopírovat."
+      },
+      "firstSeenNote": "Toto je nejstarší dostupné datum indikátoru napříč zprávami nebo pozorováními World Monitor; může se lišit od data uvedeného zdroje."
     },
     "nuclear": {
       "types": {
@@ -3386,6 +3440,28 @@
       "readReport": "Číst celou zprávu"
     },
     "datacenter": {
+      "details": {
+        "more": "Další podrobnosti",
+        "owner": "Vlastník / poskytovatel clusteru (datová sada)",
+        "power": "Údaj o výkonu v datové sadě",
+        "powerCaveat": "Kapacita výkonu může být nahlášená nebo odhadovaná. Nejde o měření aktuální spotřeby elektřiny.",
+        "powerBasis": "Základ údaje o výkonu",
+        "reported": "Nahlášený",
+        "estimated": "Odhadovaný",
+        "notAvailable": "Není k dispozici",
+        "location": "Přesnost polohy",
+        "locationUnknown": "Neověřený bod na mapě; nepoužívejte jako přesnou adresu zařízení.",
+        "site": "Místo (ověřeno zdrojem)",
+        "city": "Pouze město",
+        "region": "Pouze region",
+        "country": "Pouze země",
+        "dataset": "Datová sada GPU clusterů Epoch AI",
+        "evidence": "Podpůrný zdroj",
+        "sourceDate": "Datum zveřejnění zdroje",
+        "metadataReviewedAt": "Kontrola metadat",
+        "firstOperationalDate": "Datum prvního uvedení do provozu (datová sada)",
+        "freshness": "Uložený snímek datové sady. Aktuální stav a specifikace se mohly změnit."
+      },
       "status": {
         "existing": "V PROVOZU",
         "planned": "PLÁNOVANÉ",
@@ -3536,7 +3612,8 @@
       "vesselsCount": "{{count}} PLAVIDEL",
       "vessels": "PLAVIDLA",
       "trackedVessels": "SLEDOVANÁ PLAVIDLA",
-      "showLess": "Zobrazit méně"
+      "showLess": "Zobrazit méně",
+      "backToGroup": "Zpět ke skupině"
     },
     "naturalEvent": {
       "closed": "ZAVŘENO",
@@ -4708,7 +4785,7 @@
         "category": "Přírodní katastrofy",
         "purpose": "Ukazuje zemětřesení, závažné výstrahy před katastrofami a aktivní události pozorování Země pro přehled o situaci.",
         "source": "Zemětřesení USGS, výstrahy GDACS a události NASA EONET, sloučené ve službě přírodních událostí.",
-        "freshness": "Přírodní události se naplňují každé 3 hodiny. U zemětřesení USGS je popsané očekávání rytmus zdroje zhruba každých 5 minut.",
+        "freshness": "Přírodní události se naplňují každých 30 minut. U zemětřesení USGS je popsané očekávání rytmus zdroje zhruba každých 5 minut.",
         "confidence": "Silné u zachycených veřejných signálů katastrof. Jistota se liší podle typu nebezpečí a zpoždění hlášení u zdroje.",
         "limitations": {
           "0": "Výstrahy GDACS s nízkou závažností se odfiltrují, aby mapa zůstala čitelná.",
@@ -4802,5 +4879,14 @@
     "happy": {
       "map": "Mapa dobrých zpráv"
     }
+  },
+  "pwaInstall": {
+    "title": "Nainstalovat aplikaci",
+    "share": "V Safari klepněte na Sdílet (čtverec se šipkou nahoru). Možná budete muset nejprve otevřít nabídku Více.",
+    "add": "Vyberte Přidat na plochu.",
+    "confirm": "Klepněte na Přidat a otevřete World Monitor z plochy.",
+    "close": "Zavřít",
+    "alertsHint": "Nainstalujte World Monitor na plochu, abyste na tomto iPhonu nebo iPadu dostávali upozornění.",
+    "how": "Jak nainstalovat"
   }
 }

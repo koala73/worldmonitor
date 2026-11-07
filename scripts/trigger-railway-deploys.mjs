@@ -502,6 +502,10 @@ export function runGitHubApi(path, env, { spawn = spawnSync, attempts = 3 } = {}
   }
   const githubEnv = createGitHubCliEnv(env);
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1) {
+      const delayMs = Math.min(1_000, 100 * 2 ** (attempt - 2)) * (0.5 + Math.random() * 0.5);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
     const result = spawn('gh', ['api', path], {
       encoding: 'utf8',
       maxBuffer: 4 * 1024 * 1024,

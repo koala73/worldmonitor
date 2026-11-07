@@ -872,7 +872,7 @@
         "asia": "ASYA",
         "space": "UZAY"
       },
-      "play": "Oynat",
+      "play": "Canlı izle",
       "previewStatus": "Oynatılmaya hazır",
       "connecting": "Bağlanıyor…",
       "unverified": "Bu akışın canlı olduğu doğrulanamıyor",
@@ -1205,6 +1205,7 @@
       "emojiKeyNaval": "Deniz Varlıkları"
     },
     "countryBrief": {
+      "moreActions": "Diğer işlemler",
       "shareLink": "Bağlantıyı paylaş",
       "shareStory": "Hikayeyi paylas",
       "printPdf": "Yazdir / PDF",
@@ -1430,6 +1431,20 @@
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
         }
+      },
+      "measure": {
+        "title": "Mesafeyi ölç",
+        "units": "Mesafe birimleri",
+        "pointA": "A noktasını seçin. Harita üzerinde tıklayın veya harita merkezinde Enter tuşuna basın.",
+        "pointB": "B noktasını seçin. Haritayı kaydırın ve merkezini kullanmak için Enter tuşuna basın.",
+        "geodesic": "Jeodezik mesafe",
+        "note": "Tıklanan koordinatlar arasında; bir rota veya doğrulanmış varlık ayrılması değildir. Çıkmak için Escape tuşuna basın.",
+        "cancel": "Seçimi iptal et",
+        "cancelShort": "İptal",
+        "resetShort": "Sıfırla",
+        "exitShort": "Çık",
+        "reset": "Ölçümü sıfırla",
+        "exit": "Ölçümden çık"
       }
     },
     "cii": {
@@ -1481,8 +1496,8 @@
       "badgeAnimDesc": "Panel başlıklarındaki güncelleme rozetlerini canlandır",
       "headlineMemoryLabel": "Başlık hafızası",
       "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
-      "streamAlwaysOnLabel": "Panoda canlı yayınları otomatik oynat",
-      "streamAlwaysOnDesc": "Görünür olduklarında Live News ve Live Webcams otomatik olarak başlar. Videoyu yalnızca Oynat’a tıkladıktan sonra yüklemek için kapalı bırakın.",
+      "streamAlwaysOnLabel": "Canlı web kameralarını otomatik oynat",
+      "streamAlwaysOnDesc": "Canlı web kamerası videolarını ekranda görüntülenir görüntülenmez başlatır. Videoları yalnızca siz başlattığınızda yüklemek için bunu kapalı tutun.",
       "analysisFrameworksLabel": "Analiz Çerçeveleri",
       "analysisFrameworksActivePerPanel": "Panel başına etkin",
       "analysisFrameworksSkillLibrary": "Beceri kütüphanesi",
@@ -1524,7 +1539,9 @@
       "briefStoryDetails": "Haber ayrıntıları ({{count}})",
       "streamIdleStopLabel": "Hareketsizlik sırasında canlı videoyu durdur",
       "streamIdleStopDesc": "Canlı Haber ve Canlı Web Kameralarını bu kadar süre etkinlik olmadan durdurur ve panelde bir bildirim gösterir.",
-      "streamIdleStopNever": "Asla"
+      "streamIdleStopNever": "Asla",
+      "liveNewsAutoplayLabel": "Canlı haberleri otomatik oynat",
+      "liveNewsAutoplayDesc": "Canlı haber videosunu, sessiz olarak, ekranda görüntülenir görüntülenmez başlatır. Videoyu yalnızca siz başlattığınızda yüklemek için bunu kapatın."
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",
@@ -2556,8 +2573,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro yayında",
-      "tagline": "Daha Fazla İşaret, Daha Az Gürültü. Daha Fazla AI Özeti. Sadece Sizin için Jeopolitik & Sermaye Piyasası Araştırmacısı.",
+      "headline": "E-posta veya Slack'te günlük AI raporları",
+      "tagline": "artı WM Analyst, uyarı kuralları ve Claude için MCP",
       "cta": "Pro'ya Yükselt →",
       "dismiss": "Kapat"
     },
@@ -3184,7 +3201,44 @@
       "airborne": "Havada"
     },
     "cyberThreat": {
-      "title": "SIBER TEHDIT"
+      "title": "SIBER TEHDIT",
+      "evidence": "Tehdit akışı kanıtı",
+      "firstSeen": "İlk görülme",
+      "explanations": {
+        "c2_server": "Akış, kötü amaçlı yazılıma talimat göndermek için kullanılan komuta-kontrol sunucusunu bildiriyor.",
+        "malware_host": "Akış, kötü amaçlı yazılım barındırmak için kullanılan bir adresi bildiriyor.",
+        "phishing": "Akış, kimlik avı ile ilişkili bir göstergeyi bildiriyor.",
+        "malicious_url": "Akış, kötü amaçlı etkinlikle ilişkili bir URL bildiriyor."
+      },
+      "downloadTag": "malware_download: kaynak kötü amaçlı yazılım indirme konumunu bildiriyor.",
+      "familyNote": "Kötü amaçlı yazılım ailesi etiketi tehdit akışından gelir. Bir kişiyi veya kuruluşu tanımlamaz.",
+      "approximateLocation": "Eşlenen konum yaklaşık IP türetilmiş bağlamdır, doğrulanmış fiziksel konak konumu değildir.",
+      "network": {
+        "title": "Ağ bilgileri",
+        "privacy": "RIPEstat'tan pasif ağ verisi istemek için genişletin. Gösterge IP'si söz konusu sağlayıcı ile paylaşılır.",
+        "disclaimer": "Ağ kaydı ve yönlendirme, saldırganı tanımlamaz veya sağlayıcıyı etkinlikten sorumlu kılmaz.",
+        "loading": "Ağ bilgileri yükleniyor…",
+        "unknown": "Kullanılamıyor",
+        "disabled": "Ağ sorgulaması etkin değildir.",
+        "invalid": "Ağ sorgulaması herkese açık bir IP adresi gerektirir.",
+        "unavailable": "Ağ sorgulaması başarısız oldu. Daha sonra tekrar denemek için açılır pencereyi kapatıp yeniden açın.",
+        "rateLimited": "Ağ sorgulaması geçici olarak sınırlandırılmıştır. Daha sonra tekrar deneyin.",
+        "noData": "Sağlayıcı bu IP için ağ bilgisi döndürmedi.",
+        "partial": "Bazı ağ bilgileri alınamadı.",
+        "ip": "IP",
+        "asn": "Kaynak ASN",
+        "operator": "Bildirilen ASN sahibi / ağ operatörü",
+        "prefix": "Bildirilen yönlendirme ön eki",
+        "hostname": "Ters-DNS konak adı (rDNS)",
+        "lookupAt": "Ağ sorgulaması zamanı",
+        "routingAt": "Yönlendirme verisi zamanı",
+        "broaderPrefix": "Sağlayıcı daha geniş bir yönlendirme ön eki eşleştirdi. Bu tam bir IP tahsisi kaydı değildir.",
+        "rdnsNote": "rDNS bir DNS etiketi olup, mülkiyetin kanıtı değildir. Kayıtlı kuruluş ve kesin konum bu sorgulamadan sağlanmaz.",
+        "copy": "Kopyala",
+        "copied": "Kopyalandı.",
+        "copyFailed": "Kopyalama başarısız oldu. Kopyalamak için metni seçin."
+      },
+      "firstSeenNote": "Bu, akışlar veya World Monitor gözlemleri arasında kullanılabilir en erken gösterge tarihi olup; listelenmiş kaynağın tarihinden farklı olabilir."
     },
     "nuclear": {
       "types": {
@@ -3354,6 +3408,28 @@
       "readReport": "Tam raporu oku"
     },
     "datacenter": {
+      "details": {
+        "more": "Daha fazla ayrıntı",
+        "owner": "Küme sahibi / sağlayıcısı (veri kümesi)",
+        "power": "Veri kümesindeki güç değeri",
+        "powerCaveat": "Güç kapasitesi bildirilmiş veya tahmini olabilir. Bu, mevcut elektrik tüketiminin ölçümü değildir.",
+        "powerBasis": "Güç değerinin dayanağı",
+        "reported": "Bildirilen",
+        "estimated": "Tahmini",
+        "notAvailable": "Mevcut değil",
+        "location": "Konum hassasiyeti",
+        "locationUnknown": "Doğrulanmamış harita noktası; tesisin kesin adresi olarak kullanmayın.",
+        "site": "Tesis (kaynakla doğrulanmış)",
+        "city": "Yalnızca şehir",
+        "region": "Yalnızca bölge",
+        "country": "Yalnızca ülke",
+        "dataset": "Epoch AI GPU kümeleri veri kümesi",
+        "evidence": "Destekleyici kaynak",
+        "sourceDate": "Kaynağın yayın tarihi",
+        "metadataReviewedAt": "Üst verilerin kontrol tarihi",
+        "firstOperationalDate": "İlk işletime alınma tarihi (veri kümesi)",
+        "freshness": "Veri kümesinin kaydedilmiş anlık görüntüsü. Mevcut durum ve teknik özellikler değişmiş olabilir."
+      },
       "status": {
         "existing": "FAAL",
         "planned": "PLANLANMIS",
@@ -3504,7 +3580,8 @@
       "vesselsCount": "{{count}} GEMI",
       "vessels": "GEMI",
       "trackedVessels": "TAKIP EDILEN GEMI",
-      "showLess": "Daha azını göster"
+      "showLess": "Daha azını göster",
+      "backToGroup": "Gruba dön"
     },
     "naturalEvent": {
       "closed": "KAPANDI",
@@ -4666,7 +4743,7 @@
         "category": "Doğal afetler",
         "purpose": "Durum farkındalığı için depremleri, ciddi afet uyarılarını ve etkin Yer gözlem olaylarını gösterir.",
         "source": "USGS depremleri, GDACS uyarıları ve NASA EONET olayları doğal olay hizmetinde birleştirilir.",
-        "freshness": "Doğal olaylar her 3 saatte bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
+        "freshness": "Doğal olaylar her 30 dakikada bir yüklenir. USGS depremleri için kaynak temposu yaklaşık 5 dakika olarak belgelenmiştir.",
         "confidence": "Kamuya açıklanmış afet sinyalleri için güçlüdür. Güvenilirlik, tehlike türüne ve kaynağın bildirim gecikmesine göre değişir.",
         "limitations": {
           "0": "Düşük şiddetli GDACS uyarıları, harita okunaklı kalsın diye elenir.",
@@ -4760,5 +4837,14 @@
     "happy": {
       "map": "İyi Haberler Haritası"
     }
+  },
+  "pwaInstall": {
+    "title": "Uygulamayı yükle",
+    "share": "Safari'de Paylaş'a (yukarı oklu kare) dokunun. Önce Daha Fazla menüsünü açmanız gerekebilir.",
+    "add": "Ana Ekrana Ekle'yi seçin.",
+    "confirm": "Ekle'ye dokunun, ardından World Monitor'ı ana ekranınızdan açın.",
+    "close": "Kapat",
+    "alertsHint": "Bu iPhone veya iPad'de uyarı almak için World Monitor'ı ana ekranınıza yükleyin.",
+    "how": "Nasıl yüklenir"
   }
 }

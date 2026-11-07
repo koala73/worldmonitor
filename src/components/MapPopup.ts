@@ -4,6 +4,7 @@ import type { AirportDelayAlert, PositionSample } from '@/services/aviation';
 import type { Earthquake } from '@/services/earthquakes';
 import type { WeatherAlert } from '@/services/weather';
 import type { CrossBorderPoint } from '@/services/displacement';
+import { renderDisplacementDetails, type DisplacementMarker } from './displacement-marker';
 import { renderCrossBorderDetails } from './cross-border-marker';
 import type { RadiationObservation } from '@/services/radiation';
 import { UNDERSEA_CABLES } from '@/config/geo-map';
@@ -17,7 +18,7 @@ import { TransitChart } from '@/utils/transit-chart';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
-import { t } from '@/services/i18n';
+import { t, getCurrentLanguageTag } from '@/services/i18n';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -30,6 +31,7 @@ import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { bindCyberNetworkSection, renderCyberNetworkSection } from './cyber-network-info';
 import { renderPopupSourceLinks } from './map-popup-source-links';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -111,7 +113,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'storageFacility';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility';
 
 interface TechEventPopupData {
   id: string;
@@ -250,7 +252,7 @@ interface StorageFacilityPopupData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | CrossBorderPoint | StorageFacilityPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -327,6 +329,9 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
+    // Retain the group's DOM so Back restores expansion and scroll state.
+    let groupView: { nodes: Node[]; scroll: number; member: HTMLButtonElement } | null = null;
+
     // Reconcile the cached height against reality AFTER the frame has painted.
     // rAF alone is not enough: rAF callbacks run before that frame's paint, and
     // INP measures input→next paint, so an offsetHeight read there is still
@@ -341,10 +346,19 @@ export class MapPopup {
       const positionedWith = this.lastPositionedHeight;
       requestAnimationFrame(() => {
         setTimeout(() => {
-          if (this.popup !== openedPopup) return;
+          if (this.popup !== openedPopup || groupView) return;
           this.refreshHeightCache(popupType, data, containerRect, positionedWith);
         }, 0);
       });
+    }
+
+    if (data.type === 'datacenter') {
+      this.popup.querySelector('.datacenter-details')?.addEventListener('toggle', () => {
+        this.clampPopupToViewport();
+      });
+    }
+    if (data.type === 'cyberThreat' && (data.data as CyberThreat).indicatorType === 'ip') {
+      bindCyberNetworkSection(this.popup, (data.data as CyberThreat).indicator, () => this.clampPopupToViewport());
     }
 
     // Mount transit chart for waterway popups after DOM insertion
@@ -413,10 +427,42 @@ export class MapPopup {
       }
     }
 
+    const openedPopup = this.popup;
+
     // Close button handler via event delegation on the popup element.
     // This avoids re-querying and re-attaching listeners after innerHTML.
     this.popup.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      const member = target.closest<HTMLButtonElement>('[data-vessel-index]');
+      if (member && data.type === 'militaryVesselCluster' && !groupView) {
+        e.stopPropagation();
+        const index = Number(member.dataset.vesselIndex);
+        const vessel = Number.isInteger(index) && index >= 0
+          ? (data.data as MilitaryVesselCluster).vessels[index] : undefined;
+        if (!vessel) return;
+        groupView = {
+          nodes: Array.from(openedPopup.childNodes),
+          scroll: openedPopup.scrollTop,
+          member,
+        };
+        setTrustedHtml(openedPopup, trustedHtml(
+          (this.isMobileSheet ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>` : '')
+            + this.renderMilitaryVesselPopup(vessel, true), 'naval group member details'));
+        openedPopup.scrollTop = 0;
+        this.clampPopupToViewport();
+        openedPopup.querySelector<HTMLButtonElement>('.popup-back')?.focus({ preventScroll: true });
+        return;
+      }
+      if (target.closest('.popup-back') && groupView) {
+        e.stopPropagation();
+        const saved = groupView;
+        openedPopup.replaceChildren(...saved.nodes);
+        groupView = null;
+        this.clampPopupToViewport();
+        openedPopup.scrollTop = saved.scroll;
+        saved.member.focus({ preventScroll: true });
+        return;
+      }
       if (target.closest('.popup-close') || target.closest('.map-popup-sheet-handle')) {
         this.hide();
         return;
@@ -431,6 +477,7 @@ export class MapPopup {
       }
       const toggle = target.closest('.cluster-toggle') as HTMLButtonElement | null;
       if (toggle) {
+        e.stopPropagation();
         const hidden = toggle.previousElementSibling as HTMLElement | null;
         if (!hidden) return;
         const expanded = hidden.style.display !== 'none';
@@ -699,8 +746,7 @@ export class MapPopup {
     if (!this.popup || !this.isMobileSheet || e.touches.length !== 1) return;
 
     const target = e.target as HTMLElement | null;
-    const popupBody = this.popup.querySelector('.popup-body');
-    if (target?.closest('.popup-body') && popupBody && popupBody.scrollTop > 0) {
+    if (target?.closest('.popup-body') && this.popup.scrollTop > 0) {
       this.sheetTouchStartY = null;
       return;
     }
@@ -875,6 +921,9 @@ export class MapPopup {
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
       case 'news':
         return this.renderNewsPopup(data.data as NewsPopupData);
+      case 'displacement':
+        return `<div class="popup-header"><span class="popup-title">${t('panels.displacement')}</span><button class="popup-close" aria-label="${t('common.close')}">×</button></div>`
+          + `<div class="popup-body">${renderDisplacementDetails(data.data as DisplacementMarker)}</div>`;
       case 'crossBorder':
         return `<div class="popup-header"><span class="popup-title">${t('components.displacement.crossBorder')}</span><button class="popup-close" aria-label="${t('common.close')}">×</button></div>`
           + `<div class="popup-body">${renderCrossBorderDetails(data.data as CrossBorderPoint)}</div>`;
@@ -2033,10 +2082,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${escapeHtml(typeLabel)}</div>
+        <p class="popup-description">${escapeHtml(t(`popups.cyberThreat.explanations.${threat.type}`))}</p>
+        <p class="section-label">${t('popups.cyberThreat.evidence')}</p>
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${escapeHtml(threat.indicatorType.toUpperCase())}</span>
-            <span class="stat-value">${escapeHtml(threat.indicator)}</span>
+            <span class="stat-value" style="overflow-wrap:anywhere">${escapeHtml(threat.indicator)}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.country')}</span>
@@ -2050,6 +2101,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-label">${t('popups.malware')}</span>
             <span class="stat-value">${escapeHtml(threat.malwareFamily)}</span>
           </div>` : ''}
+          ${threat.firstSeen ? `<div class="popup-stat"><span class="stat-label">${t('popups.cyberThreat.firstSeen')}</span><span class="stat-value">${escapeHtml(new Date(threat.firstSeen).toLocaleString())}</span></div>` : ''}
           <div class="popup-stat">
             <span class="stat-label">${t('popups.lastSeen')}</span>
             <span class="stat-value">${escapeHtml(threat.lastSeen ? new Date(threat.lastSeen).toLocaleString() : t('popups.unknown'))}</span>
@@ -2059,6 +2111,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <div class="popup-tags">
           ${tags.map((tag) => `<span class="popup-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>` : ''}
+        ${threat.firstSeen ? `<p class="popup-description">${t('popups.cyberThreat.firstSeenNote')}</p>` : ''}
+        ${(threat.tags || []).includes('malware_download') ? `<p class="popup-description">${t('popups.cyberThreat.downloadTag')}</p>` : ''}
+        ${threat.malwareFamily ? `<p class="popup-description">${t('popups.cyberThreat.familyNote')}</p>` : ''}
+        <p class="popup-description">${t('popups.cyberThreat.approximateLocation')}</p>
+        ${threat.indicatorType === 'ip' ? renderCyberNetworkSection() : ''}
       </div>
     `;
   }
@@ -2573,7 +2630,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             <span class="stat-label">${t('popups.datacenter.chipType')}</span>
             <span class="stat-value">${escapeHtml(dc.chipType || t('popups.unknown'))}</span>
           </div>
-          ${dc.powerMW ? `
+          ${dc.powerMW != null ? `
           <div class="popup-stat">
             <span class="stat-label">${t('popups.datacenter.power')}</span>
             <span class="stat-value">${dc.powerMW.toFixed(0)} MW</span>
@@ -2587,8 +2644,39 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           ` : ''}
         </div>
         ${dc.note ? `<p class="popup-description">${escapeHtml(dc.note)}</p>` : ''}
+        ${this.renderDatacenterDetails(dc)}
         <div class="popup-attribution">${t('popups.datacenter.attribution')}</div>
       </div>
+    `;
+  }
+
+  private renderDatacenterDetails(dc: AIDataCenter): string {
+    const label = (key: string) => t(`popups.datacenter.details.${key}`);
+    const unknown = label('notAvailable');
+    const number = (value: number) => value.toLocaleString(getCurrentLanguageTag(), { maximumFractionDigits: 20 });
+    const row = (name: string, value: string) => `<div><dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+    const sourceUrl = dc.sourceUrl ? sanitizeUrl(dc.sourceUrl) : '';
+    return `
+      <details class="datacenter-details">
+        <summary>${label('more')}</summary>
+        <h3>${escapeHtml(dc.name)}</h3>
+        ${dc.description ? `<p>${escapeHtml(dc.description)}</p>` : ''}
+        <dl>
+          ${row(label('owner'), dc.owner)}
+          ${row(t('popups.datacenter.gpuChipCount'), number(dc.chipCount))}
+          ${row(t('popups.datacenter.chipType'), dc.chipType || unknown)}
+          ${row(label('power'), dc.powerMW != null ? `${number(dc.powerMW)} MW` : unknown)}
+          ${row(label('powerBasis'), dc.powerBasis ? label(dc.powerBasis) : unknown)}
+          ${row(label('location'), dc.locationPrecision ? label(dc.locationPrecision) : label('locationUnknown'))}
+          ${row(label('firstOperationalDate'), dc.firstOperationalDate || unknown)}
+          ${row(label('sourceDate'), dc.sourceDate || unknown)}
+          ${row(label('metadataReviewedAt'), dc.metadataReviewedAt || unknown)}
+        </dl>
+        <p>${label('powerCaveat')}</p>
+        <p>${label('freshness')}</p>
+        <a href="https://epoch.ai/data/gpu-clusters" target="_blank" rel="noopener noreferrer">${label('dataset')} ↗</a>
+        ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener noreferrer">${label('evidence')} ↗</a>` : ''}
+      </details>
     `;
   }
 
@@ -3047,13 +3135,13 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     return `${Math.abs(lat).toFixed(3)}°${ns}, ${Math.abs(lon).toFixed(3)}°${ew}`;
   }
 
-  private renderClusterVesselItem(v: MilitaryVessel): string {
+  private renderClusterVesselItem(v: MilitaryVessel, index: number): string {
     const code = this.getOperatorCountryCode(v);
     const flag = code ? this.getFlagEmoji(code) : '';
-    return `<div class="cluster-vessel-item">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name)} - ${escapeHtml(vesselTypeLabel(v))}</div>`;
+    return `<button type="button" class="cluster-vessel-item" data-vessel-index="${index}">${flag ? `<span class="flag-icon-small">${flag}</span> ` : ''}${escapeHtml(v.name || `${t('popups.militaryVessel.vessel')} ${v.mmsi}`)} - ${escapeHtml(vesselTypeLabel(v))}</button>`;
   }
 
-  private renderMilitaryVesselPopup(vessel: MilitaryVessel): string {
+  private renderMilitaryVesselPopup(vessel: MilitaryVessel, fromGroup = false): string {
     const operatorLabels: Record<string, string> = {
       usn: 'US Navy',
       uscg: 'US Coast Guard',
@@ -3163,6 +3251,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
         <button class="popup-close" aria-label="${t('common.close')}">×</button>
       </div>
       <div class="popup-body">
+        ${fromGroup ? `<button type="button" class="popup-back">← ${t('popups.militaryCluster.backToGroup')}</button>` : ''}
         <div class="popup-subtitle">
           ${flagEmoji ? `<span class="flag-icon">${flagEmoji}</span>` : ''}
           <span class="operator-label">${vesselOperator}</span>
@@ -3174,11 +3263,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.speed')}</span>
-            <span class="stat-value">${vessel.speed} kts</span>
+            <span class="stat-value">${vessel.usniSource ? t('popups.unknown') : `${vessel.speed} kts`}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryVessel.heading')}</span>
-            <span class="stat-value">${Math.round(vessel.heading)}°</span>
+            <span class="stat-value">${vessel.usniSource ? t('popups.unknown') : `${Math.round(vessel.heading)}°`}</span>
           </div>
           ${vessel.mmsi ? `
           <div class="popup-stat">
@@ -3305,12 +3394,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
 
     const visibleVessels = cluster.vessels
       .slice(0, 5)
-      .map(v => this.renderClusterVesselItem(v))
+      .map((v, index) => this.renderClusterVesselItem(v, index))
       .join('');
     const hiddenVessels = cluster.vessels.length > 5
       ? cluster.vessels
           .slice(5)
-          .map(v => this.renderClusterVesselItem(v))
+          .map((v, index) => this.renderClusterVesselItem(v, index + 5))
           .join('')
       : '';
     const hiddenCount = cluster.vessels.length - 5;

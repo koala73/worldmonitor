@@ -313,8 +313,8 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     // numbers because the API tiers advertised MCP caps the meter never applied.
     // They are enforced now, so the ban inverts: an agent planning a workload
     // needs the real budget AND the weight, or it cannot predict its own spend.
-    assert.match(notes, /API Starter \(1000\/day\) and API Business \(10000\/day\)/,
-      'notes must publish the API-tier budgets now that they are enforced');
+    assert.match(notes, /API Starter \(1000\/day\), API Business \(10000\/day\) and Enterprise \(10000\/day by default/,
+      'notes must publish the API-tier and Enterprise budgets now that they are enforced');
     assert.match(notes, /per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data/i,
       'notes must publish the weight, or the shared budget is unpredictable');
     for (const method of [

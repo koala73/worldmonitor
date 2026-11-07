@@ -163,6 +163,7 @@ const stubSources: Record<string, string> = {
   './billing': `
     export const openBillingPortal = async () => {};
     export const prereserveBillingPortalTab = () => null;
+    export const requestProBusinessUpgrade = async () => { throw new Error('stub'); };
   `,
   './clerk': `
     export const getCurrentClerkUser = () => globalThis.__xvHarness.currentUser;

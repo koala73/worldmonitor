@@ -1,10 +1,12 @@
 import '../styles/main.css';
 import { MapComponent } from '../components/Map';
 import { initI18n } from '../services/i18n';
-import type { CrossBorderData } from '../services/displacement';
+import type { CrossBorderData, DisplacementFlow, DisplacementEventsData, InternalDisplacementData } from '../services/displacement';
+import type { MilitaryVessel } from '../types';
 
 type MobileMapIntegrationHarness = {
   ready: boolean;
+  seedNavalGroup: () => void;
   pendingDeferredCallbacks: number;
   flushDeferredCallbacks: () => void;
   destroyMap: () => void;
@@ -24,6 +26,9 @@ type MobileMapIntegrationHarness = {
   burstFlashes: (count: number) => void;
   clearOverlayFeeds: () => void;
   setCrossBorderArrivals: (data: CrossBorderData) => void;
+  setDisplacementFlows: (data: DisplacementFlow[]) => void;
+  setDisplacementEvents: (data: DisplacementEventsData) => void;
+  setInternalDisplacement: (data: InternalDisplacementData) => void;
   toggleCrossBorderLayer: () => void;
   getActiveFlashCount: () => number;
   getFlashNodeCount: () => number;
@@ -264,7 +269,26 @@ const ensureHotspotsRendered = (): void => {
 ensureHotspotsRendered();
 
 window.__mobileMapIntegrationHarness = {
+  seedNavalGroup: () => {
+    const names = ['USS Boxer', 'USS Comstock', 'USS Portland', 'USS Mustin', 'USS Example', 'USS Test', 'Unknown vessel',
+      ...Array.from({ length: 13 }, (_, index) => `Test vessel ${index + 8}`)];
+    const vessels: MilitaryVessel[] = names.map((name, index) => ({
+      id: `naval-test-${index}`, name, mmsi: index === 0 ? '123456789' : '',
+      vesselType: index === 6 ? 'unknown' : 'amphibious', operator: 'usn', operatorCountry: 'US',
+      lat: 0, lon: 0, heading: 0, speed: 0, confidence: 'low',
+      lastAisUpdate: new Date(), usniSource: index !== 0,
+      ...(index !== 0 ? { usniRegion: 'Indian Ocean', note: 'Synthetic USNI fixture; position is approximate.' } : {}),
+    }));
+    map.toggleLayer('military', 'programmatic');
+    map.setMilitaryVessels([], [{
+      id: 'naval-test', name: 'Indian Ocean Naval Group (test data)',
+      lat: 0, lon: 0, vesselCount: vessels.length, vessels,
+    }]);
+  },
   setCrossBorderArrivals: (data) => map.setCrossBorderArrivals(data),
+  setDisplacementFlows: (data) => map.setDisplacementFlows(data),
+  setDisplacementEvents: (data) => map.setDisplacementEvents(data),
+  setInternalDisplacement: (data) => map.setInternalDisplacement(data),
   toggleCrossBorderLayer: () => map.toggleLayer('displacement', 'programmatic'),
   get ready() {
     return ready;

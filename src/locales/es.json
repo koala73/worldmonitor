@@ -884,7 +884,7 @@
         "space": "ESPACIO"
       },
       "paused": "Cámaras en pausa",
-      "play": "Reproducir",
+      "play": "Ver en vivo",
       "previewStatus": "Listo para reproducir",
       "connecting": "Conectando…",
       "unverified": "No se puede confirmar que esta transmisión esté en directo",
@@ -1271,6 +1271,20 @@
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
         }
+      },
+      "measure": {
+        "title": "Medir distancia",
+        "units": "Unidades de distancia",
+        "pointA": "Selecciona el punto A. Haz clic en el mapa o presiona Intro en el centro del mapa.",
+        "pointB": "Selecciona el punto B. Desplázate por el mapa y presiona Intro para usar su centro.",
+        "geodesic": "Distancia geodésica",
+        "note": "Entre coordenadas seleccionadas; no es una ruta ni una separación de activos verificada. Presiona Escape para salir.",
+        "cancel": "Cancelar selección",
+        "cancelShort": "Cancelar",
+        "resetShort": "Restablecer",
+        "exitShort": "Salir",
+        "reset": "Restablecer medición",
+        "exit": "Salir de la medición"
       }
     },
     "climate": {
@@ -1303,6 +1317,7 @@
       "shareStory": "Compartir historia",
       "printPdf": "Imprimir / PDF",
       "exportData": "Exportar datos",
+      "moreActions": "Más acciones",
       "shareLink": "Compartir enlace"
     },
     "relatedAssets": {
@@ -1849,8 +1864,8 @@
       "badgeAnimDesc": "Animar insignias de actualización en encabezados de paneles",
       "headlineMemoryLabel": "Memoria de titulares",
       "headlineMemoryDesc": "Recordar titulares vistos para resaltar nuevos",
-      "streamAlwaysOnLabel": "Reproducir automáticamente transmisiones en vivo en el panel",
-      "streamAlwaysOnDesc": "Inicia Live News y Live Webcams automáticamente cuando están visibles. Déjalo desactivado para cargar video solo después de hacer clic en Reproducir.",
+      "streamAlwaysOnLabel": "Reproducción automática de cámaras en directo",
+      "streamAlwaysOnDesc": "Inicia los vídeos de webcam en directo tan pronto como aparecen en pantalla. Déjalo desactivado para cargarlos solo cuando los inicies.",
       "globeRenderScaleOptions": {
         "1": "Eco (1×)",
         "2": "4K (2x)",
@@ -1900,7 +1915,9 @@
       "briefStoryDetails": "Detalles de la noticia ({{count}})",
       "streamIdleStopLabel": "Detener vídeo en directo cuando está inactivo",
       "streamIdleStopDesc": "Detiene Noticias en Directo y Cámaras Web en Directo después de este tiempo sin actividad y muestra una notificación en el panel.",
-      "streamIdleStopNever": "Nunca"
+      "streamIdleStopNever": "Nunca",
+      "liveNewsAutoplayLabel": "Reproducción automática de noticias en directo",
+      "liveNewsAutoplayDesc": "Inicia el vídeo de noticias en directo, silenciado, tan pronto como aparece en pantalla. Desactívalo para cargar el vídeo solo cuando lo inicies."
     },
     "etfFlows": {
       "previousColumns": "Columnas anteriores",
@@ -2566,8 +2583,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro ha sido lanzado",
-      "tagline": "Más señal, menos ruido. Más resúmenes con IA. Un investigador de geopolítica y equidad solo para ti.",
+      "headline": "Resúmenes diarios de IA por email o Slack",
+      "tagline": "más WM Analyst, reglas de alertas y MCP para Claude",
       "cta": "Actualiza a Pro →",
       "dismiss": "Descartar"
     },
@@ -3195,7 +3212,44 @@
       "open": "ABIERTO"
     },
     "cyberThreat": {
-      "title": "CIBERAMENAZA"
+      "title": "CIBERAMENAZA",
+      "evidence": "Evidencia de fuente de amenaza",
+      "firstSeen": "Primer avistamiento",
+      "explanations": {
+        "c2_server": "La fuente reporta un servidor de comando y control utilizado para enviar instrucciones a malware.",
+        "malware_host": "La fuente reporta una dirección utilizada para alojar malware.",
+        "phishing": "La fuente reporta un indicador asociado con phishing.",
+        "malicious_url": "La fuente reporta una URL asociada con actividad maliciosa."
+      },
+      "downloadTag": "malware_download: la fuente reporta una ubicación de descarga de malware.",
+      "familyNote": "La etiqueta de familia de malware proviene de la fuente de amenaza. No identifica a una persona ni a una organización.",
+      "approximateLocation": "La ubicación mapeada es contexto aproximado derivado de IP, no una ubicación de host físico verificada.",
+      "network": {
+        "title": "Información de red",
+        "privacy": "Expande para solicitar datos de red pasiva de RIPEstat. La IP del indicador se comparte con ese proveedor.",
+        "disclaimer": "El registro de red y el enrutamiento no identifican al atacante ni hacen al proveedor responsable de la actividad.",
+        "loading": "Cargando información de red…",
+        "unknown": "No disponible",
+        "disabled": "La búsqueda de red no está habilitada.",
+        "invalid": "La búsqueda de red requiere una dirección IP pública.",
+        "unavailable": "La búsqueda de red falló. Cierra y reabre la ventana para intentar más tarde.",
+        "rateLimited": "La búsqueda de red está temporalmente limitada. Intenta más tarde.",
+        "noData": "El proveedor no devolvió información de red para esta IP.",
+        "partial": "No se pudo recuperar parte de la información de red.",
+        "ip": "IP",
+        "asn": "ASN de origen",
+        "operator": "Titular de ASN reportado / operador de red",
+        "prefix": "Prefijo de enrutamiento reportado",
+        "hostname": "Nombre de host de DNS inverso (rDNS)",
+        "lookupAt": "Hora de búsqueda de red",
+        "routingAt": "Hora de datos de enrutamiento",
+        "broaderPrefix": "El proveedor coincidió con un prefijo de enrutamiento más amplio. Este no es un registro de asignación de IP exacto.",
+        "rdnsNote": "rDNS es una etiqueta DNS, no prueba de propiedad. La organización registrada y la ubicación precisa no se proporcionan en esta búsqueda.",
+        "copy": "Copiar",
+        "copied": "Copiado.",
+        "copyFailed": "La copia falló. Selecciona el texto para copiarlo."
+      },
+      "firstSeenNote": "Esta es la fecha del indicador más antigua disponible en los feeds u observaciones de World Monitor; puede diferir de la fecha de la fuente listada."
     },
     "nuclear": {
       "types": {
@@ -3366,6 +3420,28 @@
       "readReport": "Leer informe completo"
     },
     "datacenter": {
+      "details": {
+        "more": "Más detalles",
+        "owner": "Propietario / proveedor del clúster (conjunto de datos)",
+        "power": "Potencia en el conjunto de datos",
+        "powerCaveat": "La capacidad de potencia puede ser declarada o estimada. No es una medición del consumo eléctrico actual.",
+        "powerBasis": "Base del valor de potencia",
+        "reported": "Declarada",
+        "estimated": "Estimada",
+        "notAvailable": "No disponible",
+        "location": "Precisión de la ubicación",
+        "locationUnknown": "Punto del mapa sin verificar; no usar como dirección exacta de la instalación.",
+        "site": "Instalación (verificada por la fuente)",
+        "city": "Solo ciudad",
+        "region": "Solo región",
+        "country": "Solo país",
+        "dataset": "Conjunto de datos de clústeres GPU de Epoch AI",
+        "evidence": "Fuente de respaldo",
+        "sourceDate": "Fecha de publicación de la fuente",
+        "metadataReviewedAt": "Metadatos comprobados",
+        "firstOperationalDate": "Fecha de primera operación (conjunto de datos)",
+        "freshness": "Instantánea guardada del conjunto de datos. El estado y las especificaciones actuales pueden haber cambiado."
+      },
       "status": {
         "existing": "OPERACIONAL",
         "planned": "PLANIFICADO",
@@ -3516,7 +3592,8 @@
       "vesselsCount": "{{count}} BUQUES",
       "vessels": "BUQUES",
       "trackedVessels": "BUQUES CON ORUGAS",
-      "showLess": "Mostrar menos"
+      "showLess": "Mostrar menos",
+      "backToGroup": "Volver al grupo"
     },
     "naturalEvent": {
       "closed": "CERRADO",
@@ -4687,7 +4764,7 @@
         "category": "Desastres naturales",
         "purpose": "Muestra terremotos, alertas de desastre grave y eventos activos de observación de la Tierra, para la conciencia de la situación.",
         "source": "Terremotos del USGS, alertas GDACS y eventos NASA EONET, fusionados en el servicio de eventos naturales.",
-        "freshness": "Los eventos naturales se cargan cada 3 horas. El ritmo de origen esperado para los terremotos del USGS está documentado en unos 5 minutos.",
+        "freshness": "Los eventos naturales se cargan cada 30 minutos. El ritmo de origen esperado para los terremotos del USGS está documentado en unos 5 minutos.",
         "confidence": "Sólido para las señales públicas de desastre que se han detectado. La confianza varía según el tipo de peligro y la demora del aviso en origen.",
         "limitations": {
           "0": "Las alertas GDACS de baja gravedad se filtran para que el mapa siga siendo legible.",
@@ -4781,5 +4858,14 @@
     "happy": {
       "map": "Mapa de Buenas Noticias"
     }
+  },
+  "pwaInstall": {
+    "title": "Instalar aplicación",
+    "share": "En Safari, toca Compartir (el cuadrado con una flecha hacia arriba). Quizá debas abrir primero el menú Más.",
+    "add": "Elige Añadir a pantalla de inicio.",
+    "confirm": "Toca Añadir y abre World Monitor desde la pantalla de inicio.",
+    "close": "Cerrar",
+    "alertsHint": "Instala World Monitor en tu pantalla de inicio para recibir alertas en este iPhone o iPad.",
+    "how": "Cómo instalar"
   }
 }

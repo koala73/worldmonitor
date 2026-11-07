@@ -65,6 +65,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // European Addition
   'El País': 'mainstream', 'El Mundo': 'mainstream', 'BBC Mundo': 'mainstream',
   'Tagesschau': 'mainstream', 'Der Spiegel': 'mainstream', 'Die Zeit': 'mainstream', 'DW News': 'mainstream',
+  'Deutschlandfunk': 'mainstream', 'ZDFheute': 'mainstream',
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
   'Handelsblatt': 'market', 'Welt': 'mainstream', 'Telegraph': 'mainstream',
   'Interfax RU': 'wire', 'Interfax EN': 'wire',
