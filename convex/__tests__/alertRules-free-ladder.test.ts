@@ -347,3 +347,42 @@ describe("notificationChannels — free channel set (#4273)", () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// OAuth channel creation carries the same layer-2 gate: the start endpoints
+// already deny free callers at the edge, but a lapsed entitlement mid-flow
+// (or any future caller) must end at the mutation too.
+// ---------------------------------------------------------------------------
+
+describe("notificationChannels — OAuth creation paths gate on the ladder (#4273)", () => {
+  test("free user: slack OAuth channel creation is denied at the mutation", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
+        userId: USER.subject,
+        webhookEnvelope: "enc",
+      }),
+    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+  });
+
+  test("free user: discord OAuth channel creation is denied at the mutation", async () => {
+    const t = convexTest(schema, modules);
+    await expect(
+      t.mutation(internal.notificationChannels.setDiscordOAuthChannelForUser, {
+        userId: USER.subject,
+        webhookEnvelope: "enc",
+      }),
+    ).rejects.toThrow(/ALERT_CHANNEL_UPGRADE_REQUIRED/);
+  });
+
+  test("pro user: slack OAuth channel creation still succeeds", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t);
+    await expect(
+      t.mutation(internal.notificationChannels.setSlackOAuthChannelForUser, {
+        userId: USER.subject,
+        webhookEnvelope: "enc",
+      }),
+    ).resolves.toEqual({ isNew: true });
+  });
+});

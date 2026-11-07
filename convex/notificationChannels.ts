@@ -362,6 +362,10 @@ export const setSlackOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273): the OAuth start endpoints already deny
+    // free callers, but channel creation must not depend on an edge gate
+    // alone — and an entitlement that lapsed mid-OAuth-flow ends here.
+    await assertChannelCapability(ctx, args.userId, "slack");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
@@ -397,6 +401,8 @@ export const setDiscordOAuthChannelForUser = internalMutation({
   },
   handler: async (ctx, args) => {
     await assertAccountWritable(ctx, args.userId);
+    // Layer-2 ladder gate (#4273) — see setSlackOAuthChannelForUser.
+    await assertChannelCapability(ctx, args.userId, "discord");
     const existing = await ctx.db
       .query("notificationChannels")
       .withIndex("by_user_channel", (q) =>
