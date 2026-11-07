@@ -161,7 +161,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": false,
       "selfServe": false,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in Pro + API, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
+      "description": "Everything in Pro + API, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee (by contract), On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO and SCIM (by contract), Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
   "heroProofStats": {
@@ -263,6 +263,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 3,
+    "dataExport": false,
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
@@ -296,6 +298,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 10,
+    "dataExport": false,
     "highlighted": true
   },
   "pro_business": {
@@ -325,6 +329,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_starter": {
@@ -353,6 +359,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "highlighted": false
   },
   "api_business": {
@@ -380,6 +388,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 100,
+    "dataExport": true,
     "highlighted": false
   },
   "enterprise": {
@@ -391,11 +401,11 @@ export const TIER_CONFIG = {
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing"
     ],
@@ -409,6 +419,8 @@ export const TIER_CONFIG = {
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": -1,
+    "dataExport": true,
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

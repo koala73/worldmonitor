@@ -49,7 +49,7 @@ async function sendNotificationEmail(
   name: string,
   email: string,
   organization: string,
-  phone: string,
+  phone: string | undefined,
   message: string | undefined,
   ip: string,
   country: string | null,
@@ -82,7 +82,7 @@ async function sendNotificationEmail(
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Email</td><td style="padding: 8px;"><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></td></tr>
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Domain</td><td style="padding: 8px;"><a href="https://${escapeHtml(emailDomain)}" target="_blank">${escapeHtml(emailDomain)}</a></td></tr>
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Company</td><td style="padding: 8px;">${escapeHtml(organization)}</td></tr>
-              <tr><td style="padding: 8px; font-weight: bold; color: #666;">Phone</td><td style="padding: 8px;"><a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a></td></tr>
+              ${phone ? `<tr><td style="padding: 8px; font-weight: bold; color: #666;">Phone</td><td style="padding: 8px;"><a href="tel:${escapeHtml(phone)}">${escapeHtml(phone)}</a></td></tr>` : ''}
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">Message</td><td style="padding: 8px;">${escapeHtml(message || 'N/A')}</td></tr>
               <tr><td style="padding: 8px; font-weight: bold; color: #666;">IP</td><td style="padding: 8px; font-family: monospace;">${escapeHtml(ip || 'unknown')}</td></tr>
               ${country ? `<tr><td style="padding: 8px; font-weight: bold; color: #666;">Country</td><td style="padding: 8px;">${escapeHtml(country)}</td></tr>` : ''}
@@ -142,13 +142,15 @@ export async function submitContact(
   if (!organization || organization.trim().length === 0) {
     throw new ValidationError([{ field: 'organization', description: 'Company is required' }]);
   }
-  if (!phone || !PHONE_RE.test(phone.trim())) {
-    throw new ValidationError([{ field: 'phone', description: 'Valid phone number is required' }]);
+  // Phone is optional. When given, it must still look like a phone number.
+  const trimmedPhone = (phone ?? '').trim();
+  if (trimmedPhone && !PHONE_RE.test(trimmedPhone)) {
+    throw new ValidationError([{ field: 'phone', description: 'Invalid phone number' }]);
   }
 
   const safeName = name.slice(0, MAX_FIELD);
   const safeOrg = organization.slice(0, MAX_FIELD);
-  const safePhone = phone.trim().slice(0, 30);
+  const safePhone = trimmedPhone ? trimmedPhone.slice(0, 30) : undefined;
   const safeMsg = message ? message.slice(0, MAX_MESSAGE) : undefined;
   const safeSource = source ? source.slice(0, 100) : 'enterprise-contact';
 

@@ -86,7 +86,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: Custom
 - Contact: enterprise@worldmonitor.app
 - Best for: Governments, institutions, trading desks, SOCs, risk consultancies and organizations that need shared monitoring or deployment control
-- Includes: Everything in Pro and API, team workspaces, SSO/MFA/RBAC, dedicated support, white-label and embeddable panels, Android TV app, SIEM/connectors, bulk export and managed deployment options
+- Includes: Everything in Pro and API, team workspaces, dedicated support, white-label and embeddable panels, bulk export and managed deployment options
+- By contract: SLA guarantee, SAML SSO and SCIM, SSO/MFA/RBAC, an Android TV app, and SIEM and data connectors
 - Deployment options: Cloud, dedicated cloud tenant, on-premises or air-gapped
 - Security: AES-256 encrypted notification channels, audit trail, private MCP options and organization controls
 

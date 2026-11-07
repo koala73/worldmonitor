@@ -519,7 +519,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     currentForCheckout: true,
     // Pro and Pro Business are separate Dodo products, not a
     // subscription-updatable collection — the customer portal cannot perform
-    // the change, so the plan-limit CTA must not point at it.
+    // the change, so the plan-limit CTA must not point at it. Pro subscribers
+    // upgrade in place through the change-plan API instead
+    // (runProBusinessUpgrade in payments/billing.ts).
     canChangePlanSelfServe: false,
     publicVisible: true,
   },
@@ -648,11 +650,11 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
     ],

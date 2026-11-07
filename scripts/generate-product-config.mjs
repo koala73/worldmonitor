@@ -167,6 +167,10 @@ for (const [tierGroup, entries] of tierGroups) {
     tier.highlightFeatures = primary.highlightFeatures;
   }
   tier.planLimits = publicPlanLimits(primary.features.planLimits);
+  // The /pro comparison table reads these so its dashboard and export rows
+  // come from the catalog instead of hand-typed copy (-1 = unlimited).
+  tier.maxDashboards = primary.features.maxDashboards;
+  tier.dataExport = primary.features.dataExport === true;
   if (localeFeaturesByKey[localeKey]) {
     throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
   }

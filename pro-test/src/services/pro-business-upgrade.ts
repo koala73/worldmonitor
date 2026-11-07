@@ -51,9 +51,12 @@ const UPGRADE_CANCEL_SCHEDULED_BODY =
 const UPGRADE_FAILED_BODY =
   'The upgrade did not go through and you have not been charged for it. Try again in a minute, or email support@worldmonitor.app.';
 
-type UpgradeCallResult =
-  | { ok: true; data: { kind?: unknown } & Partial<UpgradePreview> }
-  | { ok: false; error: string };
+// One shape rather than a union: this build's tsconfig does not narrow on `ok`.
+interface UpgradeCallResult {
+  ok: boolean;
+  data: { kind?: unknown } & Partial<UpgradePreview>;
+  error: string;
+}
 
 async function callUpgrade(apiBase: string, token: string, confirm: boolean): Promise<UpgradeCallResult> {
   try {
@@ -69,11 +72,11 @@ async function callUpgrade(apiBase: string, token: string, confirm: boolean): Pr
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      return { ok: false, error: typeof data?.error === 'string' ? data.error : `http_${resp.status}` };
+      return { ok: false, data: {}, error: typeof data?.error === 'string' ? data.error : `http_${resp.status}` };
     }
-    return { ok: true, data };
+    return { ok: true, data, error: '' };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.name : 'network' };
+    return { ok: false, data: {}, error: err instanceof Error ? err.name : 'network' };
   }
 }
 
@@ -221,7 +224,7 @@ export async function runProBusinessUpgradeFlow(options: {
         const freshToken = await options.getToken();
         const applied = freshToken
           ? await callUpgrade(options.apiBase, freshToken, true)
-          : { ok: false as const, error: 'no_token' };
+          : { ok: false, data: {}, error: 'no_token' };
         if (applied.ok) {
           showDialog({
             title: UPGRADE_SUCCESS_TITLE,
