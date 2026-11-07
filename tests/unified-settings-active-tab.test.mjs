@@ -161,25 +161,27 @@ describe('UnifiedSettings.open active-tab availability (#5611)', () => {
     };
   });
 
-  it('falls back to Settings when explicitly opened to MCP Clients without access', () => {
+  // AI Agents (tab id 'mcp-clients') is open to every account: connecting an
+  // agent needs no plan. Only its connected-clients section is mcpAccess-gated.
+  it('opens AI Agents without mcpAccess', () => {
     const instance = makeInstance();
 
     instance.open('mcp-clients');
 
-    assert.equal(instance.activeTab, 'settings');
-    assert.deepEqual(instance.renderedTabs, ['settings']);
+    assert.equal(instance.activeTab, 'mcp-clients');
+    assert.deepEqual(instance.renderedTabs, ['mcp-clients']);
   });
 
-  it('clears a sticky MCP Clients tab when access was lost between opens', () => {
+  it('keeps a sticky AI Agents tab after access was lost between opens', () => {
     const instance = makeInstance('mcp-clients');
 
     instance.open();
 
-    assert.equal(instance.activeTab, 'settings');
-    assert.deepEqual(instance.renderedTabs, ['settings']);
+    assert.equal(instance.activeTab, 'mcp-clients');
+    assert.deepEqual(instance.renderedTabs, ['mcp-clients']);
   });
 
-  it('preserves MCP Clients when the tab is available', () => {
+  it('preserves AI Agents when mcpAccess is held', () => {
     mcpAccess = true;
     const instance = makeInstance();
 

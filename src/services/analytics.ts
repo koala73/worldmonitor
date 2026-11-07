@@ -13,6 +13,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import { MCP_AGENT_CLIENTS } from '@/config/mcp-agent-clients';
 import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
 import { isAgentPanelViewSuppressed } from './agent-analytics-privacy';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
@@ -217,6 +218,9 @@ const EVENTS = {
   // API outcome telemetry — closed-vocabulary key lifecycle actions only;
   // never include key names, ids, prompts, or request/user data.
   'api-action': true,
+  // Settings → AI Agents connect clicks. `client` is the closed catalog id in
+  // src/config/mcp-agent-clients.ts, `method` is link | copy.
+  'agent-connect': true,
   // Premium entitlement health — a client that believes it is Pro received a
   // server-side denial. This is trend telemetry, never an authorization signal.
   'entitlement-desync': true,
@@ -1378,6 +1382,17 @@ export type ApiActionName = (typeof API_ACTIONS)[number];
 export function trackApiAction(action: ApiActionName): void {
   if (!API_ACTIONS.includes(action)) return;
   track('api-action', { action });
+}
+
+const AGENT_CLIENT_IDS: ReadonlySet<string> = new Set(MCP_AGENT_CLIENTS.map((c) => c.id));
+
+/**
+ * Settings → AI Agents: a user started connecting an agent. `client` is the
+ * closed catalog id; anything else (a tampered data attribute) is dropped.
+ */
+export function trackAgentConnect(client: string, method: 'link' | 'copy'): void {
+  if (!AGENT_CLIENT_IDS.has(client)) return;
+  track('agent-connect', { client, method });
 }
 
 // ---------------------------------------------------------------------------

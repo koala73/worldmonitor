@@ -399,14 +399,19 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     expect(quota().textContent).not.toContain('unavailable');
   });
 
-  it('offers the canonical MCP endpoint when no clients are connected', () => {
+  it('offers the canonical MCP endpoint and one-click links when no clients are connected', () => {
+    settings.open('mcp-clients');
     internal.mcpClients = [];
     internal.mcpClientsLoading = false;
     internal.renderMcpClientsList();
 
-    const copy = internal.overlay.querySelector<HTMLButtonElement>('.mcp-clients-copy-url-btn');
+    const panel = internal.overlay.querySelector<HTMLElement>('[data-panel-id="mcp-clients"]')!;
+    const copy = panel.querySelector<HTMLButtonElement>('.mcp-agents-url .mcp-copy-btn');
     expect(copy?.dataset.copyValue).toBe('https://worldmonitor.app/mcp');
-    expect(internal.overlay.textContent).not.toContain('api.worldmonitor.app/mcp');
+    const claude = panel.querySelector<HTMLAnchorElement>('[data-agent-id="claude"] a');
+    expect(new URL(claude!.href).searchParams.get('connectorUrl')).toBe('https://worldmonitor.app/mcp');
+    expect(panel.querySelector('#usMcpClientsList')?.textContent).toContain('No connected agents yet');
+    expect(panel.textContent).not.toContain('api.worldmonitor.app/mcp');
   });
 
   it('keeps checking past 12 seconds while entitlement verification is still in flight', () => {
@@ -580,14 +585,18 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
   it('rebuilds MCP capability from B across reset, free, and Pro snapshots', async () => {
     mcpMocks.list.mockResolvedValue([mcpClient('client-b', 'B private MCP client')]);
     settings.open('api-keys');
-    expect(internal.overlay.querySelector('[data-tab="mcp-clients"]')).not.toBeNull();
+    // The AI Agents tab is always present; the account-scoped part is the
+    // connected-clients section, which must follow B's snapshot.
+    const manage = () => internal.overlay.querySelector('[data-mcp-manage]');
+    expect(manage()).not.toBeNull();
 
     emitAccount('B');
     expect(internal.accountEntitlementRefreshPending).toBe(true);
 
     emitEntitlement(null);
     expect(internal.accountEntitlementRefreshPending).toBe(true);
-    expect(internal.overlay.querySelector('[data-tab="mcp-clients"]')).toBeNull();
+    expect(internal.overlay.querySelector('[data-tab="mcp-clients"]')).not.toBeNull();
+    expect(manage()).toBeNull();
     expect(mcpMocks.list).not.toHaveBeenCalled();
 
     emitEntitlement(entitlement({
@@ -596,7 +605,7 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
       mcpAccess: false,
     }));
     expect(internal.accountEntitlementRefreshPending).toBe(false);
-    expect(internal.overlay.querySelector('[data-tab="mcp-clients"]')).toBeNull();
+    expect(manage()).toBeNull();
     expect(mcpMocks.list).not.toHaveBeenCalled();
 
     emitEntitlement(entitlement({
@@ -604,8 +613,8 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
       apiAccess: false,
       mcpAccess: true,
     }));
+    expect(manage()).not.toBeNull();
     const mcpTab = internal.overlay.querySelector<HTMLButtonElement>('[data-tab="mcp-clients"]');
-    expect(mcpTab).not.toBeNull();
     mcpTab!.click();
 
     await vi.waitFor(() => {
