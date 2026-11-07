@@ -3794,6 +3794,203 @@ export const internalGetCustomerPortalUrl = internalAction({
 });
 
 // ---------------------------------------------------------------------------
+// Pro → Pro Business in-place upgrade
+// ---------------------------------------------------------------------------
+
+/**
+ * Same-period targets for the one upgrade the customer portal cannot do. Pro
+ * and Pro Business are separate Dodo products (not an updatable collection),
+ * so the portal shows no plan change; the Dodo change-plan API moves the
+ * existing subscription to the other product with a prorated charge instead.
+ * The billing period is kept so the renewal cadence the customer chose holds.
+ */
+export const PRO_BUSINESS_UPGRADE_TARGETS: Readonly<Record<string, string>> = {
+  pro_monthly: "pro_business_monthly",
+  pro_annual: "pro_business_annual",
+};
+
+export type ProBusinessUpgradeRefusal =
+  | "NO_UPGRADEABLE_PRO"
+  | "ALREADY_PRO_BUSINESS"
+  | "PRO_CANCEL_SCHEDULED"
+  | "ACCOUNT_DELETION_IN_PROGRESS";
+
+export type ProBusinessUpgradeCandidate =
+  | {
+      ok: true;
+      dodoSubscriptionId: string;
+      fromPlanKey: string;
+      toPlanKey: string;
+      fromProductId: string;
+      toProductId: string;
+    }
+  | { ok: false; reason: ProBusinessUpgradeRefusal };
+
+/**
+ * Pure selection over the user's subscription rows, exported for tests.
+ * Only an ACTIVE, non-cancelling Pro qualifies: a cancelled Pro already has
+ * the checkout carve-out (isCancelledProBeforeProBusinessUpgrade), on_hold
+ * means the last charge failed, and a scheduled cancellation would end the
+ * upgraded plan at period end, which is not what an upgrade buyer expects.
+ */
+export function selectProBusinessUpgradeCandidate(
+  subs: ReadonlyArray<Pick<Doc<"subscriptions">, "planKey" | "status" | "currentPeriodEnd" | "dodoSubscriptionId" | "dodoProductId" | "rawPayload">>,
+  now: number,
+): ProBusinessUpgradeCandidate {
+  const covering = subs.filter((sub) => isCoveringAt(sub, now));
+  if (covering.some((sub) => PRODUCT_CATALOG[sub.planKey]?.tierGroup === "pro_business")) {
+    return { ok: false, reason: "ALREADY_PRO_BUSINESS" };
+  }
+  const activePro = covering.filter(
+    (sub) => sub.status === "active" && PRO_BUSINESS_UPGRADE_TARGETS[sub.planKey] !== undefined,
+  );
+  const upgradeable = activePro.find((sub) => !isCancellationScheduled(sub));
+  if (!upgradeable) {
+    return { ok: false, reason: activePro.length > 0 ? "PRO_CANCEL_SCHEDULED" : "NO_UPGRADEABLE_PRO" };
+  }
+  const toPlanKey = PRO_BUSINESS_UPGRADE_TARGETS[upgradeable.planKey]!;
+  const target = PRODUCT_CATALOG[toPlanKey];
+  if (!target || !target.currentForCheckout || !target.dodoProductId) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  return {
+    ok: true,
+    dodoSubscriptionId: upgradeable.dodoSubscriptionId,
+    fromPlanKey: upgradeable.planKey,
+    toPlanKey,
+    fromProductId: upgradeable.dodoProductId,
+    toProductId: target.dodoProductId,
+  };
+}
+
+export const getProBusinessUpgradeCandidate = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeCandidate> => {
+    if (await isAccountDeleting(ctx, args.userId)) {
+      return { ok: false, reason: "ACCOUNT_DELETION_IN_PROGRESS" };
+    }
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+    return selectProBusinessUpgradeCandidate(subs, Date.now());
+  },
+});
+
+export type ProBusinessUpgradeResult =
+  | {
+      kind: "preview";
+      fromPlanKey: string;
+      toPlanKey: string;
+      /** Amount charged now, lowest currency unit, tax included when Dodo reports it. */
+      chargeAmount: number;
+      currency: string;
+      /** Recurring price of the new plan before tax, lowest currency unit. */
+      renewalAmount: number | null;
+      billingPeriod: "monthly" | "annual";
+    }
+  | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
+
+/** Charged now, the remainder of the current period prorated. A failed charge keeps the Pro plan. */
+const PRO_BUSINESS_CHANGE_PARAMS = {
+  quantity: 1,
+  proration_billing_mode: "prorated_immediately",
+  effective_at: "immediately",
+  on_payment_failure: "prevent_change",
+} as const;
+
+const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
+
+/**
+ * Preview (confirm=false) or apply (confirm=true) the upgrade. Entitlements
+ * follow from Dodo's `subscription.plan_changed` webhook, which patches the
+ * row's planKey and recomputes the entitlement (handleSubscriptionPlanChanged),
+ * so this action never writes billing state itself.
+ */
+export async function runProBusinessUpgrade(
+  ctx: Pick<ActionCtx, "runQuery">,
+  userId: string,
+  confirm: boolean,
+): Promise<ProBusinessUpgradeResult> {
+  const candidate = await ctx.runQuery(
+    internal.payments.billing.getProBusinessUpgradeCandidate,
+    { userId },
+  );
+  if (!candidate.ok) {
+    throw new ConvexError({ kind: candidate.reason });
+  }
+
+  const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });
+  const params = { product_id: candidate.toProductId, ...PRO_BUSINESS_CHANGE_PARAMS };
+
+  if (!confirm) {
+    try {
+      const preview = await client.subscriptions.previewChangePlan(candidate.dodoSubscriptionId, params);
+      const summary = preview.immediate_charge.summary;
+      return {
+        kind: "preview",
+        fromPlanKey: candidate.fromPlanKey,
+        toPlanKey: candidate.toPlanKey,
+        chargeAmount: summary.total_amount,
+        currency: String(summary.currency),
+        renewalAmount: typeof preview.new_plan?.recurring_pre_tax_amount === "number"
+          ? preview.new_plan.recurring_pre_tax_amount
+          : null,
+        billingPeriod: PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly",
+      };
+    } catch (err) {
+      console.error(
+        `[billing] Dodo change-plan preview failed for subscription ${candidate.dodoSubscriptionId}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
+    }
+  }
+
+  try {
+    // A double submit reaches here twice before the webhook lands. Re-read the
+    // provider row and skip the change when it already sits on the target.
+    const remote = await client.subscriptions.retrieve(candidate.dodoSubscriptionId);
+    if (remote.product_id === candidate.toProductId) {
+      return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
+    }
+    await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
+  } catch (err) {
+    console.error(
+      `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
+  }
+  console.log(JSON.stringify({
+    event: "pro_business_upgrade_applied",
+    fromPlanKey: candidate.fromPlanKey,
+    toPlanKey: candidate.toPlanKey,
+  }));
+  return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
+}
+
+/** Dashboard entry point. Auth-gated via requireUserId(ctx). */
+export const upgradeToProBusiness = action({
+  args: { confirm: v.boolean() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    const userId = await requireUserId(ctx);
+    return runProBusinessUpgrade(ctx, userId, args.confirm);
+  },
+});
+
+/** /pro entry point, reached through the edge relay after Clerk verification. */
+export const internalUpgradeToProBusiness = internalAction({
+  args: { userId: v.string(), confirm: v.boolean() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    if (!args.userId) {
+      throw new ConvexError({ kind: "USER_ID_REQUIRED" });
+    }
+    return runProBusinessUpgrade(ctx, args.userId, args.confirm);
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Billing email repair
 // ---------------------------------------------------------------------------
 

@@ -240,9 +240,11 @@
 *Could not find public function for 'payments/billing:getDodoCustomerIdForUserPortal'*
 *Could not find public function for 'payments/billing:getOnDemandRenewalFallbackState'*
 *Could not find public function for 'payments/billing:getOnDemandRenewalResolution'*
+*Could not find public function for 'payments/billing:getProBusinessUpgradeCandidate'*
 *Could not find public function for 'payments/billing:grantComplimentaryEntitlement'*
 *Could not find public function for 'payments/billing:inspectCustomerOwnership'*
 *Could not find public function for 'payments/billing:internalGetCustomerPortalUrl'*
+*Could not find public function for 'payments/billing:internalUpgradeToProBusiness'*
 *Could not find public function for 'payments/billing:listStaleActiveSubscriptionsForRenewalReconciliation'*
 *Could not find public function for 'payments/billing:listStuckPendingPaymentCandidates'*
 *Could not find public function for 'payments/billing:markDodoReconcileAttempt'*

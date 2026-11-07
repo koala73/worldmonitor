@@ -63,6 +63,7 @@ import {
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
+import { IN_PLACE_UPGRADE_SOURCE_PLANS } from './pro-business-upgrade-copy';
 import {
   buildDashboardCheckoutReturnUrl,
   DESKTOP_CHECKOUT_SOURCE,
@@ -694,11 +695,12 @@ export async function startCheckout(
         clearCheckoutAttempt('duplicate');
         const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
-        showDuplicateSubscriptionDialog({
+        const isProBusinessUpgrade = await isProBusinessCheckoutTarget(productId);
+        const showGuidedDuplicateDialog = (): void => showDuplicateSubscriptionDialog({
           planDisplayName,
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
-          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
+          isProBusinessUpgrade,
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -711,6 +713,14 @@ export async function startCheckout(
           },
           onDismiss: () => { /* user stays on the dashboard */ },
         });
+        // An active Pro moves to Pro Business in place (prorated Dodo plan
+        // change); the guided dialog stays the fallback when no preview comes back.
+        if (isProBusinessUpgrade && typeof planKey === 'string' && IN_PLACE_UPGRADE_SOURCE_PLANS.has(planKey)) {
+          const { runProBusinessUpgradeFlow } = await import('./pro-business-upgrade-dialog');
+          await runProBusinessUpgradeFlow({ planDisplayName, fallback: showGuidedDuplicateDialog });
+        } else {
+          showGuidedDuplicateDialog();
+        }
         return false;
       }
       // 409 payment-in-progress (#4438) — a recent same-tier 3DS payment is
