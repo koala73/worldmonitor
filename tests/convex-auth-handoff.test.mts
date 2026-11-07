@@ -41,6 +41,7 @@ import {
   initSubscriptionWatch,
   listBusinessSeats,
   openBillingPortal,
+  openProActivationDay0Presentation,
 } from '../src/services/billing.ts';
 
 type TokenFetcher = (args?: { forceRefreshToken?: boolean }) => Promise<string | null>;
@@ -593,8 +594,14 @@ describe('generation-scoped Convex auth handoff', () => {
       session: { getToken: async () => 'token-a' },
       user: { id: 'A' },
     } as never);
+    installManualAuthTimers();
     const fake = installFakeClient();
+    // The token stays unavailable: the failure's one reinstall fails too, and
+    // its cooldown keeps every load below from reinstalling again.
     fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'the failure reinstalls auth once');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
 
     const cases: Array<[string, () => Promise<unknown>]> = [
       ['API keys', listApiKeys],
@@ -659,14 +666,21 @@ describe('generation-scoped Convex auth handoff', () => {
       session: { getToken: async () => 'token-a' },
       user: { id: 'A' },
     } as never);
+    installManualAuthTimers();
     const fake = installFakeClient();
     fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'the failure reinstalls auth once');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
 
+    // The same user is still signed in, so this is an auth outage, not an
+    // account change (Sentry WORLDMONITOR-1CP).
     await assert.rejects(
       acknowledgePlanLimitNotice('notice-a'),
-      /Account changed while acknowledging the API plan-limit notice/,
+      /Authentication unavailable while acknowledging the API plan-limit notice/,
     );
     assert.equal(fake.mutations.length, 0);
+    assert.equal(fake.authConfigs.length, 2, 'the cooldown blocks another reinstall');
   });
 
   it('discards account-scoped list results that settle after A changes to B', async () => {
@@ -969,5 +983,137 @@ describe('App account-switch controller', () => {
       app,
       /else if \(userId === null && _prevUserId !== null\) \{[\s\S]*?invalidateConvexAuthForSignOut\(\);/,
     );
+  });
+});
+
+
+// Sentry WORLDMONITOR-1CP: a signed-in Pro user's activation open failed three
+// times inside a second with "Account changed while opening Pro activation",
+// though the account never changed. The Convex SDK had reported auth false (a
+// null scheduled token, or a failed reauth), the failure barrier was terminal,
+// and only a Clerk user change ever rebound auth.
+describe('same-user Convex auth recovery after a terminal failure', () => {
+  const signIn = (id: string) => __setClerkInstanceForTests({
+    session: { getToken: async () => `token-${id}` },
+    user: { id },
+  } as never);
+  const openActivation = () => openProActivationDay0Presentation('key-1', 'nonce-1', 1);
+
+  it('reinstalls auth for the same user and lets a billing call through', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'failure should reinstall auth for A');
+
+    const opening = openActivation();
+    await flushMicrotasks();
+    assert.equal(fake.mutations.length, 0, 'the mutation waits for the reinstalled config');
+    fake.authConfigs[1].onChange(true);
+
+    assert.equal(await opening, 'opened');
+    assert.equal(fake.mutations.length, 1);
+    assert.equal(fake.authConfigs.length, 2, 'the waiter shares the in-flight reinstall');
+    assert.deepEqual(timers.pending().map((t) => t.ms), [1_000], 'only the cooldown remains');
+  });
+
+  it('recovers on demand when the failure arrives during an identity handoff', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.mutationResult = Promise.resolve({ status: 'opened' });
+    const handoff = rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, []);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2);
+
+    fake.authConfigs[1].onChange(false);
+    assert.equal(await handoff, false);
+    assert.equal(fake.authConfigs.length, 2, 'the handoff owns retries while it runs');
+
+    const opening = openActivation();
+    await waitForCondition(() => fake.authConfigs.length === 3, 'the waiter should reinstall auth');
+    fake.authConfigs[2].onChange(true);
+    assert.equal(await opening, 'opened');
+  });
+
+  it('bounds reinstalls when the token stays unavailable', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(false);
+
+    // Proactive attempts: immediately, then after each cooldown, four in all.
+    let expected = 2;
+    for (const cooldownMs of [1_000, 5_000, 15_000, 30_000]) {
+      await waitForCondition(() => fake.authConfigs.length === expected, 'one reinstall per cooldown');
+      fake.authConfigs[expected - 1].onChange(false);
+      await flushMicrotasks();
+      assert.equal(fake.authConfigs.length, expected, 'no reinstall during the cooldown');
+      assert.deepEqual(timers.pending().map((t) => t.ms), [cooldownMs]);
+      timers.fireNext();
+      await flushMicrotasks();
+      expected += 1;
+    }
+    assert.equal(fake.authConfigs.length, 5, 'proactive recovery stops after four attempts');
+    assert.deepEqual(timers.pending(), []);
+
+    // A user action may still try once, and then the last cooldown applies.
+    const first = openActivation();
+    await waitForCondition(() => fake.authConfigs.length === 6, 'a user action reinstalls once');
+    fake.authConfigs[5].onChange(false);
+    await assert.rejects(first, /^Error: Authentication unavailable while opening Pro activation\. Try again\.$/);
+
+    await assert.rejects(openActivation(), /Authentication unavailable while opening Pro activation/);
+    assert.equal(fake.authConfigs.length, 6, 'a second action inside the cooldown does not reinstall');
+    assert.equal(fake.mutations.length, 0);
+  });
+
+  it('does not resurrect auth when sign-out lands during recovery', async () => {
+    signIn('A');
+    const timers = installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.authConfigs[0].onChange(false);
+
+    invalidateConvexAuthForSignOut();
+    __setClerkInstanceForTests(null);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    assert.equal(fake.authConfigs.length, 2, 'only the signed-out config is installed');
+    assert.equal(await fake.authConfigs[1].fetchToken(), null);
+    while (timers.pending().length > 0) timers.fireNext();
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, 'an expiring cooldown cannot restart recovery');
+    fake.authConfigs[1].onChange(false);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 2, 'the signed-out config failing does not start recovery');
+    assert.equal(await waitForConvexAuth(10), false);
+  });
+
+  it('cannot satisfy the old user when the account switches during recovery', async () => {
+    signIn('A');
+    installManualAuthTimers();
+    const fake = installFakeClient();
+    fake.authConfigs[0].onChange(true);
+    fake.authConfigs[0].onChange(false);
+    await waitForCondition(() => fake.authConfigs.length === 2, 'A recovery reinstall');
+
+    const opening = assert.rejects(openActivation(), /Account changed while opening Pro activation/);
+    await flushMicrotasks();
+
+    signIn('B');
+    const handoff = rebindConvexAuthForWatchHandoff(() => true, () => {}, 1_000, []);
+    await flushMicrotasks();
+    assert.equal(fake.authConfigs.length, 3);
+    fake.authConfigs[1].onChange(true);
+    fake.authConfigs[2].onChange(true);
+
+    assert.equal(await handoff, true);
+    await opening;
+    assert.equal(fake.mutations.length, 0, 'no mutation is dispatched for A under B');
   });
 });
