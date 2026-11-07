@@ -1244,7 +1244,8 @@
       "skipToStart": "Preskoči na početak",
       "previous": "Prethodno",
       "next": "Sljedeće",
-      "skipToEnd": "Preskoči na kraj"
+      "skipToEnd": "Preskoči na kraj",
+      "storageUnavailable": "Reprodukcija nije dostupna jer ovaj preglednik blokira pohranu podataka web-mjesta. Dopustite podatke za ovu stranicu kako biste počeli spremati snimke stanja."
     },
     "pizzint": {
       "indexSource": "Indeks: World Monitor",

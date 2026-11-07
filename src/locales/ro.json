@@ -1097,7 +1097,8 @@
       "skipToStart": "Sariți pentru a începe",
       "previous": "Anterior",
       "next": "Următorul",
-      "skipToEnd": "Treci la final"
+      "skipToEnd": "Treci la final",
+      "storageUnavailable": "Redarea nu este disponibilă deoarece acest browser blochează stocarea datelor site-ului. Permiteți datele site-ului pentru acest site pentru a începe salvarea instantaneelor."
     },
     "pizzint": {
       "indexSource": "Indice: World Monitor",

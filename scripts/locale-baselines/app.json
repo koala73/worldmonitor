@@ -1320,6 +1320,7 @@
   "components.playback.previous": "Previous",
   "components.playback.skipToEnd": "Skip to end",
   "components.playback.skipToStart": "Skip to start",
+  "components.playback.storageUnavailable": "Playback is unavailable because this browser is blocking site storage. Allow site data for this site to start saving snapshots.",
   "components.playback.toggleMode": "Toggle Playback Mode",
   "components.populationExposure.affectedCount": "{{count}} affected",
   "components.populationExposure.infoTooltip": "<strong>Population Exposure Estimates</strong> Estimated population within event impact radius. Based on WorldPop country density data.<ul><li>Conflict: 50km radius</li><li>Earthquake: 100km radius</li><li>Flood: 100km radius</li><li>Wildfire: 30km radius</li></ul>",

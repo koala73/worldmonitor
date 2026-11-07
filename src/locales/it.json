@@ -1384,7 +1384,8 @@
       "skipToStart": "Vai all'inizio",
       "previous": "Precedente",
       "next": "Successivo",
-      "skipToEnd": "Vai alla fine"
+      "skipToEnd": "Vai alla fine",
+      "storageUnavailable": "La riproduzione non è disponibile perché questo browser sta bloccando l'archiviazione del sito. Consenti i dati del sito per questo sito per iniziare a salvare gli snapshot."
     },
     "stablecoins": {
       "pegHealth": "Salute dell'ancoraggio",
