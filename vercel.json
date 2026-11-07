@@ -139,6 +139,7 @@
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$" }], "destination": "/robots.variant.txt" },
     { "source": "/robots.txt", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "/robots.api.txt" },
     { "source": "/robots.txt", "destination": "/robots.www.txt" },
+    { "source": "/install.sh", "destination": "https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh" },
     { "source": "/data/v1/chokepoints/:file([0-9a-z-]+\\.(?:json|csv))", "destination": "/api/open-data-chokepoints?file=:file" },
     { "source": "/docs/mcp", "destination": "/api/docs-mcp" },
     { "source": "/docs/mcp/server-card", "destination": "/.well-known/mcp/docs-server-card.json" },
