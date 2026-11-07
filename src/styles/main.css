@@ -21011,41 +21011,214 @@ button.popup-link {
 /* ============ Unified Settings Modal ============ */
 
 .pwa-install-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
   margin-block-end: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pwa-install-entry:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.pwa-install-entry span {
+  flex: 1;
+}
+
+.pwa-install-entry svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.pwa-install-entry svg:last-child {
+  color: var(--text-dim);
 }
 
 .pwa-install-sheet {
   position: fixed;
   inset: 0;
   margin: auto;
-  width: min(420px, calc(100vw - 32px));
+  width: min(448px, calc(100vw - 32px));
   box-sizing: border-box;
   max-height: calc(100dvh - 32px);
-  overflow: auto;
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg);
-  color: var(--text-primary);
-  font: inherit;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  box-shadow: 0 16px 64px var(--shadow-color);
+}
+
+.pwa-install-sheet[open] {
+  display: flex;
+  flex-direction: column;
 }
 
 .pwa-install-sheet::backdrop {
-  background: rgb(0 0 0 / 65%);
+  background: rgb(0 0 0 / 72%);
+}
+
+.pwa-install-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  padding: 24px 20px 20px 24px;
+}
+
+.pwa-install-brand {
+  margin-block-end: 8px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-font-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .pwa-install-sheet h2 {
-  margin-block: 0 16px;
-  font-size: 18px;
+  margin: 0;
+  font-size: calc(18px * var(--wm-font-scale, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  text-wrap: balance;
 }
 
-.pwa-install-sheet ol {
-  padding-inline-start: 24px;
+.pwa-install-dismiss {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-block-start: -8px;
+  margin-inline-end: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.pwa-install-dismiss:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.pwa-install-dismiss svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pwa-install-steps {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0 24px;
+  list-style: none;
+}
+
+.pwa-install-steps li {
+  display: grid;
+  grid-template-columns: max(20px, 2ch) minmax(0, 1fr) 24px;
+  align-items: start;
+  gap: 12px;
+  padding-block: 16px;
+  border-block-start: 1px solid var(--border);
+  font-size: calc(13px * var(--wm-font-scale, 1));
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
-.pwa-install-sheet li {
-  margin-block-end: 12px;
+.pwa-install-step-number {
+  padding-block-start: 2px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(10px * var(--wm-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.pwa-install-steps svg {
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+
+.pwa-install-footer {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 8px 24px 24px;
+}
+
+.pwa-install-done {
+  min-width: 120px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-size: calc(12px * var(--wm-font-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+
+.pwa-install-done:hover {
+  opacity: 0.85;
+}
+
+.pwa-install-entry:focus-visible,
+.pwa-install-sheet button:focus-visible,
+[data-ios-install]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .pwa-install-sheet {
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: none;
+    max-height: calc(100dvh - 16px);
+    border-inline: 0;
+    border-block-end: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .pwa-install-steps li {
+    font-size: calc(14px * var(--wm-font-scale, 1));
+  }
+
+  .pwa-install-footer {
+    padding-block-end: max(20px, env(safe-area-inset-bottom));
+  }
+
+  .pwa-install-done {
+    width: 100%;
+  }
 }
 
 .unified-settings-btn {
@@ -28977,6 +29150,30 @@ body.map-width-resizing {
   margin-inline-start: 38px;
   flex-wrap: wrap;
   flex-shrink: 1;
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-name {
+  color: var(--text);
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-sub {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-sub-wrap {
+  margin-block-start: 6px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-btn {
+  min-height: 44px;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.us-notif-ch-row:has([data-ios-install]) .us-notif-ch-badge {
+  color: var(--green-text, var(--green));
 }
 
 .us-notif-ch-badge {

@@ -251,6 +251,7 @@ describe('notification Settings browser push', () => {
     const row = webPushRow(container);
     expect(row.textContent).toContain(tt('pwaInstall.alertsHint'));
     expect(row.textContent).not.toContain('Not supported');
+    expect(row.querySelector('.us-notif-ch-badge')).toBeNull();
     expect(row.querySelector('#usConnectWebPush')).toBeNull();
     row.querySelector<HTMLButtonElement>('[data-ios-install]')!.click();
     expect(document.querySelector('#pwa-install-sheet')?.textContent).toContain(tt('pwaInstall.share'));

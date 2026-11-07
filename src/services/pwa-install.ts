@@ -2,6 +2,7 @@ import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { track } from '@/services/analytics';
 import { t } from '@/services/i18n';
 import { declareOverlay } from '@/utils/open-modal';
+import { createFocusTrap } from '@/utils/focus-trap';
 
 interface InstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -45,6 +46,19 @@ function notify(): void {
   listeners.forEach(listener => listener());
 }
 
+function installIcon(path: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [name, value] of Object.entries({
+    viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+    'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    'aria-hidden': 'true', focusable: 'false',
+  })) svg.setAttribute(name, value);
+  const shape = document.createElementNS(svg.namespaceURI, 'path');
+  shape.setAttribute('d', path);
+  svg.append(shape);
+  return svg;
+}
+
 export function initPwaInstall(): () => void {
   const onPrompt = (event: Event) => {
     if (isDesktopRuntime() || isStandalone() || isEmbeddedBrowser() || isIos()) return;
@@ -73,35 +87,67 @@ export function initPwaInstall(): () => void {
 
 export function openIosInstallSheet(): void {
   if (!needsIosInstall() || document.getElementById('pwa-install-sheet')) return;
-  const opener = document.activeElement as HTMLElement | null;
   const sheet = document.createElement('dialog');
   declareOverlay(sheet, { reload: 'safe' });
   sheet.id = 'pwa-install-sheet';
   sheet.className = 'pwa-install-sheet';
   sheet.setAttribute('aria-labelledby', 'pwa-install-title');
+  const header = document.createElement('div');
+  header.className = 'pwa-install-header';
+  const heading = document.createElement('div');
+  const brand = document.createElement('div');
+  brand.className = 'pwa-install-brand';
+  brand.textContent = 'World Monitor';
   const title = document.createElement('h2');
   title.id = 'pwa-install-title';
   title.textContent = t('pwaInstall.title');
+  heading.append(brand, title);
+  const dismissButton = document.createElement('button');
+  dismissButton.type = 'button';
+  dismissButton.className = 'pwa-install-dismiss';
+  dismissButton.setAttribute('aria-label', t('pwaInstall.close'));
+  dismissButton.append(installIcon('M6 6l12 12M18 6 6 18'));
+  header.append(heading, dismissButton);
   const steps = document.createElement('ol');
-  for (const key of ['share', 'add', 'confirm']) {
+  steps.className = 'pwa-install-steps';
+  steps.setAttribute('role', 'list');
+  const stepIcons = [
+    ['share', 'M12 15V3m-4 4 4-4 4 4M8 10H5v11h14V10h-3'],
+    ['add', 'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm7 4v10m-5-5h10'],
+    ['confirm', 'm3 10 9-7 9 7M5 9v12h14V9m-10 12v-7h6v7'],
+  ] as const;
+  for (const [index, [key, path]] of stepIcons.entries()) {
     const step = document.createElement('li');
-    step.textContent = t(`pwaInstall.${key}`);
+    const number = document.createElement('span');
+    number.className = 'pwa-install-step-number';
+    number.setAttribute('aria-hidden', 'true');
+    number.textContent = String(index + 1).padStart(2, '0');
+    const copy = document.createElement('span');
+    copy.textContent = t(`pwaInstall.${key}`);
+    step.append(number, copy, installIcon(path));
     steps.append(step);
   }
+  const footer = document.createElement('div');
+  footer.className = 'pwa-install-footer';
   const close = document.createElement('button');
   close.type = 'button';
-  close.className = 'btn btn-secondary';
+  close.className = 'pwa-install-done';
+  close.autofocus = true;
   close.textContent = t('pwaInstall.close');
+  const focusTrap = createFocusTrap(sheet, { initialFocus: close });
   const dismiss = () => {
     sheet.close();
     sheet.remove();
-    if (opener?.isConnected) opener.focus();
+    focusTrap.deactivate();
   };
+  dismissButton.addEventListener('click', dismiss);
   close.addEventListener('click', dismiss);
   sheet.addEventListener('cancel', event => { event.preventDefault(); dismiss(); });
   sheet.addEventListener('keydown', event => event.stopPropagation());
-  sheet.append(title, steps, close);
+  footer.append(close);
+  sheet.append(header, steps, footer);
   document.body.append(sheet);
+  focusTrap.activate();
   sheet.showModal();
   track('pwa-ios-sheet-opened');
 }
@@ -109,8 +155,10 @@ export function openIosInstallSheet(): void {
 export function mountInstallEntry(container: HTMLElement): () => void {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'btn btn-secondary pwa-install-entry';
-  button.textContent = t('pwaInstall.title');
+  button.className = 'pwa-install-entry';
+  const label = document.createElement('span');
+  label.textContent = t('pwaInstall.title');
+  button.append(installIcon('M12 3v12m-4-4 4 4 4-4M5 17v4h14v-4'), label, installIcon('m9 6 6 6-6 6'));
   let shown = false;
   const recordShown = () => {
     const offer = getOffer();

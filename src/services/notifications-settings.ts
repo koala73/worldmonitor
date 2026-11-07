@@ -193,6 +193,7 @@ function showWebPushUnsupportedState(rowEl: HTMLElement): void {
     needsIosInstall() ? t('pwaInstall.title') : WEB_PUSH_UNSUPPORTED_BADGE,
   );
   if (needsIosInstall()) {
+    rowEl.querySelector('.us-notif-ch-badge')?.remove();
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'us-notif-ch-btn';
@@ -466,7 +467,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>
               </div>
               <div class="us-notif-ch-actions">
-                <span class="us-notif-ch-badge">${needsIosInstall() ? escapeHtml(t('pwaInstall.title')) : WEB_PUSH_UNSUPPORTED_BADGE}</span>
+                ${needsIosInstall() ? '' : `<span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>`}
                 ${iosInstallLink()}
               </div>
             </div>`;
