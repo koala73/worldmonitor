@@ -20,6 +20,7 @@ import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, getHeaderApiKey, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret } from '../api/_crypto.js';
+import { bearerChallenge } from '../api/_www-authenticate';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
@@ -921,6 +922,8 @@ function createGatewayAuthErrorResponse(
   status: 401 | 403,
   error: string | undefined,
   corsHeaders: Record<string, string>,
+  request?: Request,
+  bearerError = '',
 ): Response {
   return new Response(JSON.stringify({ error: normalizeAuthError(error) }), {
     status,
@@ -929,6 +932,10 @@ function createGatewayAuthErrorResponse(
       'Cache-Control': 'no-store',
       ...corsHeaders,
       Link: DEPRECATION_POLICY_LINK,
+      // RFC 9728 §5.1 discovery pointer (#4840): an agent learns where the
+      // auth requirements live from the 401 itself. 403s are authenticated
+      // denials, so they carry no challenge.
+      ...(status === 401 && request ? { 'WWW-Authenticate': bearerChallenge(request, bearerError) } : {}),
     },
   });
 }
@@ -2009,7 +2016,7 @@ export function createDomainGateway(
           const session = await validateBearerToken(authHeader.slice(7));
           if (!session.valid) {
             emitRequest(401, 'auth_401', null);
-            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders);
+            return createGatewayAuthErrorResponse(401, 'Invalid or expired session', corsHeaders, request, 'invalid_token');
           }
           // Capture identity for telemetry — legacy bearer auth bypasses the
           // earlier resolveClerkSession() block (only runs for tier-gated routes),
@@ -2058,11 +2065,11 @@ export function createDomainGateway(
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
           emitRequest(401, 'auth_401', null);
-          return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
+          return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders, request);
         }
       } else {
         emitRequest(401, 'auth_401', null);
-        return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders);
+        return createGatewayAuthErrorResponse(401, keyCheck.error, corsHeaders, request);
       }
     }
 
@@ -2635,7 +2642,7 @@ export function createDomainGateway(
       if (!quotaUserId) {
         await releaseDailyMeter();
         emitRequest(401, 'auth_401', null);
-        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
+        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders, request);
       }
 
       let ent: CachedEntitlements | null = null;
