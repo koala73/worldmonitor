@@ -3906,7 +3906,7 @@ export class MapComponent {
   // and their compositing layers are released while the map is idle.
   private armMarkerSettle(): void {
     // Low-end devices skip the attention window: every render restarts ~150
-    // pulses, including the non-compositable conflict-zone fill.
+    // pulses and their compositing layers.
     if (this.lowEndDevice) {
       this.wrapper.classList.add('markers-settled');
       return;

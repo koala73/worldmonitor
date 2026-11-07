@@ -6957,7 +6957,7 @@ body.playback-mode .status-dot {
   stroke: var(--red);
   stroke-width: 1;
   stroke-dasharray: 4, 2;
-  animation: pulse-conflict 2s ease-in-out infinite;
+  /* No fill pulse: an SVG fill animation runs on the main thread every frame. */
   transition: opacity 0.2s ease;
 }
 
@@ -7032,18 +7032,6 @@ body.playback-mode .status-dot {
     0 0 6px var(--bg),
     0 0 12px var(--bg),
     0 0 18px var(--red);
-}
-
-@keyframes pulse-conflict {
-
-  0%,
-  100% {
-    fill: rgba(255, 68, 68, 0.15);
-  }
-
-  50% {
-    fill: rgba(255, 68, 68, 0.3);
-  }
 }
 
 /* Base markers */
@@ -14128,14 +14116,10 @@ button.popup-link {
   0%,
   100% {
     opacity: 1;
-    --vessel-color: var(--semantic-critical);
-    --vessel-text: var(--semantic-critical-text, var(--semantic-critical));
   }
 
   50% {
     opacity: 0.7;
-    --vessel-color: var(--semantic-high);
-    --vessel-text: var(--semantic-high-text, var(--semantic-high));
   }
 }
 
@@ -29535,7 +29519,6 @@ body.map-width-resizing {
 .markers-settled .cable-advisory-marker.fault,
 .markers-settled .protest-marker.high,
 .markers-settled .outage-marker.total,
-.markers-settled .conflict-zone,
 .markers-settled .iran-event-marker,
 .markers-settled .earthquake-marker,
 .markers-settled .nuclear-marker.active,
