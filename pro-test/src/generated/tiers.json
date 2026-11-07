@@ -22,6 +22,8 @@
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 3,
+    "dataExport": false,
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
@@ -57,6 +59,8 @@
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 10,
+    "dataExport": false,
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
     "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ",
     "highlighted": true
@@ -90,6 +94,8 @@
       "desktopKeyBurstPerMinute": 120,
       "mcpDailyBudgetSharedWithRest": false
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "monthlyProductId": "pdt_0NjyFDbhURh2oROgPIU3G",
     "annualProductId": "pdt_0Nk072fxPUcHWivZRtlQW",
     "highlighted": false
@@ -122,6 +128,8 @@
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 25,
+    "dataExport": true,
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
     "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV",
     "highlighted": false
@@ -153,6 +161,8 @@
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": 100,
+    "dataExport": true,
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
     "annualProductId": "pdt_0NkHjzMhGp3m45sZLQ7BQ",
     "highlighted": false
@@ -167,11 +177,11 @@
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing"
     ],
@@ -185,6 +195,8 @@
       "desktopKeyBurstPerMinute": 0,
       "mcpDailyBudgetSharedWithRest": true
     },
+    "maxDashboards": -1,
+    "dataExport": true,
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

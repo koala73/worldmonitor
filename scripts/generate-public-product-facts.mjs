@@ -607,7 +607,7 @@ function pricingSummary() {
         name: 'Enterprise',
         price: 'Custom',
         contact: 'enterprise@worldmonitor.app',
-        features: ['SSO/MFA/RBAC', 'team workspaces', 'white-label', 'on-premises', 'air-gapped', 'dedicated support'],
+        features: ['team workspaces', 'white-label', 'on-premises', 'air-gapped', 'dedicated support', 'SSO/MFA/RBAC (by contract)'],
       },
     ],
   };

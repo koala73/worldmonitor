@@ -7,15 +7,23 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 5126035
+    "raw": 5119616
   },
   "chunks": {
+    "LiveBriefCard": {
+      "raw": 4154,
+      "files": 1
+    },
+    "PlanComparisonTable": {
+      "raw": 5380,
+      "files": 1
+    },
     "ar": {
-      "raw": 60132,
+      "raw": 59253,
       "files": 1
     },
     "bg": {
-      "raw": 69521,
+      "raw": 68701,
       "files": 1
     },
     "clerk": {
@@ -23,75 +31,75 @@
       "files": 1
     },
     "cs": {
-      "raw": 44456,
+      "raw": 43883,
       "files": 1
     },
     "de": {
-      "raw": 44398,
+      "raw": 43834,
       "files": 1
     },
     "el": {
-      "raw": 72649,
+      "raw": 72040,
       "files": 1
     },
     "es": {
-      "raw": 46281,
+      "raw": 45569,
       "files": 1
     },
     "fa": {
-      "raw": 64944,
+      "raw": 64035,
       "files": 1
     },
     "fr": {
-      "raw": 48266,
+      "raw": 47576,
       "files": 1
     },
     "hi": {
-      "raw": 80808,
+      "raw": 80940,
       "files": 1
     },
     "hr": {
-      "raw": 43627,
+      "raw": 42918,
       "files": 1
     },
     "hu": {
-      "raw": 48218,
+      "raw": 47528,
       "files": 1
     },
     "index": {
-      "raw": 544889,
+      "raw": 545856,
       "files": 2
     },
     "it": {
-      "raw": 44235,
+      "raw": 43612,
       "files": 1
     },
     "ja": {
-      "raw": 52806,
+      "raw": 52150,
       "files": 1
     },
     "ko": {
-      "raw": 46407,
+      "raw": 45841,
       "files": 1
     },
     "nl": {
-      "raw": 42979,
+      "raw": 42400,
       "files": 1
     },
     "pl": {
-      "raw": 45141,
+      "raw": 44446,
       "files": 1
     },
     "pt": {
-      "raw": 45365,
+      "raw": 44745,
       "files": 1
     },
     "ro": {
-      "raw": 46108,
+      "raw": 45510,
       "files": 1
     },
     "ru": {
-      "raw": 70747,
+      "raw": 70045,
       "files": 1
     },
     "sentry": {
@@ -99,39 +107,43 @@
       "files": 1
     },
     "sv": {
-      "raw": 42970,
+      "raw": 42368,
       "files": 1
     },
     "sw": {
-      "raw": 45088,
+      "raw": 44381,
+      "files": 1
+    },
+    "teasers": {
+      "raw": 9173,
       "files": 1
     },
     "th": {
-      "raw": 89574,
+      "raw": 89068,
       "files": 1
     },
     "tr": {
-      "raw": 45520,
+      "raw": 44926,
       "files": 1
     },
     "uk": {
-      "raw": 68738,
+      "raw": 68081,
       "files": 1
     },
     "vi": {
-      "raw": 54539,
+      "raw": 53803,
       "files": 1
     },
     "welcome": {
-      "raw": 55524,
+      "raw": 46427,
       "files": 1
     },
     "zh": {
-      "raw": 39013,
+      "raw": 38450,
       "files": 1
     },
     "zh-TW": {
-      "raw": 39076,
+      "raw": 38507,
       "files": 1
     }
   }

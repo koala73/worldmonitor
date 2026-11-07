@@ -355,12 +355,18 @@ describe('public product facts generation contract', () => {
 
     const localePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
       .filter((name) => name.endsWith('.json'));
+    // The comparison table prints prices from the generated tiers, so no
+    // locale string may carry a hand-typed price that could drift.
+    assert.match(
+      read('pro-test/src/components/PlanComparisonTable.tsx'),
+      /import tiersJson from '\.\.\/generated\/tiers\.json'/,
+      'comparison table must read prices from the generated tiers',
+    );
     for (const name of localePaths) {
       const table = readJson(`pro-test/src/locales/${name}`).pricingTable;
-      const proPrice = Number(table.proHeader.match(/\$([0-9.,]+)/)?.[1].replace(',', '.'));
-      const apiPrice = Number(table.apiHeader.match(/\$([0-9.,]+)/)?.[1].replace(',', '.'));
-      assert.equal(proPrice, plans.pro_monthly.price, `${name}: visible Pro table price`);
-      assert.equal(apiPrice, plans.api_starter.price, `${name}: visible API table price`);
+      for (const [key, value] of Object.entries(table)) {
+        assert.doesNotMatch(String(value), /\$\s?[0-9]/, `${name}: pricingTable.${key} must not hard-code a price`);
+      }
     }
 
     const proMonthly = displayPrice(plans.pro_monthly.price);

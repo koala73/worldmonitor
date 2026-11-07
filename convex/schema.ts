@@ -1362,6 +1362,15 @@ export default defineSchema({
     count: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Per-account fixed window for the Pro → Pro Business upgrade action. The
+  // /pro edge route has its own Redis limit; the dashboard calls the Convex
+  // action directly, so this row is the limit both paths share.
+  proBusinessUpgradeAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
+
   // One row per checkout that exhausted the #6027 provider-429 retry ladder
   // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
   // is the rate signal the alarm in `payments/checkoutRateLimitAlarm.ts`
@@ -2068,6 +2077,16 @@ export default defineSchema({
   // so one global serialization point is intentional and keeps the invariant
   // simple. It is seeded by the deploy workflow; append fails loudly if it is
   // absent rather than silently weakening idempotency.
+  // One short-lived claim per Dodo subscription while a Pro → Pro Business
+  // change-plan call is in flight. Two concurrent confirms (two tabs, or the
+  // dashboard and /pro at once) both pass the provider re-read before either
+  // change lands; the serializable claim lets only one call changePlan.
+  // Holds no userId; a claim older than the TTL in billing.ts is reclaimable.
+  proBusinessUpgradeClaims: defineTable({
+    dodoSubscriptionId: v.string(),
+    claimedAt: v.number(),
+  }).index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   intelHistoryAppendLocks: defineTable({
     lockKey: v.string(),
     lastTouchedAt: v.number(),

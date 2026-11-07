@@ -177,8 +177,8 @@ function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null,
   const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
   const existing = subscription?.planKey ?? '';
   if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
-    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
-      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
+    return 'Pro moves to Pro Business as a prorated upgrade on the same subscription, not through a new checkout. '
+      + 'Ask the user to open worldmonitor.app/pro and choose Pro Business while signed in; they confirm the prorated charge there.';
   }
   if (target === 'api_business' && existing.startsWith('api_starter')) {
     return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;

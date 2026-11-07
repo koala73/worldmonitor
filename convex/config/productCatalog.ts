@@ -493,10 +493,8 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   },
 
   pro_business_monthly: {
-    // PLACEHOLDER — no such product exists in Dodo. Replaced with the real
-    // product ID before launch (activation runbook, plan 2026-07-25-001).
-    // Reaching checkout with this ID is a launch-sequencing bug, not a
-    // supported path.
+    // Live Dodo product "Pro Business Monthly" (USD 49.99/month), created
+    // 2026-07-25 under the activation runbook (plan 2026-07-25-001).
     dodoProductId: "pdt_0NjyFDbhURh2oROgPIU3G",
     planKey: "pro_business_monthly",
     displayName: "Pro Business Monthly",
@@ -519,13 +517,15 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     currentForCheckout: true,
     // Pro and Pro Business are separate Dodo products, not a
     // subscription-updatable collection — the customer portal cannot perform
-    // the change, so the plan-limit CTA must not point at it.
+    // the change, so the plan-limit CTA must not point at it. Pro subscribers
+    // upgrade in place through the change-plan API instead
+    // (runProBusinessUpgrade in payments/billing.ts).
     canChangePlanSelfServe: false,
     publicVisible: true,
   },
 
   pro_business_annual: {
-    // PLACEHOLDER — see pro_business_monthly.
+    // Live Dodo product "Pro Business Yearly" (USD 449.99/year), created 2026-07-26.
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
@@ -648,11 +648,11 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
     ],

@@ -102,6 +102,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "proBusinessUpgradeAdmissions", action: "delete", notes: "Pro Business upgrade admission counters" },
   { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
@@ -276,6 +277,7 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "intelHistory", action: "skip", notes: "Global intel corpus, not user-scoped" },
   { target: "intelHistoryRetractions", action: "skip", notes: "Global intel corpus" },
   { target: "intelHistoryAppendLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "proBusinessUpgradeClaims", action: "skip", notes: "Ephemeral change-plan claims keyed by provider subscription id; no userId" },
   // Company Monitoring children follow their account row, which is `delegate`
   // above. markOwnerDeleted / advanceAccountPurge owns their lifecycle; this
   // PR only refactored the entry point into applyOwnerDeletedFence and did not

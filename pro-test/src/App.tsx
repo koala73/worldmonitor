@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { Component, useState, useEffect, useRef, createContext, useContext, lazy, Suspense, type ReactElement, type ReactNode } from 'react';
 import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
@@ -11,7 +11,7 @@ import {
   Cable, Wifi, MapPin, TrendingUp,
   Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
-  Landmark, Fuel
+  Landmark, Fuel, Compass, Bot
 } from 'lucide-react';
 import { t } from './i18n';
 import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
@@ -31,6 +31,18 @@ import {
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
 import { VoiceCards } from './components/Voices';
+// Below the fold: loaded on demand so the published-pulse JSON, the live
+// feed client and the plan table stay out of the initial /pro chunk.
+const LiveBriefCard = lazy(() => import('./components/LiveBriefCard').then((m) => ({ default: m.LiveBriefCard })));
+// A failed lazy import (stale deploy hash, flaky network) must not unmount the
+// whole page with its pricing cards and checkout; the section just goes missing.
+class LazySectionBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  declare props: { children: ReactNode };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? null : this.props.children; }
+}
+const PlanComparisonTable = lazy(() => import('./components/PlanComparisonTable').then((m) => ({ default: m.PlanComparisonTable })));
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -329,10 +341,10 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-          <a href="#pricing" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
-          <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
-          <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
-          <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+          <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-nav-free" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pro" data-umami-event="pro-cta" data-umami-event-target="pro-nav-pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
+          <a href="#api" data-umami-event="pro-cta" data-umami-event-target="pro-nav-api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
+          <a href="#enterprise" data-umami-event="pro-cta" data-umami-event-target="pro-nav-enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
         </div>
         <div className="flex items-center gap-2">
           {isLoaded && (signedIn
@@ -349,12 +361,14 @@ const Navbar = () => {
           {showGoToDashboard ? (
             <a
               href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
+              data-umami-event="pro-cta"
+              data-umami-event-target="pro-nav-dashboard"
               className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
             >
               {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           ) : (
-            <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+            <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-nav-upgrade" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
               {t('nav.upgradeToPro')}
             </a>
           )}
@@ -486,18 +500,18 @@ const Hero = ({ srLead }: { srLead?: string }) => {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
             {showGoToDashboard ? (
-              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} data-umami-event="pro-cta" data-umami-event-target="pro-hero-dashboard" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             ) : (
-              <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-hero-choose-plan" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             )}
           </div>
 
           <div className="flex items-center justify-center mt-4">
-            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} data-umami-event="pro-cta" data-umami-event-target="pro-hero-try-free" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
               {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           </div>
@@ -625,6 +639,8 @@ const LivePreview = () => (
             href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
             target="_blank"
             rel="noreferrer"
+            data-umami-event="pro-cta"
+            data-umami-event-target="pro-preview-fullscreen"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
           >
             {t('livePreview.openFullScreen')} <ExternalLink className="w-3 h-3" aria-hidden="true" />
@@ -661,6 +677,8 @@ const LivePreview = () => (
               href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               target="_blank"
               rel="noreferrer"
+              data-umami-event="pro-cta"
+              data-umami-event-target="pro-preview-try-live"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
             >
               {t('livePreview.tryLiveDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
@@ -787,46 +805,7 @@ const ProShowcase = () => (
         </div>
       </div>
 
-      <div className="bg-[#1a1d21] rounded-lg border border-[#35373b] overflow-hidden shadow-2xl sticky top-24">
-        <div className="bg-[#222529] px-4 py-3 border-b border-[#35373b] flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-          <span className="ml-2 font-mono text-xs text-gray-400">#world-monitor-alerts</span>
-        </div>
-        <div className="p-6 space-y-6 font-sans text-sm">
-          <div className="flex gap-4">
-            <div className="w-10 h-10 rounded bg-wm-green/20 flex items-center justify-center shrink-0">
-              <Globe className="w-6 h-6 text-wm-green" aria-hidden="true" />
-            </div>
-            <div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="font-bold text-gray-200">World Monitor</span>
-                <span className="text-xs text-gray-500 bg-gray-800 px-1 rounded">APP</span>
-                <span className="text-xs text-gray-500">8:00 AM</span>
-              </div>
-              <p className="text-gray-300 font-bold mb-3">{t('slackMock.morningBrief')} &middot; Mar 6</p>
-
-              <div className="space-y-3">
-                <div className="pl-3 border-l-2 border-blue-500">
-                  <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.markets')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.marketsText')}</p>
-                </div>
-
-                <div className="pl-3 border-l-2 border-orange-500">
-                  <span className="text-orange-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.elevated')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.elevatedText')}</p>
-                </div>
-
-                <div className="pl-3 border-l-2 border-yellow-500">
-                  <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.watch')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.watchText')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <LazySectionBoundary><Suspense fallback={<div className="min-h-[460px]" aria-hidden="true" />}><LiveBriefCard /></Suspense></LazySectionBoundary>
     </div>
   </section>
 );
@@ -839,14 +818,16 @@ const AudiencePersonas = () => {
     { icon: <Search className="w-6 h-6" aria-hidden="true" />, title: t('audience.researchersTitle'), desc: t('audience.researchersDesc') },
     { icon: <Globe className="w-6 h-6" aria-hidden="true" />, title: t('audience.journalistsTitle'), desc: t('audience.journalistsDesc') },
     { icon: <Landmark className="w-6 h-6" aria-hidden="true" />, title: t('audience.govTitle'), desc: t('audience.govDesc') },
+    { icon: <Compass className="w-6 h-6" aria-hidden="true" />, title: t('audience.strategyTitle'), desc: t('audience.strategyDesc') },
+    { icon: <Bot className="w-6 h-6" aria-hidden="true" />, title: t('audience.aiTeamsTitle'), desc: t('audience.aiTeamsDesc') },
     { icon: <Building2 className="w-6 h-6" aria-hidden="true" />, title: t('audience.teamsTitle'), desc: t('audience.teamsDesc') },
   ];
 
   return (
     <section className="py-24 px-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <h2 className="text-3xl md:text-5xl font-display font-bold mb-16 text-center">{t('audience.title')}</h2>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {personas.map((p, i) => (
             <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
               <div className="text-wm-green mb-4">{p.icon}</div>
@@ -1020,6 +1001,8 @@ const EnterpriseShowcase = () => (
       <div className="text-center mt-12">
         <a
           href="#enterprise-contact"
+          data-umami-event="pro-cta"
+          data-umami-event-target="pro-enterprise-talk-to-sales"
           aria-label="Talk to sales about Enterprise plans"
           className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
         >
@@ -1029,68 +1012,6 @@ const EnterpriseShowcase = () => (
     </div>
   </section>
 );
-
-/* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
-const PricingTable = () => {
-  const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
-    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
-    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
-    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
-    { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
-    { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
-    { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
-    { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
-    { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
-    { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
-    { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },
-    { feature: t('pricingTable.securityRow'), free: t('pricingTable.fStandard'), pro: t('pricingTable.fStandard'), api: t('pricingTable.fKeyAuth'), ent: t('pricingTable.fSsoMfa') },
-  ];
-
-  return (
-    <section className="py-24 px-6 max-w-7xl mx-auto">
-      <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">{t('pricingTable.title')}</h2>
-      </div>
-      <div className="hidden md:block">
-        <div className="grid grid-cols-5 gap-4 mb-4 pb-4 border-b border-wm-border font-mono text-xs uppercase tracking-widest text-wm-muted">
-          <div>{t('pricingTable.feature')}</div>
-          <div>{t('pricingTable.freeHeader')}</div>
-          <div className="text-wm-green">{t('pricingTable.proHeader')}</div>
-          <div>{t('pricingTable.apiHeader')}</div>
-          <div>{t('pricingTable.entHeader')}</div>
-        </div>
-        {rows.map((row, i) => (
-          <div key={i} className="grid grid-cols-5 gap-4 py-4 border-b border-wm-border/50 text-sm hover:bg-wm-card/50 transition-colors">
-            <div className="font-medium">{row.feature}</div>
-            <div className="text-wm-muted">{row.free}</div>
-            <div className="text-wm-green">{row.pro}</div>
-            <div className="text-wm-muted">{row.api}</div>
-            <div className="text-wm-muted">{row.ent}</div>
-          </div>
-        ))}
-      </div>
-      <div className="md:hidden space-y-4">
-        {rows.map((row, i) => (
-          <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
-            <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs break-words">
-              <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
-              <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
-              <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
-              <div><span className="text-wm-muted">{t('tiers.enterprise')}:</span> {row.ent}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-center text-sm text-wm-muted mt-8">
-        {t('pricingTable.noteBelow')}
-      </p>
-    </section>
-  );
-};
 
 /* ─── 12. FAQ (draft copy — warmer tone) ─── */
 const FAQ = () => {
@@ -1139,9 +1060,9 @@ const EnterprisePage = () => (
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="#enterprise" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
-          <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-green transition-colors">{t('enterpriseShowcase.talkToSales')}</a>
+          <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-nav-talk" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-green transition-colors">{t('enterpriseShowcase.talkToSales')}</a>
         </div>
-        <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+        <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-nav-cta" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
           {t('enterpriseShowcase.talkToSales')}
         </a>
       </div>
@@ -1158,7 +1079,7 @@ const EnterprisePage = () => (
           <p className="text-lg text-wm-muted max-w-2xl mx-auto mb-10">
             {t('enterpriseShowcase.subtitle')}
           </p>
-          <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+          <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-hero-talk" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
             {t('enterpriseShowcase.talkToSales')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </a>
         </div>
@@ -1308,7 +1229,7 @@ const EnterprisePage = () => (
             <span data-form-error className="hidden text-red-400 text-xs font-mono block" />
             <div className="grid grid-cols-2 gap-4">
               <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
-              <input type="tel" name="phone" placeholder={t('enterpriseShowcase.phonePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+              <input type="tel" name="phone" autoComplete="tel" placeholder={t('enterpriseShowcase.phonePlaceholder')} className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
             </div>
             <textarea name="message" placeholder={t('enterpriseShowcase.messagePlaceholder')} rows={4} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono resize-none" />
             <div className="cf-turnstile mx-auto" />
@@ -1466,7 +1387,7 @@ export default function App() {
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
           desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
         />
-        <PricingTable />
+        <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />
         <EnterpriseShowcase />
         <FAQ />
