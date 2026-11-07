@@ -674,6 +674,35 @@ test('a blank synoptic row keeps the complete HTML areas when the Kerala PDF can
   assert.deepEqual(changed, { status: 'failed', reason: 'BULLETIN_SYNOPTIC_MISSING', fallbackFailure: 'IMD_FETCH_FAILED' });
 });
 
+test('a later blank synoptic row does not erase an earlier narrative', () => {
+  const blankTable = '<table class="tr">\n\t<tr>\n\t\t<td class="td-1">Synoptic Situation</td>\n\t\t<td ></td>\n\t</tr>\n</table>';
+  const blank = fixture('coastalBulletin-kerala-missing-synoptic.html');
+  assert.ok(blank.includes(blankTable), 'fixture carries the blank synoptic table');
+  const narrative = blankTable.replace('<td ></td>', '<td >A low pressure area lies over the southeast Arabian Sea.</td>');
+  const html = blank.replace(blankTable, `${narrative}\n${blankTable}`);
+  const bulletin = parseImdBulletinHtml(html, 'coastalBulletin');
+  assert.equal(bulletin.synopticSituation, 'A low pressure area lies over the southeast Arabian Sea.');
+});
+
+test('a blank-synoptic reparse that fails a later check reports that cause in page health', async () => {
+  const page = IMD_PRODUCTS.coastalBulletin.pages.find((entry) => entry.fallbackUrl);
+  // Blank synoptic AND no issuing office: the primary parse stops at the
+  // synoptic check, and only the reparse reaches the office check.
+  const html = fixture('coastalBulletin-kerala-missing-synoptic.html').replace('CWC THIRUVANANTHAPURAM', 'THIRUVANANTHAPURAM');
+  const result = await fetchImdBulletinPage('coastalBulletin', page, {
+    delayMs: 0,
+    fetchFn: async (url) => (url === page.fallbackUrl
+      ? new Response('%PDF-invalid', { headers: { 'Content-Type': 'application/pdf' } })
+      : new Response(html)),
+  });
+  assert.deepEqual(result, {
+    status: 'failed', reason: 'BULLETIN_SYNOPTIC_MISSING',
+    fallbackFailure: 'IMD_FETCH_FAILED', retryFailure: 'BULLETIN_OFFICE_MISSING',
+  });
+  const snapshot = assembleImdSnapshot({ pageResults: { coastalBulletin: { [page.key]: result } }, now: Date.parse('2026-10-22T02:00:00Z') });
+  assert.equal(snapshot.products.coastalBulletin.pages[page.key].retryFailure, 'BULLETIN_OFFICE_MISSING');
+});
+
 test('failed acquisition retains replay inputs without extra requests or public payload changes', async () => {
   const page = IMD_PRODUCTS.coastalBulletin.pages.find((p) => p.fallbackUrl);
   const previous = assembleImdSnapshot({ pageResults: parsedResults(), now: NOW });

@@ -397,7 +397,10 @@ export function parseImdBulletinHtml(html, productId, { allowEmptySynoptic = fal
       continue;
     }
     for (const [label, value] of rows) {
-      if (BULLETIN_LABELS[label]) bulletin[BULLETIN_LABELS[label]] = value;
+      const key = BULLETIN_LABELS[label];
+      // A later blank row must not erase an earlier non-blank value; a
+      // blank-only row still records the key as present-but-empty.
+      if (key && (value || !bulletin[key])) bulletin[key] = value;
     }
   }
 
@@ -574,7 +577,12 @@ function evaluatePage(productId, page, result, previousRecords, now) {
   }
   const carried = dropExpiredRecords(previousRecords.filter((record) => record?.page === page.key), now);
   return {
-    health: { status: 'failed', reason: failure, ...(result?.fallbackFailure ? { fallbackFailure: result.fallbackFailure } : {}) },
+    health: {
+      status: 'failed',
+      reason: failure,
+      ...(result?.fallbackFailure ? { fallbackFailure: result.fallbackFailure } : {}),
+      ...(result?.retryFailure ? { retryFailure: result.retryFailure } : {}),
+    },
     records: carried,
     carried: carried.length > 0,
   };
@@ -754,8 +762,11 @@ export async function fetchImdBulletinPage(productId, page, {
       try {
         const bulletin = parseImdBulletinHtml(primaryHtml, productId, { allowEmptySynoptic: true });
         return { status: 'parsed', bulletin, synopticOmitted: true, primaryFailure: primary.reason, ...extra };
-      } catch {
-        return { ...primary, ...extra };
+      } catch (retryError) {
+        // The blank-synoptic reparse can fail on a later check the primary
+        // parse never reached; keep that cause visible in page health.
+        const retryFailure = pageFailureReason(retryError);
+        return { ...primary, ...extra, ...(retryFailure !== primary.reason ? { retryFailure } : {}) };
       }
     };
     const registered = IMD_PRODUCTS[productId]?.pages?.find((entry) => entry.key === page.key && entry.url === page.url);
