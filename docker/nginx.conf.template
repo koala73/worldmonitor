@@ -67,6 +67,11 @@ http {
       # without an explicit index lookup the $uri/ match would 403.
       try_files $uri $uri/ $uri/index.html /dashboard.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
+      # Branded page for nginx-generated 5xx on document routes, keeping the
+      # status code. Scoped to this location, not the server: a server-level
+      # error_page is inherited by /api/, where it would replace JSON errors
+      # with HTML and drop the CORS headers that location sets.
+      error_page 500 502 503 504 /500.html;
     }
 
     location ~* ^/(assets|pro/assets|map-styles|data|textures|favico)/ {

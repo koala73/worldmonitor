@@ -53,7 +53,7 @@ const PATH_END = '(?![A-Za-z0-9_\\-/]|\\.[A-Za-z0-9])';
 
 const WRONG_MCP_URLS = [
   {
-    label: 'an alias host that answers 410 canonical_endpoint_required',
+    label: 'an alias host, which is never published (retired aliases answer 410 canonical_endpoint_required)',
     re: new RegExp(`${SCHEME}(?:${ALIASES})\\.${APEX}${HOST_TAIL}(?:${PATHS})${PATH_END}`, 'g'),
   },
   {
