@@ -237,6 +237,12 @@ function getTelegramBotUsername(): string {
  */
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const signedIn = !!host.isSignedIn;
+  // The account this markup is rendered for. The abort-time flush below
+  // re-reads form state from this DOM and would otherwise send it under
+  // whatever Clerk session is current when the panel tears down — and a
+  // direct A -> B multi-session switch re-renders the host, aborting this
+  // panel while its DOM still holds A's values (Strix review, CWE-488).
+  const renderedUserId = getCurrentClerkUser()?.id ?? null;
   const isPro = signedIn && hasTier(1);
   // The ladder the panel clamps to (#4273). Mirrors the server's resolver: a
   // missing entitlement resolves to the free ladder. `null` state alone is
@@ -1166,6 +1172,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // tears the DOM down only after this cleanup, so the reads above still
       // see the final form state.
       signal.addEventListener('abort', () => {
+        // Flush only while the Clerk session still belongs to the account
+        // this panel was rendered for: on a direct A -> B account switch (or
+        // a sign-out) the teardown fires with the previous account's form
+        // state in the DOM, and a flushed write would land on the NEW
+        // session's record. Dropping the last sub-second edit in that case
+        // is the safe trade.
+        if (renderedUserId !== (getCurrentClerkUser()?.id ?? null)) return;
         if (alertRuleDebounceTimer !== null) {
           clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = null;

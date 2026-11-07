@@ -62,8 +62,11 @@ vi.mock('@/services/notification-channels', () => ({
   IncompatibleDeliveryError,
 }));
 
+const clerkState = vi.hoisted(() => ({ id: 'user_ladder' as string | null }));
+
 vi.mock('@/services/clerk', () => ({
-  getCurrentClerkUser: () => ({ id: 'user_ladder', email: 'ladder@worldmonitor.test' }),
+  getCurrentClerkUser: () =>
+    (clerkState.id === null ? null : { id: clerkState.id, email: 'ladder@worldmonitor.test' }),
 }));
 
 vi.mock('@/services/entitlements', () => ({
@@ -148,6 +151,7 @@ beforeEach(() => {
   gate.listeners = [];
   gate.verification = 'ready';
   gate.verificationListeners = [];
+  clerkState.id = 'user_ladder';
   channelMocks.getChannelsData.mockReset();
   channelMocks.saveAlertRules.mockReset().mockResolvedValue(undefined);
   channelMocks.setNotificationConfig.mockReset().mockResolvedValue(undefined);
@@ -374,6 +378,21 @@ describe('free alert ladder UI (#4273)', () => {
     expect(payload.enabled).toBe(false);
     expect(payload.countries).toEqual([]);
     expect(flushSignal).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('skips the close-time flush when the Clerk session no longer matches the rendered account', async () => {
+    // Direct A -> B multi-session switch: the host re-renders (aborting this
+    // panel) while the DOM still holds A's form state. Flushing then would
+    // write A's settings under B's token (Strix, CWE-488) — so it must not.
+    vi.useFakeTimers();
+    const container = await mount(data());
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip-on',
+    )!.click();
+    clerkState.id = 'user_other_account';
+    cleanups.pop()!();
+    expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
