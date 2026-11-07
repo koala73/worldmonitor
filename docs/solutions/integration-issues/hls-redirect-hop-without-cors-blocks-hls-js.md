@@ -46,7 +46,7 @@ The Bloomberg Live News entry pointed at `https://bloomberg.com/media-manifest/s
    'https://www.bloomberg.com/media-manifest/streams/us.m3u8',
    ```
 
-2. Make the checker apply the same rule a browser does (`scripts/check-live-video-sources.mjs`, PR #10294):
+2. Make the checker apply the browser's CORS rule to playlists (`scripts/check-live-video-sources.mjs`, PR #10294):
    - It sends `origin: https://www.worldmonitor.app` on every playlist fetch, including reloads (`:602`).
    - It treats a response as readable only when `Access-Control-Allow-Origin` is `*` or the dashboard origin (`allowsDashboard`, `:562-564`).
    - It fails a redirect hop that is not readable, before following it (`:610`).
@@ -58,13 +58,20 @@ Regenerate the derived files after changing an HLS host. `shared/source-attribut
 
 ## Why This Works
 
-hls.js loads playlists and segments with XHR. A cross-origin XHR that follows a redirect must pass the CORS check on every hop, not just the last one. With the redirect gone, the only response is the `www` playlist, and it allows any origin. The checker now applies the same rule a browser does, so it fails the same entries a browser blocks.
+hls.js loads playlists and segments with XHR. A cross-origin XHR that follows a redirect must pass the CORS check on every hop, not just the last one. With the redirect gone, the only response is the `www` playlist, and it allows any origin. The checker now fails a playlist, or a redirect hop to it, that a browser would block for a missing header.
+
+The checker still passes some streams a browser blocks:
+
+- **Segments.** It fetches playlists, never media segments. A stream whose segment host sends no `Access-Control-Allow-Origin` passes the checker and still fails in hls.js.
+- **`Origin: null` after a redirect.** It sends the dashboard origin on every hop. After a cross-origin redirect, a browser sends `Origin: null` instead. A target that allows only `https://www.worldmonitor.app`, and not `*`, passes the checker but is blocked in the browser. `www.bloomberg.com` answers `*`, so Bloomberg is unaffected.
+
+A browser playback check, such as DebugBear's console-error audit or a manual load in Chrome, covers both.
 
 Verified on production on 2026-11-07, after the merge. The dashboard bundle references only the `www` URL. On a dashboard load in Chromium, the Live News `<video>` played from an hls.js `blob:` source (readyState 4, currentTime about 27 s), with segments loading from `liveproduseast.akamaized.net` and no CORS console errors. At the time of writing, the apex URL still answers 301 with no `Access-Control-Allow-Origin`.
 
 ## Prevention
 
-- Use an HLS URL that does not redirect. A checker pass is only meaningful once it fetches the way a browser does: with an `Origin` header, checking the CORS header on each hop.
+- Use an HLS URL that does not redirect. A checker pass rules out playlist CORS failures only; segment CORS and redirect targets that reject `Origin: null` still need a browser check.
 - Test HLS playback in Chrome or Firefox, not only Safari, since native HLS hides CORS failures.
 - DebugBear's console-error audit on the desktop dashboard test catches this class of failure. A new CORS error on a media host after a Live News change points at the candidate chain.
 - At the time of writing, the gb-news entry (`live-gbnews.simplestreamcdn.com`) sends no `Access-Control-Allow-Origin`. It can play only through native HLS, and the checker's CORS rule fails it.
