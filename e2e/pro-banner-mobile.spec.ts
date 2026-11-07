@@ -90,6 +90,21 @@ test.describe('Pro strip on desktop', () => {
     expect(layout.headlineClipped).toBe(false);
     expect(layout.height).toBeLessThanOrEqual(SLOT_HEIGHT);
   });
+
+  // Banner views were counted (gate-hit feature=pro-banner) but clicks were
+  // not, so the strip's click-through could not be measured. The click must
+  // be recorded even when the analytics tracker has not loaded, and must not
+  // hold up the navigation to /pro.
+  test('records a click without delaying the navigation to /pro', async ({ page }) => {
+    await page.route(/abacus\.worldmonitor\.app/, (route) => route.abort());
+    await openFreeDashboard(page);
+    const started = Date.now();
+    await page.locator('.pro-banner-cta').click();
+    await page.waitForURL(/\/pro#pricing$/, { timeout: 3000 });
+    expect(Date.now() - started).toBeLessThan(3000);
+    const pending = await page.evaluate(() => sessionStorage.getItem('wm-conversion-pending'));
+    expect(JSON.parse(pending ?? '[]')).toContainEqual({ event: 'pro-banner-click', data: { state: 'upgrade' } });
+  });
 });
 
 // The strip's gradient is translucent. In the light theme the page body
