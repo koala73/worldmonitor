@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 458666
+    "raw": 465203
   },
   "chunks": {
     "analytics": {
-      "raw": 46611,
+      "raw": 48028,
       "files": 1
     },
     "auth-state": {
@@ -19,11 +19,11 @@
       "files": 1
     },
     "clerk": {
-      "raw": 21861,
+      "raw": 22810,
       "files": 1
     },
     "convex-client": {
-      "raw": 4937,
+      "raw": 6377,
       "files": 1
     },
     "debugbear-rum": {
@@ -35,7 +35,7 @@
       "files": 1
     },
     "entitlements": {
-      "raw": 2639,
+      "raw": 2709,
       "files": 1
     },
     "font-settings": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 134857,
+      "raw": 137867,
       "files": 1
     },
     "map-layer-definitions": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71681,
+      "raw": 71332,
       "files": 1
     },
     "theme-manager": {
@@ -109,11 +109,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1511801
+      "raw": 1514852
     },
     "chunks": {
       "App": {
-        "raw": 957022,
+        "raw": 958616,
         "files": 1
       },
       "ai-flow-settings": {
@@ -149,7 +149,7 @@
         "files": 1
       },
       "corroboration": {
-        "raw": 14245,
+        "raw": 14431,
         "files": 1
       },
       "cross-domain-storage": {
@@ -165,15 +165,15 @@
         "files": 1
       },
       "feeds": {
-        "raw": 100459,
+        "raw": 100785,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 160143,
+        "raw": 160742,
         "files": 1
       },
       "index": {
-        "raw": 39453,
+        "raw": 39580,
         "files": 2
       },
       "layout-batch": {
@@ -217,11 +217,11 @@
         "files": 1
       },
       "settings-persistence": {
-        "raw": 7959,
+        "raw": 8007,
         "files": 1
       },
       "source-provenance": {
-        "raw": 90335,
+        "raw": 90506,
         "files": 1
       },
       "storage-facility-registry-store": {
