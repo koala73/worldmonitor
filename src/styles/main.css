@@ -29124,6 +29124,47 @@ body.map-width-resizing {
   color: var(--settings-red);
 }
 
+/* Free alert ladder (#4273): banner, locked channel rows, per-rung CTAs. */
+.us-notif-ladder-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid #d4a843;
+  border-radius: 6px;
+  background: rgba(212, 168, 67, 0.08);
+}
+
+.us-notif-ladder-banner-text {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+.us-notif-ladder-cta {
+  flex-shrink: 0;
+  padding: 6px 14px;
+}
+
+.us-notif-ch-locked .us-notif-ch-icon,
+.us-notif-ch-locked .us-notif-ch-name,
+.us-notif-ch-locked .us-notif-ch-sub {
+  opacity: 0.55;
+}
+
+.us-notif-ladder-chip {
+  border-color: #d4a843;
+  color: #d4a843;
+  font-weight: 600;
+}
+
+.us-notif-scope-warn {
+  /* No display rule: the panel toggles this via the hidden attribute. */
+  margin-top: 6px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
 .us-notif-ch-actions {
   display: flex;
   align-items: center;
