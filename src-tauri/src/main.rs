@@ -41,7 +41,8 @@ const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
 const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 1] = ["CONVEX_URL"];
-const SUPPORTED_SECRET_KEYS: [&str; 28] = [
+const SUPPORTED_SECRET_KEYS: [&str; 29] = [
+    "ATLASCLOUD_API_KEY",
     "OPENROUTER_API_KEY",
     "EXA_API_KEYS",
     "BRAVE_API_KEYS",
