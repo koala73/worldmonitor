@@ -4049,11 +4049,12 @@ export async function runProBusinessUpgrade(
   } catch (err) {
     // The claim stays on success so a repeat within the TTL cannot re-charge.
     // It is released only when the change definitely did not happen: the call
-    // never went out, or Dodo answered with an HTTP status. A timeout or a
+    // never went out, or Dodo refused it with a 4xx. A 5xx, a timeout or a
     // dropped connection after sending may still be applying the change, so
     // the claim holds until its TTL and a retry cannot send a second one.
-    const providerAnswered = typeof (err as { status?: unknown } | null)?.status === "number";
-    if (!changePlanSent || providerAnswered) {
+    const status = (err as { status?: unknown } | null)?.status;
+    const providerRefused = typeof status === "number" && status >= 400 && status < 500;
+    if (!changePlanSent || providerRefused) {
       await ctx.runMutation(internal.payments.billing.releaseProBusinessUpgrade, {
         dodoSubscriptionId: candidate.dodoSubscriptionId,
       });

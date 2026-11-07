@@ -205,12 +205,15 @@ describe("upgradeToProBusiness action", () => {
     expect(changePlan).toHaveBeenCalledTimes(2);
   });
 
-  test("an ambiguous change failure keeps the claim until the TTL", async () => {
+  test.each([
+    ["a dropped connection", () => new Error("socket hang up")],
+    ["a provider 5xx", () => Object.assign(new Error("upstream error"), { status: 502 })],
+  ])("an ambiguous change failure (%s) keeps the claim until the TTL", async (_label, makeError) => {
     const t = convexTest(schema, modules);
     await seed(t);
     vi.spyOn(console, "error").mockImplementation(() => {});
     retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
-    changePlan.mockRejectedValueOnce(new Error("socket hang up"));
+    changePlan.mockRejectedValueOnce(makeError());
     await expect(
       t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
     ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
