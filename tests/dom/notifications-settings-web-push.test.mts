@@ -259,6 +259,29 @@ describe('notification Settings browser push', () => {
     expect(pushState.subscribeToPush).not.toHaveBeenCalled();
   });
 
+  it('keeps connected account alerts and offers iPhone installation guidance', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    );
+    const container = await mount(CONNECTED_WEB_PUSH);
+    const row = webPushRow(container);
+    expect(row.classList.contains('us-notif-ch-on')).toBe(true);
+    expect(row.querySelector('.us-notif-ch-badge')?.textContent).toBe('Connected');
+    expect(row.querySelector('.us-notif-disconnect')).not.toBeNull();
+    expect(row.textContent).toContain('Chrome');
+    expect(row.textContent).toContain(tt('pwaInstall.alertsHint'));
+    row.querySelector<HTMLButtonElement>('[data-ios-install]')!.click();
+    expect(document.querySelector('#pwa-install-sheet')).not.toBeNull();
+    document.querySelector<HTMLButtonElement>('#pwa-install-sheet button')!.click();
+
+    const sensitivity = container.querySelector<HTMLSelectElement>('#usNotifSensitivity')!;
+    sensitivity.value = 'high';
+    sensitivity.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(channelMocks.saveAlertRules).toHaveBeenCalledOnce(), { timeout: 4000 });
+    expect(channelMocks.saveAlertRules.mock.calls[0]?.[0]?.channels).toContain('web_push');
+    expect(pushState.subscribeToPush).not.toHaveBeenCalled();
+  });
+
   it('keeps installed iPhone apps on the supported subscription path', async () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
       'iPhone AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',

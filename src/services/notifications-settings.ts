@@ -328,6 +328,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (channel?.verified) {
           let sub: string;
           let manageLink = '';
+          let installHint = '';
           if (type === 'telegram') {
             sub = `@${escapeHtml(channel.chatId ?? 'connected')}`;
           } else if (type === 'email') {
@@ -344,6 +345,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               : `${label} · <span class="us-notif-ch-sub-warn" title="Remove this webhook and add it again to get a signing secret.">Unsigned, re-add to sign</span>`;
           } else if (type === 'web_push') {
             sub = escapeHtml(webPushDeviceLabel(channel));
+            if (needsIosInstall()) {
+              installHint = `<div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(t('pwaInstall.alertsHint'))}</div>`;
+              manageLink = iosInstallLink();
+            }
           } else {
             const rawCh = channel.slackChannelName ?? '';
             const ch = rawCh ? `#${escapeHtml(rawCh.startsWith('#') ? rawCh.slice(1) : rawCh)}` : 'connected';
@@ -358,6 +363,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <div class="us-notif-ch-body">
               <div class="us-notif-ch-name">${name}</div>
               <div class="us-notif-ch-sub">${sub}</div>
+              ${installHint}
             </div>
             <div class="us-notif-ch-actions">
               <span class="us-notif-ch-badge">Connected</span>
