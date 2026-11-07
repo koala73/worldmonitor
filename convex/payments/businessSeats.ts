@@ -12,6 +12,7 @@ import { assertAccountWritable } from "../accountDeletion/guard";
 import { ConvexError, v } from "convex/values";
 import {
   internalAction,
+  internalMutation,
   mutation,
   query,
   type ActionCtx,
@@ -44,6 +45,21 @@ function escapeHtml(value: string): string {
 
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+/** Each extension adds at most 14 days to the later of the current expiry and now. */
+const MAX_EXTENSION_HOURS = INVITE_TTL_MS / HOUR_MS;
+
+/** "7 November 2026 at 08:22 UTC" — unambiguous across the invitee's locale. */
+export function formatInviteExpiry(expiresAt: number): string {
+  const d = new Date(expiresAt);
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${d.getUTCDate()} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} at ${hh}:${mm} UTC`;
+}
 const RESEND_FETCH_TIMEOUT_MS = 10_000;
 
 /**
@@ -328,8 +344,13 @@ export const sendBusinessInviteEmail = internalAction({
     ownerEmail: v.string(),
     grantId: v.string(),
     token: v.string(),
+    // Set when an extended invite is re-sent; the default copy assumes 14 days.
+    expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const expiryNote = args.expiresAt === undefined
+      ? "This invite expires in 14 days."
+      : `This invite expires on ${formatInviteExpiry(args.expiresAt)}.`;
     const acceptUrl = `https://www.worldmonitor.app/dashboard?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
@@ -344,7 +365,7 @@ export const sendBusinessInviteEmail = internalAction({
       <a href="${acceptUrl}" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Accept Invite</a>
     </div>
     <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
-      This invite expires in 14 days. If you didn't expect this email, you can ignore it.
+      ${expiryNote} If you didn't expect this email, you can ignore it.
     </p>
   </div>
 </div>`;
@@ -512,5 +533,101 @@ export const acceptBusinessInvite = mutation({
     );
 
     return { ok: true as const };
+  },
+});
+
+/**
+ * Support tool: extend a pending invite by `hours` and re-send it.
+ *
+ * The emailed token embeds its own expiry, so moving `expiresAt` alone would
+ * leave the invitee's link dead at the old time. This signs a new token for the
+ * new expiry and emails it; the old link keeps its original expiry. The
+ * extension counts from the later of the current expiry and now, so a lapsed
+ * invite can be revived. Run from the CLI:
+ *
+ *   npx convex run payments/businessSeats:extendBusinessInvite '{"grantId":"…","hours":24}'
+ *
+ * Every run with `hours` > 0 extends again. To retry a failed email without
+ * extending, pass `"hours":0`: it re-sends a link for the current expiry and
+ * refuses an invite that has already lapsed.
+ */
+export const extendBusinessInvite = internalMutation({
+  args: { grantId: v.id("businessProGrants"), hours: v.number() },
+  handler: async (ctx, args) => {
+    if (!Number.isInteger(args.hours) || args.hours < 0 || args.hours > MAX_EXTENSION_HOURS) {
+      throw new ConvexError({ kind: "INVALID_EXTENSION_HOURS" });
+    }
+    const grant = await ctx.db.get(args.grantId);
+    if (!grant) {
+      throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
+    }
+    // An owner whose account is being deleted cannot have invites accepted,
+    // so do not change or re-send them.
+    await assertAccountWritable(ctx, grant.ownerUserId);
+    if (grant.status !== "pending") {
+      throw new ConvexError({ kind: "INVITE_NOT_PENDING" });
+    }
+    const now = Date.now();
+    if (args.hours === 0 && grant.expiresAt <= now) {
+      throw new ConvexError({ kind: "INVITE_EXPIRED" });
+    }
+    const businessSub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
+      )
+      .unique();
+    if (!businessSub || !isBusinessPlan(businessSub.planKey) || !isCoveringAt(businessSub, now)) {
+      throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
+    }
+    // The owner may have re-invited the same address after this invite lapsed.
+    // Two usable grants for one person would hold two seats.
+    const siblings = await ctx.db
+      .query("businessProGrants")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", grant.businessSubscriptionId),
+      )
+      .collect();
+    const inviteeEmail = grant.inviteeEmail.trim().toLowerCase();
+    const duplicate = siblings.some((g) =>
+      g._id !== grant._id
+      && g.inviteeEmail.trim().toLowerCase() === inviteeEmail
+      && (g.status === "accepted" || (g.status === "pending" && g.expiresAt > now)),
+    );
+    if (duplicate) {
+      throw new ConvexError({ kind: "DUPLICATE_INVITE" });
+    }
+    // A lapsed invite has freed its seat; reviving it must not exceed the cap.
+    if (grant.expiresAt <= now) {
+      const activeOrPending = await countActiveOrPendingGrants(ctx, grant.businessSubscriptionId, now);
+      if (activeOrPending >= MAX_SEATS) {
+        throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+      }
+    }
+    const owner = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", grant.ownerUserId))
+      .first();
+    const ownerEmail = owner?.email?.trim();
+    if (!ownerEmail) {
+      throw new ConvexError({ kind: "OWNER_EMAIL_UNAVAILABLE" });
+    }
+
+    const expiresAt = args.hours === 0
+      ? grant.expiresAt
+      : Math.max(grant.expiresAt, now) + args.hours * HOUR_MS;
+    if (expiresAt !== grant.expiresAt) {
+      await ctx.db.patch(args.grantId, { expiresAt });
+    }
+    const token = await signBusinessInviteToken(args.grantId, expiresAt);
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.businessSeats.sendBusinessInviteEmail,
+      { inviteeEmail: grant.inviteeEmail, ownerEmail, grantId: args.grantId, token, expiresAt },
+    );
+    console.log(
+      `[businessSeats] Extended invite ${args.grantId.slice(0, 8)}... by ${args.hours}h to ${new Date(expiresAt).toISOString()}`,
+    );
+    return { grantId: args.grantId, expiresAt };
   },
 });

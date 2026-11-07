@@ -1,3 +1,4 @@
+import { createTimeoutSignal, createRequestTimeoutSignal } from '@/services/timeout-signal';
 import { getEmbedPanelFreeTier, type EmbedLayerId, type EmbedPanelId } from '../../shared/embed-panels';
 import {
   buildPublicEmbedFrameSearch,
@@ -67,7 +68,7 @@ export function createKeyedEmbedFetch(apiKey: string): typeof fetch {
       });
     }
     headers.set('X-WorldMonitor-Key', apiKey);
-    return globalThis.fetch(input, { ...init, headers, credentials: 'omit' });
+    return globalThis.fetch(input, { ...init, signal: createRequestTimeoutSignal(input, init, 15_000), headers, credentials: 'omit' });
   };
 }
 
@@ -80,6 +81,7 @@ export async function fetchEmbedEntitlement(
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (apiKey) headers['X-WorldMonitor-Key'] = apiKey;
   const resp = await globalThis.fetch(url.toString(), {
+    signal: createTimeoutSignal(15_000),
     method: 'GET',
     headers,
     credentials: 'omit',
@@ -111,6 +113,7 @@ export async function mintEmbedGrant(
   let resp: Response;
   try {
     resp = await globalThis.fetch(url.toString(), {
+      signal: createTimeoutSignal(15_000),
       method: 'POST',
       headers: { Accept: 'application/json', 'X-WorldMonitor-Key': apiKey },
       credentials: 'omit',
@@ -176,6 +179,7 @@ export async function fetchEmbedMapFrame(
   }
 
   const resp = await globalThis.fetch(target, {
+    signal: createTimeoutSignal(15_000),
     method: 'GET',
     headers,
     credentials: 'omit',

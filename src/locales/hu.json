@@ -941,7 +941,7 @@
         "asia": "ÁZSIA",
         "space": "VILÁGŰR"
       },
-      "play": "Lejátszás",
+      "play": "Nézd élőben",
       "previewStatus": "Készen áll a lejátszásra",
       "connecting": "Csatlakozás…",
       "unverified": "Nem tudjuk megerősíteni, hogy ez az élő közvetítés",
@@ -1572,6 +1572,20 @@
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
         }
+      },
+      "measure": {
+        "title": "Távolság mérése",
+        "units": "Távolság mértékegysége",
+        "pointA": "Válassza az A pontot. Kattintson a térképre vagy nyomja meg az Enter billentyűt a térkép közepén.",
+        "pointB": "Válassza a B pontot. Húzza a térképet és nyomja meg az Enter billentyűt a közepponthoz.",
+        "geodesic": "Geodéziai távolság",
+        "note": "A rákattintott koordináták között; nem útvonal vagy ellenőrzött eszköztávolság. Az Escape billentyű kilép.",
+        "cancel": "Kijelölés visszavonása",
+        "cancelShort": "Mégse",
+        "resetShort": "Alaphelyzet",
+        "exitShort": "Kilépés",
+        "reset": "Mérés alaphelyzete",
+        "exit": "Kilépés a mérésből"
       }
     },
     "cii": {
@@ -1632,8 +1646,8 @@
       "analysisFrameworksFromAgentskills": "Az agentskills.io-ból",
       "analysisFrameworksPasteJson": "JSON beillesztése",
       "analysisFrameworksSaveToLibrary": "Mentés a könyvtárba",
-      "streamAlwaysOnLabel": "Élő streamek automatikus lejátszása az irányítópulton",
-      "streamAlwaysOnDesc": "Automatikusan elindítja a Live News és Live Webcams elemeket, amikor láthatók. Hagyja kikapcsolva, hogy a videó csak a Lejátszás gombra kattintás után töltődjön be.",
+      "streamAlwaysOnLabel": "Élő webkamerák automatikus lejátszása",
+      "streamAlwaysOnDesc": "Az élő webkamera videók azonnal elindulnak, amikor megjelennek a képernyőn. Hagyja kikapcsolva ahhoz, hogy csak akkor töltődjenek be, amikor Ön elindítja őket.",
       "frameworkNote": "Csak az ügyfél által generált elemzésre vonatkozik",
       "loadingServerInsights": "Szerver insights betöltése...",
       "usingCachedBrief": "Gyorsítótározott összefoglalás használata...",
@@ -1666,7 +1680,9 @@
       "briefStoryDetails": "A hír részletei ({{count}})",
       "streamIdleStopLabel": "Élő videó leállítása üresjárat során",
       "streamIdleStopDesc": "Az Élő Hírek és Élő Webkamerák leállnak ennyi idő után inaktivitás esetén, és egy értesítés jelenik meg a panelen.",
-      "streamIdleStopNever": "Soha"
+      "streamIdleStopNever": "Soha",
+      "liveNewsAutoplayLabel": "Élő hírek automatikus lejátszása",
+      "liveNewsAutoplayDesc": "Az élő hírek videója néma hanggal elindul, amint megjelenik a képernyőn. Ezt kikapcsolva a videó csak akkor töltődik be, amikor Ön elindítja."
     },
     "settings": {
       "exportSettings": "Beállítások exportálása",
@@ -2625,8 +2641,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro elindult",
-      "tagline": "Több jel, kevesebb zaj. Több AI Brief. Egy Geopolitikai & Részvény Kutató, csak neked.",
+      "headline": "Napi AI-összefoglalók e-mailben vagy Slacken",
+      "tagline": "plusz WM Analyst, riasztási szabályok és MCP a Claudehez",
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
@@ -3253,7 +3269,44 @@
       "airborne": "Levegőben"
     },
     "cyberThreat": {
-      "title": "KIBERFENYEGETÉS"
+      "title": "KIBERFENYEGETÉS",
+      "evidence": "Fenyegetésforrás adatai",
+      "firstSeen": "Első észlelés",
+      "explanations": {
+        "c2_server": "A forrás egy parancsot-és-vezérlést szerver jelentett, amely a kártékony kódra vonatkozó utasítások küldésére használatos.",
+        "malware_host": "A forrás egy kártékony kódot futtató címet jelentett.",
+        "phishing": "A forrás adathalászathoz kapcsolódó indikátort jelentett.",
+        "malicious_url": "A forrás egy rosszindulatú tevékenységgel kapcsolatos URL-t jelentett."
+      },
+      "downloadTag": "malware_download: a forrás egy kártékony kód letöltésének helyét jelenti.",
+      "familyNote": "A kártékony kód családára vonatkozó címke a fenyegetésforrástól származik. Ez nem személyt vagy szervezetet azonosít.",
+      "approximateLocation": "A leképezett hely egy hozzávetőleges IP-alapú kontextus, nem pedig egy ellenőrzött fizikai hoszthelyek.",
+      "network": {
+        "title": "Hálózati adatok",
+        "privacy": "Bontsa ki a passzív hálózati adatok RIPEstat-tól történő kéréséhez. Az indikátor IP-cím megosztásra kerül az adatszolgáltatóval.",
+        "disclaimer": "A hálózati regisztráció és útválasztás nem azonosítja a támadót, és nem teszi az szolgáltatót felelőssé a tevékenységért.",
+        "loading": "Hálózati adatok betöltése…",
+        "unknown": "Nem érhető el",
+        "disabled": "A hálózati keresés nincs engedélyezve.",
+        "invalid": "A hálózati kereséshez nyilvános IP-cím szükséges.",
+        "unavailable": "A hálózati keresés sikertelen volt. Zárja be és nyissa meg újra az előugró ablakot, hogy később próbálkozzon újra.",
+        "rateLimited": "A hálózati keresés ideiglenesen korlátozott. Próbálja újra később.",
+        "noData": "Az adatszolgáltató nem adott vissza hálózati adatokat erre az IP-címre.",
+        "partial": "Néhány hálózati adat nem volt letölthető.",
+        "ip": "IP",
+        "asn": "Forrás ASN",
+        "operator": "Bejelentett ASN-tartó / hálózatkezelő",
+        "prefix": "Bejelentett útválasztási előtag",
+        "hostname": "Fordított DNS-gazdanév (rDNS)",
+        "lookupAt": "Hálózati keresés időpontja",
+        "routingAt": "Útválasztási adatok időpontja",
+        "broaderPrefix": "Az adatszolgáltató egy tágabb útválasztási előtagot talált. Ez nem egy pontos IP-foglalási rekord.",
+        "rdnsNote": "Az rDNS egy DNS-címke, nem pedig a tulajdonjog bizonyítéka. A regisztrált szervezet és a pontos hely nem tartozik ehhez a kereséshez.",
+        "copy": "Másolás",
+        "copied": "Másolva.",
+        "copyFailed": "A másolás sikertelen volt. Jelölje ki a szöveget a másoláshoz."
+      },
+      "firstSeenNote": "Ez a legkorábbi elérhető indikátor dátum a feedek vagy World Monitor megfigyelések között; eltérhet a felsorolt forrás dátumától."
     },
     "nuclear": {
       "types": {
@@ -3423,6 +3476,28 @@
       "readReport": "Teljes jelentés olvasása"
     },
     "datacenter": {
+      "details": {
+        "more": "További részletek",
+        "owner": "A klaszter tulajdonosa / szolgáltatója (adatkészlet)",
+        "power": "Az adatkészlet teljesítményadata",
+        "powerCaveat": "A teljesítménykapacitás lehet közölt vagy becsült érték. Ez nem a jelenlegi áramfogyasztás mérése.",
+        "powerBasis": "A teljesítményadat alapja",
+        "reported": "Közölt",
+        "estimated": "Becsült",
+        "notAvailable": "Nem érhető el",
+        "location": "Helymeghatározás pontossága",
+        "locationUnknown": "Nem ellenőrzött térképpont; ne használja a létesítmény pontos címeként.",
+        "site": "Telephely (forrással ellenőrizve)",
+        "city": "Csak város",
+        "region": "Csak régió",
+        "country": "Csak ország",
+        "dataset": "Az Epoch AI GPU-klaszter-adatkészlete",
+        "evidence": "Alátámasztó forrás",
+        "sourceDate": "A forrás közzétételének dátuma",
+        "metadataReviewedAt": "Metaadatok ellenőrzése",
+        "firstOperationalDate": "Első üzembe helyezés dátuma (adatkészlet)",
+        "freshness": "Az adatkészlet mentett pillanatképe. A jelenlegi állapot és a műszaki adatok megváltozhattak."
+      },
       "status": {
         "existing": "MŰKÖDIK",
         "planned": "TERVEZETT",
@@ -3573,7 +3648,8 @@
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
       "trackedVessels": "KÖVETETT HAJÓK",
-      "showLess": "Kevesebb megjelenítése"
+      "showLess": "Kevesebb megjelenítése",
+      "backToGroup": "Vissza a csoporthoz"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",

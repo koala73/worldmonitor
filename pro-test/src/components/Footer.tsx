@@ -26,7 +26,7 @@ export const Footer = ({ disclaimer = true }: { disclaimer?: boolean }) => (
       </div>
       {/* The visible byline backs the welcome page's JSON-LD `author` (#7459a). */}
       <span className="text-xs text-wm-muted mt-4 md:mt-0" suppressHydrationWarning>
-        &copy; {new Date().getFullYear()} WorldMonitor · Built by{' '}
+        &copy; {new Date().getFullYear()} World Monitor · Built by{' '}
         <a href="/blog/authors/elie-habib/" className="hover:text-wm-text transition-colors">Elie Habib</a>
       </span>
     </div>

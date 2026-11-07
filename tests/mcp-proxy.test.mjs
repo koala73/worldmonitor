@@ -2176,6 +2176,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_bearer',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2186,6 +2188,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_key',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
     assert.deepEqual(
@@ -2196,6 +2200,8 @@ describe('api/mcp-proxy — observability', () => {
         customer_id: 'user_mcp',
         tier: 0,
         plan_key: null,
+        account_id: null,
+        overage: null,
       },
     );
   });

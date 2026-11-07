@@ -27,7 +27,7 @@ describe('MCP quota display input', () => {
     fetchMock.mockResolvedValue(Response.json(quota));
     await expect(fetchMcpQuota()).resolves.toEqual(quota);
     expect(fetchMock).toHaveBeenCalledWith('/api/user/mcp-quota', {
-      method: 'GET', headers: { Authorization: 'Bearer fixture-session' },
+      method: 'GET', headers: { Authorization: 'Bearer fixture-session' }, signal: expect.any(AbortSignal),
     });
   });
 

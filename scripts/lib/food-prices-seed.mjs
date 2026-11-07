@@ -1,5 +1,5 @@
 import sources from '../shared/food-price-sources.json' with { type: 'json' };
-import { loadEnvFile, readSeedSnapshot, runSeed } from '../_seed-utils.mjs';
+import { loadEnvFile, readSeedSnapshot, resolveProxyForConnect, runSeed } from '../_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from '../_upstash-rest.mjs';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';
 import { collectFoodSource } from './food-prices-fetch.mjs';
@@ -44,7 +44,7 @@ export function runFoodPriceSource(id, moduleUrl) {
   return runSeed('economic', resource, key, async () => {
     // A failed read must not erase history needed for the exact-week baseline.
     const previous = await readSeedSnapshot(key, { strict: true });
-    return mergeFoodSnapshot(previous, await collectFoodSource(id, { budgetMs: source.fetchBudgetMs }));
+    return mergeFoodSnapshot(previous, await collectFoodSource(id, { budgetMs: source.fetchBudgetMs, proxyAuth: resolveProxyForConnect() }));
   }, {
     validateFn: data => count(data) > 0,
     recordInitialFetchFailure: true,

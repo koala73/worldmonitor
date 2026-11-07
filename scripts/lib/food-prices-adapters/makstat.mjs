@@ -1,5 +1,7 @@
 import { cubeCells, monthDate, positive } from './monthly.mjs';
 
+// Railway cannot resolve makstat.stat.gov.mk (ENOTFOUND, then connect timeouts); the proxy resolves it remotely.
+export const proxy = true;
 export const DATA_URL = 'https://makstat.stat.gov.mk/PXWeb/api/v1/en/MakStat/Ceni/IndeksTrosZivot/TrosociZivot/131_CeniTr_Mk_DetalnoTroZi_ecoicop_ml.px';
 /** Describe the latest food CPI monthly and annual changes as context rather than prices. */
 export function parseMakstat(payload) {

@@ -194,7 +194,7 @@ export function hasDrift(diff) {
 }
 
 async function fetchUpstreamCsv() {
-  const response = await fetch(PLANE_ALERT_CSV_URL, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/csv' } });
+  const response = await fetch(PLANE_ALERT_CSV_URL, { signal: AbortSignal.timeout(30_000), headers: { 'User-Agent': USER_AGENT, Accept: 'text/csv' } });
   if (!response.ok) throw new Error(`plane-alert-db.csv fetch failed: HTTP ${response.status}`);
   return response.text();
 }

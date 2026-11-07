@@ -15,6 +15,7 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getFeaturesForPlan, mergeEntitlementFeatures } from "./lib/entitlements";
 import { resolveUserId } from "./lib/auth";
+import { liveAccountBlockForUser, resolveAiRoutingPolicy } from "./lib/enterpriseAccounts";
 
 const FREE_TIER_DEFAULTS = {
   planKey: "free" as const,
@@ -82,11 +83,17 @@ export const getEntitlementsForUser = query({
  *
  * Used by the gateway ConvexHttpClient for cache-miss fallback.
  * Trusted server-to-server call — no auth gap.
+ *
+ * A member of a live Enterprise contract also gets a top-level `account`
+ * block (pooled limits; convex/lib/enterpriseAccounts.ts) whichever source won
+ * the entitlement recompute, e.g. a member who also holds a paid subscription.
  */
 export const getEntitlementsByUserId = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    return getEntitlementsHandler(ctx, args.userId);
+    const entitlement = await getEntitlementsHandler(ctx, args.userId);
+    const account = await liveAccountBlockForUser(ctx, args.userId, Date.now());
+    return account ? { ...entitlement, account } : entitlement;
   },
 });
 
@@ -119,16 +126,15 @@ export function validateAllowedProviders(providers: string[]): string[] {
   return out;
 }
 
-/** Edge lookup. `null` means the user has no restriction. */
+/**
+ * Edge lookup. `null` means the user has no restriction. A per-user row
+ * decides the providers; otherwise an active Enterprise membership (live or
+ * ended contract) supplies the account's providers. Members also get the
+ * account id and AI token limits (convex/lib/enterpriseAccounts.ts).
+ */
 export const getAiRoutingPolicyByUserId = internalQuery({
   args: { userId: v.string() },
-  handler: async (ctx, args) => {
-    const row = await ctx.db
-      .query("aiRoutingPolicies")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
-    return row ? { allowedProviders: row.allowedProviders } : null;
-  },
+  handler: async (ctx, args) => resolveAiRoutingPolicy(ctx, args.userId),
 });
 
 /**

@@ -91,7 +91,7 @@ function requestHttpsText(
   return new Promise((resolve, reject) => {
     let settled = false;
     let req;
-    req = httpsGet(url, { headers, timeout: timeoutMs }, (response) => {
+    req = httpsGet(url, { signal: AbortSignal.timeout(timeoutMs), headers, timeout: timeoutMs }, (response) => {
       let body = '';
       let bodyBytes = 0;
       response.setEncoding('utf8');

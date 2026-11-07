@@ -149,10 +149,16 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
   });
 
-  it('defaults first-time mobile visitors to the collapsed-map Today state before hydration', () => {
-    // The inline shell script and the hydrated reader must agree, or the map
-    // expands then snaps shut on boot.
-    assert.match(layout, /loadFromStorage<boolean>\('mobile-map-collapsed', true\)/);
-    assert.match(shell, /localStorage\.getItem\('mobile-map-collapsed'\)!=='false'/);
+  it('shows first-time mobile visitors the map, and keeps it collapsed only for viewers who collapsed it', () => {
+    // The map is the product's first impression; a first visit landed on a
+    // paused player and a black webcam box instead. Tapping Today or the
+    // collapse control still saves 'true', so a viewer's own choice persists.
+    // The inline shell scripts and the hydrated reader must agree, or the map
+    // collapses then snaps open on boot.
+    assert.match(layout, /loadFromStorage<boolean>\('mobile-map-collapsed', false\)/);
+    const shellReads = shell.match(/localStorage\.getItem\('mobile-map-collapsed'\)[!=]==?'(?:true|false)'/g) ?? [];
+    assert.equal(shellReads.length, 2, 'both pre-paint scripts read the preference');
+    for (const read of shellReads) assert.equal(read, "localStorage.getItem('mobile-map-collapsed')==='true'");
+    assert.doesNotMatch(shell, /var mapCollapsed=true;/);
   });
 });

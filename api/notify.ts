@@ -300,10 +300,21 @@ export default async function handler(req: Request): Promise<Response> {
     userId: session.userId,
   });
 
-  const res = await fetch(
-    `${upstashUrl}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
-    { method: 'POST', headers: { Authorization: `Bearer ${upstashToken}`, 'User-Agent': 'worldmonitor-edge/1.0' } },
-  );
+  let res: Response;
+  try {
+    res = await fetch(
+      `${upstashUrl}/lpush/wm:events:queue/${encodeURIComponent(msg)}`,
+      {
+        signal: AbortSignal.timeout(10_000),
+        method: 'POST',
+        headers: { Authorization: `Bearer ${upstashToken}`, 'User-Agent': 'worldmonitor-edge/1.0' },
+      },
+    );
+  } catch {
+    // The push may have committed. Keep its processing marker instead of
+    // releasing it via a cached retryable response and replaying immediately.
+    return jsonResponse({ error: 'Publish outcome unknown' }, 503, { ...cors, 'Retry-After': '180' });
+  }
 
   if (!res.ok) {
     return completeStandaloneIdempotency(idempotency, jsonResponse({ error: 'Publish failed' }, 502, cors));

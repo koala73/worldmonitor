@@ -95,6 +95,8 @@ for (let i = 0; i < unique.length; i += BATCH_SIZE) {
   }));
 
   const res = await fetch(`${CONVEX_SITE_URL}/relay/bulk-suppress-emails`, {
+
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

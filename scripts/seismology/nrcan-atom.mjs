@@ -237,6 +237,7 @@ async function fetchAtomViaProxy(url, directStatus, { proxyAuth, proxyFetchFn, f
   let everyExitRefused = true;
   const firstExit = firstProxyExitFn();
   for (let attempt = 0; attempt < NRCAN_PROXY_EXITS; attempt++) {
+    if (attempt > 0) await new Promise(resolve => setTimeout(resolve, Math.min(1_000, 100 * 2 ** (attempt - 1)) * (0.5 + Math.random() * 0.5)));
     let result;
     try {
       result = await withSourceRequestDiagnostics({ source: 'nrcan', route: 'proxy', attempt }, async observe => {

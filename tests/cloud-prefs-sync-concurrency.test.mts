@@ -10,12 +10,29 @@ import { MiniStorage } from './helpers/mini-dom.mts';
 const root = resolve(import.meta.dirname, '..');
 const stubs: Record<string, string> = {
   '@/services/runtime': 'export const isDesktopRuntime = () => false;',
-  '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
+  '@/services/i18n': 'export const getCurrentLanguage = () => localStorage.getItem("wm-locale-explicit") ?? "en";',
+  // Tests name a server row ('a-token'); the stub hands cloud-prefs a JWT-shaped
+  // token whose `sub` is the account that row belongs to, as Clerk's tokens
+  // carry the user id. The fake fetch reads the row back out of the `row` claim.
+  // __cloudPrefsTokenHold pauses one token fetch so a test can switch the
+  // active account while a write is waiting for its token.
+  '@/services/clerk': [
+    "const SUBJECTS = { 'test-token': 'user-1', 'two-tab-token': 'user-1', 'a-token': 'user-a', 'user-a-token': 'user-a', 'b-token': 'user-b', 'user-b-token': 'user-b' };",
+    'export const getClerkToken = async () => {',
+    '  const hold = globalThis.__cloudPrefsTokenHold;',
+    '  if (hold) { globalThis.__cloudPrefsTokenHold = null; hold.resolveStarted(); await hold.releasePromise; }',
+    '  const row = globalThis.__cloudPrefsToken;',
+    '  if (!row) return null;',
+    "  const encode = (value) => btoa(JSON.stringify(value)).replace(/=+$/, '');",
+    "  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({ sub: SUBJECTS[row] ?? row, row })}.signature`;",
+    '};',
+  ].join('\n'),
   '@/config/feeds': [
     "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
     "export const CANADA_DEPTH_OPT_IN_SOURCES = [];",
     "export const CRISIS_FLOOR_OPT_IN_SOURCES = ['WAFA English'];",
     "export const CURATED_REGIONAL_OPT_IN_SOURCES = ['Guardian Pacific'];",
+    "export const GERMAN_RSS_SOURCES = ['Deutschlandfunk', 'ZDFheute'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -62,6 +79,8 @@ interface HarnessControls {
   failNextGetTemporarily: () => void;
   fireSignInRetry: () => void;
   holdNextGet: () => HeldRequest;
+  /** Pause the next Clerk token fetch; the token is minted on release. */
+  holdNextToken: () => HeldRequest;
   holdNextPost: () => HeldRequest;
   /** Make the backing store REJECT writes to `key`, as a full disk does. */
   rejectWritesTo: (key: string) => void;
@@ -71,6 +90,16 @@ interface HarnessControls {
   setToken: (token: string) => void;
   stateHistory: string[];
   timeoutNextRequest: () => void;
+}
+
+/** The server row a stub-minted bearer token names (see the clerk stub). */
+function rowOfBearer(bearer: string): string {
+  try {
+    const claims = JSON.parse(atob(bearer.split('.')[1] ?? '')) as { row?: unknown };
+    return typeof claims.row === 'string' ? claims.row : bearer;
+  } catch {
+    return bearer;
+  }
 }
 
 let harnessSequence = 0;
@@ -288,7 +317,7 @@ async function runHarness(
   globalThis.fetch = async (_input, init = {}) => {
     const method = init.method ?? 'GET';
     const authorization = new Headers(init.headers).get('Authorization') ?? '';
-    const token = authorization.replace(/^Bearer\s+/, '') || 'anonymous';
+    const token = rowOfBearer(authorization.replace(/^Bearer\s+/, '')) || 'anonymous';
     const row = rows.get(token) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     if (method === 'GET') {
       if (failNextGetTemporarily) {
@@ -380,6 +409,20 @@ async function runHarness(
       pendingGetHold = { releasePromise, resolveRelease, resolveStarted };
       return { release: resolveRelease, started };
     },
+    holdNextToken: () => {
+      let resolveRelease!: () => void;
+      let resolveStarted!: () => void;
+      const releasePromise = new Promise<void>((resolveReleasePromise) => {
+        resolveRelease = resolveReleasePromise;
+      });
+      const started = new Promise<void>((resolveStartedPromise) => {
+        resolveStarted = resolveStartedPromise;
+      });
+      Object.assign(globalThis, {
+        __cloudPrefsTokenHold: { releasePromise, resolveStarted },
+      });
+      return { release: resolveRelease, started };
+    },
     holdNextPost: () => {
       let resolveRelease!: () => void;
       let resolveStarted!: () => void;
@@ -429,6 +472,7 @@ async function runHarness(
       stateHistory: [...stateHistory],
     };
   } finally {
+    Reflect.deleteProperty(globalThis, '__cloudPrefsTokenHold');
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;
     AbortSignal.timeout = originalAbortSignalTimeout;
@@ -517,6 +561,9 @@ describe('cloud preference write serialization', () => {
 
   it('replays once when a preference changes after the active snapshot', async () => {
     const result = await runHarness(async (cloudPrefs) => {
+      // Signed in: once the version is nonzero, only its owner's token may
+      // write, and an upload with no signed-in account has no owner (SM-015).
+      await cloudPrefs.onSignIn('user-1', 'full');
       cloudPrefs.install('full');
       const sync = cloudPrefs.syncNow();
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 1));
@@ -525,7 +572,8 @@ describe('cloud preference write serialization', () => {
     });
 
     assert.equal(result.conflictCount, 0);
-    assert.equal(result.postCount, 2);
+    // One sign-in post, then the snapshot upload and its single replay.
+    assert.equal(result.postCount, 3);
     assert.equal(result.localSyncVersion, result.serverSyncVersion);
     assert.equal(result.state, 'synced');
   });
@@ -559,6 +607,31 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.state, 'synced');
   });
 
+  it('preserves German RSS choices made after startup when sign-in uploads a schema-9 local profile', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
+      localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
+      // Startup already applied the locale default; the user then enabled both.
+      localStorage.setItem('worldmonitor-disabled-feeds', '["user-choice"]');
+      await cloudPrefs.onSignIn('user-1', 'full');
+    });
+    assert.equal(result.localSchemaVersion, 10);
+    assert.equal(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds'], '["user-choice"]');
+  });
+
+  it('still migrates old incoming cloud settings after the local German RSS migration', async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      localStorage.setItem('wm-cloud-prefs-local-schema-version', '9');
+      localStorage.setItem('worldmonitor-german-rss-sources-v1', 'done');
+      controls.seedRow('test-token', { 'worldmonitor-disabled-feeds': '["cloud-choice"]' }, 3, 9);
+      await cloudPrefs.onSignIn('user-1', 'full');
+      cloudPrefs.install('full');
+      await cloudPrefs.syncNow();
+    });
+    assert.equal(result.localSchemaVersion, 10);
+    assert.deepEqual(JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']), ['cloud-choice', 'Deutschlandfunk', 'ZDFheute']);
+  });
+
   it('migrates the local blob before a sign-out keepalive upload', async () => {
     const result = await runHarness(async (cloudPrefs) => {
       await cloudPrefs.onSignIn('user-1', 'full');
@@ -570,8 +643,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 9);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [9, 9]);
+    assert.equal(result.localSchemaVersion, 10);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [10, 10]);
     const disabled = JSON.parse(result.acceptedDataByToken['test-token']['worldmonitor-disabled-feeds']) as string[];
     assert.ok(disabled.includes('user-choice'));
     assert.ok(disabled.includes('Guardian Pacific'));
@@ -1069,6 +1142,261 @@ describe('cloud prefs marker ordering (#7833 review)', () => {
       'the sync version must not advance past a rejected schema marker',
     );
     assert.equal(result.state, 'error');
+  });
+});
+
+// SM-015: Clerk can switch the active account from A straight to B (multi-session
+// setActive) without a signed-out state in between. App.ts then calls only
+// onSignIn(B); onSignOut — which clears A's sync version — runs only on the
+// userId -> null edge. A's surviving sync version used to send B's sign-in down
+// the "local is at or ahead of cloud" branch, posting A's preferences with B's
+// token; when the versions matched, the server accepted the write and B's row
+// was overwritten.
+describe('cloud prefs account switch without an observed sign-out (SM-015)', () => {
+  const versionCases = [
+    { name: 'A version above B', aVersion: 3, bVersion: 2 },
+    { name: 'A version below B', aVersion: 1, bVersion: 2 },
+    { name: 'A version equal to B', aVersion: 2, bVersion: 2 },
+  ];
+
+  async function switchAccounts(
+    { aVersion, bVersion }: { aVersion: number; bVersion: number },
+    transition: 'sign-out' | 'direct' | 'reload',
+  ) {
+    return runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, aVersion, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, bVersion, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'dark');
+      assert.equal(localStorage.getItem('wm-cloud-sync-version'), String(aVersion));
+
+      if (transition === 'sign-out') cloudPrefs.onSignOut();
+      controls.setToken('b-token');
+      // 'reload': account A's page is gone without having observed a sign-out
+      // (for example A signed out on a page that does not run cloud sync), and
+      // a fresh module instance boots straight into account B.
+      const signInModule = transition === 'reload' ? await loadCloudPrefsModule() : cloudPrefs;
+      await signInModule.onSignIn('user-b', 'full');
+    });
+  }
+
+  for (const versions of versionCases) {
+    for (const transition of ['sign-out', 'direct', 'reload'] as const) {
+      it(`keeps account B's cloud row intact on A -> ${transition} -> B (${versions.name})`, async () => {
+        const result = await switchAccounts(versions, transition);
+
+        assert.equal(
+          result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+          'light',
+          `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+        );
+        assert.equal(
+          result.acceptedSchemaVersionsByToken['b-token'],
+          undefined,
+          "B's sign-in must not write to B's row: it holds no edits of B's",
+        );
+        assert.equal(result.serverSyncVersion, versions.bVersion);
+        assert.equal(result.localSyncVersion, versions.bVersion);
+        assert.equal(result.state, 'synced');
+      });
+    }
+  }
+
+  // A profile can hold A's version with no last-signed-in marker: profiles
+  // older than the marker, or an upload made with no account signed in.
+  async function reloadWithUnownedVersion(
+    cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    controls: HarnessControls,
+  ) {
+    controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+    controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+    controls.setToken('a-token');
+    await cloudPrefs.onSignIn('user-a', 'full');
+    localStorage.removeItem('wm-last-signed-in-as');
+    assert.equal(localStorage.getItem('wm-cloud-sync-version'), '2');
+    controls.setToken('b-token');
+    return loadCloudPrefsModule();
+  }
+
+  it("keeps account B's row intact when A's version has no recorded owner", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      const reloaded = await reloadWithUnownedVersion(cloudPrefs, controls);
+      await reloaded.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
+    assert.equal(result.localSyncVersion, 2);
+    assert.equal(result.state, 'synced');
+  });
+
+  it("does not upload an unowned version with B's token before B's sign-in", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      const reloaded = await reloadWithUnownedVersion(cloudPrefs, controls);
+      reloaded.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'pre-sign-in-edit');
+      await reloaded.syncNow();
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
+  });
+
+  it("keeps account B's row intact when A's failed sign-in left B's marker over A's version", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      // Current schemas isolate account ownership from an intentional migration upload.
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 10);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 3, 10);
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+      cloudPrefs.onSignOut();
+
+      // A's sign-in never completes (its retry is never fired), but A's own
+      // upload still lands: 409 -> merge -> A's row at version 3.
+      controls.setToken('a-token');
+      controls.failNextGetTemporarily();
+      await cloudPrefs.onSignIn('user-a', 'full');
+      cloudPrefs.install('full');
+      localStorage.setItem('worldmonitor-theme', 'dark-edit');
+      await cloudPrefs.syncNow();
+      assert.equal(localStorage.getItem('wm-cloud-sync-version'), '3');
+
+      // A fresh page boots straight into B.
+      controls.setToken('b-token');
+      const reloaded = await loadCloudPrefsModule();
+      await reloaded.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(result.acceptedDataByToken['a-token']?.['worldmonitor-theme'], 'dark-edit');
+    assert.equal(
+      result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+      'light',
+      `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+    );
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.localSyncVersion, 3);
+  });
+
+  it("applies account B's preferences locally after a direct switch", async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'light');
+      assert.equal(localStorage.getItem('wm-last-signed-in-as'), 'user-b');
+    });
+  });
+
+  it("flushes account A's pending edit to A's row, not B's, on a direct switch", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+      controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+      controls.setToken('a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      cloudPrefs.install('full');
+      // A's edit is still waiting on the upload debounce when B becomes active.
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      controls.setToken('b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(
+        localStorage.getItem('wm-cloud-prefs-dirty-keys'),
+        null,
+        "A's dirty marker must not become B's pending edit",
+      );
+    });
+
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+    assert.equal(result.acceptedDataByToken['b-token']?.['wm-market-watchlist-v1'], undefined);
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.conflictCount, 0);
+    assert.equal(result.state, 'synced');
+  });
+
+  // Clerk makes B active before App observes it and calls onSignIn(B). A write
+  // that fetches its token inside that gap gets B's token; the auth generation
+  // has not moved, so only the token's own account can stop the write.
+  async function signInA(cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>, controls: HarnessControls) {
+    controls.seedRow('a-token', { 'worldmonitor-theme': 'dark' }, 2, 9);
+    controls.seedRow('b-token', { 'worldmonitor-theme': 'light' }, 2, 9);
+    controls.setToken('a-token');
+    await cloudPrefs.onSignIn('user-a', 'full');
+  }
+
+  it("does not post A's upload with B's token when Clerk switches before the token fetch", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      const heldToken = controls.holdNextToken();
+      const upload = cloudPrefs.syncNow();
+      await heldToken.started;
+      controls.setToken('b-token');
+      heldToken.release();
+      await upload;
+
+      assert.equal(cloudPrefs.getSyncState(), 'pending', "A's edit stays pending for A");
+
+      // App observes the switch; A's sign-out flushes the edit with A's token.
+      await cloudPrefs.onSignIn('user-b', 'full');
+    });
+
+    assert.equal(
+      result.acceptedDataByToken['b-token']?.['worldmonitor-theme'],
+      'light',
+      `B's row was overwritten: ${JSON.stringify(result.acceptedDataByToken['b-token'])}`,
+    );
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+    assert.equal(result.state, 'synced');
+  });
+
+  it("does not let A's tab-hide flush sign with B's token after a raced upload", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-market-watchlist-v1', 'user-a-edit');
+
+      const heldToken = controls.holdNextToken();
+      const upload = cloudPrefs.syncNow();
+      await heldToken.started;
+      controls.setToken('b-token');
+      heldToken.release();
+      await upload;
+
+      controls.dispatchHidden();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['wm-market-watchlist-v1'], undefined);
+    assert.equal(result.acceptedDataByToken['a-token']?.['wm-market-watchlist-v1'], 'user-a-edit');
+  });
+
+  it("does not let A's sign-in retry read or write B's row after Clerk switches", async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await signInA(cloudPrefs, controls);
+      controls.failNextGetTemporarily();
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), true);
+
+      controls.setToken('b-token');
+      controls.fireSignInRetry();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'dark', "B's row must not land as A's state");
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), false);
+    });
+
+    assert.equal(result.acceptedSchemaVersionsByToken['b-token'], undefined);
+    assert.equal(result.acceptedDataByToken['b-token']?.['worldmonitor-theme'], 'light');
   });
 });
 

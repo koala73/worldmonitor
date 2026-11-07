@@ -543,7 +543,12 @@ export async function dispatchToolsCall(
   const deferredBurst = toolBurstPerMinute !== undefined && dedicatedPanel && typeof p?.name === 'string' && p.arguments?.panel_request !== undefined
     && p.name !== 'open_country_brief' && p.name !== 'open_news_dashboard' && p.name !== 'get_mcp_allowance';
   if (toolBurstPerMinute !== undefined && !deferredBurst) {
-    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined);
+    // An Enterprise contract member's data calls spend the account's burst,
+    // which its REST requests share. The quota-exempt metadata tools fetch no
+    // data, so they stay on the per-user limiter (get_mcp_allowance on its
+    // protocol bucket).
+    const accountBurst = p?.name === 'describe_tool' || p?.name === START_UPGRADE_TOOL ? undefined : budget?.account;
+    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined, accountBurst);
     if (limited) return limited;
   }
   if (!p || typeof p.name !== 'string') {
@@ -960,13 +965,23 @@ export async function dispatchToolsCall(
           // so this exhaustion may be traffic the agent never made. It rides
           // `data` like every other denial rather than leaving the agent to
           // string-match, and matches the field the allowance resource reports.
+          // A contract account's pool rejects only at its safety limit, and
+          // the denial says so with the contract allowance beside it, as the
+          // REST 429 does (server/_shared/account-rate-limit.ts).
           return mcpDenialResponse(
-            {
-              reason: 'quota-exceeded',
-              limit: reservation.floor,
-              sharedWithRestApi: isSharedRestCounter(budget),
-              upgradeFrom,
-            },
+            budget?.account && budget.displayAllowance !== undefined
+              ? {
+                reason: 'quota-exceeded',
+                limit: reservation.floor,
+                allowance: budget.displayAllowance,
+                sharedWithRestApi: true,
+              }
+              : {
+                reason: 'quota-exceeded',
+                limit: reservation.floor,
+                sharedWithRestApi: isSharedRestCounter(budget),
+                upgradeFrom,
+              },
             -32029,
             429,
             id,
@@ -976,6 +991,12 @@ export async function dispatchToolsCall(
         }
         // Hard-cap correctness: NEVER dispatch on reservation failure.
         return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      if (budget?.account && usage) {
+        // Attribute the pooled charge for billing: past the contract
+        // allowance the call is served and counted as overage.
+        usage.accountId = budget.account.id;
+        usage.overage = budget.displayAllowance !== undefined && reservation.newCount > budget.displayAllowance;
       }
       if (budget?.enterprisePlan) {
         reportHighUsageIfCrossed({

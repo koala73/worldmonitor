@@ -141,3 +141,22 @@ describe('putR2JsonObject s3-mode does not hang on a stalled write', () => {
     assert.ok(res.bytes > 0);
   });
 });
+
+it('retries SDK transient codes and nested causes under the single outer budget', async t => {
+  const timer = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, ms, ...args) => ms <= 1_000
+    ? timer(callback, 0, ...args) : timer(callback, ms, ...args));
+  for (const error of [
+    Object.assign(new Error('connect failed'), { code: 'ECONNREFUSED' }),
+    Object.assign(new Error('write failed'), { code: 'EPIPE' }),
+    new Error('wrapped', { cause: Object.assign(new Error('connect failed'), { code: 'ETIMEDOUT' }) }),
+  ]) {
+    let calls = 0;
+    __setS3ClientForTests({ send: async () => {
+      if (++calls === 1) throw error;
+      return {};
+    } });
+    await putR2JsonObject(S3_CONFIG, 'fixture.json', { ok: true });
+    assert.equal(calls, 2);
+  }
+});

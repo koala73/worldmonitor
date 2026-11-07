@@ -176,6 +176,20 @@ function recordDedupOutcome(dedupResult, options) {
   return { shouldPublish, isDuplicate: action === 'fallback_suppressed', dedupResult: result, action, severity };
 }
 
+/**
+ * Drop a fail-open fallback reservation made by recordDedupOutcome. A
+ * publisher calls this when it reserved the key but sent nothing (for example
+ * the recipient's channels could not be read), so a retry of the same event
+ * is not suppressed by the in-process fallback for the rest of its TTL.
+ *
+ * @param {string|undefined} key the same fallbackKey passed to recordDedupOutcome
+ * @returns {boolean} true when a reservation was removed
+ */
+function releaseFailOpenFallback(key) {
+  if (!key) return false;
+  return failOpenFallbackDedup.delete(key);
+}
+
 module.exports = {
   buildDedupMaterial,
   classifySetNxResult,
@@ -183,4 +197,5 @@ module.exports = {
   shouldPublishAfterDedupResult,
   buildSetNxErrorTelemetryLine,
   recordDedupOutcome,
+  releaseFailOpenFallback,
 };

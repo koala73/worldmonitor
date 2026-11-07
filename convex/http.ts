@@ -397,7 +397,11 @@ export async function internalEntitlementsHttpHandler(
           result.features.tier === 0 &&
           fallbackState?.currentEntitlement
         ) {
-          result = fallbackState.currentEntitlement;
+          // The Enterprise account block follows membership, not the winning
+          // plan, so it survives the fallback swap.
+          result = "account" in result && result.account
+            ? { ...fallbackState.currentEntitlement, account: result.account }
+            : fallbackState.currentEntitlement;
         }
         const staleFeatures = fallbackState?.strongestRecentlyStaleFeatures;
         const verificationCouldExpandCoverage = !!staleFeatures && (

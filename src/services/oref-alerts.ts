@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import { startSmartPollLoop, toApiUrl, type SmartPollLoopHandle } from '@/services/runtime';
 import { translateText } from '@/services/summarization';
 
@@ -287,6 +288,7 @@ export async function fetchOrefHistory(): Promise<OrefHistoryResponse> {
   await ensureLocationMapLoaded();
   try {
     const res = await fetch(getOrefApiUrl('history'), {
+      signal: createTimeoutSignal(15_000),
       credentials: 'omit',
       headers: { Accept: 'application/json' },
     });

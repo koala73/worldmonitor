@@ -979,7 +979,7 @@
   "components": {
     "webcams": {
       "paused": "Webcams paused",
-      "play": "Play",
+      "play": "Watch live",
       "previewStatus": "Ready to play",
       "connecting": "Connecting…",
       "unverified": "Can’t confirm this stream is live",
@@ -1413,6 +1413,20 @@
       "info": "INFO"
     },
     "deckgl": {
+      "measure": {
+        "title": "Measure distance",
+        "units": "Distance units",
+        "pointA": "Select point A. Click the map or press Enter at the map center.",
+        "pointB": "Select point B. Pan the map and press Enter to use its center.",
+        "geodesic": "Geodesic distance",
+        "note": "Between clicked coordinates; not a route or verified asset separation. Escape exits.",
+        "cancel": "Cancel selection",
+        "cancelShort": "Cancel",
+        "resetShort": "Reset",
+        "exitShort": "Exit",
+        "reset": "Reset measurement",
+        "exit": "Exit measurement"
+      },
       "zoomIn": "Zoom In",
       "zoomOut": "Zoom Out",
       "resetView": "Reset View",
@@ -1678,8 +1692,10 @@
       "analysisFrameworksFromAgentskills": "From agentskills.io",
       "analysisFrameworksPasteJson": "Paste JSON",
       "analysisFrameworksSaveToLibrary": "Save to Library",
-      "streamAlwaysOnLabel": "Auto-play live streams on dashboard",
-      "streamAlwaysOnDesc": "Starts Live News and Live Webcams automatically when visible. Leave off to load video only after you click Play.",
+      "liveNewsAutoplayLabel": "Auto-play live news",
+      "liveNewsAutoplayDesc": "Starts the live news video, muted, as soon as it is on screen. Turn this off to load the video only when you start it yourself.",
+      "streamAlwaysOnLabel": "Auto-play live webcams",
+      "streamAlwaysOnDesc": "Starts the live webcam videos as soon as they are on screen. Leave this off to load them only when you start them yourself.",
       "streamIdleStopLabel": "Stop live video when idle",
       "streamIdleStopDesc": "Stops Live News and Live Webcams after this long without activity and shows a notice in the panel.",
       "streamIdleStopNever": "Never",
@@ -2704,8 +2720,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro is launched",
-      "tagline": "More Signal, Less Noise. More AI Briefings. A Geopolitical & Equity Researcher just for you.",
+      "headline": "Daily AI briefs by email or Slack",
+      "tagline": "plus WM Analyst, alert rules and MCP for Claude",
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
@@ -3299,7 +3315,44 @@
       "airborne": "Airborne"
     },
     "cyberThreat": {
-      "title": "CYBER THREAT"
+      "title": "CYBER THREAT",
+      "evidence": "Threat-feed evidence",
+      "firstSeen": "First seen",
+      "explanations": {
+        "c2_server": "The feed reports a command-and-control server used to send instructions to malware.",
+        "malware_host": "The feed reports an address used to host malware.",
+        "phishing": "The feed reports an indicator associated with phishing.",
+        "malicious_url": "The feed reports a URL associated with malicious activity."
+      },
+      "downloadTag": "malware_download: the source reports a malware download location.",
+      "familyNote": "The malware-family label comes from the threat feed. It does not identify a person or organization.",
+      "approximateLocation": "The mapped location is approximate IP-derived context, not a verified physical host location.",
+      "network": {
+        "title": "Network information",
+        "privacy": "Expand to request passive network data from RIPEstat. The indicator IP is shared with that provider.",
+        "disclaimer": "Network registration and routing do not identify the attacker or make the provider responsible for the activity.",
+        "loading": "Loading network information…",
+        "unknown": "Not available",
+        "disabled": "Network lookup is not enabled.",
+        "invalid": "Network lookup requires a public IP address.",
+        "unavailable": "Network lookup failed. Close and reopen the popup to try again later.",
+        "rateLimited": "Network lookup is temporarily limited. Try again later.",
+        "noData": "The provider returned no network information for this IP.",
+        "partial": "Some network information could not be retrieved.",
+        "ip": "IP",
+        "asn": "Origin ASN",
+        "operator": "Reported ASN holder / network operator",
+        "prefix": "Reported routing prefix",
+        "hostname": "Reverse-DNS hostname (rDNS)",
+        "lookupAt": "Network lookup time",
+        "routingAt": "Routing data time",
+        "broaderPrefix": "The provider matched a broader routing prefix. This is not an exact IP allocation record.",
+        "rdnsNote": "rDNS is a DNS label, not proof of ownership. Registered organization and precise location are not supplied by this lookup.",
+        "copy": "Copy",
+        "copied": "Copied.",
+        "copyFailed": "Copy failed. Select the text to copy it."
+      },
+      "firstSeenNote": "This is the earliest available indicator date across feeds or World Monitor observations; it may differ from the listed source's date."
     },
     "nuclear": {
       "types": {
@@ -3474,6 +3527,28 @@
       "readReport": "Read full report"
     },
     "datacenter": {
+      "details": {
+        "more": "More details",
+        "owner": "Cluster owner / provider (dataset)",
+        "power": "Dataset power figure",
+        "powerCaveat": "Power capacity may be reported or estimated. This is not a measurement of current electricity use.",
+        "powerBasis": "Power figure basis",
+        "reported": "Reported",
+        "estimated": "Estimated",
+        "notAvailable": "Not available",
+        "location": "Location precision",
+        "locationUnknown": "Unverified map point; do not use as an exact facility address.",
+        "site": "Site (source verified)",
+        "city": "City only",
+        "region": "Region only",
+        "country": "Country only",
+        "dataset": "Epoch AI GPU Clusters dataset",
+        "evidence": "Supporting source",
+        "sourceDate": "Source publication date",
+        "metadataReviewedAt": "Metadata checked",
+        "firstOperationalDate": "First operational date (dataset)",
+        "freshness": "Stored dataset snapshot. Current status and specifications may have changed."
+      },
       "status": {
         "existing": "OPERATIONAL",
         "planned": "PLANNED",
@@ -3614,6 +3689,7 @@
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
       "showLess": "Show less",
+      "backToGroup": "Back to group",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",

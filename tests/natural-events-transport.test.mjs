@@ -170,7 +170,11 @@ test('EONET decoded-size rejection cancels acquisition and preserves last-good w
   assert.equal(result._eonetFailed, true);
   assert.equal(transport.calls.get('eonet'), 1);
   assert.equal(cancelled, true);
-  assert.deepEqual(result._sourceSnapshots.eonet, first._sourceSnapshots.eonet);
+  const { consecutiveFailures, firstFailureAt, lastAttemptAt, ...retained } = result._sourceSnapshots.eonet;
+  const { consecutiveFailures: _c, firstFailureAt: _f, lastAttemptAt: _l, ...original } = first._sourceSnapshots.eonet;
+  assert.deepEqual(retained, original);
+  assert.deepEqual({ consecutiveFailures, firstFailureAt, lastAttemptAt },
+    { consecutiveFailures: 1, firstFailureAt: NOW + 1000, lastAttemptAt: NOW + 1000 });
 });
 
 test('EONET streamed JSON preserves native BOM and invalid UTF-8 decoding', async () => {
@@ -604,6 +608,7 @@ test('throwing diagnostic getters preserve bounded failures and the retry limit'
 
 test('failure timing separates each request duration from total elapsed time', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);
@@ -627,6 +632,7 @@ test('failure timing separates each request duration from total elapsed time', a
 
 test('failure phase timings distinguish late headers from a stalled body and reset on retry', async t => {
   useRealRetryDelay(t);
+  t.mock.method(Math, 'random', () => 0);
   let clock = 0;
   const logs = [];
   t.mock.method(performance, 'now', () => clock);

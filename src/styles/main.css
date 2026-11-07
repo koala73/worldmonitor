@@ -4345,17 +4345,17 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: flex-end;
-  gap: 7px;
-  padding: 14px;
+  /* Centred so the play control stays in view however short the tile is
+     (a phone gives the panel ~140px of content). */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  text-align: center;
+  cursor: pointer;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38%),
     linear-gradient(135deg, rgba(220, 38, 38, 0.24), rgba(0, 0, 0, 0.88));
-}
-
-.webcam-preview-tile:hover .webcam-preview-play {
-  border-color: var(--text);
 }
 
 .webcam-preview-title {
@@ -4375,7 +4375,32 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .webcam-preview-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
   margin-top: 4px;
+  padding: 8px 16px;
+  /* Solid, so the prompt reads as the action on the dark tile: white on
+     --red-strong clears AA. */
+  background: var(--red-strong);
+  border-color: var(--red-strong);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+/* Drawn, not a glyph: U+25B6 renders as an emoji on iOS. */
+.webcam-preview-play::before {
+  content: '';
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid currentColor;
+}
+
+.webcam-preview-tile:hover .webcam-preview-play,
+.webcam-preview-play:hover {
+  border-color: #fff;
 }
 
 .webcam-cell:hover .webcam-cell-label {
@@ -7658,15 +7683,15 @@ body.playback-mode .status-dot {
 }
 
 .popup-header.datacenter {
-  background: rgba(51, 34, 85, 0.08);
+  background: color-mix(in srgb, rgb(51, 34, 85) 8%, var(--bg));
 }
 
 .popup-header.datacenter.existing {
-  background: rgba(59, 130, 246, 0.06);
+  background: color-mix(in srgb, rgb(59, 130, 246) 6%, var(--bg));
 }
 
 .popup-header.datacenter.planned {
-  background: rgba(234, 179, 8, 0.06);
+  background: color-mix(in srgb, rgb(234, 179, 8) 6%, var(--bg));
 }
 
 /* Heatmap */
@@ -10080,6 +10105,56 @@ a.prediction-link:hover {
   line-height: 1.5;
   color: var(--text-secondary);
   margin-bottom: 10px;
+}
+
+.datacenter-details {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+  padding-top: 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.datacenter-details summary {
+  cursor: pointer;
+  color: var(--green-text, var(--green));
+  padding: 6px 0;
+}
+
+.datacenter-details summary:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 2px;
+}
+
+.datacenter-details h3 {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  margin: 10px 0;
+}
+
+.datacenter-details dl > div {
+  margin-bottom: 8px;
+}
+
+.datacenter-details dt {
+  color: var(--text-muted);
+}
+
+.datacenter-details dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.datacenter-details p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.datacenter-details a {
+  display: block;
+  margin: 8px 0;
+  color: var(--green-text, var(--green));
 }
 
 .popup-location {
@@ -14307,6 +14382,41 @@ button.popup-link {
   padding: 4px 8px;
   color: var(--text-muted);
   font-style: italic;
+}
+
+.cluster-vessel-item,
+.popup-back {
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  min-height: 36px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cluster-vessel-item {
+  width: 100%;
+}
+
+.popup-back {
+  display: block;
+  background: var(--overlay-light);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 12px;
+}
+
+.cluster-vessel-item:hover,
+.popup-back:hover {
+  background: var(--overlay-medium);
+}
+
+.cluster-vessel-item:focus-visible,
+.popup-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .popup-description.alert {
@@ -19165,6 +19275,90 @@ button.popup-link {
 }
 
 /* deck.gl Time Slider */
+.map-distance-control {
+  position: absolute;
+  /* Reserve the navigation column, including its optional clear-trails button. */
+  top: 150px;
+  right: 10px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 160px);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.map-distance-control .maplibregl-ctrl-scale {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.map-distance-toolbar,
+.map-distance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.map-distance-control button,
+.map-distance-control select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.map-distance-control button:focus-visible,
+.map-distance-control select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.map-distance-toggle[aria-expanded="true"] {
+  border-color: var(--green);
+}
+
+.map-distance-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map-distance-panel[hidden] {
+  display: none;
+}
+
+.map-distance-status,
+.map-distance-actions {
+  flex-shrink: 0;
+}
+
+.map-distance-note {
+  overflow: auto;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.map-measuring .maplibregl-canvas {
+  cursor: crosshair !important;
+}
+
 .deckgl-time-slider {
   position: absolute;
   top: 10px;
@@ -19621,7 +19815,9 @@ button.popup-link {
   justify-content: center;
   gap: 12px;
   padding: 7px 36px 7px 16px;
-  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06));
+  /* The tint is translucent; the themed surface under it keeps the text
+     readable in the light theme, where the page body stays dark. */
+  background: linear-gradient(90deg, rgba(74, 222, 128, 0.06), rgba(74, 222, 128, 0.12), rgba(74, 222, 128, 0.06)), var(--surface);
   border-bottom: 1px solid rgba(74, 222, 128, 0.15);
   font-family: var(--font-mono);
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
@@ -19706,12 +19902,27 @@ button.popup-link {
   .pro-banner {
     font-size: calc(11px * var(--wm-panel-effective-scale, 1));
     gap: 8px;
-    padding: 6px 32px 6px 10px;
+    padding: 5px 32px 5px 10px;
   }
 
   .pro-banner-text {
     flex: 1 1 0;
     min-width: 0;
+    /* Two lines (2 x 13.75px + 10px padding + 1px border) fit the 40px
+       reserved slot, so the headline is never cut off on a phone. */
+    white-space: normal;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  /* The CTA already says Pro, and the tagline cannot fit; keep the width
+     for the headline. */
+  .pro-banner-badge,
+  .pro-banner-tagline {
+    display: none;
   }
 }
 
@@ -29537,3 +29748,40 @@ body.map-width-resizing {
 .food-prices-context { margin-top: 14px; }
 .food-prices-context summary { cursor: pointer; font-size: .9em; }
 .fao-monthly-context { border-top: 1px solid var(--border); }
+
+/* Passive network context stays within the existing popup scroll surface. */
+.cyber-network-info {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cyber-network-info summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  margin-bottom: 10px;
+}
+
+.cyber-network-info .popup-stats {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cyber-copy {
+  margin-inline-start: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cyber-copy-status {
+  display: block;
+  color: var(--text-secondary);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}

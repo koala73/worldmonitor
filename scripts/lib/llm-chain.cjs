@@ -41,7 +41,7 @@ async function callAnthropic({ apiKey, model, systemPrompt, userPrompt, maxToken
     messages: [{ role: 'user', content: userPrompt }],
     output_config: { effort: 'low' },
     fallbacks: 'default',
-  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout });
+  }, { headers: { 'anthropic-beta': 'server-side-fallback-2026-07-01' }, timeout, signal: AbortSignal.timeout(timeout ?? 60_000) });
   const text = response.stop_reason === 'refusal'
     ? ''
     : (response.content ?? [])

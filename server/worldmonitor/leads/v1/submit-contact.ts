@@ -63,9 +63,11 @@ async function sendNotificationEmail(
   const emailDomain = (email.split('@')[1] || '').toLowerCase();
   try {
     const res = await fetch('https://api.resend.com/emails', {
+      signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-leads/1.0',
         'Authorization': `Bearer ${resendKey}`,
       },
       body: JSON.stringify({

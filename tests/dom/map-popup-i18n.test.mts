@@ -4,7 +4,10 @@
  * left in its original language.
  */
 import i18next from 'i18next';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { AIDataCenter } from '@/types';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('globe.gl', () => ({ default: vi.fn() }));
+import { GlobeMap } from '@/components/GlobeMap';
 import { MapPopup } from '@/components/MapPopup';
 import {
   aptSectorLabel, aptTacticLabel, countryLabel, isSameLocation, localizeRelativePlace,
@@ -184,4 +187,67 @@ describe('storage facility popup in German', () => {
     expect(text).not.toContain('Open in Storage Atlas');
     expect(text).not.toContain('LNG export');
   });
+});
+
+// #10190: details preserve the stored precision without claiming live measurements.
+describe('datacenter details', () => {
+  const dc: AIDataCenter = {
+    id: 'dc-55', name: 'NexGen Cloud Hyperstack AQ Compute Supercomputer',
+    owner: 'NexGen Cloud', country: 'Norway', lat: 60.472, lon: 8.9689,
+    status: 'existing', chipType: 'NVIDIA H100 SXM5 80GB', chipCount: 16384, powerMW: 23.4,
+  };
+
+  it.each(['en', 'de'] as const)('provides localized, initially collapsed precise details in %s', async (lng) => {
+    await useLanguage(lng);
+    popup.show({ type: 'datacenter', data: dc, x: 10, y: 10 });
+    const details = document.querySelector('details.datacenter-details') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain(dc.name);
+    expect(details.textContent).toContain(lng === 'de' ? '16.384' : '16,384');
+    expect(details.textContent).toContain(lng === 'de' ? '23,4 MW' : '23.4 MW');
+    const labels = lng === 'de' ? de : en;
+    expect(details.textContent).toContain(labels.popups.datacenter.details.powerCaveat);
+    expect(details.textContent).toContain(labels.popups.datacenter.details.locationUnknown);
+    expect(details.querySelector('a')?.href).toBe('https://epoch.ai/data/gpu-clusters');
+    expect(details.querySelector('img')).toBeNull();
+  });
+
+  it('escapes optional metadata and rejects unsafe source links', async () => {
+    await useLanguage('en');
+    popup.show({ type: 'datacenter', data: {
+      ...dc, description: '<img src=x onerror=alert(1)>', sourceUrl: 'javascript:alert(1)',
+      powerBasis: 'estimated', metadataReviewedAt: '2026-11-06', firstOperationalDate: '2024-04-19',
+    }, x: 10, y: 10 });
+    const details = document.querySelector('.datacenter-details')!;
+    expect(details.querySelector('img')).toBeNull();
+    expect(details.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(details.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(details.textContent).toContain('Estimated');
+    expect(details.textContent).toContain('2026-11-06');
+    expect(details.textContent).toContain('2024-04-19');
+  });
+
+  it('shows missing power as unknown and preserves a zero value', async () => {
+    await useLanguage('en');
+    for (const powerMW of [undefined, 0]) {
+      popup.show({ type: 'datacenter', data: { ...dc, powerMW }, x: 10, y: 10 });
+      expect(document.querySelector('.datacenter-details')?.textContent).toContain(
+        powerMW === undefined ? en.popups.datacenter.details.notAvailable : '0 MW',
+      );
+    }
+  });
+});
+
+it('opens the shared datacenter popup from a globe marker', async () => {
+  await useLanguage('en');
+  const anchor = document.createElement('button');
+  container.append(anchor);
+  const host = Object.assign(Object.create(GlobeMap.prototype), {
+    container, popup, hideTooltip: vi.fn(), showMarkerTooltip: vi.fn(),
+  });
+  host.handleMarkerClick({ _kind: 'datacenter', id: 'dc-55' }, anchor);
+  expect(document.querySelector('.datacenter-details')?.textContent).toContain('23.4 MW');
+  expect(host.hideTooltip).toHaveBeenCalledOnce();
+  expect(host.showMarkerTooltip).not.toHaveBeenCalled();
 });

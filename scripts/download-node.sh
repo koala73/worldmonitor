@@ -196,14 +196,14 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[download-node] Downloading ${ARCHIVE_NAME}"
-curl -fsSL "${RELEASE_KEYS_URL}" -o "${TMP_DIR}/release-keys.kbx"
+curl -fsSL --connect-timeout 10 --max-time 60 "${RELEASE_KEYS_URL}" -o "${TMP_DIR}/release-keys.kbx"
 if [[ "$(sha256 "${TMP_DIR}/release-keys.kbx")" != "${NODE_RELEASE_KEYS_SHA256}" ]]; then
   echo "Release keyring checksum mismatch" >&2
   exit 1
 fi
 
-curl -fsSL "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
-curl -fsSL "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
+curl -fsSL --connect-timeout 10 --max-time 60 "${SHASUMS_URL}" -o "${TMP_DIR}/SHASUMS256.txt"
+curl -fsSL --connect-timeout 10 --max-time 60 "${SHASUMS_URL}.sig" -o "${TMP_DIR}/SHASUMS256.txt.sig"
 mkdir "${TMP_DIR}/gnupg"
 # Git Bash on Windows cannot set POSIX modes on its temp directory, so a
 # mode change there fails the script. Only POSIX hosts lock the homedir down.
@@ -221,7 +221,7 @@ if [[ -z "${EXPECTED_SHA}" ]]; then
   exit 1
 fi
 
-curl -fsSL "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
+curl -fsSL --connect-timeout 10 --max-time 300 "${ARCHIVE_URL}" -o "${TMP_DIR}/${ARCHIVE_NAME}"
 ACTUAL_SHA="$(sha256 "${TMP_DIR}/${ARCHIVE_NAME}")"
 
 if [[ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]]; then

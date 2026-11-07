@@ -199,6 +199,9 @@ const EVENTS = {
   'sign-up-resume-dismissed': true,
   'sign-out': true,
   'gate-hit': true,
+  // Free-user Pro strip call to action. Views are gate-hit feature=pro-banner;
+  // clicks / views is the strip's click-through. `state` is upgrade | lapsed.
+  'pro-banner-click': true,
   // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
   // checkout-success is the end-to-end funnel; the /pro page fires its own
   // checkout-start via the raw tracker (separate build, same event name).
@@ -339,7 +342,11 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {
     noteProFunnelReplayDelivered();
   }
-  if (outcome.eventName === 'checkout-start' || outcome.eventName === 'checkout-failed') {
+  if (
+    outcome.eventName === 'checkout-start'
+    || outcome.eventName === 'checkout-failed'
+    || outcome.eventName === 'pro-banner-click'
+  ) {
     forgetPendingConversion(outcome.eventName);
   }
 }
@@ -997,7 +1004,7 @@ const CONVERSION_PENDING_KEY = 'wm-conversion-pending';
 const CONVERSION_PENDING_LIMIT = 5;
 
 type PendingConversion = {
-  event: 'checkout-start' | 'checkout-failed';
+  event: 'checkout-start' | 'checkout-failed' | 'pro-banner-click';
   data: Record<string, unknown>;
 };
 
@@ -1015,7 +1022,7 @@ function readPendingConversions(): PendingConversion[] {
     return items.filter((item): item is PendingConversion => {
       if (!item || typeof item !== 'object') return false;
       const { event, data } = item as { event?: unknown; data?: unknown };
-      return (event === 'checkout-start' || event === 'checkout-failed')
+      return (event === 'checkout-start' || event === 'checkout-failed' || event === 'pro-banner-click')
         && Boolean(data) && typeof data === 'object';
     }).slice(0, CONVERSION_PENDING_LIMIT);
   } catch {
@@ -1064,6 +1071,9 @@ function sanitizePendingConversionData(
   event: PendingConversion['event'],
   data: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (event === 'pro-banner-click') {
+    return { state: data.state === 'lapsed' ? 'lapsed' : 'upgrade' };
+  }
   if (event === 'checkout-failed') {
     const status = data.status;
     return {
@@ -1339,6 +1349,17 @@ export function replayPendingProFunnelEvents(): void {
 const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'canceled']);
 
 /** Fired when a checkout return reconciles as failed/declined/cancelled. */
+/**
+ * A click on the free-user Pro strip. It navigates straight to /pro, often
+ * before the deferred tracker loads, so a durable copy replays on the next
+ * dashboard boot until the collector confirms the write.
+ */
+export function trackProBannerClick(state: 'upgrade' | 'lapsed'): void {
+  const data = { state };
+  rememberPendingConversion('pro-banner-click', data);
+  track('pro-banner-click', data);
+}
+
 export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   rememberPendingConversion('checkout-failed', { status });

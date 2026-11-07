@@ -1,14 +1,18 @@
 import { Agent, Dispatcher1Wrapper } from 'undici';
+import { createRequire } from 'node:module';
+import { randomInt } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { rootCertificates } from 'node:tls';
 import sources from '../shared/food-price-sources.json' with { type: 'json' };
-import { CHROME_UA } from '../_seed-utils.mjs';
+import { CHROME_UA, redactProxyCredentials } from '../_seed-utils.mjs';
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import {
   discoverReports, giewsCountries, htmlElements, isoDate, parseCbsl, parseDa, parseGiews,
   parseOnagri, parsePbs, parsePihps, parseSniim, plainText,
 } from './food-prices.mjs';
 import { FOOD_PRICE_ADAPTERS } from './food-prices-adapters/index.mjs';
+
+const { parseProxyConfigForAttempt, proxyFetch } = createRequire(import.meta.url)('../_proxy-utils.cjs');
 
 const DAY = 86400000;
 const dated = (now, offset) => new Date(now.getTime() + offset * DAY).toISOString().slice(0, 10);
@@ -121,7 +125,58 @@ async function readBytes(response, limit = 8_000_000) {
   return Buffer.concat(chunks);
 }
 
-export async function collectFoodSource(id, { now = new Date(), fetchFn = (...args) => globalThis.fetch(...args), pause = delay, budgetMs = 230_000 } = {}) {
+const PROXY_EXITS = 3;
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
+
+/**
+ * Sends one request through the shared PROXY_URL CONNECT tunnel and returns it as a fetch Response, so redirects,
+ * cookies and the size limit stay in the caller's loop. The proxy resolves the publisher's host name, which is what
+ * lets MakStat answer when Railway's resolver cannot. Each attempt takes the next Decodo sticky exit (as NRCan does):
+ * a dead or refused exit (CONNECT failure, or an origin 403) moves on; a gateway 4xx means the credentials are wrong
+ * everywhere. Each exit gets its own timeout and a share of the source budget, so one hung exit cannot spend the
+ * time the others need. When every exit fails before the publisher answers, the error carries `proxyUnreachable`.
+ */
+async function fetchViaProxy(url, init, { proxyAuth, proxyFetchFn, firstExit, deadline }) {
+  let last;
+  let answered = false;
+  for (let attempt = 0; attempt < PROXY_EXITS; attempt++) {
+    const proxyConfig = parseProxyConfigForAttempt(proxyAuth, firstExit + attempt);
+    if (!proxyConfig) throw new Error('food source proxy: invalid PROXY_URL');
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    // Exits still to try share what is left, so a hung first exit leaves time for the others.
+    const timeoutMs = Math.max(1, Math.min(init.timeoutMs, Math.floor(remaining / (PROXY_EXITS - attempt))));
+    try {
+      const result = await proxyFetchFn(url, proxyConfig, {
+        method: init.method, body: init.body ?? null, headers: init.headers, signal: AbortSignal.timeout(timeoutMs),
+        timeoutMs, maxResponseBytes: 8_000_000,
+      });
+      answered = true;
+      if (result.status === 403 && attempt < PROXY_EXITS - 1) { last = new Error('HTTP 403'); continue; }
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(result.headers ?? {})) {
+        // proxyFetch has already decoded the body, so its encoding and length no longer describe it.
+        if (value == null || name === 'content-encoding' || name === 'content-length') continue;
+        for (const item of [value].flat()) headers.append(name, String(item));
+      }
+      return new Response(NULL_BODY_STATUSES.has(result.status) ? null : result.buffer, { status: result.status, headers });
+    } catch (error) {
+      if (error?.code === 'RESPONSE_TOO_LARGE') throw error;
+      if (error?.proxyConnect && error.status >= 400 && error.status < 500) {
+        throw new Error(`food source proxy refused: ${redactProxyCredentials(error.message)}`);
+      }
+      last = error;
+    }
+  }
+  if (!last) throw new Error('food source fetch budget exceeded');
+  throw Object.assign(new Error(`food source proxy failed: ${redactProxyCredentials(last?.message || last)}`), { proxyUnreachable: !answered });
+}
+
+export async function collectFoodSource(id, {
+  now = new Date(), fetchFn = (...args) => globalThis.fetch(...args), pause = delay, budgetMs = 230_000,
+  // Callers pass resolveProxyForConnect(); the default keeps the collector direct and hermetic.
+  proxyAuth = '', proxyFetchFn = proxyFetch, firstProxyExit = randomInt(1_000_000),
+} = {}) {
   const source = sources.find(source => source.id === id);
   if (!source) throw new Error('unknown food-price source');
   const adapter = FOOD_PRICE_ADAPTERS[id];
@@ -141,11 +196,26 @@ export async function collectFoodSource(id, { now = new Date(), fetchFn = (...ar
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error('food source fetch budget exceeded');
       const jar = [...cookies].map(([name, value]) => `${name}=${value}`).join('; ');
-      const response = await fetchFn(target.href, {
+      const timeoutMs = Math.min(id === 'twmoa' ? 60_000 : 20_000, remaining);
+      const init = {
         method, body,
         headers: { 'User-Agent': CHROME_UA, Accept: '*/*', ...(jar ? { Cookie: jar } : {}), ...headers },
-        dispatcher, redirect: 'manual', signal: AbortSignal.timeout(Math.min(id === 'twmoa' ? 60_000 : 20_000, remaining)),
-      });
+        dispatcher, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
+      };
+      let response;
+      if (adapter?.proxy && proxyAuth) {
+        // Proxy-first for publishers that refuse Railway egress on every run (FRED and fuel-prices precedent);
+        // direct only when no exit reached the publisher at all.
+        try {
+          response = await fetchViaProxy(target.href, { ...init, timeoutMs }, { proxyAuth, proxyFetchFn, firstExit: firstProxyExit, deadline });
+        } catch (error) {
+          if (!error?.proxyUnreachable || deadline <= Date.now()) throw error;
+          console.warn(`${id}: ${error.message}; trying direct`);
+          response = await fetchFn(target.href, { ...init, signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, deadline - Date.now()))) });
+        }
+      } else {
+        response = await fetchFn(target.href, init);
+      }
       for (const cookie of response.headers.getSetCookie?.() ?? []) {
         const [pair] = cookie.split(';');
         const at = pair.indexOf('=');
