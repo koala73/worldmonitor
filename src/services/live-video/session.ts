@@ -519,7 +519,10 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
         else fail({ kind: 'fatal', detail: 'hls-unsupported' });
         return;
       }
-      const instance = new Hls({ enableWorker: true, lowLatencyMode: true, capLevelOnFPSDrop: true });
+      // capLevelToPlayerSize: pick the rendition that fits the player, not the
+      // top one. A ~500 px panel otherwise pulls 720p-1080p (Sky: 32 MB vs 2 MB
+      // in 18 s). hls.js re-measures the player, so fullscreen raises the cap.
+      const instance = new Hls({ enableWorker: true, lowLatencyMode: true, capLevelOnFPSDrop: true, capLevelToPlayerSize: true });
       hls = instance;
       instance.on(Hls.Events.LEVEL_LOADED, (_event, data) => { manifest = data.details.live ? 'live' : 'vod'; });
       instance.on(Hls.Events.BUFFER_CREATED, (_event, { tracks }) => {

@@ -126,6 +126,12 @@ describe('live video HLS transport', () => {
     expect(hlsjs.instances[0]?.config.capLevelOnFPSDrop).toBe(true);
   });
 
+  it('caps quality to the player size so a small panel does not stream 1080p', async () => {
+    await openLivePlaylistTile();
+
+    expect(hlsjs.instances[0]?.config.capLevelToPlayerSize).toBe(true);
+  });
+
   it('uses created buffers for audio inventory and ignores retired buffer events', async () => {
     const audio = vi.fn();
     openHlsTile(undefined, undefined, audio);
