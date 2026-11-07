@@ -106,6 +106,9 @@ export function renderBootFailureScreen(error: unknown): void {
   );
   reload.type = 'button';
   reload.addEventListener('click', () => {
+    // reload:user-initiated — the user pressed Reload on a dead dashboard, so
+    // the modal guard does not apply: deferring a direct instruction would be
+    // a bug, and the failed App has already torn its overlays down.
     location.reload();
   });
 
