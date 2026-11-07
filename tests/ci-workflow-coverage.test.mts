@@ -925,6 +925,11 @@ describe('GitHub Actions pinning guard', () => {
     assert.throws(() => unpinnedActionUses('jobs: [invalid'));
   });
 
+  it('flags non-string uses values instead of skipping them', () => {
+    assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - uses:\n'), ['null']);
+    assert.deepEqual(unpinnedActionUses(workflow('123')), ['123']);
+  });
+
   it('ignores uses text inside shell scripts and action inputs', () => {
     assert.deepEqual(unpinnedActionUses('jobs:\n  check:\n    steps:\n      - run: |\n          uses: example/action@v1\n      - uses: ./.github/actions/local\n        with:\n          uses: example/input@v1\n'), []);
   });
