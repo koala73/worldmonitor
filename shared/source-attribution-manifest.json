@@ -10427,6 +10427,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/live-pages/travel-advisories.mjs"
+        },
+        {
           "path": "scripts/seed-security-advisories.mjs"
         }
       ]
@@ -14575,6 +14578,9 @@
       "attribution": "Credit www.smartraveller.gov.au and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/live-pages/travel-advisories.mjs"
+        },
         {
           "path": "scripts/seed-security-advisories.mjs"
         }
