@@ -11,7 +11,7 @@ vi.mock('@/services/external-navigation', async (importOriginal) => ({
 // precede it; nothing here stands in for the listener itself.
 vi.mock('@/services', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services')>()),
-  initDB: vi.fn(async () => undefined),
+  openStorageForBoot: vi.fn(async () => true),
 }));
 vi.mock('@/services/wm-session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/wm-session')>()),

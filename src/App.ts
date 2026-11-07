@@ -43,7 +43,7 @@ import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { applyCanadaRoadsOptInMigration } from '@/services/canada-roads-opt-in';
 import {
-  initDB,
+  openStorageForBoot,
   cleanOldSnapshots,
   isAisConfigured,
   initAisStream,
@@ -2471,7 +2471,7 @@ export class App {
     // A failed load is still thrown below, where it is awaited.
     const i18nReady = initI18n();
     i18nReady.catch(() => {});
-    await initDB();
+    await openStorageForBoot();
     startFlightHistoryCleanup();
     // Re-arm the lazy vessel runtime (a no-op on first boot; matters on a
     // same-document re-init after a prior App.destroy() disarmed it). The
