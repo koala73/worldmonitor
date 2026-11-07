@@ -15,6 +15,7 @@ import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
 import { clerkWebhookHandler } from "./accountDeletion/clerkWebhook";
 import { channelTypeValidator, USER_PREFS_WRITE_RATE_LIMIT } from "./constants";
+import { ALERT_CAPABILITY_VIOLATION_CODES, ALERT_UPGRADE_URL } from "../shared/alert-capabilities";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 import { normalizeAcquisitionSource } from "../shared/acquisition-source";
 import { verifyDunningPortalToken } from "./lib/identitySigning";
@@ -154,14 +155,7 @@ function parseConvexErrorData(err: unknown): unknown {
  * tripped). The error is the marketing surface: the client and agents route
  * on the code and render the named rung.
  */
-const ALERT_CAPABILITY_CODES = new Set([
-  "ALERT_COUNTRIES_UPGRADE_REQUIRED",
-  "ALERT_CHANNEL_UPGRADE_REQUIRED",
-  "ALERT_SENSITIVITY_UPGRADE_REQUIRED",
-  "ALERT_DIGEST_MODE_UPGRADE_REQUIRED",
-  "ALERT_COUNTRY_SCOPE_REQUIRED",
-  "AI_DIGEST_UPGRADE_REQUIRED",
-]);
+const ALERT_CAPABILITY_CODES = new Set<string>(ALERT_CAPABILITY_VIOLATION_CODES);
 
 function alertCapabilityDenialResponse(err: unknown): Response | null {
   const code = extractConvexErrorCode(err);
@@ -174,7 +168,7 @@ function alertCapabilityDenialResponse(err: unknown): Response | null {
   return new Response(JSON.stringify({
     error: code,
     message: typeof data.message === "string" ? data.message : "",
-    upgradeUrl: typeof data.upgradeUrl === "string" ? data.upgradeUrl : "https://worldmonitor.app/pro",
+    upgradeUrl: typeof data.upgradeUrl === "string" ? data.upgradeUrl : ALERT_UPGRADE_URL,
     ...(typeof data.limit === "number" ? { limit: data.limit } : {}),
     ...(typeof data.value === "string" ? { value: data.value } : {}),
   }), { status, headers: { "Content-Type": "application/json" } });
