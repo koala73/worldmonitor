@@ -1307,6 +1307,9 @@
           "path": "scripts/seed-economic-calendar.mjs"
         },
         {
+          "path": "scripts/seed-oecd-lt-rates.mjs"
+        },
+        {
           "path": "scripts/seed-us-cpi.mjs"
         },
         {
