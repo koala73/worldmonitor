@@ -2518,6 +2518,9 @@
       "references": [
         {
           "path": "api/oauth/_client-metadata.js"
+        },
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -2883,6 +2886,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "cursor.com",
+      "provider": "cursor.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -10837,6 +10854,20 @@
       ]
     },
     {
+      "host": "vscode.dev",
+      "provider": "vscode.dev",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
+        }
+      ]
+    },
+    {
       "host": "vsquare.org",
       "provider": "vsquare.org",
       "kind": "feed",
@@ -11222,7 +11253,7 @@
           "path": "src/bootstrap/web-vitals-utils.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
+          "path": "src/config/mcp-agent-clients.ts"
         },
         {
           "path": "src/config/web-origin.ts"

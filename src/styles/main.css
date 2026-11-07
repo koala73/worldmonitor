@@ -28210,31 +28210,138 @@ body.map-width-resizing {
   line-height: 1.5;
 }
 
-.mcp-clients-empty-url {
+/* ---- AI Agents connect list (Settings → AI Agents) ---- */
+
+.mcp-agents-title,
+.mcp-agents-subtitle {
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 6px;
+}
+
+.mcp-agents-subtitle {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  margin-top: 20px;
+}
+
+.mcp-agents-url,
+.mcp-agent-command {
   display: flex;
   align-items: center;
   gap: 8px;
-  justify-content: center;
-  margin-top: 4px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  color: var(--text);
+  padding: 6px 6px 6px 10px;
   background: var(--surface);
-  padding: 6px 10px;
-  border-radius: 4px;
-  user-select: all;
-  word-break: break-all;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 0;
 }
 
-.mcp-clients-copy-url-btn {
+.mcp-agents-url {
+  margin-bottom: 12px;
+}
+
+.mcp-agents-url-label {
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  padding: 4px 10px;
-  color: var(--accent);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   flex-shrink: 0;
 }
 
-.mcp-clients-copy-url-btn:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+.mcp-agents-url code,
+.mcp-agent-command code {
+  flex: 1;
+  min-width: 0;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.mcp-agents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mcp-agent {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-agent + .mcp-agent {
+  border-top: 1px solid var(--border);
+}
+
+.mcp-agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-agent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcp-agent-name {
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mcp-agent-hint {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.mcp-agent-controls {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mcp-agent-action,
+.mcp-copy-btn {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  padding: 6px 12px;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.mcp-agents-plan-note,
+.mcp-agents-docs {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+
+.mcp-agents-plan-note a,
+.mcp-agents-docs a {
+  color: var(--accent);
+}
+
+@media (max-width: 520px) {
+  .mcp-agent-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mcp-agent-controls {
+    flex-wrap: wrap;
+  }
 }
 
 /* ---- Energy Crisis Panel ---- */
