@@ -884,6 +884,26 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             },
           });
           refreshScopeWarn();
+
+          // #4273: a free-account autosave keeps paid channels out of the
+          // stored rule (the server rejects them), so after an upgrade the
+          // stored `channels` can lag the rendered Connected rows and the
+          // relay would keep skipping them. Connected rows ARE the selection
+          // everywhere else in this panel, so on a paid load re-sync once
+          // when a connected row is missing from the stored rule.
+          if (isPro && existingRule) {
+            const storedChannels = new Set(
+              Array.isArray(existingRule.channels) ? existingRule.channels : [],
+            );
+            const connectedNow = Array.from(
+              contentEl.querySelectorAll<HTMLElement>('[data-channel-type]'),
+            )
+              .filter((el) => el.classList.contains('us-notif-ch-on'))
+              .map((el) => el.dataset.channelType as ChannelType);
+            if (connectedNow.some((type) => !storedChannels.has(type))) {
+              saveCurrentAlertRule();
+            }
+          }
         }).catch((err) => {
           if (signal.aborted || generation !== notifReloadGeneration) return;
           requestedWebPushState = null;
@@ -948,8 +968,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           ...(watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : []),
           ...(chokepointOn ? [CHOKEPOINT_DISRUPTION_EVENT_TYPE] : []),
         ];
+        // #4273: the free rung requires an explicit scope, so an enabled save
+        // with an empty picker would be rejected server-side (ALERT_COUNTRY_
+        // SCOPE_REQUIRED) and silently leave the OLD stored scope delivering
+        // while the panel says "alerts are paused". Persist the pause instead:
+        // a disabled rule with countries [] passes the gate, and picking a
+        // country re-enables because the toggle still reads on.
+        const scopeEmptyOnFreePlan = caps.requireCountryScope
+          && alertRuleCountries !== undefined
+          && alertRuleCountries.length === 0;
         return {
-          enabled: enabledEl?.checked ?? false,
+          enabled: (enabledEl?.checked ?? false) && !scopeEmptyOnFreePlan,
           eventTypes,
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,

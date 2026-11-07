@@ -220,6 +220,54 @@ describe('free alert ladder UI (#4273)', () => {
     expect(warn.hidden).toBe(true);
   });
 
+  it('persists a paused rule instead of an enabled save the server would reject when the scope empties', async () => {
+    vi.useFakeTimers();
+    const container = await mount(data());
+    // Stored UA is the only selected country; removing it empties the scope.
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip-on',
+    )!.click();
+    await vi.advanceTimersByTimeAsync(1000);
+    const paused = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { enabled: boolean; countries: string[] };
+    expect(paused.countries).toEqual([]);
+    expect(paused.enabled).toBe(false);
+    // Picking a country re-enables: the toggle still reads on.
+    container.querySelector<HTMLButtonElement>(
+      '#usNotifCountryPicker .us-notif-country-chip:not(.us-notif-country-chip-on)',
+    )!.click();
+    await vi.advanceTimersByTimeAsync(1000);
+    const resumed = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { enabled: boolean; countries: string[] };
+    expect(resumed.countries).toHaveLength(1);
+    expect(resumed.enabled).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('re-syncs stored channels on a paid load when a connected row is missing from the rule', async () => {
+    gate.tier = true;
+    // A free-plan autosave had dropped the connected Slack from the stored
+    // rule; on a paid load the panel saves it back so delivery resumes.
+    await mount(data({
+      channels: [{ channelType: 'slack', verified: true, slackChannelName: 'alerts' }] as ChannelsData['channels'],
+    } as Partial<ChannelsData>));
+    await vi.waitFor(() => {
+      expect(channelMocks.saveAlertRules).toHaveBeenCalled();
+    });
+    const payload = channelMocks.saveAlertRules.mock.calls.at(-1)?.[0] as { channels: string[] };
+    expect(payload.channels).toContain('slack');
+  });
+
+  it('does not fire a re-sync save when the stored rule already carries the connected rows', async () => {
+    gate.tier = true;
+    await mount(data({
+      channels: [{ channelType: 'slack', verified: true, slackChannelName: 'alerts' }] as ChannelsData['channels'],
+      alertRules: [{
+        variant: 'full', enabled: true, eventTypes: [], sensitivity: 'critical',
+        channels: ['slack'], digestMode: 'realtime', countries: ['UA'],
+      }],
+    } as Partial<ChannelsData>));
+    expect(channelMocks.saveAlertRules).not.toHaveBeenCalled();
+  });
+
   it('keeps a legacy paid channel connected but out of the autosave payload', async () => {
     vi.useFakeTimers();
     const container = await mount(data({
