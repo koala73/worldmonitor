@@ -426,8 +426,14 @@ test('US brief keeps late evidence, metric design and report data connected', as
     await outputReady;
     await route.continue();
   });
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) {
+    await panel.locator('.cdp-more-actions > summary').click();
+  }
   await panel.getByRole('button', { name: 'Export report ↗', exact: true }).click();
   await expect.poll(() => outputRequested).toBe(true);
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) {
+    await panel.locator('.cdp-more-actions > summary').click();
+  }
   await panel.getByRole('button', { name: 'Create story', exact: true }).click();
   releaseOutput();
   await expect(panel.locator('.cdp-output')).toHaveCount(1);
@@ -463,6 +469,9 @@ test('US brief keeps late evidence, metric design and report data connected', as
   await panel.getByRole('button', { name: '← Back to brief', exact: true }).click();
   await expect(panel).toHaveClass(/maximized/);
   await expect(factors.getByRole('tab', { name: /Defense/ })).toHaveAttribute('aria-selected', 'true');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) {
+    await panel.locator('.cdp-more-actions > summary').click();
+  }
   await panel.getByRole('button', { name: 'Create story', exact: true }).click();
   await expect(panel.locator('.cdp-output-paper')).toContainText('The United States has attacked three Iranian oil tankers');
   await panel.getByRole('button', { name: 'Next story slide', exact: true }).click();
@@ -534,6 +543,9 @@ test('country report export keeps safe links and removes unsafe or malformed URL
     card.append(fixture);
   });
   const panel = page.locator('#country-deep-dive-panel');
+  if (await panel.locator('.cdp-more-actions').getAttribute('open') === null) {
+    await panel.locator('.cdp-more-actions > summary').click();
+  }
   await panel.getByRole('button', { name: 'Export report ↗', exact: true }).click();
   const fixture = panel.locator('.cdp-output-paper .export-url-fixture');
   await expect(fixture.locator('a[href]')).toHaveCount(3);

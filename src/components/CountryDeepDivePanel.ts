@@ -3532,7 +3532,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       void this.openOutput('story', storyButton);
     });
 
-    const exportButton = this.el('button', 'cdp-action-btn cdp-export-primary', 'Export report ↗') as HTMLButtonElement;
+    const exportButton = this.el('button', 'cdp-action-btn', 'Export report ↗') as HTMLButtonElement;
     exportButton.setAttribute('type', 'button');
     exportButton.addEventListener('click', () => {
       void this.openOutput('report', exportButton);
@@ -3573,7 +3573,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (!this.canRequestPremium()) { trackGateHit('decision-brief'); showToast(t('components.decisionBrief.locked')); return; }
       void this.openDecisionBrief(commodityButton, true);
     });
-    right.append(shareBtn, maxBtn, storyButton, exportButton, decisionButton, commodityButton, evidenceButton);
+    const moreActions = this.el('details', 'cdp-more-actions');
+    const moreSummary = this.el('summary', 'cdp-action-btn', t('components.countryBrief.moreActions', { defaultValue: 'More actions' }));
+    const secondaryActions = this.el('div', 'cdp-secondary-actions');
+    secondaryActions.append(storyButton, exportButton, decisionButton, commodityButton);
+    moreActions.append(moreSummary, secondaryActions);
+    right.append(shareBtn, evidenceButton, maxBtn, moreActions);
     header.append(left, right);
 
     const scoreCard = this.el('section', 'cdp-card cdp-score-card');

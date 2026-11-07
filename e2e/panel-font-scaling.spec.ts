@@ -197,6 +197,7 @@ test.describe('panel font scaling', () => {
     await page.locator('#us-tab-panels').click();
 
     const panelScale = page.locator(`#usPanelToggles [data-panel-font-scale="${panelId}"]`);
+    await panelScale.locator('xpath=ancestor::details').locator('summary').click();
     await expect(panelScale).toBeVisible({ timeout: 15_000 });
     await expect(panelScale).toHaveValue('global');
     await panelScale.selectOption('0.9');
