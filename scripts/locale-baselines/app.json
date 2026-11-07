@@ -366,6 +366,7 @@
   "components.cotPositioning.infoTooltip": "<strong>Futures positioning</strong> Weekly net positions for commercial traders, large speculators and small traders across commodity and financial futures. Source is the Commodity Futures Trading Commission Commitments of Traders report, published on Fridays.",
   "components.counters.infoTooltip": "<strong>Live Counters</strong> Real-time extrapolated counters for global metrics: military spending, natural disasters, disease burden, and more. Figures are statistical estimates based on annual data rates.",
   "components.countryBrief.exportData": "Export data",
+  "components.countryBrief.moreActions": "More actions",
   "components.countryBrief.printPdf": "Print / PDF",
   "components.countryBrief.shareLink": "Share link",
   "components.countryBrief.shareStory": "Share story",

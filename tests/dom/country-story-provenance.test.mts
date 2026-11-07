@@ -12,7 +12,7 @@ import { briefSectionState, summarizeCountryBrief, BRIEF_SECTIONS } from '@/comp
 const source = readFileSync(new FileURL('../../src/components/CountryDeepDivePanel.ts', import.meta.url), 'utf8');
 const syntax = ts.createSourceFile('panel.ts', source, ts.ScriptTarget.Latest, true);
 const declaration = syntax.statements.find(statement => ts.isClassDeclaration(statement) && statement.name?.text === 'CountryDeepDivePanel') as ts.ClassDeclaration;
-const methods = ['openOutput', 'show', 'resetPanelContent', 'updateBrief', 'formatBrief'].map(name => declaration.members.find(member => ts.isMethodDeclaration(member) && member.name.getText(syntax) === name)!.getText(syntax));
+const methods = ['openOutput', 'restoreActionFocus', 'show', 'resetPanelContent', 'updateBrief', 'formatBrief'].map(name => declaration.members.find(member => ts.isMethodDeclaration(member) && member.name.getText(syntax) === name)!.getText(syntax));
 const executable = ts.transpileModule(`class Harness {${methods.join('\n')}} exports.Harness=Harness;`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
 function element(tag: string, className = '', text = ''): HTMLElement {

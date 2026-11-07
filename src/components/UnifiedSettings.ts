@@ -568,6 +568,10 @@ export class UnifiedSettings {
         panel.fontScale = scale;
       }
 
+      const scaleSummary = select.closest('.panel-font-scale-details')?.querySelector('[data-panel-scale-summary]');
+      if (scaleSummary) scaleSummary.textContent = panel.fontScale === undefined
+        ? t('preferences.followGlobalFontScale', { defaultValue: 'Use global' })
+        : fontScaleLabel(panel.fontScale);
       this.panelsJustSaved = false;
       select.closest('.panel-settings-item')
         ?.querySelector('.panel-toggle-item')
@@ -1566,13 +1570,15 @@ export class UnifiedSettings {
             <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
             ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
           </button>
-          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+          ${supportsPanelFontScale ? `<details class="panel-font-scale-details"${panel.fontScale === undefined ? '' : ' open'}>
+            <summary><span>${escapeHtml(panelFontScaleLabel)}</span><span data-panel-scale-summary>${escapeHtml(panel.fontScale === undefined ? followGlobalFontScaleLabel : fontScaleLabel(panel.fontScale))}</span></summary>
+            <label class="panel-font-scale-control">
             <span>${escapeHtml(panelFontScaleLabel)}</span>
             <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
               <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
               ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
             </select>
-          </label>` : ''}
+          </label></details>` : ''}
         </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
@@ -2299,9 +2305,11 @@ export class UnifiedSettings {
     if (!authState.user) {
       const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
       return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${lockIcon}</div>
-          <div class="panel-locked-desc">Sign in to unlock API Keys</div>
+        <div class="panel-locked-state settings-access-gate">
+          <div class="panel-locked-icon" aria-hidden="true">${lockIcon}</div>
+          <h3>API and desktop keys</h3>
+          <p class="panel-locked-desc">Connect your own tools to World Monitor data, or activate Pro in the desktop app.</p>
+          <p class="panel-locked-desc">Sign in to see the keys available with your plan.</p>
           <button class="panel-locked-cta api-keys-gate-btn">Sign In</button>
         </div>`;
     }
@@ -2312,8 +2320,9 @@ export class UnifiedSettings {
     if (mode === 'upgrade') {
       const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
       return `
-        <div class="panel-locked-state">
-          <div class="panel-locked-icon">${upgradeIcon}</div>
+        <div class="panel-locked-state settings-access-gate">
+          <div class="panel-locked-icon" aria-hidden="true">${upgradeIcon}</div>
+          <h3>Choose the access you need</h3>
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
           <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
           <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
