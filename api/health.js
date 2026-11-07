@@ -963,8 +963,8 @@ const SEED_META = {
       // or every source failing at once alarms on the first miss.
       {
         warnAfterConsecutive: 2,
-        // The bundle reruns this section 144 min (0.8 x 3h) after a publish, on a
-        // */5 tick, for up to 180 s; 210 holds past that next verdict.
+        // seed-natural-events (*/30) usually settles a miss in ~30 min; 210 also
+        // covers the 3-hourly seed-bundle-climate fallback (0 */3, 180 s timeout).
         maxPendingMin: 210,
         successAtField: 'lastSourceSuccessAt',
         sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
