@@ -963,7 +963,9 @@ const SEED_META = {
       // or every source failing at once alarms on the first miss.
       {
         warnAfterConsecutive: 2,
-        maxPendingMin: 150,
+        // The bundle reruns this section 144 min (0.8 x 3h) after a publish, on a
+        // */5 tick, for up to 180 s; 210 holds past that next verdict.
+        maxPendingMin: 210,
         successAtField: 'lastSourceSuccessAt',
         sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
         failureCodePattern: /^(GDACS_TYPE_COVERAGE_INCOMPLETE|EONET_SOURCE_FAILED)$/,

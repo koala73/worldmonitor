@@ -347,6 +347,18 @@ test('a single retained GDACS or EONET miss is pending; the second consecutive m
   }
 });
 
+test('a single retained miss stays pending until the next bundle run can publish', async () => {
+  // The climate bundle reruns Natural-Events once 0.8 x 3h = 144 min have
+  // passed, on its next */5 tick, and the section may run for its 180 s
+  // timeout: the next verdict lands up to 152 min after the miss.
+  const nextVerdictAt = NOW + HOUR + 152 * 60_000;
+  const first = await run();
+  const second = await run({ previousSources: first._sourceSnapshots, now: NOW + HOUR, failures: ['gdacs:FL'] });
+  const waiting = classify(second, nextVerdictAt);
+  assert.equal(typeof waiting.sourceFailurePendingUntil, 'string');
+  assert.equal(isIncident(waiting, nextVerdictAt), false);
+});
+
 test('a failed source with no retained records alarms on the first miss', async () => {
   const data = await run({ failures: ['gdacs:FL'], types: { EQ: [feature('EQ', 2)] } });
   const entry = classify(data, NOW);
