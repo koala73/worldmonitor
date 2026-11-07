@@ -401,6 +401,10 @@ function markFallbackCoverageStale(
       ...fallback,
       coverage: {
         ...coverage,
+        // Snapshots accepted before the considered counts existed lack them;
+        // the schema promises served counts there, not omitted fields.
+        itemsConsidered: coverage.itemsConsidered ?? coverage.itemsServed,
+        publishersConsidered: coverage.publishersConsidered ?? coverage.publisherCount,
         state: 'stale',
         attemptedAt,
         servedStale: true,

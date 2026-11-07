@@ -225,6 +225,37 @@ describe('list-feed-digest coverage wiring (#7085)', () => {
     assert.equal(retained.coverage.attemptedAt, '2026-08-22T10:00:00.000Z');
   });
 
+  it('backfills considered counts from served counts on a snapshot that predates them', () => {
+    const retained = {
+      categories: { politics: { items: [{ source: 'Reuters' }, { source: 'AP' }] } },
+      feedStatuses: {},
+      generatedAt: '2026-08-22T10:00:00.000Z',
+      coverage: {
+        state: 'complete',
+        attemptedAt: '2026-08-22T10:00:00.000Z',
+        itemsServed: 2,
+        publisherCount: 2,
+        feedTotal: 3,
+        feedCompleted: 3,
+        categoryTotal: 1,
+        categoryCompleted: 1,
+        categoryStates: { politics: 'ok' },
+        droppedFeedCap: 0,
+        droppedUndated: 0,
+        droppedFreshness: 0,
+        droppedCategoryCap: 0,
+        servedStale: false,
+        staleAgeSeconds: 0,
+        staleReason: '',
+      },
+    } as never;
+
+    const stale = digestTesting.markFallbackCoverageStale(retained, '2026-08-22T10:05:00.000Z');
+
+    assert.equal(stale.coverage?.itemsConsidered, 2);
+    assert.equal(stale.coverage?.publishersConsidered, 2);
+  });
+
   it('reconstructs conservative stale coverage for retained pre-coverage content', () => {
     const retained = {
       categories: {
