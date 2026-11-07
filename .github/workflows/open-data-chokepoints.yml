@@ -78,6 +78,7 @@ jobs:
         with:
           # A dispatch can target a feature branch; the publisher always runs from main.
           ref: refs/heads/main
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'

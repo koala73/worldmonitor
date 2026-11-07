@@ -185,11 +185,30 @@ describe('open data chokepoint handler', () => {
     }
   });
 
-  it('answers 404 for a date the archive lacks or a path outside the dataset', async () => {
-    for (const file of ['2026-01-01.json', 'latest.xml', '../index.json', 'schema.json', '']) {
+  it('answers 404 for a date the archive lacks or a path outside the dataset, with a short CDN TTL', async () => {
+    for (const file of ['2026-10-01.json', 'latest.xml', '../index.json', 'schema.json', '']) {
       const response = await get(file);
       assert.equal(response.status, 404, file);
       assert.equal(response.headers.get('Cache-Control'), 'public, max-age=60');
+      assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), 'public, s-maxage=60', file);
+    }
+  });
+
+  it('refuses dates that cannot be in the archive without reading Redis', async () => {
+    const reads = [];
+    globalThis.fetch = async (url, init) => {
+      reads.push(url);
+      return upstash.fetchImpl(url, init);
+    };
+    try {
+      for (const file of ['2026-09-09.json', '2026-02-30.csv', '9999-12-31.json', '0000-00-00.csv']) {
+        assert.equal((await get(file)).status, 404, file);
+      }
+      assert.deepEqual(reads, []);
+      await get('2026-10-01.json');
+      assert.equal(reads.length, 1);
+    } finally {
+      globalThis.fetch = upstash.fetchImpl;
     }
   });
 
@@ -199,6 +218,7 @@ describe('open data chokepoint handler', () => {
       const response = await get('latest.json');
       assert.equal(response.status, 503);
       assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      assert.equal(response.headers.get('Vercel-CDN-Cache-Control'), 'no-store');
     } finally {
       upstash.fail(false);
     }

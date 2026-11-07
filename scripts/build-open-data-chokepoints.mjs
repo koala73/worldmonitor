@@ -552,6 +552,9 @@ async function main(argv) {
     },
     strict: true,
   });
+  if (values['dry-run'] && (values['publish-redis'] || values['import-dir'])) {
+    throw new Error('--dry-run cannot be combined with --publish-redis or --import-dir; both write to Redis');
+  }
   const redis = () =>
     createUpstashClient({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
   if (values['import-dir']) {
