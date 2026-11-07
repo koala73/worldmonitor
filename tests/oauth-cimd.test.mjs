@@ -604,6 +604,61 @@ describe('CIMD — rejected documents and client_ids', () => {
     }
   });
 
+  // Every case above drives the CIMD branch. The DCR branch is the one
+  // api/oauth/authorize.js reaches for a dynamically registered client, and
+  // until now it was a bare `redirect_uris.includes(...)`: whatever
+  // registration accepted at the time, the authorization endpoint honoured
+  // forever. A client registered before registration learned to refuse a
+  // fragment still has one stored, and the consent POST would have delivered
+  // the code to it (authorize.js builds the redirect with searchParams.set,
+  // which keeps the fragment).
+  describe('dynamically registered clients (no CIMD document)', () => {
+    const dcrClient = (...redirect_uris) => ({ client_id: 'dcr-client', redirect_uris });
+
+    it('refuses a stored redirect_uri carrying a fragment or credentials', () => {
+      for (const uri of [
+        'http://localhost:8787/callback#x',
+        'http://127.0.0.1:33418/#evil',
+        'http://[::1]/oauth_callback#x',
+        'http://user:pw@localhost:8787/callback',
+        'http://user@localhost:8787/callback',
+      ]) {
+        assert.equal(
+          clientAllowsRedirectUri(dcrClient(uri), uri),
+          false,
+          `${uri} is registered but must not be redirected to`,
+        );
+      }
+    });
+
+    it('still honours every legitimate registered callback', () => {
+      for (const uri of [
+        'http://localhost:8787/callback',
+        'http://127.0.0.1:33418/',
+        'http://[::1]/oauth_callback',
+        'http://localhost:4200/callback?flow=desktop',
+        'https://claude.ai/api/mcp/auth_callback',
+        'cursor://anysphere.cursor-mcp/oauth/callback',
+      ]) {
+        assert.equal(clientAllowsRedirectUri(dcrClient(uri), uri), true, uri);
+      }
+    });
+
+    it('still refuses a callback the client never registered', () => {
+      const client = dcrClient('http://localhost:8787/callback');
+      assert.equal(clientAllowsRedirectUri(client, 'https://evil.example/cb'), false);
+      assert.equal(clientAllowsRedirectUri(client, 'http://localhost:8787/other'), false);
+    });
+
+    it('refuses the smuggled form even when the clean form is registered beside it', () => {
+      // The registration cap allows several URIs, so a hostile client could
+      // list a clean callback to look ordinary and use the other one.
+      const client = dcrClient('http://localhost:8787/callback', 'http://localhost:8787/callback#x');
+      assert.equal(clientAllowsRedirectUri(client, 'http://localhost:8787/callback'), true);
+      assert.equal(clientAllowsRedirectUri(client, 'http://localhost:8787/callback#x'), false);
+    });
+  });
+
   it('pins per-connector vendors to their own callback', async () => {
     const connector = 'https://connect.vercel.com/connectors/conn_abc123';
     vendor.set(connector, { content_type: 'application/json', cache_control: 'private, no-store', body: {
