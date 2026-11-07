@@ -43,7 +43,7 @@
     "intro": "Panoul gratuit acoperă prima privire. Iată ce adaugă Pro pentru fiecare sarcină.",
     "proAdds": "Pro adaugă",
     "investorsJob": "Vedeți cum un război, o sancțiune sau un șoc de aprovizionare ajunge la pozițiile dumneavoastră.",
-    "investorsPro": "Analiză de acțiuni și backtesting cu AI, o listă de urmărire a piețelor cu date macro și bănci centrale, și implicațiile de piață ale fiecărui eveniment cu AI.",
+    "investorsPro": "Analiză AI a acțiunilor și backtesting, plus implicații AI pe piață pentru fiecare eveniment.",
     "tradersJob": "Surprindeți o perturbare la o strâmtoare, conductă sau port înainte să miște prețul.",
     "tradersPro": "Modelarea șocurilor de cost, teste de stres pentru lanțurile de aprovizionare și reguli de alertă care trimit o schimbare la o strâmtoare către Slack, e-mail sau un webhook.",
     "researchersJob": "Explicați de ce s-a schimbat riscul unei țări, cu fiecare sursă citată.",
@@ -54,7 +54,8 @@
     "govPro": "Un rezumat AI programat, ordonat după regulile dumneavoastră de alertă, zilnic, de două ori pe zi sau săptămânal, plus alerte în timp real pentru evenimente critice.",
     "teamsJob": "Urmăriți locațiile, rutele și furnizorii de care depinde organizația dumneavoastră.",
     "teamsPro": "Pro Business licențiază Pro pentru uz profesional, cu export CSV, JSON și PDF. Planurile API adaugă acces REST și webhook-uri.",
-    "allWorkflows": "Toate fluxurile de monitorizare"
+    "allWorkflows": "Toate fluxurile de monitorizare",
+    "title": "Construit pentru munca pe care o faci"
   },
   "deliveryDesk": {
     "eyebrow": "BIROU DE LIVRARE",

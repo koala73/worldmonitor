@@ -43,7 +43,7 @@
     "intro": "Het gratis dashboard dekt de eerste blik. Dit voegt Pro toe voor elke taak.",
     "proAdds": "Pro voegt toe",
     "investorsJob": "Zie hoe een oorlog, sanctie of leveringsschok uw posities raakt.",
-    "investorsPro": "AI-aandelenanalyse en backtesting, een markt-watchlist met macro- en centralebanktracking, en AI-marktgevolgen per gebeurtenis.",
+    "investorsPro": "AI-aandelenanalyse en backtesting, en AI-analyse van de marktgevolgen van elke gebeurtenis.",
     "tradersJob": "Signaleer een verstoring bij een zee-engte, pijpleiding of haven voordat die de prijs beweegt.",
     "tradersPro": "Kostenschokmodellering, stresstests voor toeleveringsketens en waarschuwingsregels die een wijziging bij een zee-engte naar Slack, e-mail of een webhook sturen.",
     "researchersJob": "Leg uit waarom het risico van een land is veranderd, met elke bron vermeld.",
@@ -54,7 +54,8 @@
     "govPro": "Een geplande AI-digest gerangschikt volgens uw waarschuwingsregels, dagelijks, twee keer per dag of wekelijks, plus realtime waarschuwingen bij kritieke gebeurtenissen.",
     "teamsJob": "Houd de locaties, routes en leveranciers in de gaten waarvan uw organisatie afhankelijk is.",
     "teamsPro": "Pro Business licentieert Pro voor zakelijk gebruik, met export naar CSV, JSON en PDF. API-abonnementen voegen REST-toegang en webhooks toe.",
-    "allWorkflows": "Alle monitoringworkflows bekijken"
+    "allWorkflows": "Alle monitoringworkflows bekijken",
+    "title": "Gebouwd voor het werk dat je doet"
   },
   "deliveryDesk": {
     "eyebrow": "AFLEVERBALIE",

@@ -166,7 +166,7 @@
     "intro": "Dashibodi ya bure inashughulikia mtazamo wa kwanza. Hiki ndicho Pro inaongeza kwa kila kazi.",
     "proAdds": "Pro inaongeza",
     "investorsJob": "Ona jinsi vita, vikwazo au mshtuko wa ugavi unavyofikia uwekezaji wako.",
-    "investorsPro": "Uchambuzi wa hisa na majaribio ya kihistoria kwa AI, orodha ya kufuatilia masoko yenye uchumi mkuu na benki kuu, na athari za kila tukio kwenye masoko kwa AI.",
+    "investorsPro": "Uchambuzi wa hisa kwa AI na upimaji wa nyuma, pamoja na uchambuzi wa AI wa athari za kila tukio kwenye soko.",
     "tradersJob": "Gundua usumbufu kwenye njia nyembamba ya bahari, bomba au bandari kabla haujabadilisha bei.",
     "tradersPro": "Uundaji wa mifano ya mishtuko ya gharama, majaribio ya mkazo ya minyororo ya ugavi, na kanuni za arifa zinazotuma mabadiliko ya njia nyembamba ya bahari kwa Slack, barua pepe au webhook.",
     "researchersJob": "Eleza kwa nini hatari ya nchi imebadilika, ukitaja kila chanzo.",
@@ -177,7 +177,8 @@
     "govPro": "Muhtasari wa AI uliopangwa kwa ratiba na kuorodheshwa kwa kanuni zako za arifa, kila siku, mara mbili kwa siku au kila wiki, pamoja na arifa za papo hapo kwa matukio muhimu.",
     "teamsJob": "Fuatilia maeneo, njia na wasambazaji ambao shirika lako linawategemea.",
     "teamsPro": "Pro Business inatoa leseni ya Pro kwa kazi, pamoja na kuhamisha data kwa CSV, JSON na PDF. Mipango ya API inaongeza ufikiaji wa REST na webhooks.",
-    "allWorkflows": "Vinjari mitiririko yote ya ufuatiliaji"
+    "allWorkflows": "Vinjari mitiririko yote ya ufuatiliaji",
+    "title": "Imeundwa kwa kazi unayofanya"
   },
   "deliveryDesk": {
     "eyebrow": "MEZA YA UTOAJI",

@@ -43,7 +43,7 @@
     "intro": "Den kostnadsfria instrumentpanelen täcker den första överblicken. Så här kompletterar Pro varje uppgift.",
     "proAdds": "Pro lägger till",
     "investorsJob": "Se hur ett krig, en sanktion eller en leveranschock når dina positioner.",
-    "investorsPro": "AI-aktieanalys och backtestning, en marknadsbevakningslista med makro och centralbanker, och AI-bedömning av varje händelses marknadseffekter.",
+    "investorsPro": "AI-analys av aktier och backtesting, samt AI-bedömning av marknadsimplikationer för varje händelse.",
     "tradersJob": "Fånga en störning vid ett sund, en pipeline eller en hamn innan den rör priset.",
     "tradersPro": "Modellering av kostnadschocker, stresstester av leveranskedjor och larmregler som skickar en förändring vid ett sund till Slack, e-post eller en webhook.",
     "researchersJob": "Förklara varför ett lands risk har ändrats, med varje källa angiven.",
@@ -54,7 +54,8 @@
     "govPro": "En schemalagd AI-sammanfattning rangordnad efter dina larmregler, dagligen, två gånger om dagen eller veckovis, plus larm i realtid vid kritiska händelser.",
     "teamsJob": "Bevaka de anläggningar, rutter och leverantörer som din organisation är beroende av.",
     "teamsPro": "Pro Business licensierar Pro för arbete, med export till CSV, JSON och PDF. API-planer lägger till REST-åtkomst och webhooks.",
-    "allWorkflows": "Bläddra bland alla bevakningsflöden"
+    "allWorkflows": "Bläddra bland alla bevakningsflöden",
+    "title": "Byggt för det arbete du gör"
   },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",

@@ -43,7 +43,7 @@
     "intro": "Bezplatný dashboard pokryje první pohled. Tady je, co Pro přidává ke každému úkolu.",
     "proAdds": "Pro přidává",
     "investorsJob": "Zjistěte, jak válka, sankce nebo šok v dodávkách zasáhne vaše pozice.",
-    "investorsPro": "AI analýza akcií a backtesting, sledovaný seznam trhů s makrem a centrálními bankami a AI dopady každé události na trhy.",
+    "investorsPro": "AI analýza akcií a testování strategií, plus AI analýza tržních dopadů každé události.",
     "tradersJob": "Zachyťte narušení v úžině, ropovodu nebo přístavu dřív, než pohne cenou.",
     "tradersPro": "Modelování cenových šoků, zátěžové testy dodavatelských řetězců a pravidla upozornění, která pošlou změnu v úžině do Slacku, e-mailu nebo na webhook.",
     "researchersJob": "Vysvětlete, proč se změnilo riziko země, s citací každého zdroje.",
@@ -54,7 +54,8 @@
     "govPro": "Plánovaný AI přehled seřazený podle vašich pravidel upozornění, denně, dvakrát denně nebo týdně, plus upozornění v reálném čase na kritické události.",
     "teamsJob": "Sledujte místa, trasy a dodavatele, na kterých vaše organizace závisí.",
     "teamsPro": "Pro Business licencuje Pro pro pracovní použití s exportem do CSV, JSON a PDF. Plány API přidávají přístup přes REST a webhooky.",
-    "allWorkflows": "Procházet všechny monitorovací postupy"
+    "allWorkflows": "Procházet všechny monitorovací postupy",
+    "title": "Vytvořeno pro vaši práci"
   },
   "deliveryDesk": {
     "eyebrow": "DORUČOVACÍ PULT",

@@ -717,7 +717,7 @@ const PRO_BUYERS = [
 const ProJobs = () => (
   <section id="jobs" className="py-24 px-6 border-t border-wm-border">
     <div className="max-w-6xl mx-auto">
-      <h2 className="text-3xl md:text-5xl font-display font-bold mb-4 text-center">{t('audience.title')}</h2>
+      <h2 className="text-3xl md:text-5xl font-display font-bold mb-4 text-center">{t('proJobs.title')}</h2>
       <p className="text-lg text-wm-muted text-center max-w-2xl mx-auto">{t('proJobs.intro')}</p>
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
         {PRO_BUYERS.map((buyer) => (

@@ -39,6 +39,21 @@ describe('/pro buyer section', () => {
     }
   });
 
+  it('opens with a benefit heading, like the sections #10245 rewrote', () => {
+    const component = app.match(/const ProJobs = \(\) => \(([\s\S]*?)\n\);/)?.[1] ?? '';
+    assert.match(component, /<h2[^>]*>\{t\('proJobs\.title'\)\}<\/h2>/);
+    assert.ok(en.proJobs.title && !en.proJobs.title.endsWith('?'), 'the first /pro section heading states a benefit, not a question');
+  });
+
+  it('claims only what Pro adds, not free features', () => {
+    // Watchlists and the macro/central-bank panels are on the free plan
+    // (pricing.freeF4 "Breaking alert pipeline & watchlists").
+    const proLines = [...Object.entries(en.proJobs).filter(([k]) => k.endsWith('Pro')).map(([, v]) => v), overview];
+    for (const line of proLines) {
+      assert.doesNotMatch(line, /watchlist with macro|central-bank tracking/i);
+    }
+  });
+
   it('names each card link after its buyer so screen-reader link lists can tell them apart', () => {
     const component = app.match(/const ProJobs = \(\) => \(([\s\S]*?)\n\);/)?.[1];
     assert.ok(component, 'ProJobs must be defined in App.tsx');

@@ -43,7 +43,7 @@
     "intro": "O painel gratuito cobre a primeira olhada. Veja o que o Pro acrescenta a cada tarefa.",
     "proAdds": "O Pro acrescenta",
     "investorsJob": "Veja como uma guerra, sanção ou choque de oferta chega às suas posições.",
-    "investorsPro": "Análise de ações e backtesting com IA, uma lista de acompanhamento de mercados com macro e bancos centrais, e implicações de mercado de cada evento com IA.",
+    "investorsPro": "Análise de ações com IA e backtesting, além de implicações de mercado com IA para cada evento.",
     "tradersJob": "Identifique uma interrupção num estreito, oleoduto ou porto antes que ela mexa no preço.",
     "tradersPro": "Modelagem de choques de custo, testes de estresse da cadeia de suprimentos e regras de alerta que enviam uma mudança num estreito para Slack, e-mail ou webhook.",
     "researchersJob": "Explique por que o risco de um país mudou, com cada fonte citada.",
@@ -54,7 +54,8 @@
     "govPro": "Um resumo de IA programado e ordenado pelas suas regras de alerta, diário, duas vezes ao dia ou semanal, além de alertas em tempo real para eventos críticos.",
     "teamsJob": "Monitore as instalações, rotas e fornecedores dos quais sua organização depende.",
     "teamsPro": "O Pro Business licencia o Pro para uso profissional, com exportação em CSV, JSON e PDF. Os planos de API adicionam acesso REST e webhooks.",
-    "allWorkflows": "Ver todos os fluxos de monitoramento"
+    "allWorkflows": "Ver todos os fluxos de monitoramento",
+    "title": "Construído para o trabalho que você faz"
   },
   "deliveryDesk": {
     "eyebrow": "MESA DE ENTREGA",

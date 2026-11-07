@@ -43,7 +43,7 @@
     "intro": "Ücretsiz pano ilk bakışı karşılar. Pro’nun her iş için ekledikleri şunlar.",
     "proAdds": "Pro ekler",
     "investorsJob": "Bir savaşın, yaptırımın veya arz şokunun pozisyonlarınıza nasıl ulaştığını görün.",
-    "investorsPro": "Yapay zekâ ile hisse analizi ve geriye dönük test, makro ve merkez bankası takibi içeren piyasa izleme listesi ve her olayın piyasa etkileri.",
+    "investorsPro": "AI hisse analizi ve geriye dönük test, ayrıca her olayın piyasa etkisine dair AI analizi.",
     "tradersJob": "Bir boğaz, boru hattı veya limandaki aksamayı fiyat oynamadan önce yakalayın.",
     "tradersPro": "Maliyet şoku modellemesi, tedarik zinciri stres testleri ve bir boğazdaki değişikliği Slack’e, e-postaya veya bir webhook’a gönderen uyarı kuralları.",
     "researchersJob": "Bir ülkenin riskinin neden değiştiğini, her kaynağı belirterek açıklayın.",
@@ -54,7 +54,8 @@
     "govPro": "Uyarı kurallarınıza göre sıralanan zamanlanmış yapay zekâ özeti, günlük, günde iki kez veya haftalık, ayrıca kritik olaylar için gerçek zamanlı uyarılar.",
     "teamsJob": "Kuruluşunuzun bağlı olduğu tesisleri, rotaları ve tedarikçileri izleyin.",
     "teamsPro": "Pro Business, Pro’yu iş kullanımı için lisanslar; CSV, JSON ve PDF dışa aktarma içerir. API planları REST erişimi ve webhook’lar ekler.",
-    "allWorkflows": "Tüm izleme iş akışlarına göz atın"
+    "allWorkflows": "Tüm izleme iş akışlarına göz atın",
+    "title": "Yaptığınız işe göre tasarlandı"
   },
   "deliveryDesk": {
     "eyebrow": "TESLİM MASASI",

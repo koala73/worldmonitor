@@ -43,7 +43,7 @@
     "intro": "Az ingyenes irányítópult az első rápillantást fedi le. Ezt adja hozzá a Pro az egyes feladatokhoz.",
     "proAdds": "A Pro hozzáadja",
     "investorsJob": "Nézze meg, hogyan ér el egy háború, szankció vagy ellátási sokk a pozícióihoz.",
-    "investorsPro": "MI-alapú részvényelemzés és backtesting, piaci figyelőlista makro- és jegybankkövetéssel, valamint minden esemény piaci hatása MI-vel.",
+    "investorsPro": "AI részvényelemzés és backtesting, valamint AI piaci implikációk minden eseményhez.",
     "tradersJob": "Vegye észre egy szoros, csővezeték vagy kikötő zavarát, mielőtt az árat megmozdítja.",
     "tradersPro": "Költségsokk-modellezés, ellátásilánc-stressztesztek és riasztási szabályok, amelyek egy szoros változását Slackre, e-mailbe vagy webhookra küldik.",
     "researchersJob": "Magyarázza el, miért változott egy ország kockázata, minden forrás megjelölésével.",
@@ -54,7 +54,8 @@
     "govPro": "Ütemezett MI-összefoglaló a riasztási szabályai szerint rangsorolva, naponta, naponta kétszer vagy hetente, valamint valós idejű riasztások kritikus eseményekről.",
     "teamsJob": "Figyelje a telephelyeket, útvonalakat és beszállítókat, amelyektől szervezete függ.",
     "teamsPro": "A Pro Business munkára licenceli a Pro-t, CSV-, JSON- és PDF-exporttal. Az API-csomagok REST-hozzáférést és webhookokat adnak.",
-    "allWorkflows": "Az összes figyelési munkafolyamat"
+    "allWorkflows": "Az összes figyelési munkafolyamat",
+    "title": "Az Ön munkájához készült"
   },
   "deliveryDesk": {
     "eyebrow": "KÉZBESÍTŐPULT",

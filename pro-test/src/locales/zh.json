@@ -43,7 +43,7 @@
     "intro": "免费仪表板可满足初步查看。以下是 Pro 为每项工作增加的功能。",
     "proAdds": "Pro 增加",
     "investorsJob": "看清战争、制裁或供应冲击如何传导到你的持仓。",
-    "investorsPro": "AI 股票分析与回测，涵盖宏观和央行动态的市场观察列表，以及每个事件的 AI 市场影响分析。",
+    "investorsPro": "AI 股票分析和回测，以及每个事件的 AI 市场影响分析。",
     "tradersJob": "在价格变动之前，捕捉咽喉要道、管道或港口的中断。",
     "tradersPro": "成本冲击建模、供应链压力测试，以及将咽喉要道变化发送到 Slack、电子邮件或 webhook 的警报规则。",
     "researchersJob": "解释某个国家的风险为何变化，并注明每一个来源。",
@@ -54,7 +54,8 @@
     "govPro": "按你的警报规则排序的定时 AI 摘要，每天、每天两次或每周发送，并对关键事件实时提醒。",
     "teamsJob": "监控你的组织所依赖的站点、路线和供应商。",
     "teamsPro": "Pro Business 将 Pro 授权用于工作，支持 CSV、JSON 和 PDF 导出。API 套餐增加 REST 访问和 webhook。",
-    "allWorkflows": "浏览全部监测工作流"
+    "allWorkflows": "浏览全部监测工作流",
+    "title": "为您的工作量身定制"
   },
   "deliveryDesk": {
     "eyebrow": "交付工作台",

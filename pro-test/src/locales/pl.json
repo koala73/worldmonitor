@@ -43,7 +43,7 @@
     "intro": "Darmowy pulpit wystarczy na pierwsze spojrzenie. Oto, co Pro dodaje do każdego zadania.",
     "proAdds": "Pro dodaje",
     "investorsJob": "Zobacz, jak wojna, sankcje czy szok podażowy docierają do Twoich pozycji.",
-    "investorsPro": "Analiza akcji i backtesting z AI, lista obserwowanych rynków z danymi makro i bankami centralnymi oraz skutki każdego wydarzenia dla rynków według AI.",
+    "investorsPro": "Analiza akcji i backtesting z AI oraz ocena wpływu każdego zdarzenia na rynek przez AI.",
     "tradersJob": "Wychwyć zakłócenie w cieśninie, rurociągu lub porcie, zanim ruszy cena.",
     "tradersPro": "Modelowanie szoków kosztowych, testy warunków skrajnych łańcuchów dostaw i reguły alertów, które wysyłają zmianę w cieśninie do Slacka, na e-mail lub webhook.",
     "researchersJob": "Wyjaśnij, dlaczego zmieniło się ryzyko kraju, z podaniem każdego źródła.",
@@ -54,7 +54,8 @@
     "govPro": "Zaplanowany przegląd AI uszeregowany według Twoich reguł alertów, codziennie, dwa razy dziennie lub co tydzień, plus alerty w czasie rzeczywistym o krytycznych zdarzeniach.",
     "teamsJob": "Obserwuj obiekty, trasy i dostawców, od których zależy Twoja organizacja.",
     "teamsPro": "Pro Business licencjonuje Pro do pracy, z eksportem do CSV, JSON i PDF. Plany API dodają dostęp REST i webhooki.",
-    "allWorkflows": "Przeglądaj wszystkie procedury monitorowania"
+    "allWorkflows": "Przeglądaj wszystkie procedury monitorowania",
+    "title": "Zbudowane dla Twojej pracy"
   },
   "deliveryDesk": {
     "eyebrow": "STANOWISKO DOSTAW",

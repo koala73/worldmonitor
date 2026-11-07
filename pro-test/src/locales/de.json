@@ -43,7 +43,7 @@
     "intro": "Das kostenlose Dashboard deckt den ersten Blick ab. Das fügt Pro für jede Aufgabe hinzu.",
     "proAdds": "Pro ergänzt",
     "investorsJob": "Sehen Sie, wie ein Krieg, eine Sanktion oder ein Lieferschock Ihre Positionen erreicht.",
-    "investorsPro": "KI-Aktienanalyse und Backtesting, eine Markt-Watchlist mit Makro- und Notenbank-Tracking und KI-Marktfolgen für jedes Ereignis.",
+    "investorsPro": "KI-Aktienanalyse und Backtesting sowie KI-Marktauswirkungen für jedes Ereignis.",
     "tradersJob": "Erkennen Sie eine Störung an Meerenge, Pipeline oder Hafen, bevor sie den Preis bewegt.",
     "tradersPro": "Kostenschock-Modellierung, Stresstests für Lieferketten und Alarmregeln, die eine Änderung an einer Meerenge an Slack, E-Mail oder einen Webhook senden.",
     "researchersJob": "Erklären Sie, warum sich das Risiko eines Landes verändert hat, mit jeder Quelle belegt.",
@@ -54,7 +54,8 @@
     "govPro": "Ein geplanter KI-Digest, sortiert nach Ihren Alarmregeln, täglich, zweimal täglich oder wöchentlich, dazu Echtzeit-Alarme bei kritischen Ereignissen.",
     "teamsJob": "Behalten Sie Standorte, Routen und Lieferanten im Blick, von denen Ihre Organisation abhängt.",
     "teamsPro": "Pro Business lizenziert Pro für die Arbeit, mit Export als CSV, JSON und PDF. API-Pläne ergänzen REST-Zugriff und Webhooks.",
-    "allWorkflows": "Alle Monitoring-Workflows ansehen"
+    "allWorkflows": "Alle Monitoring-Workflows ansehen",
+    "title": "Entwickelt für Ihre Arbeit"
   },
   "deliveryDesk": {
     "eyebrow": "LIEFERPULT",

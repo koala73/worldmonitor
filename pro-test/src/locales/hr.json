@@ -43,7 +43,7 @@
     "intro": "Besplatna nadzorna ploča pokriva prvi pogled. Evo što Pro dodaje za svaki zadatak.",
     "proAdds": "Pro dodaje",
     "investorsJob": "Pogledajte kako rat, sankcija ili šok u opskrbi dolazi do vaših pozicija.",
-    "investorsPro": "AI analiza dionica i backtesting, popis praćenja tržišta s makroekonomijom i središnjim bankama te AI tržišne posljedice svakog događaja.",
+    "investorsPro": "AI analiza dionica i backtesting, te AI tržišne implikacije za svaki događaj.",
     "tradersJob": "Uočite poremećaj na tjesnacu, naftovodu ili luci prije nego što pomakne cijenu.",
     "tradersPro": "Modeliranje troškovnih šokova, testovi otpornosti opskrbnih lanaca i pravila upozorenja koja promjenu na tjesnacu šalju na Slack, e-poštu ili webhook.",
     "researchersJob": "Objasnite zašto se rizik zemlje promijenio, uz navedeni svaki izvor.",
@@ -54,7 +54,8 @@
     "govPro": "Zakazani AI sažetak poredan prema vašim pravilima upozorenja, dnevno, dvaput dnevno ili tjedno, uz upozorenja u stvarnom vremenu za kritične događaje.",
     "teamsJob": "Pratite lokacije, rute i dobavljače o kojima ovisi vaša organizacija.",
     "teamsPro": "Pro Business licencira Pro za poslovnu upotrebu, uz izvoz u CSV, JSON i PDF. API planovi dodaju REST pristup i webhookove.",
-    "allWorkflows": "Pregledaj sve postupke praćenja"
+    "allWorkflows": "Pregledaj sve postupke praćenja",
+    "title": "Izgrađeno za rad koji obavljaš"
   },
   "deliveryDesk": {
     "eyebrow": "DOSTAVNI PULT",

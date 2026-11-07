@@ -163,10 +163,11 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) and MCP for Claude, GPT, custom LLMs."
   },
   "proJobs": {
+    "title": "Built for the work you do",
     "intro": "The free dashboard covers the first look. Here is what Pro adds for each job.",
     "proAdds": "Pro adds",
     "investorsJob": "See how a war, sanction or supply shock reaches your positions.",
-    "investorsPro": "AI stock analysis and backtesting, a market watchlist with macro and central-bank tracking, and AI market implications for each event.",
+    "investorsPro": "AI stock analysis and backtesting, and AI market implications for each event.",
     "tradersJob": "Catch a chokepoint, pipeline or port disruption before it moves the price.",
     "tradersPro": "Cost-shock modelling, supply-chain stress tests, and alert rules that send a chokepoint change to Slack, email or a webhook.",
     "researchersJob": "Explain why a country’s risk moved, with every source cited.",
