@@ -162,6 +162,7 @@ Authenticated event-publish endpoint for PRO callers. Requires Clerk bearer auth
 Errors: 401 (missing/invalid JWT), 403 `pro_required` — and, like every Pro-gated endpoint here, the shared billing-verification contract when entitlement verification is itself in doubt: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
 
 - **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key with an identical body replays the original enqueue response instead of publishing the notification again.
+- **Unknown outcome**: if the queue write times out, the endpoint answers `503 publish_outcome_unknown` with `Retry-After: 180`, because the event may already be queued. Retry only if a duplicate event is acceptable. When the server stored the `Idempotency-Key`, the key stays locked for up to 180 seconds, and a keyed retry in that time gets `409 idempotency_conflict` instead of a second publish. If the server could not store the key, it still publishes and holds no lock. After the lock expires, or when there was none, a retry runs again and can duplicate the event. See [Error handling](/usage-errors).
 
 #### Caller-submitted field policy
 
