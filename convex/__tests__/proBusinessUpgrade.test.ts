@@ -1,8 +1,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
-import { selectProBusinessUpgradeCandidate } from "../payments/billing";
+import { PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS, selectProBusinessUpgradeCandidate } from "../payments/billing";
 import schema from "../schema";
 
 const { previewChangePlan, changePlan, retrieve } = vi.hoisted(() => ({
@@ -165,6 +165,53 @@ describe("upgradeToProBusiness action", () => {
       t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
     ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
     expect(changePlan).not.toHaveBeenCalled();
+  });
+
+  test("a concurrent confirm is refused while the first holds the claim", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    let releaseRetrieve: () => void = () => {};
+    retrieve.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseRetrieve = () => resolve({ product_id: PRO_MONTHLY });
+    }));
+    changePlan.mockResolvedValue(undefined);
+    const first = t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true });
+    await vi.waitFor(() => expect(retrieve).toHaveBeenCalledTimes(1));
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/UPGRADE_IN_PROGRESS/);
+    releaseRetrieve();
+    await expect(first).resolves.toMatchObject({ kind: "upgraded" });
+    expect(changePlan).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failed change releases the claim so the user can retry", async () => {
+    const t = convexTest(schema, modules);
+    await seed(t);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    retrieve.mockResolvedValue({ product_id: PRO_MONTHLY });
+    changePlan.mockRejectedValueOnce(new Error("card declined")).mockResolvedValueOnce(undefined);
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).rejects.toThrow(/DODO_PLAN_CHANGE_ERROR/);
+    expect(await t.run((ctx) => ctx.db.query("proBusinessUpgradeClaims").collect())).toHaveLength(0);
+    await expect(
+      t.withIdentity(USER).action(api.payments.billing.upgradeToProBusiness, { confirm: true }),
+    ).resolves.toMatchObject({ kind: "upgraded" });
+    expect(changePlan).toHaveBeenCalledTimes(2);
+  });
+
+  test("a claim older than the TTL can be taken again", async () => {
+    const t = convexTest(schema, modules);
+    const claim = (now: number) => t.mutation(internal.payments.billing.claimProBusinessUpgrade, {
+      dodoSubscriptionId: "sub_pro_1",
+      now,
+    });
+    expect(await claim(NOW)).toBe(true);
+    expect(await claim(NOW + 1_000)).toBe(false);
+    expect(await claim(NOW + PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS)).toBe(true);
   });
 
   test("provider failures surface as a structured error", async () => {

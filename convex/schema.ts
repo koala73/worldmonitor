@@ -2068,6 +2068,16 @@ export default defineSchema({
   // so one global serialization point is intentional and keeps the invariant
   // simple. It is seeded by the deploy workflow; append fails loudly if it is
   // absent rather than silently weakening idempotency.
+  // One short-lived claim per Dodo subscription while a Pro → Pro Business
+  // change-plan call is in flight. Two concurrent confirms (two tabs, or the
+  // dashboard and /pro at once) both pass the provider re-read before either
+  // change lands; the serializable claim lets only one call changePlan.
+  // Holds no userId; a claim older than the TTL in billing.ts is reclaimable.
+  proBusinessUpgradeClaims: defineTable({
+    dodoSubscriptionId: v.string(),
+    claimedAt: v.number(),
+  }).index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   intelHistoryAppendLocks: defineTable({
     lockKey: v.string(),
     lastTouchedAt: v.number(),

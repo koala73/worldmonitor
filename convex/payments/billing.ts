@@ -3900,6 +3900,43 @@ const PRO_BUSINESS_CHANGE_PARAMS = {
 } as const;
 
 const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
+/** Longer than retrieve + changePlan at their timeouts, so a live claim is never stolen. */
+export const PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS = 120_000;
+
+/** Serializes confirms per subscription. Returns false while another confirm holds a live claim. */
+export const claimProBusinessUpgrade = internalMutation({
+  args: { dodoSubscriptionId: v.string(), now: v.number() },
+  handler: async (ctx, args): Promise<boolean> => {
+    const existing = await ctx.db
+      .query("proBusinessUpgradeClaims")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", args.dodoSubscriptionId))
+      .first();
+    if (existing && args.now - existing.claimedAt < PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS) {
+      return false;
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, { claimedAt: args.now });
+    } else {
+      await ctx.db.insert("proBusinessUpgradeClaims", {
+        dodoSubscriptionId: args.dodoSubscriptionId,
+        claimedAt: args.now,
+      });
+    }
+    return true;
+  },
+});
+
+/** Drops the claim after a failed change so the user can retry at once. */
+export const releaseProBusinessUpgrade = internalMutation({
+  args: { dodoSubscriptionId: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("proBusinessUpgradeClaims")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", args.dodoSubscriptionId))
+      .first();
+    if (existing) await ctx.db.delete(existing._id);
+  },
+});
 
 /**
  * Preview (confirm=false) or apply (confirm=true) the upgrade. Entitlements
@@ -3908,7 +3945,7 @@ const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
  * so this action never writes billing state itself.
  */
 export async function runProBusinessUpgrade(
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: string,
   confirm: boolean,
 ): Promise<ProBusinessUpgradeResult> {
@@ -3947,9 +3984,18 @@ export async function runProBusinessUpgrade(
     }
   }
 
+  const claimed = await ctx.runMutation(internal.payments.billing.claimProBusinessUpgrade, {
+    dodoSubscriptionId: candidate.dodoSubscriptionId,
+    now: Date.now(),
+  });
+  if (!claimed) {
+    // Another confirm for this subscription is between retrieve and changePlan.
+    throw new ConvexError({ kind: "UPGRADE_IN_PROGRESS" });
+  }
+
   try {
-    // A double submit reaches here twice before the webhook lands. Re-read the
-    // provider row and skip the change when it already sits on the target.
+    // A confirm that arrives after an earlier one finished, but before the
+    // webhook lands, sees the target product here and skips the change.
     const remote = await client.subscriptions.retrieve(candidate.dodoSubscriptionId);
     if (remote.product_id === candidate.toProductId) {
       return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
@@ -3961,6 +4007,11 @@ export async function runProBusinessUpgrade(
     }
     await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
   } catch (err) {
+    // The claim stays on success so a repeat within the TTL cannot re-charge;
+    // after a failure the user may retry straight away.
+    await ctx.runMutation(internal.payments.billing.releaseProBusinessUpgrade, {
+      dodoSubscriptionId: candidate.dodoSubscriptionId,
+    });
     console.error(
       `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
       err instanceof Error ? err.message : String(err),

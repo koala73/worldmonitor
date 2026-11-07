@@ -625,7 +625,7 @@ export type ProBusinessUpgradeResponse =
 /**
  * Preview (confirm=false) or apply (confirm=true) the in-place Pro → Pro
  * Business upgrade. Rejects with a ConvexError whose `data.kind`
- * (NO_UPGRADEABLE_PRO, ALREADY_PRO_BUSINESS, PRO_CANCEL_SCHEDULED,
+ * (NO_UPGRADEABLE_PRO, ALREADY_PRO_BUSINESS, PRO_CANCEL_SCHEDULED, UPGRADE_IN_PROGRESS,
  * DODO_PLAN_CHANGE_ERROR, ...) the checkout dialog maps to copy.
  */
 export async function requestProBusinessUpgrade(confirm: boolean): Promise<ProBusinessUpgradeResponse> {
