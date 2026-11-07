@@ -336,6 +336,49 @@ describe("free ladder — country rung is account-wide across variants (#4273, S
     expect(rows[0]?.countries).toEqual(["IL", "PL", "FR"]);
   });
 
+  test("re-enabling a staged row without resending countries is judged on the union", async () => {
+    // Staging bypass (Strix review 7): disable the first row, write a second
+    // with fresh countries, then re-enable the first with `countries`
+    // omitted. The enable transition must be judged on the stored scope.
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: false,
+    });
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("tech", ["IL", "PL", "FR"]));
+    await expect(
+      t.mutation(internal.alertRules.setNotificationConfigForUser, {
+        userId: USER.subject,
+        variant: "full",
+        enabled: true,
+      }),
+    ).rejects.toThrow(/ALERT_COUNTRIES_UPGRADE_REQUIRED/);
+  });
+
+  test("re-enabling the only row without countries stays allowed", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, freeShaped("full", ["UA", "TW", "LB"]));
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: false,
+    });
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: "full",
+      enabled: true,
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", "full"))
+        .collect(),
+    );
+    expect(rows[0]?.enabled).toBe(true);
+  });
+
   test("pro accounts keep the per-row cap across variants", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t);

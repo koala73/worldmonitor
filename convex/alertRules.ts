@@ -336,8 +336,12 @@ export const setAlertRulesForUser = internalMutation({
         // setNotificationConfigForUser.
         enabled: rest.enabled,
         effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
-      }, normalizedCountries !== undefined
-        ? { variant: rest.variant, countries: normalizedCountries }
+        // Judge the union when this call writes the scope AND when it
+        // re-enables a row carrying a stored scope: staging disabled variant
+        // rows and enabling them without resending `countries` must not
+        // skip the account-wide rung (Strix review 7).
+      }, normalizedCountries !== undefined || (rest.enabled && existing?.enabled === false)
+        ? { variant: rest.variant, countries: normalizedCountries ?? existing?.countries ?? [] }
         : undefined);
     }
     const normalizedTickers = rest.tickers !== undefined
@@ -645,8 +649,10 @@ export const setNotificationConfigForUser = internalMutation({
       // ladder does not include. Disables stay allowed.
       enabled: args.enabled ?? existing?.enabled ?? true,
       effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
-    }, normalizedCountries !== undefined
-      ? { variant, countries: normalizedCountries }
+      // Union also judged on a re-enable without countries — see the sister
+      // comment in setAlertRulesForUser (Strix review 7).
+    }, normalizedCountries !== undefined || (args.enabled === true && existing?.enabled === false)
+      ? { variant, countries: normalizedCountries ?? existing?.countries ?? [] }
       : undefined);
 
     const now = Date.now();
