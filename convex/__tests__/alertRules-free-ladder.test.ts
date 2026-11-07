@@ -147,8 +147,13 @@ describe("setNotificationConfigForUser — free alert ladder (#4273)", () => {
     ],
     [
       "AI digest opt-in",
-      { aiDigestEnabled: true },
+      { aiDigestEnabled: true, countries: ["UA"] },
       /AI_DIGEST_UPGRADE_REQUIRED/,
+    ],
+    [
+      "worldwide scope (no countries)",
+      { enabled: true, channels: ["web_push"] as Array<"web_push"> },
+      /ALERT_COUNTRY_SCOPE_REQUIRED/,
     ],
   ])("free user asking for %s → structured 402 code", async (_name, args, code) => {
     const t = convexTest(schema, modules);
@@ -180,6 +185,41 @@ describe("setNotificationConfigForUser — free alert ladder (#4273)", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.channels).toEqual(["web_push", "email"]);
+  });
+
+  test("free user: disabling with no countries is allowed (disable is never gated)", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: false,
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
+        .collect(),
+    );
+    expect(rows[0]?.enabled).toBe(false);
+  });
+
+  test("pro user: worldwide scope (no countries) stays allowed", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t);
+    await t.mutation(internal.alertRules.setNotificationConfigForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      enabled: true,
+      sensitivity: "critical",
+      channels: ["web_push"],
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("alertRules")
+        .withIndex("by_user_variant", (q) => q.eq("userId", USER.subject).eq("variant", VARIANT))
+        .collect(),
+    );
+    expect(rows[0]?.enabled).toBe(true);
   });
 
   test("downgraded account can still disable a legacy wider-than-plan row", async () => {

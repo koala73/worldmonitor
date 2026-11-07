@@ -140,6 +140,16 @@ describe('notification-relay watchlist ticker filter — source-grep contract', 
       /freeTierAllowsChannel\(userTier, c\.channelType\)/,
       'channel delivery must clamp free-tier users to the free channel set',
     );
+    assert.match(
+      relaySrc,
+      /freeTierCountryScope\(userTier, rule\.countries\)/,
+      'delivery loop must clamp free-tier rules to an explicit country scope',
+    );
+    assert.match(
+      relaySrc,
+      /freeTierAllowsChannel\(drainTier, c\.channelType\)/,
+      'the quiet-hours held-queue drain must apply the same free channel clamp',
+    );
   });
 });
 

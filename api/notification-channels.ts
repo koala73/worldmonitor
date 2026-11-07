@@ -646,6 +646,13 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       const resp = relay.response;
       if (!resp.ok) {
         console.error(`[notification-channels] POST ${relayAction} relay error:`, resp.status);
+        // Capability denials (#4273) and other machine-readable 400/402
+        // bodies must reach the client intact — a stale-paid edge cache can
+        // let a pro-channel save through to Convex's gate, and swallowing
+        // its 402 as `500 Operation failed` loses the upgrade reason
+        // (Greptile P2). EMAIL_OWNERSHIP_REQUIRED rides the same passthrough.
+        const passthrough = await relayValidationPassthrough(resp, corsHeaders);
+        if (passthrough) return finish(passthrough);
         if (welcomeChannelType === 'email' && resp.status === 400) {
           const failure = await resp.json().catch(() => null);
           if (failure?.error === 'EMAIL_OWNERSHIP_REQUIRED') {

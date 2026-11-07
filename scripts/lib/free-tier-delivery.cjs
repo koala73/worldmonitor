@@ -30,9 +30,28 @@ function freeTierAllowsChannel(tier, channelType) {
   return FREE_DELIVERY_CHANNELS.has(String(channelType));
 }
 
+// Mirrors FREE_ALERT_MAX_COUNTRIES in shared/alert-capabilities.ts.
+const FREE_DELIVERY_MAX_COUNTRIES = 3;
+
+/**
+ * The country scope a rule owner at `tier` may deliver on. Paid tiers keep
+ * the rule's scope as is. Free tiers must have an explicit scope — the
+ * write path enforces that for new rules, and this clamp covers legacy
+ * worldwide free rows at delivery time: `ok: false` means do not deliver;
+ * otherwise deliver only within the first FREE_DELIVERY_MAX_COUNTRIES
+ * entries, mirroring the write-path cap.
+ */
+function freeTierCountryScope(tier, countries) {
+  if (tier >= 1) return { ok: true, countries };
+  if (!Array.isArray(countries) || countries.length === 0) return { ok: false, countries: [] };
+  return { ok: true, countries: countries.slice(0, FREE_DELIVERY_MAX_COUNTRIES) };
+}
+
 module.exports = {
   FREE_DELIVERY_CHANNELS,
   FREE_DELIVERY_SEVERITIES,
+  FREE_DELIVERY_MAX_COUNTRIES,
   freeTierAllowsEvent,
   freeTierAllowsChannel,
+  freeTierCountryScope,
 };

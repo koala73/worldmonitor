@@ -314,6 +314,10 @@ export const setAlertRulesForUser = internalMutation({
         channels,
         ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
         ...(rest.aiDigestEnabled !== undefined ? { aiDigestEnabled: rest.aiDigestEnabled } : {}),
+        // Whole-rule view for the worldwide-scope check — see
+        // setNotificationConfigForUser.
+        enabled: rest.enabled,
+        effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
       });
     }
     const normalizedTickers = rest.tickers !== undefined
@@ -614,6 +618,11 @@ export const setNotificationConfigForUser = internalMutation({
       ...(channels !== undefined ? { channels } : {}),
       ...(normalizedCountries !== undefined ? { countriesCount: normalizedCountries.length } : {}),
       ...(args.aiDigestEnabled !== undefined ? { aiDigestEnabled: args.aiDigestEnabled } : {}),
+      // Whole-rule view for the worldwide-scope check (Greptile P1): an
+      // omitted or empty countries list is a worldwide rule, which the free
+      // ladder does not include. Disables stay allowed.
+      enabled: args.enabled ?? existing?.enabled ?? true,
+      effectiveCountriesCount: (normalizedCountries ?? existing?.countries ?? []).length,
     });
 
     const now = Date.now();

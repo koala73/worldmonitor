@@ -493,6 +493,53 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     }
   });
 
+  it('a stale-paid edge cache meeting a Convex capability 402 passes the body through (#4273, Greptile P2)', async () => {
+    // The edge sees tier 1 (cached), so no precheck fires; Convex has since
+    // downgraded the account and its ladder gate answers 402. That body must
+    // reach the client — not degrade to `500 Operation failed` — or the
+    // upgrade reason is lost exactly where it matters.
+    const mod = await importFreshNotificationChannels();
+    const relayFetch = mock.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { action?: string };
+      if (body.action === 'welcome-scheduling-capability') {
+        return new Response(JSON.stringify({ durableWelcomeScheduling: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({
+        error: 'ALERT_CHANNEL_UPGRADE_REQUIRED',
+        message: 'The email channel is available on the Pro plan.',
+        upgradeUrl: 'https://worldmonitor.app/pro',
+        value: 'email',
+      }), { status: 402, headers: { 'Content-Type': 'application/json' } });
+    });
+    mod.__setNotificationChannelsDepsForTests({
+      checkScopedRateLimit: async () => ({ allowed: true, limit: 30, reset: 0, degraded: false }),
+      validateBearerToken: async () => ({ valid: true, userId: 'user-stale-paid-cache' }),
+      getEntitlements: async () => ({
+        ...freeShapedEntitlements({}),
+        features: { ...freeShapedEntitlements({}).features, tier: 1 },
+        validUntil: Date.now() + 86_400_000,
+      }),
+      fetch: relayFetch as never,
+    });
+    mock.method(console, 'error', () => {});
+
+    // The email arm exercises finishDurableWelcomeRelay without the webhook
+    // URL validation/encryption machinery; the passthrough under test is
+    // status-generic.
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 402);
+    assert.deepEqual(await res.json(), {
+      error: 'ALERT_CHANNEL_UPGRADE_REQUIRED',
+      message: 'The email channel is available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+      value: 'email',
+    });
+  });
+
   it('a Clerk role=pro session with a BILLED row is allowed, as any tier-1 user is', async () => {
     // The complement: the denial above is about the missing row, not about the
     // role. A role-only account and a billed account must not be conflated in

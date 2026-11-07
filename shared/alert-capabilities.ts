@@ -68,6 +68,14 @@ export interface AlertCapabilities {
   sensitivities: ReadonlySet<string>;
   digestModes: ReadonlySet<string>;
   aiDigestAccess: boolean;
+  /**
+   * Worldwide (unscoped) alert rules are a paid capability: a free rule must
+   * name 1..maxCountries countries, or `eventMatchesCountryScope` treats the
+   * empty scope as every country and the ladder's country limit means
+   * nothing (Greptile P1 on #10303). Keyed off tier until a plan needs its
+   * own value.
+   */
+  requireCountryScope: boolean;
 }
 
 export function resolveAlertCapabilities(
@@ -90,6 +98,7 @@ export function resolveAlertCapabilities(
         (paid ? ALL_ALERT_DIGEST_MODES : FREE_ALERT_DIGEST_MODES),
     ),
     aiDigestAccess: features?.aiDigestAccess ?? paid,
+    requireCountryScope: !paid,
   };
 }
 
@@ -98,6 +107,7 @@ export type AlertCapabilityViolationCode =
   | "ALERT_CHANNEL_UPGRADE_REQUIRED"
   | "ALERT_SENSITIVITY_UPGRADE_REQUIRED"
   | "ALERT_DIGEST_MODE_UPGRADE_REQUIRED"
+  | "ALERT_COUNTRY_SCOPE_REQUIRED"
   | "AI_DIGEST_UPGRADE_REQUIRED";
 
 export const ALERT_CAPABILITY_VIOLATION_CODES: readonly AlertCapabilityViolationCode[] = [
@@ -105,6 +115,7 @@ export const ALERT_CAPABILITY_VIOLATION_CODES: readonly AlertCapabilityViolation
   "ALERT_CHANNEL_UPGRADE_REQUIRED",
   "ALERT_SENSITIVITY_UPGRADE_REQUIRED",
   "ALERT_DIGEST_MODE_UPGRADE_REQUIRED",
+  "ALERT_COUNTRY_SCOPE_REQUIRED",
   "AI_DIGEST_UPGRADE_REQUIRED",
 ];
 
@@ -130,6 +141,14 @@ export interface AlertRuleCapabilityState {
   sensitivity?: string;
   digestMode?: string;
   aiDigestEnabled?: boolean;
+  /**
+   * The rule's EFFECTIVE enabled flag and country count after the write,
+   * stored row included — unlike the only-what-you-send fields above, the
+   * worldwide-scope check must see the whole rule, or omitting `countries`
+   * bypasses it. A disable (`enabled: false`) is always allowed.
+   */
+  enabled?: boolean;
+  effectiveCountriesCount?: number;
 }
 
 /**
@@ -171,6 +190,18 @@ export function firstAlertCapabilityViolation(
     return {
       code: "ALERT_COUNTRIES_UPGRADE_REQUIRED",
       message: `Your plan follows up to ${caps.maxCountries} countries for alerts; Pro follows up to ${PAID_ALERT_MAX_COUNTRIES}.`,
+      upgradeUrl: ALERT_UPGRADE_URL,
+      limit: caps.maxCountries,
+    };
+  }
+  if (
+    caps.requireCountryScope &&
+    state.enabled !== false &&
+    state.effectiveCountriesCount === 0
+  ) {
+    return {
+      code: "ALERT_COUNTRY_SCOPE_REQUIRED",
+      message: `Choose 1–${caps.maxCountries} countries to follow for alerts, or upgrade to Pro for worldwide alerts.`,
       upgradeUrl: ALERT_UPGRADE_URL,
       limit: caps.maxCountries,
     };

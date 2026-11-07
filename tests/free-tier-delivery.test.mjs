@@ -39,3 +39,24 @@ describe('free-tier delivery clamp (#4273)', () => {
     }
   });
 });
+
+describe('free-tier country scope clamp (#4273, Greptile P1)', async () => {
+  const { freeTierCountryScope, FREE_DELIVERY_MAX_COUNTRIES } = await import('../scripts/lib/free-tier-delivery.cjs');
+
+  it('free worldwide (missing or empty countries) does not deliver', () => {
+    assert.deepEqual(freeTierCountryScope(0, undefined), { ok: false, countries: [] });
+    assert.deepEqual(freeTierCountryScope(0, []), { ok: false, countries: [] });
+  });
+
+  it('free over-cap legacy scopes clamp to the first entries', () => {
+    const scope = freeTierCountryScope(0, ['UA', 'TW', 'LB', 'IL', 'PL']);
+    assert.equal(scope.ok, true);
+    assert.deepEqual(scope.countries, ['UA', 'TW', 'LB']);
+    assert.equal(scope.countries.length, FREE_DELIVERY_MAX_COUNTRIES);
+  });
+
+  it('paid tiers keep their scope, worldwide included', () => {
+    assert.deepEqual(freeTierCountryScope(1, undefined), { ok: true, countries: undefined });
+    assert.deepEqual(freeTierCountryScope(2, ['UA']), { ok: true, countries: ['UA'] });
+  });
+});

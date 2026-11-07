@@ -159,6 +159,7 @@ const ALERT_CAPABILITY_CODES = new Set([
   "ALERT_CHANNEL_UPGRADE_REQUIRED",
   "ALERT_SENSITIVITY_UPGRADE_REQUIRED",
   "ALERT_DIGEST_MODE_UPGRADE_REQUIRED",
+  "ALERT_COUNTRY_SCOPE_REQUIRED",
   "AI_DIGEST_UPGRADE_REQUIRED",
 ]);
 
@@ -167,13 +168,16 @@ function alertCapabilityDenialResponse(err: unknown): Response | null {
   if (!code || !ALERT_CAPABILITY_CODES.has(code)) return null;
   const parsed = parseConvexErrorData(err);
   const data = (parsed && typeof parsed === "object") ? parsed as Record<string, unknown> : {};
+  // COUNTRY_SCOPE is a 400, not a 402: a free caller fixes it by choosing
+  // countries, no payment required (upgradeUrl rides along as the alternative).
+  const status = code === "ALERT_COUNTRY_SCOPE_REQUIRED" ? 400 : 402;
   return new Response(JSON.stringify({
     error: code,
     message: typeof data.message === "string" ? data.message : "",
     upgradeUrl: typeof data.upgradeUrl === "string" ? data.upgradeUrl : "https://worldmonitor.app/pro",
     ...(typeof data.limit === "number" ? { limit: data.limit } : {}),
     ...(typeof data.value === "string" ? { value: data.value } : {}),
-  }), { status: 402, headers: { "Content-Type": "application/json" } });
+  }), { status, headers: { "Content-Type": "application/json" } });
 }
 
 function extractConvexErrorCode(err: unknown): string | null {

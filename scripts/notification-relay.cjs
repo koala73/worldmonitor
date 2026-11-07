@@ -5,7 +5,7 @@ const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
-const { freeTierAllowsEvent, freeTierAllowsChannel } = require('./lib/free-tier-delivery.cjs');
+const { freeTierAllowsEvent, freeTierAllowsChannel, freeTierCountryScope } = require('./lib/free-tier-delivery.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
   postJsonWithPinnedAddress,
@@ -502,8 +502,14 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
     return;
   }
 
+  // #4273: the held-queue flush delivers like the realtime path, so it takes
+  // the same free-ladder channel clamp. Held events are severity- and
+  // scope-clamped at hold time (the clamps run before the quiet-hours hold);
+  // entries queued before that deploy age out on the queue's own TTL.
+  const drainTier = (await getUserTier(userId)) ?? 0;
   const verifiedChannels = channels.filter(c =>
     c.verified &&
+    freeTierAllowsChannel(drainTier, c.channelType) &&
     (c.channelType !== 'email' || c.emailOwnership === 'verified_account') &&
     (c.channelType !== 'telegram' || c.telegramOwnership === 'verified_callback') &&
     (allowedChannelTypes == null || allowedChannelTypes.includes(c.channelType)),
@@ -1945,6 +1951,7 @@ async function processEvent(event) {
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
   let freeSeverityDrops = 0;
+  let freeScopeDrops = 0;
   let channelsFailedUsers = 0;
   let channelsFetchError = null;
 
@@ -1952,6 +1959,15 @@ async function processEvent(event) {
     const userTier = tierByUser.get(rule.userId) ?? 0;
     if (!freeTierAllowsEvent(userTier, eventSeverity)) {
       freeSeverityDrops += 1;
+      continue;
+    }
+    // Free rules must carry an explicit country scope; a legacy worldwide
+    // free row delivers nothing, and an over-cap one delivers only within
+    // its first entries — mirroring the write-path ladder. Runs before the
+    // quiet-hours hold so held batches are scope-clamped at hold time too.
+    const scope = freeTierCountryScope(userTier, rule.countries);
+    if (!scope.ok || (userTier < 1 && !eventMatchesCountryScope(event, { ...rule, countries: scope.countries }))) {
+      freeScopeDrops += 1;
       continue;
     }
 
@@ -2089,6 +2105,7 @@ async function processEvent(event) {
   }
 
   if (freeSeverityDrops > 0) console.log(`[relay] Free-ladder severity clamp: dropped ${freeSeverityDrops} rule(s) for non-critical event (severity=${eventSeverity})`);
+  if (freeScopeDrops > 0) console.log(`[relay] Free-ladder country-scope clamp: dropped ${freeScopeDrops} rule(s) without a matching explicit country scope`);
   if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }
 
