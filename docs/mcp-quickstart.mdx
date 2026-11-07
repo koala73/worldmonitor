@@ -11,8 +11,42 @@ World Monitor plugs into your AI assistant as a connector. You paste one address
 There is no API key to copy and nothing to install. You sign in with the same email you use on worldmonitor.app.
 </Info>
 
+## Connect in one click
+
+Each button opens the app with World Monitor already filled in. You confirm, then sign in with your World Monitor account.
+
+<CardGroup cols={3}>
+  <Card title="Add to Claude" icon="plug" href="https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=World%20Monitor&connectorUrl=https%3A%2F%2Fworldmonitor.app%2Fmcp">
+    Desktop, web and mobile. Click **Continue**, then **Add**.
+  </Card>
+  <Card title="Add to Cursor" icon="plug" href="https://cursor.com/install-mcp?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0%3D">
+    Installs the server. Click **Needs login** to sign in.
+  </Card>
+  <Card title="Add to VS Code" icon="plug" href="https://vscode.dev/redirect/mcp/install?name=worldmonitor&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fworldmonitor.app%2Fmcp%22%7D">
+    Installs for GitHub Copilot. Sign in when asked.
+  </Card>
+</CardGroup>
+
+Terminal agents take one command:
+
+<CodeGroup>
+```bash Claude Code
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+```bash Codex
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp && codex mcp login worldmonitor
+```
+
+```bash Gemini CLI
+gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.app/mcp
+```
+</CodeGroup>
+
+ChatGPT, Grok, Perplexity and other apps take the address `https://worldmonitor.app/mcp` as a custom connector; per-app steps are below.
+
 <Tip>
-In the [dashboard](https://www.worldmonitor.app/dashboard), **Settings → AI Agents** has a one-click button or a ready-to-paste command for each app below.
+Signed in on the [dashboard](https://www.worldmonitor.app/dashboard)? **Settings → AI Agents** has the same buttons and commands, and lists the agents you have connected.
 </Tip>
 
 ## Claude
