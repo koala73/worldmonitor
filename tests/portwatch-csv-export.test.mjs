@@ -223,3 +223,16 @@ test('fetchAll skips the latest-day probe when the fetch deadline leaves no marg
   assert.equal(calls.filter(u => u.includes('latest_date')).length, 0, 'no probe inside the deadline margin');
   assert.equal(result.korea_strait.history.length, 174, 'the CSV is returned');
 });
+
+test('fetchAll returns the CSV when the probe-triggered queries outlast the fetch deadline', async (t) => {
+  // 50 ms of budget after the 10 s margin; the Korea history query never answers.
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }), null, (url) => {
+    if (url.includes('latest_date')) return Response.json({ features: [{ attributes: { latest_date: '2026-11-01' } }] });
+    if (url.includes("portname='Korea Strait'") && !url.includes('outStatistics')) return new Promise(() => {});
+    return null;
+  });
+  const result = await fetchAll({ fetchDeadlineAtMs: NOW + 10_050 });
+  assert.equal(queriedNames(calls).has('Korea Strait'), true, 'the trailing entry was queried');
+  assert.equal(result.korea_strait.history.length, 174, 'the CSV entry is kept');
+  assert.equal(result.korea_strait.history.at(-1).date, '2026-10-25');
+});

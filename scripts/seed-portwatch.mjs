@@ -400,12 +400,12 @@ export async function runFetchPipeline(
 }
 
 // Settles within `ms` even if the request ignores its own timeout, so the
-// baseline budget is a wall-clock bound.
-function withinMs(promise, ms) {
+// baseline and query budgets are wall-clock bounds.
+function withinMs(promise, ms, label = 'baseline budget') {
   let timer;
   return Promise.race([
     promise,
-    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`baseline budget exhausted after ${ms}ms`)), ms); }),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${label} exhausted after ${ms}ms`)), ms); }),
   ]).finally(() => clearTimeout(timer));
 }
 
@@ -533,11 +533,22 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
       || (queryLatest && queryLatest > lastHistoryDate(fresh[cp.id])));
     if (candidates.length === 0 || pastDeadline()) return fresh;
     console.warn(`[PortWatch] CSV export lacks or trails ${candidates.map(cp => cp.id).join(', ')}; querying ArcGIS for them`);
-    const queried = await runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
+    const pipeline = runFetchPipeline(candidates, sinceEpoch, fetchAllPages, 500, {
       fetchBaselineFn: fetchBaselineStats,
       baselineWindow: window,
       fetchDeadlineAtMs,
     });
+    // The CSV is already in hand, so slow queries must not run it past the
+    // deadline: past the margin, publish the CSV and drop what is still pending.
+    let queried;
+    try {
+      queried = Number.isFinite(fetchDeadlineAtMs)
+        ? await withinMs(pipeline, fetchDeadlineAtMs - Date.now() - BASELINE_DEADLINE_MARGIN_MS, 'query budget')
+        : await pipeline;
+    } catch (e) {
+      console.warn(`[PortWatch] ${e?.message || e}; publishing the CSV export for ${candidates.map(cp => cp.id).join(', ')}`);
+      return fresh;
+    }
     for (const [id, entry] of Object.entries(queried)) {
       if (lastHistoryDate(entry) > lastHistoryDate(fresh[id])) fresh[id] = entry;
     }
