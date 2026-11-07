@@ -2798,8 +2798,8 @@ export class UnifiedSettings {
       : `
         <p class="mcp-agents-plan-note">
           ${signedIn
-            ? 'Your free account includes source listings and a few cached datasets, 5 calls a day.'
-            : 'Your agent asks you to sign in with your World Monitor account. A free account includes 5 calls a day.'}
+            ? 'Your free account includes source listings and a few cached datasets: up to 5 calls a day, in up to 3 sessions.'
+            : 'Your agent asks you to sign in with your World Monitor account. A free account includes a few cached datasets: up to 5 calls a day, in up to 3 sessions.'}
           Pro unlocks every tool.
           <a ${LEGAL_LINK_ATTR} href="${escapeHtml(`${WEB_APP_ORIGIN}/pro`)}" target="_blank" rel="noopener noreferrer">Compare plans</a>
         </p>`;
@@ -2944,6 +2944,11 @@ export class UnifiedSettings {
       // Skip silently if the tab is no longer visible — can happen if the
       // overlay was hidden via display:none rather than full destroy().
       if (this.activeTab !== 'mcp-clients') return;
+      // AI Agents stays open after a downgrade, with the quota section gone.
+      if (!this.canManageMcpClients()) {
+        this.stopMcpQuotaPolling();
+        return;
+      }
       void this.refreshMcpQuota();
     }, 30_000);
   }

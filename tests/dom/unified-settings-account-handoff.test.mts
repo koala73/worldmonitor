@@ -399,6 +399,28 @@ describe('UnifiedSettings real auth-subscription handoff', () => {
     expect(quota().textContent).not.toContain('unavailable');
   });
 
+  // AI Agents stays open after a downgrade, so the hidden quota must stop
+  // polling: before #10301 losing access moved the user off the tab.
+  it('stops quota polling when the open AI Agents tab loses mcpAccess', async () => {
+    vi.useFakeTimers();
+    try {
+      settings.open('mcp-clients');
+      expect(internal.overlay.querySelector('[data-mcp-manage]')).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(30_000);
+      const callsWhilePro = mcpMocks.quota.mock.calls.length;
+      expect(callsWhilePro).toBeGreaterThan(0);
+
+      emitEntitlement(entitlement({ planKey: 'free', apiAccess: false, mcpAccess: false }));
+      expect(internal.overlay.querySelector('[data-mcp-manage]')).toBeNull();
+      expect(internal.activeTab).toBe('mcp-clients');
+
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(mcpMocks.quota.mock.calls.length).toBe(callsWhilePro);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('offers the canonical MCP endpoint and one-click links when no clients are connected', () => {
     settings.open('mcp-clients');
     internal.mcpClients = [];
