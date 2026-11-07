@@ -13,7 +13,7 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab } from './billing';
+import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -61,9 +61,10 @@ import {
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
+import { extractBillingErrorKind } from './_billing-error';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
-import { IN_PLACE_UPGRADE_SOURCE_PLANS } from './pro-business-upgrade-copy';
 import {
   buildDashboardCheckoutReturnUrl,
   DESKTOP_CHECKOUT_SOURCE,
@@ -715,9 +716,28 @@ export async function startCheckout(
         });
         // An active Pro moves to Pro Business in place (prorated Dodo plan
         // change); the guided dialog stays the fallback when no preview comes back.
-        if (isProBusinessUpgrade && typeof planKey === 'string' && IN_PLACE_UPGRADE_SOURCE_PLANS.has(planKey)) {
+        // The plan check lives in the lazy chunk to keep this one small.
+        if (isProBusinessUpgrade) {
           const { runProBusinessUpgradeFlow } = await import('./pro-business-upgrade-dialog');
-          await runProBusinessUpgradeFlow({ planDisplayName, fallback: showGuidedDuplicateDialog });
+          await runProBusinessUpgradeFlow({
+            planKey,
+            planDisplayName,
+            fallback: showGuidedDuplicateDialog,
+            requestUpgrade: requestProBusinessUpgrade,
+            openPortal: () => {
+              const reservedWin = prereserveBillingPortalTab();
+              void openBillingPortal(reservedWin);
+            },
+            showDialog: showCheckoutConfirmDialog,
+            errorKind: extractBillingErrorKind,
+            reportError: (action, err) => {
+              const kind = extractBillingErrorKind(err);
+              enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
+                tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
+                level: 'warning',
+              }));
+            },
+          });
         } else {
           showGuidedDuplicateDialog();
         }

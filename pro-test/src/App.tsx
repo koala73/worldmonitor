@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, lazy, Suspense, type ReactElement, type ReactNode } from 'react';
 import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
@@ -31,8 +31,10 @@ import {
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
 import { VoiceCards } from './components/Voices';
-import { LiveBriefCard } from './components/LiveBriefCard';
-import { PlanComparisonTable } from './components/PlanComparisonTable';
+// Below the fold: loaded on demand so the published-pulse JSON, the live
+// feed client and the plan table stay out of the initial /pro chunk.
+const LiveBriefCard = lazy(() => import('./components/LiveBriefCard').then((m) => ({ default: m.LiveBriefCard })));
+const PlanComparisonTable = lazy(() => import('./components/PlanComparisonTable').then((m) => ({ default: m.PlanComparisonTable })));
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -795,7 +797,7 @@ const ProShowcase = () => (
         </div>
       </div>
 
-      <LiveBriefCard />
+      <Suspense fallback={null}><LiveBriefCard /></Suspense>
     </div>
   </section>
 );
@@ -1377,7 +1379,7 @@ export default function App() {
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
           desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
         />
-        <PlanComparisonTable />
+        <Suspense fallback={null}><PlanComparisonTable /></Suspense>
         <ApiSection />
         <EnterpriseShowcase />
         <FAQ />

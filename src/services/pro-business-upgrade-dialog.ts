@@ -7,13 +7,16 @@
  * confirmation, and moves the existing Dodo subscription to Pro Business.
  * When the preview cannot be produced, the caller's fallback (the guided
  * duplicate-subscription dialog) runs, so the user is never stranded.
+ *
+ * Every service this flow needs is passed in by checkout.ts, which already
+ * holds them. Importing them here would make Vite emit this chunk's whole
+ * dependency graph as preload hints inside the checkout chunk (bundle budget).
  */
 
-import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { extractBillingErrorKind } from './_billing-error';
-import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
-import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
+import type { ProBusinessUpgradeResponse } from './billing';
+import type { CheckoutConfirmDialogOptions } from './checkout-dialog-factory';
 import {
+  IN_PLACE_UPGRADE_SOURCE_PLANS,
   UPGRADE_CANCEL_SCHEDULED_BODY,
   UPGRADE_FAILED_BODY,
   UPGRADE_SUCCESS_BODY,
@@ -24,46 +27,48 @@ import {
 const DIALOG_ID = 'wm-pro-business-upgrade-dialog';
 const RESULT_DIALOG_ID = 'wm-pro-business-upgrade-result-dialog';
 
-function reportUpgradeError(action: string, err: unknown): void {
-  const kind = extractBillingErrorKind(err);
-  enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
-    tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
-    level: 'warning',
-  }));
-}
-
-function showResult(title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = 'Done'): void {
-  showCheckoutConfirmDialog({
-    id: RESULT_DIALOG_ID,
-    title,
-    body,
-    confirmLabel,
-    dismissLabel: 'Close',
-    onConfirm,
-    onDismiss: () => {},
-  });
-}
-
-/**
- * Runs the flow. Resolves after the first dialog is shown (or the fallback
- * ran). `fallback` renders the guided cancel-then-rebuy dialog.
- */
-export async function runProBusinessUpgradeFlow(options: {
+export interface ProBusinessUpgradeFlowOptions {
+  /** Plan the user already holds, from the 409 payload. */
+  planKey: unknown;
   planDisplayName: string;
+  /** Renders the guided cancel-then-rebuy dialog. */
   fallback: () => void;
-}): Promise<void> {
-  let preview;
+  requestUpgrade: (confirm: boolean) => Promise<ProBusinessUpgradeResponse>;
+  openPortal: () => void;
+  showDialog: (options: CheckoutConfirmDialogOptions) => void;
+  /** Structured ConvexError kind, e.g. PRO_CANCEL_SCHEDULED. */
+  errorKind: (err: unknown) => string | null | undefined;
+  reportError: (action: string, err: unknown) => void;
+}
+
+/** Resolves after the first dialog is shown, or after the fallback ran. */
+export async function runProBusinessUpgradeFlow(options: ProBusinessUpgradeFlowOptions): Promise<void> {
+  if (typeof options.planKey !== 'string' || !IN_PLACE_UPGRADE_SOURCE_PLANS.has(options.planKey)) {
+    options.fallback();
+    return;
+  }
+
+  const showResult = (title: string, body: string, onConfirm: () => void = () => {}, confirmLabel = 'Done'): void => {
+    options.showDialog({
+      id: RESULT_DIALOG_ID,
+      title,
+      body,
+      confirmLabel,
+      dismissLabel: 'Close',
+      onConfirm,
+      onDismiss: () => {},
+    });
+  };
+
+  let preview: ProBusinessUpgradeResponse;
   try {
-    preview = await requestProBusinessUpgrade(false);
+    preview = await options.requestUpgrade(false);
   } catch (err) {
-    if (extractBillingErrorKind(err) === 'PRO_CANCEL_SCHEDULED') {
-      showResult('Resume Pro first', UPGRADE_CANCEL_SCHEDULED_BODY, () => {
-        const reservedWin = prereserveBillingPortalTab();
-        void openBillingPortal(reservedWin);
-      }, 'Open billing portal');
+    if (options.errorKind(err) === 'PRO_CANCEL_SCHEDULED') {
+      showResult('Resume Pro first', UPGRADE_CANCEL_SCHEDULED_BODY, options.openPortal, 'Open billing portal');
       return;
     }
-    reportUpgradeError('previewProBusinessUpgrade', err);
+    options.reportError('previewProBusinessUpgrade', err);
     options.fallback();
     return;
   }
@@ -72,7 +77,7 @@ export async function runProBusinessUpgradeFlow(options: {
     return;
   }
 
-  showCheckoutConfirmDialog({
+  options.showDialog({
     id: DIALOG_ID,
     title: 'Upgrade to Pro Business',
     body: buildUpgradePreviewBody(options.planDisplayName, preview),
@@ -81,10 +86,10 @@ export async function runProBusinessUpgradeFlow(options: {
     onConfirm: () => {
       void (async () => {
         try {
-          await requestProBusinessUpgrade(true);
+          await options.requestUpgrade(true);
           showResult(UPGRADE_SUCCESS_TITLE, UPGRADE_SUCCESS_BODY, () => window.location.reload(), 'Reload');
         } catch (err) {
-          reportUpgradeError('applyProBusinessUpgrade', err);
+          options.reportError('applyProBusinessUpgrade', err);
           showResult('Upgrade not completed', UPGRADE_FAILED_BODY);
         }
       })();
