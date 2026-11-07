@@ -479,7 +479,7 @@ export function resolveLatestResilienceSnapshotPath(rootDir = DEFAULT_ROOT) {
   const candidates = readdirSync(snapshotDir)
     .map((filename) => ({ filename, match: filename.match(RESILIENCE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error(`No canonical resilience ranking snapshot found in ${RESILIENCE_SNAPSHOT_DIR}`);
   }
@@ -557,7 +557,7 @@ export function resolveLatestLivePulseSnapshotPath(rootDir = DEFAULT_ROOT) {
   const candidates = readdirSync(snapshotDir)
     .map((filename) => ({ filename, match: filename.match(LIVE_PULSE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error(`No crawlable live-pulse snapshot found in ${RESILIENCE_SNAPSHOT_DIR}`);
   }
@@ -648,7 +648,7 @@ export function buildCiiRankingEntries(countries, livePulse, { now = Date.now() 
     });
   }
 
-  entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name));
+  entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name, 'en-US'));
   const entryCodes = new Set(entries.map((entry) => entry.code));
   const expectedCodes = new Set(CII_COUNTRY_CODES);
   const missingCodes = CII_COUNTRY_CODES.filter((code) => !entryCodes.has(code));
@@ -1397,7 +1397,7 @@ function normalizeGlossaryTerms(terms) {
       short: term.short,
     }))
     .filter((term) => term.slug && term.term)
-    .sort((a, b) => a.term.localeCompare(b.term));
+    .sort((a, b) => a.term.localeCompare(b.term, 'en-US'));
 }
 
 function normalizeChokepoints(entries) {
@@ -1414,7 +1414,7 @@ function normalizeChokepoints(entries) {
       slug: slugify(entry.displayName || entry.id),
     }))
     .filter((entry) => entry.id && entry.displayName)
-    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'en-US'));
 }
 
 export function buildChokepointPageLinks({ chokepoints, countries, crises, blogPostPaths = new Set(), content = CHOKEPOINT_CONTENT }) {
@@ -1539,7 +1539,7 @@ function normalizeCountries(snapshot, reverseNames) {
     ));
 
   return [...ranked, ...greyedOut].sort((a, b) => {
-    if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name);
+    if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name, 'en-US');
     if (a.rank == null) return 1;
     if (b.rank == null) return -1;
     return a.rank - b.rank;
@@ -1593,7 +1593,7 @@ function normalizeCountryBounds(countryBboxes, countries, reverseNames = new Map
       };
     })
     .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
 }
 
 function normalizeCrises(entries) {
@@ -1793,7 +1793,7 @@ export function compareUnpublishedRankedPeers(left, right, country, regionId, re
   return regionDifference
     || scoreDistance
     || left.rank - right.rank
-    || left.name.localeCompare(right.name);
+    || left.name.localeCompare(right.name, 'en-US');
 }
 
 function addCountryContext(countries, regionsByCode, crises) {
@@ -1811,7 +1811,7 @@ function addCountryContext(countries, regionsByCode, crises) {
           - Math.abs(right.rank - country.rank);
         return distanceDifference
           || left.rank - right.rank
-          || left.name.localeCompare(right.name);
+          || left.name.localeCompare(right.name, 'en-US');
       })
       .slice(0, 4);
     const regionalPeers = (unpublished ? ranked : countries)
@@ -1824,7 +1824,7 @@ function addCountryContext(countries, regionsByCode, crises) {
         ? compareUnpublishedRankedPeers(left, right, country, regionId, regionsByCode)
         : Math.abs(left.overallScore - country.overallScore)
           - Math.abs(right.overallScore - country.overallScore)
-          || left.name.localeCompare(right.name))
+          || left.name.localeCompare(right.name, 'en-US'))
       .slice(0, 5);
     const crisisMemberships = crises.filter(
       (crisis) => crisis.coverage.some((coveredCountry) => coveredCountry.code === country.code),
@@ -2993,11 +2993,11 @@ function isCoverageGap(dimension) {
 }
 
 function compareDimensionsByCoverageAsc(left, right) {
-  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id);
+  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id, 'en-US');
 }
 
 function compareDimensionsByCoverageDesc(left, right) {
-  return Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id);
+  return Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id, 'en-US');
 }
 
 function dimensionSources(dimension) {
@@ -3515,10 +3515,10 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   })));
   const observedDimensionRows = allDimensionRows
     .filter(hasObservedDimensionScore)
-    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id, 'en-US'));
   const withheldDimensionRows = allDimensionRows
     .filter((dimension) => !hasObservedDimensionScore(dimension))
-    .sort((left, right) => left.domainId.localeCompare(right.domainId) || left.id.localeCompare(right.id));
+    .sort((left, right) => left.domainId.localeCompare(right.domainId, 'en-US') || left.id.localeCompare(right.id, 'en-US'));
   const dimensionRows = [...observedDimensionRows, ...withheldDimensionRows];
   const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>

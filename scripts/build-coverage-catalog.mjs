@@ -236,7 +236,7 @@ export function buildToolEntries({ tools, toolAccess }) {
       description: firstSentence(tool.description),
       access: toolAccess(tool),
     }))
-    .sort((a, b) => a.title.localeCompare(b.title));
+    .sort((a, b) => a.title.localeCompare(b.title, 'en-US'));
 }
 
 export async function loadCoverageCatalog({ importModule, readJson }) {
