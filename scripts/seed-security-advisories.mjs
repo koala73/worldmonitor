@@ -251,11 +251,21 @@ export async function fetchFeed(feed, doFetch = fetch) {
 // fetch time, the same as an item with no date.
 const ZONE_OFFSETS = { AEST: '+1000', AEDT: '+1100' };
 
-function toIsoDate(pubDate) {
+function parseFeedDate(pubDate) {
   const normalized = String(pubDate || '').trim().replace(/\b(AEST|AEDT)$/, (zone) => ZONE_OFFSETS[zone]);
   const parsed = normalized ? new Date(normalized) : null;
-  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date().toISOString();
+  return parsed && Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
 }
+
+function toIsoDate(pubDate) {
+  return parseFeedDate(pubDate) ?? new Date().toISOString();
+}
+
+// Carried on a register item until fetchAll has built the per-register index,
+// then stripped from the stored news list. It is the feed's own date, or ''
+// when the feed gave none: the fetch-time fallback in `pubDate` would publish
+// "updated today" for an advisory nobody touched.
+const REGISTER_UPDATED_FIELD = '_registerUpdatedAt';
 
 /**
  * Normalise one feed's raw items into advisory records.
@@ -275,7 +285,48 @@ export function mapFeedItems(items, feed) {
       sourceCountry: feed.sourceCountry,
       level: parseLevel(item, feed.levelParser),
       country: extractCountry(item.title, feed) || '',
+      ...(feed.levelParser ? { [REGISTER_UPDATED_FIELD]: parseFeedDate(item.pubDate) ?? '' } : {}),
     }));
+}
+
+const LEVEL_RANK = { 'do-not-travel': 4, reconsider: 3, caution: 2, normal: 1 };
+
+/**
+ * Each government register's own level per country, for pages that show the
+ * US and Australian advice side by side. `byCountry` keeps the stricter of the
+ * two and cannot say whose advice it is. A register that lists a country twice
+ * keeps its most recently dated entry.
+ *
+ * Entries keep the advisory item shape, so the RPC reuses SecurityAdvisoryItem
+ * (public/openapi.json has no room for a second schema). Unlike the news list,
+ * `pubDate` is the feed's own date or '' when it gave none.
+ */
+export function buildRegisterLevels(feeds, itemsByFeed) {
+  const byKey = new Map();
+  feeds.forEach((feed, i) => {
+    if (!feed.levelParser) return;
+    for (const item of itemsByFeed[i] || []) {
+      if (!item.country || !LEVEL_RANK[item.level]) continue;
+      const entry = {
+        title: item.title,
+        link: item.link,
+        pubDate: item[REGISTER_UPDATED_FIELD] || '',
+        source: feed.name,
+        sourceCountry: feed.sourceCountry,
+        level: item.level,
+        country: item.country,
+      };
+      const key = `${entry.sourceCountry}:${entry.country}`;
+      const existing = byKey.get(key);
+      if (!existing || entry.pubDate > existing.pubDate) byKey.set(key, entry);
+    }
+  });
+  return [...byKey.values()].sort((a, b) =>
+    a.sourceCountry.localeCompare(b.sourceCountry) || a.country.localeCompare(b.country));
+}
+
+function withoutRegisterDate({ [REGISTER_UPDATED_FIELD]: _updatedAt, ...advisory }) {
+  return advisory;
 }
 
 /**
@@ -337,6 +388,14 @@ export function advisoryPublishTransform(data) {
   return published;
 }
 
+// The dashboard bootstrap reads `advisories` and `byCountry` only. The
+// per-register levels (~400 rows) serve /tools/travel-advisory-map/ through
+// the canonical key and stay out of every dashboard's startup payload.
+export function advisoryBootstrapTransform(data) {
+  const { registerLevels: _registerLevels, ...bootstrap } = advisoryPublishTransform(data);
+  return bootstrap;
+}
+
 export async function advisoryAfterPublish(data) {
   const { missingRegisters = [], emptyFeeds = [] } = data?.[ADVISORY_SOURCE_HEALTH_FIELD] || {};
   if (missingRegisters.length === 0) {
@@ -384,10 +443,13 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
   // must be complete, while `advisories` is a recency-ordered news list whose
   // size is a payload concern.
   const byCountry = buildByCountryMap(deduped);
-  const advisories = capPerSource(deduped, PER_SOURCE_DISPLAY_LIMIT);
+  const advisories = capPerSource(deduped, PER_SOURCE_DISPLAY_LIMIT).map(withoutRegisterDate);
   const report = {
     byCountry,
     byCountryName: BY_COUNTRY_NAME,
+    // Built per feed, before the cross-feed title dedupe: each register's
+    // entry for a country stands on its own.
+    registerLevels: buildRegisterLevels(feeds, itemsByFeed),
     advisories,
     fetchedAt: new Date().toISOString(),
     [ADVISORY_SOURCE_HEALTH_FIELD]: sourceHealth,
@@ -435,7 +497,7 @@ if (isMain) {
     // publish; this replaces the previous run's sourceState instead of
     // carrying it forward onto the mirrored seed-meta.
     afterValidationSkip: advisoryAfterPublish,
-    extraKeys: [{ key: BOOTSTRAP_KEY, transform: advisoryPublishTransform, ttl: TTL, declareRecords }],
+    extraKeys: [{ key: BOOTSTRAP_KEY, transform: advisoryBootstrapTransform, ttl: TTL, declareRecords }],
 
     declareRecords,
     schemaVersion: 1,
