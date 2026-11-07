@@ -1,4 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { isPageUnloading } from '@/bootstrap/page-unload-signal';
 import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
@@ -488,6 +490,8 @@ export class DataLoaderManager implements AppModule {
   private readonly digestRequestTimeoutMs = 8000;
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
+  /** Failure kinds already sent to Sentry this page load (one event per kind). */
+  private readonly reportedDigestFailures = new Set<DigestFetchFailureKind>();
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly outageFallbackCategoryFeedLimit = 3;
   private readonly outageFallbackIntelFeedLimit = 6;
@@ -865,10 +869,39 @@ export class DataLoaderManager implements AppModule {
         this.digestBreaker.cooldownUntil = now + this.digestBreakerCooldownMs;
       }
       const currentKey = this.digestCacheKey();
-      const fallback = this.getRetainedDigest(currentKey) ?? await this.loadPersistedDigest(currentKey);
+      const retained = this.getRetainedDigest(currentKey);
+      const fallback = retained ?? await this.loadPersistedDigest(currentKey);
+      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none');
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
     }
+  }
+
+  /**
+   * The footer tells the user when this browser fell back to an old copy, but
+   * nothing told us. One warning per failure kind per page load: enough to
+   * measure how often users see stale news and why, without a burst per
+   * refresh. Offline browsers and page teardown are not service failures.
+   */
+  private reportDigestFetchFailure(error: unknown, fallback: 'retained' | 'saved' | 'none'): void {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (isPageUnloading()) return;
+    const kind = classifyDigestFetchFailure(error);
+    if (this.reportedDigestFailures.has(kind)) return;
+    this.reportedDigestFailures.add(kind);
+    enqueueSentryCall((s) => s.captureMessage('News digest fetch failed', {
+      level: 'warning',
+      tags: {
+        surface: 'news',
+        'digest.failure': kind,
+        'digest.fallback': fallback,
+        'digest.variant': SITE_VARIANT,
+      },
+      extra: { timeoutMs: this.digestRequestTimeoutMs },
+      // Tags do not split issues; one group per kind keeps timeouts, 5xx and
+      // ad-blocked requests readable as separate rates.
+      fingerprint: ['news-digest-fetch', kind],
+    }));
   }
 
   /**
@@ -5287,4 +5320,18 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('cross-source-signals', 'showFetchError');
     }
   }
+}
+
+export type DigestFetchFailureKind = 'timeout' | 'http-5xx' | 'http-4xx' | 'empty-body' | 'network' | 'other';
+
+/** Bucket a digest fetch failure into a closed, low-cardinality kind. */
+export function classifyDigestFetchFailure(error: unknown): DigestFetchFailureKind {
+  const name = error instanceof Error || error instanceof DOMException ? error.name : '';
+  const message = error instanceof Error || error instanceof DOMException ? error.message : String(error);
+  if (name === 'TimeoutError') return 'timeout';
+  const status = /^HTTP (\d{3})$/.exec(message)?.[1];
+  if (status) return status.startsWith('5') ? 'http-5xx' : 'http-4xx';
+  if (message === 'digest returned 0 categories') return 'empty-body';
+  if (error instanceof TypeError) return 'network';
+  return 'other';
 }
