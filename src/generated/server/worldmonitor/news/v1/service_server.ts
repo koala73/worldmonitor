@@ -97,6 +97,8 @@ export interface DigestCoverage {
   servedStale: boolean;
   staleAgeSeconds: number;
   staleReason: string;
+  itemsConsidered: number;
+  publishersConsidered: number;
 }
 
 export interface ListCountryHeadlinesRequest {

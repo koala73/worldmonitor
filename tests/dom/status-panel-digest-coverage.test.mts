@@ -22,7 +22,18 @@ function coverage(state: DigestCoverageSummary['state']): DigestCoverageSummary 
     categoriesCompleted: 3,
     categoriesTotal: 4,
     missingCategories: state === 'partial' ? ['tech'] : [],
+    itemsConsidered: 0,
+    publishersConsidered: 0,
+    staleCause: state === 'stale' ? 'server' : null,
+    staleReason: state === 'stale' ? 'build-error' : '',
+    contentAgeSeconds: state === 'stale' ? 1800 : null,
   };
+}
+
+function rowText(summary: DigestCoverageSummary): string {
+  const panel = new StatusPanel();
+  panel.updateDigestCoverage(summary);
+  return panel.getElement().querySelector<HTMLElement>('.digest-coverage-row')?.textContent ?? '';
 }
 
 describe('StatusPanel digest coverage row', () => {
@@ -36,9 +47,9 @@ describe('StatusPanel digest coverage row', () => {
       expect(row).not.toBeNull();
       expect(row?.getAttribute('role')).toBe('status');
       expect(row?.getAttribute('aria-live')).toBe('polite');
-      expect(row?.getAttribute('aria-label')).toBe('Digest coverage status');
-      expect(row?.textContent).toContain(`Digest coverage: ${state}`);
-      expect(row?.textContent?.trim().length).toBeGreaterThan(`Digest coverage: ${state}`.length);
+      expect(row?.getAttribute('aria-label')).toBe('News coverage status');
+      expect(row?.textContent).toContain(`News coverage: ${state}`);
+      expect(row?.textContent?.trim().length).toBeGreaterThan(`News coverage: ${state}`.length);
     },
   );
 });
@@ -59,7 +70,7 @@ describe('StatusPanel digest coverage row reachability (#7085 reopen)', () => {
     expect(row).not.toBeNull();
     expect(row?.isConnected).toBe(true);
     expect(row?.closest('.site-footer')).not.toBeNull();
-    expect(row?.textContent).toContain('Digest coverage: partial');
+    expect(row?.textContent).toContain('News coverage: partial');
   });
 
   it('does not double-mount across repeated coverage updates', () => {
@@ -73,7 +84,7 @@ describe('StatusPanel digest coverage row reachability (#7085 reopen)', () => {
 
     expect(document.querySelectorAll('.status-panel-container')).toHaveLength(1);
     expect(document.querySelectorAll('.digest-coverage-row')).toHaveLength(1);
-    expect(document.querySelector('.digest-coverage-row')?.textContent).toContain('Digest coverage: complete');
+    expect(document.querySelector('.digest-coverage-row')?.textContent).toContain('News coverage: complete');
   });
 
   it('still updates the row without crashing when no site footer exists', () => {
@@ -81,6 +92,65 @@ describe('StatusPanel digest coverage row reachability (#7085 reopen)', () => {
     panel.updateDigestCoverage(coverage('stale'));
 
     expect(document.querySelector('.digest-coverage-row')).toBeNull();
-    expect(panel.getElement().querySelector('.digest-coverage-row')?.textContent).toContain('Digest coverage: stale');
+    expect(panel.getElement().querySelector('.digest-coverage-row')?.textContent).toContain('News coverage: stale');
+  });
+});
+
+describe('StatusPanel digest coverage breadth and stale cause', () => {
+  // Prod 2026-11-07 full:en: 1,269 stories from 274 sources ranked, 333 shown
+  // (20 per category). The row used to report only the 333-item slice.
+  it('reports the publishers and stories the build reviewed, not just the served slice', () => {
+    const text = rowText({
+      ...coverage('complete'),
+      itemsServed: 333,
+      publisherCount: 136,
+      itemsConsidered: 1269,
+      publishersConsidered: 251,
+    });
+    expect(text).toContain('251 publishers, 1,269 stories reviewed, top 333 shown');
+    expect(text).not.toContain('136 publishers');
+  });
+
+  it('falls back to served counts when the digest predates the considered fields', () => {
+    const text = rowText({ ...coverage('complete'), itemsServed: 333, publisherCount: 136 });
+    expect(text).toContain('136 publishers, 333 stories');
+    expect(text).not.toContain('reviewed');
+  });
+
+  it('blames the server rebuild only when the server replayed old content', () => {
+    const text = rowText(coverage('stale'));
+    expect(text).toContain('from 30 min ago');
+    expect(text).toContain('latest rebuild failed');
+  });
+
+  it('says the copy is from this device when the browser could not reach the service', () => {
+    const text = rowText({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: 7200 });
+    expect(text).toContain('saved on this device');
+    expect(text).toContain('from 2 h ago');
+    expect(text).not.toContain('rebuild');
+  });
+
+  it('does not call a rebuild the gate refused a failure', () => {
+    const text = rowText({ ...coverage('stale'), staleReason: 'gate-held' });
+    expect(text).toContain('held back by a quality check');
+    expect(text).not.toContain('failed');
+  });
+
+  it('names an empty rebuild as empty', () => {
+    const text = rowText({ ...coverage('stale'), staleReason: 'empty-rebuild' });
+    expect(text).toContain('latest rebuild came back empty');
+  });
+
+  it('does not blame the service while a language switch is loading', () => {
+    const text = rowText({ ...coverage('stale'), staleCause: 'switching', contentAgeSeconds: 600 });
+    expect(text).toContain('saved on this device');
+    expect(text).toContain('while this language loads');
+    expect(text).not.toContain('did not respond');
+  });
+
+  it('omits the age when it is unknown', () => {
+    const text = rowText({ ...coverage('stale'), staleCause: 'device', contentAgeSeconds: null });
+    expect(text).toContain('saved on this device');
+    expect(text).not.toContain('ago');
   });
 });

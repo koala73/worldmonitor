@@ -42,7 +42,7 @@ declare global {
 
 const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
 const PARTIAL_DIGEST_COVERAGE_TEXT =
-  'Digest coverage: partial — 0 publishers, 0 items, feeds 7/12, categories 0/6 ' +
+  'News coverage: partial — 0 publishers, 0 stories, feeds 7/12, categories 0/6 ' +
   '(no completed feed: politics, military, economy, climate, …) ' +
   '(some categories had no completed feed in this cycle)';
 
@@ -184,7 +184,7 @@ const expectCoverageRowContract = async (
   page: Page,
   presentation: 'clipped-to-screen-readers' | 'visible',
 ): Promise<void> => {
-  const coverageRow = page.getByRole('status', { name: 'Digest coverage status' });
+  const coverageRow = page.getByRole('status', { name: 'News coverage status' });
   await expect(
     coverageRow,
     'the #7085 coverage row must stay in the accessibility tree',
