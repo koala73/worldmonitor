@@ -317,7 +317,7 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse(
       {
         error: 'publish_outcome_unknown',
-        message: 'The event may or may not have been published. Retry with the same Idempotency-Key after Retry-After.',
+        message: 'The event may already have been published. Retry only if a duplicate event is acceptable.',
       },
       503,
       { ...cors, 'Retry-After': '180' },
