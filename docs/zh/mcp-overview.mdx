@@ -161,7 +161,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 - 登录[仪表板](https://www.worldmonitor.app/dashboard)。选择 **Settings → MCP Clients** 管理已连接的客户端。
 - 可查看每个 token 的实时 `clientName`（例如 "Claude"、"Cursor"）、`lastUsedAt` 和 `createdAt`。
 - 撤销会在下一次 MCP 请求时生效（无正向缓存）。
-- 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**创建时间最早**的现有 token（按创建顺序，而非最近使用时间；并发授权下的执行是最终一致的）。
+- 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**最久未使用**的现有 token（按最近使用时间；从未使用的按创建时间；并发授权下的执行是最终一致的）。
 
 ## 套餐与限制
 
