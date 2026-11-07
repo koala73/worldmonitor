@@ -949,12 +949,28 @@ const SEED_META = {
   naturalEvents:    {
     key: 'seed-meta:natural:events',
     maxStaleMin: 540, // 3h Railway climate bundle; 3x cadence preserves a full missed run.
-    sourceFailure: {
-      warnAfterConsecutive: 2,
-      maxPendingMin: 210,
-      successAtField: 'lastSourceSuccessAt',
-      failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
-    },
+    sourceFailure: [
+      {
+        warnAfterConsecutive: 2,
+        maxPendingMin: 210,
+        successAtField: 'lastSourceSuccessAt',
+        failureCodePattern: /^NHC_(POINT_REQUEST_FAILED|POINT_RESPONSE_INVALID)$/,
+      },
+      // WORLDMONITOR-1AG: a single GDACS type or EONET miss whose validated
+      // records are retained (9h / 18h) is pending, not an incident; the second
+      // consecutive miss alarms. Requires a per-source failure clock on every
+      // failed source, so an unretained source, an NHC failure in the same run,
+      // or every source failing at once alarms on the first miss.
+      {
+        warnAfterConsecutive: 2,
+        // The bundle reruns this section 144 min (0.8 x 3h) after a publish, on a
+        // */5 tick, for up to 180 s; 210 holds past that next verdict.
+        maxPendingMin: 210,
+        successAtField: 'lastSourceSuccessAt',
+        sources: ['gdacs:EQ', 'gdacs:TC', 'gdacs:FL', 'gdacs:VO', 'gdacs:DR', 'gdacs:WF', 'eonet'],
+        failureCodePattern: /^(GDACS_TYPE_COVERAGE_INCOMPLETE|EONET_SOURCE_FAILED)$/,
+      },
+    ],
   },
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
   // #6987: moved off seed-meta:aviation:faa, which carries the FAA-ONLY alert
