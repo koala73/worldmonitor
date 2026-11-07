@@ -395,12 +395,17 @@ test('the smoke CLI writes a zero-failure report after every expected check succ
 });
 
 test('default alias labels stay aligned with the shared host-policy module', async () => {
-  const { MCP_PRODUCTION_ALIAS_LABELS } = await import('../shared/mcp-host-policy.ts');
+  const { MCP_RETIRED_ALIAS_LABELS, MCP_SERVED_ALIAS_LABELS } = await import('../shared/mcp-host-policy.ts');
   const smoke = readFileSync(join(process.cwd(), 'scripts/mcp-live-smoke.mjs'), 'utf8');
-  const match = smoke.match(/const DEFAULT_ALIAS_LABELS = \[([^\]]+)\]/);
-  assert.ok(match, 'DEFAULT_ALIAS_LABELS not found in scripts/mcp-live-smoke.mjs');
-  const labels = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
-  assert.deepEqual(labels, [...MCP_PRODUCTION_ALIAS_LABELS]);
+  for (const [name, expected] of [
+    ['DEFAULT_ALIAS_LABELS', MCP_RETIRED_ALIAS_LABELS],
+    ['DEFAULT_SERVED_ALIAS_LABELS', MCP_SERVED_ALIAS_LABELS],
+  ]) {
+    const match = smoke.match(new RegExp(`const ${name} = \\[([^\\]]+)\\]`));
+    assert.ok(match, `${name} not found in scripts/mcp-live-smoke.mjs`);
+    const labels = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+    assert.deepEqual(labels, [...expected], name);
+  }
 });
 
 test('MCP_SMOKE_HOSTS override skips production aliases and the www proxy', async () => {
@@ -532,5 +537,56 @@ test('the smoke CLI asserts alias 308/410 migration and www proxy liveness', asy
     server.close();
     await once(server, 'close');
     rmSync(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('the smoke CLI asserts the served alias challenges with its own OAuth document', async () => {
+  for (const [served, expectedExit] of [[true, 0], [false, 1]]) {
+    let origin = '';
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => { raw += chunk; });
+      req.on('end', () => {
+        let id = null;
+        try { id = JSON.parse(raw).id; } catch { /* not JSON */ }
+        if (!served) {
+          res.writeHead(410, { 'content-type': 'application/json' }).end(JSON.stringify({
+            jsonrpc: '2.0', id, error: { code: -32000, message: 'Use https://worldmonitor.app/mcp' },
+          }));
+          return;
+        }
+        res.writeHead(401, {
+          'content-type': 'application/json',
+          'www-authenticate': `Bearer realm="worldmonitor", resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+        }).end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32001, message: 'auth required' } }));
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    origin = `http://127.0.0.1:${server.address().port}`;
+    const reportDir = mkdtempSync(join(tmpdir(), 'wm-mcp-live-smoke-served-'));
+    const reportPath = join(reportDir, 'report.json');
+    try {
+      const child = spawn(process.execPath, ['scripts/mcp-live-smoke.mjs', '--report', reportPath], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          MCP_SMOKE_HOSTS: '',
+          MCP_SMOKE_ALIAS_HOSTS: '',
+          MCP_SMOKE_SERVED_ALIAS_HOSTS: origin,
+          MCP_SMOKE_PROXY_HOSTS: '',
+        },
+      });
+      const [exitCode] = await once(child, 'close');
+      assert.equal(exitCode, expectedExit, `served=${served}`);
+      const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+      assert.deepEqual(report.completedGroups, ['canonical', 'aliases', 'proxy']);
+      assert.ok(report.requests.some((request) => request.group === 'aliases'
+        && request.method === 'POST' && request.pathname === '/mcp'));
+    } finally {
+      server.close();
+      await once(server, 'close');
+      rmSync(reportDir, { recursive: true, force: true });
+    }
   }
 });
