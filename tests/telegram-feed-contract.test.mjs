@@ -594,4 +594,30 @@ describe('server listTelegramFeed relay normalization', () => {
     assert.equal(response.messages[0].sourceUrl, '');
     assert.deepEqual(response.messages[0].mediaUrls, ['https://cdn.example.com/photo.jpg']);
   });
+
+  it('replaces relay fetch exceptions with a fixed error string in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      throw new Error('getaddrinfo ENOTFOUND relay.internal.example key=synthetic-secret');
+    };
+
+    const response = await listTelegramFeed(/** @type {any} */ ({}), { limit: 25 });
+    assert.deepEqual(response, { enabled: false, messages: [], count: 0, error: 'Relay request failed' });
+    assert.doesNotMatch(JSON.stringify(response), /synthetic-secret|relay\.internal/);
+  });
+
+  it('reports relay timeouts as Relay timeout without the exception text in the server RPC path', async () => {
+    process.env.WS_RELAY_URL = 'https://relay.example.com';
+    process.env.RELAY_SHARED_SECRET = 'test-secret';
+    globalThis.fetch = async () => {
+      const error = new Error('The operation timed out reaching relay.internal.example');
+      error.name = 'TimeoutError';
+      throw error;
+    };
+
+    const response = await listTelegramFeed(/** @type {any} */ ({}), { limit: 25 });
+    assert.equal(response.error, 'Relay timeout');
+    assert.doesNotMatch(JSON.stringify(response), /relay\.internal/);
+  });
 });
