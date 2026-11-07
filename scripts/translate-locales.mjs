@@ -224,7 +224,7 @@ function canonicalPluralOrder(categories) {
   return [...categories].sort((a, b) => {
     const ia = CLDR_PLURAL_ORDER.indexOf(a);
     const ib = CLDR_PLURAL_ORDER.indexOf(b);
-    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b);
+    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b, 'en-US');
   });
 }
 export function getPluralCategories(loc) {
