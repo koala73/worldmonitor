@@ -690,7 +690,7 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
   // public/ text file — because each reaches Cloudflare through a different path
   // and can regress alone (a vercel.json header rule, a rewrite reorder, a
   // Mintlify header change). The negative controls are the boundary the rule was
-  // widened around: these URLs answer with an RSC flight or markdown when asked,
+  // widened around: these URLs answer with markdown (and once an RSC flight) when asked,
   // Cloudflare keys only on the URL, so a negotiating request must stay
   // ineligible — never a HIT, and still the negotiated body — or a browser could
   // be handed a crawler's markdown for ten minutes.
@@ -727,19 +727,24 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     );
     assert.match(plainText.resp.headers.get('content-type') || '', /text\/plain/);
 
+    // The representation an RSC request receives is Mintlify's choice, not ours:
+    // its Next.js renderer answered with a flight, and the renderer it moved to
+    // in November 2026 answers with HTML. Either way the request must stay
+    // ineligible, so the cache-rule guard is ready if a flight comes back. The
+    // cache status is the assertion; a cached HTML document would read HIT.
     const flight = await fetchText(`${WWW_BASE}/docs/documentation`, { headers: { RSC: '1' } });
     assert.equal(flight.resp.status, 200, 'docs RSC request must still be served');
     assert.match(
       flight.resp.headers.get('content-type') || '',
-      /text\/x-component/,
-      'an RSC request must receive the flight, not a cached HTML document',
+      /text\/x-component|text\/html/,
+      'an RSC request must receive the flight or the HTML document',
     );
     // "Not HIT" is the wrong assertion for a negative control: MISS means the
     // edge just stored the negotiated body under the HTML URL, which is the
     // poisoning itself. A declined request reads DYNAMIC (or BYPASS).
     assert.ok(
       ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(flight.resp).toUpperCase()),
-      `RSC flights must stay out of the Cloudflare cache — MISS means one was just stored under the HTML URL (got ${cfCacheStatus(flight.resp) || 'absent'})`,
+      `RSC requests must stay out of the Cloudflare cache — MISS means a negotiated body was just stored under the HTML URL (got ${cfCacheStatus(flight.resp) || 'absent'})`,
     );
 
     for (const url of [`${WWW_BASE}/blog/`, `${WWW_BASE}/docs/documentation`]) {

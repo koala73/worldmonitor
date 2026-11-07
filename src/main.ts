@@ -7,6 +7,7 @@ import { markLcpDebug } from '@/utils/lcp-debug';
 import { registerWebMcpTools, type WebMcpAppBindings } from '@/services/webmcp';
 import { safeStorageRemove } from '@/utils/safe-storage';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
+import { renderBootFailureScreen } from '@/bootstrap/boot-failure';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
 import { registerLcpReporting } from '@/bootstrap/lcp-report';
@@ -696,6 +697,11 @@ if (urlParams.get('settings') === '1') {
       .init(webMcpController)
       .catch((error: unknown) => {
         console.error(error);
+        // A handled init rejection never reaches the global startup error
+        // monitors, so report it explicitly or boot failures stay invisible.
+        enqueueSentryCall((s) => {
+          s.captureException(error, { tags: { kind: 'boot_failure' } });
+        });
         try {
           // init() owns the WebMCP controller before its first await. A failed
           // boot must run normal teardown so the browser cannot retain tools
@@ -705,6 +711,13 @@ if (urlParams.get('settings') === '1') {
           // Cleanup is best-effort on a partially initialised App; never replace
           // the original boot failure with an unhandled teardown rejection.
           console.error('[App] Failed to clean up after initialization failure:', cleanupError);
+        }
+        // After teardown, so the dead skeleton / half-rendered dashboard cannot
+        // paint over it. A render failure must not mask the boot error above.
+        try {
+          renderBootFailureScreen(error);
+        } catch (renderError) {
+          console.error('[App] Failed to render the boot-failure screen:', renderError);
         }
       });
   }).catch((error: unknown) => {

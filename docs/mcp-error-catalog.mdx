@@ -65,7 +65,7 @@ Subsections below give the literal payload, the trigger site, and what to do for
 
 ### `-32000` — Canonical endpoint required
 
-Listed production aliases (`www`, `api`, `tech`, `finance`, `commodity`, `happy`, `energy` under `worldmonitor.app`) are a client-migration surface, not extra servers. Transport POST, SSE, and replay on those hosts are retired: the handler answers HTTP **410** with JSON-RPC `-32000` before auth, quota, session, or dispatch. Constants live in `shared/mcp-host-policy.ts` (`MCP_CANONICAL_ENDPOINT_ERROR_CODE = -32000`); the emission site is `api/mcp/handler.ts` (`mcpAliasRpcError`).
+Retired production aliases (`www`, `tech`, `finance`, `commodity`, `happy`, `energy` under `worldmonitor.app`) are a client-migration surface, not extra servers. The `api` alias still serves the transport paths (`MCP_SERVED_ALIAS_LABELS`), so it never returns this error on `/mcp` or `/api/mcp`. Transport POST, SSE, and replay on those hosts are retired: the handler answers HTTP **410** with JSON-RPC `-32000` before auth, quota, session, or dispatch. Constants live in `shared/mcp-host-policy.ts` (`MCP_CANONICAL_ENDPOINT_ERROR_CODE = -32000`); the emission site is `api/mcp/handler.ts` (`mcpAliasRpcError`).
 
 POST is intentionally **not** a 308. A 308 of POST became GET (#4938), which would strip the JSON-RPC body and break the handshake. Ordinary GET/HEAD discovery on those hosts is a cacheable 308 to `https://worldmonitor.app/mcp` (or the matching well-known path on the canonical origin) and is not this code.
 

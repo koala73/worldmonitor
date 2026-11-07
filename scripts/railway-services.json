@@ -638,8 +638,6 @@
       "scripts/_env-file.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/lib/llm-telemetry.cjs",
-      "scripts/natural/source-request-diagnostics.mjs",
-      "scripts/natural/western-pacific-cyclones.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",
@@ -650,7 +648,6 @@
       "scripts/seed-climate-ocean-ice.mjs",
       "scripts/seed-climate-zone-normals.mjs",
       "scripts/seed-co2-monitoring.mjs",
-      "scripts/seed-natural-events.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-bboxes.json",
       "scripts/shared/country-names.json",
@@ -664,6 +661,31 @@
       "scripts/lib/country-centroid.mjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-6-seed-bundle-climate"
+  },
+  {
+    "entry": "scripts/seed-natural-events.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-natural-events",
+    "startCommand": "node seed-natural-events.mjs",
+    "watchPatterns": [
+      "scripts/seed-natural-events.mjs",
+      "scripts/_env-file.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-payload-codec.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/natural/source-request-diagnostics.mjs",
+      "scripts/natural/western-pacific-cyclones.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/railpack.json",
+      "scripts/shared/compare-and-delete-script.cjs"
+    ],
+    "cronSchedule": "*/30 * * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
     "entry": "scripts/seed-bundle-derived-signals.mjs",

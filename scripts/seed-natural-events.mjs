@@ -1274,7 +1274,7 @@ export function runNaturalEventsSeed() {
     declareRecords,
     zeroIsValid: true,
     schemaVersion: 2,
-    maxStaleMin: 540,
+    maxStaleMin: 120,
     publishTransform: naturalEventsPublishTransform,
     beforePublish: async (data) => {
       await writeExtraKey(SOURCE_SNAPSHOT_KEY, data._sourceSnapshots, CACHE_TTL);

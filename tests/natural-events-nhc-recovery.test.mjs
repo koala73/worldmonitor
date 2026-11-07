@@ -166,7 +166,8 @@ test('retains validated NHC coverage after required point requests fail without 
   assert.deepEqual(calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
   assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 1);
-  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 215 * MIN).toISOString());
+  // The miss at +5 min stays pending for 60 min, past the next */30 run.
+  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 65 * MIN).toISOString());
 });
 
 test('one failed required point layer rejects the whole current NHC slice', async () => {

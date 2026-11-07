@@ -4784,7 +4784,7 @@
         "category": "Přírodní katastrofy",
         "purpose": "Ukazuje zemětřesení, závažné výstrahy před katastrofami a aktivní události pozorování Země pro přehled o situaci.",
         "source": "Zemětřesení USGS, výstrahy GDACS a události NASA EONET, sloučené ve službě přírodních událostí.",
-        "freshness": "Přírodní události se naplňují každé 3 hodiny. U zemětřesení USGS je popsané očekávání rytmus zdroje zhruba každých 5 minut.",
+        "freshness": "Přírodní události se naplňují každých 30 minut. U zemětřesení USGS je popsané očekávání rytmus zdroje zhruba každých 5 minut.",
         "confidence": "Silné u zachycených veřejných signálů katastrof. Jistota se liší podle typu nebezpečí a zpoždění hlášení u zdroje.",
         "limitations": {
           "0": "Výstrahy GDACS s nízkou závažností se odfiltrují, aby mapa zůstala čitelná.",
