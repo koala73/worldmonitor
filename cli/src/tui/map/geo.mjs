@@ -19,7 +19,18 @@ export function clamp(v, lo, hi) {
 }
 
 export const ZOOM_MIN = 1;
-export const ZOOM_MAX = 160;
+export const ZOOM_MAX = 2 ** 21; // street level: about 2 m per braille dot on a 340-dot-wide viewport
+export const MERC_MAX_LAT = 85.0511;
+const MERC_MAX = Math.log(Math.tan(Math.PI / 4 + (MERC_MAX_LAT * DEG) / 2));
+
+export function mercY(lat) {
+  const φ = clamp(lat, -MERC_MAX_LAT, MERC_MAX_LAT) * DEG;
+  return Math.log(Math.tan(Math.PI / 4 + φ / 2));
+}
+
+export function mercLat(y) {
+  return Math.atan(Math.sinh(clamp(y, -MERC_MAX, MERC_MAX))) / DEG;
+}
 export const GLOBE_ZOOM_MIN = 0.6;
 export const GLOBE_ZOOM_MAX = 12;
 
@@ -37,10 +48,10 @@ export function normalizeView(view, w, h) {
     return v;
   }
   v.zoom = clamp(v.zoom, ZOOM_MIN, ZOOM_MAX);
-  const k = (w / 360) * v.zoom; // dots per degree
-  const halfSpan = h / (2 * k);
-  if (halfSpan >= 90) v.lat = 0;
-  else v.lat = clamp(v.lat, -90 + halfSpan, 90 - halfSpan);
+  const worldW = w * v.zoom; // dots for 360° of longitude
+  const half = (h / 2) * ((2 * Math.PI) / worldW); // half the viewport height in Mercator units
+  if (half >= MERC_MAX) v.lat = 0;
+  else v.lat = mercLat(clamp(mercY(v.lat), -MERC_MAX + half, MERC_MAX - half));
   v.lon = wrapLon(v.lon);
   return v;
 }
@@ -73,47 +84,54 @@ export function fmtCoord(lat, lon) {
 
 // --- projections ------------------------------------------------------------
 
-// Equirectangular: zoom 1 fits 360° of longitude across the viewport width.
-function equirect(view, w, h) {
-  const k = (w / 360) * view.zoom;
+// Web Mercator (the projection of every tile source): zoom 1 fits 360° of
+// longitude across the viewport width, like zoom 0 of a slippy map.
+function mercator(view, w, h) {
+  const worldW = w * view.zoom; // dots per 360°
+  const k = worldW / 360; // dots per degree of longitude
+  const ky = worldW / (2 * Math.PI); // dots per Mercator unit
   const cx = w / 2;
   const cy = h / 2;
   const lon0 = view.lon;
   const lat0 = view.lat;
+  const y0 = mercY(lat0);
+  const yOf = (lat) => cy - (mercY(lat) - y0) * ky;
+  const tileZoom = Math.log2(worldW / 256);
   return {
     mode: 'flat',
     w,
     h,
     k,
+    ky,
+    worldW,
     dotsPerDeg: k,
+    tileZoom, // fractional slippy-map zoom where 1 dot = 1 tile pixel
     lonSpan: w / k,
-    latSpan: h / k,
     center: { lon: lon0, lat: lat0 },
-    // dlon relative to the centre, already unwrapped by the caller when continuity matters.
+    metersPerDot: (2 * Math.PI * 6378137 * Math.cos(lat0 * DEG)) / worldW,
     toDotRel(dlon, lat) {
-      return [cx + dlon * k, cy - (lat - lat0) * k];
+      return [cx + dlon * k, yOf(lat)];
     },
     toDot(lon, lat) {
-      const dlon = wrapLon(lon - lon0);
-      return [cx + dlon * k, cy - (lat - lat0) * k, true];
+      return [cx + wrapLon(lon - lon0) * k, yOf(lat), true];
     },
     fromDot(x, y) {
-      const lat = lat0 - (y - cy) / k;
-      if (lat < -90 || lat > 90) return null;
-      return { lon: wrapLon(lon0 + (x - cx) / k), lat };
+      const my = y0 - (y - cy) / ky;
+      if (my < -MERC_MAX - 1e-9 || my > MERC_MAX + 1e-9) return null;
+      return { lon: wrapLon(lon0 + (x - cx) / k), lat: mercLat(my) };
     },
-    // Longitude range of the viewport (may exceed ±180 when it straddles the antimeridian).
+    // Longitude range may exceed ±180 when the viewport straddles the antimeridian.
     bbox() {
       const west = lon0 - w / (2 * k);
       const east = lon0 + w / (2 * k);
-      const south = Math.max(-90, lat0 - h / (2 * k));
-      const north = Math.min(90, lat0 + h / (2 * k));
+      const south = mercLat(y0 - (h / 2) / ky);
+      const north = mercLat(y0 + (h / 2) / ky);
       return [west, south, east, north];
     },
     visible() {
       return true;
     },
-    wrapOffset: 360 * k,
+    wrapOffset: worldW,
   };
 }
 
@@ -174,7 +192,7 @@ function orthographic(view, w, h) {
 }
 
 export function makeProjector(view, w, h) {
-  return view.mode === 'globe' ? orthographic(view, w, h) : equirect(view, w, h);
+  return view.mode === 'globe' ? orthographic(view, w, h) : mercator(view, w, h);
 }
 
 // Zoom keeping the geographic point under (x, y) fixed on screen.
@@ -191,8 +209,8 @@ export function zoomAt(view, w, h, factor, x, y) {
   }
   const [ax, ay] = after.toDot(anchor.lon, anchor.lat);
   const dlon = (ax - x) / after.k;
-  const dlat = -(ay - y) / after.k;
-  return normalizeView({ ...next, lon: next.lon + dlon, lat: next.lat + dlat }, w, h);
+  const lat = mercLat(mercY(next.lat) + (y - ay) / after.ky);
+  return normalizeView({ ...next, lon: next.lon + dlon, lat }, w, h);
 }
 
 // Pan by a number of dots.
@@ -202,7 +220,7 @@ export function panBy(view, w, h, dx, dy) {
     const degPerDot = 90 / p.R;
     return normalizeView({ ...view, lon: view.lon - dx * degPerDot, lat: view.lat + dy * degPerDot }, w, h);
   }
-  return normalizeView({ ...view, lon: view.lon - dx / p.k, lat: view.lat + dy / p.k }, w, h);
+  return normalizeView({ ...view, lon: view.lon - dx / p.k, lat: mercLat(mercY(view.lat) + dy / p.ky) }, w, h);
 }
 
 // --- sun ----------------------------------------------------------------------
@@ -232,4 +250,47 @@ export function daylight(lat, lon, sun) {
 export function dayFactor(lat, lon, sun) {
   const c = daylight(lat, lon, sun);
   return clamp((c + 0.12) / 0.3, 0, 1);
+}
+
+// --- slippy-map tiles -------------------------------------------------------------
+
+export function lonLatToTile(lon, lat, z) {
+  const n = 2 ** z;
+  const x = ((wrapLon(lon) + 180) / 360) * n;
+  const y = ((Math.PI - mercY(lat)) / (2 * Math.PI)) * n;
+  return { x, y };
+}
+
+export function tileToLonLat(x, y, z) {
+  const n = 2 ** z;
+  return { lon: (x / n) * 360 - 180, lat: mercLat(Math.PI - (y / n) * 2 * Math.PI) };
+}
+
+// Integer tile range covering a viewport bbox at zoom z (x may wrap).
+export function tilesForBbox([west, south, east, north], z) {
+  const n = 2 ** z;
+  const a = lonLatToTile(west, north, z);
+  const b = lonLatToTile(east, south, z);
+  let x0 = Math.floor(((west + 180) / 360) * n);
+  let x1 = Math.floor(((east + 180) / 360) * n);
+  if (east - west >= 360) {
+    x0 = 0;
+    x1 = n - 1;
+  }
+  const y0 = clamp(Math.floor(a.y), 0, n - 1);
+  const y1 = clamp(Math.floor(b.y), 0, n - 1);
+  const tiles = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) tiles.push({ z, x: ((x % n) + n) % n, y, xRaw: x });
+  return tiles;
+}
+
+// Human scale bar: pick a round distance that fits in about `maxCells` cells.
+export function scaleBar(metersPerDot, maxCells = 20) {
+  const maxMeters = metersPerDot * 2 * maxCells;
+  const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000];
+  let meters = steps[0];
+  for (const s of steps) if (s <= maxMeters) meters = s;
+  const cells = Math.max(1, Math.round(meters / (metersPerDot * 2)));
+  const label = meters >= 1000 ? `${meters / 1000} km` : `${meters} m`;
+  return { meters, cells, label };
 }

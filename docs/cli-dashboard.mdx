@@ -64,7 +64,7 @@ The Map view draws the world from the dashboard's own 50 m country geometry, so 
 | Key | Action |
 |---|---|
 | Drag, `←` `→` `↑` `↓` (`h` `j` `k` `l`) | Pan (`Shift` pans faster) |
-| Wheel, `+` / `-` | Zoom at the cursor / around the centre |
+| Wheel, `+` / `-` | Zoom at the cursor / around the centre (`Shift` zooms four times faster; double-click zooms in on a spot) |
 | `g` | Switch between the flat map and the globe. The globe rotates slowly while idle; `p` pauses it |
 | `s` | Satellite imagery on / off |
 | `i` | Cycle imagery: NASA Blue Marble, the latest daily VIIRS true-colour mosaic, Black Marble night lights |
@@ -78,7 +78,31 @@ The Map view draws the world from the dashboard's own 50 m country geometry, so 
 
 Layers: undersea cables with landing points, pipelines with live operator status, energy storage, energy disruptions, AI data centers, cloud regions, ports, airports with FAA delays, chokepoints with live transit status, trade routes, fuel shortages, military bases, nuclear sites, gamma irradiators, radiation monitors, spaceports, military aircraft (dead-reckoned along their heading between updates), surveillance satellites propagated from their orbital elements (ground track when focused), intel hotspots with theater posture, conflict zones, UCDP conflict events, earthquakes (recent strong ones pulse), fires and thermal anomaly clusters, storms and natural events, GDACS disaster alerts, severe-weather alert polygons, Canadian emergency alerts and road incidents, climate anomalies, disease outbreaks, protests and unrest, internet outages, BGP anomalies, cyber threat infrastructure, positive events, ship-traffic density, AIS disruptions, economic centers, stock exchanges, financial centers, central banks, commodity hubs, Gulf investments, mines and critical minerals, tech HQs, AI labs, startup hubs, plus the CII and sanctions choropleths, graticule, borders and country names as overlays. The view and the layer choices persist between runs.
 
-Imagery is requested from NASA GIBS without a key, for exactly the visible area, and painted as half-block cells; nothing else leaves your machine. Satellite elements, military aircraft and the vessel snapshot use the same anonymous session as the browser.
+Imagery is requested from NASA GIBS without a key, for exactly the visible area, and painted as half-block cells. Satellite elements, military aircraft and the vessel snapshot use the same anonymous session as the browser.
+
+#### Street level
+
+Zoom past about z4 (the title shows the slippy-map zoom, `z14.2`) and the map draws OpenStreetMap vector tiles from OpenFreeMap, with the level of detail of a road map: motorways and trunk roads first, primary and secondary roads around z8 to z10, residential streets, parks and buildings from z13, service roads, paths and every named shop from z15, house numbers from z17. The world layers stay on top of the street map.
+
+| Street layer | Appears | What it shows |
+|---|---|---|
+| Water & rivers | z5 / z8 | Oceans, lakes, rivers, canals |
+| Parks, forests & land use | z9 | Parks, woods, farmland, residential / commercial / industrial areas, cemeteries |
+| Buildings | z13 | Footprints, taller buildings brighter, outlines from z16 |
+| Roads | z5 | Coloured by class, double-width for motorways and primaries, dashed when under construction |
+| Railways & transit | z8 | Rail, subway, tram, ferry routes |
+| Airports & runways | z10 | Runways, taxiways, aerodromes with IATA / ICAO codes |
+| Administrative boundaries | z4 | Country, region and district borders (disputed ones flagged) |
+| Cities, towns & villages | z4 | Place labels by rank, down to neighbourhoods |
+| Street names | z13 | Along the road, important roads first |
+| Shops, services & amenities | z11 | Hospitals `✚`, pharmacies `℞`, schools `✎`, banks `¤`, restaurants and cafés `♨`, shops `◫`, hotels `⌂`, fuel `⬡`, transit `⊙`, attractions `★`, police `☗`, fire stations `✸`, parks `♣` and more, named when you are close |
+| Places of worship | z11 | Mosques `☪`, churches `✝`, synagogues `✡`, Buddhist `☸`, Hindu `ॐ`, Sikh `☬` and other temples, always shown with their name |
+| House numbers | z17 | Address numbers |
+| Mountain peaks | z9 | Peaks with elevation |
+| Wikipedia nearby | z11 | Articles geotagged around the view centre; expanding one shows its summary |
+| All aircraft (ADS-B) | z6 | Every aircraft adsb.lol sees around the view, moving along its track, military and emergencies highlighted (off by default) |
+
+Everything hovers, highlights and expands like the world layers. Expanding a street feature also fetches its OpenStreetMap tags (opening hours, phone, cuisine, religion, address, wheelchair access, …) and lists numbered links: website, OpenStreetMap, Google Maps, Wikipedia; `o` opens the first, `1`–`9` the others. Clicking an empty spot (or an area or road) at z10 and beyond pins a "what's here" marker with the address, elevation, local time and the current weather. Searching a name that is not on the map asks OpenStreetMap's Nominatim and zooms to the result. With satellite on, zoom levels from about z8.5 use Esri World Imagery tiles instead of NASA GIBS. A small world inset in the corner shows where you are; the footer shows a scale bar. Data: © OpenStreetMap contributors (ODbL) via OpenFreeMap; imagery Esri, Maxar, Earthstar Geographics; weather and elevation Open-Meteo; aircraft adsb.lol (ODbL); articles Wikipedia. All requests are keyless and paced; only the visible area is requested.
 
 ### Brief
 

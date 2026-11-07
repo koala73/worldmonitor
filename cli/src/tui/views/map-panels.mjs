@@ -5,8 +5,24 @@ import { ATTR } from '../term/screen.mjs';
 import { rect } from '../ui/layout.mjs';
 import { button, hit, panel, segments } from '../ui/widgets.mjs';
 import { imageryById } from '../map/imagery.mjs';
-import { defaultView, fmtCoord, zoomAt } from '../map/geo.mjs';
-import { LAYERS, LAYER_GROUPS } from '../map/layers.mjs';
+import { defaultView, fmtCoord, scaleBar, zoomAt } from '../map/geo.mjs';
+import { LAYERS, LAYER_GROUPS, defaultLayerState } from '../map/layers.mjs';
+import { STREET_GROUP, STREET_LAYERS } from '../map/osm.mjs';
+import { ESRI_CREDIT } from '../map/tiles.mjs';
+
+// World layers plus the street-level layers (OpenStreetMap tiles and services).
+export const ALL_LAYERS = [...LAYERS, ...STREET_LAYERS.map((l) => ({ ...l, group: STREET_GROUP.id, kind: 'street' }))];
+export const ALL_GROUPS = [...LAYER_GROUPS, STREET_GROUP];
+export const LAYER_LABEL = new Map(ALL_LAYERS.map((l) => [l.id, l.label]));
+export const STREET_LAYER_IDS = new Set(STREET_LAYERS.map((l) => l.id));
+
+export function defaultAllLayers() {
+  const d = defaultLayerState();
+  for (const l of STREET_LAYERS) d[l.id] = Boolean(l.on);
+  return d;
+}
+
+const layerLabelOf = (f) => f.layerLabel || LAYER_LABEL.get(f.layer) || f.layer || '';
 
 export function drawToolbar(view, ctx, r) {
   const { s, t } = ctx;
@@ -17,16 +33,17 @@ export function drawToolbar(view, ctx, r) {
   };
   b(view.view.mode === 'globe' ? '◍ GLOBE' : '▭ FLAT', { active: true, activeBg: t.accent, onClick: () => view.toggleMode() });
   b(`SAT ${view.sat ? 'ON' : 'OFF'}`, { active: view.sat, activeBg: t.good, onClick: () => view.toggleSat() });
-  b(imageryById(view.imagery).short, { active: false, fg: view.sat ? t.text : t.dim, onClick: () => view.cycleImagery() });
+  b(view.rasterActive() ? 'ESRI IMAGERY' : imageryById(view.imagery).short, { active: false, fg: view.sat ? t.text : t.dim, onClick: () => view.cycleImagery() });
   b(`☾ ${view.layers.dayNight ? 'DAY/NIGHT' : 'NO SHADE'}`, { active: Boolean(view.layers.dayNight), activeBg: t.accent3, onClick: () => view.toggleLayer('dayNight') });
   b('−', { onClick: () => view.setView(zoomAt(view.view, view.canvas.w, view.canvas.h, 1 / 1.5)) });
   b('+', { onClick: () => view.setView(zoomAt(view.view, view.canvas.w, view.canvas.h, 1.5)) });
   b('⌂ RESET', { onClick: () => view.setView({ ...defaultView(), mode: view.view.mode }) });
   b('⌕ SEARCH', { active: Boolean(view.search), onClick: () => view.onKey({ name: '/' }) });
-  const onCount = LAYERS.filter((l) => view.layers[l.id] && l.kind !== 'overlay').length;
+  const onCount = ALL_LAYERS.filter((l) => view.layers[l.id] && l.kind !== 'overlay').length;
   b(`≡ LAYERS ${onCount}`, { active: view.sidebar, activeBg: t.accent2, onClick: () => view.onKey({ name: 'L' }) });
   if (view.pinned) b(`✕ ${truncate(view.pinned.name, 18)}`, { active: true, activeBg: t.warn, onClick: () => { view.pinned = null; view.touch(); } });
   const right = [];
+  if (view.streetStatus) right.push({ text: `${view.streetStatus}  `, fg: t.dim });
   if (view.sat) right.push({ text: view.imageryStatus, fg: t.dim });
   const c = view.view;
   right.push({ text: `  ${fmtCoord(c.lat, c.lon)} `, fg: t.text });
@@ -46,13 +63,24 @@ export function drawFooter(view, ctx, r) {
   if (f) {
     segs.push({ text: `${f.glyph || '▸'} `, fg: f.color || t.text });
     segs.push({ text: `${f.name} `, fg: t.text, attr: ATTR.BOLD });
-    segs.push({ text: `· ${f.layerLabel || f.layer} `, fg: t.dim });
+    segs.push({ text: `· ${layerLabelOf(f)} `, fg: t.dim });
     if (f.from && f.to) segs.push({ text: `· ${f.fromName || fmtCoord(f.from[1], f.from[0])} → ${f.toName || fmtCoord(f.to[1], f.to[0])} `, fg: t.dim });
+  } else if (view.streetActive()) {
+    segs.push({ text: ' hover a road, building, shop or mosque · click an empty spot for its address and weather · Enter for details and links', fg: t.dim });
   } else {
     segs.push({ text: ' hover anything to highlight its layer · click to pin · Enter for details · drag to pan · wheel to zoom', fg: t.dim });
   }
-  if (view.sat) segs.push({ text: `  imagery ${imageryById(view.imagery).credit}`, fg: t.muted });
-  segments(ctx, r.x, r.y, segs, r.w, { bg: t.bg });
+  // Scale bar and attribution on the right.
+  const right = [];
+  if (view.proj && view.proj.mode === 'flat') {
+    const sb = scaleBar(view.proj.metersPerDot, 18);
+    right.push({ text: `├${'─'.repeat(Math.max(1, sb.cells - 1))}┤ ${sb.label}  `, fg: t.dim });
+  }
+  if (view.streetActive()) right.push({ text: '© OpenStreetMap contributors · OpenFreeMap', fg: t.muted });
+  if (view.sat) right.push({ text: `  imagery ${view.rasterActive() ? ESRI_CREDIT : imageryById(view.imagery).credit}`, fg: t.muted });
+  const rw = right.reduce((a, seg) => a + strWidth(seg.text), 0);
+  segments(ctx, r.x, r.y, segs, Math.max(0, r.w - rw - 1), { bg: t.bg });
+  if (rw && rw < r.w) segments(ctx, r.x + r.w - rw, r.y, right, rw, { bg: t.bg });
 }
 
 export function drawSidebar(view, ctx, r) {
@@ -66,24 +94,27 @@ export function drawSidebar(view, ctx, r) {
   x += button(ctx, x, inner.y, 'DEFAULT', { onClick: () => view.resetLayers() }) + 1;
   x += button(ctx, x, inner.y, 'HIDE', { onClick: () => view.onKey({ name: 'L' }) });
   const listR = rect(inner.x, inner.y + 1, inner.w, inner.h - 1);
-  const rows = sidebarRows();
+  const rows = sidebarRows(view.streetActive());
+  const tz = view.tileZoom();
   view.sidebarList.draw(
     ctx,
     listR,
     rows,
     (row, _i, { width }) => {
       if (row.group) {
-        const members = LAYERS.filter((l) => l.group === row.group.id);
+        const members = ALL_LAYERS.filter((l) => l.group === row.group.id);
         const on = members.filter((l) => view.layers[l.id]).length;
         return [
           { text: `${row.group.label.toUpperCase()} `, fg: t.title, attr: ATTR.BOLD },
           { text: `${on}/${members.length}`, fg: t.dim },
+          { text: row.group.id === STREET_GROUP.id ? (view.streetActive() ? '  zoomed in' : '  zoom in') : '', fg: t.muted },
         ];
       }
       const l = row.layer;
       const on = Boolean(view.layers[l.id]);
-      const count = view.counts[l.id];
-      const countText = l.build ? (on ? String(count ?? 0) : '') : '';
+      const street = l.kind === 'street';
+      const count = street ? view.streetCounts[l.id] : view.counts[l.id];
+      const countText = l.build || street ? (on ? (street && tz < (l.minZ || 0) ? `z${l.minZ}+` : String(count ?? 0)) : '') : '';
       const color = t[l.color] || t.text;
       const focusLayer = (view.hovered || view.pinned)?.layer;
       const nameW = Math.max(4, width - 4 - 2 - countText.length - 1);
@@ -111,11 +142,12 @@ export function drawSidebar(view, ctx, r) {
   );
 }
 
-export function sidebarRows() {
+// Street layers come first once the map is zoomed in to street level.
+export function sidebarRows(streetFirst = false) {
   const rows = [];
-  for (const g of LAYER_GROUPS) {
+  for (const g of streetFirst ? [STREET_GROUP, ...LAYER_GROUPS] : ALL_GROUPS) {
     rows.push({ group: g });
-    for (const l of LAYERS) if (l.group === g.id) rows.push({ layer: l });
+    for (const l of ALL_LAYERS) if (l.group === g.id) rows.push({ layer: l });
   }
   return rows;
 }
@@ -123,34 +155,38 @@ export function sidebarRows() {
 export function drawSearch(view, ctx, inner) {
   const { s, t } = ctx;
   const sch = view.search;
-  const w = Math.min(inner.w - 4, 60);
+  const w = Math.min(inner.w - 4, 64);
   const items = sch.results.slice(0, 10);
-  const h = 3 + items.length;
+  const h = 3 + Math.max(1, items.length);
   const box = rect(inner.x + 2, inner.y + 1, w, h);
   view.overlayBoxes.push(box);
   s.fill(box, ' ', { bg: t.sel });
   s.box(box, { fg: t.borderFocus, bg: t.sel }, 'round');
-  s.text(box.x + 2, box.y, ' SEARCH ', { fg: t.title, bg: t.sel, attr: ATTR.BOLD });
+  s.text(box.x + 2, box.y, ' SEARCH places, features, addresses ', { fg: t.title, bg: t.sel, attr: ATTR.BOLD });
   s.text(box.x + 2, box.y + 1, `⌕ ${sch.query}▏`, { fg: t.text, bg: t.sel, attr: ATTR.BOLD }, w - 4);
   items.forEach((it, i) => {
     const y = box.y + 2 + i;
     const active = i === sch.index;
     s.fill(rect(box.x + 1, y, w - 2, 1), ' ', { bg: active ? t.borderFocus : t.sel });
-    s.text(box.x + 2, y, truncate(it.label, w - 20), { fg: active ? t.selText : t.text, bg: active ? t.borderFocus : t.sel });
-    s.text(box.x + w - 2 - Math.min(14, strWidth(it.sub)), y, truncate(it.sub, 14), { fg: active ? t.selText : t.dim, bg: active ? t.borderFocus : t.sel });
+    s.text(box.x + 2, y, truncate(it.display && active ? it.display : it.label, w - 22), { fg: active ? t.selText : t.text, bg: active ? t.borderFocus : t.sel });
+    s.text(box.x + w - 2 - Math.min(18, strWidth(it.sub)), y, truncate(it.sub, 18), { fg: active ? t.selText : t.dim, bg: active ? t.borderFocus : t.sel });
     hit(ctx, rect(box.x, y, w, 1), { onClick: () => { view.search = null; view.jumpTo(it); } });
   });
-  if (!items.length && sch.query) s.text(box.x + 2, box.y + 2, 'no matches', { fg: t.dim, bg: t.sel });
+  if (!items.length && sch.query) {
+    const msg = sch.waiting ? 'searching OpenStreetMap…' : sch.error ? `search failed: ${sch.error}` : sch.query.length >= 2 ? 'no local match · Enter searches OpenStreetMap' : 'keep typing…';
+    s.text(box.x + 2, box.y + 2, msg, { fg: t.dim, bg: t.sel });
+  }
 }
 
 export function drawCard(view, ctx, inner, f, pinned) {
   const { s, t } = ctx;
-  const w = Math.min(46, inner.w - 2);
+  const w = Math.min(48, inner.w - 2);
   if (w < 24 || inner.h < 8) return;
   const rows = [];
   rows.push(['Position', fmtCoord(f.lat, f.lon)]);
   if (f.from && f.to) rows.push(['Route', `${f.fromName || fmtCoord(f.from[1], f.from[0])} → ${f.toName || fmtCoord(f.to[1], f.to[0])}`]);
   for (const r of (f.info || []).slice(0, 7)) rows.push(r);
+  if (f.layer === 'here' && !f.ready) rows.push(['Status', 'looking up the address and weather…']);
   const lines = [];
   for (const [k, v] of rows) {
     const text = `${k}: ${v}`;
@@ -168,7 +204,7 @@ export function drawCard(view, ctx, inner, f, pinned) {
   s.box(box, { fg: pinned ? t.warn : f.color || t.borderFocus, bg: t.sel }, 'round');
   const title = ` ${f.glyph ? `${f.glyph} ` : ''}${truncate(f.name, w - 8)} `;
   s.text(box.x + 1, box.y, title, { fg: f.color || t.title, bg: t.sel, attr: ATTR.BOLD });
-  const sub = `${(f.layerLabel || f.layer || '').toUpperCase()}${pinned ? ' · PINNED' : ''}`;
+  const sub = `${layerLabelOf(f).toUpperCase()}${f.kind && f.kind !== f.name ? ` · ${f.kind.toUpperCase()}` : ''}${pinned ? ' · PINNED' : ''}`;
   s.text(box.x + 2, box.y + 1, truncate(sub, w - 4), { fg: t.dim, bg: t.sel });
   lines.slice(0, h - 4).forEach((l, i) => {
     const y2 = box.y + 2 + i;
@@ -178,7 +214,8 @@ export function drawCard(view, ctx, inner, f, pinned) {
       s.text(box.x + 2 + idx + 1, y2, l.text.slice(idx + 1), { fg: t.text, bg: t.sel }, w - 4 - idx - 1);
     } else s.text(box.x + 2, y2, l.text, { fg: t.text, bg: t.sel }, w - 4);
   });
-  const hint = pinned ? 'Enter details · o link · c unpin' : 'click to pin · Enter details';
+  const links = view.linksFor(f).length;
+  const hint = pinned ? `Enter details${links ? ` & ${links} link${links > 1 ? 's' : ''}` : ''} · o open · c unpin` : 'click to pin · Enter details';
   s.text(box.x + 2, box.y + h - 1, truncate(hint, w - 4), { fg: t.muted, bg: t.sel });
   hit(ctx, box, { onClick: () => view.openDetail(f) });
 }

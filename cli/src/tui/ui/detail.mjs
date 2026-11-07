@@ -15,6 +15,12 @@ const FIRST_KEYS = ['source', 'sourceName', 'primarySource', 'category', 'catego
 // Links come from feeds; only http(s) ones are shown or opened.
 export const isHttpUrl = (v) => typeof v === 'string' && /^https?:/i.test(v);
 
+// Numbered links of a detail spec (spec.links, else spec.url), http(s) only.
+export function detailLinks(spec) {
+  const list = Array.isArray(spec?.links) && spec.links.length ? spec.links : spec?.url ? [{ label: 'Link', url: spec.url }] : [];
+  return list.filter((l) => l && isHttpUrl(l.url)).slice(0, 9);
+}
+
 const isTs = (k, _v) => /(At|Date|Time|Seen|Updated|Started|Ended|Expires|Onset|Published|pubDate)$/i.test(k) || /^(onset|expires|pubDate|date|timestamp|observedAt)$/i.test(k);
 
 function fmtValue(k, v) {
@@ -106,9 +112,10 @@ export function drawDetail(ctx, full, spec, state) {
       lines.push({ text: '' });
     }
   }
-  if (spec.url) {
+  const links = detailLinks(spec);
+  if (links.length) {
     lines.push({ text: '' });
-    lines.push({ text: spec.url, link: true });
+    links.slice(0, 9).forEach((l, i) => lines.push({ text: `${i + 1}  ${l.label}: ${l.url}`, link: true, n: i + 1 }));
   }
   const contentH = lines.length;
   const h = Math.min(full.h - 2, contentH + 5);
@@ -133,7 +140,10 @@ export function drawDetail(ctx, full, spec, state) {
       const idx = line.text.indexOf(':');
       s.text(x + 2, yy, line.text.slice(0, idx + 1), { fg: t.accent, bg: t.sel });
       s.text(x + 2 + idx + 1, yy, line.text.slice(idx + 1), { fg: t.text, bg: t.sel }, innerW - idx - 1);
-    } else if (line.link) s.text(x + 2, yy, truncate(line.text, innerW), { fg: t.info, bg: t.sel, attr: ATTR.UNDERLINE || 0 });
+    } else if (line.link) {
+      s.text(x + 2, yy, truncate(line.text, innerW), { fg: t.info, bg: t.sel, attr: ATTR.UNDERLINE || 0 });
+      if (line.n) hit(ctx, rect(x + 2, yy, innerW, 1), { onClick: () => state.onOpenLink && state.onOpenLink(line.n - 1) });
+    }
     else s.text(x + 2, yy, line.text, { fg: line.body ? t.text : t.dim, bg: t.sel }, innerW);
   }
   if (maxScroll > 0) {
@@ -144,8 +154,8 @@ export function drawDetail(ctx, full, spec, state) {
   const fy = y + h - 2;
   let bx = x + 2;
   const hints = [];
-  if (spec.url) {
-    bx += button(ctx, bx, fy, 'o OPEN LINK', { onClick: () => state.onOpen && state.onOpen() }) + 1;
+  if (links.length) {
+    bx += button(ctx, bx, fy, links.length > 1 ? `o OPEN · 1-${Math.min(9, links.length)} LINKS` : 'o OPEN LINK', { onClick: () => state.onOpen && state.onOpen() }) + 1;
   }
   if (spec.onCenter) bx += button(ctx, bx, fy, 'm SHOW ON MAP', { onClick: () => state.onCenter && state.onCenter() }) + 1;
   bx += button(ctx, bx, fy, 'Esc CLOSE', { onClick: () => state.onClose && state.onClose() }) + 1;
