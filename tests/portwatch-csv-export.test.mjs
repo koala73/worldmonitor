@@ -216,3 +216,10 @@ for (const [label, probe] of [
     assert.equal(result.korea_strait.history.length, 174);
   });
 }
+
+test('fetchAll skips the latest-day probe when the fetch deadline leaves no margin for it', async (t) => {
+  const calls = stubNetwork(t, () => new Response(CSV, { status: 200 }));
+  const result = await fetchAll({ fetchDeadlineAtMs: NOW + 5_000 });
+  assert.equal(calls.filter(u => u.includes('latest_date')).length, 0, 'no probe inside the deadline margin');
+  assert.equal(result.korea_strait.history.length, 174, 'the CSV is returned');
+});

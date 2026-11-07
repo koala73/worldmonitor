@@ -524,7 +524,10 @@ async function fetchFresh(sinceEpoch, window, fetchDeadlineAtMs, prior) {
     // end before history an earlier query-fallback run already published, or
     // stop updating while the query service keeps publishing.
     const csvLatest = Object.values(fresh).map(lastHistoryDate).sort().at(-1) ?? '';
-    const queryLatest = pastDeadline() ? null : await fetchLatestQueryDate(csvLatest);
+    // The probe is optional, so it never runs into the margin the CSV needs to
+    // come back before runSeed's deadline.
+    const probeTimeoutMs = Math.min(BASELINE_REQUEST_TIMEOUT_MS, baselineBudgetMs(fetchDeadlineAtMs));
+    const queryLatest = probeTimeoutMs > 0 ? await fetchLatestQueryDate(csvLatest, probeTimeoutMs) : null;
     const candidates = CHOKEPOINTS.filter(cp => !fresh[cp.id]
       || lastHistoryDate(prior[cp.id]) > lastHistoryDate(fresh[cp.id])
       || (queryLatest && queryLatest > lastHistoryDate(fresh[cp.id])));
