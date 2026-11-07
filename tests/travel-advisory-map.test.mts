@@ -15,6 +15,7 @@ import {
   fetchAll,
 } from '../scripts/seed-security-advisories.mjs';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
+import { normalizeAdvisoryRegisterLevels } from '../shared/intelligence-snapshots.js';
 
 const NOW = Date.parse('2026-11-07T10:00:00Z');
 const HOUR = 3_600_000;
@@ -202,6 +203,15 @@ describe('travel advisory map page', () => {
     assert.ok(!countryLiveLinks('US').some((link) => link.href.startsWith('/tools/travel-advisory-map/')), 'the US register does not rate the US');
     assert.ok(countryLiveLinks('US').length <= 5);
     assert.ok(crisisLiveLinks({ touchesOilChokepoint: true }).some((link) => link.href === '/tools/travel-advisory-map/'));
+  });
+
+  it('documents a register row the normalizer accepts, naming its issuing government', () => {
+    const spec = JSON.parse(readFileSync(new URL('../docs/api/IntelligenceService.openapi.json', import.meta.url), 'utf8'));
+    const example = spec.paths['/api/intelligence/v1/list-security-advisories'].get.responses['200'].content['application/json'].example;
+    assert.ok(example.registerLevels.length > 0);
+    assert.deepEqual(normalizeAdvisoryRegisterLevels(example), example.registerLevels, 'every documented row is valid');
+    assert.ok(example.registerLevels.every((row: { sourceCountry: string }) => row.sourceCountry === 'US' || row.sourceCountry === 'AU'));
+    assert.equal(typeof example.fetchedAt, 'number');
   });
 
   it('opens only the bare public shape of the advisories read', () => {
