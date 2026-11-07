@@ -11,24 +11,63 @@ World Monitor 以连接器的形式接入你的 AI 助手。粘贴一个地址�
 无需复制 API 密钥，也无需安装任何东西。使用你在 worldmonitor.app 上的同一邮箱登录即可。
 </Info>
 
+## 一键连接
+
+每个按钮都会打开对应应用，并预先填好 World Monitor。确认后，用你的 World Monitor 账户登录即可。
+
+<CardGroup cols={3}>
+  <Card title="添加到 Claude" icon="plug" href="https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=World%20Monitor&connectorUrl=https%3A%2F%2Fworldmonitor.app%2Fmcp">
+    适用于桌面、网页与移动端。点击 **Continue**，再点击 **Add**。
+  </Card>
+  <Card title="添加到 Cursor" icon="plug" href="https://cursor.com/install-mcp?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0%3D">
+    安装服务器后，点击 **Needs login** 登录。
+  </Card>
+  <Card title="添加到 VS Code" icon="plug" href="https://vscode.dev/redirect/mcp/install?name=worldmonitor&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fworldmonitor.app%2Fmcp%22%7D">
+    为 GitHub Copilot 安装，按提示登录。
+  </Card>
+</CardGroup>
+
+终端类助手只需一条命令：
+
+<CodeGroup>
+```bash Claude Code
+claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+```bash Codex
+codex mcp add worldmonitor --url https://worldmonitor.app/mcp && codex mcp login worldmonitor
+```
+
+```bash Gemini CLI
+gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.app/mcp
+```
+</CodeGroup>
+
+ChatGPT、Grok、Perplexity 等应用可将地址 `https://worldmonitor.app/mcp` 添加为自定义连接器，各应用步骤见下文。
+
+<Tip>
+已登录[仪表盘](https://www.worldmonitor.app/dashboard)？**Settings → AI Agents** 中有同样的按钮和命令，并列出你已连接的助手。
+</Tip>
+
 ## Claude
 
 适用于 Claude 桌面应用、claude.ai 与移动应用。连接器只需添加一次，你账户下的所有 Claude 应用都能使用。
 
 <Steps>
-  <Step title="打开 Add custom connector">
-    在 Claude 中打开 **Customize → Connectors**，点击 **+ Add**，再选择 **Add custom connector**。
-
-    <Frame>
-      <img src="/images/mcp/claude-add-menu.webp" alt="Claude 的 Customize 页面 Connectors 标签，+ Add 菜单中显示 Add custom connector" />
-    </Frame>
-  </Step>
-  <Step title="粘贴地址">
-    名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，点击 **Continue**。Claude 会在下一屏自动检测正确的登录设置，直接点击 **Add** 即可。
+  <Step title="打开已填好 World Monitor 的 Claude">
+    点击 **[把 World Monitor 添加到 Claude](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=World%20Monitor&connectorUrl=https%3A%2F%2Fworldmonitor.app%2Fmcp)**。Claude 会打开 **Add custom connector** 对话框，名称和地址已经填好。Claude 会提示该链接来自外部；确认地址为 `https://worldmonitor.app/mcp` 后，点击 **Continue**，再点击 **Add**。
 
     <Frame>
       <img width="520" src="/images/mcp/claude-add-dialog.webp" alt="Add custom connector 对话框，已填写名称 World Monitor 和 URL https://worldmonitor.app/mcp" />
     </Frame>
+
+    <Accordion title="改为手动添加">
+      在 Claude 中打开 **Customize → Connectors**，点击 **+ Add**，再选择 **Add custom connector**。名称填 `World Monitor`，粘贴 `https://worldmonitor.app/mcp`，点击 **Continue**，再点击 **Add**。
+
+      <Frame>
+        <img src="/images/mcp/claude-add-menu.webp" alt="Claude 的 Customize 页面 Connectors 标签，+ Add 菜单中显示 Add custom connector" />
+      </Frame>
+    </Accordion>
   </Step>
   <Step title="登录 World Monitor">
     会弹出 World Monitor 窗口。点击 **Sign in with WorldMonitor Pro**，用邮箱验证码或通行密钥登录，然后点击 **Authorize**。
@@ -99,7 +138,7 @@ claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
 
 ## Cursor
 
-一键[把 World Monitor 添加到 Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0=)，或在 `~/.cursor/mcp.json` 中写入：
+一键[把 World Monitor 添加到 Cursor](https://cursor.com/install-mcp?name=worldmonitor&config=eyJ1cmwiOiJodHRwczovL3dvcmxkbW9uaXRvci5hcHAvbWNwIn0%3D)，或在 `~/.cursor/mcp.json` 中写入：
 
 ```json
 {
@@ -111,9 +150,21 @@ claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp
 
 Cursor 会在 **Settings → MCP** 中的服务器旁显示 **Needs login**，点击即可登录。
 
+## VS Code
+
+一键[把 World Monitor 添加到 VS Code](https://vscode.dev/redirect/mcp/install?name=worldmonitor&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fworldmonitor.app%2Fmcp%22%7D)。VS Code 会打开并为 GitHub Copilot 安装该服务器，然后请你登录。
+
+## Gemini CLI
+
+```bash
+gemini mcp add --scope user --transport http worldmonitor https://worldmonitor.app/mcp
+```
+
+然后启动 `gemini`，在询问时信任当前文件夹，再运行 `/mcp auth worldmonitor` 登录。
+
 ## 其他应用
 
-Perplexity、Mistral Le Chat、Grok、Microsoft 365 Copilot、VS Code、Gemini CLI 以及大多数支持 MCP 的助手，都可以把同一地址添加为自定义连接器或远程服务器。各应用的说明见[客户端配置](/zh/mcp-overview#客户端配置)。
+Perplexity、Mistral Le Chat、Grok、Microsoft 365 Copilot 以及大多数支持 MCP 的助手，都可以把同一地址添加为自定义连接器或远程服务器。各应用的说明见[客户端配置](/zh/mcp-overview#客户端配置)。
 
 ## 可以试试这些问题
 

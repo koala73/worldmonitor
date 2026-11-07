@@ -18322,13 +18322,24 @@ paths:
                         application/json:
                             example:
                                 "advisories":
-                                    - "country": "US"
-                                      "level": "example"
-                                      "link": "https://example.com/worldmonitor"
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
                                       "pubDate": "2026-01-15"
-                                      "source": "example"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                                 "byCountry":
-                                    "exampleKey": "example"
+                                    "MX": "caution"
+                                "fetchedAt": 1768478400000
+                                "registerLevels":
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
+                                      "pubDate": "2026-01-15"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse'
                 "400":
@@ -51365,6 +51376,14 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_SecurityAdvisoryItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse_ByCountryEntry:
             type: object
             properties:

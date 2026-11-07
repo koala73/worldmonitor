@@ -934,6 +934,9 @@
           "path": "api/_github-release.js"
         },
         {
+          "path": "scripts/check-review-pr-token.mjs"
+        },
+        {
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
@@ -2518,6 +2521,9 @@
       "references": [
         {
           "path": "api/oauth/_client-metadata.js"
+        },
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -2883,6 +2889,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "cursor.com",
+      "provider": "cursor.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -10407,6 +10427,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/live-pages/travel-advisories.mjs"
+        },
+        {
           "path": "scripts/seed-security-advisories.mjs"
         }
       ]
@@ -10837,6 +10860,20 @@
       ]
     },
     {
+      "host": "vscode.dev",
+      "provider": "vscode.dev",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
+        }
+      ]
+    },
+    {
       "host": "vsquare.org",
       "provider": "vsquare.org",
       "kind": "feed",
@@ -11222,7 +11259,7 @@
           "path": "src/bootstrap/web-vitals-utils.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
+          "path": "src/config/mcp-agent-clients.ts"
         },
         {
           "path": "src/config/web-origin.ts"
@@ -14541,6 +14578,9 @@
       "attribution": "Credit www.smartraveller.gov.au and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "scripts/live-pages/travel-advisories.mjs"
+        },
         {
           "path": "scripts/seed-security-advisories.mjs"
         }

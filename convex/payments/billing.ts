@@ -3885,13 +3885,17 @@ export type ProBusinessUpgradeResult =
       /** Amount charged now, lowest currency unit, tax included when Dodo reports it. */
       chargeAmount: number;
       currency: string;
-      /** Recurring price of the new plan before tax, lowest currency unit. */
+      /** Recurring price of the new plan before tax, lowest unit of renewalCurrency. */
       renewalAmount: number | null;
+      /** Dodo bills the charge in the customer's currency but the plan in its own. */
+      renewalCurrency: string | null;
+      /** First renewal on the new plan, ISO 8601. The change restarts the billing period. */
+      renewalDate: string | null;
       billingPeriod: "monthly" | "annual";
     }
   | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
 
-/** Charged now, the remainder of the current period prorated. A failed charge keeps the Pro plan. */
+/** Charged now; the change restarts the billing period on the upgrade day. A failed charge keeps the Pro plan. */
 const PRO_BUSINESS_CHANGE_PARAMS = {
   quantity: 1,
   proration_billing_mode: "prorated_immediately",
@@ -4010,6 +4014,10 @@ export async function runProBusinessUpgrade(
         currency: String(summary.currency),
         renewalAmount: typeof preview.new_plan?.recurring_pre_tax_amount === "number"
           ? preview.new_plan.recurring_pre_tax_amount
+          : null,
+        renewalCurrency: preview.new_plan?.currency ? String(preview.new_plan.currency) : null,
+        renewalDate: typeof preview.new_plan?.next_billing_date === "string"
+          ? preview.new_plan.next_billing_date
           : null,
         billingPeriod: PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly",
       };

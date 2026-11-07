@@ -560,6 +560,8 @@ function pngRowKind(label, monthName) {
   if (/direct subsidy/.test(l)) return { metric: 'fuel.subsidy', component: 'Direct subsidy' };
   if (/combined subsidy|subsidi[sz]ed amount|to be subsidi[sz]ed/.test(l)) return { metric: 'fuel.subsidy', component: 'Total' };
   if (/retail price|\birp\b|subsidi[sz]ed price/.test(l)) return { metric: 'fuel.retail_price' };
+  // After the direct subsidy ended (November 2026) the row reads "November Price (GST Exempted only)".
+  if (l.startsWith(`${monthName.toLowerCase()} price`)) return { metric: 'fuel.retail_price' };
   return null;
 }
 

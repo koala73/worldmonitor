@@ -69,7 +69,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | api.fiscaldata.treasury.gov (api.fiscaldata.treasury.gov) | structured — scripts/seed-national-debt.mjs, scripts/seed-supply-chain-trade.mjs |
 | api.gdeltproject.org (api.gdeltproject.org) | structured — scripts/seed-gdelt-intel.mjs, scripts/seed-unrest-events.mjs |
 | api.gdeltproject.org (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs |
-| api.github.com (api.github.com) | structured — api/_github-release.js, scripts/dispatch-stale-railway-reconcile.mjs, scripts/freeze-github-stars.mjs, scripts/resolve-railway-reconcile-control.mjs, +2 more |
+| api.github.com (api.github.com) | structured — api/_github-release.js, scripts/check-review-pr-token.mjs, scripts/dispatch-stale-railway-reconcile.mjs, scripts/freeze-github-stars.mjs, +3 more |
 | api.groq.com (api.groq.com) | Excluded / candidate — No current fetch observed |
 | api.iea.org (api.iea.org) | structured — scripts/seed-iea-oil-stocks.mjs |
 | api.imf.org (api.imf.org) | structured — scripts/_seed-utils.mjs, scripts/backtest-capital-flow-episodes.mjs, scripts/seed-capital-flows.mjs, scripts/seed-gold-cb-reserves.mjs, +1 more |
@@ -167,7 +167,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | City of Toronto Open Data (open.toronto.ca) | structured — scripts/lib/tps-open-data.mjs |
 | City of Toronto Open Data (secure.toronto.ca) | structured — scripts/lib/toronto-road-restrictions.mjs |
 | civil.ge (civil.ge) | feed — shared/news-catalog.json |
-| Claude link (claude.ai) | structured — api/oauth/_client-metadata.js |
+| Claude link (claude.ai) | structured — api/oauth/_client-metadata.js, src/config/mcp-agent-clients.ts |
 | Clerk identity service (api.clerk.com) | structured — api/_desktop-auth.ts, api/user/passkey-offer.ts, server/auth-session.ts |
 | climate.copernicus.eu (climate.copernicus.eu) | structured — scripts/seed-climate-news.mjs |
 | Cloudflare Browser MCP (browser.mcp.cloudflare.com) | structured — src/services/mcp-store.ts |
@@ -196,6 +196,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | cryptoslate.com (cryptoslate.com) | feed — shared/news-catalog.json |
 | csis.org (csis.org) | feed — shared/news-catalog.json |
 | ctvnews.ca (ctvnews.ca) | feed — shared/news-catalog.json |
+| cursor.com (cursor.com) | structured — src/config/mcp-agent-clients.ts |
 | customer.dodopayments.com (customer.dodopayments.com) | structured — src/services/billing.ts |
 | CWFIS / CWFIF (NRCan) (geoserver.cwfif.nrcan.gc.ca) | structured — scripts/wildfire/cwfis-wfs.mjs |
 | dados.ons.org.br (dados.ons.org.br) | structured — scripts/shared/regional-energy-feeds.json |
@@ -740,7 +741,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | Toronto Police Service Open Data (www.tps.ca) | structured — scripts/lib/tps-open-data.mjs |
 | Toronto Transit Commission (TTC) GTFS-RT (gtfsrt.ttc.ca) | structured — scripts/seed-ttc-alerts.mjs |
 | TradingView (scanner.tradingview.com) | structured — scripts/_sp500-breadth.mjs |
-| travel.state.gov (travel.state.gov) | structured — scripts/seed-security-advisories.mjs |
+| travel.state.gov (travel.state.gov) | structured — scripts/live-pages/travel-advisories.mjs, scripts/seed-security-advisories.mjs |
 | Travelpayouts flight-price data (api.travelpayouts.com) | structured — server/worldmonitor/aviation/v1/_providers/travelpayouts_data.ts |
 | treasury.gov (treasury.gov) | feed — shared/news-catalog.json |
 | trumpstruth.org (trumpstruth.org) | feed — shared/news-catalog.json |
@@ -777,6 +778,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | Vision of Humanity / Global Peace Index (www.visionofhumanity.org) | structured — scripts/seed-resilience-static.mjs |
 | vnexpress.net (vnexpress.net) | feed — shared/news-catalog.json |
 | vs-hls-push-uk.live.fastly.md.bbci.co.uk (vs-hls-push-uk.live.fastly.md.bbci.co.uk) | feed — src/config/live-video-sources.ts |
+| vscode.dev (vscode.dev) | structured — src/config/mcp-agent-clients.ts |
 | vsquare.org (vsquare.org) | feed — shared/news-catalog.json |
 | W3C schema reference (www.w3.org) | structured — src/embed/panels/fear-greed.ts |
 | wa.me (wa.me) | structured — server/worldmonitor/leads/v1/register-interest.ts, src/services/story-share.ts |
@@ -1008,7 +1010,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | www.seznamzpravy.cz (www.seznamzpravy.cz) | feed — shared/news-catalog.json |
 | www.shareable.net (www.shareable.net) | feed — shared/news-catalog.json |
 | www.silverseek.com (www.silverseek.com) | feed — shared/news-catalog.json |
-| www.smartraveller.gov.au (www.smartraveller.gov.au) | structured — scripts/seed-security-advisories.mjs |
+| www.smartraveller.gov.au (www.smartraveller.gov.au) | structured — scripts/live-pages/travel-advisories.mjs, scripts/seed-security-advisories.mjs |
 | www.sonabhy.bf (king-prawn-app-6bsvl.ondigitalocean.app) | structured — scripts/lib/regional-fuel-feeds.mjs |
 | www.sonabhy.bf (www.sonabhy.bf) | structured — scripts/shared/regional-energy-feeds.json |
 | www.spdrgoldshares.com (www.spdrgoldshares.com) | structured — scripts/seed-gold-etf-flows.mjs |

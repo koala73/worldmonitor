@@ -115,7 +115,7 @@ export function activeWarsReading(events, capturedAtMs, { inPalestine = () => fa
   }
   if (byCountry.size === 0) throw new Error(`UCDP latest month ${month} has no state-based events`);
 
-  const rows = [...byCountry.values()].sort((a, b) => b.deaths - a.deaths || a.name.localeCompare(b.name));
+  const rows = [...byCountry.values()].sort((a, b) => b.deaths - a.deaths || a.name.localeCompare(b.name, 'en-US'));
   const conflicts = rows
     .filter((row) => row.deaths >= ACTIVE_WAR_DEATH_THRESHOLD)
     .map((row) => {

@@ -83,7 +83,7 @@ function npmPackages() {
     });
   }
 
-  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
 }
 
 /** Rust crates compiled into the desktop binary. */
@@ -109,7 +109,7 @@ function cargoCrates() {
       // manifest_path is .../<crate>-<version>/Cargo.toml in the registry checkout
       text: readLicenseText(dirname(pkg.manifest_path ?? '')),
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.name.localeCompare(b.name, 'en-US'));
 }
 
 function renderSection(title, entries, emptyNote) {

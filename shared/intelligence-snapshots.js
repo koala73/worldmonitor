@@ -66,6 +66,26 @@ export function normalizeAdvisorySnapshot(value) {
   return advisories ? { advisories, byCountry } : null;
 }
 
+const REGISTER_LEVELS = new Set(['normal', 'caution', 'reconsider', 'do-not-travel']);
+
+/** A register row has the advisory item shape; its `pubDate` is '' when the feed gave no date. */
+export function isAdvisoryRegisterLevel(item) {
+  return record(item)
+    && typeof item.country === 'string' && /^[A-Z]{2}$/.test(item.country)
+    && text(item.title) && text(item.source) && text(item.sourceCountry) && REGISTER_LEVELS.has(item.level)
+    && typeof item.pubDate === 'string' && (item.pubDate === '' || Number.isFinite(Date.parse(item.pubDate)))
+    && text(item.link) && /^https:\/\//.test(item.link);
+}
+
+/**
+ * The per-government register levels of an advisory snapshot. Absent (a seed
+ * written before the field existed) is an empty list; invalid rows are dropped.
+ */
+export function normalizeAdvisoryRegisterLevels(value) {
+  if (!record(value) || !Array.isArray(value.registerLevels)) return [];
+  return value.registerLevels.filter(isAdvisoryRegisterLevel);
+}
+
 export function isGdeltArticle(value) {
   return record(value) && text(value.title) && text(value.url)
     && ['source', 'date', 'image', 'language'].every(field => typeof value[field] === 'string')

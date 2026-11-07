@@ -949,6 +949,21 @@ function getInternalDisplacementExample() {
   };
 }
 
+// One US register row, valid for both the news list and registerLevels: the
+// generic filler put level "example" and no issuer in either.
+function getListSecurityAdvisoriesExample() {
+  const row = {
+    title: 'Mexico - Level 2',
+    link: 'https://travel.state.gov/',
+    pubDate: '2026-01-15',
+    source: 'US State Dept',
+    sourceCountry: 'US',
+    level: 'caution',
+    country: 'MX',
+  };
+  return { advisories: [row], byCountry: { MX: 'caution' }, registerLevels: [row], fetchedAt: 1768478400000 };
+}
+
 function getShippingRatesExample() {
   return {
     indices: [
@@ -1255,6 +1270,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getShippingRatesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listsecurityadvisories'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListSecurityAdvisoriesExample();
   }
   if (
     depth === 0

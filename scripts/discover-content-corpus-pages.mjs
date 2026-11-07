@@ -208,7 +208,7 @@ export function discoverContentCorpusPages({ publicDir = join(REPO_ROOT, 'public
     }
   }
 
-  pages.sort((a, b) => a.loc.localeCompare(b.loc));
+  pages.sort((a, b) => a.loc.localeCompare(b.loc, 'en-US'));
   validateChangelogPagination([
     ...pages.filter((page) => changelogPageNumber(page) != null),
     ...changelogPagesForValidation,

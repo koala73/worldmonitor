@@ -15,7 +15,8 @@ inline using the format observed in the full renewable CSV. ANP price rows are
 constructed inline with the actual national workbook headers and units.
 
 Batch 2 fixtures (`evn-*`, `korem.json`, `coes.json`, `iccc-*`,
-`fccc-*`) were captured on 2026-10-31 with the WorldMonitor User-Agent. The ICCC
+`fccc-*`) were captured on 2026-10-31 with the WorldMonitor User-Agent, except
+`iccc-post-2026-11.json`, captured on 2026-11-07. The ICCC
 responses are unmodified. The EVN pages are trimmed to the bulletin list and
 bulletin body; each starts with a comment naming its source URL and capture
 time. `coes.json` wraps the unmodified response with its capture time and POST

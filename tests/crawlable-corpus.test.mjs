@@ -114,6 +114,7 @@ import { USE_CASES_CONTENT_VERSION } from '../scripts/build-use-cases.mjs';
 import { COVERAGE_CONTENT_VERSION } from '../scripts/build-coverage-catalog.mjs';
 import { LIVE_TOPIC_PAGES_CONTENT_VERSION } from '../scripts/build-live-topic-pages.mjs';
 import { LIVE_TOPIC_PAGES } from '../scripts/live-pages/index.mjs';
+import { LIVE_PAGE_LINKS_PATH } from '../scripts/live-pages/related-links.mjs';
 import { RELATED_READING_PATH } from '../scripts/related-reading.mjs';
 import { MAX_RELATED_COUNTRIES } from '../scripts/country-related-links.mjs';
 import { ACCURACY_CONTENT_VERSION } from '../scripts/build-accuracy-page.mjs';
@@ -5706,6 +5707,7 @@ describe('crawlable corpus generator', () => {
         gitFileLastmod(repoRoot, data.sources.countryRegions),
         gitFileLastmod(repoRoot, data.sources.microstateTerritories),
         gitFileLastmod(repoRoot, RELATED_READING_PATH),
+        gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
         ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
         COUNTRY_PAGE_CONTENT_VERSION,
       ),
@@ -6155,6 +6157,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
         ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
         ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
         gitFileLastmod(repoRoot, RELATED_READING_PATH),
+        gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
         COUNTRY_PAGE_CONTENT_VERSION,
         CII_COUNTRY_PAGE_CONTENT_VERSION,
         COUNTRIES_INDEX_CONTENT_VERSION,
@@ -6202,6 +6205,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
           gitFileLastmod(repoRoot, data.sources.countryRegions),
           gitFileLastmod(repoRoot, data.sources.microstateTerritories),
           gitFileLastmod(repoRoot, RELATED_READING_PATH),
+          gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
           ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
           COUNTRY_PAGE_CONTENT_VERSION,
         );
@@ -6235,6 +6239,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
               gitFileLastmod(repoRoot, data.sources.crisisRegistry),
               gitFileLastmod(repoRoot, data.sources.crisisEditorial),
               gitFileLastmod(repoRoot, RELATED_READING_PATH),
+              gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
               pulseDate,
               data.resilience.capturedAt,
               ...data.crises.map((crisis) => crisis.editorial.lastReviewed),

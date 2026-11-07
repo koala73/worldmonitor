@@ -13,7 +13,8 @@ name: Weekly Search Console Snapshot
 # was skipped and the collect job never starts. A missing secret is a pending
 # prerequisite, not a failure, so this workflow stays green in the meantime.
 #
-# It never merges. It opens the PR and reports it as ready; a human merges.
+# It opens the PR with REVIEW_PR_TOKEN and arms auto-merge, so the PR merges
+# itself once the required checks pass.
 
 on:
   schedule:
@@ -70,12 +71,11 @@ jobs:
       - name: Reconcile the weekly review branch
         id: reconcile
         env:
-          # Prefer a user or app token when one is configured. A PR opened with
-          # github.token needs the repository setting that lets Actions create
-          # pull requests, and it triggers no CI, which the required checks on
-          # main then block. With REVIEW_PR_TOKEN unset this falls back to
-          # github.token.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # A PR opened with the Actions token gets no CI, so the required
+          # checks never report and the PR waits for a human. REVIEW_PR_TOKEN
+          # opens it with CI and arms auto-merge; review-pr-token-check.yml
+          # alarms before it expires.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
         run: |
           # ISO year-week keys the branch, so a rerun in the same week updates
           # that week rather than opening a second PR.
@@ -84,11 +84,18 @@ jobs:
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           # Only an open or merged PR means this week is done. A closed one was
           # rejected, so the week is collected again.
-          existing_pr=$(gh pr list --state all --head "$branch" --json number,state \
-            --jq '[.[] | select(.state != "CLOSED")][0].number // empty')
+          # A fork PR can carry the same head branch name, so only a PR from this
+          # repository counts.
+          existing_pr=$(gh pr list --state all --head "$branch" --json number,state,isCrossRepository \
+            --jq '[.[] | select(.state != "CLOSED" and (.isCrossRepository | not))][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
+            # Re-arm auto-merge in case the run that opened the PR failed to.
+            # A merged, closed or draft PR is left alone.
+            if [ "$(gh pr view "$existing_pr" --json state,isDraft,isCrossRepository --jq '.state == "OPEN" and (.isDraft | not) and (.isCrossRepository | not)')" = "true" ]; then
+              gh pr merge --auto --squash "$existing_pr"
+            fi
             exit 0
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -160,8 +167,8 @@ jobs:
       - name: Open the weekly snapshot PR
         if: steps.collect.outcome == 'success'
         env:
-          # Same preference as the reconcile step, for the same reasons.
-          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN || github.token }}
+          # Same token as the reconcile step, for the same reasons.
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
           BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BING_OUTCOME: ${{ steps.bing.outcome }}
@@ -207,7 +214,7 @@ jobs:
           else
             baseline_note="Also regenerates the AI-visibility baseline and scorecard (baselines/${snapshot_date}.json, scorecards/${snapshot_date}.md) from these snapshots, compared with the previous baseline. A source without a snapshot is unavailable with a reason, never zero, and the AI-answer surfaces are unavailable because the manual panel was dropped (#10024)."
           fi
-          gh pr create \
+          pr_url=$(gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
@@ -217,10 +224,12 @@ jobs:
               "$bing_note" \
               "$umami_note" \
               "$baseline_note" \
-              "Collected in ${RUN_URL}. Review and merge by hand; this workflow never merges.")"
+              "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")")
+          echo "$pr_url"
+          gh pr merge --auto --squash "$pr_url"
 
-  # A PR opened with github.token fires no workflow_run event for its CI, so
-  # Deploy Gate would reach it only on its 30-minute sweep.
+  # Dispatches Deploy Gate for the new PR directly rather than waiting on the
+  # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:
     needs: collect
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')

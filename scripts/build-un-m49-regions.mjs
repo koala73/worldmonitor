@@ -81,7 +81,7 @@ export function buildRegions(rows) {
     }
   }
   for (const entry of Object.values(regions)) entry.countries.sort();
-  return Object.fromEntries(Object.entries(regions).sort(([a], [b]) => a.localeCompare(b)));
+  return Object.fromEntries(Object.entries(regions).sort(([a], [b]) => a.localeCompare(b, 'en-US')));
 }
 
 async function main() {

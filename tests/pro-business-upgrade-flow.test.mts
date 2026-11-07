@@ -16,6 +16,8 @@ const PREVIEW = {
   chargeAmount: 667,
   currency: 'USD',
   renewalAmount: 4999,
+  renewalCurrency: 'USD',
+  renewalDate: '2026-12-07T11:03:06Z',
   billingPeriod: 'monthly' as const,
 };
 

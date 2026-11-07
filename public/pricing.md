@@ -57,7 +57,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - License: Commercial license included — use WorldMonitor for client work, internal tools and reporting
 - Limits: 25 custom dashboards, 2,500 dashboard-AI requests/day, MCP + SDK 250 calls/day
 - Support: Priority support
-- Upgrading from Pro: an active Pro subscription that is not set to cancel upgrades in place. Choose Pro Business while signed in at https://www.worldmonitor.app/pro or in the dashboard. The existing subscription moves to Pro Business with a prorated charge for the rest of the billing period; if that payment fails, it stays on Pro. A Pro subscription set to cancel must be resumed in the billing portal first; if the in-place preview is unavailable, checkout shows the cancel-then-subscribe steps instead.
+- Upgrading from Pro: an active Pro subscription that is not set to cancel upgrades in place. Choose Pro Business while signed in at https://www.worldmonitor.app/pro or in the dashboard. The existing subscription moves to Pro Business: you see today's charge before you confirm, and the billing period restarts on the upgrade day. If that payment fails, it stays on Pro. A Pro subscription set to cancel must be resumed in the billing portal first; if the in-place preview is unavailable, checkout shows the cancel-then-subscribe steps instead.
 
 ## API Starter
 

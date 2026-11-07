@@ -313,7 +313,15 @@ export default async function handler(req: Request): Promise<Response> {
   } catch {
     // The push may have committed. Keep its processing marker instead of
     // releasing it via a cached retryable response and replaying immediately.
-    return jsonResponse({ error: 'Publish outcome unknown' }, 503, { ...cors, 'Retry-After': '180' });
+    // Retry-After matches the marker's 180 s TTL in api/_idempotency.js.
+    return jsonResponse(
+      {
+        error: 'publish_outcome_unknown',
+        message: 'The event may already have been published. Retry only if a duplicate event is acceptable.',
+      },
+      503,
+      { ...cors, 'Retry-After': '180' },
+    );
   }
 
   if (!res.ok) {
