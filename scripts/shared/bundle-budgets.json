@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 470212
+    "raw": 470918
   },
   "chunks": {
     "analytics": {
-      "raw": 48028,
+      "raw": 48409,
       "files": 1
     },
     "auth-state": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 22810,
+      "raw": 22852,
       "files": 1
     },
     "convex-client": {
@@ -27,7 +27,7 @@
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 4089,
+      "raw": 4250,
       "files": 1
     },
     "dom-utils": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142876,
+      "raw": 142991,
       "files": 1
     },
     "map-layer-definitions": {
@@ -75,7 +75,7 @@
       "files": 1
     },
     "safe-storage": {
-      "raw": 1212,
+      "raw": 1219,
       "files": 1
     },
     "sensitive-url-params": {
@@ -109,11 +109,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1513976
+      "raw": 1520263
     },
     "chunks": {
       "App": {
-        "raw": 957320,
+        "raw": 960210,
         "files": 1
       },
       "ai-flow-settings": {
@@ -137,7 +137,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 14947,
+        "raw": 15575,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -237,11 +237,11 @@
         "files": 1
       },
       "user-location": {
-        "raw": 4734,
+        "raw": 7455,
         "files": 1
       },
       "widget-store": {
-        "raw": 27968,
+        "raw": 28016,
         "files": 1
       }
     }
