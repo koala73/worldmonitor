@@ -811,11 +811,15 @@ export class DataLoaderManager implements AppModule {
       this.digestBreaker.state = 'half-open';
     }
 
+    // Kept so the catch can tell our deadline from other aborts: WebKit rejects
+    // a timed-out fetch with AbortError, not TimeoutError (Sentry WORLDMONITOR-1D5).
+    let deadline: AbortSignal | null = null;
     try {
       markLcpDebug('wm:data:feed-digest-start');
+      deadline = AbortSignal.timeout(this.digestRequestTimeoutMs);
       const resp = await publicRpcFetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${requestLanguage}`),
-        { signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
+        { signal: deadline },
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
@@ -871,7 +875,7 @@ export class DataLoaderManager implements AppModule {
       const currentKey = this.digestCacheKey();
       const retained = this.getRetainedDigest(currentKey);
       const fallback = retained ?? await this.loadPersistedDigest(currentKey);
-      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none');
+      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none', deadline?.aborted === true);
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
     }
@@ -883,10 +887,14 @@ export class DataLoaderManager implements AppModule {
    * measure how often users see stale news and why, without a burst per
    * refresh. Offline browsers and page teardown are not service failures.
    */
-  private reportDigestFetchFailure(error: unknown, fallback: 'retained' | 'saved' | 'none'): void {
+  private reportDigestFetchFailure(
+    error: unknown,
+    fallback: 'retained' | 'saved' | 'none',
+    deadlineExpired: boolean,
+  ): void {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (isPageUnloading()) return;
-    const kind = classifyDigestFetchFailure(error);
+    const kind = classifyDigestFetchFailure(error, deadlineExpired);
     if (this.reportedDigestFailures.has(kind)) return;
     this.reportedDigestFailures.add(kind);
     enqueueSentryCall((s) => s.captureMessage('News digest fetch failed', {
@@ -896,6 +904,9 @@ export class DataLoaderManager implements AppModule {
         'digest.failure': kind,
         'digest.fallback': fallback,
         'digest.variant': SITE_VARIANT,
+        // The error's name only: messages can carry URLs. Without it an
+        // "other" failure says nothing about what went wrong.
+        'digest.error': digestErrorName(error),
       },
       extra: { timeoutMs: this.digestRequestTimeoutMs },
       // Tags do not split issues; one group per kind keeps timeouts, 5xx and
@@ -5332,14 +5343,28 @@ export class DataLoaderManager implements AppModule {
 
 export type DigestFetchFailureKind = 'timeout' | 'http-5xx' | 'http-4xx' | 'empty-body' | 'network' | 'other';
 
-/** Bucket a digest fetch failure into a closed, low-cardinality kind. */
-export function classifyDigestFetchFailure(error: unknown): DigestFetchFailureKind {
+/**
+ * Bucket a digest fetch failure into a closed, low-cardinality kind.
+ *
+ * `deadlineExpired` is whether the request's own timeout signal fired. Chrome
+ * and Firefox reject with `TimeoutError` then, but Safari and every iOS browser
+ * reject with `AbortError: Fetch is aborted`, so the name alone filed WebKit
+ * timeouts under "other" (Sentry WORLDMONITOR-1D5).
+ */
+export function classifyDigestFetchFailure(error: unknown, deadlineExpired = false): DigestFetchFailureKind {
   const name = error instanceof Error || error instanceof DOMException ? error.name : '';
   const message = error instanceof Error || error instanceof DOMException ? error.message : String(error);
   if (name === 'TimeoutError') return 'timeout';
+  if (name === 'AbortError' && deadlineExpired) return 'timeout';
   const status = /^HTTP (\d{3})$/.exec(message)?.[1];
   if (status) return status.startsWith('5') ? 'http-5xx' : 'http-4xx';
   if (message === 'digest returned 0 categories') return 'empty-body';
   if (error instanceof TypeError) return 'network';
   return 'other';
+}
+
+/** A short, PII-free label for a digest failure: the error's name, or its type. */
+function digestErrorName(error: unknown): string {
+  const name = error instanceof Error || error instanceof DOMException ? error.name : typeof error;
+  return (name || 'unknown').slice(0, 64);
 }

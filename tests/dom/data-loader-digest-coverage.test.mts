@@ -295,6 +295,49 @@ describe('digest coverage follows the selected browser response', () => {
       expect(events[0]!.ctx.fingerprint).toEqual(['news-digest-fetch', 'timeout']);
     });
 
+    it('counts a WebKit deadline abort as a timeout, not "other" (Sentry WORLDMONITOR-1D5)', async () => {
+      // Safari and every iOS browser reject the fetch with `AbortError: Fetch is
+      // aborted` when AbortSignal.timeout fires, never `TimeoutError`, so the
+      // name alone filed one condition under two Sentry issues.
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+      const expired = AbortSignal.abort(new DOMException('signal timed out', 'TimeoutError'));
+      const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(expired);
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('Fetch is aborted', 'AbortError'));
+
+      try {
+        await internal.tryFetchDigest();
+      } finally {
+        timeout.mockRestore();
+      }
+
+      const events = captured();
+      expect(events).toHaveLength(1);
+      expect(events[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.error': 'AbortError' });
+      expect(events[0]!.ctx.fingerprint).toEqual(['news-digest-fetch', 'timeout']);
+    });
+
+    it('keeps an abort the deadline did not cause out of the timeout bucket, and names it', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'));
+
+      await internal.tryFetchDigest();
+
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'other', 'digest.error': 'AbortError' });
+    });
+
+    it('names the error behind an "other" failure so the bucket can be read', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response('{"truncated', { status: 200 }));
+
+      await internal.tryFetchDigest();
+
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'other', 'digest.error': 'SyntaxError' });
+    });
+
     it('classifies an HTTP 5xx and reports when nothing could be shown', async () => {
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';
