@@ -10,8 +10,9 @@ vi.mock('@/services/generated-rpc-clients', () => ({
   IntelligenceServiceClient: class {},
 }));
 
+import { haversineKm } from '@/utils/distance';
 import { CorrelationEngine } from './engine';
-import type { DomainAdapter } from './types';
+import type { DomainAdapter, SignalEvidence } from './types';
 
 Object.defineProperty(globalThis, 'document', {
   value: { dispatchEvent() {} },
@@ -98,5 +99,64 @@ describe('CorrelationEngine performance warning', () => {
       '[CorrelationEngine] run() exceeded 100ms for 2 consecutive runs '
       + '(latest 142ms, peak 158ms)',
     );
+  });
+});
+
+describe('CorrelationEngine geographic clustering', () => {
+  const signalAt = (lat: number, lon: number, label: string): SignalEvidence => ({
+    type: 'test', source: 'test', severity: 50, lat, lon, timestamp: 0, label,
+  });
+
+  // Cluster labels as a sorted list of sorted groups, so two partitions compare by value.
+  const partition = (clusters: Array<{ signals: SignalEvidence[] }>): string[][] =>
+    clusters.map((c) => c.signals.map((s) => s.label).sort()).sort((a, b) => a.join().localeCompare(b.join()));
+
+  const clusterByProximity = (signals: SignalEvidence[], radiusKm: number) =>
+    (createEngine() as unknown as {
+      clusterByProximity(s: SignalEvidence[], r: number): Array<{ signals: SignalEvidence[] }>;
+    }).clusterByProximity(signals, radiusKm);
+
+  // Reference: union every pair within the radius, keep groups of two or more.
+  const bruteForce = (signals: SignalEvidence[], radiusKm: number) => {
+    const parent = signals.map((_, i) => i);
+    const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
+    for (let i = 0; i < signals.length; i++) {
+      for (let j = i + 1; j < signals.length; j++) {
+        const a = signals[i]!, b = signals[j]!;
+        if (haversineKm(a.lat!, a.lon!, b.lat!, b.lon!) <= radiusKm) parent[find(i)] = find(j);
+      }
+    }
+    const groups = new Map<number, SignalEvidence[]>();
+    signals.forEach((s, i) => groups.set(find(i), [...(groups.get(find(i)) ?? []), s]));
+    return [...groups.values()].filter((g) => g.length >= 2).map((g) => ({ signals: g }));
+  };
+
+  it('clusters two signals 455 km apart at different latitudes', () => {
+    const a = signalAt(32.44, 139, 'a');
+    const b = signalAt(36.53, 139, 'b');
+    expect(haversineKm(a.lat!, a.lon!, b.lat!, b.lon!)).toBeLessThan(500);
+
+    expect(partition(clusterByProximity([a, b], 500))).toEqual([['a', 'b']]);
+  });
+
+  it('matches brute-force pairwise clustering at mid and high latitudes', () => {
+    let seed = 42;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    // Longitudes stay clear of the antimeridian seam, which the grid does not wrap.
+    const regions = [
+      { lat: [25, 45], lon: [120, 150] },
+      { lat: [50, 75], lon: [100, 170] },
+      { lat: [-60, -40], lon: [-80, -40] },
+    ];
+    for (const region of regions) {
+      for (let scene = 0; scene < 100; scene++) {
+        const signals = Array.from({ length: 12 }, (_, i) => signalAt(
+          region.lat[0]! + rand() * (region.lat[1]! - region.lat[0]!),
+          region.lon[0]! + rand() * (region.lon[1]! - region.lon[0]!),
+          `s${i}`,
+        ));
+        expect(partition(clusterByProximity(signals, 500))).toEqual(partition(bruteForce(signals, 500)));
+      }
+    }
   });
 });
