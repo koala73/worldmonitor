@@ -139,6 +139,15 @@ describe('CorrelationEngine geographic clustering', () => {
     expect(partition(clusterByProximity([a, b], 500))).toEqual([['a', 'b']]);
   });
 
+  it('clusters a near-pole pair far apart in longitude, in either input order', () => {
+    // 120° of longitude at 89.5°N is ~96 km; the row is near enough the pole that
+    // the column scan must fall back to every column.
+    const a = signalAt(89.5, 0, 'a');
+    const b = signalAt(89.5, 120, 'b');
+    expect(partition(clusterByProximity([a, b], 500))).toEqual([['a', 'b']]);
+    expect(partition(clusterByProximity([b, a], 500))).toEqual([['a', 'b']]);
+  });
+
   it('matches brute-force pairwise clustering at mid and high latitudes', () => {
     let seed = 42;
     const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
@@ -146,6 +155,7 @@ describe('CorrelationEngine geographic clustering', () => {
     const regions = [
       { lat: [25, 45], lon: [120, 150] },
       { lat: [50, 75], lon: [100, 170] },
+      { lat: [80, 89.9], lon: [-150, 150] },
       { lat: [-60, -40], lon: [-80, -40] },
     ];
     for (const region of regions) {
