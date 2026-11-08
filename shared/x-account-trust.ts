@@ -363,6 +363,16 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     note: 'Cybersecurity news specialist; not a general wire',
   },
   {
+    // @TheIranWatcher, id 91163520. Iran/Gulf news account with no published
+    // masthead; its profile links a reader-donation page. Not an established
+    // newsroom, so it sits at tier 3 with the OSINT aggregators.
+    sourceName: 'The Iran Watcher',
+    tier: 3,
+    type: 'intel',
+    risk: 'medium',
+    note: 'Independent Iran and Persian Gulf news aggregator; treat as a lead',
+  },
+  {
     sourceName: 'The War Zone',
     tier: 3,
     type: 'intel',

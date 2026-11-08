@@ -50,9 +50,9 @@ function rawPost(account, id, overrides = {}) {
 }
 
 describe('data/x-accounts.json registry', () => {
-  it('contains exactly 64 unique enabled immutable account IDs', () => {
-    assert.equal(accounts.length, 64);
-    assert.equal(new Set(accounts.map((account) => account.accountId)).size, 64);
+  it('contains exactly 65 unique enabled immutable account IDs', () => {
+    assert.equal(accounts.length, 65);
+    assert.equal(new Set(accounts.map((account) => account.accountId)).size, 65);
     for (const account of accounts) {
       assert.match(account.accountId, /^[1-9]\d{0,18}$/);
       assert.match(account.handle, /^[A-Za-z0-9_]{1,15}$/);
@@ -198,7 +198,7 @@ describe('exact X List membership gate', () => {
     name: xNews.X_CURATED_LIST_NAME,
     description: xNews.X_CURATED_LIST_DESCRIPTION,
     private: false,
-    member_count: 64,
+    member_count: 65,
   };
   const matchingMembers = accounts.map((account) => ({
     id: account.accountId,
@@ -207,17 +207,17 @@ describe('exact X List membership gate', () => {
     protected: false,
   }));
 
-  it('accepts one public, unpaginated page with the exact 64 immutable IDs', () => {
+  it('accepts one public, unpaginated page with the exact 65 immutable IDs', () => {
     const result = xNews.verifyXListMembership({
       listId,
       accounts,
       listBody: { data: validList },
-      membersBody: { data: matchingMembers, meta: { result_count: 64 } },
+      membersBody: { data: matchingMembers, meta: { result_count: 65 } },
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.expectedCount, 64);
-    assert.equal(result.actualCount, 64);
+    assert.equal(result.expectedCount, 65);
+    assert.equal(result.actualCount, 65);
     assert.deepEqual(result.findings, []);
   });
 
