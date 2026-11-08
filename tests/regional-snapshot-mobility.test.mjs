@@ -693,6 +693,9 @@ describe('latLonToSnapshotRegion agrees with the airport registry by country', (
     ['Asmara', 15.32, 38.93, 'sub-saharan-africa'],
     ['Zouérat', 22.73, -12.47, null], // northern Mauritania: outside every box, and not mena
     ['Belize City', 17.50, -88.20, 'latam'],
+    ['Corozal', 18.39, -88.39, 'latam'],
+    ['Roatán', 16.33, -86.53, 'latam'],
+    ['Chetumal', 18.50, -88.30, 'north-america'],
     ['Havana', 23.11, -82.37, 'latam'],
     ['San Juan', 18.47, -66.11, 'latam'],
     ['Nassau', 25.05, -77.35, 'latam'],

@@ -123,10 +123,14 @@ function isAtlanticEurope(lat, lon) {
   return lat > 27.5 && lat < 29.5 && lon > -18.3 && lon < -13.3;
 }
 
-// Belize, Guatemala's Petén, the Caribbean and the Bahamas, which sit north
-// of the 16°N break. Cancún (86.85°W) and Key West (24.55°N) stay outside.
+// Belize, Guatemala's Petén, the Bay Islands, the Caribbean and the Bahamas,
+// which sit north of the 16°N break. Northern Belize follows the Río Hondo up
+// to Corozal (Chetumal is Mexican); Cancún (86.85°W) and Key West (24.55°N)
+// stay outside.
 function isLatinAmericaNorthOf16(lat, lon) {
-  if (lat >= 16 && lat < 17.82 && lon > -90.98 && lon < -87.4) return true;
+  if (lat >= 16 && lat < 17.82 && lon > -90.98) return true;
+  if (lon > -89.15 && lon < -88.3 && lat < 17.82 + (lon + 89.15) * 0.79) return true;
+  if (lon >= -88.3 && lon < -87.4 && lat < 18.15) return true;
   if (lat >= 10 && lat < 23.6 && lon > -85.2 && lon < -59) return true;
   return lat > 20.9 && lat < 27.3 && lon > -79.35 && lon < -72.7;
 }

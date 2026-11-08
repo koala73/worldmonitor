@@ -136,10 +136,14 @@ function isOceania(lat: number, lon: number): boolean {
 function isLatinAmerica(lat: number, lon: number): boolean {
   if (lat <= -60 || lon >= -30 || lon <= -115) return false;
   // Central America: Mexico reaches 14.5°N only at the Suchiate (92.2°W), and
-  // Guatemala's Petén and Belize run up to 17.82°N east of 90.98°W.
+  // Guatemala's Petén, Belize and the Bay Islands run up to 17.82°N east of
+  // 90.98°W. Northern Belize follows the Río Hondo up to Corozal (Chetumal is
+  // Mexican), and Ambergris Caye stops south of Mexico's Xcalak.
   if (lat < 14.5) return true;
   if (lat < 16.07 && lon > -92.2) return true;
-  if (lat < 17.82 && lon > -90.98 && lon < -87.4) return true;
+  if (lat < 17.82 && lon > -90.98) return true;
+  if (lon > -89.15 && lon < -88.3 && lat < 17.82 + (lon + 89.15) * 0.79) return true;
+  if (lon >= -88.3 && lon < -87.4 && lat < 18.15) return true;
   // The Caribbean (Key West is 24.55°N, Cancún 86.85°W) and the Bahamas
   // (Florida's coast is west of 79.35°W).
   if (lat >= 10 && lat < 23.6 && lon > -85.2 && lon < -59) return true;
