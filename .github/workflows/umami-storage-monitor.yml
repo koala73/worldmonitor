@@ -80,10 +80,11 @@ jobs:
           # Every download failing is not proof the history is gone. Start a
           # new trend only when the listing shows no live history on this
           # branch; otherwise keep the stored artifact for the next run.
-          if ! live=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+          # A 15-minute cadence keeps ~670 live artifacts, so read every page.
+          if ! live=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts" \
             -f "name=umami-storage-state" -F per_page=100 \
-            --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $ENV.BRANCH)] | length') \
-            || [ "$live" != "0" ]; then
+            --jq '.artifacts[] | select(.expired == false and .workflow_run.head_branch == $ENV.BRANCH) | .id') \
+            || [ -n "$live" ]; then
             echo "::warning::Stored Umami storage history could not be downloaded; this run keeps the stored trend and does not replace it."
             echo "complete=false" >> "$GITHUB_OUTPUT"
             exit 0

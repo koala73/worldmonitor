@@ -343,7 +343,7 @@ describe('Umami storage monitor', () => {
     // Every download failing is not proof there is no history: only an
     // artifact listing with no live same-branch history may start a new trend.
     const tail = restoreStep.run.slice(restoreStep.run.indexOf('done'));
-    assert.match(tail, /actions\/artifacts/);
+    assert.match(tail, /gh api --method GET --paginate "[^"]*\/actions\/artifacts"/);
     assert.match(tail, /-f "name=umami-storage-state"/);
     assert.match(tail, /select\(\.expired == false and \.workflow_run\.head_branch == \$ENV\.BRANCH\)/);
     assert.match(tail, /echo "complete=false" >> "\$GITHUB_OUTPUT"/);
