@@ -65,11 +65,13 @@ function hasAwaitedHydrationRunner(node: ts.Node): boolean {
     if (
       ts.isAwaitExpression(child) &&
       isRunHydrationTasksCall(child.expression) &&
-      child.expression.arguments.length === 2 &&
+      child.expression.arguments.length === 3 &&
       ts.isIdentifier(child.expression.arguments[0]!) &&
       child.expression.arguments[0]!.text === 'tasks' &&
       ts.isIdentifier(child.expression.arguments[1]!) &&
-      child.expression.arguments[1]!.text === 'forceAll'
+      child.expression.arguments[1]!.text === 'forceAll' &&
+      ts.isIdentifier(child.expression.arguments[2]!) &&
+      child.expression.arguments[2]!.text === 'releasedTasks'
     ) {
       found = true;
     }
@@ -135,6 +137,20 @@ describe('loadAllData scheduler', () => {
       hasAwaitedHydrationRunner(runLoadAllDataMethod),
       'runLoadAllData should delegate guarded task execution to the prioritized hydration scheduler',
     );
+  });
+
+  it('frees the news slot on a late digest but waits for news before post-hydration work', () => {
+    const text = runLoadAllDataMethod.getText(DATA_LOADER_SOURCE);
+    assert.match(
+      text,
+      /slotReleasingTask\(\s*'news',\s*\(releaseSlot\)\s*=>\s*runGuarded\('news',\s*\(\)\s*=>\s*this\.loadNews\(\{\s*onAwaitingDigest:\s*releaseSlot\s*\}\)\),\s*releasedTasks,?\s*\)/,
+      'the news task must release its hydration slot only through loadNews\'s onAwaitingDigest hook',
+    );
+    const runnerIndex = text.indexOf('await this.runHydrationTasks(tasks, forceAll, releasedTasks);');
+    const waitIndex = text.indexOf('await Promise.all(releasedTasks);');
+    const searchIndex = text.indexOf('this.updateSearchIndex();');
+    assert.ok(runnerIndex >= 0 && waitIndex > runnerIndex, 'loadAllData must wait for released tasks after hydration');
+    assert.ok(searchIndex > waitIndex, 'the search index reads ctx.allNews, so it must run after news finishes');
   });
 
   it('coalesces overlapping loadAllData calls behind one active promise', () => {

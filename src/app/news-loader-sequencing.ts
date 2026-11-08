@@ -42,6 +42,12 @@ export interface RunNewsLoadPassOptions<TFeeds, TDigest, TItem> {
   ) => Promise<TItem[]>;
   onCategoryError?: (key: string | undefined, reason: unknown) => void;
   onDigestRefreshError?: (key: string | undefined, reason: unknown) => void;
+  /**
+   * Called once when first paint is done and the pass starts waiting for a
+   * digest that missed the grace period. The caller can release resources the
+   * pass no longer needs for that wait, such as a hydration slot.
+   */
+  onAwaitingDigest?: () => void;
 }
 
 export interface RunNewsLoadPassResult<TDigest, TItem> {
@@ -183,6 +189,7 @@ export async function runNewsLoadPass<TFeeds, TDigest, TItem>(
     // the ones it carries render from it, and the ones it does not (every one,
     // when it never arrived) take the stale or outage path they waited on.
     // Cross-edition panels read other editions' digests, not this one.
+    options.onAwaitingDigest?.();
     finalDigest = await digestPromise;
     const digestCategories = options.categories.filter(({ isCustom }) => !isCustom);
     const digestResults = await loadNewsCategoryBatches(

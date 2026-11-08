@@ -213,6 +213,63 @@ describe('news loader digest sequencing', () => {
     assert.deepEqual(result.finalDigest, { categories: { politics: {}, intel: {} } });
   });
 
+  it('reports when first paint is done and the pass starts waiting on a late digest', async () => {
+    const digest = deferred<TestDigest | null>();
+    let digestSettled = false;
+    const digestPromise = digest.promise.then(value => {
+      digestSettled = true;
+      return value;
+    });
+    const events: string[] = [];
+    const initialIntelDone = deferred<void>();
+
+    const runPromise = runNewsLoadPass<string[], TestDigest, string>({
+      categories: [{ key: 'politics', feeds: ['Reuters'] }],
+      categoryConcurrency: 1,
+      digestPromise,
+      digestGraceMs: 0,
+      loadCategory: async (category, digestSnapshot) => {
+        events.push(`${category.key}:${digestSnapshot ? 'digest' : 'fallback'}`);
+        return [];
+      },
+      loadIntel: async (digestSnapshot) => {
+        events.push(`intel:${digestSnapshot ? 'digest' : 'fallback'}`);
+        if (!digestSnapshot) initialIntelDone.resolve();
+        return [];
+      },
+      onAwaitingDigest: () => {
+        events.push('awaiting');
+        assert.equal(digestSettled, false);
+      },
+    });
+
+    await initialIntelDone.promise;
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(events, ['politics:fallback', 'intel:fallback', 'awaiting']);
+    digest.resolve({ categories: { politics: {} } });
+    await runPromise;
+    assert.deepEqual(events, [
+      'politics:fallback',
+      'intel:fallback',
+      'awaiting',
+      'politics:digest',
+      'intel:digest',
+    ]);
+  });
+
+  it('does not report waiting when the digest arrives within the grace period', async () => {
+    let awaitingCalls = 0;
+    await runNewsLoadPass<string[], TestDigest, string>({
+      categories: [{ key: 'politics', feeds: ['Reuters'] }],
+      categoryConcurrency: 1,
+      digestPromise: Promise.resolve({ categories: { politics: {} } }),
+      digestGraceMs: 10_000,
+      loadCategory: async () => [],
+      onAwaitingDigest: () => { awaitingCalls += 1; },
+    });
+    assert.equal(awaitingCalls, 0);
+  });
+
   it('uses fallback digest during timeout and still refreshes when the live digest arrives', async () => {
     const digest = deferred<TestDigest | null>();
     const cachedDigest: TestDigest = { label: 'cached', categories: { politics: {}, intel: {} } };

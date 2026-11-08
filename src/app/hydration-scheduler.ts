@@ -36,3 +36,29 @@ export async function runHydrationTier({
     if (cursor < tasks.length) await yieldToMain();
   }
 }
+
+/**
+ * Wrap a loader that can free its concurrency slot before it finishes.
+ *
+ * The scheduler treats the task as done once the loader calls `releaseSlot`
+ * (or settles), so the next task in the tier, and the next tier, can start.
+ * The loader's full completion goes into `pending`, which settles without
+ * rejecting so a late failure cannot break a caller's `Promise.all`. Callers
+ * whose work reads the loader's results wait on `pending`.
+ */
+export function slotReleasingTask(
+  name: string,
+  run: (releaseSlot: () => void) => Promise<void>,
+  pending: Promise<void>[],
+): HydrationTask {
+  return {
+    name,
+    task: () => {
+      let releaseSlot!: () => void;
+      const released = new Promise<void>((resolve) => { releaseSlot = resolve; });
+      const done = run(releaseSlot);
+      pending.push(done.then(() => undefined, () => undefined));
+      return Promise.race([done, released]);
+    },
+  };
+}

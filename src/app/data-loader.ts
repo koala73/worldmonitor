@@ -6,7 +6,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { isReportableCanadaRoad } from '@/services/canada-road-report';
 import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
-import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
+import { runHydrationTier, slotReleasingTask, type HydrationTask } from '@/app/hydration-scheduler';
 import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
@@ -554,7 +554,17 @@ export class DataLoaderManager implements AppModule {
     performance.mark(label);
   }
 
-  private async runHydrationTasks(tasks: HydrationTask[], forceAll: boolean): Promise<void> {
+  /**
+   * `releasedTasks` settle when loads that freed their hydration slot early
+   * (see slotReleasingTask) finish. Tier 4 waits for them because it reads
+   * their results: predictions runs correlation analysis over
+   * ctx.latestClusters.
+   */
+  private async runHydrationTasks(
+    tasks: HydrationTask[],
+    forceAll: boolean,
+    releasedTasks: readonly Promise<void>[] = [],
+  ): Promise<void> {
     const prioritized = tasks
       .map((task, order) => ({ ...task, order, tier: this.getHydrationTier(task.name) }))
       .sort((a, b) => a.tier - b.tier || a.order - b.order);
@@ -570,6 +580,7 @@ export class DataLoaderManager implements AppModule {
     for (const tier of HYDRATION_TIERS) {
       const tierTasks = prioritized.filter(task => task.tier === tier);
       if (tierTasks.length === 0) continue;
+      if (tier === 4) await Promise.all(releasedTasks);
 
       this.markHydration(`wm:hydration:tier-${tier}:start`);
       await runHydrationTier({
@@ -1181,8 +1192,18 @@ export class DataLoaderManager implements AppModule {
     };
 
     const tasks: HydrationTask[] = [];
+    const releasedTasks: Promise<void>[] = [];
     if (this.shouldHydrateNews(forceAll)) {
-      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+      // A digest that misses the first-paint grace period can take up to
+      // digestRequestTimeoutMs. Free this task's hydration slot while news
+      // waits for it, so later tiers (and, on mobile, markets) are not held
+      // behind it. Tier 4 and the post-hydration steps still wait for the
+      // full load: they read ctx.allNews and ctx.latestClusters.
+      tasks.push(slotReleasingTask(
+        'news',
+        (releaseSlot) => runGuarded('news', () => this.loadNews({ onAwaitingDigest: releaseSlot })),
+        releasedTasks,
+      ));
     }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
@@ -1382,7 +1403,8 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'crossSourceSignals', task: () => runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
     }
 
-    await this.runHydrationTasks(tasks, forceAll);
+    await this.runHydrationTasks(tasks, forceAll, releasedTasks);
+    await Promise.all(releasedTasks);
 
     this.updateSearchIndex();
 
@@ -2253,7 +2275,7 @@ export class DataLoaderManager implements AppModule {
     return generation === this.committedNewsGeneration && !servedStale;
   }
 
-  async loadNews(): Promise<void> {
+  async loadNews(options: { onAwaitingDigest?: () => void } = {}): Promise<void> {
     const generation = this.beginNewsLoad();
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -2319,6 +2341,7 @@ export class DataLoaderManager implements AppModule {
         onDigestRefreshError: (key, reason) => {
           console.error(`[App] Digest refresh for news category ${key ?? 'unknown'} failed:`, reason);
         },
+        onAwaitingDigest: options.onAwaitingDigest,
       },
     );
     const { categoryItemsByKey, intelItems } = newsPass;
