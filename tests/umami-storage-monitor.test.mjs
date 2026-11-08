@@ -340,6 +340,13 @@ describe('Umami storage monitor', () => {
       restoreStep.run,
       /Could not list earlier monitor runs[^\n]*\n\s*echo "complete=false" >> "\$GITHUB_OUTPUT"\n\s*exit 0/,
     );
+    // Every download failing is not proof there is no history: only an
+    // artifact listing with no live same-branch history may start a new trend.
+    const tail = restoreStep.run.slice(restoreStep.run.indexOf('done'));
+    assert.match(tail, /actions\/artifacts/);
+    assert.match(tail, /-f "name=umami-storage-state"/);
+    assert.match(tail, /select\(\.expired == false and \.workflow_run\.head_branch == \$ENV\.BRANCH\)/);
+    assert.match(tail, /echo "complete=false" >> "\$GITHUB_OUTPUT"/);
     assert.equal(saveStep.with.name, restoreStep.run.match(/--name (\S+)/)?.[1]);
     assert.equal(saveStep.with.path, '.cache/umami-storage-state.json');
     // upload-artifact skips dot-directories unless told otherwise.
