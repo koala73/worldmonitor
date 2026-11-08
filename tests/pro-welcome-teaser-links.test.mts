@@ -195,6 +195,23 @@ describe('live welcome headlines link only to verifiable articles', () => {
     }
   });
 
+  it('drops a host added to the shared aggregator list later (#9480)', async () => {
+    // The shared list is only news.google.com today, which the old private
+    // copy also carried, so the case above passes against either. Adding a
+    // host that only the shared set knows is what tells the two apart: the
+    // private copy would have kept this link as a live href.
+    const host = 'aggregator.example';
+    assert.ok(!AGGREGATOR_LINK_HOSTS.has(host), 'the probe host must start off the list');
+    AGGREGATOR_LINK_HOSTS.add(host);
+    try {
+      stubDigest([digestItem({ link: `https://${host}/story/1` })]);
+      const { headlines } = await fetchLiveTeasers();
+      assert.equal(headlines.items[0].url, '', `${host} joined the shared list and must not become a live href`);
+    } finally {
+      AGGREGATOR_LINK_HOSTS.delete(host);
+    }
+  });
+
   it('stays inside the browser baseline the shared validator is bundled into', () => {
     // shared/article-url.js now ships in the pro-test browser bundle as well
     // as Node seeders and Edge handlers. Vite 7's default target is Safari 16,
