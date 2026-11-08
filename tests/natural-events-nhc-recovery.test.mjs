@@ -268,6 +268,23 @@ test('a persistent ArcGIS error body is a request failure, not invalid data', as
   assert.deepEqual(payload.events.filter(event => event.sourceName === 'NHC'), [retainedStorm]);
 });
 
+test('a non-transient ArcGIS error body is invalid data and is not retried', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    now: NOW + MIN,
+    nhc: async (_input, id) => {
+      calls.set(id, (calls.get(id) || 0) + 1);
+      if (id === 32) {
+        return Response.json({ error: { code: 400, message: 'Invalid or missing input parameters.', details: [] } });
+      }
+      return Response.json(collection(id === 6 ? [currentStormPoint] : []));
+    },
+  });
+
+  assert.equal(calls.get(32), 1);
+  assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
+});
+
 test('malformed required GeoJSON is actionable and cannot earn first-failure pending', async () => {
   let malformedCalls = 0;
   const payload = await runNhc({
