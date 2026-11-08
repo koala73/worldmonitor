@@ -334,6 +334,13 @@ function parseAllowedUrl(url) {
   return parsed;
 }
 
+const BC_WFS_TIMEOUT_PATTERN = /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i;
+
+/**
+ * Bounded, prose-free summary of a WFS exception report for logging, plus
+ * whether it reports the GeoServer's own timeout. `timedOut` is read from the
+ * exception text, not the logged signals, which are capped at eight.
+ */
 function bcWfsFailureDiagnostic(text) {
   const scanLimit = 8192;
   const prefix = text.slice(0, scanLimit);
@@ -347,13 +354,16 @@ function bcWfsFailureDiagnostic(text) {
     ...[
       ['sql_syntax', /\bSQLSyntaxErrorException\b/i],
       ['database_connection', /\bSQL(?:Transient|NonTransient)ConnectionException\b|\bcannot get a connection\b/i],
-      ['timeout', /\b(?:SocketTimeoutException|SQLTimeoutException)\b|\btimed out\b/i],
+      ['timeout', BC_WFS_TIMEOUT_PATTERN],
       ['authorization', /\bSQLInvalidAuthorizationSpecException\b|\binvalid username\/password\b|\bpermission denied\b/i],
       ['invalid_property', /\bcould not resolve property\b/i],
       ['unsupported_sort', /\bsorting is not supported\b/i],
     ].filter(([, pattern]) => pattern.test(exceptionText)).map(([signal]) => signal),
   ].slice(0, 8);
-  return { exceptionTextPresent: exceptions.length > 0, scanTruncated: text.length > scanLimit, signals };
+  return {
+    diagnostic: { exceptionTextPresent: exceptions.length > 0, scanTruncated: text.length > scanLimit, signals },
+    timedOut: BC_WFS_TIMEOUT_PATTERN.test(exceptionText),
+  };
 }
 
 export async function fetchApprovedBcUrl(url, {
@@ -380,7 +390,8 @@ export async function fetchApprovedBcUrl(url, {
     const request = parsed.searchParams.get('request') === 'GetFeature' ? 'wfs' : 'kml';
     const exceptionCode = text.match(/\bexceptionCode=["']([^"']+)["']/)?.[1];
     const locator = text.match(/\blocator=["']([^"']+)["']/)?.[1];
-    const wfsDiagnostic = request === 'wfs' ? bcWfsFailureDiagnostic(text) : null;
+    const wfsFailure = request === 'wfs' ? bcWfsFailureDiagnostic(text) : null;
+    const wfsDiagnostic = wfsFailure?.diagnostic ?? null;
     console.warn(JSON.stringify({
       event: 'bc_fire_request_failure',
       request,
@@ -394,7 +405,7 @@ export async function fetchApprovedBcUrl(url, {
     }));
     const error = new BcFirePointsError(`HTTP_${response.status}`, { status: response.status });
     // The GeoServer's own query timeout is transient; any other 400 is not.
-    if (wfsDiagnostic?.signals.includes('timeout')) error.transient = true;
+    if (wfsFailure?.timedOut) error.transient = true;
     throw error;
   }
   const result = { text, contentType: response.headers?.get?.('content-type') || '', cacheKey: key };
