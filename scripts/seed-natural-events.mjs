@@ -660,6 +660,17 @@ async function nhcQuery(layerId, expectedGeometryTypes, fetchFn = globalThis.fet
         },
       );
     }
+    // ArcGIS reports a failed query as HTTP 200 with an `error` body. It is the
+    // server failing this request, not the layer's data, and it clears on retry
+    // (Sentry WORLDMONITOR-1AG). Only a body that is an error object and not
+    // GeoJSON takes this path; anything else still goes through validation.
+    if (payload && typeof payload === 'object' && !('type' in payload)
+      && payload.error && typeof payload.error === 'object') {
+      const code = Number.isInteger(payload.error.code) ? payload.error.code : 'unknown';
+      throw new NhcQueryError(`NHC layer ${layerId}: ArcGIS error ${code}`, {
+        code: 'NHC_POINT_REQUEST_FAILED',
+      });
+    }
     return parseNhcGeoJson(payload, layerId, expectedGeometryTypes);
   }, 1, 500);
 }
