@@ -328,6 +328,28 @@ describe('digest coverage follows the selected browser response', () => {
       expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'other', 'digest.error': 'AbortError' });
     });
 
+    it('judges the deadline when the request failed, not after the fallback read', async () => {
+      // An unrelated abort fails the request early; the saved-digest read then
+      // runs long enough for the deadline to fire. That is still not a timeout.
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      const deadline = new AbortController();
+      const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+      internal.loadPersistedDigest = async () => {
+        deadline.abort(new DOMException('signal timed out', 'TimeoutError'));
+        return null;
+      };
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('The operation was aborted.', 'AbortError'));
+
+      try {
+        await internal.tryFetchDigest();
+      } finally {
+        timeout.mockRestore();
+      }
+
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'other', 'digest.error': 'AbortError' });
+    });
+
     it('names the error behind an "other" failure so the bucket can be read', async () => {
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';

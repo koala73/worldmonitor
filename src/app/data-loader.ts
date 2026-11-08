@@ -865,6 +865,9 @@ export class DataLoaderManager implements AppModule {
       this.reportDigestCoverage(data);
       return { digest: data, servedStale: data.coverage?.servedStale === true };
     } catch (e) {
+      // Read before any await: a slow fallback read below can outlast the
+      // deadline and would turn an unrelated abort into a "timeout".
+      const deadlineExpired = deadline?.aborted === true;
       markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
       this.digestBreaker.failures++;
@@ -875,7 +878,7 @@ export class DataLoaderManager implements AppModule {
       const currentKey = this.digestCacheKey();
       const retained = this.getRetainedDigest(currentKey);
       const fallback = retained ?? await this.loadPersistedDigest(currentKey);
-      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none', deadline?.aborted === true);
+      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none', deadlineExpired);
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
     }
