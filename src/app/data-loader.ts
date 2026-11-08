@@ -487,7 +487,11 @@ export class DataLoaderManager implements AppModule {
   private fullEditionIntel: { generation: number; selection: Promise<SelectedNewsDigest | null> } | null = null;
   private committedNewsGeneration = 0;
   private committedNewsServedStale = false;
-  private readonly digestRequestTimeoutMs = 8000;
+  // Must outlast the server's own response deadline (RESPONSE_DEADLINE_MS,
+  // 22 s, in list-feed-digest.ts) plus the body download. At 8 s the browser
+  // abandoned digests the server was still delivering (Sentry WORLDMONITOR-1D4).
+  // First paint does not wait on this: it renders after digestFirstPaintGraceMs.
+  private readonly digestRequestTimeoutMs = 25_000;
   private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   /** Failure kinds already sent to Sentry this page load (one event per kind). */
