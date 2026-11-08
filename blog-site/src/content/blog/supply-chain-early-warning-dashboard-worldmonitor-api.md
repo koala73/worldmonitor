@@ -51,7 +51,7 @@ This turns WorldMonitor's broad data surface into a dashboard that matches your 
 
 ### 1. Chokepoint status
 
-Use chokepoint data for direct route stress. WorldMonitor tracks major corridors such as [Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/), [Suez](https://www.worldmonitor.app/chokepoints/suez-canal/), [Malacca](https://www.worldmonitor.app/chokepoints/strait-of-malacca/), [Bab-el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), [Panama](https://www.worldmonitor.app/chokepoints/panama-canal/), and others.
+Use [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) data for direct route stress. WorldMonitor tracks major corridors such as [Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/), [Suez](https://www.worldmonitor.app/chokepoints/suez-canal/), [Malacca](https://www.worldmonitor.app/chokepoints/strait-of-malacca/), [Bab-el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), [Panama](https://www.worldmonitor.app/chokepoints/panama-canal/), and others.
 
 MCP path:
 
@@ -72,7 +72,7 @@ Country risk is the context layer. A port can be open while the surrounding poli
 
 For the transit-country examples in this watchlist, inspect the [Egypt](https://www.worldmonitor.app/countries/egypt/) and [Singapore](https://www.worldmonitor.app/countries/singapore/) profiles before choosing alert thresholds. For each country in your watchlist, pull:
 
-- Country Instability Index score and band
+- Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/) score and band
 - Component breakdown
 - Travel advisory level and provenance
 - Sanctions pressure

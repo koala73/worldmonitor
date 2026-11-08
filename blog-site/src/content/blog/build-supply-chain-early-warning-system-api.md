@@ -20,7 +20,7 @@ You need an API key (`X-WorldMonitor-Key`, issued with [Pro or API plans](https:
 Three signals, three endpoints:
 
 1. **Lane exposure:** which chokepoints does each of my trade lanes depend on? (`/api/v2/shipping/route-intelligence`)
-2. **Live disruption:** push notification when a chokepoint's disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
+2. **Live disruption:** push notification when a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/)'s disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
 3. **Country context:** structural resilience of origin and destination countries (`/api/resilience/v1/get-resilience-score`)
 
 A small receiver service glues them together and posts to Slack.

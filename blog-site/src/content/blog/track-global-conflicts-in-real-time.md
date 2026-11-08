@@ -24,7 +24,7 @@ The answer comes from layering multiple intelligence sources onto a single inter
 - **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
 - **[GDELT](https://www.gdeltproject.org/) event and news data** for reported clashes, protests, and political violence
 - **Live ADS-B tracking** for military aircraft positions
-- **AIS vessel monitoring** merged with USNI fleet reports for naval movements
+- **[AIS vessel](/blog/posts/ais-vessel-tracking-accuracy/) monitoring** merged with USNI fleet reports for naval movements
 - **Curated Telegram OSINT channels** for raw, low-latency intelligence
 - **OREF rocket alerts** with 1,480 Hebrew-to-English siren translations
 - **GPS/GNSS jamming zones** detected from ADS-B anomalies
@@ -36,7 +36,7 @@ Each layer can be toggled independently. Combine them to build a multi-source pi
 
 World Monitor maintains real-time posture assessments for its operational-theater registry:
 
-1. **[Iran](https://www.worldmonitor.app/countries/iran/) / Persian Gulf:** [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) chokepoint, IRGC activity, proxy conflict indicators
+1. **[Iran](https://www.worldmonitor.app/countries/iran/) / Persian Gulf:** [Strait of Hormuz](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/), IRGC activity, proxy conflict indicators
 2. **[Taiwan Strait](https://www.worldmonitor.app/chokepoints/taiwan-strait/):** PLA military exercises, naval deployments, airspace incursions
 3. **Baltic Region:** NATO-Russia friction, Kaliningrad corridor, submarine activity
 4. **Korean Peninsula:** DMZ incidents, missile tests, force posture changes
@@ -76,7 +76,7 @@ World Monitor's escalation algorithm goes beyond showing where events are happen
 
 - **News activity (35%):** Sudden spikes in reporting volume for a geographic area
 - **CII score (25%):** Baseline instability context
-- **Geographic convergence (25%):** Multiple event types (conflict, protest, natural disaster, cyber) co-occurring within the same 1-degree grid cell within 24 hours
+- **Geographic convergence (25%):** Multiple event types (conflict, protest, [natural disaster](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), cyber) co-occurring within the same 1-degree grid cell within 24 hours
 - **Military indicators (15%):** Unusual force movements, exercise activity, weapons tests
 
 [Geographic convergence](https://www.worldmonitor.app/docs/geographic-convergence) is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
@@ -163,7 +163,7 @@ Before relying on a generated brief, use the [AI intelligence summary review wor
 ## Frequently Asked Questions
 
 **What data sources does World Monitor use for conflict tracking?**
-World Monitor aggregates UCDP warfare data, GDELT event reporting, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
+World Monitor aggregates UCDP warfare data, [GDELT](/blog/posts/free-geopolitical-data-apis-2026/) event reporting, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
 
 **Is World Monitor free to use for conflict monitoring?**
 Yes. World Monitor is completely free and open source under AGPL-3.0. There is no login, paywall, or data collection. You can also self-host it for full control.

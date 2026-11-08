@@ -72,7 +72,7 @@ The real power isn't the webcams alone. It's combining them with World Monitor's
 
 **Scenario: Unrest in Tehran**
 
-1. CII (Country Instability Index) for Iran spikes
+1. CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)) for Iran spikes
 2. Telegram OSINT channels report protests
 3. Switch to webcam panel, filter to Iran region
 4. Tehran camera shows unusual crowd activity

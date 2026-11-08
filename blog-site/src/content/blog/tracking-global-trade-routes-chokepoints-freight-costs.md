@@ -98,7 +98,7 @@ When the Strait of Hormuz closes, the trade policy data shows the second-order e
 
 ## Critical Minerals: Concentration Risk
 
-Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the HHI (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
+Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the [HHI](/blog/posts/critical-minerals-hhi-supply-risk-explained/) (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
 
 | Mineral | Top Producer | Share | HHI Score | Risk |
 |---------|-------------|-------|-----------|------|

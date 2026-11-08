@@ -9,7 +9,7 @@ pubDate: "2026-06-10"
 modifiedDate: "2026-09-10"
 ---
 
-An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
+An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/). By the time the price chart explains it, the operational window has already narrowed.
 
 WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 

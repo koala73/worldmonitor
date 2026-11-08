@@ -21,7 +21,7 @@ Before touching physical data, establish what the information environment is doi
 
 - **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, with [localized interfaces](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 - **Velocity.** GDELT-powered topic feeds show whether coverage volume is spiking or flat. A genuine mass-casualty event produces a near-vertical velocity curve. A recycled video produces social chatter with no news-side echo.
-- **Hotspot status.** If the location is one of the 29 tracked hotspots, has its escalation score moved? The score fuses news activity (35%), country instability (25%), geographic convergence (25%), and military activity (15%); movement here means multiple systems agree something changed.
+- **Hotspot status.** If the location is one of the 29 tracked hotspots, has its escalation score moved? The score fuses news activity (35%), [country instability](/blog/posts/country-instability-index-methodology-explained/) (25%), geographic convergence (25%), and military activity (15%); movement here means multiple systems agree something changed.
 
 None of this confirms the event. It tells you how seriously to take the next eight minutes.
 

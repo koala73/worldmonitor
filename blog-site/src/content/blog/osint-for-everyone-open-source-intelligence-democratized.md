@@ -15,7 +15,7 @@ World Monitor collapses that entire workflow into a single interactive dashboard
 
 ## The Tab Sprawl Problem
 
-If you've ever tried to monitor a developing situation, whether it's a military escalation, a natural disaster, or a supply chain disruption, you know the drill:
+If you've ever tried to monitor a developing situation, whether it's a military escalation, a [natural disaster](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), or a supply chain disruption, you know the drill:
 
 1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
 2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
