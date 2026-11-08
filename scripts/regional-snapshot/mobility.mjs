@@ -144,7 +144,7 @@ function isEuropeInSnapshotMenaBox(lat, lon) {
   if (lat > 38.95 && lat < 39.45 && lon < 26.65) return true; // Lesbos
   if (lat > 38.15 && lat < 38.62 && lon < 26.2) return true; // Chios
   if (lat > 37.55 && lat < 37.82 && lon < 27.08) return true; // Samos, Ikaria
-  if (lat > 36.7 && lat < 37.2 && lon < 27.05) return true; // Kalymnos, Leros
+  if (lat > 36.7 && lat < 37.5 && lon < 27.05) return true; // Kalymnos to Agathonisi
   if (lat > 36.7 && lat < 36.95 && lon < 27.33) return true; // Kos
   return lat < 36.62 && lon < 28.3; // Rhodes, Karpathos, Symi
 }

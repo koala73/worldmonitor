@@ -88,8 +88,8 @@ function isNorthAfricanCoast(lat: number, lon: number): boolean {
 // Turkish, Burgas and Malko Tarnovo Bulgarian), the Black Sea (Turkey's coast
 // stays south of 42.15°N, so Crimea, Romania and Bulgaria are north of it) and
 // the Greater Caucasus (Sochi, Vladikavkaz, Grozny and Derbent are Russian;
-// Sukhumi, Tbilisi and Baku are not). The boxes after them are the Greek
-// islands off Turkey's coast and Cyprus.
+// Sukhumi, Tbilisi and Baku are not). The boxes after them are Cyprus and the
+// Greek islands off Turkey's coast.
 function isEuropeInMenaBox(lat: number, lon: number): boolean {
   if (lon < 26.3 && lat > 40.6) return true;
   if (lon >= 26.3 && lon < 28.3 && lat > 41.7 + (lon - 26.3) * 0.176) return true;
@@ -97,23 +97,24 @@ function isEuropeInMenaBox(lat: number, lon: number): boolean {
   if (lon >= 39.9 && lon < 42 && lat > 43.4) return true;
   if (lon >= 42 && lon < 46 && lat > 42.8) return true;
   if (lon >= 46 && lon < 49.5 && lat > 41.9) return true;
+  if (lat > 34.5 && lat < 35.75 && lon > 32.2 && lon < 34.65) return true; // Cyprus
   if (lat < 34.8) return false;
   if (lon < 26.0) return true; // western Aegean, Lemnos, western Crete
   if (lat < 35.7 && lon < 26.4) return true; // eastern Crete
   if (lat > 38.95 && lat < 39.45 && lon < 26.65) return true; // Lesbos
   if (lat > 38.15 && lat < 38.62 && lon < 26.2) return true; // Chios
   if (lat > 37.55 && lat < 37.82 && lon < 27.08) return true; // Samos, Ikaria
-  if (lat > 36.7 && lat < 37.2 && lon < 27.05) return true; // Kalymnos, Leros
+  if (lat > 36.7 && lat < 37.5 && lon < 27.05) return true; // Kalymnos to Agathonisi
   if (lat > 36.7 && lat < 36.95 && lon < 27.33) return true; // Kos
-  if (lat < 36.62 && lon < 28.3) return true; // Rhodes, Karpathos, Symi
-  return lat < 35.75 && lon > 32.2 && lon < 34.65; // Cyprus
+  return lat < 36.62 && lon < 28.3; // Rhodes, Karpathos, Symi
 }
 
-// African land inside the Middle East box: the Horn below 12.5°N (Arabia ends
-// at 12.6°N), and Sudan and Eritrea west of a line down the Red Sea (Port
+// African land inside the Middle East box: the Horn below 12.5°N and west of
+// 51.6°E (Arabia ends at 12.6°N; Yemen's Socotra lies east of Cape
+// Guardafui), and Sudan and Eritrea west of a line down the Red Sea (Port
 // Sudan and Massawa are west of it; Jeddah, Jizan and Hodeidah east).
 function isAfricaInMenaBox(lat: number, lon: number): boolean {
-  if (lat < 12.5) return true;
+  if (lat < 12.5 && lon < 51.6) return true;
   return lat < 22 && lon < 38 + 0.55 * (22 - lat);
 }
 

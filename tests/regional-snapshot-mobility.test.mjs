@@ -666,6 +666,8 @@ describe('latLonToSnapshotRegion agrees with the airport registry by country', (
     ['Thessaloniki', 40.64, 22.94, 'europe'],
     ['Heraklion', 35.34, 25.13, 'europe'],
     ['Rhodes', 36.43, 28.22, 'europe'],
+    ['Patmos', 37.31, 26.55, 'europe'],
+    ['Didim', 37.37, 27.27, 'mena'],
     ['Skopje', 42.00, 21.43, 'europe'],
     ['Haskovo', 41.93, 25.55, 'europe'],
     ['Reykjavik', 64.15, -21.94, 'europe'],
