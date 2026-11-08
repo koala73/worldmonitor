@@ -193,6 +193,30 @@ describe('geolocation off the readiness path (#7778)', () => {
     assert.equal(userLocation.initialRegionFromCache(true), 'global');
   });
 
+  it('cached coords on both Mediterranean shores resolve to their own continent', () => {
+    // The Africa and Europe boxes overlap across 35-40°N; neither shore may take the other's region.
+    const cases: Array<[string, number, number, string]> = [
+      ['Lisbon', 38.72, -9.14, 'eu'],
+      ['Seville', 37.39, -5.98, 'eu'],
+      ['Málaga', 36.72, -4.42, 'eu'],
+      ['Gibraltar', 36.14, -5.35, 'eu'],
+      ['Cagliari', 39.22, 9.11, 'eu'],
+      ['Palermo', 38.12, 13.36, 'eu'],
+      ['Valletta', 35.90, 14.51, 'eu'],
+      ['Athens', 37.98, 23.73, 'eu'],
+      ['Tangier', 35.77, -5.80, 'africa'],
+      ['Oran', 35.70, -0.63, 'africa'],
+      ['Algiers', 36.75, 3.06, 'africa'],
+      ['Bizerte', 37.27, 9.87, 'africa'],
+      ['Tunis', 36.81, 10.18, 'africa'],
+      ['Tripoli', 32.89, 13.19, 'africa'],
+    ];
+    for (const [city, lat, lon, region] of cases) {
+      installFixture({ permissionState: 'denied', cachedCoords: { lat, lon }, timezone: 'UTC' });
+      assert.equal(userLocation.initialRegionFromCache(true), region, city);
+    }
+  });
+
   it('one in-flight position request is shared between region and precise consumers', async () => {
     const calls = installFixture({
       permissionState: 'granted',

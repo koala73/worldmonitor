@@ -29,11 +29,22 @@ function timezoneToRegion(tz: string): MapView | null {
   }
 }
 
+// The Europe and Africa boxes overlap across 35-40°N. West of 25°E the African
+// shore in that band is Morocco below 36.0°N (Spain's Tarifa is 36.01°N),
+// Algeria and western Tunisia below 37.1°N, and northern Tunisia below 37.4°N
+// (Sardinia and Sicily start north of 38.8°N or east of 11.5°E).
+function isNorthAfricanCoast(lat: number, lon: number): boolean {
+  if (lon < -1.8) return lat < 36.0;
+  if (lon < 9.5) return lat < 37.1;
+  if (lon < 11.5) return lat < 37.4;
+  return false;
+}
+
 function coordsToRegion(lat: number, lon: number): MapView {
   if (lat > 15 && lon > 60 && lon < 150) return 'asia';
   if (lat > 10 && lat < 45 && lon > 25 && lon < 65) return 'mena';
+  if (lat > 35 && lat < 72 && lon > -25 && lon < 45 && !isNorthAfricanCoast(lat, lon)) return 'eu';
   if (lat > -40 && lat < 40 && lon > -25 && lon < 55) return 'africa';
-  if (lat > 35 && lat < 72 && lon > -25 && lon < 45) return 'eu';
   if (lat > -60 && lat < 15 && lon > -90 && lon < -30) return 'latam';
   if (lat > 15 && lon > -170 && lon < -50) return 'america';
   if (lat < 0 && lon > 100) return 'oceania';
