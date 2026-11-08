@@ -48,7 +48,7 @@ The boundary needs a time, a decision, and a reason. Without that, every signal 
 
 For WorldMonitor data, possible event boundaries include:
 
-- chokepoint score crossing red
+- [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) score crossing red
 - forecast probability crossing a review threshold
 - travel advisory level changing
 - disease alert entering ALERT or WARNING

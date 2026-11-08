@@ -70,7 +70,7 @@ You do not have to design prompts from scratch. The server ships six prompt temp
 - **conflict-pulse:** active conflict events plus alert-flagged news, globally or per country
 - **market-open-prep:** equity, commodity, and crypto movers before the bell
 - **energy-shock-watch:** active energy disruptions, fuel shortages, crisis policies
-- **route-risk-check:** chokepoint transit summary and risk posture for a shipping corridor
+- **route-risk-check:** [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) transit summary and risk posture for a shipping corridor
 - **freshness-audit:** verifies the underlying data caches are current before you trust them
 
 Each template pre-bakes the right tool calls and projections, so the first execution lands on the right data shape instead of burning a round-trip on discovery.

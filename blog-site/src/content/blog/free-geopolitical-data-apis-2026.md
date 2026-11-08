@@ -129,7 +129,7 @@ The API surface is proto-first and documented through a bundled OpenAPI spec. Th
 Good use cases:
 
 - country-risk monitoring with conflict, sanctions, advisory, macro, and news context
-- maritime chokepoint and supply-chain workflows
+- maritime [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) and supply-chain workflows
 - market-open geopolitical prep
 - OSINT verification workflows
 - AI-agent access to live intelligence tools

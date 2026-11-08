@@ -27,7 +27,7 @@ World Monitor integrates the **[U.S. Geological Survey earthquake feed](https://
 
 The USGS feed updates within minutes of a seismic event. For major earthquakes, World Monitor's news panel typically shows wire service alerts within 5-10 minutes, giving you both the raw seismic data and the human reporting side by side.
 
-**Why it matters beyond seismology:** Earthquakes trigger cascading effects. A magnitude 7.0 near an undersea cable route can disrupt internet traffic for an entire region. A quake near a nuclear facility triggers safety protocols. A tremor in a politically unstable country can accelerate instability. World Monitor shows all of these connections because the earthquake data shares the map with infrastructure, nuclear facilities, and CII (Country Instability Index) overlays. This is part of the broader approach to [monitoring global supply chains and commodity disruptions](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
+**Why it matters beyond seismology:** Earthquakes trigger cascading effects. A magnitude 7.0 near an undersea cable route can disrupt internet traffic for an entire region. A quake near a nuclear facility triggers safety protocols. A tremor in a politically unstable country can accelerate instability. World Monitor shows all of these connections because the earthquake data shares the map with infrastructure, nuclear facilities, and CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)) overlays. This is part of the broader approach to [monitoring global supply chains and commodity disruptions](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
 
 ### 2. Satellite Fire Detection (NASA FIRMS / VIIRS)
 

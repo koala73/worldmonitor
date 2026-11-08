@@ -1156,7 +1156,7 @@ For operational follow-through, connect this explainer to the [supply-chain scen
 
 WorldMonitor's chokepoint status combines Redis-backed transit summaries, flow estimates, navigational warnings, AIS disruption matching, and a static threat taxonomy. Upstream gaps are surfaced as unavailable data rather than silently turned into calm conditions.
 
-The model has known limits. AIS coverage can degrade near conflict zones or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
+The model has known limits. AIS coverage can degrade near [conflict zones](/blog/posts/track-global-conflicts-in-real-time/) or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
 
 For independently published baselines and current definitions, see the U.S. Energy Information Administration's [World Oil Transit Chokepoints analysis](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/).
 
@@ -1277,7 +1277,7 @@ When the Strait of Hormuz closes, the trade policy data shows the second-order e
 <a id="corpus-critical-minerals-concentration-risk"></a>
 ## Critical Minerals: Concentration Risk
 
-Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the HHI (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
+Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the [HHI](/blog/posts/critical-minerals-hhi-supply-risk-explained/) (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
 
 | Mineral | Top Producer | Share | HHI Score | Risk |
 |---------|-------------|-------|-----------|------|
@@ -1341,7 +1341,7 @@ World Monitor monitors its canonical waterway registry, including Hormuz, Malacc
 <a id="corpus-blog-site-src-content-blog-energy-shock-monitoring-chokepoints-worldmonitor-md"></a>
 ### blog-site/src/content/blog/energy-shock-monitoring-chokepoints-worldmonitor.md
 
-An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
+An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/). By the time the price chart explains it, the operational window has already narrowed.
 
 WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 

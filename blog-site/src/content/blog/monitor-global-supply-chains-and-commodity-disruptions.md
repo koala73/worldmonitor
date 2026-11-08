@@ -79,7 +79,7 @@ Click any exchange for trading hours, primary instruments, and current market st
 Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps its **strategic-port registry** with:
 
 - Current operational status
-- Geographic chokepoint proximity (Suez, Strait of Hormuz, Malacca, Panama Canal)
+- Geographic [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) proximity (Suez, Strait of Hormuz, Malacca, Panama Canal)
 - Connection to commodity supply chains
 - Regional conflict exposure
 
@@ -103,7 +103,7 @@ World Monitor maps the physical infrastructure that global trade depends on:
 **Pipelines:**
 
 - Major oil and gas pipelines worldwide
-- Route visualization through conflict zones
+- Route visualization through [conflict zones](/blog/posts/track-global-conflicts-in-real-time/)
 - Proximity alerts when pipeline routes cross escalating hotspots
 
 **Undersea Cables:**
@@ -120,7 +120,7 @@ The mining layer maps active mining operations for critical minerals alongside:
 
 - Operating companies
 - Mineral type (lithium, cobalt, rare earth, copper)
-- Country risk via CII (Country Instability Index)
+- Country risk via CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/))
 - Proximity to conflict zones
 
 When a country's CII starts climbing, supply chain teams can proactively assess which critical mineral supply lines are at risk.
