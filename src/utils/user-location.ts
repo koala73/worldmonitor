@@ -31,12 +31,13 @@ function timezoneToRegion(tz: string): MapView | null {
 
 // The Europe and Africa boxes overlap across 35-40°N. West of 25°E the African
 // shore in that band is Morocco below 36.0°N (Spain's Tarifa is 36.01°N),
-// Algeria and western Tunisia below 37.1°N, and northern Tunisia below 37.4°N
-// (Sardinia and Sicily start north of 38.8°N or east of 11.5°E).
+// Algeria below 37.1°N (Spain's Águilas is 37.4°N), and Tunisia from 8°E below
+// 37.6°N (Cape Serrat 37.22°N, Ras Ben Sakka 37.35°N, La Galite 37.53°N; Sardinia
+// starts at 38.86°N, and Sicily and Pantelleria lie east of 11.5°E).
 function isNorthAfricanCoast(lat: number, lon: number): boolean {
   if (lon < -1.8) return lat < 36.0;
-  if (lon < 9.5) return lat < 37.1;
-  if (lon < 11.5) return lat < 37.4;
+  if (lon < 8.0) return lat < 37.1;
+  if (lon < 11.5) return lat < 37.6;
   return false;
 }
 
