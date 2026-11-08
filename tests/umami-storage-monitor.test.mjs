@@ -328,7 +328,18 @@ describe('Umami storage monitor', () => {
 
     // The check writes its state before it sets a failing exit code, so saving
     // on every uncancelled run keeps the newest sample even on a critical run.
-    assert.equal(saveStep.if, '${{ !cancelled() }}');
+    // A restore that timed out or could not list earlier runs never loaded the
+    // history, so its one-sample state must not replace the stored trend; the
+    // next run restores the older artifact instead.
+    assert.equal(restoreStep.id, 'restore');
+    assert.equal(
+      saveStep.if,
+      "${{ !cancelled() && steps.restore.outcome == 'success' && steps.restore.outputs.complete != 'false' }}",
+    );
+    assert.match(
+      restoreStep.run,
+      /Could not list earlier monitor runs[^\n]*\n\s*echo "complete=false" >> "\$GITHUB_OUTPUT"\n\s*exit 0/,
+    );
     assert.equal(saveStep.with.name, restoreStep.run.match(/--name (\S+)/)?.[1]);
     assert.equal(saveStep.with.path, '.cache/umami-storage-state.json');
     // upload-artifact skips dot-directories unless told otherwise.

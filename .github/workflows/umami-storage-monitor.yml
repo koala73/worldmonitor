@@ -48,8 +48,10 @@ jobs:
       # the newest of this workflow's recent runs on the same branch that
       # uploaded one; cancelled runs upload nothing, so fall through to older.
       - name: Restore bounded storage history
-        # A slow artifact listing or download only costs the growth trend, so
-        # a timed-out restore continues like any other missing history.
+        id: restore
+        # A slow artifact listing or download must not block the capacity
+        # check, so a timed-out restore continues. It never loaded the history,
+        # so the upload below skips rather than replace the stored trend.
         timeout-minutes: 1
         continue-on-error: true
         env:
@@ -65,7 +67,8 @@ jobs:
           if ! run_ids=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/umami-storage-monitor.yml/runs" \
             -f "branch=$BRANCH" -F per_page=20 \
             --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); then
-            echo "::warning::Could not list earlier monitor runs; the growth trend starts over."
+            echo "::warning::Could not list earlier monitor runs; this run keeps the stored trend and does not replace it."
+            echo "complete=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           for run_id in $run_ids; do
@@ -114,9 +117,10 @@ jobs:
       # only then sets a non-zero exit code, so this saves the newest sample
       # even on a critical-capacity run. That state already carries the whole
       # trend window, so the artifact only has to outlive the gap until the
-      # next successful run.
+      # next successful run. A run whose restore did not complete holds only
+      # its own sample, so it uploads nothing and the stored trend survives.
       - name: Persist bounded storage history
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && steps.restore.outputs.complete != 'false' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: umami-storage-state
