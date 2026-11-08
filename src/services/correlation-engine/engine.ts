@@ -222,6 +222,9 @@ export class CorrelationEngine {
     // Cells are cellSizeDeg wide in both axes, so a column is the same longitude band
     // at every latitude. In-radius neighbors are at most one row apart, but a degree of
     // longitude shrinks toward the poles, so they can be several columns apart.
+    // spatialRadius 0 means no proximity clustering (types.ts), and a non-positive
+    // radius would make the column span infinite.
+    if (!(radiusKm > 0)) return [];
     const DEG_PER_KM_LAT = 1 / 111;
     const EARTH_RADIUS_KM = 6371; // the radius haversineKm uses
     const cellSizeDeg = radiusKm * DEG_PER_KM_LAT;

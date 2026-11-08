@@ -47,6 +47,13 @@ describe('seed-correlation clusterByProximity', () => {
     assert.deepEqual(partition(clusterByProximity([b, a], 500)), [['a', 'b']]);
   });
 
+  it('returns no clusters for a non-positive radius instead of scanning forever', () => {
+    // A zero cell size makes the column span infinite; the guard must return first.
+    const pair = [signalAt(10, 10, 'a'), signalAt(10, 10, 'b')];
+    assert.deepEqual(clusterByProximity(pair, 0), []);
+    assert.deepEqual(clusterByProximity(pair, -5), []);
+  });
+
   it('matches brute-force pairwise clustering from mid latitudes to the poles', () => {
     let seed = 42;
     const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);

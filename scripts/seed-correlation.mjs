@@ -605,7 +605,8 @@ function generateDisasterTitle(cluster) {
 // cells are cellSizeDeg wide in both axes, and the column scan widens per row because a degree
 // of longitude shrinks toward the poles.
 export function clusterByProximity(signals, radiusKm) {
-  if (signals.length === 0) return [];
+  // A non-positive radius would make the column span infinite.
+  if (signals.length === 0 || !(radiusKm > 0)) return [];
   const DEG_PER_KM_LAT = 1 / 111;
   const EARTH_RADIUS_KM = 6371; // the radius haversineKm uses
   const cellSizeDeg = radiusKm * DEG_PER_KM_LAT;
