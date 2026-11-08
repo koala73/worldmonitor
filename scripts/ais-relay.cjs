@@ -2322,7 +2322,11 @@ const X_POLL_INTERVAL_MS = 15 * 60 * 1000;
 // cycle with no error anywhere. Coerce non-numeric env values to the default.
 const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
 const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
-const X_TRACK_A_ACCOUNT_BUDGET = 64;
+// Reviewed enabled-registry ceiling. Post spend stays one List page per slot
+// (96 slots of 5 Posts) plus one 25-Post deletion audit, so member count does
+// not add Post reads. Raise this only after re-checking that math. It is not
+// the live List size: the List still has to match this registry exactly.
+const X_TRACK_A_ACCOUNT_BUDGET = 65;
 const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
 const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
 const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';

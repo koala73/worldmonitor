@@ -35,6 +35,8 @@ describe('X news-account public trust registries (#6654)', () => {
     assert.equal(entry.tier, 3);
     assert.equal(entry.type, 'intel');
     assert.equal(entry.risk, 'medium');
+    assert.equal(entry.note, 'Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher');
+    assert.doesNotMatch(entry.note, /independent/i);
     assert.equal(entry.stateAffiliated, undefined);
     assert.equal(entry.reuseTier, undefined);
     assert.equal(entry.reuseType, undefined);

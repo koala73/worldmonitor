@@ -59,6 +59,13 @@ describe('data/x-accounts.json registry', () => {
     }
   });
 
+  it('keeps the reviewed account ceiling on the fixed List-page budget', () => {
+    const relay = readFileSync(join(__dirname, '../scripts/ais-relay.cjs'), 'utf8');
+    const match = relay.match(/const X_TRACK_A_ACCOUNT_BUDGET = (\d+);/);
+    assert.ok(match);
+    assert.equal(Number(match[1]), accounts.length);
+  });
+
   it('registers The Iran Watcher by the verified immutable ID', () => {
     const account = accounts.find((entry) => entry.handle === 'TheIranWatcher');
     assert.deepEqual(account, {

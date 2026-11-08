@@ -367,7 +367,7 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     tier: 3,
     type: 'intel',
     risk: 'medium',
-    note: 'Independent Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher',
+    note: 'Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher',
   },
   {
     sourceName: 'The War Zone',
