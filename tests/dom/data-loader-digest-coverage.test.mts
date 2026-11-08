@@ -327,7 +327,9 @@ describe('digest coverage follows the selected browser response', () => {
 
       for (const calls of [home, edition]) {
         expect(calls).toHaveLength(2);
+        // The request aborts at the shorter of the two, so both must outlast the server.
         expect(calls[0]).toBeGreaterThan(__testing__.RESPONSE_DEADLINE_MS);
+        expect(calls[1]).toBeGreaterThan(__testing__.RESPONSE_DEADLINE_MS);
       }
     });
 
