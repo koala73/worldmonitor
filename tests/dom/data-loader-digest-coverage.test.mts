@@ -307,19 +307,28 @@ describe('digest coverage follows the selected browser response', () => {
       const timeout = vi.spyOn(AbortSignal, 'timeout');
       vi.mocked(globalThis.fetch).mockImplementation(async () => new Response(JSON.stringify(digest('complete', 3))));
 
-      let deadlines: number[];
+      // Each method mints its own deadline before publicRpcFetch adds its 30 s
+      // transport cap, so the FIRST timeout of each request is the caller's.
+      // Checking per method keeps the transport cap from standing in for a
+      // deadline a method stopped setting.
+      const callerDeadline = async (request: () => Promise<unknown>): Promise<number[]> => {
+        timeout.mockClear();
+        expect(await request()).not.toBeNull();
+        return timeout.mock.calls.map(([ms]) => ms);
+      };
+      let home: number[];
+      let edition: number[];
       try {
-        expect(await internal.tryFetchDigest()).not.toBeNull();
-        expect(await internal.fetchEditionDigest('tech', 'en')).not.toBeNull();
-        deadlines = timeout.mock.calls.map(([ms]) => ms);
+        home = await callerDeadline(() => internal.tryFetchDigest());
+        edition = await callerDeadline(() => internal.fetchEditionDigest('tech', 'en'));
       } finally {
         timeout.mockRestore();
       }
 
-      // Both digest requests set a deadline; publicRpcFetch adds its own
-      // transport cap beside each. Every one must outlast the server.
-      expect(deadlines.length).toBeGreaterThanOrEqual(2);
-      expect(Math.min(...deadlines)).toBeGreaterThan(__testing__.RESPONSE_DEADLINE_MS);
+      for (const calls of [home, edition]) {
+        expect(calls).toHaveLength(2);
+        expect(calls[0]).toBeGreaterThan(__testing__.RESPONSE_DEADLINE_MS);
+      }
     });
 
     it('counts a WebKit deadline abort as a timeout, not "other" (Sentry WORLDMONITOR-1D5)', async () => {
