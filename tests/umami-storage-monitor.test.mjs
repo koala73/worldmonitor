@@ -16,6 +16,7 @@ import {
   updateStorageState,
 } from '../scripts/check-umami-storage.mjs';
 import { RAILWAY_VOLUME_READ_POLICY } from '../scripts/read-railway-volumes.mjs';
+import { RAILWAY_CLI_INSTALL_POLICY } from '../scripts/trigger-railway-deploys.mjs';
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -327,7 +328,25 @@ describe('Umami storage monitor', () => {
 
     // The check writes its state before it sets a failing exit code, so saving
     // on every uncancelled run keeps the newest sample even on a critical run.
-    assert.equal(saveStep.if, '${{ !cancelled() }}');
+    // A restore that timed out or could not list earlier runs never loaded the
+    // history, so its one-sample state must not replace the stored trend; the
+    // next run restores the older artifact instead.
+    assert.equal(restoreStep.id, 'restore');
+    assert.equal(
+      saveStep.if,
+      "${{ !cancelled() && steps.restore.outcome == 'success' && steps.restore.outputs.complete != 'false' }}",
+    );
+    assert.match(
+      restoreStep.run,
+      /Could not list earlier monitor runs[^\n]*\n\s*echo "complete=false" >> "\$GITHUB_OUTPUT"\n\s*exit 0/,
+    );
+    // Every download failing is not proof there is no history: only an
+    // artifact listing with no live same-branch history may start a new trend.
+    const tail = restoreStep.run.slice(restoreStep.run.indexOf('done'));
+    assert.match(tail, /gh api --method GET --paginate "[^"]*\/actions\/artifacts"/);
+    assert.match(tail, /-f "name=umami-storage-state"/);
+    assert.match(tail, /select\(\.expired == false and \.workflow_run\.head_branch == \$ENV\.BRANCH\)/);
+    assert.match(tail, /echo "complete=false" >> "\$GITHUB_OUTPUT"/);
     assert.equal(saveStep.with.name, restoreStep.run.match(/--name (\S+)/)?.[1]);
     assert.equal(saveStep.with.path, '.cache/umami-storage-state.json');
     // upload-artifact skips dot-directories unless told otherwise.
@@ -466,7 +485,7 @@ describe('Umami storage monitor', () => {
       'the Railway token must stay in the main-only environment without deployment tracking',
     );
     // Under the 15-minute cadence, so a run never overlaps the next one.
-    assert.equal(workflow.jobs.monitor['timeout-minutes'], 8);
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 12);
   });
 });
 
@@ -597,10 +616,27 @@ describe('Railway volume read', () => {
   it('fits every attempt inside the job timeout, ahead of the retention steps', () => {
     const { attempts, attemptTimeoutMs, retryDelayMs } = RAILWAY_VOLUME_READ_POLICY;
     const readBudgetSeconds = (attempts * attemptTimeoutMs + (attempts - 1) * retryDelayMs) / 1000;
-    // Setup, checkout, the CLI install, and the history restore take ~25 s.
+    // Checkout and Node setup take ~15 s. The CLI install and the history
+    // restore are bounded by step timeouts the runner enforces on the whole
+    // process tree, so the budget counts those bounds, not hoped-for times.
     // On a day slow enough to exhaust these attempts, the retention read can
     // run into the CLI's own ~90 s timeout too, and its verdict must still print.
-    const setupSeconds = 60;
+    const steps = workflow.jobs.monitor.steps;
+    const stepBoundSeconds = (name) => {
+      const step = steps.find((candidate) => candidate.name === name);
+      assert.ok(Number.isFinite(step?.['timeout-minutes']), `${name} needs a step timeout`);
+      return step['timeout-minutes'] * 60;
+    };
+    const installSeconds = stepBoundSeconds('Install pinned Railway CLI');
+    const { attemptTimeoutMs: installTimeoutMs, retryDelaysMs } = RAILWAY_CLI_INSTALL_POLICY;
+    assert.ok(
+      ((retryDelaysMs.length + 1) * installTimeoutMs + retryDelaysMs.reduce((sum, ms) => sum + ms, 0)) / 1000
+        <= installSeconds,
+      'the step timeout must not cut off the installer\'s own retries',
+    );
+    const restore = steps.find((step) => step.name === 'Restore bounded storage history');
+    assert.equal(restore['continue-on-error'], true, 'a timed-out restore must not fail the capacity check');
+    const setupSeconds = 15 + installSeconds + stepBoundSeconds('Restore bounded storage history');
     const retentionReadSeconds = attemptTimeoutMs / 1000;
     const marginSeconds = 30;
     assert.ok(
