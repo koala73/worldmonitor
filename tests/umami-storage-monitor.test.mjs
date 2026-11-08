@@ -467,7 +467,7 @@ describe('Umami storage monitor', () => {
       'the Railway token must stay in the main-only environment without deployment tracking',
     );
     // Under the 15-minute cadence, so a run never overlaps the next one.
-    assert.equal(workflow.jobs.monitor['timeout-minutes'], 10);
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 12);
   });
 });
 
@@ -598,14 +598,27 @@ describe('Railway volume read', () => {
   it('fits every attempt inside the job timeout, ahead of the retention steps', () => {
     const { attempts, attemptTimeoutMs, retryDelayMs } = RAILWAY_VOLUME_READ_POLICY;
     const readBudgetSeconds = (attempts * attemptTimeoutMs + (attempts - 1) * retryDelayMs) / 1000;
-    // Setup, checkout and the history restore take ~15 s; the CLI install can
-    // spend every bounded attempt when GitHub release downloads fail. On a day
-    // slow enough to exhaust these attempts, the retention read can run into
-    // the CLI's own ~90 s timeout too, and its verdict must still print.
+    // Checkout and Node setup take ~15 s. The CLI install and the history
+    // restore are bounded by step timeouts the runner enforces on the whole
+    // process tree, so the budget counts those bounds, not hoped-for times.
+    // On a day slow enough to exhaust these attempts, the retention read can
+    // run into the CLI's own ~90 s timeout too, and its verdict must still print.
+    const steps = workflow.jobs.monitor.steps;
+    const stepBoundSeconds = (name) => {
+      const step = steps.find((candidate) => candidate.name === name);
+      assert.ok(Number.isFinite(step?.['timeout-minutes']), `${name} needs a step timeout`);
+      return step['timeout-minutes'] * 60;
+    };
+    const installSeconds = stepBoundSeconds('Install pinned Railway CLI');
     const { attemptTimeoutMs: installTimeoutMs, retryDelaysMs } = RAILWAY_CLI_INSTALL_POLICY;
-    const installSeconds = ((retryDelaysMs.length + 1) * installTimeoutMs
-      + retryDelaysMs.reduce((sum, ms) => sum + ms, 0)) / 1000;
-    const setupSeconds = 30 + installSeconds;
+    assert.ok(
+      ((retryDelaysMs.length + 1) * installTimeoutMs + retryDelaysMs.reduce((sum, ms) => sum + ms, 0)) / 1000
+        <= installSeconds,
+      'the step timeout must not cut off the installer\'s own retries',
+    );
+    const restore = steps.find((step) => step.name === 'Restore bounded storage history');
+    assert.equal(restore['continue-on-error'], true, 'a timed-out restore must not fail the capacity check');
+    const setupSeconds = 15 + installSeconds + stepBoundSeconds('Restore bounded storage history');
     const retentionReadSeconds = attemptTimeoutMs / 1000;
     const marginSeconds = 30;
     assert.ok(

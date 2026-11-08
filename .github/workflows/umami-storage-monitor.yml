@@ -20,11 +20,12 @@ jobs:
   monitor:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
-    # Three bounded CLI install attempts (GitHub release downloads can 502),
-    # two ~100 s volume attempts, and a retention read that can also run into
-    # the CLI's ~90 s timeout must fit, or the retention alarm never prints.
-    # Still under the 15-minute cadence, so runs do not overlap.
-    timeout-minutes: 10
+    # The step-bounded CLI install (GitHub release downloads can 502) and
+    # history restore, two ~100 s volume attempts, and a retention read that
+    # can also run into the CLI's ~90 s timeout must fit, or the retention
+    # alarm never prints. Still under the 15-minute cadence, so runs do not
+    # overlap.
+    timeout-minutes: 12
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -35,7 +36,10 @@ jobs:
         with:
           node-version: '24'
 
+      # The runner kills the whole process tree at this bound, including a
+      # postinstall download that outlives npm's own per-attempt timeout.
       - name: Install pinned Railway CLI
+        timeout-minutes: 4
         run: node scripts/install-railway-cli.mjs
 
       # The history travels as an artifact, not an Actions cache entry. The
@@ -44,6 +48,10 @@ jobs:
       # the newest of this workflow's recent runs on the same branch that
       # uploaded one; cancelled runs upload nothing, so fall through to older.
       - name: Restore bounded storage history
+        # A slow artifact listing or download only costs the growth trend, so
+        # a timed-out restore continues like any other missing history.
+        timeout-minutes: 1
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
