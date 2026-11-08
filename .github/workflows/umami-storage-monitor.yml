@@ -35,7 +35,7 @@ jobs:
           node-version: '24'
 
       - name: Install pinned Railway CLI
-        run: npm install --global @railway/cli@5.30.1
+        run: node scripts/install-railway-cli.mjs
 
       # The history travels as an artifact, not an Actions cache entry. The
       # repository cache sits at its 10 GB cap, and GitHub evicted this history

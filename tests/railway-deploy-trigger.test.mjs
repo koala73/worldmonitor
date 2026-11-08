@@ -580,6 +580,41 @@ describe('protected leased mutation orchestration', () => {
     assert.deepEqual(createRailwayCliInstallEnv(env), calls[0].options.env);
   });
 
+  it('retries a failed Railway CLI binary download, then succeeds', () => {
+    const calls = [];
+    const sleeps = [];
+    const logs = [];
+    installPinnedRailwayCli({
+      env: { PATH: '/runner/bin' },
+      spawn: (command, args) => {
+        calls.push([command, args]);
+        return calls.length < 3
+          ? { status: 1, signal: null, error: null, stdout: '', stderr: 'npm error Error: Failed fetching the binary: Gateway Time-out\n' }
+          : { status: 0, signal: null, error: null };
+      },
+      sleep: (ms) => sleeps.push(ms),
+      log: (message) => logs.push(message),
+    });
+    assert.equal(calls.length, 3);
+    assert.deepEqual(sleeps, [10_000, 30_000]);
+    assert.equal(logs.length, 2);
+    assert.match(logs[0], /attempt 1\/3 failed: .*Failed fetching the binary: Gateway Time-out/);
+  });
+
+  it('fails with the npm error once every Railway CLI install attempt fails', () => {
+    let calls = 0;
+    assert.throws(() => installPinnedRailwayCli({
+      env: {},
+      spawn: () => {
+        calls += 1;
+        return { status: 1, signal: null, error: null, stdout: '', stderr: 'npm error Error: Failed fetching the binary: Bad Gateway' };
+      },
+      sleep: () => {},
+      log: () => {},
+    }), /installation failed \(1\): npm error Error: Failed fetching the binary: Bad Gateway/);
+    assert.equal(calls, 3);
+  });
+
   it('retries GitHub state reads without exposing Railway capabilities', () => {
     const calls = [];
     const parsed = runGitHubApi('repos/o/r/git/ref/heads/main', {
