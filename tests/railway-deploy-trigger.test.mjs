@@ -575,7 +575,7 @@ describe('protected leased mutation orchestration', () => {
     assert.deepEqual(calls.map(({ command, args }) => [command, args]), [
       ['npm', ['install', '--global', '@railway/cli@5.30.1']],
     ]);
-    assert.equal(calls[0].options.timeout, 2 * 60 * 1_000);
+    assert.equal(calls[0].options.timeout, 60 * 1_000);
     assert.deepEqual(calls[0].options.env, { HOME: '/runner/home', PATH: '/runner/bin' });
     assert.deepEqual(createRailwayCliInstallEnv(env), calls[0].options.env);
   });
@@ -607,7 +607,24 @@ describe('protected leased mutation orchestration', () => {
       env: {},
       spawn: () => {
         calls += 1;
-        return { status: 1, signal: null, error: null, stdout: '', stderr: 'npm error Error: Failed fetching the binary: Bad Gateway' };
+        // Real npm 11 output for this failure, footer last.
+        return {
+          status: 1,
+          signal: null,
+          error: null,
+          stdout: '',
+          stderr: [
+            'npm error code 1',
+            'npm error path /opt/hostedtoolcache/node/24.22.2/x64/lib/node_modules/@railway/cli',
+            'npm error command failed',
+            'npm error command sh -c node ./npm-install/postinstall.js',
+            'npm error https://github.com/railwayapp/cli/releases/download/v5.30.1/railway-v5.30.1-x86_64-unknown-linux-gnu.tar.gz',
+            'npm error Error: Failed fetching the binary: Bad Gateway',
+            'npm error     at install (file:///opt/hostedtoolcache/node/24.22.2/x64/lib/node_modules/@railway/cli/npm-install/postinstall.js:30:9)',
+            'npm error A complete log of this run can be found in: /home/runner/.npm/_logs/2026-11-08T08_47_38_084Z-debug-0.log',
+            '',
+          ].join('\n'),
+        };
       },
       sleep: () => {},
       log: () => {},

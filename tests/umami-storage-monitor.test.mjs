@@ -16,6 +16,7 @@ import {
   updateStorageState,
 } from '../scripts/check-umami-storage.mjs';
 import { RAILWAY_VOLUME_READ_POLICY } from '../scripts/read-railway-volumes.mjs';
+import { RAILWAY_CLI_INSTALL_POLICY } from '../scripts/trigger-railway-deploys.mjs';
 
 const NOW = Date.parse('2026-08-01T12:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -466,7 +467,7 @@ describe('Umami storage monitor', () => {
       'the Railway token must stay in the main-only environment without deployment tracking',
     );
     // Under the 15-minute cadence, so a run never overlaps the next one.
-    assert.equal(workflow.jobs.monitor['timeout-minutes'], 8);
+    assert.equal(workflow.jobs.monitor['timeout-minutes'], 10);
   });
 });
 
@@ -597,10 +598,14 @@ describe('Railway volume read', () => {
   it('fits every attempt inside the job timeout, ahead of the retention steps', () => {
     const { attempts, attemptTimeoutMs, retryDelayMs } = RAILWAY_VOLUME_READ_POLICY;
     const readBudgetSeconds = (attempts * attemptTimeoutMs + (attempts - 1) * retryDelayMs) / 1000;
-    // Setup, checkout, the CLI install, and the history restore take ~25 s.
-    // On a day slow enough to exhaust these attempts, the retention read can
-    // run into the CLI's own ~90 s timeout too, and its verdict must still print.
-    const setupSeconds = 60;
+    // Setup, checkout and the history restore take ~15 s; the CLI install can
+    // spend every bounded attempt when GitHub release downloads fail. On a day
+    // slow enough to exhaust these attempts, the retention read can run into
+    // the CLI's own ~90 s timeout too, and its verdict must still print.
+    const { attemptTimeoutMs: installTimeoutMs, retryDelaysMs } = RAILWAY_CLI_INSTALL_POLICY;
+    const installSeconds = ((retryDelaysMs.length + 1) * installTimeoutMs
+      + retryDelaysMs.reduce((sum, ms) => sum + ms, 0)) / 1000;
+    const setupSeconds = 30 + installSeconds;
     const retentionReadSeconds = attemptTimeoutMs / 1000;
     const marginSeconds = 30;
     assert.ok(
