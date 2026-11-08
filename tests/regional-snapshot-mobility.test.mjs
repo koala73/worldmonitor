@@ -696,6 +696,11 @@ describe('latLonToSnapshotRegion agrees with the airport registry by country', (
     ['Corozal', 18.39, -88.39, 'latam'],
     ['Roatán', 16.33, -86.53, 'latam'],
     ['Chetumal', 18.50, -88.30, 'north-america'],
+    // The Belize/Petén latitude band (16-17.82°N) on other continents.
+    ['Jizan', 16.90, 42.57, 'mena'],
+    ['Timbuktu', 16.77, -3.01, 'sub-saharan-africa'],
+    ['Hyderabad', 17.38, 78.49, 'south-asia'],
+    ['Hue', 16.46, 107.59, 'east-asia'],
     ['Havana', 23.11, -82.37, 'latam'],
     ['San Juan', 18.47, -66.11, 'latam'],
     ['Nassau', 25.05, -77.35, 'latam'],

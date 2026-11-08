@@ -128,6 +128,7 @@ function isAtlanticEurope(lat, lon) {
 // to Corozal (Chetumal is Mexican); Cancún (86.85°W) and Key West (24.55°N)
 // stay outside.
 function isLatinAmericaNorthOf16(lat, lon) {
+  if (lon <= -91 || lon >= -59) return false;
   if (lat >= 16 && lat < 17.82 && lon > -90.98) return true;
   if (lon > -89.15 && lon < -88.3 && lat < 17.82 + (lon + 89.15) * 0.79) return true;
   if (lon >= -88.3 && lon < -87.4 && lat < 18.15) return true;
