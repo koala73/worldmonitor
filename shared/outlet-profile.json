@@ -4626,6 +4626,13 @@
     "language": "en",
     "ownershipClass": "private"
   },
+  "The Iran Watcher": {
+    "country": "INTL",
+    "audience": "international",
+    "language": "en",
+    "ownershipClass": "unreviewed",
+    "note": "English-language Iran and Persian Gulf monitor; ownership not public."
+  },
   "The Narwhal": {
     "country": "CA",
     "audience": "domestic",
