@@ -15,10 +15,12 @@ import {
   CHECKOUT_MISSION_PARAM,
   CHECKOUT_PANEL_PARAM,
   CHECKOUT_HANDOFF_PARAM,
-  DESKTOP_CHECKOUT_HANDOFF,
+  CHECKOUT_DESKTOP_ACCOUNT_PARAM,
   parseMissionPreviewAttribution,
-  isDesktopCheckoutHandoff,
+  parseDesktopCheckoutHandoff,
+  stampDesktopCheckoutHandoff,
   type CheckoutAttribution,
+  type DesktopCheckoutHandoff,
   type MissionPreviewAttribution,
 } from '../../../shared/checkout-attribution';
 
@@ -33,7 +35,7 @@ export interface CheckoutIntentFromUrl {
   discountCode?: string;
   attributionSource?: string;
   checkoutAttribution?: MissionPreviewAttribution;
-  desktopHandoff?: boolean;
+  desktopHandoff?: DesktopCheckoutHandoff;
 }
 
 /**
@@ -49,13 +51,14 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
     params.get(CHECKOUT_MISSION_PARAM),
     params.get(CHECKOUT_PANEL_PARAM),
   );
+  const desktopHandoff = parseDesktopCheckoutHandoff(search);
   return {
     productId,
     referralCode: params.get(CHECKOUT_REF_PARAM) ?? undefined,
     discountCode: params.get(CHECKOUT_DISCOUNT_PARAM) ?? undefined,
     attributionSource: params.get(CHECKOUT_ATTRIBUTION_PARAM) ?? undefined,
     ...(checkoutAttribution ? { checkoutAttribution } : {}),
-    ...(isDesktopCheckoutHandoff(search) ? { desktopHandoff: true } : {}),
+    ...(desktopHandoff ? { desktopHandoff } : {}),
   };
 }
 
@@ -76,6 +79,7 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_MISSION_PARAM);
   params.delete(CHECKOUT_PANEL_PARAM);
   params.delete(CHECKOUT_HANDOFF_PARAM);
+  params.delete(CHECKOUT_DESKTOP_ACCOUNT_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
@@ -96,9 +100,7 @@ export function buildCheckoutReturnUrl(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    // Read below to re-stamp CHECKOUT_HANDOFF_PARAM, and passed by
-    // PricingSection; the declaration was the only piece missing.
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
   },
 ): string {
   const url = new URL(currentHref);
@@ -109,6 +111,7 @@ export function buildCheckoutReturnUrl(
   url.searchParams.delete(CHECKOUT_MISSION_PARAM);
   url.searchParams.delete(CHECKOUT_PANEL_PARAM);
   url.searchParams.delete(CHECKOUT_HANDOFF_PARAM);
+  url.searchParams.delete(CHECKOUT_DESKTOP_ACCOUNT_PARAM);
   url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
   if (options?.referralCode) url.searchParams.set(CHECKOUT_REF_PARAM, options.referralCode);
   if (options?.discountCode) url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
@@ -123,8 +126,6 @@ export function buildCheckoutReturnUrl(
     url.searchParams.set(CHECKOUT_MISSION_PARAM, checkoutAttribution.missionId);
     url.searchParams.set(CHECKOUT_PANEL_PARAM, checkoutAttribution.panelKey);
   }
-  if (options?.desktopHandoff) {
-    url.searchParams.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
-  }
+  if (options?.desktopHandoff) stampDesktopCheckoutHandoff(url.searchParams, options.desktopHandoff);
   return url.toString();
 }

@@ -5,7 +5,7 @@ import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../se
 import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
-import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
+import type { CheckoutAttribution, DesktopCheckoutHandoff } from '../../../shared/checkout-attribution';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -264,7 +264,7 @@ export function PricingSection({
   refCode?: string;
   attributionSource?: string;
   checkoutAttribution?: CheckoutAttribution;
-  desktopHandoff?: boolean;
+  desktopHandoff?: DesktopCheckoutHandoff;
 }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');

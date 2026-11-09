@@ -29,15 +29,16 @@ function reportPlanOpenFailure(): void {
  */
 export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
   try {
-    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
+    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }, { currentDesktopCheckoutHandoff }] = await Promise.all([
       import('@/services/runtime'),
       import('@/services/external-navigation'),
       import('@/services/referral-capture'),
+      import('@/services/clerk'),
     ]);
     const url = new URL(buildAttributedProUrl(
       `${WEB_APP_ORIGIN}/pro#pricing`,
       attribution,
-      isDesktopRuntime() ? { desktopHandoff: true } : undefined,
+      isDesktopRuntime() ? { desktopHandoff: await currentDesktopCheckoutHandoff() } : undefined,
     ));
     const referral = loadActiveReferral();
     if (referral) url.searchParams.set('ref', referral);

@@ -218,6 +218,10 @@ const stubSources: Record<string, string> = {
     export const getCurrentClerkUser = () => globalThis.__desktopCheckoutHarness.currentUser;
     export const getClerkToken = async () => 'tok_test';
     export const openSignIn = () => { globalThis.__desktopCheckoutHarness.signInCalls++; };
+    export const currentDesktopCheckoutHandoff = async () => {
+      const user = globalThis.__desktopCheckoutHarness.currentUser;
+      return user ? { account: 'digest-of-' + user.id } : {};
+    };
   `,
   './analytics': `
     export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
@@ -493,13 +497,16 @@ describe('startCheckout on desktop (#5911)', () => {
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
+    await new Promise((resolve) => setImmediate(resolve));
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, []);
+    // #10342: a signed-in app names its account so /pro can catch a
+    // checkout on a different browser session.
     assert.deepEqual(harness.invocations, [
       {
         command: 'open_url',
-        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=digest-of-user_1' },
       },
     ]);
   });

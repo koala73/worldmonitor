@@ -47,9 +47,11 @@ import {
   CHECKOUT_ATTEMPT_STORAGE_KEY,
   CHECKOUT_RETURN_SOURCE_PARAM,
   DESKTOP_CHECKOUT_HANDOFF,
+  desktopAccountDigest,
   parseMissionPreviewAttribution,
   resolveCheckoutContext,
   type CheckoutAttribution,
+  type DesktopCheckoutHandoff,
 } from '../../../shared/checkout-attribution';
 import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
@@ -255,7 +257,7 @@ export async function startCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -279,7 +281,7 @@ async function startCheckoutInner(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -327,7 +329,47 @@ async function startCheckoutInner(
     return false;
   }
 
-  return doCheckout(productId, options ?? {});
+  const confirmed = await confirmDesktopAccount(c, productId, options ?? {});
+  return confirmed ? doCheckout(productId, confirmed) : false;
+}
+
+type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
+
+/**
+ * A desktop handoff names the account signed in to the app (#10342), but
+ * checkout runs on this browser's session. When they differ, the buyer picks:
+ * switch to the desktop account and resume this checkout after sign-in, or
+ * upgrade the browser account knowingly, which drops the "the app will
+ * update" return copy. Resolves the options to check out with, or null when
+ * checkout must not start now.
+ */
+async function confirmDesktopAccount(
+  c: LoadedClerk,
+  productId: string,
+  options: ProCheckoutOptions,
+): Promise<ProCheckoutOptions | null> {
+  const desktopAccount = options.desktopHandoff?.account;
+  if (!desktopAccount || !c.user) return options;
+  if (await desktopAccountDigest(c.user.id) === desktopAccount) return options;
+
+  const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
+  const choice = await askDesktopAccountChoice(browserAccount);
+  if (choice === 'upgrade-browser-account') {
+    const { desktopHandoff: _dropped, ...browserOptions } = options;
+    return browserOptions;
+  }
+  if (choice === 'switch-account') {
+    const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
+    try {
+      await c.signOut();
+      c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
+    } catch (err) {
+      console.error('[checkout] Failed to switch account:', err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'desktop-account-switch' } });
+      showCheckoutErrorToast('Sign-in could not open. Please try again.');
+    }
+  }
+  return null;
 }
 
 export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
@@ -365,13 +407,14 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
       ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
       : {}),
   });
-  return doCheckout(productId, {
+  const confirmed = await confirmDesktopAccount(c, productId, {
     referralCode,
     discountCode,
     attributionSource,
     checkoutAttribution,
     desktopHandoff,
   });
+  return confirmed ? doCheckout(productId, confirmed) : false;
 }
 
 async function doCheckout(
@@ -381,7 +424,7 @@ async function doCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -1114,6 +1157,64 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
   document.getElementById(`${PRO_PENDING_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
+}
+
+type DesktopAccountChoice = 'switch-account' | 'upgrade-browser-account' | 'cancel';
+
+const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
+
+function askDesktopAccountChoice(browserAccount: string): Promise<DesktopAccountChoice> {
+  return new Promise((resolve) => {
+    document.getElementById(PRO_DESKTOP_ACCOUNT_DIALOG_ID)?.remove();
+    const account = escapeHtml(browserAccount);
+    const backdrop = document.createElement('div');
+    backdrop.id = PRO_DESKTOP_ACCOUNT_DIALOG_ID;
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.setAttribute('aria-labelledby', `${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title`);
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '99990',
+      background: 'rgba(10, 10, 10, 0.72)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px',
+    });
+    const buttonStyle = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
+    backdrop.innerHTML = `
+      <div style="background:#141414;border:1px solid #2a2a2a;border-radius:8px;padding:20px 22px;max-width:460px;width:100%;color:#e8e8e8;font-family:'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+        <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">This browser uses a different account</h2>
+        <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
+          This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.
+        </p>
+        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;">
+          <button data-choice="cancel" type="button" style="${buttonStyle}background:transparent;color:#aaa;border:1px solid #2a2a2a;">Cancel</button>
+          <button data-choice="upgrade-browser-account" type="button" style="${buttonStyle}background:transparent;color:#e8e8e8;border:1px solid #444;">Upgrade this account</button>
+          <button data-choice="switch-account" type="button" style="${buttonStyle}background:#44ff88;color:#0a0a0a;border:none;font-weight:700;">Switch account</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    const finish = (choice: DesktopAccountChoice) => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      resolve(choice);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') finish('cancel');
+    };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) return finish('cancel');
+      const choice = (e.target as HTMLElement).closest('button')?.dataset.choice as DesktopAccountChoice | undefined;
+      if (choice) finish(choice);
+    });
+    document.addEventListener('keydown', onKey, true);
+    backdrop.querySelector<HTMLButtonElement>('[data-choice="switch-account"]')?.focus();
+  });
 }
 
 function escapeHtml(s: string): string {

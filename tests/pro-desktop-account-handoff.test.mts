@@ -112,8 +112,9 @@ const dialog = () => document.querySelector('[role="dialog"]');
 const button = (label: RegExp) => [...document.querySelectorAll('[role="dialog"] button')]
   .find((el) => label.test(el.textContent ?? '')) as HTMLButtonElement | undefined;
 
+// crypto.subtle.digest settles on a macrotask; setTimeout is mocked here.
 async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i++) await Promise.resolve();
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 it('does not start checkout for the browser account when the desktop app uses another one', async () => {
@@ -154,7 +155,7 @@ it('upgrades the browser account only after the buyer confirms, without the desk
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
   await settle();
-  button(/upgrade b@example\.com/i)?.click();
+  button(/upgrade this account/i)?.click();
   assert.equal(await attempt, true);
   assert.equal(f.bodies.length, 1);
   assert.doesNotMatch(String(f.bodies[0]!.returnUrl), /wm_src=desktop/,

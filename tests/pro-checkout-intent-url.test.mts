@@ -79,7 +79,7 @@ describe('parseCheckoutIntentFromSearch', () => {
       missionId: 'energy-security',
       panelKey: 'pipeline-status',
     });
-    assert.equal(intent?.desktopHandoff, true);
+    assert.deepEqual(intent?.desktopHandoff, {});
 
     const mismatched = parseCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_MISSION_PARAM}=energy-security`
@@ -217,12 +217,15 @@ describe('buildCheckoutReturnUrl', () => {
         missionId: 'crisis-desk',
         panelKey: 'cii',
       },
-      desktopHandoff: true,
+      desktopHandoff: { account: '0123456789abcdef' },
     });
     const url = new URL(returnUrl);
     assert.equal(url.searchParams.get(CHECKOUT_MISSION_PARAM), 'crisis-desk');
     assert.equal(url.searchParams.get(CHECKOUT_PANEL_PARAM), 'cii');
     assert.equal(url.searchParams.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
+    assert.equal(url.searchParams.get('wm_checkout_account'), '0123456789abcdef');
+    assert.deepEqual(parseCheckoutIntentFromSearch(url.search)?.desktopHandoff, { account: '0123456789abcdef' });
+    assert.equal(stripCheckoutIntentFromSearch(url.search), '');
   });
 });
 

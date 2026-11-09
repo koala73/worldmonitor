@@ -36,6 +36,25 @@ describe('shared checkout attribution contract', () => {
     );
   });
 
+  it('names the desktop account by digest and drops a malformed one (#10342)', async () => {
+    const attribution = await import('../shared/checkout-attribution.ts');
+    const { createHash } = await import('node:crypto');
+    const account = await attribution.desktopAccountDigest('user_a');
+    assert.equal(account, createHash('sha256').update('wm-desktop-checkout:user_a').digest('hex').slice(0, 16));
+    assert.notEqual(account, await attribution.desktopAccountDigest('user_b'));
+
+    const url = new URL(attribution.buildAttributedProUrl('https://worldmonitor.app/pro#pricing', null, {
+      desktopHandoff: { account },
+    }));
+    assert.doesNotMatch(url.href, /user_a/, 'the raw Clerk id must not reach the URL');
+    assert.deepEqual(attribution.parseDesktopCheckoutHandoff(url.search), { account });
+    assert.deepEqual(
+      attribution.parseDesktopCheckoutHandoff('?wm_checkout_handoff=desktop&wm_checkout_account=<script>'),
+      {},
+    );
+    assert.equal(attribution.parseDesktopCheckoutHandoff('?wm_checkout_account=' + account), null);
+  });
+
   it('validates stored surfaces and migrates legacy attempts', async () => {
     const attribution = await import('../shared/checkout-attribution.ts');
     assert.equal(attribution.parseCheckoutContext({
