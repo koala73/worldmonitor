@@ -41,6 +41,9 @@ fetch() {
     echo "cached: $name"
   else
     if ! bash "$SCRIPT_DIR/fetch-with-retry.sh" "$url" "$TOOLS_DIR/$name"; then
+      # The bundler only checks that the file exists: an empty one left by an
+      # interrupted write would be bundled instead of downloaded.
+      rm -f "$TOOLS_DIR/$name"
       echo "::warning::$name not prefetched; the bundler will download it itself" >&2
       return 0
     fi

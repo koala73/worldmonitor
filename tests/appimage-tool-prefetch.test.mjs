@@ -186,6 +186,22 @@ describe('prefetch-appimage-tools.sh', () => {
     assert.ok(existsSync(join(toolsDir, 'linuxdeploy-x86_64.AppImage')), 'the other tools are still prefetched');
   });
 
+  // The bundler checks only that a tool file exists, so an empty one left by an
+  // interrupted write must not survive a failed prefetch: the bundler would
+  // skip its own download and bundle the empty file.
+  it('removes an empty tool it cannot replace so the bundler downloads it', () => {
+    const { dir, run } = sandbox();
+    const toolsDir = join(dir, 'cache', 'tauri');
+    spawnSync('mkdir', ['-p', toolsDir]);
+    writeFileSync(join(toolsDir, 'AppRun-x86_64'), '');
+    const result = run(PREFETCH, ['x86_64'], {
+      FAKE_CURL_FAIL_MATCH: 'apprun-old',
+      FAKE_CURL_FAIL_CODE: '404',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!existsSync(join(toolsDir, 'AppRun-x86_64')), 'an empty tool must not be left for the bundler to trust');
+  });
+
   it('rejects an unsupported architecture', () => {
     const { run } = sandbox();
     assert.equal(run(PREFETCH, ['riscv64']).status, 2);
