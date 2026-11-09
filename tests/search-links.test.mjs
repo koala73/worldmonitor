@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
+import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
 import {
   MAX_SEARCH_LINKS,
   SEARCH_LINK_FAMILIES,
   linkedPaths,
+  mainOf,
   ownerOf,
   parseLedger,
   placeSearchLinks,
@@ -18,6 +21,7 @@ import {
 import { loadSearchLinks, runCli, searchLinksPath } from '../scripts/search-links.mjs';
 import { buildQueryPages } from '../scripts/seo-gsc-collect.mjs';
 
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const escapeHtml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
 const page = (path, impressions, position = 8) => ({ path, impressions, position });
 const query = (text, pages, likelyAutomated = false) => ({ query: text, likelyAutomated, pages });
@@ -197,6 +201,63 @@ describe('search-link placement', () => {
   it('does not count a page\'s own search links as links it already has', () => {
     const html = '<a href="/docs/algorithms">M</a><section data-search-links><h2>Related</h2><ul><li><a href="/blog/posts/x/">X</a></li></ul></section>';
     assert.deepEqual([...linkedPaths(html)], ['/docs/algorithms']);
+  });
+});
+
+describe('search links in the built corpus', () => {
+  const SOURCE = '/chokepoints/bab-el-mandeb/';
+  function ledgerRoot(links) {
+    const dir = mkdtempSync(join(tmpdir(), 'wm-search-links-ledger-'));
+    mkdirSync(join(dir, dirname(searchLinksPath('chokepoints'))), { recursive: true });
+    writeFileSync(join(dir, searchLinksPath('chokepoints')), JSON.stringify({
+      snapshot: 'docs/research/seo-ai-visibility/gsc/2026-11-03.json',
+      pages: { [SOURCE]: links },
+      exclusions: [],
+    }));
+    return dir;
+  }
+
+  it('ends <main> with only the links the composed page lacks', async () => {
+    const searchLinksRootDir = ledgerRoot([
+      // Rendered by renderContextualComparisons, after the page body.
+      { href: '/compare/chokepoint-monitoring-tools/', anchor: 'Chokepoint monitoring tools' },
+      { href: '/blog/posts/what-is-a-maritime-chokepoint/', anchor: 'What is a maritime chokepoint' },
+      { href: '/chokepoints/', anchor: 'Chokepoint tracker' },
+    ]);
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-search-links-corpus-'));
+    try {
+      await buildCorpus({ rootDir: repoRoot, outDir, searchLinksRootDir });
+      const main = mainOf(readFileSync(join(outDir, SOURCE, 'index.html'), 'utf8'));
+      const block = /<section data-search-links>[\s\S]*<\/section>/.exec(main)?.[0];
+      assert.ok(block, 'the source page renders a search-links block');
+      assert.ok(main.trimEnd().endsWith(block), 'the block is the last thing in <main>');
+      assert.deepEqual([...block.matchAll(/href="([^"]*)"/g)].map((match) => match[1]), ['/chokepoints/']);
+      for (const href of ['/compare/chokepoint-monitoring-tools/', '/blog/posts/what-is-a-maritime-chokepoint/']) {
+        assert.equal(main.split(`href="${href}"`).length - 1, 1, href);
+      }
+      const other = readFileSync(join(outDir, 'chokepoints/kerch-strait/index.html'), 'utf8');
+      assert.doesNotMatch(other, /data-search-links/);
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(searchLinksRootDir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a link the site does not publish before replacing generated pages', async () => {
+    const searchLinksRootDir = ledgerRoot([{ href: '/blog/posts/no-such-post/', anchor: 'No such post' }]);
+    const outDir = mkdtempSync(join(tmpdir(), 'wm-search-links-corpus-'));
+    try {
+      mkdirSync(join(outDir, 'chokepoints'), { recursive: true });
+      writeFileSync(join(outDir, 'chokepoints/index.html'), 'Existing chokepoint hub');
+      await assert.rejects(
+        buildCorpus({ rootDir: repoRoot, outDir, searchLinksRootDir }),
+        /no-such-post.*does not publish/,
+      );
+      assert.equal(readFileSync(join(outDir, 'chokepoints/index.html'), 'utf8'), 'Existing chokepoint hub');
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+      rmSync(searchLinksRootDir, { recursive: true, force: true });
+    }
   });
 });
 

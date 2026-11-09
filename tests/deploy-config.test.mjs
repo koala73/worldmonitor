@@ -773,6 +773,9 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/live-pages/',
       'scripts/build-live-topic-pages.mjs',
       'scripts/data/crisis-editorial.json',
+      'scripts/data/search-links/',
+      'scripts/search-links.mjs',
+      'scripts/lib/search-links.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -820,6 +823,9 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/live-pages/related-links.mjs',
         'scripts/build-live-topic-pages.mjs',
         'scripts/data/crisis-editorial.json',
+        'scripts/data/search-links/countries.json',
+        'scripts/search-links.mjs',
+        'scripts/lib/search-links.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
