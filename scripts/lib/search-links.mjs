@@ -74,8 +74,14 @@ export function familyOf(path) {
 
 const targetKind = (path) => (liveTopicPageForPath(path) ? 'live-tool' : familyOf(path));
 
-/** The module that already decides links of this shape, or null. */
+const isFamilyHub = (path) => familyOf(path) !== null && path === `/${familyOf(path)}/`;
+
+/**
+ * The module that already decides links of this shape, or null. The owners
+ * relate detail pages to each other, so a link to or from a family hub is open.
+ */
 export function ownerOf(sourcePath, href) {
+  if (isFamilyHub(sourcePath) || isFamilyHub(href)) return null;
   return OWNER_BY_SHAPE.get(`${familyOf(sourcePath)} ${targetKind(href)}`) ?? null;
 }
 

@@ -45,6 +45,9 @@ describe('search-link shapes other modules own', () => {
     assert.equal(ownerOf('/chokepoints/suez-canal/', '/chokepoints/bab-el-mandeb/'), null);
     assert.equal(ownerOf('/use-cases/monitor-maritime-security/', '/countries/yemen/'), null);
     assert.equal(ownerOf('/tools/prediction-markets/', '/crises/ukraine-war/'), null);
+    assert.equal(ownerOf('/countries/france/', '/countries/'), null, 'no owner decides links to a family hub');
+    assert.equal(ownerOf('/countries/north-korea/', '/crises/'), null, 'no owner decides links to a family hub');
+    assert.equal(ownerOf('/crises/', '/countries/ukraine/'), null, 'no owner decides links from a family hub');
   });
 });
 
