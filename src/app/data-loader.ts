@@ -835,7 +835,7 @@ export class DataLoaderManager implements AppModule {
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${requestLanguage}`),
         { signal: deadline },
       );
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      if (!resp.ok) throw new DigestHttpError(resp);
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = countDigestCategories(data);
       // A 200 carrying no categories is an outage wearing a success status: every
@@ -955,6 +955,11 @@ export class DataLoaderManager implements AppModule {
         'digest.retry': retry,
         // How the retry itself failed, which can differ from the first failure.
         ...(retryFailure ? { 'digest.retry.failure': retryFailure } : {}),
+        // The exact status, and whether Vercel answered at all: a 4xx with no
+        // gateway telemetry came from in front of it (Sentry WORLDMONITOR-1DE).
+        ...(error instanceof DigestHttpError
+          ? { 'digest.status': String(error.status), 'digest.responder': error.responder }
+          : {}),
       },
       extra: { timeoutMs: this.digestRequestTimeoutMs },
       // Tags do not split issues; one group per kind keeps timeouts, 5xx and
@@ -5480,6 +5485,33 @@ export function classifyDigestFetchFailure(error: unknown, deadlineExpired = fal
  */
 function isRetryableDigestFailure(kind: DigestFetchFailureKind): boolean {
   return kind === 'timeout' || kind === 'network' || kind === 'http-5xx';
+}
+
+/**
+ * Who sent a digest error response, read from what the browser can see.
+ * A same-origin response shows every header: Vercel adds `x-vercel-id`, and
+ * a Cloudflare challenge adds `cf-mitigated`. A cross-origin response from
+ * the API host hides `x-vercel-id`, but it was readable only because it
+ * carried our CORS headers.
+ */
+type DigestResponder = 'vercel' | 'cloudflare-challenge' | 'not-vercel' | 'cross-origin';
+
+function digestResponder(resp: Response): DigestResponder {
+  if (resp.headers.get('cf-mitigated')) return 'cloudflare-challenge';
+  if (resp.type === 'cors') return 'cross-origin';
+  return resp.headers.get('x-vercel-id') ? 'vercel' : 'not-vercel';
+}
+
+/** A non-2xx digest response. The message keeps the `HTTP <status>` shape the classifier reads. */
+class DigestHttpError extends Error {
+  readonly status: number;
+  readonly responder: DigestResponder;
+
+  constructor(resp: Response) {
+    super(`HTTP ${resp.status}`);
+    this.status = resp.status;
+    this.responder = digestResponder(resp);
+  }
 }
 
 /** A short, PII-free label for a digest failure: the error's name, or its type. */
