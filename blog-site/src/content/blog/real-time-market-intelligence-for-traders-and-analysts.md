@@ -74,7 +74,7 @@ The crypto panels provide institutional-grade monitoring:
 
 - **Stablecoin peg tracker:** USDT, USDC, DAI, FDUSD, and USDe with real-time deviation alerts
 - **BTC spot ETF flow tracker:** Daily inflows/outflows for IBIT, FBTC, GBTC, and 7 more funds
-- **[Fear & Greed Index](https://www.worldmonitor.app/tools/fear-and-greed-index/):** With 30-day history chart
+- **Fear & Greed Index:** With 30-day history chart
 - **Bitcoin technical signals:** SMA50, SMA200, VWAP, and Mayer Multiple
 - **BTC hashrate** via mempool.space
 
