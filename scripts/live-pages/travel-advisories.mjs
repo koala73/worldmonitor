@@ -2,7 +2,6 @@ import {
   escapeHtml,
   formatStaticDate,
   formatStaticDateTime,
-  metric,
   renderLiveSection,
   requireFreshTimestamp,
   UnpublishableReading,
@@ -49,6 +48,8 @@ const SOURCE_IDS = Object.keys(REGISTERS);
 
 // Intl's English region names, with the few that read oddly in a list.
 const NAME_OVERRIDES = { MM: 'Myanmar', CD: 'Democratic Republic of the Congo', CG: 'Republic of the Congo', PS: 'Palestinian Territories' };
+// Names people still search by, matched by the table's search box.
+const SEARCH_ALIASES = Object.freeze({ TR: 'Turkey', CI: 'Ivory Coast', CZ: 'Czech Republic', SZ: 'Swaziland', MK: 'Macedonia', TL: 'East Timor', MM: 'Burma', CD: 'DRC Congo-Kinshasa', CG: 'Congo-Brazzaville', VA: 'Holy See' });
 let regionNames = null;
 function countryName(code) {
   if (NAME_OVERRIDES[code]) return NAME_OVERRIDES[code];
@@ -226,7 +227,7 @@ export function travelAdvisoriesBody(record) {
     .map((entry) => `            <tr><td>${escapeHtml(entry.name)}</td>${labelCell(entry.US, 'US')}${labelCell(entry.AU, 'AU')}<td class="gap">${escapeHtml(gapText(entry))}</td></tr>`)
     .join('\n');
   const allRows = record.countries
-    .map((country) => `            <tr id="advisory-${country.code.toLowerCase()}"${country.US ? ` data-us="${RANK[country.US.level]}"` : ''}${country.AU ? ` data-au="${RANK[country.AU.level]}"` : ''}><th scope="row">${escapeHtml(country.name)}</th>${levelCell(country.US, 'US')}${levelCell(country.AU, 'AU')}</tr>`)
+    .map((country) => `            <tr id="advisory-${country.code.toLowerCase()}"${SEARCH_ALIASES[country.code] ? ` data-aka="${escapeHtml(SEARCH_ALIASES[country.code])}"` : ''}${country.US ? ` data-us="${RANK[country.US.level]}"` : ''}${country.AU ? ` data-au="${RANK[country.AU.level]}"` : ''}><th scope="row">${escapeHtml(country.name)}</th>${levelCell(country.US, 'US')}${levelCell(country.AU, 'AU')}</tr>`)
     .join('\n');
   return `${mapStyle(record)}
         <div class="advisory-summary">
@@ -273,8 +274,8 @@ ${allRows}
 
 /**
  * The page's one script, inlined as source. It reads everything from the
- * destination table at the time of use, so it works the same on the built page
- * and after the middleware swaps the live section in. Without it the map keeps
+ * destination table when the page loads, so it works the same on the built
+ * page and after the middleware swaps the live section in on the server. Without it the map keeps
  * its native titles and the US view, and the search box stays hidden.
  */
 function advisoryPageScript() {
@@ -347,7 +348,7 @@ function advisoryPageScript() {
       tip.append(Object.assign(document.createElement('p'), { className: 'tip-note', textContent: code === 'US' ? 'Issues the US State Department advisories.' : 'Issues Australia’s Smartraveller advisories.' }));
     }
     if (!row) {
-      if (code !== 'US' && code !== 'AU') tip.append(Object.assign(document.createElement('p'), { className: 'tip-note', textContent: 'Neither government lists an advisory.' }));
+      if (code !== 'US' && code !== 'AU') tip.append(Object.assign(document.createElement('p'), { className: 'tip-note', textContent: 'Neither government lists it separately.' }));
       return;
     }
     const cells = row.querySelectorAll('td');
@@ -361,7 +362,7 @@ function advisoryPageScript() {
         textContent: us === au ? 'Both governments give the same level.' : (us > au ? 'US' : 'Australia') + ' is stricter by ' + Math.abs(us - au) + (Math.abs(us - au) === 1 ? ' level.' : ' levels.'),
       }));
     }
-    tip.append(Object.assign(document.createElement('p'), { className: 'tip-hint', textContent: pointerType === 'mouse' ? 'Click for the full row and links' : 'Tap again for the full row and links' }));
+    tip.append(Object.assign(document.createElement('p'), { className: 'tip-hint', textContent: pointerType === 'touch' ? 'Tap again for the full row and links' : 'Click for the full row and links' }));
   };
 
   const place = (event) => {
@@ -393,7 +394,10 @@ function advisoryPageScript() {
     tip.hidden = true;
   };
 
+  // Touch opens the card from the click below, so a finger that drifts
+  // before the tap cannot make that tap jump straight to the row.
   map.addEventListener('pointermove', (event) => {
+    if (event.pointerType === 'touch') return;
     const land = event.target.closest('.land');
     if (land) show(land, event);
     else hide();
@@ -404,28 +408,36 @@ function advisoryPageScript() {
   map.addEventListener('click', (event) => {
     const land = event.target.closest('.land');
     if (!land) return;
-    if (event.pointerType && event.pointerType !== 'mouse' && current !== land) {
+    if (event.pointerType === 'touch' && current !== land) {
       show(land, event);
       return;
     }
     const row = land.dataset.iso2 ? rowFor(land.dataset.iso2) : null;
-    if (row) {
-      hide();
-      location.hash = row.id;
-    }
+    if (!row) return;
+    hide();
+    if (row.hidden) clearSearch();
+    if (location.hash === '#' + row.id) row.scrollIntoView({ block: 'center' });
+    else location.hash = row.id;
   });
   document.addEventListener('pointerdown', (event) => {
     if (!map.contains(event.target)) hide();
   });
 
+  // Lower case without accents, so "turkey" finds Türkiye and "cote" Côte d’Ivoire.
+  const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
   const search = document.getElementById('advisory-search');
   const rows = [...document.querySelectorAll('.advisory-table tbody tr')];
+  function clearSearch() {
+    if (!search) return;
+    search.value = '';
+    search.dispatchEvent(new Event('input'));
+  }
   if (search && rows.length) {
     search.closest('.advisory-filter').hidden = false;
     const count = document.getElementById('advisory-search-count');
-    const names = rows.map((row) => row.querySelector('th').textContent.toLowerCase());
+    const names = rows.map((row) => fold(row.querySelector('th').textContent + ' ' + (row.dataset.aka || '')));
     search.addEventListener('input', () => {
-      const query = search.value.trim().toLowerCase();
+      const query = fold(search.value.trim());
       let shown = 0;
       rows.forEach((row, i) => {
         row.hidden = !!query && !names[i].includes(query);
@@ -533,7 +545,7 @@ export const travelAdvisoriesPage = Object.freeze({
           <div class="advisory-tip" role="tooltip" hidden></div>
         </div>
         <ul class="advisory-legend legend-levels">${levels}<li><i style="background:var(--issuer)"></i>Issuing government</li><li><i style="background:var(--lvl-none)"></i>No advisory listed</li></ul>
-        <ul class="advisory-legend legend-gap">${gaps}<li><i style="background:var(--lvl-none)"></i>Listed by one government only</li></ul>
+        <ul class="advisory-legend legend-gap">${gaps}<li><i style="background:var(--lvl-none)"></i>Not listed by both</li></ul>
         <figcaption>Hover or tap a country for both governments’ advice, and click it to jump to its row. The table below covers every destination, including small countries the map cannot draw.</figcaption>
       </figure>`;
   },

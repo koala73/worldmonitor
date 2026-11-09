@@ -90,7 +90,7 @@ describe('travel advisory map page script', () => {
     mount();
     hover('CN');
     expect(tip().textContent).toContain('China');
-    expect(tip().textContent).toContain('Neither government lists an advisory.');
+    expect(tip().textContent).toContain('Neither government lists it separately.');
   });
 
   it('switches the map view and its heading from the toggle', () => {
@@ -126,6 +126,59 @@ describe('travel advisory map page script', () => {
     const shown = [...document.querySelectorAll<HTMLElement>('.advisory-table tbody tr')].filter((row) => !row.hidden);
     expect(shown.map((row) => row.id)).toEqual(['advisory-ve']);
     expect(document.querySelector('#advisory-search-count')!.textContent).toBe('1 destination');
+  });
+
+  it('scrolls to the row again on a repeat click, and reveals a row the search hid', () => {
+    mount();
+    const row = document.getElementById('advisory-ve')!;
+    let scrolled = 0;
+    row.scrollIntoView = () => { scrolled += 1; };
+    const click = () => land('VE').dispatchEvent(new PointerEvent('click', { bubbles: true, pointerType: 'mouse' }));
+    click();
+    expect(location.hash).toBe('#advisory-ve');
+    expect(scrolled).toBe(0);
+    click();
+    expect(scrolled, 'the hash is already set, so the second click scrolls itself').toBe(1);
+
+    const search = document.querySelector<HTMLInputElement>('#advisory-search')!;
+    search.value = 'fra';
+    search.dispatchEvent(new Event('input'));
+    const russia = document.getElementById('advisory-ru')!;
+    expect(russia.hidden).toBe(true);
+    russia.scrollIntoView = () => {};
+    land('RU').dispatchEvent(new PointerEvent('click', { bubbles: true, pointerType: 'mouse' }));
+    expect(russia.hidden).toBe(false);
+    expect(search.value).toBe('');
+  });
+
+  it('opens the card on the first tap even after a finger drifted over the map', () => {
+    mount();
+    hover('VE', 'touch');
+    land('VE').dispatchEvent(new PointerEvent('click', { bubbles: true, pointerType: 'touch' }));
+    expect(location.hash).toBe('');
+    expect(tip().textContent).toContain('Venezuela');
+  });
+
+  it('does not claim a shape with no register row has no advice', () => {
+    mount();
+    document.querySelector('.advisory-map')!.insertAdjacentHTML('beforeend', '<path class="land" d="M0 0h1v1z"><title>Unnamed</title></path>');
+    new Function(travelAdvisoriesPage.script!)();
+    document.querySelector('.advisory-map .land:not([data-iso2])')!.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' }));
+    expect(tip().textContent).toContain('Unnamed');
+    expect(tip().textContent).toContain('Neither government lists it separately.');
+  });
+
+  it('finds a destination without its accents', () => {
+    mount();
+    const search = document.querySelector<HTMLInputElement>('#advisory-search')!;
+    const accented = [...document.querySelectorAll('.advisory-table tbody th')].find((th) => /[^\u0000-\u007f]/.test(th.textContent!.replace(/[’&]/g, '')));
+    expect(accented, 'the fixture has an accented name').toBeTruthy();
+    search.value = accented!.textContent!.normalize('NFD').replace(/\p{M}/gu, '').slice(0, 8);
+    search.dispatchEvent(new Event('input'));
+    expect(document.querySelector('#advisory-search-count')!.textContent).not.toBe('0 destinations');
+    search.value = 'turkey';
+    search.dispatchEvent(new Event('input'));
+    expect([...document.querySelectorAll<HTMLElement>('.advisory-table tbody tr')].filter((row) => !row.hidden).map((row) => row.id)).toEqual(['advisory-tr']);
   });
 
   it('keeps the toggle hidden and makes no advice claim without a reading', () => {

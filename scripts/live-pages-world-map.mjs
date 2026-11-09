@@ -21,7 +21,8 @@ const WIDTH = 960;
 const HEIGHT = 470;
 
 // The topology gives these no ISO numeric code (id is absent or "-99").
-const ISO2_BY_NAME = Object.freeze({ Kosovo: 'XK' });
+// Both registers cover Somaliland under Somalia and northern Cyprus under Cyprus.
+const ISO2_BY_NAME = Object.freeze({ Kosovo: 'XK', Somaliland: 'SO', 'N. Cyprus': 'CY' });
 
 let cached = null;
 

@@ -202,6 +202,7 @@ describe('travel advisory map page', () => {
     const codes = new Set(worldMapShapes().map((shape) => shape.iso2));
     for (const code of ['US', 'FR', 'RU', 'CN', 'BR', 'AU', 'XK', 'SS']) assert.ok(codes.has(code), code);
     assert.ok(!worldMapShapes().some((shape) => shape.name === 'Antarctica'));
+    assert.deepEqual(worldMapShapes().filter((shape) => !shape.iso2).map((shape) => shape.name), [], 'every shape maps to the register that covers it');
     const html = renderLiveTopicPage({ page: travelAdvisoriesPage, record: read(payload()), baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
     const svgAt = html.indexOf('<svg class="advisory-map"');
     const sectionAt = html.indexOf('<!--wm-live:travel-advisory-map-->');
