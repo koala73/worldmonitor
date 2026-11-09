@@ -5964,6 +5964,30 @@ describe('live-pulse snapshot injection (#7533)', () => {
     }
   });
 
+  it('keeps the fixture fixed sets in step with the registries the freeze captures', async () => {
+    // The freeze refuses to publish unless it captures every registered crisis
+    // and chokepoint, so the next capture always carries the registry's full
+    // set. Comparing the fixture only with the committed capture lets a
+    // registry change pass its own PR and fail the next weekly refresh:
+    // #10180 added four crises and the 2026-11-09 refresh PR (#10331) failed.
+    const fixture = JSON.parse(readFileSync(join(repoRoot, FIXTURE_RELATIVE_PATH), 'utf8'));
+    const crisisSlugs = JSON.parse(read(repoRoot, 'shared/crawlable-crises.json'))
+      .map((crisis) => crisis.slug);
+    assert.deepEqual(
+      Object.keys(fixture.crises).sort(),
+      [...crisisSlugs].sort(),
+      `${FIXTURE_RELATIVE_PATH} crises must match shared/crawlable-crises.json; add a record for each new crisis`,
+    );
+    const { CHOKEPOINT_REGISTRY } = await import(
+      pathToFileURL(join(repoRoot, 'src/config/chokepoint-registry.ts')).href
+    );
+    assert.deepEqual(
+      Object.keys(fixture.chokepoints).sort(),
+      CHOKEPOINT_REGISTRY.map((entry) => entry.id).sort(),
+      `${FIXTURE_RELATIVE_PATH} chokepoints must match src/config/chokepoint-registry.ts`,
+    );
+  });
+
   it('builds the full corpus against the injected fixture snapshot', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-pulse-fixture-corpus-'));
     try {
