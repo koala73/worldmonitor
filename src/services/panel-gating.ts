@@ -167,13 +167,17 @@ export interface GateActionDeps {
   planKey?: string | null;
 }
 
-// Absolute origin (WEB_APP_ORIGIN): the desktop runtime's webview has no
-// worldmonitor.app origin, so a relative href would resolve against
-// tauri://localhost. `openExternalUrl` then routes it to the OS browser on
-// desktop rather than opening another WebView window (#5911). That browser
-// has its own session, so the desktop URL names the app's account and /pro
-// asks before charging any other one (#10342). The web branch stays
-// synchronous: it opens a tab and must run inside the click gesture.
+/**
+ * Open a /pro path from a gate CTA.
+ *
+ * Absolute origin (WEB_APP_ORIGIN): the desktop runtime's webview has no
+ * worldmonitor.app origin, so a relative href would resolve against
+ * tauri://localhost. `openExternalUrl` then routes it to the OS browser on
+ * desktop rather than opening another WebView window (#5911). That browser
+ * has its own session, so the desktop URL names the app's account and /pro
+ * asks before charging any other one (#10342). The web branch stays
+ * synchronous: it opens a tab and must run inside the click gesture.
+ */
 function openProPage(path: string): void {
   const url = `${WEB_APP_ORIGIN}${path}`;
   if (isDesktopRuntime()) {

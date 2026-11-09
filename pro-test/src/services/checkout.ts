@@ -261,7 +261,21 @@ interface ProCheckoutOptions {
    * by `desktopAccountMatches` before `doCheckout`; `doCheckout` ignores it.
    */
   accountFingerprint?: string;
+  /**
+   * Clerk user the desktop account check approved: the desktop account itself,
+   * or the browser account the buyer chose in the dialog. `doCheckout` refuses
+   * to send a request for anyone else, so a retry (pending-payment confirm) or
+   * a session that changed in another tab cannot charge an unapproved account.
+   */
+  approvedUserId?: string;
   bypassPendingGuard?: boolean;
+}
+
+/** Pin `options` to the account that just passed the desktop account check. */
+function pinnedToApprovedAccount(c: LoadedClerk, options: ProCheckoutOptions): ProCheckoutOptions {
+  return options.desktopHandoff && options.accountFingerprint && c.user
+    ? { ...options, approvedUserId: c.user.id }
+    : options;
 }
 
 export async function startCheckout(
@@ -330,7 +344,7 @@ async function startCheckoutInner(
   }
 
   if (!(await desktopAccountMatches(c, productId, options ?? {}))) return false;
-  return doCheckout(productId, options ?? {});
+  return doCheckout(productId, pinnedToApprovedAccount(c, options ?? {}));
 }
 
 /**
@@ -400,7 +414,12 @@ async function desktopAccountMatches(
       }
       // The buyer chose the browser account. The desktop app will not update,
       // so this is a plain browser purchase: no desktop return marker.
-      void doCheckout(productId, { ...options, desktopHandoff: false, accountFingerprint: undefined });
+      void doCheckout(productId, {
+        ...options,
+        desktopHandoff: false,
+        accountFingerprint: undefined,
+        approvedUserId: browserUserId,
+      });
     },
   });
   return false;
@@ -451,7 +470,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
     accountFingerprint,
   };
   if (!(await desktopAccountMatches(c, productId, resumed))) return false;
-  return doCheckout(productId, resumed);
+  return doCheckout(productId, pinnedToApprovedAccount(c, resumed));
 }
 
 async function doCheckout(
@@ -511,6 +530,17 @@ async function doCheckout(
       console.error('[checkout] No auth token after retry');
       showCheckoutErrorToast('Your sign-in could not be verified. Please sign in again and retry.');
       return false;
+    }
+    // The token above belongs to whoever is signed in NOW. When the desktop
+    // account check approved a specific account, that is the only one this
+    // request may charge: the gate ran earlier, and retries re-enter here
+    // without it. The next pricing click runs the check again.
+    if (options.approvedUserId) {
+      const currentUserId = (await ensureClerk().catch(() => null))?.user?.id;
+      if (currentUserId !== options.approvedUserId) {
+        showCheckoutErrorToast('Your signed-in account changed. Please choose your plan again.');
+        return false;
+      }
     }
 
     // Transient CF/origin 502s on this POST are retried once with an
@@ -1194,12 +1224,20 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
 // to guess which account a click would charge.
 const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
 
+/**
+ * Modal shown when the desktop handoff names a different account than the one
+ * signed in to this browser. `onSwitch` and `onProceed` are the two explicit
+ * choices; Escape or a backdrop click dismisses and calls neither. Takes
+ * keyboard focus on open, keeps Tab between its two buttons, and returns focus
+ * to the element that had it.
+ */
 function showProDesktopAccountDialog(options: {
   email: string;
   onSwitch: () => void;
   onProceed: () => void;
 }): void {
   if (document.getElementById(PRO_DESKTOP_ACCOUNT_DIALOG_ID)) return;
+  const previouslyFocused = document.activeElement as HTMLElement | null;
 
   const backdrop = document.createElement('div');
   backdrop.id = PRO_DESKTOP_ACCOUNT_DIALOG_ID;
@@ -1246,13 +1284,26 @@ function showProDesktopAccountDialog(options: {
   backdrop.appendChild(card);
   document.body.appendChild(backdrop);
 
+  const switchButton = document.getElementById(`${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-switch`);
+  const proceedButton = document.getElementById(`${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-anyway`);
+
   let resolved = false;
   const keyHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') dismiss();
+    if (e.key === 'Escape') {
+      dismiss();
+      return;
+    }
+    // aria-modal promises the page behind is inert: with two controls, Tab
+    // and Shift+Tab both just move to the other one.
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      (document.activeElement === switchButton ? proceedButton : switchButton)?.focus();
+    }
   };
   const close = () => {
     document.removeEventListener('keydown', keyHandler, true);
     backdrop.remove();
+    previouslyFocused?.focus?.();
   };
   const dismiss = () => {
     if (resolved) return;
@@ -1266,10 +1317,12 @@ function showProDesktopAccountDialog(options: {
     action();
   };
 
-  document.getElementById(`${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-switch`)?.addEventListener('click', choose(options.onSwitch));
-  document.getElementById(`${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-anyway`)?.addEventListener('click', choose(options.onProceed));
+  switchButton?.addEventListener('click', choose(options.onSwitch));
+  proceedButton?.addEventListener('click', choose(options.onProceed));
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
+  // Land on the choice that charges nobody.
+  switchButton?.focus();
 }
 
 function escapeHtml(s: string): string {

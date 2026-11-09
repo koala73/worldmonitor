@@ -55,6 +55,10 @@ interface FixtureOptions {
   email?: string;
   /** How the Clerk double's signOut behaves; real Clerk skips the callback with zero sessions. */
   signOut?: 'callback' | 'no-callback' | 'reject';
+  /** create-checkout replies, in order; a hosted checkout URL once they run out. */
+  responses?: Array<() => Response>;
+  /** Runs while the request token is being fetched: the last moment an account can change. */
+  onToken?: (clerk: { user: { id: string; primaryEmailAddress: { emailAddress: string } } | null }) => void;
 }
 
 async function fixture(options: FixtureOptions = {}) {
@@ -71,7 +75,7 @@ async function fixture(options: FixtureOptions = {}) {
   const user: ClerkUser = { id: BROWSER_USER.id, primaryEmailAddress: { emailAddress: options.email ?? BROWSER_USER.email } };
   const clerk = {
     user: (options.signedOut ? null : user) as ClerkUser | null,
-    session: { getToken: async () => 'synthetic-token' },
+    session: { getToken: async () => { options.onToken?.(clerk); return 'synthetic-token'; } },
     openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
     // Real Clerk: without a callback, signOut navigates to the after-sign-out
     // URL, which would take the buyer off /pro before sign-in can reopen.
@@ -104,7 +108,7 @@ async function fixture(options: FixtureOptions = {}) {
     },
     fetch: async (_url: string, init: { body: string }) => {
       requestBodies.push(JSON.parse(init.body));
-      return Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
+      return options.responses?.shift()?.() ?? Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
     },
     __checkoutFixture: { clerk: async () => clerk },
   };
@@ -301,4 +305,78 @@ it('renders a hostile email as text, never as markup', async () => {
   const dialog = f.dialog()!;
   assert.equal(dialog.querySelector('img'), null);
   assert.ok((dialog.textContent ?? '').includes('<img src=x onerror=alert(1)>@example.com'));
+});
+
+// --- The account that passed the check is the only one a request may charge.
+// Retries and late session changes go through doCheckout directly, so the
+// check has to hold at request time, not only at the gate. ---
+
+const THIRD = { id: 'user_third', primaryEmailAddress: { emailAddress: 'third@example.com' } };
+const accountChangedToast = () => document.querySelector('[role="alert"]')?.textContent ?? '';
+
+it('does not retry a pending payment for an account that changed while its dialog was open', async () => {
+  const f = await fixture({
+    responses: [() => Response.json({ error: 'PAYMENT_IN_PROGRESS', pendingPayment: { planKey: 'pro_monthly' } }, { status: 409 })],
+  });
+  await f.checkout.startCheckout('pro_monthly', {
+    desktopHandoff: true,
+    accountFingerprint: await fingerprintCheckoutAccount(BROWSER_USER.id),
+  });
+  assert.equal(f.requestBodies.length, 1, 'the matching account reached create-checkout');
+  const confirm = document.getElementById('wm-pro-pending-payment-dialog-confirm');
+  assert.ok(confirm, 'the pending-payment dialog is open');
+  // Another tab switched this browser to a third account.
+  f.clerk.user = THIRD;
+  confirm.dispatchEvent(new browser.MouseEvent('click', { bubbles: true }));
+  await f.settle();
+  assert.equal(f.requestBodies.length, 1, 'the retry must not charge an account that never passed the check');
+  assert.match(accountChangedToast(), /account changed/i);
+});
+
+it('does not charge when the matching account changes just before the request', async () => {
+  const f = await fixture({ onToken: (clerk) => { clerk.user = THIRD; } });
+  const ok = await f.checkout.startCheckout('pro_monthly', {
+    desktopHandoff: true,
+    accountFingerprint: await fingerprintCheckoutAccount(BROWSER_USER.id),
+  });
+  assert.equal(ok, false);
+  assert.equal(f.requestBodies.length, 0);
+  assert.match(accountChangedToast(), /account changed/i);
+});
+
+it('does not charge when the chosen browser account changes just before the request', async () => {
+  let armed = false;
+  const f = await fixture({ onToken: (clerk) => { if (armed) clerk.user = THIRD; } });
+  await f.checkout.startCheckout('pro_monthly', await mismatched());
+  armed = true;
+  f.click('anyway');
+  await f.settle();
+  assert.equal(f.requestBodies.length, 0, 'the buyer chose browser@example.com, not third@example.com');
+  assert.match(accountChangedToast(), /account changed/i);
+});
+
+it('leaves unbound checkouts alone: no handoff, no account pinning', async () => {
+  const f = await fixture({ onToken: (clerk) => { clerk.user = THIRD; } });
+  assert.equal(await f.checkout.startCheckout('pro_monthly', {}), true);
+  assert.equal(f.requestBodies.length, 1);
+});
+
+// --- The dialog is a modal: it takes the keyboard and gives it back. ---
+
+it('takes focus, keeps Tab inside, and restores focus when dismissed', async () => {
+  const f = await fixture();
+  const pricingButton = document.createElement('button');
+  document.body.appendChild(pricingButton);
+  pricingButton.focus();
+  await f.checkout.startCheckout('pro_monthly', await mismatched());
+  const id = (suffix: string) => `wm-pro-desktop-account-dialog-${suffix}`;
+  assert.equal(document.activeElement?.id, id('switch'), 'focus lands on the action that charges nobody');
+  const tab = () => document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+  tab();
+  assert.equal(document.activeElement?.id, id('anyway'));
+  tab();
+  assert.equal(document.activeElement?.id, id('switch'), 'Tab wraps instead of reaching the page behind');
+  document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(f.dialog(), null);
+  assert.equal(document.activeElement, pricingButton);
 });

@@ -164,6 +164,11 @@ export async function fingerprintCheckoutAccount(userId: string): Promise<string
   return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * The account fingerprint from a URL search string, or null when it is absent
+ * or not a well-formed fingerprint. Never trusts the raw value: a malformed
+ * param is treated as no binding at all.
+ */
 export function parseCheckoutAccountFingerprint(search: string): string | null {
   const value = new URLSearchParams(search).get(CHECKOUT_ACCOUNT_PARAM);
   return value && ACCOUNT_FINGERPRINT_PATTERN.test(value) ? value : null;
