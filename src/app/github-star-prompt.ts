@@ -151,9 +151,13 @@ export class GitHubStarPromptController {
     star.className = 'update-toast-action';
     star.textContent = t('components.githubStarPrompt.star');
     star.addEventListener('click', () => {
-      this.close('starred');
+      // The dismissal is permanent on click; `starred` is recorded only once
+      // GitHub actually opened, so a blocked popup never counts as a star.
+      this.close(null);
       // Never navigate the dashboard away if the popup is blocked.
-      void openExternalUrl(GITHUB_STAR_REPO_URL, null, { sameTabFallback: false });
+      void openExternalUrl(GITHUB_STAR_REPO_URL, null, { sameTabFallback: false })
+        .then((outcome) => { if (outcome !== 'failed') trackGithubStarPrompt('starred'); })
+        .catch(() => { /* open failed: no event */ });
     });
 
     const dismiss = document.createElement('button');
@@ -171,10 +175,10 @@ export class GitHubStarPromptController {
     trackGithubStarPrompt('shown');
   }
 
-  private close(outcome: 'starred' | 'dismissed'): void {
+  private close(outcome: 'dismissed' | null): void {
     // Every close path is permanent, including the Star button.
     markStarPromptDismissed(this.storage);
-    trackGithubStarPrompt(outcome);
+    if (outcome) trackGithubStarPrompt(outcome);
     this.toast?.remove();
     this.toast = null;
   }

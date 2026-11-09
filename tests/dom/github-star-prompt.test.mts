@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const auth = { isPending: false, premium: false, tierResolved: true };
 const tracked: string[] = [];
 const opened: string[] = [];
+const openResult = { value: 'popup' as string };
 
 vi.mock('@/services/auth-state', () => ({
   getAuthState: () => ({ user: null, isPending: auth.isPending }),
@@ -26,7 +27,7 @@ vi.mock('@/services/analytics', () => ({
   trackGithubStarPrompt: (outcome: string) => { tracked.push(outcome); },
 }));
 vi.mock('@/services/external-navigation', () => ({
-  openExternalUrl: async (url: string) => { opened.push(url); return 'popup'; },
+  openExternalUrl: async (url: string) => { opened.push(url); return openResult.value; },
 }));
 vi.mock('@/services/i18n', () => ({ t: (key: string) => key }));
 
@@ -128,6 +129,7 @@ describe('boot gate and controller', () => {
     auth.tierResolved = true;
     tracked.length = 0;
     opened.length = 0;
+    openResult.value = 'popup';
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] });
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   });
@@ -169,12 +171,25 @@ describe('boot gate and controller', () => {
     await reachThirdDay();
     vi.advanceTimersByTime(STAR_PROMPT_IDLE_MS);
     toast()!.querySelector<HTMLButtonElement>('.update-toast-action')!.click();
+    await flushImport();
     expect(opened).toEqual(['https://github.com/koala73/worldmonitor']);
     expect(toast()).toBeNull();
     expect(localStorage.getItem(STAR_PROMPT_DISMISSED_KEY)).toBe('1');
     expect(tracked).toEqual(['shown', 'starred']);
     destroy?.();
     expect(await bootOn(new Date(2026, 10, 9, 10))).toBe('dismissed');
+  });
+
+  it('a failed open still dismisses but is not counted as starred', async () => {
+    openResult.value = 'failed';
+    await reachThirdDay();
+    vi.advanceTimersByTime(STAR_PROMPT_IDLE_MS);
+    toast()!.querySelector<HTMLButtonElement>('.update-toast-action')!.click();
+    await flushImport();
+    expect(opened).toHaveLength(1);
+    expect(toast()).toBeNull();
+    expect(localStorage.getItem(STAR_PROMPT_DISMISSED_KEY)).toBe('1');
+    expect(tracked).toEqual(['shown']);
   });
 
   it('× dismisses permanently', async () => {
