@@ -770,8 +770,11 @@ function isAbsoluteHttpUrl(value) {
 
 // The daily chokepoint archive is the one Dataset whose downloads this build
 // does not write: vercel.json rewrites them to api/open-data-chokepoints.js.
-// The exemption holds only while that rewrite matches the path, so a download
-// that neither the build nor the rewrite serves still fails.
+// The rewrite alone is not proof, since it also matches names the handler
+// answers with 404. The exemption covers only the three undated files, which
+// tests/open-data-chokepoints-archive.test.mjs drives through the real handler.
+const SERVED_OPEN_DATA_FILES = new Set(['index.json', 'latest.json', 'latest.csv']);
+
 function isServedOpenDataDownload(pathname) {
   if (!pathname.startsWith(CHOKEPOINT_OPEN_DATA.basePath)) return false;
   const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
@@ -779,8 +782,22 @@ function isServedOpenDataDownload(pathname) {
   assert.ok(rewrite, 'vercel.json must rewrite the chokepoint open dataset to its handler');
   const [prefix, pattern] = rewrite.source.split(':file');
   assert.equal(prefix, CHOKEPOINT_OPEN_DATA.basePath, 'the open dataset rewrite must cover the advertised base path');
-  return new RegExp(`^${pattern}$`).test(pathname.slice(prefix.length));
+  const file = pathname.slice(prefix.length);
+  return SERVED_OPEN_DATA_FILES.has(file) && new RegExp(`^${pattern}$`).test(file);
 }
+
+describe('open dataset download exemption', () => {
+  it('covers only files the handler serves without a date lookup', () => {
+    for (const file of SERVED_OPEN_DATA_FILES) {
+      assert.equal(isServedOpenDataDownload(`/data/v1/chokepoints/${file}`), true, file);
+    }
+    const datedFile = `${new Date().toISOString().slice(0, 10)}.json`;
+    for (const file of ['missing.json', datedFile, 'latest.xml', 'README.md']) {
+      assert.equal(isServedOpenDataDownload(`/data/v1/chokepoints/${file}`), false, file);
+    }
+    assert.equal(isServedOpenDataDownload('/chokepoints/status.json'), false);
+  });
+});
 
 function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'https://www.worldmonitor.app') {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
