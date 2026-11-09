@@ -3180,6 +3180,12 @@
           "placeholder": "Opcionális"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Tetszik a World Monitor?",
+      "body": "A GitHub-on adott csillag segít másoknak megtalálni.",
+      "star": "Csillagozás a GitHubon",
+      "dismiss": "Bezárás és többé ne kérdezz rá"
     }
   },
   "popups": {

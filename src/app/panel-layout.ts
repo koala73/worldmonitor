@@ -78,6 +78,7 @@ import {
   ProActivationController,
 } from '@/app/pro-activation-controller';
 import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
+import { bootGitHubStarPrompt } from '@/app/github-star-prompt-boot';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
 import {
@@ -492,6 +493,7 @@ export class PanelLayoutManager implements AppModule {
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
   private readonly proActivationController: ProActivationController;
   private readonly passkeyOfferController: PasskeyOfferBoot;
+  private destroyGitHubStarPrompt: (() => void) | null = null;
   private readonly checkoutReturnFocusController = new AbortController();
   private pendingStorageFacilityId: string | null = null;
 
@@ -766,6 +768,8 @@ export class PanelLayoutManager implements AppModule {
     // which is a focus trap — wins the crowded post-sign-in moment; the offer
     // hides behind it and restores when it closes.
     this.passkeyOfferController.init();
+    // Ask-once GitHub star toast: counts visit days, loads its chunk only when eligible.
+    this.destroyGitHubStarPrompt = bootGitHubStarPrompt().destroy;
   }
 
   /**
@@ -992,6 +996,8 @@ export class PanelLayoutManager implements AppModule {
 
     this.proActivationController.destroy();
     this.passkeyOfferController.destroy();
+    this.destroyGitHubStarPrompt?.();
+    this.destroyGitHubStarPrompt = null;
 
     removeResponsiveZoneListener(this.responsiveZoneListener);
     this.responsiveZoneListener = null;

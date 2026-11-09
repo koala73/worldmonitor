@@ -3180,6 +3180,12 @@
           "placeholder": "Sehemu inayochagua"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Unafurahia World Monitor?",
+      "body": "Nyota kwenye GitHub inasaidia watu wengine kuipata.",
+      "star": "Weka nyota kwenye GitHub",
+      "dismiss": "Funga na usiulize tena"
     }
   },
   "popups": {

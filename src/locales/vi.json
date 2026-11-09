@@ -3091,6 +3091,12 @@
           "placeholder": "Tùy chọn"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Bạn có thích World Monitor?",
+      "body": "Một sao trên GitHub giúp những người khác tìm thấy nó.",
+      "star": "Sao trên GitHub",
+      "dismiss": "Bỏ qua và không hỏi lại"
     }
   },
   "popups": {

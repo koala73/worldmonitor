@@ -5067,6 +5067,9 @@
           "path": "src/services/analytics.ts"
         },
         {
+          "path": "src/services/github-star-prompt-state.ts"
+        },
+        {
           "path": "src/services/preferences-content.ts"
         }
       ]

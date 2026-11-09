@@ -256,6 +256,11 @@ const EVENTS = {
   'passkey-offer-created': true,
   'passkey-offer-failed': true,
   'passkey-offer-dismissed': true,
+  // Ask-once GitHub star toast. `starred` means the Star button was clicked and
+  // GitHub opened; we cannot see whether the user then starred.
+  'github-star-prompt-shown': true,
+  'github-star-prompt-starred': true,
+  'github-star-prompt-dismissed': true,
   // Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001).
   // Picker -> selection -> panel views -> preview -> attributed checkout.
   // `panel-viewed` is global (the funnel needs a denominator) but deduped per
@@ -923,6 +928,10 @@ export function trackSignOut(): void {
  * Umami event to the Clerk id, so these are per-user records of a
  * security-posture change and should be treated as such.
  */
+export function trackGithubStarPrompt(outcome: 'shown' | 'starred' | 'dismissed'): void {
+  track(`github-star-prompt-${outcome}`);
+}
+
 export function trackPasskeyOfferShown(): void {
   track('passkey-offer-shown');
 }

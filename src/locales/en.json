@@ -3165,6 +3165,12 @@
       "rubPerUnit": "RUB per unit",
       "sourceCbr": "Source: Bank of Russia"
     },
+    "githubStarPrompt": {
+      "title": "Enjoying World Monitor?",
+      "body": "A star on GitHub helps other people find it.",
+      "star": "Star on GitHub",
+      "dismiss": "Dismiss and don't ask again"
+    },
     "passkeyOffer": {
       "title": "Save a passkey?",
       "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",

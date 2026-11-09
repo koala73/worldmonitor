@@ -2745,6 +2745,12 @@
           "placeholder": "Opcional"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Gostando do World Monitor?",
+      "body": "Uma estrela no GitHub ajuda outras pessoas a encontrá-lo.",
+      "star": "Dar estrela no GitHub",
+      "dismiss": "Descartar e não perguntar novamente"
     }
   },
   "popups": {

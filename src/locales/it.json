@@ -3131,6 +3131,12 @@
           "placeholder": "Facoltativo"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Ti piace World Monitor?",
+      "body": "Una stella su GitHub aiuta altri a scoprirlo.",
+      "star": "Stella su GitHub",
+      "dismiss": "Nascondi e non chiedere più"
     }
   },
   "popups": {
