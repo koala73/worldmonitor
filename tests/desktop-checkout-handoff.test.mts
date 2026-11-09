@@ -62,7 +62,13 @@ const HOSTED_CHECKOUT_URL = 'https://checkout.dodopayments.com/buy/sess_123';
 // The desktop opener looks up the signed-in account before a /pro launch, so
 // that IPC call lands a few ticks after the caller returns.
 async function settleOpens(): Promise<void> {
-  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+  for (let i = 0; i < 200; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+async function waitForInvocations(count: number): Promise<void> {
+  for (let i = 0; i < 5_000 && globalThis.__desktopCheckoutHarness.invocations.length < count; i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 const USER_1_ACCOUNT = createHash('sha256').update('wm-desktop-checkout:user_1').digest('hex').slice(0, 16);
@@ -485,7 +491,7 @@ describe('startCheckout on desktop (#5911)', () => {
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
-    await settleOpens();
+    await waitForInvocations(1);
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, [], 'the app must not be replaced by /pro');
@@ -505,7 +511,7 @@ describe('startCheckout on desktop (#5911)', () => {
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
-    await settleOpens();
+    await waitForInvocations(1);
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, []);
@@ -527,7 +533,7 @@ describe('startCheckout on desktop (#5911)', () => {
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
 
-    await settleOpens();
+    await waitForInvocations(2);
     const harness = globalThis.__desktopCheckoutHarness;
     assert.equal(harness.invocations.length, 2, 'hosted checkout and default pricing fallback both attempted native launch');
     assert.deepEqual(harness.openedWindows, [], 'hosted checkout requires a native browser');
