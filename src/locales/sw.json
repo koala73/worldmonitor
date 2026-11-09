@@ -3182,10 +3182,10 @@
       }
     },
     "githubStarPrompt": {
-      "title": "Unajifunza World Monitor?",
+      "title": "Unafurahia World Monitor?",
       "body": "Nyota kwenye GitHub inasaidia watu wengine kuipata.",
       "star": "Weka nyota kwenye GitHub",
-      "dismiss": "Ondoa na usiweze kuuliza tena"
+      "dismiss": "Funga na usiulize tena"
     }
   },
   "popups": {

@@ -2,6 +2,7 @@ import { trackGithubStarPrompt } from '@/services/analytics';
 import { getAuthState } from '@/services/auth-state';
 import { openExternalUrl } from '@/services/external-navigation';
 import {
+  canPersistStarPromptDismissal,
   GITHUB_STAR_REPO_URL,
   markStarPromptDismissed,
   readStarPromptDismissed,
@@ -113,7 +114,8 @@ export class GitHubStarPromptController {
       return;
     }
     this.stopListening();
-    if (check === 'show') this.show();
+    // Last gate: a dismissal must be able to stick, or the ask would repeat.
+    if (check === 'show' && canPersistStarPromptDismissal(this.storage)) this.show();
   };
 
   private show(): void {

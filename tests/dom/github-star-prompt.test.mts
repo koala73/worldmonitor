@@ -33,11 +33,13 @@ vi.mock('@/services/i18n', () => ({ t: (key: string) => key }));
 
 import { bootGitHubStarPrompt } from '@/app/github-star-prompt-boot';
 import {
+  canPersistStarPromptDismissal,
   decideStarPrompt,
   localDayKey,
   recordVisitDay,
   STAR_PROMPT_DISMISSED_KEY,
   STAR_PROMPT_IDLE_MS,
+  STAR_PROMPT_PROBE_KEY,
   STAR_PROMPT_VISITS_KEY,
   type StarPromptStorage,
 } from '@/services/github-star-prompt-state';
@@ -52,6 +54,7 @@ function memoryStorage(): StarPromptStorage & { data: Map<string, string> } {
     data,
     getItem: (k) => data.get(k) ?? null,
     setItem: (k, v) => { data.set(k, String(v)); },
+    removeItem: (k) => { data.delete(k); },
   };
 }
 
@@ -79,9 +82,10 @@ describe('visit-day ledger', () => {
     const throwing: StarPromptStorage = {
       getItem: () => { throw new Error('blocked'); },
       setItem: () => { throw new Error('blocked'); },
+      removeItem: () => {},
     };
     expect(recordVisitDay(throwing, '2026-11-01')).toBeNull();
-    const dropping: StarPromptStorage = { getItem: () => null, setItem: () => {} };
+    const dropping: StarPromptStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
     expect(recordVisitDay(dropping, '2026-11-01')).toBeNull();
   });
 
@@ -90,6 +94,13 @@ describe('visit-day ledger', () => {
     expect(recordVisitDay(s, '2026-11-03')).toBe(1);
     s.setItem = () => { throw new Error('QuotaExceededError'); };
     expect(recordVisitDay(s, '2026-11-03')).toBeNull();
+  });
+
+  it('probes that a NEW key can be written, and cleans up the probe', () => {
+    const s = memoryStorage();
+    expect(canPersistStarPromptDismissal(s)).toBe(true);
+    expect(s.data.has(STAR_PROMPT_PROBE_KEY)).toBe(false);
+    expect(canPersistStarPromptDismissal(null)).toBe(false);
   });
 
   it('recovers from a corrupt ledger by starting over', () => {
@@ -255,6 +266,23 @@ describe('boot gate and controller', () => {
     localStorage.setItem(STAR_PROMPT_DISMISSED_KEY, '1');
     vi.advanceTimersByTime(STAR_PROMPT_IDLE_MS);
     expect(toast()).toBeNull();
+  });
+
+  it('does not show when the existing ledger rewrites but a new key cannot be added (quota)', async () => {
+    await reachThirdDay();
+    // At the quota, overwriting an existing key succeeds but adding one throws.
+    const realSetItem = localStorage.setItem.bind(localStorage);
+    const spy = vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (localStorage.getItem(k) === null) throw new DOMException('full', 'QuotaExceededError');
+      realSetItem(k, v);
+    });
+    try {
+      vi.advanceTimersByTime(STAR_PROMPT_IDLE_MS);
+      expect(toast()).toBeNull();
+      expect(tracked).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('destroy before idle removes listeners and never shows', async () => {

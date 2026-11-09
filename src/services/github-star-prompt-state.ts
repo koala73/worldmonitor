@@ -17,11 +17,13 @@ export const GITHUB_STAR_REPO_URL = 'https://github.com/koala73/worldmonitor';
 // Separate keys so a visit count written by another tab can never undo a dismissal.
 export const STAR_PROMPT_VISITS_KEY = 'wm-github-star-prompt:visits';
 export const STAR_PROMPT_DISMISSED_KEY = 'wm-github-star-prompt:dismissed';
+// Scratch key for the write probe; removed straight after.
+export const STAR_PROMPT_PROBE_KEY = 'wm-github-star-prompt:probe';
 
 export const VISIT_DAYS_BEFORE_ASKING = 3;
 export const STAR_PROMPT_IDLE_MS = 30_000;
 
-export type StarPromptStorage = Pick<Storage, 'getItem' | 'setItem'>;
+export type StarPromptStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 /** localStorage, or null when the browser withholds it (null or throwing getter). */
 export function starPromptStorage(): StarPromptStorage | null {
@@ -89,11 +91,31 @@ export function readStarPromptDismissed(storage: StarPromptStorage | null): bool
   }
 }
 
+/**
+ * True when a NEW key can be written and read back, so a dismissal will stick.
+ *
+ * Rewriting the existing visit ledger is not proof: at the storage quota an
+ * overwrite of an existing key can succeed while adding a key throws, and the
+ * dismissal key does not exist yet. Probe with a scratch key so the user's
+ * own records are never overwritten.
+ */
+export function canPersistStarPromptDismissal(storage: StarPromptStorage | null): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(STAR_PROMPT_PROBE_KEY, '1');
+    const ok = storage.getItem(STAR_PROMPT_PROBE_KEY) === '1';
+    storage.removeItem(STAR_PROMPT_PROBE_KEY);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export function markStarPromptDismissed(storage: StarPromptStorage | null): void {
   try {
     storage?.setItem(STAR_PROMPT_DISMISSED_KEY, '1');
   } catch {
-    /* nothing to do: the next read fails too, so the prompt stays suppressed */
+    /* best effort: the controller probes canPersistStarPromptDismissal before asking */
   }
 }
 
