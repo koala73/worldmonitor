@@ -516,6 +516,22 @@ describe('open data under /data/v1', () => {
     assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
   });
 
+  it('sends the bare dataset path to the committed datasheet instead of a 404', () => {
+    const datasheet = '/data/v1/chokepoints/README.md';
+    for (const source of ['/data/v1/chokepoints', '/data/v1/chokepoints/']) {
+      const redirect = vercelConfig.redirects.find((entry) => entry.source === source);
+      assert.deepEqual(redirect, { source, destination: datasheet, permanent: false }, `${source} must redirect to the datasheet`);
+    }
+    assert.ok(readFileSync(resolve(__dirname, `../public${datasheet}`), 'utf-8').length > 0);
+    const rewrite = vercelConfig.rewrites.find((entry) => entry.destination.startsWith('/api/open-data-chokepoints?'));
+    const [prefix, pattern] = rewrite.source.split(':file');
+    assert.equal(
+      new RegExp(`^${pattern}$`).test(datasheet.slice(prefix.length)),
+      false,
+      'the datasheet must stay a static file, not a Redis read',
+    );
+  });
+
   const nginxLocation = (prefix) => {
     const match = dockerNginxSource.match(new RegExp(`^ {4}location ${prefix.replace(/\//g, '\\/')} \\{\\n([\\s\\S]*?)^ {4}\\}`, 'm'));
     assert.ok(match, `docker/nginx.conf must declare location ${prefix}`);

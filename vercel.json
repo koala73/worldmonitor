@@ -3,6 +3,8 @@
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [
+    { "source": "/data/v1/chokepoints", "destination": "/data/v1/chokepoints/README.md", "permanent": false },
+    { "source": "/data/v1/chokepoints/", "destination": "/data/v1/chokepoints/README.md", "permanent": false },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$" }], "missing": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/dashboard", "permanent": true },
     { "source": "/", "has": [{ "type": "host", "value": "^[a-z0-9-]+\\.vercel\\.app$" }], "missing": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/dashboard", "permanent": false },
     { "source": "/", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/", "permanent": true },

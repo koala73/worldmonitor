@@ -808,6 +808,47 @@ function dataDownload(contentUrl, encodingFormat = 'application/json') {
   };
 }
 
+// The daily archive is licensed apart from the corpus downloads (CC BY 4.0, not
+// the Terms of Service) and is served by api/open-data-chokepoints.js, so its
+// files are never written by this build. tests/crawlable-corpus.test.mjs pins
+// these values to scripts/build-open-data-chokepoints.mjs.
+export const CHOKEPOINT_OPEN_DATA = Object.freeze({
+  identifier: 'worldmonitor-chokepoint-status',
+  basePath: '/data/v1/chokepoints/',
+  licenseUrl: 'https://creativecommons.org/licenses/by/4.0/',
+});
+
+function chokepointOpenDataLd(baseUrl, chokepointCount) {
+  const file = (name) => absoluteUrl(baseUrl, `${CHOKEPOINT_OPEN_DATA.basePath}${name}`);
+  return {
+    '@context': SCHEMA_ORG_CONTEXT_URL,
+    '@type': 'Dataset',
+    '@id': `${absoluteUrl(baseUrl, '/chokepoints/')}#daily-archive`,
+    name: 'World Monitor chokepoint status daily archive',
+    description: `One snapshot per day of the ${chokepointCount} maritime chokepoints World Monitor tracks: disruption score, status, navigational warning and AIS disruption counts, AIS congestion, transit counts and flow ratio. Published as JSON and CSV with a JSON Schema and a datasheet, free to reuse with attribution, no key required.`,
+    url: file('README.md'),
+    identifier: CHOKEPOINT_OPEN_DATA.identifier,
+    keywords: ['maritime chokepoints', 'shipping disruption', 'open data', 'daily time series', 'AIS congestion'],
+    creator: { ...WORLD_MONITOR_ORG },
+    license: CHOKEPOINT_OPEN_DATA.licenseUrl,
+    spatialCoverage: 'Worldwide',
+    isAccessibleForFree: true,
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
+    measurementTechnique: 'World Monitor chokepoint disruption scoring methodology',
+    variableMeasured: [
+      { '@type': 'PropertyValue', name: 'Disruption score', minValue: 0, maxValue: 100, unitText: 'index points' },
+      { '@type': 'PropertyValue', name: 'Status' },
+      { '@type': 'PropertyValue', name: 'AIS congestion' },
+      { '@type': 'PropertyValue', name: 'Flow ratio', minValue: 0, maxValue: 1.5 },
+      { '@type': 'PropertyValue', name: 'Daily transit count' },
+    ],
+    distribution: [
+      dataDownload(file('latest.json')),
+      dataDownload(file('latest.csv'), 'text/csv'),
+    ],
+  };
+}
+
 const OBSERVATION_COVERAGE_RE = /^\d{4}-\d{2}-\d{2}(?:\/\d{4}-\d{2}-\d{2})?$/;
 
 /** Dataset temporalCoverage from a committed observation date or closed interval.
@@ -4518,6 +4559,15 @@ ${chokepointHubRows.map((row) => {
         <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
   }).join('\n')}
       </dl>
+      <h2 id="open-data">Download the daily status archive</h2>
+      <p data-chokepoint-open-data>The status of all ${chokepointHubRows.length} waterways is also published once a day as an open dataset. It is free to reuse under <a rel="license" href="${CHOKEPOINT_OPEN_DATA.licenseUrl}">CC BY 4.0</a> with credit to World Monitor, and needs no key or signup. Each daily file keeps that day's disruption score, status, warning counts, AIS congestion, transit counts and flow ratio, and earlier days are never rewritten.</p>
+      <ul data-chokepoint-open-data-files>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}latest.json">Latest snapshot (JSON)</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}latest.csv">Latest snapshot (CSV)</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}index.json">Available dates</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}README.md">Datasheet: columns, withheld fields, licence and limits</a></li>
+        <li><a href="${CHOKEPOINT_OPEN_DATA.basePath}schema.json">JSON Schema</a></li>
+      </ul>
       <h2>How this list is scoped</h2>
       <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
       <h2>What these pages are not</h2>
@@ -4575,6 +4625,7 @@ ${chokepointHubRows.map((row) => {
         itemListOrder: 'https://schema.org/ItemListUnordered',
         itemListElement,
       },
+      chokepointOpenDataLd(baseUrl, chokepointHubRows.length),
       dataCatalogLd(baseUrl),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [

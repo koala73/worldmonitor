@@ -207,6 +207,23 @@ top1 * 0.5 + top2 * 0.3 + top3 * 0.2
 - `supply_chain:chokepoints:v4`：状态热点探测，每 6 分钟。
 - `supply_chain:transit-summaries:v1`：AIS 中继紧凑通行汇总。
 
+## 开放数据
+
+所有受监测咽喉要道的每日状态以开放数据集的形式发布，采用
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可，无需密钥或注册。
+
+- [最新快照（JSON）](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [最新快照（CSV）](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [可用日期](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [数据说明（英文）](https://www.worldmonitor.app/data/v1/chokepoints/README.md)：字段、未公开字段、许可和限制
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+每天约 06:23 UTC 发布一份快照，数据来自本页所述的公开
+`GetChokepointStatus` 响应。每天还会保留一份按日期命名的文件
+（`YYYY-MM-DD.json` 和 `.csv`），较早日期的文件不会被改写。
+EIA 基线和 PortWatch 原始计数等第三方数据不包含在数据集中，
+数据说明列出了每个未公开字段及其原因。
+
 ## 已知限制
 
 - 七个实时流量行由能源基线支撑；其余六个受监测

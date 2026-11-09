@@ -17,6 +17,13 @@ import {
 } from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
 import {
+  DATASET_ID as OPEN_DATA_DATASET_ID,
+  DEFAULT_OUT_DIR as OPEN_DATA_OUT_DIR,
+  LICENSE as OPEN_DATA_LICENSE,
+} from '../scripts/build-open-data-chokepoints.mjs';
+
+import {
+  CHOKEPOINT_OPEN_DATA,
   buildCiiRankingEntries,
   buildChokepointHubRows,
   normalizeActiveWars,
@@ -761,6 +768,20 @@ function isAbsoluteHttpUrl(value) {
   }
 }
 
+// The daily chokepoint archive is the one Dataset whose downloads this build
+// does not write: vercel.json rewrites them to api/open-data-chokepoints.js.
+// The exemption holds only while that rewrite matches the path, so a download
+// that neither the build nor the rewrite serves still fails.
+function isServedOpenDataDownload(pathname) {
+  if (!pathname.startsWith(CHOKEPOINT_OPEN_DATA.basePath)) return false;
+  const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
+  const rewrite = config.rewrites.find((entry) => entry.destination.startsWith('/api/open-data-chokepoints?'));
+  assert.ok(rewrite, 'vercel.json must rewrite the chokepoint open dataset to its handler');
+  const [prefix, pattern] = rewrite.source.split(':file');
+  assert.equal(prefix, CHOKEPOINT_OPEN_DATA.basePath, 'the open dataset rewrite must cover the advertised base path');
+  return new RegExp(`^${pattern}$`).test(pathname.slice(prefix.length));
+}
+
 function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'https://www.worldmonitor.app') {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
   const downloads = datasets.flatMap((dataset) => {
@@ -788,6 +809,7 @@ function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'http
       /^\/api\//,
       `${route} DataDownload must not point at an authenticated API route: ${item.contentUrl}`,
     );
+    if (isServedOpenDataDownload(url.pathname)) continue;
     const relativePath = url.pathname.replace(/^\/+/, '');
     assert.ok(
       existsSync(join(outDir, relativePath)),
@@ -4202,6 +4224,32 @@ describe('crawlable corpus generator', () => {
       assert.ok(chokepointDataset.variableMeasured.length >= 3);
       assert.equal(chokepointDataset.distribution['@type'], 'DataDownload');
       assert.equal(chokepointDataset.includedInDataCatalog['@id'], chokepointCatalog['@id']);
+
+      const archiveDataset = chokepointsLd.find((entry) => entry['@id']?.endsWith('#daily-archive'));
+      assert.ok(archiveDataset, 'chokepoint hub must describe the daily open-data archive');
+      assert.equal(archiveDataset['@type'], 'Dataset');
+      assert.equal(archiveDataset.identifier, OPEN_DATA_DATASET_ID);
+      assert.equal(archiveDataset.license, OPEN_DATA_LICENSE.url);
+      assert.notEqual(archiveDataset.license, chokepointDataset.license.url, 'the archive is CC BY, not the Terms of Service');
+      assert.equal(CHOKEPOINT_OPEN_DATA.basePath, `/${OPEN_DATA_OUT_DIR.replace(/^public\//, '')}/`);
+      assert.deepEqual(
+        archiveDataset.distribution.map((item) => [item.encodingFormat, item.contentUrl]),
+        [
+          ['application/json', 'https://www.worldmonitor.app/data/v1/chokepoints/latest.json'],
+          ['text/csv', 'https://www.worldmonitor.app/data/v1/chokepoints/latest.csv'],
+        ],
+      );
+      assert.equal(archiveDataset.url, 'https://www.worldmonitor.app/data/v1/chokepoints/README.md');
+      const openDataSection = chokepointsDocument.querySelector('[data-chokepoint-open-data]');
+      assert.match(openDataSection?.textContent ?? '', /CC BY 4\.0/);
+      assert.equal(openDataSection.querySelector('a[rel="license"]')?.getAttribute('href'), OPEN_DATA_LICENSE.url);
+      assert.deepEqual(
+        [...chokepointsDocument.querySelectorAll('[data-chokepoint-open-data-files] a')].map((link) => link.getAttribute('href')),
+        ['latest.json', 'latest.csv', 'index.json', 'README.md', 'schema.json'].map((name) => `/data/v1/chokepoints/${name}`),
+      );
+      for (const name of ['README.md', 'schema.json']) {
+        assert.ok(existsSync(join(repoRoot, 'public/data/v1/chokepoints', name)), `${name} is a committed static file`);
+      }
       for (const [index, listEntry] of chokepointItemList.itemListElement.entries()) {
         const visibleRow = chokepointRows[index];
         assert.equal(listEntry.url, visibleRow.querySelector('a').href);
