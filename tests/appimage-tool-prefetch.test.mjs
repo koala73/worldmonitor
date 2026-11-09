@@ -166,15 +166,40 @@ describe('prefetch-appimage-tools.sh', () => {
     const { dir, run } = sandbox();
     const result = run(PREFETCH, ['x86_64'], { FAKE_CURL_FAIL_MATCH: 'linuxdeploy-plugin-appimage' });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stderr, /falls back to its built-in version/);
+    assert.match(result.stderr, /linuxdeploy-plugin-appimage\.AppImage not prefetched/);
     assert.ok(!existsSync(join(dir, 'cache', 'tauri', 'linuxdeploy-plugin-appimage.AppImage')));
   });
 
-  it('fails when a required tool cannot be downloaded', () => {
-    const { run } = sandbox();
-    const result = run(PREFETCH, ['x86_64'], { FAKE_CURL_FAIL_MATCH: 'apprun-old' });
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Download failed after 7 attempts: .*apprun-old/);
+  // Prefetching must never be worse than not prefetching: a tool it cannot
+  // fetch (an outage past the retry budget, or an old asset removed after a
+  // CLI upgrade renamed it) is left to the bundler's own download.
+  it('leaves a tool it cannot fetch to the bundler instead of failing the build', () => {
+    const { dir, run } = sandbox();
+    const result = run(PREFETCH, ['x86_64'], {
+      FAKE_CURL_FAIL_MATCH: 'apprun-old',
+      FAKE_CURL_FAIL_CODE: '404',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /AppRun-x86_64 not prefetched; the bundler will download it itself/);
+    const toolsDir = join(dir, 'cache', 'tauri');
+    assert.ok(!existsSync(join(toolsDir, 'AppRun-x86_64')));
+    assert.ok(existsSync(join(toolsDir, 'linuxdeploy-x86_64.AppImage')), 'the other tools are still prefetched');
+  });
+
+  // The bundler checks only that a tool file exists, so an empty one left by an
+  // interrupted write must not survive a failed prefetch: the bundler would
+  // skip its own download and bundle the empty file.
+  it('removes an empty tool it cannot replace so the bundler downloads it', () => {
+    const { dir, run } = sandbox();
+    const toolsDir = join(dir, 'cache', 'tauri');
+    spawnSync('mkdir', ['-p', toolsDir]);
+    writeFileSync(join(toolsDir, 'AppRun-x86_64'), '');
+    const result = run(PREFETCH, ['x86_64'], {
+      FAKE_CURL_FAIL_MATCH: 'apprun-old',
+      FAKE_CURL_FAIL_CODE: '404',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(!existsSync(join(toolsDir, 'AppRun-x86_64')), 'an empty tool must not be left for the bundler to trust');
   });
 
   it('rejects an unsupported architecture', () => {
