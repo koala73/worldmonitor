@@ -24,7 +24,6 @@
 import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
-import { desktopAccountDigest, type DesktopCheckoutHandoff } from '../../shared/checkout-attribution';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { showToast } from '@/utils/toast';
@@ -1257,22 +1256,6 @@ export function getCurrentClerkUser(): { id: string; name: string; email: string
     image: user.imageUrl ?? null,
     plan: plan === 'pro' ? 'pro' : 'free',
   };
-}
-
-/**
- * The /pro handoff for a desktop "Upgrade to Pro" (#10342): names the account
- * signed in to the app so /pro can stop a checkout on a different browser
- * session. A signed-out app names none.
- */
-export async function currentDesktopCheckoutHandoff(): Promise<DesktopCheckoutHandoff> {
-  const user = getCurrentClerkUser();
-  if (!user) return {};
-  try {
-    return { account: await desktopAccountDigest(user.id) };
-  } catch {
-    // No WebCrypto: hand off unnamed, as builds before #10342 did.
-    return {};
-  }
 }
 
 /**

@@ -143,12 +143,12 @@ describe('stripCheckoutIntentFromSearch', () => {
     assert.equal(result, '?keep=me');
   });
 
-  it('strips mission preview and desktop handoff intent', () => {
+  it('strips mission preview intent but keeps the desktop handoff for later plan clicks (#10342)', () => {
     const result = stripCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_MISSION_PARAM}=crisis-desk`
-      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&keep=me`,
+      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef&keep=me`,
     );
-    assert.equal(result, '?keep=me');
+    assert.equal(result, `?${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef&keep=me`);
   });
 
   it('is idempotent — second call on a stripped URL is a no-op', () => {
@@ -225,7 +225,10 @@ describe('buildCheckoutReturnUrl', () => {
     assert.equal(url.searchParams.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
     assert.equal(url.searchParams.get('wm_checkout_account'), '0123456789abcdef');
     assert.deepEqual(parseCheckoutIntentFromSearch(url.search)?.desktopHandoff, { account: '0123456789abcdef' });
-    assert.equal(stripCheckoutIntentFromSearch(url.search), '');
+    assert.equal(
+      stripCheckoutIntentFromSearch(url.search),
+      `?${CHECKOUT_HANDOFF_PARAM}=desktop&wm_checkout_account=0123456789abcdef`,
+    );
   });
 });
 

@@ -54,10 +54,8 @@ import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
 import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
-import {
-  parseDesktopCheckoutHandoff,
-  parseMissionPreviewAttributionFromSearch,
-} from '../../shared/checkout-attribution';
+import { parseMissionPreviewAttributionFromSearch } from '../../shared/checkout-attribution';
+import { parseDesktopCheckoutHandoff } from '../../shared/desktop-checkout-handoff';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';

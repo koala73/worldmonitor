@@ -45,10 +45,8 @@ export interface CheckoutContext {
 
 export const CHECKOUT_MISSION_PARAM = 'wm_checkout_mission';
 export const CHECKOUT_PANEL_PARAM = 'wm_checkout_panel';
-export const CHECKOUT_HANDOFF_PARAM = 'wm_checkout_handoff';
+export { CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF } from './desktop-checkout-handoff';
 export const CHECKOUT_RETURN_SOURCE_PARAM = 'wm_src';
-export const DESKTOP_CHECKOUT_HANDOFF = 'desktop';
-export const CHECKOUT_DESKTOP_ACCOUNT_PARAM = 'wm_checkout_account';
 export const CHECKOUT_ATTEMPT_STORAGE_KEY = 'wm-last-checkout-attempt';
 export const CHECKOUT_ATTEMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -144,45 +142,9 @@ export function withCheckoutEventSurface(
   return { ...context, eventSurface };
 }
 
-/**
- * The desktop app handed checkout to the OS browser (#5911). `account` is
- * `desktopAccountDigest` of the account signed in to the app. It is absent
- * when the app was signed out, or was a build from before #10342, and then
- * /pro cannot tell whether its own session is the same account.
- */
-export interface DesktopCheckoutHandoff {
-  account?: string;
-}
-
-const DESKTOP_ACCOUNT_DIGEST_PATTERN = /^[0-9a-f]{16}$/;
-
-/**
- * A stable, non-reversible stand-in for a Clerk user id. The handoff URL sits
- * in the OS browser's history and in analytics page URLs, and /pro only needs
- * to compare two accounts, never to name one.
- */
-export async function desktopAccountDigest(userId: string): Promise<string> {
-  const bytes = new TextEncoder().encode(`wm-desktop-checkout:${userId}`);
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
-  return Array.from(hash.subarray(0, 8), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-export function stampDesktopCheckoutHandoff(params: URLSearchParams, handoff: DesktopCheckoutHandoff): void {
-  params.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
-  if (handoff.account) params.set(CHECKOUT_DESKTOP_ACCOUNT_PARAM, handoff.account);
-}
-
-export function parseDesktopCheckoutHandoff(search: string): DesktopCheckoutHandoff | null {
-  const params = new URLSearchParams(search);
-  if (params.get(CHECKOUT_HANDOFF_PARAM) !== DESKTOP_CHECKOUT_HANDOFF) return null;
-  const account = params.get(CHECKOUT_DESKTOP_ACCOUNT_PARAM);
-  return account && DESKTOP_ACCOUNT_DIGEST_PATTERN.test(account) ? { account } : {};
-}
-
 export function buildAttributedProUrl(
   baseUrl: string,
   attribution?: CheckoutAttribution | null,
-  options?: { desktopHandoff?: DesktopCheckoutHandoff },
 ): string {
   const preview = parseMissionPreviewAttribution(
     attribution?.missionId,
@@ -193,7 +155,6 @@ export function buildAttributedProUrl(
     url.searchParams.set(CHECKOUT_MISSION_PARAM, preview.missionId);
     url.searchParams.set(CHECKOUT_PANEL_PARAM, preview.panelKey);
   }
-  if (options?.desktopHandoff) stampDesktopCheckoutHandoff(url.searchParams, options.desktopHandoff);
   return url.toString();
 }
 

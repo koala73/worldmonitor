@@ -14,7 +14,7 @@
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
-import { currentDesktopCheckoutHandoff, getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
+import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
 import { safeHostedCheckoutUrl } from './hosted-checkout-url';
@@ -541,8 +541,6 @@ export async function startCheckout(
       navigate: (url) => navigateToWebSurface(buildAttributedProUrl(
         url,
         checkoutContext.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-        // Signed out: there is no desktop account to name.
-        desktopRuntime ? { desktopHandoff: {} } : undefined,
       )),
       persistIntent: () => savePendingCheckoutIntent(intent),
       persistAttempt: () => saveCheckoutAttempt({
@@ -1036,21 +1034,20 @@ function renderCheckoutErrorSurface(
     return;
   }
   if (fallbackToPricingPage) {
-    const attribution = checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined;
+    const proUrl = buildAttributedProUrl(
+      `${WEB_APP_ORIGIN}/pro`,
+      checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
+    );
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead
     // of replacing the app. The toast stays on desktop because, unlike the
     // web redirect, the app is still on screen to show it.
     if (isDesktopRuntime()) {
-      void currentDesktopCheckoutHandoff().then((desktopHandoff) => openExternalUrl(
-        buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro`, attribution, { desktopHandoff }),
-        null,
-        { desktopPopupFallback: false },
-      ));
+      void openExternalUrl(proUrl, null, { desktopPopupFallback: false });
       showCheckoutErrorToast(error.userMessage);
       return;
     }
-    window.location.assign(buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro`, attribution));
+    window.location.assign(proUrl);
     return;
   }
   showCheckoutErrorToast(error.userMessage);

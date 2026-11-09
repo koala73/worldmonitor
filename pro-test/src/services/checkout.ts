@@ -47,12 +47,11 @@ import {
   CHECKOUT_ATTEMPT_STORAGE_KEY,
   CHECKOUT_RETURN_SOURCE_PARAM,
   DESKTOP_CHECKOUT_HANDOFF,
-  desktopAccountDigest,
   parseMissionPreviewAttribution,
   resolveCheckoutContext,
   type CheckoutAttribution,
-  type DesktopCheckoutHandoff,
 } from '../../../shared/checkout-attribution';
+import { desktopAccountDigest, type DesktopCheckoutHandoff } from '../../../shared/desktop-checkout-handoff';
 import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;
@@ -352,8 +351,14 @@ async function confirmDesktopAccount(
   if (!desktopAccount || !c.user) return options;
   if (await desktopAccountDigest(c.user.id) === desktopAccount) return options;
 
+  const shownUserId = c.user.id;
   const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
   const choice = await askDesktopAccountChoice(browserAccount);
+  // Another tab can switch the browser session while the dialog is open. The
+  // buyer approved the account they were shown, not whichever is current.
+  if (choice !== 'cancel' && c.user?.id !== shownUserId) {
+    return confirmDesktopAccount(c, productId, options);
+  }
   if (choice === 'upgrade-browser-account') {
     const { desktopHandoff: _dropped, ...browserOptions } = options;
     return browserOptions;
@@ -361,8 +366,9 @@ async function confirmDesktopAccount(
   if (choice === 'switch-account') {
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
     try {
-      await c.signOut();
-      c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
+      // The callback replaces Clerk's after-sign-out navigation, which would
+      // leave /pro before sign-in opens.
+      await c.signOut(() => c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl }));
     } catch (err) {
       console.error('[checkout] Failed to switch account:', err);
       Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'desktop-account-switch' } });
@@ -1199,13 +1205,26 @@ function askDesktopAccountChoice(browserAccount: string): Promise<DesktopAccount
     `;
     document.body.appendChild(backdrop);
 
+    const returnFocusTo = document.activeElement as HTMLElement | null;
+    const buttons = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
     const finish = (choice: DesktopAccountChoice) => {
       document.removeEventListener('keydown', onKey, true);
       backdrop.remove();
+      returnFocusTo?.focus?.();
       resolve(choice);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') finish('cancel');
+      if (e.key === 'Escape') {
+        finish('cancel');
+        return;
+      }
+      if (e.key !== 'Tab' || buttons.length === 0) return;
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.shiftKey
+        ? buttons[index <= 0 ? buttons.length - 1 : index - 1]
+        : buttons[index === -1 || index === buttons.length - 1 ? 0 : index + 1];
+      e.preventDefault();
+      next?.focus();
     };
     backdrop.addEventListener('click', (e) => {
       if (e.target === backdrop) return finish('cancel');

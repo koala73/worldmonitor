@@ -69,6 +69,7 @@ async function fixture(options: { browserUser: string | null; href?: string }) {
   const signIns: Array<{ afterSignInUrl?: string }> = [];
   const bodies: Array<Record<string, unknown>> = [];
   let signOuts = 0;
+  const replacedUrls: string[] = [];
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
@@ -82,7 +83,7 @@ async function fixture(options: { browserUser: string | null; href?: string }) {
         hash: new URL(href).hash,
         assign: (url: string) => navigations.push(url),
       },
-      history: { replaceState: () => {} },
+      history: { replaceState: (_s: unknown, _t: string, url: string) => { replacedUrls.push(url); } },
       sessionStorage: browser.sessionStorage,
       umami: { track() {} },
       setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
@@ -97,7 +98,13 @@ async function fixture(options: { browserUser: string | null; href?: string }) {
       get user() { return state.user; },
       session: { getToken: async () => 'synthetic-token' },
       openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
-      signOut: async () => { signOuts++; state.user = null; },
+      // Clerk navigates to its after-sign-out URL unless given a callback.
+      signOut: async (callback?: () => void) => {
+        signOuts++;
+        state.user = null;
+        if (callback) callback();
+        else navigations.push('/after-sign-out');
+      },
     }) },
   };
   for (const [key, value] of Object.entries(globals)) {
@@ -105,7 +112,7 @@ async function fixture(options: { browserUser: string | null; href?: string }) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
-  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts };
+  return { checkout, navigations, signIns, bodies, signOuts: () => signOuts, state, replacedUrls };
 }
 
 const dialog = () => document.querySelector('[role="dialog"]');
@@ -141,6 +148,7 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   button(/switch account/i)?.click();
   assert.equal(await attempt, false);
   assert.equal(f.signOuts(), 1);
+  assert.deepEqual(f.navigations, [], 'sign-out must not navigate away from /pro before sign-in opens');
   assert.equal(f.signIns.length, 1);
   const resume = new URL(f.signIns[0]!.afterSignInUrl!);
   assert.equal(resume.searchParams.get('wm_checkout_product'), 'synthetic-product');
@@ -199,4 +207,50 @@ it('checks the account again when checkout resumes after a sign-in to the wrong 
   assert.ok(dialog());
   button(/cancel/i)?.click();
   assert.equal(await resumed, false);
+});
+
+it('asks again when the browser account changes while the dialog is open', async () => {
+  const f = await fixture({ browserUser: BROWSER_USER });
+  const attempt = f.checkout.startCheckout('synthetic-product', {
+    desktopHandoff: { account: digest(DESKTOP_USER) },
+  });
+  await settle();
+  f.state.user = { id: 'user_other_c', primaryEmailAddress: { emailAddress: 'c@example.com' } };
+  button(/upgrade this account/i)?.click();
+  await settle();
+  assert.deepEqual(f.bodies, [], 'approval for one account must not check out another');
+  assert.match(dialog()?.textContent ?? '', /c@example\.com/);
+  button(/cancel/i)?.click();
+  assert.equal(await attempt, false);
+});
+
+it('keeps the desktop handoff on the page after a canceled resume, so a retry checks again', async () => {
+  const f = await fixture({
+    browserUser: BROWSER_USER,
+    href: 'https://www.worldmonitor.app/pro?wm_checkout_product=synthetic-product'
+      + `&wm_checkout_handoff=desktop&wm_checkout_account=${digest(DESKTOP_USER)}#pricing`,
+  });
+  const resumed = f.checkout.tryResumeCheckoutFromUrl();
+  await settle();
+  button(/cancel/i)?.click();
+  assert.equal(await resumed, false);
+  const kept = new URL(f.replacedUrls[0]!, 'https://www.worldmonitor.app');
+  assert.equal(kept.searchParams.get('wm_checkout_product'), null);
+  assert.equal(kept.searchParams.get('wm_checkout_account'), digest(DESKTOP_USER));
+});
+
+it('keeps keyboard focus inside the dialog', async () => {
+  const f = await fixture({ browserUser: BROWSER_USER });
+  const attempt = f.checkout.startCheckout('synthetic-product', {
+    desktopHandoff: { account: digest(DESKTOP_USER) },
+  });
+  await settle();
+  const buttons = [...document.querySelectorAll('[role="dialog"] button')];
+  assert.equal(document.activeElement, buttons.at(-1));
+  document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Tab' }));
+  assert.equal(document.activeElement, buttons[0], 'Tab from the last button wraps to the first');
+  document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true }));
+  assert.equal(document.activeElement, buttons.at(-1), 'Shift+Tab from the first button wraps to the last');
+  document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Escape' }));
+  assert.equal(await attempt, false);
 });

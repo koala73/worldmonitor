@@ -14,15 +14,17 @@
 import {
   CHECKOUT_MISSION_PARAM,
   CHECKOUT_PANEL_PARAM,
-  CHECKOUT_HANDOFF_PARAM,
-  CHECKOUT_DESKTOP_ACCOUNT_PARAM,
   parseMissionPreviewAttribution,
-  parseDesktopCheckoutHandoff,
-  stampDesktopCheckoutHandoff,
   type CheckoutAttribution,
-  type DesktopCheckoutHandoff,
   type MissionPreviewAttribution,
 } from '../../../shared/checkout-attribution';
+import {
+  CHECKOUT_HANDOFF_PARAM,
+  CHECKOUT_DESKTOP_ACCOUNT_PARAM,
+  parseDesktopCheckoutHandoff,
+  stampDesktopCheckoutHandoff,
+  type DesktopCheckoutHandoff,
+} from '../../../shared/desktop-checkout-handoff';
 
 export const CHECKOUT_PRODUCT_PARAM = 'wm_checkout_product';
 export const CHECKOUT_REF_PARAM = 'wm_checkout_ref';
@@ -64,7 +66,9 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
 
 /**
  * Strip checkout-intent params from a URL search string while
- * preserving all other query params. Returns '' (empty) when nothing
+ * preserving all other query params. The desktop handoff stays: it describes
+ * the visit, not the one-use intent, so a later plan click on this page still
+ * checks the desktop account (#10342). Returns '' (empty) when nothing
  * remains, '?a=b' when other params survive.
  *
  * Caller applies this BEFORE any await so a reload during the
@@ -78,8 +82,6 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_ATTRIBUTION_PARAM);
   params.delete(CHECKOUT_MISSION_PARAM);
   params.delete(CHECKOUT_PANEL_PARAM);
-  params.delete(CHECKOUT_HANDOFF_PARAM);
-  params.delete(CHECKOUT_DESKTOP_ACCOUNT_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
