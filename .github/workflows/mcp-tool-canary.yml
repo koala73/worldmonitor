@@ -16,10 +16,12 @@ name: MCP Tool Canary
 # Cadence: four times a day. A full pass is ~100 tools.
 # Calls are paced at <= 40/min to stay under the per-credential MCP limit.
 #
-# Credential: MCP_CANARY_KEY, a WorldMonitor API key with MCP access. A
-# user-bound wm_ key on a Pro account exercises the customer path (Convex key
-# validation, entitlement, daily allowance); an operator key exercises the
-# tools without the allowance gate. The report records which one ran.
+# Credential: MCP_CANARY_KEY, a user-bound wm_ key owned by the dedicated
+# mcp-canary@worldmonitor.app account (comped api_starter: 1000 requests/day,
+# 60/min). It exercises the customer path: Convex key validation, entitlement
+# and the daily allowance. One pass spends ~160 allowance units, so four runs
+# leave ~350/day of headroom for retries. The report records the credential
+# kind (user or operator) that ran.
 
 on:
   schedule:
@@ -43,8 +45,10 @@ jobs:
   canary:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
-    # Nominal runs finish in about three minutes; a fully degraded run (every
-    # call timing out, then retried) is bounded by the per-call deadline.
+    # Nominal runs finish in about three minutes. In a full outage the script
+    # stops starting calls after its 20-minute run budget, reports the tools it
+    # did not reach as findings, and still writes the report and updates the
+    # issue (worst case ~24 min including npm ci), inside this limit.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

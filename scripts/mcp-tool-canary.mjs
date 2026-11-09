@@ -54,6 +54,11 @@ const RETRY_DELAY_MS = 15_000;
 // calls in flight and at least MIN_START_GAP_MS between call starts (≤ 40/min).
 const CONCURRENCY = 3;
 const MIN_START_GAP_MS = 1_500;
+// No call or retry starts after this budget; tools not reached are reported as
+// budget_exhausted findings. Worst case after the budget: an in-flight call,
+// its retry pause and its retry (~3.3 min), so report + issue publication
+// always land inside the workflow's 30-minute job timeout.
+const RUN_BUDGET_MS = 20 * 60_000;
 
 function isoDateOffset(days, now = new Date()) {
   const d = new Date(now.getTime() + days * 86_400_000);
@@ -268,19 +273,41 @@ export function createRpcClient({ url, key, fetchImpl = (...a) => globalThis.fet
       const body = await res.text();
       return { status: res.status, body, ms: Date.now() - startedAt };
     } catch (err) {
-      return { status: null, body: '', ms: Date.now() - startedAt, timedOut, error: timedOut ? null : formatSafeError(err) };
+      // Node's header validation quotes the offending value, which here is
+      // the credential; never let it into a finding.
+      return { status: null, body: '', ms: Date.now() - startedAt, timedOut,
+        error: timedOut ? null : redactCredential(formatSafeError(err), key) };
     } finally {
       clearTimeout(timer);
     }
   };
 }
 
+/** A key the transport can send as one header value: one printable-ASCII token. */
+export function isWellFormedKey(key) {
+  return typeof key === 'string' && /^[\x21-\x7e]+$/.test(key);
+}
+
+/** Strip the credential, raw or whitespace-collapsed, from any text. */
+export function redactCredential(text, key) {
+  let out = String(text ?? '');
+  const raw = String(key ?? '');
+  for (const secret of new Set([raw, raw.replace(/\s+/g, ' '), raw.slice(3)])) {
+    if (secret.length >= 8) out = out.split(secret).join('[REDACTED]');
+  }
+  return out;
+}
+
+// An advertised outputSchema that is missing or cannot compile is itself a
+// contract failure: skipping the check would let any payload pass.
 function compileValidator(ajv, tool) {
-  if (!tool.outputSchema || typeof tool.outputSchema !== 'object') return null;
+  if (!tool.outputSchema || typeof tool.outputSchema !== 'object') {
+    return { validate: null, error: 'tool advertises no outputSchema' };
+  }
   try {
-    return ajv.compile(tool.outputSchema);
-  } catch {
-    return null;
+    return { validate: ajv.compile(tool.outputSchema), error: null };
+  } catch (err) {
+    return { validate: null, error: `advertised outputSchema does not compile: ${truncate(err.message, 200)}` };
   }
 }
 
@@ -295,9 +322,13 @@ export async function runCanary({
   fetchImpl,
   retryDelayMs = RETRY_DELAY_MS,
   minStartGapMs = MIN_START_GAP_MS,
+  runBudgetMs = RUN_BUDGET_MS,
   log = (line) => console.log(line),
 } = {}) {
   if (!key) throw new Error('MCP_CANARY_KEY is required');
+  const budgetEndsAt = Date.now() + runBudgetMs;
+  const budgetSpent = () => Date.now() >= budgetEndsAt;
+  const BUDGET_EXHAUSTED = { ok: false, kind: 'budget_exhausted', detail: `not run: the ${Math.round(runBudgetMs / 60_000)}-minute run budget was spent`, ms: 0 };
   const rpc = createRpcClient({ url, key, fetchImpl });
   const report = {
     checkedAt: now.toISOString(), url, credential: 'unknown',
@@ -315,7 +346,7 @@ export async function runCanary({
     tools = msg.result?.tools;
     if (!Array.isArray(tools) || tools.length === 0) throw new Error('tools/list returned no tools');
   } catch (err) {
-    report.setupError = `tools/list failed: ${truncate(err.message, 300)}`;
+    report.setupError = redactCredential(`tools/list failed: ${truncate(err.message, 300)}`, key);
     return report;
   }
 
@@ -345,7 +376,9 @@ export async function runCanary({
   };
 
   async function callOnce(tool, args, validate, acceptRpcErrorCodes) {
+    if (budgetSpent()) return BUDGET_EXHAUSTED;
     await pace();
+    if (budgetSpent()) return BUDGET_EXHAUSTED;
     const r = await rpc('tools/call', { name: tool.name, arguments: args });
     return { ...evaluateCall(r, validate, { acceptRpcErrorCodes }), ms: r.ms };
   }
@@ -359,15 +392,18 @@ export async function runCanary({
       const upstream = structuredByTool.get(fixture.after);
       args = upstream ? fixture.derive(upstream) : null;
       if (!args) {
-        return { name: tool.name, ok: true, skipped: true, kind: 'skipped', attempts: 0, ms: 0,
-          detail: `no ${fixture.after} result to derive arguments from` };
+        // A tool the canary could not reach is untested, not healthy: a run
+        // that skipped it must not close the tracking issue.
+        return { name: tool.name, ok: false, kind: 'unchained', attempts: 0, ms: 0,
+          detail: `${fixture.after} returned nothing to derive arguments from` };
       }
     }
 
-    const validate = compileValidator(ajv, tool);
+    const { validate, error: schemaError } = compileValidator(ajv, tool);
+    if (schemaError) return { name: tool.name, ok: false, kind: 'schema_invalid', detail: schemaError, attempts: 0, ms: 0 };
     let outcome = await callOnce(tool, args, validate, fixture.acceptRpcErrorCodes);
     let attempts = 1;
-    if (!outcome.ok) {
+    if (!outcome.ok && outcome.kind !== 'budget_exhausted') {
       await sleep(retryDelayMs);
       outcome = await callOnce(tool, args, validate, fixture.acceptRpcErrorCodes);
       attempts = 2;
@@ -375,8 +411,7 @@ export async function runCanary({
     if (outcome.structuredContent) structuredByTool.set(tool.name, outcome.structuredContent);
     if (tool.name === 'get_mcp_allowance') report.credential = outcome.kind === 'accepted_error' ? 'operator' : (outcome.ok ? 'user' : 'unknown');
     return { name: tool.name, ok: outcome.ok, kind: outcome.kind, detail: outcome.detail, attempts, ms: outcome.ms,
-      ...(outcome.stale ? { stale: true, cachedAt: outcome.cachedAt } : {}),
-      ...(validate ? {} : { schemaChecked: false }) };
+      ...(outcome.stale ? { stale: true, cachedAt: outcome.cachedAt } : {}) };
   }
 
   // Tools whose output feeds another fixture run first so dependents can wait.
@@ -391,9 +426,10 @@ export async function runCanary({
       } catch (err) {
         result = { name: tool.name, ok: false, kind: 'canary_error', detail: truncate(err.message, 200), attempts: 0, ms: 0 };
       }
+      result.detail = redactCredential(result.detail, key);
       results.push(result);
       done(tool.name).resolve();
-      log(`${result.ok ? (result.skipped ? 'SKIP' : 'PASS') : 'FAIL'} ${tool.name} ${result.ms}ms${result.attempts > 1 ? ' (retried)' : ''}${result.detail ? ` — ${result.detail}` : ''}`);
+      log(`${result.ok ? 'PASS' : 'FAIL'} ${tool.name} ${result.ms}ms${result.attempts > 1 ? ' (retried)' : ''}${result.detail ? ` — ${result.detail}` : ''}`);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
@@ -404,15 +440,14 @@ export async function runCanary({
 
 export function summarize(report) {
   const failures = report.results.filter((r) => !r.ok);
-  const skipped = report.results.filter((r) => r.skipped);
   const stale = report.results.filter((r) => r.stale);
-  const passed = report.results.filter((r) => r.ok && !r.skipped);
+  const passed = report.results.filter((r) => r.ok);
   const healthy = !report.setupError && failures.length === 0 && report.uncovered.length === 0;
-  return { healthy, failures, skipped, passed, stale };
+  return { healthy, failures, passed, stale };
 }
 
 export function renderMarkdown(report, { runUrl = '' } = {}) {
-  const { healthy, failures, skipped, passed, stale } = summarize(report);
+  const { healthy, failures, passed, stale } = summarize(report);
   const lines = [
     `MCP tool canary against \`${report.url}\`: ${healthy ? 'healthy' : 'FAILING'}.`,
     '',
@@ -422,7 +457,7 @@ export function renderMarkdown(report, { runUrl = '' } = {}) {
   if (report.setupError) {
     lines.push(`**Setup failed:** ${cell(report.setupError)}`, '');
   } else {
-    lines.push(`${passed.length} passed, ${failures.length} failed, ${skipped.length} skipped, of ${report.results.length} read-only tools called (credential: ${report.credential}).`, '');
+    lines.push(`${passed.length} passed, ${failures.length} failed, of ${report.results.length} read-only tools called (credential: ${report.credential}).`, '');
   }
   if (failures.length) {
     lines.push('| Tool | Failure | Detail | Attempts |', '| --- | --- | --- | --- |',
@@ -435,9 +470,6 @@ export function renderMarkdown(report, { runUrl = '' } = {}) {
     // Freshness is owned by /api/health and its monitors; listed here so a
     // reader sees which tool answers carried stale:true, but not a failure.
     lines.push(`Answered with \`stale: true\` (not a failure; seed freshness is alarmed by /api/health): ${stale.map((s) => `\`${cell(s.name)}\``).join(', ')}.`, '');
-  }
-  if (skipped.length) {
-    lines.push(`Skipped (no upstream result to chain from): ${skipped.map((s) => `\`${cell(s.name)}\``).join(', ')}.`, '');
   }
   lines.push(
     'Each read-only tool is called with a real credential; a call passes when it answers HTTP 200 with no JSON-RPC error, no `isError`, and `structuredContent` that validates against the tool\'s advertised `outputSchema`. Failed calls are retried once before they count.',
@@ -488,11 +520,38 @@ function parseArgs(argv) {
   return out;
 }
 
+/**
+ * Emit per-tool annotations, then publish the tracking issue. Annotations go
+ * first so a GitHub API failure cannot swallow them; a publish failure is
+ * reported and fails the run. Returns the process exit code.
+ */
+export function finalizeRun(report, { publish = false, runUrl = '', log = (l) => console.log(l), publishFn = publishIssue } = {}) {
+  const { healthy, failures } = summarize(report);
+  if (report.setupError) log(`::error title=MCP canary setup::${report.setupError}`);
+  for (const f of failures) log(`::error title=MCP canary ${f.name}::${f.kind}: ${f.detail}`);
+  let published = true;
+  if (publish) {
+    try {
+      log(JSON.stringify(publishFn(report, { runUrl })));
+    } catch (err) {
+      published = false;
+      log(`::error title=MCP canary issue update failed::${formatSafeError(err)}`);
+    }
+  }
+  return healthy && published ? 0 : 1;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const key = process.env.MCP_CANARY_KEY ?? '';
   if (!key) {
     console.error('::error title=Missing canary credential::Set MCP_CANARY_KEY (a WorldMonitor API key with MCP access).');
+    process.exit(2);
+  }
+  // A secret stored with a line break would be quoted verbatim by Node's
+  // header validation; refuse it before any request is made.
+  if (!isWellFormedKey(key)) {
+    console.error('::error title=Malformed canary credential::MCP_CANARY_KEY must be one line of printable ASCII with no whitespace.');
     process.exit(2);
   }
   const report = await runCanary({ url: process.env.MCP_CANARY_URL || DEFAULT_MCP_URL, key, only: args.only });
@@ -504,10 +563,7 @@ async function main() {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
   console.log(`\n${markdown}`);
   // A partial --only run must never close the tracking issue on a subset.
-  if (args.publishIssue && !args.only) console.log(JSON.stringify(publishIssue(report, { runUrl })));
-  const { healthy, failures } = summarize(report);
-  for (const f of failures) console.log(`::error title=MCP canary ${f.name}::${f.kind}: ${f.detail}`);
-  process.exit(healthy ? 0 : 1);
+  process.exit(finalizeRun(report, { publish: args.publishIssue && !args.only, runUrl }));
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {

@@ -12,7 +12,9 @@ import { strict as assert } from 'node:assert';
 import {
   buildFixtures,
   evaluateCall,
+  finalizeRun,
   findUncoveredTools,
+  isWellFormedKey,
   parseRpcBody,
   publishIssue,
   renderMarkdown,
@@ -104,6 +106,7 @@ describe('runCanary', () => {
     const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
     const s = summarize(report);
     assert.equal(s.healthy, true);
+    assert.equal(s.passed.length, 2);
     assert.deepEqual(s.stale.map((r) => r.name), ['get_b']);
   });
 
@@ -156,6 +159,69 @@ describe('runCanary', () => {
     const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
     assert.equal(summarize(report).healthy, true);
     assert.deepEqual(calls.find((c) => c.name === 'get_forecast_case').args, { forecast_id: 'fc-1', generated_at: '1794211442129' });
+  });
+});
+
+describe('review regressions (PR #10353)', () => {
+  it('fails a tool whose advertised outputSchema cannot compile instead of skipping the check', async () => {
+    const broken = tool('get_a', { outputSchema: { type: 'object', properties: { x: { $ref: '#/$defs/missing' } } } });
+    const { fetchImpl } = fakeFetch([broken], () => ({ body: rpcResult(GOOD) }));
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
+    assert.equal(report.results[0].ok, false);
+    assert.equal(report.results[0].kind, 'schema_invalid');
+    assert.equal(summarize(report).healthy, false);
+  });
+
+  it('stops starting calls once the run budget is spent and reports the rest as not run', async () => {
+    const tools = [tool('get_a'), tool('get_b'), tool('get_c'), tool('get_d')];
+    const { fetchImpl, calls } = fakeFetch(tools, async () => {
+      await new Promise((r) => setTimeout(r, 40));
+      return { status: 503, body: '' };
+    });
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST, runBudgetMs: 60 });
+    assert.equal(report.results.length, 4, 'every tool is accounted for');
+    assert.ok(report.results.some((r) => r.kind === 'budget_exhausted'));
+    assert.ok(calls.length < 8, `budget must stop retries and new calls (made ${calls.length})`);
+    assert.equal(summarize(report).healthy, false);
+  });
+
+  it('counts a chained tool with nothing to chain from as a failure, so recovery cannot skip it', async () => {
+    const tools = [
+      tool('get_webcam_media', { inputSchema: { type: 'object', properties: {}, required: ['webcam_id'] } }),
+      tool('find_webcams', { inputSchema: { type: 'object', properties: {}, required: ['bound_w'] } }),
+    ];
+    const empty = { content: [], structuredContent: { data: { items: [], webcams: [] } } };
+    const { fetchImpl } = fakeFetch(tools, (name) => ({ body: rpcResult(name === 'find_webcams' ? empty : GOOD) }));
+    const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
+    const media = report.results.find((r) => r.name === 'get_webcam_media');
+    assert.equal(media.ok, false);
+    assert.equal(media.kind, 'unchained');
+    assert.equal(summarize(report).healthy, false);
+  });
+
+  it('never lets the credential reach a finding detail', async () => {
+    const key = 'wm_0123456789abcdef0123456789abcdef01234567';
+    const fetchImpl = async () => { throw new TypeError(`Headers.append: "${key}" is an invalid header value.`); };
+    const report = await runCanary({ key, fetchImpl, ...FAST });
+    assert.ok(!JSON.stringify(report).includes(key), 'key leaked into the report');
+    assert.ok(!JSON.stringify(report).includes(key.slice(3)), 'key body leaked into the report');
+  });
+
+  it('accepts only a single-token printable key', () => {
+    assert.equal(isWellFormedKey('wm_0123456789abcdef0123456789abcdef01234567'), true);
+    assert.equal(isWellFormedKey('wm_0123\n4567'), false);
+    assert.equal(isWellFormedKey('wm_0123 4567'), false);
+    assert.equal(isWellFormedKey(''), false);
+  });
+
+  it('emits per-tool annotations and exits 1 even when publishing the issue throws', () => {
+    const report = { checkedAt: 't', url: 'u', credential: 'user', uncovered: [], setupError: null,
+      results: [{ name: 'get_a', ok: false, kind: 'schema', detail: 'd', attempts: 2 }] };
+    const lines = [];
+    const code = finalizeRun(report, { publish: true, log: (l) => lines.push(l), publishFn: () => { throw new Error('gh down'); } });
+    assert.equal(code, 1);
+    assert.ok(lines.some((l) => l.startsWith('::error title=MCP canary get_a::')));
+    assert.ok(lines.some((l) => l.includes('gh down')));
   });
 });
 
