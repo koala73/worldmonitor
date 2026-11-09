@@ -39,6 +39,7 @@ const PLAN_DISPLAY: Record<string, string> = {
   api_starter: "API Starter (Monthly)",
   api_starter_annual: "API Starter (Annual)",
   api_business: "API Business",
+  api_business_annual: "API Business (Annual)",
   enterprise: "Enterprise",
 };
 
@@ -574,6 +575,92 @@ export const sendSubscriptionEmails = internalAction({
         `[subscriptionEmails] Admin notification failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  },
+});
+
+const PERIOD_LABEL: Record<string, string> = { monthly: "month", annual: "year" };
+
+function priceWithPeriod(amount: number, currency: string, planKey: string): string {
+  const period = PERIOD_LABEL[PRODUCT_CATALOG[planKey]?.billingPeriod ?? ""];
+  return period ? `${formatMoney(amount, currency)} / ${period}` : formatMoney(amount, currency);
+}
+
+function signedMoney(amountMinor: number, currency: string): string {
+  return `${amountMinor < 0 ? "-" : "+"}${formatMoney(Math.abs(amountMinor), currency)}`;
+}
+
+/**
+ * The price delta, per period when both plans bill on the same period and
+ * annualized otherwise. Null when either price is unknown or the currencies
+ * differ (no meaningful subtraction).
+ */
+function planPriceChange(args: PlanUpgradeEmailArgs): string | null {
+  const { oldAmount, newAmount, oldCurrency, newCurrency } = args;
+  if (typeof oldAmount !== "number" || typeof newAmount !== "number" || !oldCurrency || !newCurrency) return null;
+  if (oldCurrency.toUpperCase() !== newCurrency.toUpperCase()) return null;
+  const fromPeriod = PRODUCT_CATALOG[args.fromPlanKey]?.billingPeriod;
+  const toPeriod = PRODUCT_CATALOG[args.toPlanKey]?.billingPeriod;
+  if (fromPeriod === toPeriod) {
+    const period = PERIOD_LABEL[toPeriod ?? ""];
+    const delta = signedMoney(newAmount - oldAmount, newCurrency);
+    return period ? `${delta} / ${period}` : delta;
+  }
+  const perYear = (amount: number, period: string | undefined) => (period === "monthly" ? amount * 12 : amount);
+  return `${signedMoney(perYear(newAmount, toPeriod) - perYear(oldAmount, fromPeriod), newCurrency)} / year (annualized)`;
+}
+
+const sendPlanUpgradeAdminEmailArgs = {
+  userId: v.string(),
+  userEmail: v.optional(v.string()),
+  fromPlanKey: v.string(),
+  toPlanKey: v.string(),
+  oldAmount: v.optional(v.number()),
+  oldCurrency: v.optional(v.string()),
+  newAmount: v.optional(v.number()),
+  newCurrency: v.optional(v.string()),
+};
+type PlanUpgradeEmailArgs = ObjectType<typeof sendPlanUpgradeAdminEmailArgs>;
+
+export function planUpgradeSubject(args: Pick<PlanUpgradeEmailArgs, "fromPlanKey" | "toPlanKey">): string {
+  const name = (key: string) => PLAN_DISPLAY[key] ?? key;
+  return `[WM] Plan Upgrade: ${name(args.fromPlanKey)} → ${name(args.toPlanKey)}`;
+}
+
+export function adminPlanUpgradeHtml(args: PlanUpgradeEmailArgs): string {
+  const rows = [
+    adminRow("From", PLAN_DISPLAY[args.fromPlanKey] ?? args.fromPlanKey),
+    adminRow("To", PLAN_DISPLAY[args.toPlanKey] ?? args.toPlanKey),
+  ];
+  if (typeof args.oldAmount === "number") {
+    rows.push(adminRow("Old Price", priceWithPeriod(args.oldAmount, args.oldCurrency ?? "USD", args.fromPlanKey)));
+  }
+  if (typeof args.newAmount === "number") {
+    rows.push(adminRow("New Price", priceWithPeriod(args.newAmount, args.newCurrency ?? "USD", args.toPlanKey)));
+  }
+  const change = planPriceChange(args);
+  if (change) rows.push(adminRow("Change", change));
+  if (args.userEmail) rows.push(adminRow("Email", args.userEmail));
+  rows.push(`<tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>`);
+  return `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
+        <p style="color: #4ade80; font-size: 16px; font-weight: bold;">Plan Upgrade</p>
+        <table style="font-size: 14px; line-height: 1.8;">
+          ${rows.join("\n          ")}
+        </table>
+      </div>`;
+}
+
+/** Admin-only alert for an existing subscriber moving to a higher plan. */
+export const sendPlanUpgradeAdminEmail = internalAction({
+  args: sendPlanUpgradeAdminEmailArgs,
+  handler: async (ctx, args) => {
+    if (!await ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId: args.userId })) return;
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[subscriptionEmails] RESEND_API_KEY not set");
+      return;
+    }
+    await sendEmail(ctx, apiKey, ADMIN_EMAIL, planUpgradeSubject(args), adminPlanUpgradeHtml(args), { replyTo: null });
+    console.log(`[subscriptionEmails] Plan upgrade notification sent for ${args.userId}`);
   },
 });
 

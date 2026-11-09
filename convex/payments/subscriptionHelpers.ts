@@ -36,6 +36,20 @@ export function isBusinessPlan(planKey: string): boolean {
   return PRODUCT_CATALOG[planKey]?.tierGroup === "api_business";
 }
 
+export type PlanChange = "upgrade" | "downgrade" | "lateral";
+
+/**
+ * Direction of a plan change. PLAN_PRECEDENCE already ranks plans by tier, then
+ * capability, then commitment, for the entitlement recompute; an upgrade is a
+ * move to a higher rank. Unknown keys are "lateral".
+ */
+export function classifyPlanChange(fromPlanKey: string, toPlanKey: string): PlanChange {
+  const from = PLAN_PRECEDENCE[fromPlanKey];
+  const to = PLAN_PRECEDENCE[toPlanKey];
+  if (from === undefined || to === undefined || from === to) return "lateral";
+  return to > from ? "upgrade" : "downgrade";
+}
+
 // ---------------------------------------------------------------------------
 // Types for webhook payload data (narrowed from `any`)
 // ---------------------------------------------------------------------------
@@ -1447,6 +1461,7 @@ export async function handleSubscriptionActive(
       onHoldAt: undefined,
       cancelScheduledAt,
     });
+    await notifyPlanUpgrade(ctx, existing, planKey, data);
   } else {
     await ctx.db.insert("subscriptions", {
       userId,
@@ -2060,6 +2075,33 @@ export async function handleSubscriptionCancelled(
 }
 
 /**
+ * Tell the admin about an upgrade. Callers pass the plan stored BEFORE their
+ * patch, so whichever of `plan_changed` and an active `subscription.updated`
+ * applies the new product first announces it, and the other (or a replay)
+ * sees no change.
+ */
+async function notifyPlanUpgrade(
+  ctx: MutationCtx,
+  previous: Doc<"subscriptions">,
+  toPlanKey: string,
+  data: DodoSubscriptionData,
+): Promise<void> {
+  if (classifyPlanChange(previous.planKey, toPlanKey) !== "upgrade" || !process.env.RESEND_API_KEY) return;
+  const old = previous.rawPayload as { recurring_pre_tax_amount?: unknown; currency?: unknown } | null;
+  const userEmail = data.customer?.email?.trim() || await resolveBillingRecipient(ctx, previous);
+  await ctx.scheduler.runAfter(0, internal.payments.subscriptionEmails.sendPlanUpgradeAdminEmail, {
+    userId: previous.userId,
+    userEmail: userEmail || undefined,
+    fromPlanKey: previous.planKey,
+    toPlanKey,
+    oldAmount: typeof old?.recurring_pre_tax_amount === "number" ? old.recurring_pre_tax_amount : undefined,
+    oldCurrency: typeof old?.currency === "string" ? old.currency : undefined,
+    newAmount: data.recurring_pre_tax_amount,
+    newCurrency: data.currency,
+  });
+}
+
+/**
  * Handles `subscription.plan_changed` -- upgrade or downgrade.
  *
  * Updates subscription plan and recomputes entitlements with new features.
@@ -2105,6 +2147,7 @@ export async function handleSubscriptionPlanChanged(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
+  await notifyPlanUpgrade(ctx, existing, newPlanKey, data);
 
   // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
   // the API Business tier — status/currentPeriodEnd alone don't change on a plan
