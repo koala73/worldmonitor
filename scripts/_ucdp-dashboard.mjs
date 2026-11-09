@@ -30,6 +30,12 @@
  * fails.
  */
 
+// Both UCDP writers (scripts/ais-relay.cjs and scripts/seed-ucdp-events.mjs)
+// publish the projection under these keys. The bootstrap slow tier reads the
+// first; api/health.js watches the second.
+export const UCDP_BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
+export const UCDP_BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
+
 export const UCDP_PANEL_ROWS_PER_TAB = 50;
 
 export const UCDP_VIOLENCE_TYPES = [

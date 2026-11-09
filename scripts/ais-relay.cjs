@@ -3248,6 +3248,23 @@ async function seedUcdpEvents() {
       ...ucdpCandidateContentMeta(capped),
     }, 604800);
     console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    // The bootstrap tier hydrates from the compact projection, which health
+    // watches under its own seed-meta. The backup cron skips while the canonical
+    // seed-meta above is fresh, so this writer must refresh the projection too or
+    // it ages past its budget between backup runs (Sentry WORLDMONITOR-1DC).
+    // Best-effort, like the backup cron: the canonical key is already published.
+    if (ok) {
+      try {
+        const { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } = await import('./_ucdp-dashboard.mjs');
+        const compact = compactUcdpDashboardPayload(payload);
+        if (!await upstashSet(UCDP_BOOTSTRAP_KEY, compact, UCDP_TTL_SECONDS)) throw new Error('projection SET failed');
+        if (!await upstashSet(UCDP_BOOTSTRAP_META_KEY, { fetchedAt: Date.now(), recordCount: compact.events.length }, 604800)) {
+          throw new Error('projection seed-meta SET failed');
+        }
+      } catch (err) {
+        console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
+      }
+    }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
