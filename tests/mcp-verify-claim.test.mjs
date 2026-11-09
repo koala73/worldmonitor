@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 import Ajv2020 from 'ajv/dist/2020.js';
+import { outletProfileFields } from '../server/_shared/outlet-profile.ts';
 import { __testing__ as claimPool } from '../server/worldmonitor/news/v1/search-claim-headlines.ts';
 import { rssFeedCacheKey } from '../server/worldmonitor/news/v1/_rss-cache.ts';
 
@@ -124,6 +125,16 @@ describe('verify_claim MCP tool', () => {
         validateAdvertised(structuredContent),
         `${claim}: ${(validateAdvertised.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message}`).join('; ')}`,
       );
+      for (const headline of structuredContent.headlines) {
+        const profile = outletProfileFields(headline.source);
+        assert.deepEqual(
+          { homeCountry: headline.homeCountry, audience: headline.audience, language: headline.language, ownershipClass: headline.ownershipClass },
+          profile,
+          `${claim}: ${headline.source} carries its outlet profile`,
+        );
+        if (profile.homeCountry) assert.ok(headline.summary.endsWith(`Home ${profile.homeCountry}; ${profile.audience} audience; language ${profile.language}; ownership ${profile.ownershipClass}.`));
+      }
+      if (structuredContent.found) assert.ok(structuredContent.headlines.some((h) => h.homeCountry), `${claim}: at least one headline has a recorded profile`);
     }
   }
 
