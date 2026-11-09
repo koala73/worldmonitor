@@ -594,6 +594,15 @@ export async function deepenNoBuildWindows(results, {
       // in-flight evidence, not an old build). A refused upgrade keeps the
       // shallow verdict and counts as neither reclassified nor failed — the
       // "unchanged" remainder in the caller's summary line.
+      // A shallow read that named the serving source took it from Railway's
+      // active-deployment projection. The deep read has no such marker and can
+      // pick a newer REMOVED record, so it may add a problem about that same
+      // source but never replace the source or clear the alarm.
+      if (result.runningSha
+        && (!isProblemVerdict(next.verdict) || next.runningSha !== result.runningSha)) {
+        unchanged += 1;
+        return;
+      }
       if (!isProblemVerdict(next.verdict) && next.runningSha) {
         const runningAtMs = Date.parse(next.runningAt ?? '');
         if (!Number.isFinite(runningAtMs) || now - runningAtMs > DEEP_HEALTHY_MAX_AGE_MS) {

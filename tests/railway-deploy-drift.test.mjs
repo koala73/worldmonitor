@@ -1093,6 +1093,33 @@ describe('deep-window fallback for unidentified-source windows', () => {
     assert.equal(nothingNewer.unchanged, 1);
   });
 
+  // #10358 review: the deep read has no Viewer-active marker, so a newer
+  // REMOVED deployment at head would read as the serving source and turn a
+  // correct BEHIND into CURRENT. The shallow read already named the source.
+  it('keeps BEHIND when a deep read names a different serving source', async () => {
+    const reclassifyWithChange = (service, { deployments, error }) => classifyServiceDeploy({
+      service: service.name,
+      deployments,
+      error,
+      headSha: HEAD,
+      changedPathsSince: () => ['scripts/seed-example.mjs'],
+    });
+    const running = deployment('SUCCESS', { at: '2026-08-12T07:00:00.000Z', sha: PREVIOUS });
+    const shallow = reclassifyWithChange(svc('seed-a'), { deployments: [running], error: null });
+    assert.equal(shallow.verdict, 'BEHIND');
+
+    const removedAtHead = deployment('REMOVED', { at: '2026-08-12T09:00:00.000Z', sha: HEAD });
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [removedAtHead, running],
+      reclassify: reclassifyWithChange,
+      now: NOW,
+    });
+    assert.equal(results[0], shallow, 'an older active image must stay reported');
+    assert.equal(reclassified, 0);
+    assert.equal(unchanged, 1);
+  });
+
   // #6483 review (adversarial, verified by execution): a cron seeder records a
   // running-status record per tick, so "no running record anywhere deep" is
   // itself evidence the container stopped ticking. A deep read surfacing a
