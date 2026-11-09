@@ -1223,11 +1223,11 @@ function showProDesktopAccountDialog(options: {
   const email = escapeHtml(options.email);
   card.innerHTML = `
     <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">Upgrade a different account?</h2>
-    <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;">
+    <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
       The WorldMonitor desktop app that sent you here is signed in to a different account. This browser is signed in as <strong style="color:#fff;">${email}</strong>. Paying here upgrades ${email}; the desktop app stays on its current plan.
     </p>
     <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
-      <button id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-anyway" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;">Upgrade ${email}</button>
+      <button id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-anyway" type="button" style="background:transparent;color:#aaa;border:1px solid #2a2a2a;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;max-width:100%;overflow-wrap:anywhere;">Upgrade ${email}</button>
       <button id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-switch" type="button" style="background:#44ff88;color:#0a0a0a;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">Switch account</button>
     </div>
   `;
