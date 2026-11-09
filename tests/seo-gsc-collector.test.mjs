@@ -724,6 +724,85 @@ describe('Search Console site totals and brand split', () => {
     }
   });
 
+  it('joins non-brand queries to their page and desktop share across paginated rows', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.status, 'available');
+    assert.equal(list.window, '28d');
+    assert.deepEqual(list.rows.map((row) => row.query), [
+      'kerch strait',
+      'pizza index',
+      'quiet desktop query',
+    ]);
+    const pizza = list.rows[1];
+    assert.equal(pizza.page, 'https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/');
+    assert.equal(pizza.impressions, 1000);
+    assert.equal(pizza.clicks, 13);
+    assert.equal(pizza.position, 7.2);
+    assert.equal(pizza.desktopShare, 0.2);
+    assert.equal(pizza.likelyAutomated, false);
+  });
+
+  it('flags only zero-click, nearly all-desktop queries with enough impressions', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    const flagged = list.rows.filter((row) => row.likelyAutomated).map((row) => row.query);
+    assert.deepEqual(flagged, ['kerch strait']);
+    assert.equal(list.rows.find((row) => row.query === 'quiet desktop query').desktopShare, 1);
+    assert.deepEqual(list.summary, {
+      queries: 4,
+      nonBrandImpressions: 2155,
+      likelyAutomatedQueries: 1,
+      likelyAutomatedImpressions: 1000,
+      nonBrandImpressionsExcludingLikelyAutomated: 1155,
+    });
+  });
+
+  it('keeps rare queries out of the committed list but inside the summary', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.rows.some((row) => row.query === 'tiny query'), false);
+    assert.equal(list.summary.queries, 4);
+  });
+
+  it('reports the query list as unavailable when its view was not collected', async () => {
+    const { snapshot, markdown } = await collect(`${FIXTURES}quota/`);
+    const list = snapshot.performance.nonBrandQueries;
+    assert.equal(list.status, 'unavailable');
+    assert.equal(list.summary, null);
+    assert.deepEqual(list.rows, []);
+    assert.match(list.reason, /queryNonBrandDevice view was not collected/);
+    assert.match(markdown, /Non-brand queries: unavailable/);
+  });
+
+  it('summarizes low-click non-brand queries and names the automated ones', async () => {
+    const { markdown } = await collect();
+    assert.match(markdown, /### Non-brand queries with few clicks \(28d\)/);
+    assert.match(markdown, /1 of 4 non-brand queries look automated, 1000 of 2155 impressions/);
+    assert.match(markdown, /\| kerch strait \| \/chokepoints\/kerch-strait\/ \| 1000 \| 0 \| 0\.0% \| 9\.2 \| 98% \| yes \|/);
+  });
+
+  it('asks Google for the query rows by device and by page, without brand queries', async () => {
+    const bodies = [];
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        bodies.push(JSON.parse(init.body));
+        return jsonResponse(200, { rows: [] });
+      },
+      sleep: async () => {},
+    });
+    const window = { startDate: '2026-08-27', endDate: '2026-09-23' };
+    await transport.searchAnalytics({ dimension: 'queryNonBrandDevice', page: 0, ...window });
+    await transport.searchAnalytics({ dimension: 'queryNonBrandPage', page: 0, ...window });
+    assert.deepEqual(bodies[0].dimensions, ['query', 'device']);
+    assert.deepEqual(bodies[1].dimensions, ['query', 'page']);
+    for (const body of bodies) {
+      assert.equal(body.dimensionFilterGroups[0].filters[0].operator, 'excludingRegex');
+    }
+  });
+
   it('escapes backslashes and pipes in a query cell', async () => {
     const { snapshot } = await collect();
     const copy = structuredClone(snapshot);

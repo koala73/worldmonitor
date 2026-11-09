@@ -34,6 +34,14 @@
       ],
       "siteNonBrand": [
         "sa-28d-site-nonbrand.json"
+      ],
+      "queryNonBrandDevice": [
+        "sa-28d-query-nonbrand-device-0.json",
+        "sa-28d-query-nonbrand-device-1.json"
+      ],
+      "queryNonBrandPage": [
+        "sa-28d-query-nonbrand-page-0.json",
+        "sa-28d-query-nonbrand-page-1.json"
       ]
     },
     "90d": {

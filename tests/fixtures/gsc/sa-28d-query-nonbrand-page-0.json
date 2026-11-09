@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "kerch strait",
+        "https://www.worldmonitor.app/chokepoints/kerch-strait/"
+      ],
+      "clicks": 0,
+      "impressions": 1000,
+      "ctr": 0.0,
+      "position": 9.2
+    },
+    {
+      "keys": [
+        "pizza index",
+        "https://www.worldmonitor.app/blog/glossary/pentagon-pizza-index/"
+      ],
+      "clicks": 12,
+      "impressions": 900,
+      "ctr": 0.013333,
+      "position": 7.1
+    },
+    {
+      "keys": [
+        "pizza index",
+        "https://www.worldmonitor.app/"
+      ],
+      "clicks": 1,
+      "impressions": 100,
+      "ctr": 0.01,
+      "position": 8.0
+    }
+  ],
+  "responseAggregationType": "byPage"
+}
