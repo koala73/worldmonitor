@@ -60862,6 +60862,9 @@ components:
                     description: |-
                         Name of the nearest active GDACS hazard event within the configured
                          radius, or empty string when no nearby alert applies.
+                latestDate:
+                    type: string
+                    description: Last PortWatch day behind flow_ratio, YYYY-MM-DD; may be empty.
         worldmonitor_supply_chain_v1_GetChokepointHistoryRequest:
             type: object
             properties:

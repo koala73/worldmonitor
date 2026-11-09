@@ -106,6 +106,14 @@ message FlowEstimate {
   // Name of the nearest active GDACS hazard event within the configured
   // radius, or empty string when no nearby alert applies.
   string hazard_alert_name = 7;
+  // PortWatch publishes about four days behind and not every day, so
+  // flow_ratio can stay unchanged across several requests; latest_date says
+  // how current it is. It is empty when the cached estimate predates the
+  // field. (Detached: public/openapi.json is within 200 bytes of its hard
+  // budget, so only the one-line description below is published.)
+
+  // Last PortWatch day behind flow_ratio, YYYY-MM-DD; may be empty.
+  string latest_date = 8;
 }
 
 // Exposes the server-internal threatLevel from ChokepointConfig for badges and
