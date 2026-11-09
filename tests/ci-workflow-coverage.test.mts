@@ -579,6 +579,8 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
   'src-tauri/',
   'package.json',
   'scripts/repack-linux-appimage.sh',
+  'scripts/prefetch-appimage-tools.sh',
+  'scripts/fetch-with-retry.sh',
   'scripts/sync-desktop-version.mjs',
   'scripts/check-desktop-build-env.mjs',
   'scripts/check-rust-security-floors.mjs',
@@ -2467,6 +2469,40 @@ describe('CI workflow coverage', () => {
       /^\s+if grep -q "SIDECAR_FINAL_STATUS=alive" \/tmp\/display-server\.log 2>\/dev\/null; then\s*$/m,
       'desktop canary must gate success on final sidecar liveness',
     );
+  });
+
+  it('prefetches the AppImage tools before every Linux Tauri build', () => {
+    // One GitHub 504 on a bundler tool download failed the canary
+    // (run 42567226797): the bundler fetches them without retry.
+    for (const [label, workflow, buildStep, arch] of [
+      ['desktop canary', desktopCanaryWorkflow, 'Build Tauri app', 'x86_64'],
+      [
+        'release workflow',
+        desktopBuildWorkflow,
+        'Build Tauri app (signed)',
+        "${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}",
+      ],
+    ] as const) {
+      const restore = workflowStepBlock(workflow, 'Restore Tauri AppImage tools');
+      assert.match(restore, /^\s+path: ~\/\.cache\/tauri\s*$/m, `${label} must cache the bundler tool dir`);
+      assert.match(
+        restore,
+        /hashFiles\('scripts\/prefetch-appimage-tools\.sh'\)/,
+        `${label} must key the tool cache on the prefetch script`,
+      );
+      const prefetch = workflowStepBlock(workflow, 'Prefetch Tauri AppImage tools');
+      assert.ok(
+        prefetch.includes(`run: bash scripts/prefetch-appimage-tools.sh ${arch}\n`),
+        `${label} must prefetch the AppImage tools for its architecture`,
+      );
+      assert.doesNotMatch(prefetch, /^\s+continue-on-error:/m);
+      const prefetchAt = workflow.indexOf('\n      - name: Prefetch Tauri AppImage tools\n');
+      assert.ok(
+        workflow.indexOf('\n      - name: Restore Tauri AppImage tools\n') < prefetchAt &&
+          prefetchAt < workflow.indexOf(`\n      - name: ${buildStep}\n`),
+        `${label} must restore, then prefetch, then build`,
+      );
+    }
   });
 
   it('runs workflow coverage when the release workflow changes', () => {
