@@ -54,10 +54,8 @@ import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
 import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
-import {
-  isDesktopCheckoutHandoff,
-  parseMissionPreviewAttributionFromSearch,
-} from '../../shared/checkout-attribution';
+import { parseMissionPreviewAttributionFromSearch } from '../../shared/checkout-attribution';
+import { parseDesktopCheckoutHandoff } from '../../shared/desktop-checkout-handoff';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -1385,7 +1383,7 @@ export default function App() {
           refCode={getRefCode()}
           attributionSource={getMcpAttributionSource()}
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+          desktopHandoff={parseDesktopCheckoutHandoff(window.location.search) ?? undefined}
         />
         <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />

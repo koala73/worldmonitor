@@ -25,20 +25,16 @@ function reportPlanOpenFailure(): void {
  * Mission attribution and the visitor's captured affiliate referral (`?ref=`)
  * ride on the URL, and /pro carries both into its own checkout. Desktop
  * WebViews hand the URL to the OS browser (#5911), never to a WebView popup,
- * where a checkout started from /pro could not run 3DS.
+ * where a checkout started from /pro could not run 3DS. `openExternalUrl`
+ * adds the desktop handoff there (#10342).
  */
 export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
   try {
-    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
-      import('@/services/runtime'),
+    const [{ openExternalUrl }, { loadActiveReferral }] = await Promise.all([
       import('@/services/external-navigation'),
       import('@/services/referral-capture'),
     ]);
-    const url = new URL(buildAttributedProUrl(
-      `${WEB_APP_ORIGIN}/pro#pricing`,
-      attribution,
-      isDesktopRuntime() ? { desktopHandoff: true } : undefined,
-    ));
+    const url = new URL(buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro#pricing`, attribution));
     const referral = loadActiveReferral();
     if (referral) url.searchParams.set('ref', referral);
     const outcome = await openExternalUrl(url.toString(), null, { desktopPopupFallback: false });

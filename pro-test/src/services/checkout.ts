@@ -46,11 +46,16 @@ import {
 import {
   CHECKOUT_ATTEMPT_STORAGE_KEY,
   CHECKOUT_RETURN_SOURCE_PARAM,
-  DESKTOP_CHECKOUT_HANDOFF,
   parseMissionPreviewAttribution,
   resolveCheckoutContext,
   type CheckoutAttribution,
 } from '../../../shared/checkout-attribution';
+import {
+  DESKTOP_CHECKOUT_HANDOFF,
+  desktopAccountDigest,
+  UNKNOWN_DESKTOP_ACCOUNT,
+  type DesktopCheckoutHandoff,
+} from '../../../shared/desktop-checkout-handoff';
 import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;
@@ -255,7 +260,7 @@ export async function startCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -279,7 +284,7 @@ async function startCheckoutInner(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -327,7 +332,70 @@ async function startCheckoutInner(
     return false;
   }
 
-  return doCheckout(productId, options ?? {});
+  return checkoutAs(c, productId, options ?? {});
+}
+
+type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
+
+/**
+ * A desktop handoff names the account signed in to the app (#10342), but
+ * checkout runs on this browser's session. When they differ, the buyer picks:
+ * switch to the desktop account and resume this checkout after sign-in, or
+ * upgrade the browser account knowingly, which drops the "the app will
+ * update" return copy. Resolves the options to check out with and the
+ * account they were approved for, or null when checkout must not start now.
+ */
+async function confirmDesktopAccount(
+  c: LoadedClerk,
+  productId: string,
+  options: ProCheckoutOptions,
+): Promise<{ options: ProCheckoutOptions; userId?: string } | null> {
+  const desktopAccount = options.desktopHandoff?.account;
+  if (!c.user) return { options };
+  if (!desktopAccount || await desktopAccountDigest(c.user.id) === desktopAccount) {
+    return { options, userId: c.user.id };
+  }
+
+  const shownUserId = c.user.id;
+  const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
+  const choice = await askDesktopAccountChoice(browserAccount, desktopAccount !== UNKNOWN_DESKTOP_ACCOUNT);
+  // Another tab can switch the browser session while the dialog is open. The
+  // buyer approved the account they were shown, not whichever is current.
+  if (choice !== 'cancel' && c.user?.id !== shownUserId) {
+    return confirmDesktopAccount(c, productId, options);
+  }
+  if (choice === 'upgrade-browser-account') {
+    const { desktopHandoff: _dropped, ...browserOptions } = options;
+    return { options: browserOptions, userId: shownUserId };
+  }
+  if (choice === 'switch-account') {
+    const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
+    try {
+      // The callback replaces Clerk's after-sign-out navigation, which would
+      // leave /pro before sign-in opens.
+      await c.signOut(() => c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl }));
+    } catch (err) {
+      console.error('[checkout] Failed to switch account:', err);
+      Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'desktop-account-switch' } });
+      showCheckoutErrorToast('Sign-in could not open. Please try again.');
+    }
+  }
+  return null;
+}
+
+/**
+ * Checkout runs on whatever session Clerk holds when the token is read, and
+ * another tab can switch it after the account check. doCheckout re-reads the
+ * account at that point and comes back here, without a pending-payment
+ * bypass the new account never approved.
+ */
+async function checkoutAs(c: LoadedClerk, productId: string, options: ProCheckoutOptions): Promise<boolean> {
+  const confirmed = await confirmDesktopAccount(c, productId, options);
+  if (!confirmed) return false;
+  const { bypassPendingGuard: _dropped, ...fresh } = options;
+  return doCheckout(productId, confirmed.options, confirmed.userId
+    ? { userId: confirmed.userId, restart: () => checkoutAs(c, productId, fresh) }
+    : undefined);
 }
 
 export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
@@ -365,7 +433,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
       ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
       : {}),
   });
-  return doCheckout(productId, {
+  return checkoutAs(c, productId, {
     referralCode,
     discountCode,
     attributionSource,
@@ -381,9 +449,10 @@ async function doCheckout(
     discountCode?: string;
     attributionSource?: string;
     checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
+    desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
+  account?: { userId: string; restart: () => Promise<boolean> },
 ): Promise<boolean> {
   const cooldownSeconds = currentCheckoutRateLimitSeconds();
   if (cooldownSeconds > 0) {
@@ -394,6 +463,7 @@ async function doCheckout(
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
   let redirecting = false;
+  let accountChanged = false;
   const checkoutContext = resolveCheckoutContext({
     surface: options.checkoutAttribution ? 'mission-preview' : 'dashboard',
     attribution: options.checkoutAttribution,
@@ -437,6 +507,10 @@ async function doCheckout(
     if (!token) {
       console.error('[checkout] No auth token after retry');
       showCheckoutErrorToast('Your sign-in could not be verified. Please sign in again and retry.');
+      return false;
+    }
+    if (account && (await ensureClerk().catch(() => null))?.user?.id !== account.userId) {
+      accountChanged = true;
       return false;
     }
 
@@ -554,7 +628,7 @@ async function doCheckout(
         showProPendingPaymentDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           onConfirm: () => {
-            void doCheckout(productId, { ...options, bypassPendingGuard: true });
+            void doCheckout(productId, { ...options, bypassPendingGuard: true }, account);
           },
           onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
         });
@@ -640,6 +714,7 @@ async function doCheckout(
   } finally {
     if (redirecting) holdCheckoutUntilNavigation();
     else releaseCheckout();
+    if (accountChanged) void account?.restart();
   }
 }
 
@@ -1114,6 +1189,79 @@ function showProPendingPaymentDialog(options: ProDuplicateDialogOptions): void {
   document.getElementById(`${PRO_PENDING_DIALOG_ID}-dismiss`)?.addEventListener('click', dismiss);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) dismiss(); });
   document.addEventListener('keydown', keyHandler, true);
+}
+
+type DesktopAccountChoice = 'switch-account' | 'upgrade-browser-account' | 'cancel';
+
+const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
+
+function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: boolean): Promise<DesktopAccountChoice> {
+  return new Promise((resolve) => {
+    document.getElementById(PRO_DESKTOP_ACCOUNT_DIALOG_ID)?.remove();
+    const account = escapeHtml(browserAccount);
+    const backdrop = document.createElement('div');
+    backdrop.id = PRO_DESKTOP_ACCOUNT_DIALOG_ID;
+    backdrop.setAttribute('role', 'dialog');
+    backdrop.setAttribute('aria-modal', 'true');
+    backdrop.setAttribute('aria-labelledby', `${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title`);
+    Object.assign(backdrop.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '99990',
+      background: 'rgba(10, 10, 10, 0.72)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '24px',
+    });
+    const buttonStyle = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
+    backdrop.innerHTML = `
+      <div style="background:#141414;border:1px solid #2a2a2a;border-radius:8px;padding:20px 22px;max-width:460px;width:100%;color:#e8e8e8;font-family:'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
+        <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${desktopAccountKnown ? 'This browser uses a different account' : 'Confirm the account to upgrade'}</h2>
+        <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
+          ${desktopAccountKnown
+            ? `This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.`
+            : `This browser is signed in as <strong style="color:#fff;">${account}</strong>. Your desktop app had not finished loading its account, so check that this is the one you use there. Checking out here upgrades ${account}.`}
+        </p>
+        <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;">
+          <button data-choice="cancel" type="button" style="${buttonStyle}background:transparent;color:#aaa;border:1px solid #2a2a2a;">Cancel</button>
+          <button data-choice="upgrade-browser-account" type="button" style="${buttonStyle}background:transparent;color:#e8e8e8;border:1px solid #444;">Upgrade this account</button>
+          <button data-choice="switch-account" type="button" style="${buttonStyle}background:#44ff88;color:#0a0a0a;border:none;font-weight:700;">Switch account</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(backdrop);
+
+    const returnFocusTo = document.activeElement as HTMLElement | null;
+    const buttons = Array.from(backdrop.querySelectorAll<HTMLButtonElement>('button'));
+    const finish = (choice: DesktopAccountChoice) => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+      returnFocusTo?.focus?.();
+      resolve(choice);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        finish('cancel');
+        return;
+      }
+      if (e.key !== 'Tab' || buttons.length === 0) return;
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.shiftKey
+        ? buttons[index <= 0 ? buttons.length - 1 : index - 1]
+        : buttons[index === -1 || index === buttons.length - 1 ? 0 : index + 1];
+      e.preventDefault();
+      next?.focus();
+    };
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) return finish('cancel');
+      const choice = (e.target as HTMLElement).closest('button')?.dataset.choice as DesktopAccountChoice | undefined;
+      if (choice) finish(choice);
+    });
+    document.addEventListener('keydown', onKey, true);
+    backdrop.querySelector<HTMLButtonElement>('[data-choice="switch-account"]')?.focus();
+  });
 }
 
 function escapeHtml(s: string): string {
