@@ -40,8 +40,15 @@ Give every sync child a deadline (PR #10347):
 // fire while it runs.
 const CHILD_TIMEOUT_MS = 60_000;
 
-execFileSync('bash', [SCRIPT, mode], { input, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS });
+execFileSync('bash', [SCRIPT, mode], {
+  input,
+  encoding: 'utf8',
+  timeout: CHILD_TIMEOUT_MS,
+  killSignal: 'SIGKILL',
+});
 ```
+
+The timeout needs `killSignal: 'SIGKILL'` to be a hard deadline. With the default `SIGTERM`, a child that ignores the signal still blocks the call until it exits on its own. A probe confirmed it: a script with `trap '' TERM` held a 300ms `execFileSync` deadline for 3030ms. With `SIGKILL` it threw `ETIMEDOUT` at 305ms, and also at 302ms when a grandchild still held stdout open.
 
 When a wrapper catches child errors to read `err.status`, rethrow the timeout. Otherwise a hang reads as `status: null`:
 
@@ -58,8 +65,9 @@ When a wrapper catches child errors to read `err.status`, rethrow the timeout. O
 
 ## Prevention
 
-- Pass `timeout` to every `execFileSync`, `execSync` and `spawnSync` in a test. This also applies to probes that start `tsx` or a config import, which can keep a handle open and never exit.
-- To test that a deadline is wired, shrink it in a scratch copy, for example to 5ms. Each spawning test should then fail with `ETIMEDOUT` under its own name within milliseconds.
+- Pass `timeout` and `killSignal: 'SIGKILL'` to every `execFileSync`, `execSync` and `spawnSync` in a test. This also applies to probes that start `tsx` or a config import, which can keep a handle open and never exit.
+- `spawnSync` does not throw on timeout. It returns `result.error.code === 'ETIMEDOUT'`, so a test that reads only `result.status` can pass after a timeout. Check `result.error` and throw it.
+- To test that a deadline is wired, shrink it in a scratch copy, for example to 5 ms. Each spawning test that throws on `ETIMEDOUT` should then fail under its own name within milliseconds. A test that swallows the error will not, so check those by hand.
 - When `run-data-tests` reports an unnamed `--file-timeout`, grep the file for sync children before anything else.
 - 171 test files use sync children as of 2026-11-09. A repo-wide guard is not in place yet.
 

@@ -39,6 +39,8 @@ const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-changed-tests.sh');
 // A sync child blocks the event loop, so node:test's per-test timeout cannot
 // fire while it runs. Without a deadline, a child that never exits hangs the
 // whole file until run-data-tests' 300s watchdog aborts it unnamed (#10334).
+// SIGKILL, because the default SIGTERM leaves the call blocked until a child
+// that ignores it exits on its own.
 const CHILD_TIMEOUT_MS = 60_000;
 
 // Every mkdtemp below funnels through here so the run leaves nothing behind.
@@ -112,6 +114,7 @@ function partition(mode, { cwd, changed = CHANGED } = {}) {
     // loud-failure assertions match on.
     stdio: ['pipe', 'pipe', 'pipe'],
     timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
   return out.split('\0').filter(Boolean);
 }
@@ -132,6 +135,7 @@ function loadDomTestConfig(env = {}) {
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
   return JSON.parse(out.trim().split('\n').at(-1));
 }
@@ -345,6 +349,7 @@ describe('runner dispatch', () => {
           ...env,
         },
         timeout: CHILD_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
       });
     } catch (err) {
       if (err.code === 'ETIMEDOUT') throw err;
