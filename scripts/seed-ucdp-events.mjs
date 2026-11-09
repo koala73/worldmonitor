@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { compactUcdpDashboardPayload } from './_ucdp-dashboard.mjs';
+import { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } from './_ucdp-dashboard.mjs';
 // GED Candidate discovery/fetch/merge is shared with scripts/ais-relay.cjs so the
 // two UCDP writers cannot drift (they already had, on discovery concurrency and
 // probe timeout). CJS module imported from ESM, as seed-market-quotes.mjs does
@@ -24,9 +24,7 @@ const REDIS_KEY = 'conflict:ucdp-events:v1';
 // Dashboard-sized projection. The bootstrap slow tier hydrates from THIS key so
 // every client stops downloading 2,000 events (662 KB) to render 150 rows and a
 // handful of derived numbers (#5300). The canonical key above is untouched and
-// still serves the RPC, MCP and the map layer.
-const BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
-const BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
+// still serves the RPC, MCP and the map layer. The relay writes it too.
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
 const MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
@@ -341,7 +339,7 @@ async function main() {
   // missing and the client re-fetches from the RPC.
   try {
     const compact = compactUcdpDashboardPayload(payload);
-    const compactBody = JSON.stringify(['SET', BOOTSTRAP_KEY, JSON.stringify(compact), 'EX', 86400]);
+    const compactBody = JSON.stringify(['SET', UCDP_BOOTSTRAP_KEY, JSON.stringify(compact), 'EX', 86400]);
     const compactResp = await fetch(redisUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
@@ -354,11 +352,11 @@ async function main() {
     const compactMetaResp = await fetch(redisUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['SET', BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
+      body: JSON.stringify(['SET', UCDP_BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
       signal: AbortSignal.timeout(5_000),
     });
     if (!compactMetaResp.ok) throw new Error(`seed-meta HTTP ${compactMetaResp.status}`);
-    console.log(`  Wrote ${BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
+    console.log(`  Wrote ${UCDP_BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
   } catch (e) {
     console.error(`  Compact projection write failed: ${e.message} — canonical key is published, dashboard will fall back to the RPC`);
   }

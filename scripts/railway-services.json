@@ -101,6 +101,7 @@
       "scripts/shared/stablecoins.json",
       "scripts/shared/stocks.json",
       "scripts/shared/ucdp-candidate.cjs",
+      "scripts/_ucdp-dashboard.mjs",
       "scripts/shared/yahoo-closed-session.cjs",
       "scripts/source-attribution.mjs",
       "public/.well-known/mcp/server-card.json",
