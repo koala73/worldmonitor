@@ -129,7 +129,7 @@ function renderTable(chosen) {
     '| source | anchor | target | target position | target impressions | source impressions |',
     '|---|---|---|---|---|---|',
   ];
-  const rows = [...chosen].sort((left, right) => left.source.localeCompare(right.source));
+  const rows = [...chosen].sort((left, right) => left.source.localeCompare(right.source, 'en-US'));
   for (const link of rows) {
     lines.push(`| ${cell(link.source)} | ${cell(link.anchor)} | ${cell(link.href)} | ${cell(link.targetPosition)} | ${link.targetImpressions} | ${link.sourceImpressions} |`);
   }

@@ -168,7 +168,7 @@ const inPreferredBand = (position) => position !== null
 const byPriority = (left, right) => left.tier - right.tier
   || right.targetImpressions - left.targetImpressions
   || right.sourceImpressions - left.sourceImpressions
-  || left.query.localeCompare(right.query);
+  || left.query.localeCompare(right.query, 'en-US');
 
 /**
  * Propose every page's links from the query evidence.
@@ -228,7 +228,7 @@ export function buildLedgers(chosen, { snapshot, exclusionsByFamily = {} }) {
     (ledger.pages[link.source] ??= []).push({ href: link.href, anchor: link.anchor });
   }
   for (const ledger of Object.values(ledgers)) {
-    ledger.pages = Object.fromEntries(Object.entries(ledger.pages).sort(([left], [right]) => left.localeCompare(right)));
+    ledger.pages = Object.fromEntries(Object.entries(ledger.pages).sort(([left], [right]) => left.localeCompare(right, 'en-US')));
   }
   return ledgers;
 }

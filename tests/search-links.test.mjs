@@ -313,7 +313,9 @@ describe('search-links CLI', () => {
       pages: {},
       exclusions: [{ source: '/chokepoints/bab-el-mandeb/', href: '/use-cases/monitor-maritime-security/' }],
     }));
-    const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
+    // A pre-push hook exports GIT_DIR, which would point these writes at the real repo.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+    const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', env });
     git('init', '-q');
     git('config', 'user.email', 'test@example.com');
     git('config', 'user.name', 'Test');
