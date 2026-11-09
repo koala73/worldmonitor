@@ -276,6 +276,8 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
@@ -882,8 +884,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
