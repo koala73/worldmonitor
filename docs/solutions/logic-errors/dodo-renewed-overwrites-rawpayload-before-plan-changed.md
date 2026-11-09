@@ -34,7 +34,10 @@ In `previousPrice()` (`convex/payments/subscriptionHelpers.ts`), use the stored 
 
 ```ts
 if (raw?.product_id === previous.dodoProductId && typeof raw.recurring_pre_tax_amount === "number") {
-  return { oldAmount: raw.recurring_pre_tax_amount, oldCurrency: raw.currency };
+  return {
+    oldAmount: raw.recurring_pre_tax_amount,
+    oldCurrency: typeof raw.currency === "string" ? raw.currency : undefined,
+  };
 }
 const listPrice = PRODUCT_CATALOG[previous.planKey]?.priceCents;
 return typeof listPrice === "number" ? { oldAmount: listPrice, oldCurrency: "USD", oldIsListPrice: true } : {};
