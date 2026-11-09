@@ -175,7 +175,8 @@ describe('get_chokepoint_status FlowSource taxonomy (#6113)', () => {
 
   it('declares and passes through the PortWatch day a flow estimate runs to', () => {
     const valueSchema = tool.outputSchema.properties.data.properties['chokepoint-flows'].additionalProperties;
-    assert.deepEqual(valueSchema.properties.latestDate, { type: 'string' });
+    assert.equal(valueSchema.properties.latestDate.type, 'string');
+    assert.match(valueSchema.properties.latestDate.description, /PortWatch day.*flowRatio.*YYYY-MM-DD.*Absent/);
     const data = flowsData();
     data['chokepoint-flows'].suez.latestDate = '2026-11-05';
     const served = tool._postFilter(data, {})['chokepoint-flows'];
