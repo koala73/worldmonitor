@@ -811,6 +811,60 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     }
   });
 
+  describe('one dropped connection to the ranking endpoint', () => {
+    function stubFetch(rankingOutcomes) {
+      const calls = { ranking: 0 };
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async (input) => {
+        const href = typeof input === 'string' ? input : input.url;
+        if (href.includes('/api/resilience/v1/get-resilience-ranking')) {
+          const outcome = rankingOutcomes[Math.min(calls.ranking, rankingOutcomes.length - 1)];
+          calls.ranking += 1;
+          if (outcome instanceof Error) throw outcome;
+          return new Response(JSON.stringify({ items: [{ countryCode: 'US' }], greyedOut: [] }), { status: 200 });
+        }
+        if (href.includes('/strlen/')) return new Response(JSON.stringify({ result: 31_370 }), { status: 200 });
+        if (href.includes('/get/seed-meta:resilience:ranking')) {
+          return new Response(JSON.stringify({
+            result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 196 }),
+          }), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${href}`);
+      });
+      return { calls, restore: () => { globalThis.fetch = originalFetch; } };
+    }
+    const connectionReset = () => Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
+    });
+    const timedOut = () => new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    const refresh = async () => (await import('../scripts/seed-resilience-scores.mjs'))
+      .refreshRankingAggregate({ url: 'https://redis.example', token: 'token', laggardsWarmed: 0 });
+
+    it('completes the refresh when the retry succeeds', async () => {
+      const stub = stubFetch([connectionReset(), 'ok']);
+      try {
+        assert.equal(await refresh(), true, 'a second attempt on a fresh connection must complete the refresh');
+        assert.equal(stub.calls.ranking, 2);
+      } finally { stub.restore(); }
+    });
+
+    it('still fails after a second dropped connection', async () => {
+      const stub = stubFetch([connectionReset(), connectionReset()]);
+      try {
+        await assert.rejects(refresh, /did not complete.*other side closed/i, 'the failure must name the transport cause');
+        assert.equal(stub.calls.ranking, 2, 'one retry, not a loop');
+      } finally { stub.restore(); }
+    });
+
+    it('does not retry a request that timed out', async () => {
+      const stub = stubFetch([timedOut(), 'ok']);
+      try {
+        await assert.rejects(refresh, /did not complete/i);
+        assert.equal(stub.calls.ranking, 1, 'a 60s timeout means the handler is slow, and a retry doubles the wait');
+      } finally { stub.restore(); }
+    });
+  });
+
   it('always triggers the rebuild HTTP call — never short-circuits on "key still present"', () => {
     // Skipping rebuild when the key exists recreates a timing hole: the key
     // can be alive at probe time but expire a few minutes later, leaving a
