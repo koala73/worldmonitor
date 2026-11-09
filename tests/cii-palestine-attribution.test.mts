@@ -14,6 +14,7 @@ import {
   type CiiCountryTerms,
   computeCIIScores,
   confirmedStrikeDaysFromSeed,
+  countCiiRealtimeSignalDensityCoverage,
   geoToCountry,
   normalizeCountryName,
   strikeEventCountry,
@@ -173,5 +174,44 @@ describe('Palestinian territory scores PS, not IL', () => {
     }
     const israel = ilTerms(aux({ newsTopStories: [{ countryCode: null, countryCodes: [], threatLevel: 'critical', primaryTitle: 'Rocket hits Tel Aviv' }] }));
     assert.ok(israel.parts.newsScore > 0, 'a headline about Israel still scores IL');
+  });
+
+  it('a PS-coded headline that names Israel as the actor adds nothing to IL', () => {
+    for (const primaryTitle of ['IDF raid in Jenin kills 3', 'Israeli airstrike kills 20 in Gaza']) {
+      assert.equal(normalizeCountryName(primaryTitle), 'IL', `precondition: ${primaryTitle}`);
+      for (const coded of [{ countryCode: 'PS', countryCodes: ['PS'] }, { countryCode: 'PS' }]) {
+        const story = { ...coded, threatLevel: 'critical', primaryTitle };
+        assert.deepEqual(ilTerms(aux({ newsTopStories: [story] })), BASELINE_IL, primaryTitle);
+        assert.equal(countCiiRealtimeSignalDensityCoverage([], aux({ newsTopStories: [story] }), NOW), 0, primaryTitle);
+      }
+    }
+  });
+});
+
+describe('the news title fallback only places stories with no country codes', () => {
+  const primaryTitle = 'Russian missile kills 5 in Moldova';
+  const newsScore = (story: Record<string, unknown>) => {
+    const sink: Record<string, CiiCountryTerms> = {};
+    computeCIIScores([], aux({ newsTopStories: [{ threatLevel: 'critical', primaryTitle, ...story }] }), { nowMs: NOW }, sink);
+    return sink.RU!.parts.newsScore;
+  };
+
+  it('a story coded to a non-Tier-1 country does not fall back to a Tier-1 actor in its title', () => {
+    assert.equal(normalizeCountryName(primaryTitle), 'RU', 'precondition');
+    assert.equal(newsScore({ countryCode: 'MD', countryCodes: ['MD'] }), 0);
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux({
+      newsTopStories: [{ countryCode: 'MD', countryCodes: ['MD'], threatLevel: 'critical', primaryTitle }],
+    }), NOW), 0);
+  });
+
+  it('a story with no codes still falls back to its title', () => {
+    assert.equal(newsScore({ countryCode: null, countryCodes: [] }), 4);
+    assert.equal(countCiiRealtimeSignalDensityCoverage([], aux({
+      newsTopStories: [{ countryCode: null, countryCodes: [], threatLevel: 'critical', primaryTitle }],
+    }), NOW), 1);
+  });
+
+  it('a story coded to a Tier-1 country still scores that country', () => {
+    assert.equal(newsScore({ countryCode: 'RU', countryCodes: ['RU'] }), 4);
   });
 });
