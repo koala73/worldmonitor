@@ -821,7 +821,13 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
           const outcome = rankingOutcomes[Math.min(calls.ranking, rankingOutcomes.length - 1)];
           calls.ranking += 1;
           if (outcome instanceof Error) throw outcome;
-          return new Response(JSON.stringify({ items: [{ countryCode: 'US' }], greyedOut: [] }), { status: 200 });
+          if (outcome === 'body-drop') {
+            return new Response(new ReadableStream({ start: (c) => c.error(connectionReset()) }), { status: 200 });
+          }
+          const fetchedAt = outcome === 'cached' ? new Date(Date.now() - 6 * 3600_000) : new Date();
+          return new Response(JSON.stringify({
+            items: [{ countryCode: 'US' }], greyedOut: [], fetchedAt: fetchedAt.toISOString(),
+          }), { status: 200 });
         }
         if (href.includes('/strlen/')) return new Response(JSON.stringify({ result: 31_370 }), { status: 200 });
         if (href.includes('/get/seed-meta:resilience:ranking')) {
@@ -853,6 +859,24 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
       try {
         await assert.rejects(refresh, /did not complete.*other side closed/i, 'the failure must name the transport cause');
         assert.equal(stub.calls.ranking, 2, 'one retry, not a loop');
+      } finally { stub.restore(); }
+    });
+
+    it('retries when the connection drops while the body streams', async () => {
+      const stub = stubFetch(['body-drop', 'ok']);
+      try {
+        assert.equal(await refresh(), true);
+        assert.equal(stub.calls.ranking, 2);
+      } finally { stub.restore(); }
+    });
+
+    it('does not count a cached ranking as a completed rebuild', async () => {
+      // The first request may still be rebuilding. The handler then denies the
+      // retry its refresh slot and serves the cached ranking with HTTP 200.
+      const stub = stubFetch([connectionReset(), 'cached']);
+      try {
+        await assert.rejects(refresh, /did not complete.*not a rebuild/i,
+          'intervals must not be published while another rebuild may still be rotating scores');
       } finally { stub.restore(); }
     });
 

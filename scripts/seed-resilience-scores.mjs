@@ -679,21 +679,31 @@ export async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
     // stale-but-present.
     const rebuildHeaders = { 'User-Agent': SEED_UA, 'Accept': 'application/json' };
     if (WM_REFRESH_KEY) rebuildHeaders['X-WorldMonitor-Key'] = WM_REFRESH_KEY;
-    const requestRebuild = () => fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
-      headers: rebuildHeaders,
-      signal: AbortSignal.timeout(RANKING_REFRESH_TIMEOUT_MS),
-    });
+    const requestRebuild = async () => {
+      const resp = await fetch(`${API_BASE}/api/resilience/v1/get-resilience-ranking?refresh=1`, {
+        headers: rebuildHeaders,
+        signal: AbortSignal.timeout(RANKING_REFRESH_TIMEOUT_MS),
+      });
+      return { status: resp.status, body: resp.ok ? await resp.json() : null };
+    };
     // A pooled keep-alive socket the far side already closed rejects within
-    // milliseconds (2026-11-05 18:04Z, 28ms). The handler's SET is atomic, so
-    // one retry on a fresh connection is safe. A timeout is not retried: the
-    // handler is slow, and a second attempt would double the wait.
-    const rebuildResp = await requestRebuild().catch((err) => {
-      if (err?.name === 'TimeoutError' || err?.name === 'AbortError') throw err;
+    // milliseconds (2026-11-05 18:04Z, 28ms), so retry a dropped connection
+    // once. A timeout is not retried: the handler is slow, and a second
+    // attempt would double the wait. Malformed JSON is not a transport fault.
+    const rebuild = await requestRebuild().catch((err) => {
+      if (['TimeoutError', 'AbortError', 'SyntaxError'].includes(err?.name)) throw err;
       console.warn(`[resilience-scores] Ranking refresh connection failed (${describeFetchError(err)}); retrying once`);
       return requestRebuild();
     });
-    if (rebuildResp.ok) {
-      const rebuilt = await rebuildResp.json();
+    // A 200 alone does not prove a rebuild. When another refresh holds the
+    // slot (for example the first attempt, still running server-side), the
+    // handler serves the cached ranking, whose fetchedAt predates this run.
+    const rebuiltAtMs = Date.parse(rebuild.body?.fetchedAt ?? '');
+    if (rebuild.body && !(rebuiltAtMs >= refreshStartedAt)) {
+      refreshFailure = `served the ranking from ${rebuild.body.fetchedAt ?? 'an unknown time'}, not a rebuild from this run`;
+      console.warn(`[resilience-scores] Ranking refresh ${refreshFailure}`);
+    } else if (rebuild.body) {
+      const rebuilt = rebuild.body;
       const total = (rebuilt.items?.length ?? 0) + (rebuilt.greyedOut?.length ?? 0);
       refreshCompleted = true;
       const durationMs = Date.now() - refreshStartedAt;
@@ -708,8 +718,8 @@ export async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
         );
       }
     } else {
-      refreshFailure = `HTTP ${rebuildResp.status}`;
-      console.warn(`[resilience-scores] Refresh ranking HTTP ${rebuildResp.status} — ranking cache stays at its prior state until next cron`);
+      refreshFailure = `HTTP ${rebuild.status}`;
+      console.warn(`[resilience-scores] Refresh ranking HTTP ${rebuild.status} — ranking cache stays at its prior state until next cron`);
     }
   } catch (err) {
     refreshFailure = describeFetchError(err);
