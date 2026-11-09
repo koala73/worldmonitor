@@ -153,6 +153,48 @@ describe('UCDP trailing-window fetch', () => {
     assert.deepEqual(summary.gapMonths, [], 'the unpublished frontier is after the data, never a gap');
   });
 
+  // Discovery probes under a short timeout, so its answer can be older than the
+  // newest release UCDP has published. The window's own probes settle that.
+  const fetchPastDiscovery = async (fetchPage) => fetchCandidateWindow(
+    fetchPage,
+    { version: '26.0.8', first: await fetchPage('26.0.8', 0) },
+    { fromMs: Date.UTC(2026, 0, 1), throughVersion: '26.0.10' },
+  );
+
+  it('keeps a release newer than the one discovery found, when the window\'s probe returns its data', async () => {
+    const candidates = await fetchPastDiscovery(mockApi().fetchPage);
+    assert.equal(candidates.releases.at(-1).version, '26.0.9', 'the newest month was fetched, so it must be published');
+    assert.ok(candidates.releases.at(-1).events.length > 0);
+    assert.equal(candidates.newestVersion, '26.0.9');
+    assert.equal(candidates.complete, true);
+    assert.deepEqual(candidates.missingReleases, []);
+    assert.deepEqual(candidates.unpublishedReleases, ['26.0.10'], 'only the release past the newest with data is the frontier');
+    assert.deepEqual(candidates.unpublishedMonths, ['2026-10']);
+  });
+
+  it('a 400 below the newest release with data is a failed fetch, even past the one discovery found', async () => {
+    const api = mockApi({ missing: new Set(['26.0.9']) });
+    const fetchPage = async (version, page, timeoutMs, query) => (version === '26.0.10'
+      ? { TotalPages: 1, Result: [{ id: 'october', date_start: '2026-10-02', country: 'Mexico', best: 1 }] }
+      : api.fetchPage(version, page, timeoutMs, query));
+    const candidates = await fetchPastDiscovery(fetchPage);
+    assert.equal(candidates.complete, false, 'September was published, since October was');
+    assert.deepEqual(candidates.missingReleases, ['26.0.9']);
+    assert.deepEqual(candidates.unpublishedReleases, []);
+    assert.equal(candidates.newestVersion, '26.0.10');
+    assert.equal(candidates.releases.at(-1).version, '26.0.10');
+    assert.equal(candidates.releases.at(-1).events.length, 1, 'the newest month is kept');
+    assert.equal(candidates.releases.find((r) => r.version === '26.0.9').events.length, 0);
+  });
+
+  it('a newer release that times out stays a failed fetch, and the release discovery found stays the newest', async () => {
+    const candidates = await fetchPastDiscovery(mockApi({ failing: new Set(['26.0.9:0']) }).fetchPage);
+    assert.equal(candidates.complete, false);
+    assert.deepEqual(candidates.missingReleases, ['26.0.9']);
+    assert.equal(candidates.newestVersion, '26.0.8');
+    assert.equal(candidates.releases.at(-1).version, '26.0.8');
+  });
+
   it('drops candidate rows dated inside the annual release\'s years: the annual is authoritative there, and ids can change between them', async () => {
     const { candidates, events } = await fetchWindow(mockApi());
     assert.ok(candidates.releases.every((r) => r.events.every((e) => e.date_start >= '2026-01-01')), 'no candidate row dated in 2025 survives');

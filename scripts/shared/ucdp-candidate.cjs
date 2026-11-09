@@ -283,16 +283,18 @@ function candidateRank(version) {
  * Every monthly candidate release from the month containing fromMs through
  * `throughVersion` (the writers pass the current month's release), oldest
  * first. `newest` is the newest release discovery found with data, its first
- * page in hand.
- * - A release up to `newest` that answers 400/404, an empty first page, a
- *   timeout, a network error or a 5xx is a failed fetch: missingReleases, and
- *   the window is incomplete (P9 reads short_window). UCDP has published it,
- *   since it published a later one.
- * - A release after `newest` that answers 400/404 or no rows is one UCDP has
- *   not published yet: unpublishedReleases/unpublishedMonths, the frontier, not
- *   a gap. Any other failure there is still a failed fetch.
- * - `releases` holds the releases up to `newest`, oldest first, so the last is
- *   always the newest with data.
+ * page in hand. Discovery probes under a short timeout, so a later release can
+ * still answer here; the newest release with data is whichever is newest of
+ * the two, returned as `newestVersion`.
+ * - A release up to the newest with data that answers 400/404, an empty first
+ *   page, a timeout, a network error or a 5xx is a failed fetch:
+ *   missingReleases, and the window is incomplete (P9 reads short_window). UCDP
+ *   has published it, since it published a later one.
+ * - A release after the newest with data that answers 400/404 or no rows is one
+ *   UCDP has not published yet: unpublishedReleases/unpublishedMonths, the
+ *   frontier, not a gap. Any other failure there is still a failed fetch.
+ * - `releases` holds the releases up to the newest with data, oldest first, so
+ *   the last is always the newest with data.
  * - Rows dated before fromMs are dropped. fromMs starts after the annual
  *   release's last year, and a candidate's late revision of an event in that
  *   year can carry a different id from the annual's record of it (14-19% of
@@ -300,35 +302,68 @@ function candidateRank(version) {
  *   annual release alone counts those dates.
  */
 async function fetchCandidateWindow(fetchPage, newest, { fromMs, throughVersion = newest.version }) {
-  const newestRank = candidateRank(newest.version);
-  const through = candidateRank(throughVersion) > newestRank ? throughVersion : newest.version;
+  const through = candidateRank(throughVersion) > candidateRank(newest.version) ? throughVersion : newest.version;
   const versions = candidateVersionsSince(fromMs, through).filter((v) => v !== newest.version);
-  const others = await mapWithConcurrency(versions, WINDOW_FETCH_CONCURRENCY, async (version) => {
-    const frontier = candidateRank(version) > newestRank;
-    const absent = (unpublished) => ({ version, frontier, missing: !unpublished, unpublished, events: [], complete: false, truncated: false, failedPages: 0 });
+  const noData = (version, probe) => ({ version, probe, events: [], complete: false, truncated: false, failedPages: 0 });
+  const probed = await mapWithConcurrency(versions, WINDOW_FETCH_CONCURRENCY, async (version) => {
     try {
       const first = await fetchPage(version, 0, CANDIDATE_DISCOVER_TIMEOUT_MS);
-      if (!hasResults(first)) return absent(frontier);
-      return { version, frontier, missing: false, unpublished: false, ...(await fetchCandidatePages(fetchPage, { version, first })) };
+      if (!hasResults(first)) return noData(version, 'no-release');
+      return { version, probe: 'data', ...(await fetchCandidatePages(fetchPage, { version, first })) };
     } catch (err) {
-      return absent(frontier && UNPUBLISHED_STATUSES.has(Number(err?.status)));
+      return noData(version, UNPUBLISHED_STATUSES.has(Number(err?.status)) ? 'no-release' : 'failed');
     }
   });
-  const newestRelease = { version: newest.version, frontier: false, missing: false, unpublished: false, ...(await fetchCandidatePages(fetchPage, newest)) };
+  const fetched = [...probed, { version: newest.version, probe: 'data', ...(await fetchCandidatePages(fetchPage, newest)) }];
+  // Only now is the frontier known: a release is past it when it is newer than
+  // every release that answered with data, including any discovery missed.
+  const newestRank = Math.max(...fetched.filter((r) => r.probe === 'data').map((r) => candidateRank(r.version)));
   const inWindow = (event) => {
     const ms = Date.parse(String(event?.date_start || ''));
     return !Number.isFinite(fromMs) || !Number.isFinite(ms) || ms >= fromMs;
   };
-  const all = [...others.filter((r) => !r.frontier), newestRelease, ...others.filter((r) => r.frontier)]
-    .map((r) => ({ ...r, events: r.events.filter(inWindow) }));
+  const all = fetched
+    .sort((a, b) => candidateRank(a.version) - candidateRank(b.version))
+    .map((r) => {
+      const frontier = candidateRank(r.version) > newestRank;
+      const isUnpublished = frontier && r.probe === 'no-release';
+      return { ...r, frontier, unpublished: isUnpublished, missing: r.probe !== 'data' && !isUnpublished, events: r.events.filter(inWindow) };
+    });
   const unpublished = all.filter((r) => r.unpublished);
+  const releases = all.filter((r) => !r.frontier);
   return {
-    releases: all.filter((r) => !r.frontier),
+    releases,
+    newestVersion: releases.at(-1).version,
     complete: all.every((r) => r.unpublished || (!r.missing && r.complete && !r.truncated)),
     missingReleases: all.filter((r) => r.missing).map((r) => r.version),
     unpublishedReleases: unpublished.map((r) => r.version),
     unpublishedMonths: unpublished.map((r) => candidateMonth(r.version)).filter(Boolean),
   };
+}
+
+/**
+ * Whether a run must leave the cached payload in place rather than publish its
+ * own window. A run whose candidate releases failed is annual-only or partial:
+ * its newest event can be months behind the cached one, and publishing it
+ * anchors the CII's window there, collapsing every UCDP term until the next
+ * good run. An incomplete run still publishes when the cache holds nothing
+ * better (no window, an incomplete one, or one ending no later).
+ *
+ * `readExisting` resolves the cached payload, unwrapped, or null, and rejects
+ * when Redis could not answer: an unknown cache is kept, since one skipped
+ * write costs a tick and a blind overwrite costs the window. Complete runs
+ * never read the cache.
+ */
+async function keepLastGoodUcdpWindow(readExisting, runWindow) {
+  if (runWindow.complete === true) return false;
+  let existing;
+  try {
+    existing = await readExisting();
+  } catch {
+    return true;
+  }
+  const cached = existing?.window;
+  return cached?.complete === true && Number.isFinite(cached.endMs) && cached.endMs > runWindow.endMs;
 }
 
 // An event scores the place it happens (owner ruling, 2026-10-23). UCDP GED
@@ -436,6 +471,7 @@ module.exports = {
   currentCandidateVersion,
   fetchAnnualWindow,
   fetchCandidateWindow,
+  keepLastGoodUcdpWindow,
   summarizeUcdpWindow,
   ucdpLocatedCountry,
 };

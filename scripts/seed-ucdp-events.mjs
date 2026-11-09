@@ -22,6 +22,7 @@ const {
   currentCandidateVersion,
   fetchAnnualWindow,
   fetchCandidateWindow,
+  keepLastGoodUcdpWindow,
   summarizeUcdpWindow,
   ucdpLocatedCountry,
 } = ucdpCandidate;
@@ -141,6 +142,18 @@ async function extendExistingTtl(redisUrl, redisToken) {
   } catch (e) { console.warn(`  TTL extension failed: ${e.message}`); }
 }
 
+// The cached payload, unwrapped (the relay writes it in a seed envelope); null
+// when the key is empty. Rejects when Redis could not answer.
+async function readExistingPayload(redisUrl, redisToken) {
+  const resp = await fetch(`${redisUrl}/get/${encodeURIComponent(REDIS_KEY)}`, {
+    headers: { Authorization: `Bearer ${redisToken}` },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!resp.ok) throw new Error(`Redis GET failed: HTTP ${resp.status}`);
+  const { result } = await resp.json();
+  return result ? unwrapEnvelope(JSON.parse(result)).data : null;
+}
+
 function parseDateMs(value) {
   if (!value) return NaN;
   return Date.parse(String(value));
@@ -223,14 +236,14 @@ async function main() {
       // window was fetched whole — a partial window labelled `26.0.6` is
       // indistinguishable from a complete one downstream.
       candidateComplete = merged.complete;
-      candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+      candidateVersion = candidateComplete ? merged.newestVersion : `${merged.newestVersion}+partial`;
       missingReleases = merged.missingReleases;
       unpublishedReleases = merged.unpublishedReleases;
       unpublishedMonths = merged.unpublishedMonths;
       if (unpublishedReleases.length) console.log(`  Not published yet: ${unpublishedReleases.join(', ')}`);
       windowReleases = [version, ...merged.releases.map((r) => r.version)];
       if (!candidateComplete) {
-        console.warn(`  candidate window ${merged.releases[0].version}..${candidate.version}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages) — publishing as partial`);
+        console.warn(`  candidate window ${merged.releases[0].version}..${merged.newestVersion}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages)`);
       }
       // Oldest release first, so a later release's revision of an event wins the dedupe below.
       for (const release of merged.releases) {
@@ -330,6 +343,13 @@ async function main() {
       unpublishedReleases,
     },
   };
+
+  // Never replace a complete window with one that ends earlier.
+  if (await keepLastGoodUcdpWindow(() => readExistingPayload(redisUrl, redisToken), payload.window)) {
+    console.warn(`  Window incomplete and ending ${new Date(latestDatasetMs).toISOString().slice(0, 10)}, behind the cached window (or the cache was unreadable) — extending existing key TTL (preserving last good data)`);
+    await extendExistingTtl(redisUrl, redisToken);
+    process.exit(0);
+  }
 
   console.log(`  Mapped: ${mapped.length} events`);
   if (mapped[0]) {

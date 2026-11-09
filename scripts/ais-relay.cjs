@@ -2977,6 +2977,7 @@ const {
   currentCandidateVersion,
   fetchAnnualWindow: ucdpFetchAnnualWindow,
   fetchCandidateWindow: ucdpFetchCandidateWindow,
+  keepLastGoodUcdpWindow: ucdpKeepLastGoodWindow,
   summarizeUcdpWindow: ucdpSummarizeWindow,
   ucdpLocatedCountry,
 } = require('./shared/ucdp-candidate.cjs');
@@ -3129,14 +3130,14 @@ async function seedUcdpEvents() {
         // indistinguishable from a complete one downstream, which is how a
         // silently degraded merge would look healthy.
         candidateComplete = merged.complete;
-        candidateVersion = candidateComplete ? candidate.version : `${candidate.version}+partial`;
+        candidateVersion = candidateComplete ? merged.newestVersion : `${merged.newestVersion}+partial`;
         missingReleases = merged.missingReleases;
         unpublishedReleases = merged.unpublishedReleases;
         unpublishedMonths = merged.unpublishedMonths;
         if (unpublishedReleases.length) console.log(`[UCDP] Not published yet: ${unpublishedReleases.join(', ')}`);
         windowReleases = [version, ...merged.releases.map((r) => r.version)];
         if (!candidateComplete) {
-          console.warn(`[UCDP] candidate window ${merged.releases[0].version}..${candidate.version}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages) — publishing as partial`);
+          console.warn(`[UCDP] candidate window ${merged.releases[0].version}..${merged.newestVersion}: incomplete (missing: ${missingReleases.join(', ') || 'none'}; failed or truncated pages)`);
         }
         for (const release of merged.releases) {
           for (const e of release.events) {
@@ -3212,6 +3213,20 @@ async function seedUcdpEvents() {
       missingReleases,
       unpublishedReleases,
     };
+
+    // Never replace a complete window with one that ends earlier. No seed-meta
+    // write: health should reflect the age of the data actually served.
+    const keepCached = await ucdpKeepLastGoodWindow(async () => {
+      let readFailure = null;
+      const cached = await envelopeRead(UCDP_REDIS_KEY, (reason) => { readFailure = reason; });
+      if (readFailure) throw new Error(readFailure);
+      return cached;
+    }, window);
+    if (keepCached) {
+      console.warn(`[UCDP] Window incomplete and ending ${new Date(latestMs).toISOString().slice(0, 10)}, behind the cached window (or the cache was unreadable), extending existing key TTL (preserving last good data)`);
+      try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
+      return;
+    }
 
     const payload = { events: capped, fetchedAt: Date.now(), version, candidateVersion, candidateComplete, annualFailedPages: failedPages, totalRaw: allEvents.length, filteredCount: capped.length, countryDays: summary.countryDays, dailyTotals: summary.dailyTotals, window };
     const ok = await envelopeWrite(UCDP_REDIS_KEY, payload, UCDP_TTL_SECONDS, { recordCount: capped.length, sourceVersion: 'ucdp' });

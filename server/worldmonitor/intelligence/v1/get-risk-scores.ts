@@ -1431,7 +1431,7 @@ const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
  * build. This reuses computeCIIScores as-is, so it follows any formula change
  * and measures exactly "zero across all Tier-1 countries". A standby input
  * (GDELT while ACLED is live) is still graded on what it would contribute.
- * An input whose whole effect lands under a score floor (UCDP, advisory)
+ * An input whose whole effect lands under a score floor (advisory)
  * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
  * feeds that move unfloored countries every day.
  */
@@ -2078,7 +2078,7 @@ export function countCiiRealtimeSignalDensityCoverage(
   // Conflict family: satisfied by EITHER the ACLED API path OR the UCDP aux feed.
   // ACLED is only one of two live conflict sources both consumed by computeCIIScores —
   // when the ACLED API path returns empty (rate-limit/auth/quiet window), the rich
-  // `conflict:ucdp-events:v1` feed (15+ Tier-1 countries) still drives the score floor,
+  // `conflict:ucdp-events:v1` feed (15+ Tier-1 countries) still drives the Conflict term,
   // so the conflict signal is genuinely alive and must count toward health coverage.
   // Requiring ACLED specifically here flipped /api/health.riskScores to COVERAGE_PARTIAL
   // whenever ACLED was thin even though UCDP was fully healthy.
