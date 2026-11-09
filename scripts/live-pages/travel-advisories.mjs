@@ -383,7 +383,7 @@ function advisoryPageScript() {
       if (current) current.classList.remove('is-hover');
       current = land;
       land.classList.add('is-hover');
-      if (event.pointerType !== 'keyboard') land.parentNode.append(land);
+      if (document.activeElement !== land) land.parentNode.append(land);
       fill(land, event.pointerType);
       tip.hidden = false;
     }
@@ -418,11 +418,28 @@ function advisoryPageScript() {
 
   // Safari before 18.2 and Firefox before 129 fire click as a MouseEvent with
   // no pointerType, so the tap's type comes from its pointerdown.
+  // A press also focuses the country before its click (on touch, after
+  // pointerup). That focus is the pointer's, so it opens no card: only
+  // keyboard focus does. The click ends the press; a press with no click
+  // ends on a timer.
   let lastPointer = '';
+  let pressing = false;
+  let pressTimer = 0;
+  const release = () => {
+    pressing = false;
+    clearTimeout(pressTimer);
+  };
   map.addEventListener('pointerdown', (event) => {
     lastPointer = event.pointerType;
+    pressing = true;
+    clearTimeout(pressTimer);
   });
+  map.addEventListener('pointerup', () => {
+    pressTimer = setTimeout(release, 1000);
+  });
+  map.addEventListener('pointercancel', release);
   map.addEventListener('click', (event) => {
+    release();
     const land = event.target.closest('.land');
     if (!land) return;
     const pointerType = event.pointerType || lastPointer;
@@ -459,7 +476,7 @@ function advisoryPageScript() {
   };
   map.addEventListener('focusin', (event) => {
     const land = event.target.closest('.land');
-    if (!land) return;
+    if (!land || pressing) return;
     const box = land.getBoundingClientRect();
     show(land, { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, pointerType: 'keyboard' });
   });

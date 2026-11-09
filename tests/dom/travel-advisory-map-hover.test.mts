@@ -192,6 +192,21 @@ describe('travel advisory map page script', () => {
     expect(location.hash).toBe('#advisory-ve');
   });
 
+  it('opens the card on the first tap even when the tap focuses the country first', () => {
+    mount();
+    const target = land('VE');
+    // Chrome's touch order: pointerdown, pointerup, then the compatibility
+    // mousedown that focuses the country, then click.
+    target.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
+    target.focus();
+    target.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(location.hash).toBe('');
+    expect(tip().textContent).toContain('Venezuela');
+    expect(tip().textContent).toContain('Tap again for the full row and links');
+  });
+
   it('matches a typed straight apostrophe against a typographic one', () => {
     mount();
     const search = document.querySelector<HTMLInputElement>('#advisory-search')!;
