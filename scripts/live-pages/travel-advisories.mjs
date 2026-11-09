@@ -362,7 +362,7 @@ function advisoryPageScript() {
         textContent: us === au ? 'Both governments give the same level.' : (us > au ? 'US' : 'Australia') + ' is stricter by ' + Math.abs(us - au) + (Math.abs(us - au) === 1 ? ' level.' : ' levels.'),
       }));
     }
-    tip.append(Object.assign(document.createElement('p'), { className: 'tip-hint', textContent: pointerType === 'touch' ? 'Tap again for the full row and links' : 'Click for the full row and links' }));
+    tip.append(Object.assign(document.createElement('p'), { className: 'tip-hint', textContent: { touch: 'Tap again for the full row and links', keyboard: 'Press Enter for the full row and links' }[pointerType] || 'Click for the full row and links' }));
   };
 
   const place = (event) => {
@@ -376,12 +376,14 @@ function advisoryPageScript() {
     tip.style.top = Math.max(0, flipY ? y - tip.offsetHeight - 14 : y + 14) + 'px';
   };
 
+  // Raising the shape draws its outline above its neighbours; a focused shape
+  // stays put, since moving it in the DOM would drop its focus.
   const show = (land, event) => {
     if (current !== land) {
       if (current) current.classList.remove('is-hover');
       current = land;
       land.classList.add('is-hover');
-      land.parentNode.append(land);
+      if (event.pointerType !== 'keyboard') land.parentNode.append(land);
       fill(land, event.pointerType);
       tip.hidden = false;
     }
@@ -405,26 +407,92 @@ function advisoryPageScript() {
   map.addEventListener('pointerleave', (event) => {
     if (event.pointerType === 'mouse') hide();
   });
-  map.addEventListener('click', (event) => {
-    const land = event.target.closest('.land');
-    if (!land) return;
-    if (event.pointerType === 'touch' && current !== land) {
-      show(land, event);
-      return;
-    }
+  const jumpTo = (land) => {
     const row = land.dataset.iso2 ? rowFor(land.dataset.iso2) : null;
     if (!row) return;
     hide();
     if (row.hidden) clearSearch();
     if (location.hash === '#' + row.id) row.scrollIntoView({ block: 'center' });
     else location.hash = row.id;
+  };
+
+  // Safari before 18.2 and Firefox before 129 fire click as a MouseEvent with
+  // no pointerType, so the tap's type comes from its pointerdown.
+  let lastPointer = '';
+  map.addEventListener('pointerdown', (event) => {
+    lastPointer = event.pointerType;
+  });
+  map.addEventListener('click', (event) => {
+    const land = event.target.closest('.land');
+    if (!land) return;
+    const pointerType = event.pointerType || lastPointer;
+    if (pointerType === 'touch' && current !== land) {
+      show(land, { clientX: event.clientX, clientY: event.clientY, pointerType });
+      return;
+    }
+    jumpTo(land);
+  });
+
+  // One tab stop for the whole map; arrow keys move through the countries
+  // alphabetically, and Enter or Space opens the country's row.
+  const labelFor = (land) => {
+    const row = land.dataset.iso2 ? rowFor(land.dataset.iso2) : null;
+    return row ? row.querySelector('th').textContent : land.dataset.name || '';
+  };
+  const seen = new Set();
+  const keyOrder = [...map.querySelectorAll('.land[data-iso2]')]
+    .filter((land) => !seen.has(land.dataset.iso2) && seen.add(land.dataset.iso2))
+    .sort((a, b) => labelFor(a).localeCompare(labelFor(b), 'en'));
+  tip.id = 'advisory-tip';
+  map.setAttribute('role', 'group');
+  // Chrome makes the <svg> itself a tab stop, a dead stop before the countries.
+  map.setAttribute('tabindex', '-1');
+  keyOrder.forEach((land, i) => {
+    land.setAttribute('tabindex', i === 0 ? '0' : '-1');
+    land.setAttribute('role', 'button');
+    land.setAttribute('aria-label', labelFor(land));
+    land.setAttribute('aria-describedby', tip.id);
+  });
+  const focusLand = (land) => {
+    for (const other of keyOrder) other.setAttribute('tabindex', other === land ? '0' : '-1');
+    land.focus();
+  };
+  map.addEventListener('focusin', (event) => {
+    const land = event.target.closest('.land');
+    if (!land) return;
+    const box = land.getBoundingClientRect();
+    show(land, { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2, pointerType: 'keyboard' });
+  });
+  map.addEventListener('focusout', (event) => {
+    if (!map.contains(event.relatedTarget)) hide();
+  });
+  map.addEventListener('keydown', (event) => {
+    const land = event.target.closest('.land');
+    const at = keyOrder.indexOf(land);
+    if (at === -1) return;
+    const last = keyOrder.length - 1;
+    const next = {
+      ArrowRight: at === last ? 0 : at + 1,
+      ArrowDown: at === last ? 0 : at + 1,
+      ArrowLeft: at === 0 ? last : at - 1,
+      ArrowUp: at === 0 ? last : at - 1,
+      Home: 0,
+      End: last,
+    }[event.key];
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      jumpTo(land);
+    } else if (next !== undefined) {
+      event.preventDefault();
+      focusLand(keyOrder[next]);
+    }
   });
   document.addEventListener('pointerdown', (event) => {
     if (!map.contains(event.target)) hide();
   });
 
   // Lower case without accents, so "turkey" finds Türkiye and "cote" Côte d’Ivoire.
-  const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const fold = (text) => text.normalize('NFD').replace(/\p{M}/gu, '').replace(/[\u2018\u2019`\u00b4]/g, "'").toLowerCase();
   const search = document.getElementById('advisory-search');
   const rows = [...document.querySelectorAll('.advisory-table tbody tr')];
   function clearSearch() {
@@ -466,6 +534,8 @@ const FIGURE_STYLE = `      <style>
         .advisory-map .graticule { fill: none; stroke: #13211a; stroke-width: .5; }
         .advisory-map .land { fill: var(--land); stroke: #050807; stroke-width: .5; stroke-linejoin: round; pointer-events: visibleFill; transition: fill .2s ease, opacity .15s ease; }
         .advisory-figure[data-view="US"] .advisory-map [data-iso2="US"], .advisory-figure[data-view="AU"] .advisory-map [data-iso2="AU"] { fill: var(--issuer); }
+        .advisory-map .land:focus { outline: none; }
+        .advisory-map .land:focus-visible { stroke: var(--accent); stroke-width: 1.6; }
         .advisory-map .land.is-hover { stroke: #f4fbf6; stroke-width: 1.3; filter: brightness(1.15); }
         .advisory-map:hover .land:not(.is-hover) { opacity: .82; }
         .advisory-tip { position: absolute; z-index: 2; width: max-content; max-width: min(300px, 80%); padding: 12px 14px; border: 1px solid #2b3f35; border-radius: 10px; background: rgba(9, 15, 12, .96); box-shadow: 0 12px 32px rgba(0, 0, 0, .45); pointer-events: none; font-size: 13px; line-height: 1.4; }

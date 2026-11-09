@@ -181,6 +181,49 @@ describe('travel advisory map page script', () => {
     expect([...document.querySelectorAll<HTMLElement>('.advisory-table tbody tr')].filter((row) => !row.hidden).map((row) => row.id)).toEqual(['advisory-tr']);
   });
 
+  it('treats a tap as touch when the click carries no pointerType (Safari before 18.2)', () => {
+    mount();
+    land('VE').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    land('VE').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(location.hash).toBe('');
+    expect(tip().textContent).toContain('Venezuela');
+    land('VE').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    land('VE').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(location.hash).toBe('#advisory-ve');
+  });
+
+  it('matches a typed straight apostrophe against a typographic one', () => {
+    mount();
+    const search = document.querySelector<HTMLInputElement>('#advisory-search')!;
+    search.value = "cote d'ivoire";
+    search.dispatchEvent(new Event('input'));
+    expect([...document.querySelectorAll<HTMLElement>('.advisory-table tbody tr')].filter((row) => !row.hidden).map((row) => row.id)).toEqual(['advisory-ci']);
+  });
+
+  it('lets a keyboard reach every country from one tab stop and open its row', () => {
+    mount();
+    const lands = [...document.querySelectorAll<SVGPathElement>('.advisory-map .land')];
+    expect(lands.filter((path) => path.getAttribute('tabindex') === '0')).toHaveLength(1);
+    expect(document.querySelector('.advisory-map')!.getAttribute('tabindex')).toBe('-1');
+    const first = lands.find((path) => path.getAttribute('tabindex') === '0')!;
+    expect(first.getAttribute('aria-label')).toBe('Australia');
+    first.focus();
+    first.dispatchEvent(new FocusEvent('focus'));
+    expect(tip().hidden).toBe(false);
+    expect(tip().textContent).toContain('Australia');
+    const key = (target: Element, name: string) => target.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true }));
+    key(first, 'ArrowRight');
+    const second = document.activeElement as SVGPathElement;
+    expect(second.getAttribute('aria-label')).toBe('China');
+    expect(second.getAttribute('tabindex')).toBe('0');
+    expect(first.getAttribute('tabindex')).toBe('-1');
+    key(second, 'End');
+    expect((document.activeElement as Element).getAttribute('aria-label')).toBe('Venezuela');
+    document.getElementById('advisory-ve')!.scrollIntoView = () => {};
+    key(document.activeElement!, 'Enter');
+    expect(location.hash).toBe('#advisory-ve');
+  });
+
   it('keeps the toggle hidden and makes no advice claim without a reading', () => {
     mount(false);
     expect(document.querySelector<HTMLElement>('.view-toggle')!.hidden).toBe(true);
