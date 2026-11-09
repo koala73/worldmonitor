@@ -10,6 +10,7 @@ import {
 } from '@/services/github-star-prompt-state';
 import { t } from '@/services/i18n';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { isProTierResolved } from '@/services/widget-store';
 import { isModalOpen } from '@/utils/open-modal';
 
 /**
@@ -26,12 +27,13 @@ const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'focus'] as const;
 // Elevated notifications that sit in the same top-right corner.
 const COMPETING_TOAST_SELECTOR = '.update-toast, .passkey-offer-prompt';
 
-export type StarPromptShowCheck = 'show' | 'dismissed' | 'premium' | 'auth-pending' | 'busy';
+export type StarPromptShowCheck = 'show' | 'dismissed' | 'premium' | 'tier-unresolved' | 'busy';
 
 export interface StarPromptShowInput {
   dismissed: boolean | null;
   premium: boolean;
-  authPending: boolean;
+  /** Auth still loading, or signed in with no entitlement snapshot yet. */
+  tierUnresolved: boolean;
   /** A modal, the passkey card, or another toast is on screen. */
   busy: boolean;
 }
@@ -41,7 +43,7 @@ export function checkStarPromptShow(input: StarPromptShowInput): StarPromptShowC
   if (input.dismissed !== false) return 'dismissed';
   if (input.premium) return 'premium';
   // Entitlement is not known yet; a paying user could be pitched. Try next visit.
-  if (input.authPending) return 'auth-pending';
+  if (input.tierUnresolved) return 'tier-unresolved';
   if (input.busy) return 'busy';
   return 'show';
 }
@@ -101,7 +103,9 @@ export class GitHubStarPromptController {
     const check = checkStarPromptShow({
       dismissed: readStarPromptDismissed(this.storage),
       premium: hasPremiumAccess(getAuthState()) || this.premiumHint(),
-      authPending: getAuthState().isPending,
+      // Settled auth is not settled entitlement: a signed-in subscriber has no
+      // verdict until the entitlement snapshot arrives.
+      tierUnresolved: !isProTierResolved(),
       busy: isModalOpen(document) || document.querySelector(COMPETING_TOAST_SELECTOR) !== null,
     });
     if (check === 'busy') {

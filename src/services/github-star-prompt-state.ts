@@ -65,8 +65,12 @@ export function recordVisitDay(storage: StarPromptStorage | null, today: string)
   if (!storage) return null;
   try {
     const ledger = readLedger(storage);
-    if (ledger?.lastDay === today) return ledger.days;
-    const next: VisitLedger = { days: (ledger?.days ?? 0) + 1, lastDay: today };
+    const next: VisitLedger = ledger?.lastDay === today
+      ? ledger
+      : { days: (ledger?.days ?? 0) + 1, lastDay: today };
+    // Write even on a same-day visit: a browser that can still read an old
+    // ledger but can no longer write (quota, blocked site data) could not keep
+    // a dismissal either, so it must not be asked.
     storage.setItem(STAR_PROMPT_VISITS_KEY, JSON.stringify(next));
     // Some browsers accept writes they drop (quota 0, blocked site data).
     return readLedger(storage)?.lastDay === today ? next.days : null;

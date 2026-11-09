@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const auth = { isPending: false, premium: false };
+const auth = { isPending: false, premium: false, tierResolved: true };
 const tracked: string[] = [];
 const opened: string[] = [];
 
@@ -18,6 +18,9 @@ vi.mock('@/services/auth-state', () => ({
 }));
 vi.mock('@/services/panel-gating', () => ({
   hasPremiumAccess: () => auth.premium,
+}));
+vi.mock('@/services/widget-store', () => ({
+  isProTierResolved: () => auth.tierResolved,
 }));
 vi.mock('@/services/analytics', () => ({
   trackGithubStarPrompt: (outcome: string) => { tracked.push(outcome); },
@@ -81,6 +84,13 @@ describe('visit-day ledger', () => {
     expect(recordVisitDay(dropping, '2026-11-01')).toBeNull();
   });
 
+  it('returns null on a same-day visit when storage reads but no longer writes', () => {
+    const s = memoryStorage();
+    expect(recordVisitDay(s, '2026-11-03')).toBe(1);
+    s.setItem = () => { throw new Error('QuotaExceededError'); };
+    expect(recordVisitDay(s, '2026-11-03')).toBeNull();
+  });
+
   it('recovers from a corrupt ledger by starting over', () => {
     const s = memoryStorage();
     s.data.set(STAR_PROMPT_VISITS_KEY, '{not json');
@@ -115,6 +125,7 @@ describe('boot gate and controller', () => {
     document.body.innerHTML = '';
     auth.isPending = false;
     auth.premium = false;
+    auth.tierResolved = true;
     tracked.length = 0;
     opened.length = 0;
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] });
@@ -193,11 +204,12 @@ describe('boot gate and controller', () => {
     expect(await bootOn(DAY3)).toBe('premium');
   });
 
-  it('skips the session while auth is still pending', async () => {
+  it('skips the session while the Pro verdict is unresolved (auth pending or no entitlement snapshot)', async () => {
     await reachThirdDay();
-    auth.isPending = true;
+    auth.tierResolved = false;
     vi.advanceTimersByTime(STAR_PROMPT_IDLE_MS * 3);
     expect(toast()).toBeNull();
+    expect(tracked).toEqual([]);
   });
 
   it('waits out a modal or another toast, then shows', async () => {
