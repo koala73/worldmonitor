@@ -12,10 +12,12 @@
  * none of them, so the dependency runs one way.
  */
 
+import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import type { AuthSession } from './auth-state';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
+import { buildDesktopProHandoffUrl } from './desktop-checkout-handoff';
 import { getEntitlementState } from './entitlements';
 import { openExternalUrl } from './external-navigation';
 import type { ClientEntitlementBelief } from './premium-denial';
@@ -168,9 +170,17 @@ export interface GateActionDeps {
 // Absolute origin (WEB_APP_ORIGIN): the desktop runtime's webview has no
 // worldmonitor.app origin, so a relative href would resolve against
 // tauri://localhost. `openExternalUrl` then routes it to the OS browser on
-// desktop rather than opening another WebView window (#5911).
+// desktop rather than opening another WebView window (#5911). That browser
+// has its own session, so the desktop URL names the app's account and /pro
+// asks before charging any other one (#10342). The web branch stays
+// synchronous: it opens a tab and must run inside the click gesture.
 function openProPage(path: string): void {
-  void openExternalUrl(`${WEB_APP_ORIGIN}${path}`);
+  const url = `${WEB_APP_ORIGIN}${path}`;
+  if (isDesktopRuntime()) {
+    void buildDesktopProHandoffUrl(url).then((handoffUrl) => openExternalUrl(handoffUrl));
+    return;
+  }
+  void openExternalUrl(url);
 }
 
 /** Return the action callback for a given gate reason. */

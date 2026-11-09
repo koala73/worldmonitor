@@ -169,13 +169,29 @@ describe('stripCheckoutIntentFromSearch', () => {
     assert.equal(result, '?keep=me');
   });
 
-  it('strips mission preview, desktop handoff and account fingerprint intent', () => {
+  it('strips mission preview intent', () => {
     const result = stripCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_MISSION_PARAM}=crisis-desk`
-      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop`
-      + `&${CHECKOUT_ACCOUNT_PARAM}=${FINGERPRINT}&keep=me`,
+      + `&${CHECKOUT_PANEL_PARAM}=cii&keep=me`,
     );
     assert.equal(result, '?keep=me');
+  });
+
+  it('keeps the desktop handoff marker and account fingerprint (#10342)', () => {
+    // They say where this tab came from; only the product param triggers a
+    // resume. Stripping them made the click after a dismissed account dialog,
+    // or after a reload, an unchecked purchase with no desktop return.
+    const result = stripCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_HANDOFF_PARAM}=desktop`
+      + `&${CHECKOUT_ACCOUNT_PARAM}=${FINGERPRINT}&keep=me`,
+    );
+    const kept = new URLSearchParams(result);
+    assert.equal(kept.has(CHECKOUT_PRODUCT_PARAM), false);
+    assert.equal(kept.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
+    assert.equal(kept.get(CHECKOUT_ACCOUNT_PARAM), FINGERPRINT);
+    assert.equal(kept.get('keep'), 'me');
+    // And the kept context alone is not an intent: a reload cannot re-fire.
+    assert.equal(parseCheckoutIntentFromSearch(result), null);
   });
 
   it('is idempotent — second call on a stripped URL is a no-op', () => {

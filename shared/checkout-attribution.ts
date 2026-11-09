@@ -154,8 +154,10 @@ const ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{16}$/;
 
 /**
  * Truncated SHA-256 of a Clerk user id. 64 bits is ample to tell two accounts
- * apart, and the raw id stays out of URLs, analytics and server logs. Both
- * the dashboard and /pro compute it, so the hash is pinned by test.
+ * apart, and the raw id stays out of URLs and server logs. The result is still
+ * a stable pseudonymous identifier for the account, so the param is on the
+ * telemetry redaction list (shared/sensitive-url-params.ts). Both the
+ * dashboard and /pro compute it, so the hash is pinned by test.
  */
 export async function fingerprintCheckoutAccount(userId: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId));

@@ -57,11 +57,11 @@ import {
 } from './analytics';
 import {
   buildAttributedProUrl,
-  fingerprintCheckoutAccount,
   parseCheckoutContext,
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { buildDesktopProHandoffUrl } from './desktop-checkout-handoff';
 import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
 import { extractBillingErrorKind } from './_billing-error';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
@@ -1044,15 +1044,8 @@ function renderCheckoutErrorSurface(
     // signed in to reach a checkout error, so the handoff names their account
     // (#10342) and /pro will not charge a different browser session unseen.
     if (isDesktopRuntime()) {
-      const userId = getCurrentClerkUser()?.id;
-      void (async () => {
-        const accountFingerprint = userId ? await fingerprintCheckoutAccount(userId) : null;
-        await openExternalUrl(
-          buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro`, attribution, { desktopHandoff: true, accountFingerprint }),
-          null,
-          { desktopPopupFallback: false },
-        );
-      })();
+      void buildDesktopProHandoffUrl(`${WEB_APP_ORIGIN}/pro`, attribution, getCurrentClerkUser()?.id ?? null)
+        .then((proUrl) => openExternalUrl(proUrl, null, { desktopPopupFallback: false }));
       showCheckoutErrorToast(error.userMessage);
       return;
     }

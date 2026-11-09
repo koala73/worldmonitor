@@ -249,18 +249,24 @@ function activateCheckoutRateLimit(retryAfterHeader: string | null): number {
 // when startCheckout settles.
 let startCheckoutEntryInFlight = false;
 
+/** Options every /pro checkout entry point threads through. */
+interface ProCheckoutOptions {
+  referralCode?: string;
+  discountCode?: string;
+  attributionSource?: string;
+  checkoutAttribution?: CheckoutAttribution;
+  desktopHandoff?: boolean;
+  /**
+   * Fingerprint of the desktop account behind the handoff (#10342). Consumed
+   * by `desktopAccountMatches` before `doCheckout`; `doCheckout` ignores it.
+   */
+  accountFingerprint?: string;
+  bypassPendingGuard?: boolean;
+}
+
 export async function startCheckout(
   productId: string,
-  options?: {
-    referralCode?: string;
-    discountCode?: string;
-    attributionSource?: string;
-    checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
-    /** Desktop account the handoff came from; checked against the browser account (#10342). */
-    accountFingerprint?: string;
-    bypassPendingGuard?: boolean;
-  },
+  options?: ProCheckoutOptions,
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   if (startCheckoutEntryInFlight) return false;
@@ -277,16 +283,7 @@ export async function startCheckout(
 
 async function startCheckoutInner(
   productId: string,
-  options?: {
-    referralCode?: string;
-    discountCode?: string;
-    attributionSource?: string;
-    checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
-    /** Desktop account the handoff came from; checked against the browser account (#10342). */
-    accountFingerprint?: string;
-    bypassPendingGuard?: boolean;
-  },
+  options?: ProCheckoutOptions,
 ): Promise<boolean> {
   let c: LoadedClerk;
   try {
@@ -348,10 +345,19 @@ async function startCheckoutInner(
 async function desktopAccountMatches(
   c: LoadedClerk,
   productId: string,
-  options: Parameters<typeof doCheckout>[1],
+  options: ProCheckoutOptions,
 ): Promise<boolean> {
   if (!options.desktopHandoff || !options.accountFingerprint || !c.user) return true;
-  const browserFingerprint = await fingerprintCheckoutAccount(c.user.id);
+  const browserUserId = c.user.id;
+  let browserFingerprint: string;
+  try {
+    browserFingerprint = await fingerprintCheckoutAccount(browserUserId);
+  } catch (err) {
+    // No hash, no comparison. Fail open: this check is a guard against an
+    // honest mistake, and it must never be the reason a checkout cannot start.
+    Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'desktop-account-fingerprint' } });
+    return true;
+  }
   if (browserFingerprint === options.accountFingerprint) return true;
 
   const email = c.user.primaryEmailAddress?.emailAddress
@@ -367,17 +373,31 @@ async function desktopAccountMatches(
       // Same intent, re-bound to the next sign-in: the resume path runs this
       // check again, so signing in as a third account asks again.
       const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
-      // Callback form: a bare signOut() navigates to Clerk's after-sign-out
-      // URL and would take the buyer off /pro before sign-in can reopen.
-      void c.signOut(() => {
+      let reopened = false;
+      const reopenSignIn = () => {
+        if (reopened) return;
+        reopened = true;
         c.openSignIn({ afterSignInUrl: returnUrl, afterSignUpUrl: returnUrl });
-      }).catch((err) => {
+      };
+      // Callback form: a bare signOut() navigates to Clerk's after-sign-out
+      // URL and would take the buyer off /pro before sign-in can reopen. Clerk
+      // skips the callback when the client already has no session (it ended in
+      // another tab), so reopen after it resolves too: the dialog is closed
+      // and something has to open.
+      void c.signOut(reopenSignIn).then(reopenSignIn).catch((err) => {
         console.error('[checkout] Account switch failed:', err);
         Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'checkout-switch-account' } });
         showCheckoutErrorToast('Switching accounts did not work. Please sign out and try again.');
       });
     },
     onProceed: () => {
+      // The button named one account. If the browser's session changed while
+      // the dialog was open (another tab), charging now would upgrade an
+      // account the buyer never approved: run the whole check again instead.
+      if (c.user?.id !== browserUserId) {
+        void startCheckout(productId, options);
+        return;
+      }
       // The buyer chose the browser account. The desktop app will not update,
       // so this is a plain browser purchase: no desktop return marker.
       void doCheckout(productId, { ...options, desktopHandoff: false, accountFingerprint: undefined });
@@ -436,16 +456,7 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
 
 async function doCheckout(
   productId: string,
-  options: {
-    referralCode?: string;
-    discountCode?: string;
-    attributionSource?: string;
-    checkoutAttribution?: CheckoutAttribution;
-    desktopHandoff?: boolean;
-    /** Desktop account the handoff came from; checked against the browser account (#10342). */
-    accountFingerprint?: string;
-    bypassPendingGuard?: boolean;
-  },
+  options: ProCheckoutOptions,
 ): Promise<boolean> {
   const cooldownSeconds = currentCheckoutRateLimitSeconds();
   if (cooldownSeconds > 0) {

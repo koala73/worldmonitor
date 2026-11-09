@@ -27,6 +27,10 @@ interface Hooks {
   authUser: { id: string; role?: string } | null;
   entitled: boolean;
   apiKey: boolean;
+  /** Desktop runtime for the upgrade-exit cases; every other case runs as web. */
+  desktop: boolean;
+  /** URLs handed to openExternalUrl. */
+  opened: string[];
 }
 
 const NOW = Date.UTC(2026, 10, 4, 12, 0, 0);
@@ -63,7 +67,12 @@ const STUBS = new Map<string, string>([
   `],
   ['@/services/runtime', `export function isDesktopRuntime() { return false; }`],
   ['./runtime', `export function isDesktopRuntime() { return false; }`],
-  ['@/config/desktop-runtime', `export function isDesktopRuntime() { return false; } export function hasExplicitDesktopSignals() { return false; }`],
+  ['@/config/desktop-runtime', `export function isDesktopRuntime() { return Boolean(globalThis.__gating?.desktop); } export function hasExplicitDesktopSignals() { return false; }`],
+  // desktop-checkout-handoff reads the settled auth state through its sibling path.
+  ['./auth-state', `
+    export function getAuthState() { return { user: globalThis.__gating.authUser, isPending: false }; }
+    export function subscribeAuthState(callback) { callback(getAuthState()); return () => {}; }
+  `],
   ['./variant', `export const SITE_VARIANT = 'full';`],
   ['@/services/clerk', `export async function getClerkToken() { return null; } export function getCurrentClerkUser() { return null; }`],
   ['@/bootstrap/sentry-defer', `export function enqueueSentryCall() {}`],
@@ -78,7 +87,7 @@ const STUBS = new Map<string, string>([
     export function getReactivationHref() { return '/pro'; }
   `],
   ['./entitlements', `export function getEntitlementState() { return null; }`],
-  ['./external-navigation', `export function openExternalUrl() { return Promise.resolve(true); }`],
+  ['./external-navigation', `export function openExternalUrl(url) { globalThis.__gating?.opened?.push(url); return Promise.resolve(true); }`],
   ['./runtime-config', `
     export function getSecretState(key) {
       const present = key === 'WORLDMONITOR_API_KEY' && globalThis.__gating.apiKey;
@@ -167,7 +176,7 @@ async function boot(reply: Response | Error): Promise<void> {
 }
 
 beforeEach(async () => {
-  hooks = { authUser: null, entitled: false, apiKey: false };
+  hooks = { authUser: null, entitled: false, apiKey: false, desktop: false, opened: [] };
   (globalThis as Record<string, unknown>).__gating = hooks;
   routeReplies = [];
   routeCalls = 0;
@@ -323,5 +332,45 @@ describe('self-host desktop key grants Pro', () => {
     g.readPremiumAccessGrant();
     await settle();
     assert.equal(routeCalls, 1);
+  });
+});
+
+// The premium-panel gate is an upgrade exit like every other: on desktop it
+// leaves for /pro in the OS browser, whose session may belong to another
+// account, so the URL has to carry the handoff marker and the app's account
+// fingerprint for /pro to check (#10342). sha256("user_1") prefix, pinned in
+// tests/checkout-account-fingerprint.test.mts.
+describe('upgrade gate exits to /pro (#5911, #10342)', () => {
+  const deps = { openAuthModal: () => {} };
+
+  /** The fingerprint is hashed off-thread before the native launch. */
+  async function opened(): Promise<string[]> {
+    for (let turn = 0; turn < 200 && hooks.opened.length === 0; turn += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return hooks.opened;
+  }
+
+  it('opens the plain pricing URL inside the click on the web', () => {
+    g.resolveGateAction(g.PanelGateReason.FREE_TIER, deps)();
+    // Synchronous: a web tab opened after an await can be blocked as a popup.
+    assert.deepEqual(hooks.opened, ['https://worldmonitor.app/pro']);
+  });
+
+  for (const reason of ['FREE_TIER', 'LAPSED'] as const) {
+    it(`names the desktop account on the ${reason} desktop handoff`, async () => {
+      hooks.desktop = true;
+      hooks.authUser = { id: 'user_1' };
+      g.resolveGateAction(g.PanelGateReason[reason], deps)();
+      assert.deepEqual(await opened(), [
+        'https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=79b0aa0042b3c056',
+      ]);
+    });
+  }
+
+  it('sends a signed-out desktop user with the marker and no fingerprint', async () => {
+    hooks.desktop = true;
+    g.resolveGateAction(g.PanelGateReason.FREE_TIER, deps)();
+    assert.deepEqual(await opened(), ['https://worldmonitor.app/pro?wm_checkout_handoff=desktop']);
   });
 });

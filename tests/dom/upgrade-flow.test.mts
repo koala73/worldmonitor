@@ -13,13 +13,31 @@ const { openExternalUrl, startCheckout, showCheckoutErrorToast } = vi.hoisted(()
 let desktop = false;
 let referral: string | null = null;
 let authUser: { id: string } | null = null;
+let authPending = false;
+const authListeners = new Set<(state: { user: { id: string } | null; isPending: boolean }) => void>();
+const authState = () => ({ user: authUser, isPending: authPending });
+/** Clerk finished loading: auth state settles and subscribers hear about it. */
+function settleAuth(user: { id: string } | null): void {
+  authUser = user;
+  authPending = false;
+  for (const listener of [...authListeners]) listener(authState());
+}
 
 vi.mock('@/services/external-navigation', () => ({ openExternalUrl }));
 vi.mock('@/services/checkout', () => ({ startCheckout }));
 vi.mock('@/services/runtime', () => ({ isDesktopRuntime: () => desktop }));
 vi.mock('@/services/checkout-error-toast', () => ({ showCheckoutErrorToast }));
 vi.mock('@/services/referral-capture', () => ({ loadActiveReferral: () => referral }));
-vi.mock('@/services/auth-state', () => ({ getAuthState: () => ({ user: authUser, isPending: false }) }));
+vi.mock('@/services/auth-state', () => ({
+  getAuthState: authState,
+  subscribeAuthState: (listener: (state: ReturnType<typeof authState>) => void) => {
+    authListeners.add(listener);
+    listener(authState());
+    return () => { authListeners.delete(listener); };
+  },
+}));
+const initClerk = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('@/services/clerk', () => ({ initClerk }));
 
 // The desktop branch must never fall back to a WebView popup.
 const NO_POPUP = { desktopPopupFallback: false };
@@ -36,6 +54,10 @@ afterEach(() => {
   desktop = false;
   referral = null;
   authUser = null;
+  authPending = false;
+  authListeners.clear();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('openUpgradePlans', () => {
@@ -98,6 +120,42 @@ describe('openUpgradePlans', () => {
     await openUpgradePlans();
     const url = new URL(openExternalUrl.mock.calls[0]![0]);
     expect(url.searchParams.has('wm_checkout_account')).toBe(false);
+  });
+
+  it('waits for desktop auth to settle instead of treating a returning user as signed out', async () => {
+    // Auth state starts pending until the deferred Clerk load finishes. A click
+    // in that window used to send no fingerprint, so /pro had nothing to check.
+    desktop = true;
+    authPending = true;
+    const opening = openUpgradePlans();
+    await vi.waitFor(() => expect(authListeners.size).toBe(1));
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(initClerk).toHaveBeenCalled();
+    settleAuth({ id: 'user_1' });
+    await opening;
+    const url = new URL(openExternalUrl.mock.calls[0]![0]);
+    expect(url.searchParams.get('wm_checkout_account')).toBe('79b0aa0042b3c056');
+    expect(authListeners.size).toBe(0);
+  });
+
+  it('still opens the plans, unbound, when desktop auth never settles', async () => {
+    vi.useFakeTimers();
+    desktop = true;
+    authPending = true;
+    const opening = openUpgradePlans();
+    await vi.advanceTimersByTimeAsync(4_000);
+    await opening;
+    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing', null, NO_POPUP);
+    expect(showCheckoutErrorToast).not.toHaveBeenCalled();
+  });
+
+  it('still opens the plans, unbound, when the account cannot be hashed', async () => {
+    desktop = true;
+    authUser = { id: 'user_1' };
+    vi.spyOn(globalThis.crypto.subtle, 'digest').mockRejectedValue(new Error('no subtle crypto'));
+    await openUpgradePlans();
+    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing', null, NO_POPUP);
+    expect(showCheckoutErrorToast).not.toHaveBeenCalled();
   });
 
   it('never stamps the account fingerprint on the web', async () => {

@@ -1,7 +1,7 @@
 import type { CheckoutAttribution } from './analytics';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { showCheckoutErrorToast } from '@/services/checkout-error-toast';
-import { buildAttributedProUrl, fingerprintCheckoutAccount } from '../../shared/checkout-attribution';
+import { buildAttributedProUrl } from '../../shared/checkout-attribution';
 
 // Reported here, never thrown: the CTAs' catch fallbacks window.open a raw
 // /pro, which drops attribution and inside the desktop WebView opens a second
@@ -31,23 +31,15 @@ function reportPlanOpenFailure(): void {
  */
 export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
   try {
-    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }, { getAuthState }] = await Promise.all([
+    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
       import('@/services/runtime'),
       import('@/services/external-navigation'),
       import('@/services/referral-capture'),
-      import('@/services/auth-state'),
     ]);
-    const desktopUserId = isDesktopRuntime() ? getAuthState().user?.id : undefined;
-    const url = new URL(buildAttributedProUrl(
-      `${WEB_APP_ORIGIN}/pro#pricing`,
-      attribution,
-      isDesktopRuntime()
-        ? {
-          desktopHandoff: true,
-          accountFingerprint: desktopUserId ? await fingerprintCheckoutAccount(desktopUserId) : null,
-        }
-        : undefined,
-    ));
+    const plansUrl = `${WEB_APP_ORIGIN}/pro#pricing`;
+    const url = new URL(isDesktopRuntime()
+      ? await (await import('@/services/desktop-checkout-handoff')).buildDesktopProHandoffUrl(plansUrl, attribution)
+      : buildAttributedProUrl(plansUrl, attribution));
     const referral = loadActiveReferral();
     if (referral) url.searchParams.set('ref', referral);
     const outcome = await openExternalUrl(url.toString(), null, { desktopPopupFallback: false });

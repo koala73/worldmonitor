@@ -21,6 +21,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { initTestI18n } from './helpers/i18n.mts';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
+import { fingerprintCheckoutAccount } from '../../shared/checkout-attribution';
 import type { SubscriptionInfo } from '@/services/billing';
 
 const session: AuthSession = {
@@ -160,7 +161,8 @@ type SettingsInternals = {
 
 const PRO_URL = 'https://worldmonitor.app/pro';
 const PLANS_URL = 'https://worldmonitor.app/pro#pricing';
-const DESKTOP_PLANS_URL = 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing';
+// The desktop handoff names the signed-in app account (`session.user.id`) for /pro to check (#10342).
+const DESKTOP_PLANS_URL = `https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=${await fingerprintCheckoutAccount('A')}#pricing`;
 const RUNTIMES = [
   ['web', false],
   ['desktop', true],

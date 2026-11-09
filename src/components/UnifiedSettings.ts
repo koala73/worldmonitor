@@ -1,6 +1,7 @@
 import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { openExternalUrl } from '@/services/external-navigation';
+import { buildDesktopProHandoffUrl } from '@/services/desktop-checkout-handoff';
 import { THEATER_PRESETS, getTheaterPreset, getTheaterPresetEnableList, resolveTheaterPresetSources, type TheaterPreset } from '@/config/theater-presets';
 import {
   PANEL_CATEGORY_MAP,
@@ -389,8 +390,13 @@ export class UnifiedSettings {
       if (panelItem?.dataset.panel) {
         if (panelItem.dataset.proLocked) {
           // Absolute + routed: a relative /pro resolves against tauri://localhost
-          // in the desktop WebView, where no such route is served (#5911).
-          void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
+          // in the desktop WebView, where no such route is served (#5911). On
+          // desktop the URL also names the app's account for /pro (#10342).
+          if (this.config.isDesktopApp) {
+            void buildDesktopProHandoffUrl(`${WEB_APP_ORIGIN}/pro`).then((handoffUrl) => openExternalUrl(handoffUrl));
+          } else {
+            void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
+          }
           return;
         }
         const panelKey = panelItem.dataset.panel;

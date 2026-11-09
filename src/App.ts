@@ -6,6 +6,7 @@ import {
 } from '@/features/stock-research/stock-research-route';
 import { openStockResearchOverlay } from '@/features/stock-research/stock-research-overlay';
 import { openExternalUrl } from '@/services/external-navigation';
+import { buildDesktopProHandoffUrl } from '@/services/desktop-checkout-handoff';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
 import type { LoadAllDataTrigger } from '@/app/viewport-hydration-ledger';
@@ -3829,8 +3830,14 @@ export class App {
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
         // Absolute + routed: the relative form resolved against
-        // tauri://localhost in the desktop WebView (#5911).
-        void openExternalUrl(`${WEB_APP_ORIGIN}/pro#pricing`);
+        // tauri://localhost in the desktop WebView (#5911). On desktop the
+        // URL also names the app's account for /pro to check (#10342).
+        const plansUrl = `${WEB_APP_ORIGIN}/pro#pricing`;
+        if (isDesktopRuntime()) {
+          void buildDesktopProHandoffUrl(plansUrl).then((handoffUrl) => openExternalUrl(handoffUrl));
+        } else {
+          void openExternalUrl(plansUrl);
+        }
         if (this.followedCountriesCapDropToastTimer !== null) {
           window.clearTimeout(this.followedCountriesCapDropToastTimer);
           this.followedCountriesCapDropToastTimer = null;

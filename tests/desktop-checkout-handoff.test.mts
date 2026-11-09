@@ -324,6 +324,18 @@ afterEach(() => {
   for (const fn of [...(listeners ?? [])]) fn({ persisted: true });
 });
 
+/**
+ * The pricing fallback hashes the account fingerprint off-thread before the
+ * native launch, so one timer tick is not a reliable wait. Drain event-loop
+ * turns until the expected launches arrived, bounded so a regression fails the
+ * assertion that follows instead of hanging.
+ */
+async function settleInvocations(expected: number): Promise<void> {
+  for (let turn = 0; turn < 200 && globalThis.__desktopCheckoutHarness.invocations.length < expected; turn += 1) {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+}
+
 const PENDING_CHECKOUT_KEY = 'wm-pending-checkout';
 const PRODUCT_ID = 'pdt_0Nbtt71uObulf7fGXhQup';
 
@@ -461,7 +473,7 @@ describe('startCheckout on desktop (#5911)', () => {
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
     // Let the deferred pricing fallback (account fingerprint, then native
     // launch) settle inside THIS case rather than leak into the next harness.
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await settleInvocations(2);
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.toasts, [], 'must not announce a handoff that did not happen');
@@ -500,7 +512,7 @@ describe('startCheckout on desktop (#5911)', () => {
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
     // The fingerprint is hashed asynchronously before the native launch.
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await settleInvocations(1);
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, []);
@@ -519,7 +531,7 @@ describe('startCheckout on desktop (#5911)', () => {
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
 
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await settleInvocations(2);
     const harness = globalThis.__desktopCheckoutHarness;
     assert.equal(harness.invocations.length, 2, 'hosted checkout and default pricing fallback both attempted native launch');
     assert.deepEqual(harness.openedWindows, [], 'hosted checkout requires a native browser');

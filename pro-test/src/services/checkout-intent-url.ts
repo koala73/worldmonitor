@@ -75,6 +75,13 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
  *
  * Caller applies this BEFORE any await so a reload during the
  * post-strip async work can't re-fire checkout with the stale intent.
+ *
+ * The desktop handoff marker and account fingerprint are deliberately KEPT
+ * (#10342). They are context about where this tab came from, not intent: only
+ * the product param triggers a resume, so they cannot re-fire checkout, and
+ * the pricing buttons read them for every later click. Stripping them let a
+ * buyer who dismissed the account dialog after sign-in be charged on the next
+ * click, or after a reload, with no account check and no desktop return.
  */
 export function stripCheckoutIntentFromSearch(search: string): string {
   const params = new URLSearchParams(search);
@@ -84,8 +91,6 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_ATTRIBUTION_PARAM);
   params.delete(CHECKOUT_MISSION_PARAM);
   params.delete(CHECKOUT_PANEL_PARAM);
-  params.delete(CHECKOUT_HANDOFF_PARAM);
-  params.delete(CHECKOUT_ACCOUNT_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
