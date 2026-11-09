@@ -1569,7 +1569,7 @@
       "noSignals": "कोई अस्थिरता संकेत नहीं मिला",
       "sectionFollowing": "फ़ॉलो कर रहे हैं",
       "sectionAll": "सभी",
-      "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>S</strong>ecurity: सैन्य उड़ान/जहाज गतिविधि क्षेत्र पर</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:S:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
+      "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
       "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
       "sourceStates": {

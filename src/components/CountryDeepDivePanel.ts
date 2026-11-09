@@ -92,6 +92,7 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
 };
 import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { displayedCiiComponents } from '@/utils/cii-components';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
 import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
@@ -3970,12 +3971,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private renderComponentBars(components: CountryScore['components']): HTMLElement {
     const wrap = this.el('div', 'cdp-components');
-    const items = [
-      { label: t('countryBrief.components.unrest'), value: components.unrest, icon: '📢' },
-      { label: t('countryBrief.components.conflict'), value: components.conflict, icon: '⚔' },
-      { label: t('countryBrief.components.security'), value: components.security, icon: '🛡️' },
-      { label: t('countryBrief.components.information'), value: components.information, icon: '📡' },
-    ];
+    const display = {
+      unrest: { label: t('countryBrief.components.unrest'), icon: '📢' },
+      conflict: { label: t('countryBrief.components.conflict'), icon: '⚔' },
+      security: { label: t('countryBrief.components.security'), icon: '🛡️' },
+      information: { label: t('countryBrief.components.information'), icon: '📡' },
+    };
+    const items = displayedCiiComponents(components).map(({ key, value }) => ({ ...display[key], value }));
     for (const item of items) {
       const row = this.el('div', 'cdp-score-row');
       const icon = this.el('span', 'cdp-comp-icon', item.icon);

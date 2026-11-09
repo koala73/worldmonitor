@@ -1428,7 +1428,7 @@
     },
     "cii": {
       "noSignals": "Nu au fost detectate semnale de instabilitate",
-      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
+      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat",
       "sectionFollowing": "Following",

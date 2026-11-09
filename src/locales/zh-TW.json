@@ -1422,7 +1422,7 @@
     },
     "cii": {
       "noSignals": "未檢測到不穩定訊號",
-      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>安</strong>全：領土上空軍用飛機/艦艇</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:S:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "包含各國基準線 + 事件乘數 — 請參閱 /docs/methodology/cii-risk-scores 瞭解已釋出的表格",
       "sectionFollowing": "關注中",

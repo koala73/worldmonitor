@@ -276,6 +276,9 @@ export const COUNTRY_RISK_APP_HTML = `<!DOCTYPE html>
     COMPONENTS.forEach(function (spec) {
       var val = degraded ? null : num(comps[spec.key]);
       if (val == null) return;
+      // CII v15 scores no Security input, so this component is always 0. Showing
+      // that 0 would read as "no military activity" for a country at war.
+      if (spec.key === "militaryActivity" && !(val > 0)) return;
       any = true;
       var wrap = document.createElement("div");
       wrap.className = "comp";

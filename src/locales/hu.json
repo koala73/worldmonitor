@@ -1567,7 +1567,7 @@
     },
     "cii": {
       "noSignals": "Nincs instabilitási jelzés észlelve",
-      "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>S</strong> (Security): katonai járművek/hajók a terület felett</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:S:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
+      "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz",
       "sectionFollowing": "Following",
