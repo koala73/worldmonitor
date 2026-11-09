@@ -1,0 +1,35 @@
+{
+  "rows": [
+    {
+      "keys": [
+        "bab el mandeb",
+        "https://tech.worldmonitor.app/chokepoints/bab-el-mandeb/"
+      ],
+      "clicks": 4,
+      "impressions": 500,
+      "ctr": 0.008,
+      "position": 3.0
+    },
+    {
+      "keys": [
+        "bab el mandeb",
+        "https://www.worldmonitor.app/chokepoints/bab-el-mandeb/?ref=feed"
+      ],
+      "clicks": 1,
+      "impressions": 25,
+      "ctr": 0.04,
+      "position": 6.0
+    },
+    {
+      "keys": [
+        "world monitor live",
+        "https://www.worldmonitor.app/"
+      ],
+      "clicks": 40,
+      "impressions": 900,
+      "ctr": 0.044444,
+      "position": 1.1
+    }
+  ],
+  "responseAggregationType": "byPage"
+}
