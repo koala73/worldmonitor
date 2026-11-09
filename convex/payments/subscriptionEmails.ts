@@ -616,6 +616,7 @@ const sendPlanUpgradeAdminEmailArgs = {
   toPlanKey: v.string(),
   oldAmount: v.optional(v.number()),
   oldCurrency: v.optional(v.string()),
+  oldIsListPrice: v.optional(v.boolean()),
   newAmount: v.optional(v.number()),
   newCurrency: v.optional(v.string()),
 };
@@ -632,7 +633,8 @@ export function adminPlanUpgradeHtml(args: PlanUpgradeEmailArgs): string {
     adminRow("To", PLAN_DISPLAY[args.toPlanKey] ?? args.toPlanKey),
   ];
   if (typeof args.oldAmount === "number") {
-    rows.push(adminRow("Old Price", priceWithPeriod(args.oldAmount, args.oldCurrency ?? "USD", args.fromPlanKey)));
+    const price = priceWithPeriod(args.oldAmount, args.oldCurrency ?? "USD", args.fromPlanKey);
+    rows.push(adminRow("Old Price", args.oldIsListPrice ? `${price} (list price)` : price));
   }
   if (typeof args.newAmount === "number") {
     rows.push(adminRow("New Price", priceWithPeriod(args.newAmount, args.newCurrency ?? "USD", args.toPlanKey)));

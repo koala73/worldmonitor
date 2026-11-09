@@ -69,7 +69,7 @@ async function seedSubscription(t: ReturnType<typeof convexTest>, planKey: strin
       currentPeriodStart: NOW - 10 * DAY_MS,
       currentPeriodEnd: NOW + 20 * DAY_MS,
       dodoCustomerId: "cust_up_001",
-      rawPayload: { recurring_pre_tax_amount: amount, currency: "USD", customer: { email: "upgrader@example.com" } },
+      rawPayload: { product_id: PRODUCT_CATALOG[planKey]!.dodoProductId, recurring_pre_tax_amount: amount, currency: "USD", customer: { email: "upgrader@example.com" } },
       updatedAt: NOW - 10 * DAY_MS,
     });
   });
@@ -77,7 +77,7 @@ async function seedSubscription(t: ReturnType<typeof convexTest>, planKey: strin
 
 async function deliver(
   t: ReturnType<typeof convexTest>,
-  eventType: "subscription.plan_changed" | "subscription.updated",
+  eventType: "subscription.plan_changed" | "subscription.updated" | "subscription.renewed",
   planKey: string,
   amount: number,
   timestamp = NOW,
@@ -168,6 +168,20 @@ describe("admin plan-upgrade email", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
 
     expect(upgradeSends(sends())).toHaveLength(1);
+  });
+
+  test("a renewal carrying the new product before plan_changed does not pose as the old price", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, "pro_monthly", 3999);
+
+    await deliver(t, "subscription.renewed", "pro_business_monthly", 4999);
+    await deliver(t, "subscription.plan_changed", "pro_business_monthly", 4999);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const [email] = upgradeSends(sends());
+    expect(email?.html).toMatch(/Old Price:<\/td><td[^>]*>\$39\.99 USD \/ month \(list price\)</);
+    expect(email?.html).toMatch(/Change:<\/td><td[^>]*>\+\$10\.00 USD \/ month</);
   });
 
   test("the upgrade is announced once when subscription.updated lands before plan_changed", async () => {

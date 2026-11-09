@@ -2075,6 +2075,29 @@ export async function handleSubscriptionCancelled(
 }
 
 /**
+ * What the subscription cost on its stored plan. `subscription.renewed` can
+ * land first and replace `rawPayload` with the upgraded product while
+ * `planKey` and `dodoProductId` still name the old plan, so the payload's
+ * price counts only when its product matches. Otherwise the catalog list price
+ * stands in, flagged so the email says so.
+ */
+function previousPrice(previous: Doc<"subscriptions">): {
+  oldAmount?: number;
+  oldCurrency?: string;
+  oldIsListPrice?: boolean;
+} {
+  const raw = previous.rawPayload as { product_id?: unknown; recurring_pre_tax_amount?: unknown; currency?: unknown } | null;
+  if (raw?.product_id === previous.dodoProductId && typeof raw.recurring_pre_tax_amount === "number") {
+    return {
+      oldAmount: raw.recurring_pre_tax_amount,
+      oldCurrency: typeof raw.currency === "string" ? raw.currency : undefined,
+    };
+  }
+  const listPrice = PRODUCT_CATALOG[previous.planKey]?.priceCents;
+  return typeof listPrice === "number" ? { oldAmount: listPrice, oldCurrency: "USD", oldIsListPrice: true } : {};
+}
+
+/**
  * Tell the admin about an upgrade. Callers pass the plan stored BEFORE their
  * patch, so whichever of `plan_changed` and an active `subscription.updated`
  * applies the new product first announces it, and the other (or a replay)
@@ -2087,15 +2110,13 @@ async function notifyPlanUpgrade(
   data: DodoSubscriptionData,
 ): Promise<void> {
   if (classifyPlanChange(previous.planKey, toPlanKey) !== "upgrade" || !process.env.RESEND_API_KEY) return;
-  const old = previous.rawPayload as { recurring_pre_tax_amount?: unknown; currency?: unknown } | null;
   const userEmail = data.customer?.email?.trim() || await resolveBillingRecipient(ctx, previous);
   await ctx.scheduler.runAfter(0, internal.payments.subscriptionEmails.sendPlanUpgradeAdminEmail, {
     userId: previous.userId,
     userEmail: userEmail || undefined,
     fromPlanKey: previous.planKey,
     toPlanKey,
-    oldAmount: typeof old?.recurring_pre_tax_amount === "number" ? old.recurring_pre_tax_amount : undefined,
-    oldCurrency: typeof old?.currency === "string" ? old.currency : undefined,
+    ...previousPrice(previous),
     newAmount: data.recurring_pre_tax_amount,
     newCurrency: data.currency,
   });
