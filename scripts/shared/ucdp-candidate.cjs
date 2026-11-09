@@ -346,8 +346,9 @@ async function fetchCandidateWindow(fetchPage, newest, { fromMs, throughVersion 
  * own window. A run whose candidate releases failed is annual-only or partial:
  * its newest event can be months behind the cached one, and publishing it
  * anchors the CII's window there, collapsing every UCDP term until the next
- * good run. An incomplete run still publishes when the cache holds nothing
- * better (no window, an incomplete one, or one ending no later).
+ * good run. A partial run ending on the cached window's date would only punch
+ * holes in it. An incomplete run still publishes when the cache holds nothing
+ * better (no window, an incomplete one, or one ending earlier).
  *
  * `readExisting` resolves the cached payload, unwrapped, or null, and rejects
  * when Redis could not answer: an unknown cache is kept, since one skipped
@@ -363,7 +364,7 @@ async function keepLastGoodUcdpWindow(readExisting, runWindow) {
     return true;
   }
   const cached = existing?.window;
-  return cached?.complete === true && Number.isFinite(cached.endMs) && cached.endMs > runWindow.endMs;
+  return cached?.complete === true && Number.isFinite(cached.endMs) && cached.endMs >= runWindow.endMs;
 }
 
 // An event scores the place it happens (owner ruling, 2026-10-23). UCDP GED

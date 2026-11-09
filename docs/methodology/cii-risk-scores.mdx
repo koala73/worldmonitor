@@ -286,7 +286,7 @@ Component details that are easy to miss:
   (reported as `window.upstreamGapMonths`); anywhere else it is a failed fetch,
   because a quota or an outage can answer 400 too, and the check fails. A run
   whose window is incomplete does not replace a complete cached window that
-  ends later: the writers extend the cached key's TTL and leave its seed-meta
+  ends on the same date or later: the writers extend the cached key's TTL and leave its seed-meta
   alone, because an annual-only payload would anchor the window on the annual
   release's last event. The result is reported as `inputs.ucdp.window` on
   `seed-meta:intelligence:risk-scores`, and `/api/health` reads a failed check

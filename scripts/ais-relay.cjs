@@ -3214,7 +3214,7 @@ async function seedUcdpEvents() {
       unpublishedReleases,
     };
 
-    // Never replace a complete window with one that ends earlier. No seed-meta
+    // Never replace a complete window with an incomplete one that reaches no further. No seed-meta
     // write: health should reflect the age of the data actually served.
     const keepCached = await ucdpKeepLastGoodWindow(async () => {
       let readFailure = null;
@@ -3223,7 +3223,7 @@ async function seedUcdpEvents() {
       return cached;
     }, window);
     if (keepCached) {
-      console.warn(`[UCDP] Window incomplete and ending ${new Date(latestMs).toISOString().slice(0, 10)}, behind the cached window (or the cache was unreadable), extending existing key TTL (preserving last good data)`);
+      console.warn(`[UCDP] Window incomplete and ending ${new Date(latestMs).toISOString().slice(0, 10)}, no later than the cached window (or the cache was unreadable), extending existing key TTL (preserving last good data)`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }

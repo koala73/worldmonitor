@@ -312,6 +312,10 @@ describe('a run that cannot complete its window keeps the last good one', () => 
       assert.equal(await decide({ window: { complete: true, endMs: 1_001 } }), true);
     });
 
+    it('keeps a complete cached window that ends on the same date as this incomplete run', async () => {
+      assert.equal(await decide({ window: { complete: true, endMs: 1_000 } }), true);
+    });
+
     it('publishes a complete run without reading the cache', async () => {
       let reads = 0;
       const keep = await ucdpCandidate.keepLastGoodUcdpWindow(async () => { reads += 1; return recentGood; }, { complete: true, endMs: 1_000 });
@@ -323,7 +327,6 @@ describe('a run that cannot complete its window keeps the last good one', () => 
       assert.equal(await decide(null), false, 'no cached value');
       assert.equal(await decide({ events: [] }), false, 'a pre-window payload has no window to protect');
       assert.equal(await decide({ window: { complete: false, endMs: 9_999 } }), false, 'cached window is incomplete');
-      assert.equal(await decide({ window: { complete: true, endMs: 1_000 } }), false, 'cached window does not end later');
       assert.equal(await decide({ window: { complete: true, endMs: 999 } }), false, 'cached window ends earlier');
       assert.equal(await decide({ window: { complete: true } }), false, 'cached window has no end');
     });
