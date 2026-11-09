@@ -8,9 +8,12 @@
 # crates/tauri-bundler/src/bundle/linux/appimage/linuxdeploy.rs, tauri-cli
 # v2.10.1). It skips every file that already exists, so fetching them here with
 # retries, into the directory CI also caches, keeps a GitHub download outage
-# from failing the build. Keep the file names and URLs in step with that
-# function when @tauri-apps/cli is upgraded: a name that drifts only means the
-# bundler downloads that tool itself again.
+# from failing the build. A tool this script cannot fetch is left for the
+# bundler to download itself, so prefetching is never worse than not
+# prefetching: an outage past the retry budget, or an old asset removed after a
+# CLI upgrade renamed it, does not fail the build here. Keep the file names and
+# URLs in step with that function when @tauri-apps/cli is upgraded, or the
+# drifted tool goes back to being downloaded without retry.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -37,7 +40,10 @@ fetch() {
   if [ -s "$TOOLS_DIR/$name" ]; then
     echo "cached: $name"
   else
-    bash "$SCRIPT_DIR/fetch-with-retry.sh" "$url" "$TOOLS_DIR/$name" || return 1
+    if ! bash "$SCRIPT_DIR/fetch-with-retry.sh" "$url" "$TOOLS_DIR/$name"; then
+      echo "::warning::$name not prefetched; the bundler will download it itself" >&2
+      return 0
+    fi
     echo "fetched: $name"
   fi
   chmod +x "$TOOLS_DIR/$name"
@@ -53,5 +59,4 @@ fetch "linuxdeploy-plugin-gstreamer.sh" \
   "https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh"
 # Optional in the bundler: without it linuxdeploy uses its built-in version.
 fetch "linuxdeploy-plugin-appimage.AppImage" \
-  "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-$ARCH.AppImage" ||
-  echo "::warning::linuxdeploy-plugin-appimage unavailable; the bundler falls back to its built-in version" >&2
+  "https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-$ARCH.AppImage"
