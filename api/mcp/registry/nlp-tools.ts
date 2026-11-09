@@ -166,6 +166,15 @@ const SOURCE_PROVENANCE_PROPERTIES = {
   ...OUTLET_PROFILE_OUTPUT_PROPERTIES,
 };
 
+/**
+ * The claim card with each headline's outlet profile. buildClaimCard stays
+ * profile-free because the /verify page bundles it and the outlet table would ride along.
+ */
+function claimCardWithOutletProfiles(...args: Parameters<typeof buildClaimCard>) {
+  const card = buildClaimCard(...args);
+  return { ...card, headlines: card.headlines.map((headline) => withOutletProfile(headline.source, headline)) };
+}
+
 function nlpTruncateUtf8(value: string, maxBytes: number): string {
   let bytes = 0;
   let end = 0;
@@ -1180,7 +1189,7 @@ export const NLP_TOOLS: ToolDef[] = [
       ]);
       if (search && search.state !== 'unavailable') {
         return {
-          ...buildClaimCard(claim, search.candidates, search.searchedHeadlines),
+          ...claimCardWithOutletProfiles(claim, search.candidates, search.searchedHeadlines),
           factChecks,
           generatedAt: search.readAt,
           variant,
@@ -1189,7 +1198,7 @@ export const NLP_TOOLS: ToolDef[] = [
       // The claim pool searches the English full edition's feeds; other languages need translation first.
       const digest = await fetchNlpNewsItems(base, context, { languages: ['en'], editions: [variant], echo: false }, '', execution);
       return {
-        ...buildClaimCard(claim, digest.items),
+        ...claimCardWithOutletProfiles(claim, digest.items),
         factChecks,
         generatedAt: digest.generatedAt,
         variant: digest.variant,
