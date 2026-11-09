@@ -47,8 +47,8 @@ export const CII_FORMULA_VERSION = 'v14';
 /**
  * ACLED Conflict activity log curve, used before the fatality and civilian
  * boosts where a deployment holds an ACLED licence. Raw activity is weighted
- * by event type (battles 3, violence against civilians 5; explosions score as
- * strike pressure instead), then mapped to this cap with
+ * by event type (battles 3, explosions/remote violence 4, violence against
+ * civilians 5), then mapped to this cap with
  * `log1p(raw) / log1p(pivot) * cap`. No per-country multiplier is applied.
  */
 export const CII_CONFLICT_ACTIVITY_CAP = 70;
@@ -135,17 +135,14 @@ export const CII_GDELT_LEVEL_PROTEST_SATURATION = 0.08;
  * once the strikes stop P halves every three days and is under 4% of its peak
  * after two weeks.
  *
- * x_d = max(confirmed_d, gdelt_d, acled_d), never the sum (one strike, several
+ * ACLED explosions/remote violence are not read here: a licensed deployment
+ * scores them once, in the ACLED Conflict term.
+ *
+ * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, several
  * reporters):
  *  - confirmed_d, from the Middle East strike feed (conflict:strike-pressure:v1,
  *    and the 72h conflict:iran-events:v1 window it is built from), is each
  *    incident weighted by severity (SEVERITY_WEIGHTS).
- *  - acled_d, where a deployment holds an ACLED licence, is the weight of the
- *    country's heaviest ACLED "Explosions/Remote violence" row that day: high
- *    if it killed someone, else elevated. A day carries one row's weight, never
- *    a row count. These rows score here and nowhere else, and they raise the
- *    boost only: the floor reads P from confirmed_d and gdelt_d alone, so no
- *    count of ACLED rows can put a country on the floor.
  *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1), is CAMEO 194/195
  *    coverage of strikes on the country as a share of its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
  *    GDELT_NOISE_FLOOR). Absolute counts are media-volume biased (Oct 5-18

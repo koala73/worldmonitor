@@ -418,8 +418,8 @@ interface CountrySignals {
   protests: number;
   riots: number;
   battles: number;
+  explosions: number;
   civilianViolence: number;
-  fatalities: number;
   protestFatalities: number;
   conflictFatalities: number;
   /** GDELT term, 0..CII_GDELT_ESCALATION_CAP: max(escalation over the country's own norm, sustained level). */
@@ -437,8 +437,6 @@ interface CountrySignals {
   gpsMediumCount: number;
   /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
   strikePressure: number;
-  /** P from the confirmed feed and GDELT only: the strike floor's input. ACLED never sets the floor. */
-  strikeFloorPressure: number;
   orefAlertCount: number;
   orefHistoryCount24h: number;
   advisoryLevel: AdvisoryLevel | null;
@@ -473,8 +471,8 @@ interface CountrySignals {
 
 function emptySignals(): CountrySignals {
   return {
-    protests: 0, riots: 0, battles: 0, civilianViolence: 0,
-    fatalities: 0, protestFatalities: 0, conflictFatalities: 0,
+    protests: 0, riots: 0, battles: 0, explosions: 0, civilianViolence: 0,
+    protestFatalities: 0, conflictFatalities: 0,
     gdeltConflictEscalation: 0,
     gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
@@ -483,7 +481,6 @@ function emptySignals(): CountrySignals {
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
     strikePressure: 0,
-    strikeFloorPressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
     advisoryProvenance: 'absent',
@@ -1352,8 +1349,6 @@ export interface CiiCountryTerms {
   /** The largest floor candidate; it binds when it exceeds the rounded blend. */
   floor: number;
   strikePressure: number;
-  /** Strike pressure from the confirmed feed and GDELT only, which sets the strike floor. */
-  strikeFloorPressure: number;
   combinedScore: number;
 }
 
@@ -1385,12 +1380,9 @@ export function computeCIIScores(
   }
 
   // --- ACLED ingestion with fatality split and time decay ---
-  // Events 0-7 days old: weight 1.0 (full impact)
-  // Events 8-30 days old: weight 0.4 (partial — captures post-ceasefire/post-conflict tail)
-  // Explosions/remote violence are strikes: they go to the country's strike
-  // days (below), where they merge with the strike feed and GDELT strikes by
-  // the larger per day, and nowhere else, so one airstrike counts once.
-  const acledStrikes: Record<string, StrikeDays> = {};
+  // getAcledFetchWindows returns two windows, and each weighs differently:
+  // recent, days 0-7 back: weight 1.0 (full impact)
+  // older, days 8-30 back: weight 0.4 (partial — captures post-ceasefire/post-conflict tail)
   for (const ev of acled) {
     const code = normalizeCountryName(ev.country);
     if (!code || !data[code]) continue;
@@ -1412,17 +1404,12 @@ export function computeCIIScores(
       data[code].battles += weight;
       data[code].conflictFatalities += fat;
     } else if (type.includes('explosion') || type.includes('remote')) {
-      // Dated by the UTC day it happened; an event that killed someone weighs as
-      // a high-severity strike, any other as elevated (the strike feed's scale).
-      // A day carries one row's weight at most, never a row count.
-      const date = strikeUtcDay(computedAt - Math.max(0, ev.daysAgo ?? 0) * DAY_MS);
-      const days = (acledStrikes[code] ??= {});
-      days[date] = Math.max(days[date] ?? 0, fatalities > 0 ? CII_STRIKE_SEVERITY_WEIGHTS.high : CII_STRIKE_SEVERITY_WEIGHTS.elevated);
+      data[code].explosions += weight;
+      data[code].conflictFatalities += fat;
     } else if (type.includes('violence')) {
       data[code].civilianViolence += weight;
       data[code].conflictFatalities += fat;
     }
-    data[code].fatalities += fat;
   }
 
   // --- GDELT conflict and protest escalation, every country ---
@@ -1567,8 +1554,8 @@ export function computeCIIScores(
 
   // --- Strike pressure (v12): confirmed feed and GDELT, per day the larger, decayed ---
   // The 72h window and the 30-day tally carry the same events (max per day).
-  // GDELT strikes count for every country; ACLED does not gate them. A
-  // country's ACLED explosion rows join the same per-day max, never the sum.
+  // GDELT strikes count for every country; ACLED does not gate them. ACLED
+  // explosion rows are not read here: they score once, in the Conflict term.
   const confirmedStrikes = Object.entries(confirmedStrikeDaysFromEvents(aux.iranEvents, computedAt))
     .reduce<Record<string, StrikeDays>>((out, [code, days]) => {
       out[code] = maxStrikeDays(out[code], days);
@@ -1577,11 +1564,7 @@ export function computeCIIScores(
   const gdeltStrikes = aux.gdeltCountryEvents;
   for (const code of Object.keys(data)) {
     const gdelt = gdeltStrikeDays(gdeltStrikes?.byCountry?.[code]?.strikes, gdeltStrikes?.strikeDays, computedAt);
-    const reported = maxStrikeDays(confirmedStrikes[code], gdelt);
-    // ACLED may raise the strike boost but never the strike floor: a floor a
-    // count of ACLED rows could trip would be a step on an event count.
-    data[code]!.strikeFloorPressure = strikePressure(reported, computedAt);
-    data[code]!.strikePressure = strikePressure(maxStrikeDays(reported, acledStrikes[code]), computedAt);
+    data[code]!.strikePressure = strikePressure(maxStrikeDays(confirmedStrikes[code], gdelt), computedAt);
   }
 
   // --- OREF (IL only) ---
@@ -1639,8 +1622,7 @@ export function computeCIIScores(
     ));
 
     // --- Conflict score: max(ACLED conflict, GDELT conflict term) + OREF ---
-    // Explosions/remote violence score as strike pressure, not here.
-    const conflictActivityRaw = d.battles * 3 + d.civilianViolence * 5;
+    const conflictActivityRaw = d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5;
     const acledScore = Math.round(logScaledScore(
       conflictActivityRaw,
       CII_CONFLICT_ACTIVITY_CAP,
@@ -1754,7 +1736,7 @@ export function computeCIIScores(
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
     const advisoryFloor = d.advisoryLevel === 'do-not-travel' ? 60
       : d.advisoryLevel === 'reconsider' ? 50 : 0;
-    const strikeFloor = Math.round(strikePressureFloor(d.strikeFloorPressure));
+    const strikeFloor = Math.round(strikePressureFloor(d.strikePressure));
     const floor = Math.max(ucdpFloor, advisoryFloor, strikeFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
@@ -1780,7 +1762,6 @@ export function computeCIIScores(
         floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
         floor,
         strikePressure: d.strikePressure,
-        strikeFloorPressure: d.strikeFloorPressure,
         combinedScore: composite,
       };
     }

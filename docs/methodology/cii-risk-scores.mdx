@@ -104,7 +104,7 @@ exposed on the wire as `CiiComponents`:
 | Wire field | Editorial meaning |
 |---|---|
 | `cii_contribution` (**U**nrest) | Civil disorder pressure: the larger of an ACLED unrest term (protests + riots, fatalities from those events, and a high-severity unrest boost) and a GDELT protest term (escalation or sustained level, below), plus confirmed internet/power outages. ACLED is optional: it scores only where a deployment holds an ACLED licence and only in countries with ACLED rows; WorldMonitor's own deployment has no ACLED access, so production scores on GDELT. Reflects pre-violent friction. |
-| `geo_convergence` (**C**onflict) | Kinetic activity: the larger of an ACLED conflict term (battles and violence-against-civilians events; ACLED explosions/remote violence score as strike pressure) and a GDELT conflict term (escalation or sustained level, below), plus Israel OREF alert pressure. Strikes on the country count through strike pressure (below), on the composite, not in this component. ACLED event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: the larger of an ACLED conflict term (battles, explosions/remote violence and violence-against-civilians events) and a GDELT conflict term (escalation or sustained level, below), plus Israel OREF alert pressure. Strikes on the country count through strike pressure (below), on the composite, not in this component. ACLED event activity is log-scaled before the component cap so moderate and extreme event volumes remain ordered; square-root fatality scaling prevents single-event saturation. |
 | `military_activity` (**S**ecurity) | Hard-security pressure on the country: foreign military flights and vessels located in it (×2), aviation disruptions (closures/delays), and GPS-jamming hex density. The country's own air force and navy do not score (v14). |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
@@ -153,15 +153,6 @@ Component details that are easy to miss:
     day each incident happened (`conflict:strike-pressure:v1`); the 72h
     window it is built from (`conflict:iran-events:v1`) is read too, and the
     larger per day wins.
-  - **ACLED explosions/remote violence**, only where a deployment holds an ACLED
-    licence: the day weighs as one `high` strike if any of the country's ACLED
-    explosion rows that day killed someone, else one `elevated` strike. A day
-    carries one row's weight, never a row count. These rows score here and
-    nowhere else, so an airstrike that ACLED and GDELT both report counts once.
-    They raise the strike boost only: the strike floor reads `P` from the
-    confirmed feed and GDELT alone, so no count of ACLED rows can put a country
-    on the floor. Their deaths no longer reach the ACLED `fatalityScore`; Stage
-    C's violence-family merge owns that gap.
   - **GDELT strikes**, worldwide: articles reporting CAMEO 194 (artillery, tanks) or 195 (aerial weapons:
     air, drone and missile strikes) located in the country **and** aimed at it
     (the event's target, Actor2, is that country), as a share of the country's
@@ -420,8 +411,7 @@ register a high `combinedScore` than a country with `baselineRisk = 50`
 
 **ACLED terms.** Where ACLED rows exist, the ACLED Conflict term is
 `min(70, log1p(rawActivity) / log1p(4000) * 70)` with
-`rawActivity = battles * 3 + civilianViolence * 5` (explosions score as strike
-pressure instead), plus
+`rawActivity = battles * 3 + explosions * 4 + civilianViolence * 5`, plus
 square-root fatality scaling (up to 40) and the civilian boost (up to 10). The
 ACLED Unrest term is `min(50, (protests + riots) * 8)` plus a fatality boost
 (up to 30) and the severity boost (up to 20). The log curve keeps distance

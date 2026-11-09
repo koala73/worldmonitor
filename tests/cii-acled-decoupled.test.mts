@@ -104,21 +104,19 @@ describe('CII ACLED is per country: an optional source that never gates another 
       return {
         unrest: p.unrestBase + p.unrestFatalityBoost + p.unrestSeverityBoost,
         conflict: p.acledScore + p.fatalityScore + p.civilianBoost,
-        // Explosions/remote violence score as strike pressure.
-        strike: terms[code].strikePressure,
       };
     };
     for (const code of CODES) {
       for (const type of ACLED_TYPES) {
         const grew = (next: ReturnType<typeof parts>, prev: ReturnType<typeof parts>) =>
-          next.unrest >= prev.unrest && next.conflict >= prev.conflict && next.strike >= prev.strike;
-        let prev = { unrest: 0, conflict: 0, strike: 0 };
+          next.unrest >= prev.unrest && next.conflict >= prev.conflict;
+        let prev = { unrest: 0, conflict: 0 };
         for (const n of [1, 2, 3, 5, 8, 13, 22, 40, 100, 400]) {
           const next = parts(Array.from({ length: n }, () => row(code, type)), code);
           assert.ok(grew(next, prev), `${code} ${type} ${n} events`);
           prev = next;
         }
-        prev = { unrest: 0, conflict: 0, strike: 0 };
+        prev = { unrest: 0, conflict: 0 };
         for (const deaths of [0, 1, 4, 10, 50, 500]) {
           const next = parts([row(code, type, deaths)], code);
           assert.ok(grew(next, prev), `${code} ${type} ${deaths} deaths`);
@@ -146,90 +144,105 @@ describe('CII ACLED is per country: an optional source that never gates another 
     assert.equal(seen.size, 1, `ACLED terms differ across countries: ${[...seen].join(' | ')}`);
   });
 
-  it('a country with ACLED rows takes the larger of its ACLED and GDELT terms, never the sum', () => {
-    const fixture = FIXTURES[0]!;
-    const base = byRegion(table(fixture, []).rows);
-    const withRows = byRegion(table(fixture, CODES.map((code) => row(code, 'Battles', 1))).rows);
-    for (const code of CODES) {
-      const before = base.get(code)!;
-      const after = withRows.get(code)!;
-      const acled = after.parts.acledScore + after.parts.fatalityScore + after.parts.civilianBoost;
-      assert.equal(after.components.conflict, Math.min(100, after.parts.orefBoost + Math.max(acled, after.parts.gdeltConflict)), code);
-      assert.equal(after.parts.gdeltConflict, before.parts.gdeltConflict, `${code} GDELT conflict term must not depend on ACLED`);
-      assert.equal(after.parts.gdeltUnrest, before.parts.gdeltUnrest, `${code} GDELT unrest term must not depend on ACLED`);
-      assert.equal(after.strikePressure, before.strikePressure, `${code} strike pressure must not depend on ACLED battles`);
-    }
-  });
-
-  it('an airstrike reported by ACLED and by GDELT counts once: strike days take the larger, never the sum (P6)', () => {
-    // ACLED "Explosions/Remote violence" and GDELT CAMEO 194/195 strikes report
-    // the same incidents. Each ACLED explosion row reaches one term only (strike
-    // pressure), so the same days from both sources score as the larger source.
-    const NOW = Date.parse('2026-10-19T12:00:00Z');
-    const DAY = 86_400_000;
-    const date = (n: number) => new Date(NOW - n * DAY).toISOString().slice(0, 10);
-    const background = (code: string | null, share: [number, number]) => quietAux({
-      gdeltCountryEvents: code ? gdeltCountryEventsFromSeed({
-        byCountry: { [code]: { conflict: null, protest: null, week: null, strikes: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [date(i), share])) } },
-        baselineReady: false, currentComplete: false, weekReady: false,
-        strikeDays: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [date(i), 96])), updatedAt: NOW - 600_000,
-      }, NOW) : null,
+  for (const type of ['Battles', 'Explosions/Remote violence']) {
+    it(`a country with ${type} rows takes the larger of its ACLED and GDELT terms, never the sum`, () => {
+      const fixture = FIXTURES[0]!;
+      const base = byRegion(table(fixture, []).rows);
+      const withRows = byRegion(table(fixture, CODES.map((code) => row(code, type, 1))).rows);
+      for (const code of CODES) {
+        const before = base.get(code)!;
+        const after = withRows.get(code)!;
+        const acled = after.parts.acledScore + after.parts.fatalityScore + after.parts.civilianBoost;
+        assert.ok(acled > 0, `${code} ${type} must reach the ACLED Conflict term`);
+        assert.equal(after.components.conflict, Math.min(100, after.parts.orefBoost + Math.max(acled, after.parts.gdeltConflict)), code);
+        assert.equal(after.parts.gdeltConflict, before.parts.gdeltConflict, `${code} GDELT conflict term must not depend on ACLED`);
+        assert.equal(after.parts.gdeltUnrest, before.parts.gdeltUnrest, `${code} GDELT unrest term must not depend on ACLED`);
+        assert.equal(after.strikePressure, before.strikePressure, `${code} strike pressure must not depend on ACLED rows`);
+      }
     });
-    // ACLED rows on exactly the days GDELT counts as strike days, so every day
-    // has both reporters and the merge must equal the larger source.
-    const explosions = (code: string, share: [number, number], perDay: number, deaths: number) => {
-      const gdelt = (background(code, share).gdeltCountryEvents as any);
-      const days = Object.keys(gdeltStrikeDays(gdelt.byCountry[code].strikes, gdelt.strikeDays, NOW));
-      assert.ok(days.length > 0, 'the GDELT campaign counts');
-      return days.flatMap((d) => {
-        const ago = Math.round((NOW - Date.parse(`${d}T12:00:00Z`)) / DAY);
-        return Array.from({ length: perDay }, () => row(code, 'Explosions/Remote violence', deaths, ago));
-      });
+  }
+
+  describe('a licensed deployment: ACLED explosions/remote violence score in Conflict, not in strike pressure', () => {
+    const LICENSED_FIXTURE = FIXTURES.find((f) => f.label === '2026-10-23T0946Z')!;
+    const EXPLOSION = 'Explosions/Remote violence';
+    /** 60 shelling rows a day for 30 days, one row in three fatal, and no other ACLED type. */
+    const shelling = (code: string) => Array.from({ length: 30 }, (_, day) =>
+      Array.from({ length: 60 }, (_, i) => row(code, EXPLOSION, i % 3 === 0 ? 1 : 0, day))).flat();
+    const terms = (rows: AcledRow[], code: string, aux = quietAux()) => {
+      const out: Record<string, any> = {};
+      computeCIIScores(rows, aux, { nowMs: FIXTURES[0]!.nowMs }, out);
+      return out[code];
     };
-    const worst: string[] = [];
-    for (const code of CODES) {
-      for (const share of [[3, 359], [20, 359], [150, 400]] as Array<[number, number]>) {
-        for (const [perDay, deaths] of [[1, 0], [3, 2], [10, 20]]) {
-          const terms = (rows: AcledRow[], withGdelt: boolean) => {
-            const out: Record<string, any> = {};
-            computeCIIScores(rows, background(withGdelt ? code : null, share), { nowMs: NOW }, out);
-            return out[code];
-          };
-          const acledOnly = terms(explosions(code, share, perDay, deaths), false);
-          const gdeltOnly = terms([], true);
-          const both = terms(explosions(code, share, perDay, deaths), true);
-          const excess = both.blended - Math.max(acledOnly.blended, gdeltOnly.blended);
-          if (excess > 1e-9) worst.push(`${code} share=${share} ${perDay}/day deaths=${deaths}: +${excess.toFixed(2)} blend`);
+
+    it('shelling-heavy ACLED keeps a material Conflict score (a shelling war is not Conflict 0)', () => {
+      assert.ok(LICENSED_FIXTURE, 'the committed fixture this regression was measured on');
+      const base = byRegion(table(LICENSED_FIXTURE, []).rows);
+      for (const code of CODES) {
+        const after = byRegion(table(LICENSED_FIXTURE, shelling(code)).rows).get(code)!;
+        // 1008 decayed rows at weight 4 reach the activity cap; 336 decayed deaths the fatality cap.
+        assert.equal(after.parts.acledScore, 70, `${code} activity`);
+        assert.equal(after.parts.fatalityScore, 40, `${code} fatalities`);
+        assert.equal(after.components.conflict, 100, `${code} Conflict`);
+        // The blend, not the combined score: a country held on a floor (SA, strike floor 40+) keeps the floor.
+        assert.ok(after.blended > base.get(code)!.blended, `${code} must blend above its no-ACLED table`);
+      }
+    });
+
+    it('an explosion row weighs 4, a battle 3, and its deaths reach the fatality term', () => {
+      for (const code of CODES) {
+        const explosions = terms(Array.from({ length: 30 }, () => row(code, EXPLOSION)), code).parts;
+        const battles = terms(Array.from({ length: 40 }, () => row(code, 'Battles')), code).parts;
+        assert.equal(explosions.acledScore, battles.acledScore, `${code}: 30 explosions and 40 battles are both raw 120`);
+        assert.equal(terms([row(code, EXPLOSION, 16)], code).parts.fatalityScore, 20, `${code}: 16 deaths score sqrt(16) * 5`);
+      }
+    });
+
+    it('ACLED shelling never reaches strike pressure, the strike boost or the strike floor', () => {
+      const fixtureBase = byRegion(table(LICENSED_FIXTURE, []).rows);
+      for (const code of CODES) {
+        // A fatal three-rows-a-day burst and a 30-day campaign: neither reads as a strike.
+        for (const rows of [Array.from({ length: 3 }, () => row(code, EXPLOSION, 4, 0)), shelling(code)]) {
+          const quiet = terms(rows, code);
+          assert.equal(quiet.strikePressure, 0, `${code}: ACLED rows are not strike days`);
+          assert.equal(quiet.boosts.strikePressure, 0, `${code}: no strike boost from ACLED`);
+          assert.equal(quiet.floors.strike, 0, `${code}: no strike floor from ACLED`);
+          const after = byRegion(table(LICENSED_FIXTURE, rows).rows).get(code)!;
+          const before = fixtureBase.get(code)!;
+          assert.equal(after.strikePressure, before.strikePressure, `${code}: strike pressure reads the confirmed feed and GDELT only`);
+          assert.equal(after.boosts.strikePressure, before.boosts.strikePressure, `${code}: strike boost unchanged by ACLED`);
+          assert.equal(after.floors.strike, before.floors.strike, `${code}: strike floor unchanged by ACLED`);
         }
       }
-    }
-    assert.deepEqual(worst.slice(0, 5), [], `${worst.length} double-counted cases`);
-  });
+    });
 
-  it('ACLED explosion rows raise the strike boost but never put a country on the strike floor', () => {
-    // A floor that a count of ACLED rows can trip is a step on an event count:
-    // three fatal shelling rows in one day once summed to P = 6, past the floor's
-    // P = 5 threshold, and jumped the country onto a floor of 40+. A day takes
-    // one row's weight at most, and only the confirmed feed and GDELT set the floor.
-    const nowMs = FIXTURES[0]!.nowMs;
-    const quiet = quietAux();
-    const strike = (rows: AcledRow[], code: string) => {
-      const terms: Record<string, any> = {};
-      computeCIIScores(rows, quiet, { nowMs }, terms);
-      return terms[code];
-    };
-    for (const code of CODES) {
-      const calm = strike([], code);
-      const oneDay = strike(Array.from({ length: 3 }, () => row(code, 'Explosions/Remote violence', 4, 0)), code);
-      assert.equal(oneDay.floors.strike, 0, `${code}: 3 fatal rows in a day must not bind the strike floor`);
-      assert.ok(oneDay.boosts.strikePressure > calm.boosts.strikePressure, `${code}: ACLED rows still raise the boost`);
-      const oneRow = strike([row(code, 'Explosions/Remote violence', 4, 0)], code);
-      assert.equal(oneDay.boosts.strikePressure, oneRow.boosts.strikePressure, `${code}: a day carries one row's weight, not a row count`);
-      // A three-week ACLED-only campaign, 10 fatal rows a day: boost only.
-      const campaign = strike(Array.from({ length: 21 }, (_, d) => Array.from({ length: 10 }, () => row(code, 'Explosions/Remote violence', 2, d))).flat(), code);
-      assert.equal(campaign.floors.strike, 0, `${code}: an ACLED-only campaign never binds the strike floor`);
-      assert.ok(campaign.boosts.strikePressure > oneDay.boosts.strikePressure, `${code}: a longer campaign raises the boost further`);
-    }
+    it('a GDELT strike campaign scores the same with or without ACLED shelling on the same days', () => {
+      const NOW = Date.parse('2026-10-19T12:00:00Z');
+      const DAY = 86_400_000;
+      const date = (n: number) => new Date(NOW - n * DAY).toISOString().slice(0, 10);
+      const code = 'UA';
+      const gdeltCountryEvents = gdeltCountryEventsFromSeed({
+        byCountry: { [code]: { conflict: null, protest: null, week: null, strikes: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [date(i), [3, 359]])) } },
+        baselineReady: false, currentComplete: false, weekReady: false,
+        strikeDays: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [date(i), 96])), updatedAt: NOW - 600_000,
+      }, NOW);
+      const days = Object.keys(gdeltStrikeDays((gdeltCountryEvents as any).byCountry[code].strikes, (gdeltCountryEvents as any).strikeDays, NOW));
+      assert.ok(days.length > 0, 'the GDELT campaign counts');
+      const rows = days.flatMap((d) => {
+        const ago = Math.round((NOW - Date.parse(`${d}T12:00:00Z`)) / DAY);
+        return Array.from({ length: 10 }, () => row(code, EXPLOSION, 20, ago));
+      });
+      const score = (acled: AcledRow[]) => {
+        const out: Record<string, any> = {};
+        computeCIIScores(acled, quietAux({ gdeltCountryEvents }), { nowMs: NOW }, out);
+        return out[code];
+      };
+      const gdeltOnly = score([]);
+      const both = score(rows);
+      assert.ok(gdeltOnly.strikePressure > 0, 'the GDELT campaign sets strike pressure');
+      assert.equal(both.strikePressure, gdeltOnly.strikePressure);
+      assert.equal(both.boosts.strikePressure, gdeltOnly.boosts.strikePressure);
+      assert.equal(both.floors.strike, gdeltOnly.floors.strike);
+    });
   });
 
   for (const fixture of FIXTURES) {
