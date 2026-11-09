@@ -802,7 +802,13 @@ export class DataLoaderManager implements AppModule {
     };
   }
 
-  private async tryFetchDigest(): Promise<SelectedNewsDigest | null> {
+  /**
+   * `firstFailure` is set only on the one retry below: the failure that earned
+   * it, so this load's single report names what happened and how the retry went.
+   */
+  private async tryFetchDigest(
+    firstFailure: { error: unknown; deadlineExpired: boolean } | null = null,
+  ): Promise<SelectedNewsDigest | null> {
     const now = Date.now();
     // Capture request and persistence scope together. Sampling the language again
     // after the response would let an old-language request populate the new
@@ -870,6 +876,7 @@ export class DataLoaderManager implements AppModule {
         return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
+      if (firstFailure) this.reportDigestFetchFailure(firstFailure.error, 'none', firstFailure.deadlineExpired, 'recovered');
       this.reportDigestCoverage(data);
       return { digest: data, servedStale: data.coverage?.servedStale === true };
     } catch (e) {
@@ -886,7 +893,30 @@ export class DataLoaderManager implements AppModule {
       const currentKey = this.digestCacheKey();
       const retained = this.getRetainedDigest(currentKey);
       const fallback = retained ?? await this.loadPersistedDigest(currentKey);
-      this.reportDigestFetchFailure(e, retained ? 'retained' : fallback ? 'saved' : 'none', deadlineExpired);
+      // Nothing to show and a failure a second request can clear: try once more
+      // now rather than leave the news panels empty until the next refresh
+      // (Sentry WORLDMONITOR-1D4: the CDN serves this route, and requests that
+      // timed out had mostly never reached the origin).
+      if (
+        !firstFailure
+        && !fallback
+        && currentKey === requestKey
+        && this.digestBreaker.state === 'closed'
+        && isRetryableDigestFailure(classifyDigestFetchFailure(e, deadlineExpired))
+        && !(typeof navigator !== 'undefined' && navigator.onLine === false)
+        && !isPageUnloading()
+      ) {
+        console.info('[News] Retrying the digest once: no saved copy to show');
+        return this.tryFetchDigest({ error: e, deadlineExpired });
+      }
+      const reported = firstFailure ?? { error: e, deadlineExpired };
+      this.reportDigestFetchFailure(
+        reported.error,
+        retained ? 'retained' : fallback ? 'saved' : 'none',
+        reported.deadlineExpired,
+        firstFailure ? 'failed' : 'none',
+        firstFailure ? classifyDigestFetchFailure(e, deadlineExpired) : undefined,
+      );
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
     }
@@ -902,6 +932,8 @@ export class DataLoaderManager implements AppModule {
     error: unknown,
     fallback: 'retained' | 'saved' | 'none',
     deadlineExpired: boolean,
+    retry: 'none' | 'recovered' | 'failed',
+    retryFailure?: DigestFetchFailureKind,
   ): void {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (isPageUnloading()) return;
@@ -918,6 +950,11 @@ export class DataLoaderManager implements AppModule {
         // The error's name only: messages can carry URLs. Without it an
         // "other" failure says nothing about what went wrong.
         'digest.error': digestErrorName(error),
+        // Whether the one retry ran: 'recovered' rendered fresh news after a
+        // delay, 'failed' left the panels empty, 'none' was not attempted.
+        'digest.retry': retry,
+        // How the retry itself failed, which can differ from the first failure.
+        ...(retryFailure ? { 'digest.retry.failure': retryFailure } : {}),
       },
       extra: { timeoutMs: this.digestRequestTimeoutMs },
       // Tags do not split issues; one group per kind keeps timeouts, 5xx and
@@ -5434,6 +5471,15 @@ export function classifyDigestFetchFailure(error: unknown, deadlineExpired = fal
   if (message === 'digest returned 0 categories') return 'empty-body';
   if (error instanceof TypeError) return 'network';
   return 'other';
+}
+
+/**
+ * Failures a second request can clear: a stalled or dropped connection, or a
+ * 5xx from the CDN or origin. A 4xx, a malformed body or an empty digest would
+ * come back the same.
+ */
+function isRetryableDigestFailure(kind: DigestFetchFailureKind): boolean {
+  return kind === 'timeout' || kind === 'network' || kind === 'http-5xx';
 }
 
 /** A short, PII-free label for a digest failure: the error's name, or its type. */

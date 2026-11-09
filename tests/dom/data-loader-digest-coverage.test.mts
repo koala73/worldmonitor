@@ -580,6 +580,131 @@ describe('digest coverage follows the selected browser response', () => {
       expect(captured()[0]!.ctx.tags['digest.failure']).toBe('network');
     });
 
+    // Sentry WORLDMONITOR-1D4 after the 25 s deadline shipped: the server had
+    // answered every digest in under 20 s, and most timed-out requests never
+    // reached the origin at all (the CDN serves this route). A request that
+    // stalls on the way left a browser with no saved copy showing empty news
+    // until the next refresh, 10 minutes later. One immediate retry covers it.
+    describe('a stalled first request with nothing to show', () => {
+      it('retries once and renders the retry', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        const fresh = digest('complete', 3);
+        vi.mocked(globalThis.fetch)
+          .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+          .mockResolvedValueOnce(new Response(JSON.stringify(fresh)));
+
+        const result = await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({ digest: fresh, servedStale: false });
+        expect(internal.persistDigest).toHaveBeenCalledWith('digest:current', fresh);
+        expect(internal.digestBreaker).toMatchObject({ state: 'closed', failures: 0 });
+        // The stall still happened, so it is still reported, marked as recovered.
+        const events = captured();
+        expect(events).toHaveLength(1);
+        expect(events[0]!.ctx.tags).toMatchObject({
+          'digest.failure': 'timeout',
+          'digest.fallback': 'none',
+          'digest.retry': 'recovered',
+        });
+        expect(events[0]!.ctx.tags).not.toHaveProperty('digest.retry.failure');
+      });
+
+      it('gives up after the retry fails and reports both attempts as one event', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        vi.mocked(globalThis.fetch)
+          .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        const result = await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        expect(result).toBeNull();
+        // Two real failures: the breaker counts both.
+        expect(internal.digestBreaker.state).toBe('open');
+        const events = captured();
+        expect(events).toHaveLength(1);
+        expect(events[0]!.ctx.tags).toMatchObject({
+          'digest.failure': 'timeout',
+          'digest.fallback': 'none',
+          'digest.retry': 'failed',
+          'digest.retry.failure': 'network',
+        });
+      });
+
+      it('retries a CDN 5xx as well', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        vi.mocked(globalThis.fetch)
+          .mockResolvedValueOnce(new Response('', { status: 522 }))
+          .mockResolvedValueOnce(new Response(JSON.stringify(digest('complete', 3))));
+
+        expect(await internal.tryFetchDigest()).not.toBeNull();
+        expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      });
+
+      it('does not retry when a copy is on screen to fall back to', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+        await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+        expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.fallback': 'retained', 'digest.retry': 'none' });
+      });
+
+      it('does not retry when a saved copy exists', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.loadPersistedDigest = vi.fn().mockResolvedValue(digest('complete', 3));
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+      });
+
+      it('does not retry a failure a second request would repeat', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response('', { status: 404 }));
+
+        await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+      });
+
+      it('does not retry while the breaker is probing a recovery', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.digestBreaker = { state: 'open', failures: 2, cooldownUntil: 0 };
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        await internal.tryFetchDigest();
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+      });
+
+      it('does not retry while the browser reports itself offline', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        try {
+          await internal.tryFetchDigest();
+        } finally {
+          online.mockRestore();
+        }
+
+        expect(globalThis.fetch).toHaveBeenCalledOnce();
+      });
+    });
+
     it('stays quiet while the browser reports itself offline', async () => {
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';
