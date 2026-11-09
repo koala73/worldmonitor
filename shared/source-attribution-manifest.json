@@ -5055,6 +5055,9 @@
           "path": "scripts/generate-airline-codes.mjs"
         },
         {
+          "path": "scripts/mcp-tool-canary.mjs"
+        },
+        {
           "path": "scripts/seed-research.mjs"
         },
         {
@@ -11197,6 +11200,9 @@
         },
         {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
+        },
+        {
+          "path": "scripts/mcp-tool-canary.mjs"
         },
         {
           "path": "scripts/measure-mobile-mainthread.mjs"
