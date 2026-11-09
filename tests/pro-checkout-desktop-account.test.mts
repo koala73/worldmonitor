@@ -123,10 +123,14 @@ async function fixture(options: FixtureOptions = {}) {
     assert.ok(button, `dialog button ${suffix} must exist`);
     button.dispatchEvent(new browser.MouseEvent('click', { bubbles: true }));
   };
-  // setTimeout is mocked, and the fingerprint hash resolves off the microtask
-  // queue, so drain real event-loop turns instead.
-  const settle = async () => {
-    for (let turn = 0; turn < 10; turn++) await new Promise(resolve => setImmediate(resolve));
+  // setTimeout is mocked, so drain real event-loop turns instead. The account
+  // fingerprint is hashed on the threadpool, which a loaded CI runner does not
+  // finish within a fixed number of turns: when the effect being awaited sits
+  // behind a hash, pass `until` and wait for it (bounded, so a regression fails
+  // the assertion that follows instead of hanging).
+  const settle = async (until?: () => boolean) => {
+    const turns = until ? 2_000 : 10;
+    for (let turn = 0; turn < turns && !until?.(); turn++) await new Promise(resolve => setImmediate(resolve));
   };
   return {
     checkout, clerk, navigations, signIns, requestBodies, signOuts: () => signOuts, dialog, click, settle,
@@ -171,7 +175,7 @@ it('"switch account" signs the browser out and re-opens sign-in with the bound i
   const fingerprint = await fingerprintCheckoutAccount('user_desktop');
   await f.checkout.startCheckout('pro_monthly', { desktopHandoff: true, accountFingerprint: fingerprint });
   f.click('switch');
-  await f.settle();
+  await f.settle(() => f.signIns.length === 1);
   assert.equal(f.signOuts(), 1);
   assert.deepEqual(f.navigations, [], 'the buyer must stay on /pro while switching accounts');
   assert.equal(f.signIns.length, 1);
@@ -190,7 +194,7 @@ it('"upgrade this account anyway" checks out as a plain browser purchase', async
     accountFingerprint: await fingerprintCheckoutAccount('user_desktop'),
   });
   f.click('anyway');
-  await f.settle();
+  await f.settle(() => f.navigations.length === 1);
   assert.equal(f.dialog(), null);
   assert.equal(f.requestBodies.length, 1);
   // The desktop app will not update, so the return page must not say it will.
@@ -273,10 +277,11 @@ it('does not charge a different account that became active while the dialog was 
   // Another tab switched this browser to a third account.
   f.clerk.user = { id: 'user_third', primaryEmailAddress: { emailAddress: 'third@example.com' } };
   f.click('anyway');
-  await f.settle();
+  // The re-run hashes the new account before it can show the dialog again.
+  const reasked = () => (f.dialog()?.textContent ?? '').includes('third@example.com');
+  await f.settle(reasked);
   assert.equal(f.requestBodies.length, 0, 'the button named browser@example.com, not third@example.com');
-  const text = f.dialog()?.textContent ?? '';
-  assert.ok(text.includes('third@example.com'), 'the check runs again for the account that is now active');
+  assert.ok(reasked(), 'the check runs again for the account that is now active');
 });
 
 it('still reopens sign-in when Clerk signs out without running the callback', async () => {
@@ -285,7 +290,7 @@ it('still reopens sign-in when Clerk signs out without running the callback', as
   const f = await fixture({ signOut: 'no-callback' });
   await f.checkout.startCheckout('pro_monthly', await mismatched());
   f.click('switch');
-  await f.settle();
+  await f.settle(() => f.signIns.length === 1);
   assert.equal(f.signIns.length, 1, 'the dialog is closed, so something must open');
   assert.deepEqual(f.navigations, []);
 });
@@ -294,7 +299,7 @@ it('tells the buyer when switching accounts fails', async () => {
   const f = await fixture({ signOut: 'reject' });
   await f.checkout.startCheckout('pro_monthly', await mismatched());
   f.click('switch');
-  await f.settle();
+  await f.settle(() => document.querySelector('[role="alert"]') !== null);
   assert.equal(f.signIns.length, 0);
   assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /sign out and try again/i);
 });
@@ -328,7 +333,7 @@ it('does not retry a pending payment for an account that changed while its dialo
   // Another tab switched this browser to a third account.
   f.clerk.user = THIRD;
   confirm.dispatchEvent(new browser.MouseEvent('click', { bubbles: true }));
-  await f.settle();
+  await f.settle(() => accountChangedToast() !== '');
   assert.equal(f.requestBodies.length, 1, 'the retry must not charge an account that never passed the check');
   assert.match(accountChangedToast(), /account changed/i);
 });
@@ -350,7 +355,7 @@ it('does not charge when the chosen browser account changes just before the requ
   await f.checkout.startCheckout('pro_monthly', await mismatched());
   armed = true;
   f.click('anyway');
-  await f.settle();
+  await f.settle(() => accountChangedToast() !== '');
   assert.equal(f.requestBodies.length, 0, 'the buyer chose browser@example.com, not third@example.com');
   assert.match(accountChangedToast(), /account changed/i);
 });
