@@ -52,6 +52,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Transit Anomaly](#corpus-transit-anomaly)
 - [Country Exposure](#corpus-country-exposure)
 - [Provenance](#corpus-provenance)
+- [Open data](#corpus-open-data)
 - [Known Limits](#corpus-known-limits)
 - [Corrections](#corpus-corrections)
 - [Chokepoint explainers](#corpus-chokepoint-explainers)
@@ -1032,6 +1033,25 @@ Refresh cadence:
 - `energy:chokepoint-flows:v1`: Railway seed loop every 6 hours.
 - `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
 - `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
+
+<a id="corpus-open-data"></a>
+## Open data
+
+The daily status of every tracked chokepoint is published as an open dataset under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It needs no key or
+signup.
+
+- [Latest snapshot, JSON](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [Latest snapshot, CSV](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [Available dates](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [Datasheet](https://www.worldmonitor.app/data/v1/chokepoints/README.md): columns, withheld fields, licence and limits
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+One snapshot is published a day, at about 06:23 UTC, from the public
+`GetChokepointStatus` response this page describes. Each day also keeps a dated
+file (`YYYY-MM-DD.json` and `.csv`), and an earlier day is never rewritten.
+Third-party figures such as the EIA baselines and raw PortWatch counts are not
+in the dataset. The datasheet lists every withheld field and the reason.
 
 <a id="corpus-known-limits"></a>
 ## Known Limits
