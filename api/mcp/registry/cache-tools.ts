@@ -4019,6 +4019,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           // useful answer for an agent. Declared as it is actually served.
           hazardAlertLevel: { type: ['string', 'null'] },
           hazardAlertName: { type: ['string', 'null'] },
+          latestDate: { type: 'string', description: 'Last IMF PortWatch day in the 7-day window behind flowRatio, YYYY-MM-DD. Absent on an estimate cached before the field existed.' },
         } },
       },
     }),

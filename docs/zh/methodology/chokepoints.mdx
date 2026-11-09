@@ -78,6 +78,10 @@ AIS 中断匹配、威胁分类、中断评分和战争风险等级，但在添�
 
 `disrupted` 布尔值与颜色徽章是分开的：当最近三个单独天数各自都低于相同 `baseline90d` 的 85% 时，它为 true。
 
+`latestDate` 是 7 天窗口覆盖的最后一个 PortWatch 日期。PortWatch 的发布滞后约四天，
+且并非每天更新，因此 `flowRatio` 可能连续数天保持不变。通过 `latestDate`
+可以判断该比率的时效。对于在该字段出现之前缓存的估算，它是空字符串。
+
 每个发布的流量估算还可能包含来自
 `portwatch:disruptions:active:v1` 的实时风险上下文。seeder 在受支持咽喉要道 500 公里范围内查找最近的活跃
 GDACS `RED` 或 `ORANGE` 警报，并将其作为 `hazardAlertLevel` 和 `hazardAlertName` 呈现。这只是标注：风险丰富化不会改变 `currentMbd`、`flowRatio` 或
