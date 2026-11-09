@@ -16,26 +16,31 @@ const FETCH = join(root, 'scripts/fetch-with-retry.sh');
 const PREFETCH = join(root, 'scripts/prefetch-appimage-tools.sh');
 
 // curl stub: fails the first FAKE_CURL_FAILS calls, and every call whose URL
-// contains FAKE_CURL_FAIL_MATCH; otherwise writes the URL to --output.
+// contains FAKE_CURL_FAIL_MATCH, with HTTP FAKE_CURL_FAIL_CODE (default 504)
+// after writing partial data to --output, as a cut-off transfer does;
+// otherwise writes the URL to --output. Prints the status like --write-out.
 const FAKE_CURL = `#!/usr/bin/env bash
 out=""; url=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --output) out=$2; shift 2 ;;
-    --connect-timeout|--max-time) shift 2 ;;
+    --connect-timeout|--max-time|--write-out) shift 2 ;;
     -*) shift ;;
     *) url=$1; shift ;;
   esac
 done
 echo "$url" >> "$FAKE_LOG_DIR/curl.log"
 n=$(wc -l < "$FAKE_LOG_DIR/curl.log")
-if [ "$n" -le "\${FAKE_CURL_FAILS:-0}" ]; then
-  echo "curl: (22) The requested URL returned error: 504" >&2; exit 22
-fi
-if [ -n "\${FAKE_CURL_FAIL_MATCH:-}" ] && [[ "$url" == *"$FAKE_CURL_FAIL_MATCH"* ]]; then
-  echo "curl: (22) The requested URL returned error: 504" >&2; exit 22
-fi
+fail() {
+  printf 'partial' > "$out"
+  printf '%s' "\${FAKE_CURL_FAIL_CODE:-504}"
+  echo "curl: (22) The requested URL returned error: \${FAKE_CURL_FAIL_CODE:-504}" >&2
+  exit 22
+}
+if [ "$n" -le "\${FAKE_CURL_FAILS:-0}" ]; then fail; fi
+if [ -n "\${FAKE_CURL_FAIL_MATCH:-}" ] && [[ "$url" == *"$FAKE_CURL_FAIL_MATCH"* ]]; then fail; fi
 printf 'payload:%s' "$url" > "$out"
+printf '200'
 `;
 const FAKE_SLEEP = `#!/usr/bin/env bash
 echo "$1" >> "$FAKE_LOG_DIR/sleep.log"
@@ -87,6 +92,44 @@ describe('fetch-with-retry.sh', () => {
     assert.match(result.stderr, /Download failed after 7 attempts/);
     assert.deepEqual(lines('sleep.log'), ['10', '20', '40', '60', '90', '120']);
     assert.deepEqual(readdirSync(join(dir, 'out')), [], 'a failed download must not leave a file the bundler would trust');
+  });
+
+  it('fails at once on a permanent client error', () => {
+    const { dir, run, lines } = sandbox();
+    const dest = join(dir, 'out', 'tool');
+    const result = run(FETCH, ['https://example.test/tool', dest], {
+      FAKE_CURL_FAILS: '99',
+      FAKE_CURL_FAIL_CODE: '404',
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /HTTP 404 \(not retried\)/);
+    assert.equal(lines('curl.log').length, 1);
+    assert.deepEqual(lines('sleep.log'), []);
+    assert.deepEqual(readdirSync(join(dir, 'out')), []);
+  });
+
+  // 200 here is a transfer cut off after the status line (e.g. --max-time).
+  for (const code of ['408', '429', '000', '200']) {
+    it(`retries HTTP ${code}`, () => {
+      const { dir, run, lines } = sandbox();
+      const result = run(FETCH, ['https://example.test/tool', join(dir, 'out', 'tool')], {
+        FAKE_CURL_FAILS: '1',
+        FAKE_CURL_FAIL_CODE: code,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(lines('sleep.log'), ['10']);
+    });
+  }
+
+  it('replaces a stale destination rather than appending to it', () => {
+    const { dir, run } = sandbox();
+    const dest = join(dir, 'out', 'tool');
+    spawnSync('mkdir', ['-p', join(dir, 'out')]);
+    writeFileSync(dest, 'stale-bytes-from-an-old-copy');
+    const result = run(FETCH, ['https://example.test/tool', dest], { FAKE_CURL_FAILS: '1' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(dest, 'utf8'), 'payload:https://example.test/tool');
+    assert.deepEqual(readdirSync(join(dir, 'out')), ['tool']);
   });
 });
 
