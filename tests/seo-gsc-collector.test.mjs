@@ -17,7 +17,7 @@ import {
   buildInventory,
   BRAND_QUERY_PATTERN,
   isBrandQuery,
-  markdownCell,
+  queryCell,
   pickIndexStatus,
   QuotaExhaustedError,
   weeklyTotals,
@@ -839,7 +839,7 @@ describe('Search Console site totals and brand split', () => {
   });
 
   it('keeps Markdown in a query cell from rendering as links, images or HTML', () => {
-    const cell = markdownCell('[x](https://a.example/) <img src=y> ![i](z) www.a.example `c` *b* _d_ ~e~');
+    const cell = queryCell('[x](https://a.example/) <img src=y> ![i](z) www.a.example `c` *b* _d_ ~e~');
     assert.doesNotMatch(cell, /(?<!\\)</);
     for (const live of ['[x](', '![i]', 'https://', 'www.a', '`c`', '*b*', '_d_', '~e~']) {
       assert.equal(cell.includes(live), false, `${live} stays live in ${cell}`);

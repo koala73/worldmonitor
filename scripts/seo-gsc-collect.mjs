@@ -1627,7 +1627,7 @@ function renderSearchTotals(performance) {
     lines.push('|---|---|---:|---:|---:|---:|');
     for (const row of primary.topQueries) {
       const ctr = row.impressions > 0 ? row.clicks / row.impressions : null;
-      lines.push(`| ${markdownCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
+      lines.push(`| ${queryCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
     }
     lines.push('');
   }
@@ -1655,16 +1655,23 @@ function renderSearchTotals(performance) {
   for (const row of lowClick) {
     const page = row.page === null ? 'n/a' : markdownCell(row.page.replace('https://www.worldmonitor.app', '') || '/');
     const desktop = row.desktopShare === null ? 'n/a' : `${Math.round(row.desktopShare * 100)}%`;
-    lines.push(`| ${markdownCell(row.query)} | ${page} | ${row.impressions} | ${row.clicks} | ${percent(row.clicks / row.impressions)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} | ${desktop} | ${row.likelyAutomated ? 'yes' : 'no'} |`);
+    lines.push(`| ${queryCell(row.query)} | ${page} | ${row.impressions} | ${row.clicks} | ${percent(row.clicks / row.impressions)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} | ${desktop} | ${row.likelyAutomated ? 'yes' : 'no'} |`);
   }
   lines.push('');
   return lines;
 }
 
-// A query is user text in a report that merges without a person reading it.
-// Escape what would end the table cell or render as a link, image or HTML, and
-// `:` and `.` because GFM autolinks a bare URL, www. host or email address.
+// Escape the backslash first, then the pipe that would end the table cell, and
+// flatten line breaks.
 const markdownCell = (value) => String(value)
+  .replace(/\\/g, '\\\\')
+  .replace(/\|/g, '\\|')
+  .replace(/[\r\n]+/g, ' ');
+
+// A query is user text in a report that merges without a person reading it, so
+// nothing in it may render as a link, image or HTML. `:` and `.` are included
+// because GFM autolinks a bare URL, www. host or email address.
+export const queryCell = (value) => String(value)
   .replace(/[\\|`*_[\]()<>!~:.]/g, '\\$&')
   .replace(/[\r\n]+/g, ' ');
 
