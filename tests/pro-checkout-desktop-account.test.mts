@@ -360,6 +360,24 @@ it('does not charge when the chosen browser account changes just before the requ
   assert.match(accountChangedToast(), /account changed/i);
 });
 
+it('pins the account the check compared, not whoever is signed in when the hash finishes', async () => {
+  // The fingerprint is hashed asynchronously. If the browser account changes
+  // during that hash, the check has approved the OLD account: pinning the
+  // account read afterwards would approve one that never passed the check.
+  const fingerprint = await fingerprintCheckoutAccount(BROWSER_USER.id);
+  const f = await fixture();
+  const digest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+  mock.method(globalThis.crypto.subtle, 'digest', async (...args: Parameters<typeof digest>) => {
+    const result = await digest(...args);
+    f.clerk.user = THIRD;
+    return result;
+  });
+  const ok = await f.checkout.startCheckout('pro_monthly', { desktopHandoff: true, accountFingerprint: fingerprint });
+  assert.equal(ok, false);
+  assert.equal(f.requestBodies.length, 0, 'third@example.com never passed the account check');
+  assert.match(accountChangedToast(), /account changed/i);
+});
+
 it('leaves unbound checkouts alone: no handoff, no account pinning', async () => {
   const f = await fixture({ onToken: (clerk) => { clerk.user = THIRD; } });
   assert.equal(await f.checkout.startCheckout('pro_monthly', {}), true);

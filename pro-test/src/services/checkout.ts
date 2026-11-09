@@ -271,10 +271,15 @@ interface ProCheckoutOptions {
   bypassPendingGuard?: boolean;
 }
 
-/** Pin `options` to the account that just passed the desktop account check. */
-function pinnedToApprovedAccount(c: LoadedClerk, options: ProCheckoutOptions): ProCheckoutOptions {
-  return options.desktopHandoff && options.accountFingerprint && c.user
-    ? { ...options, approvedUserId: c.user.id }
+/**
+ * Pin `options` to the account that passed the desktop account check.
+ * `checkedUserId` must be read BEFORE the check runs: the check hashes
+ * asynchronously, and the browser session can change underneath it. Reading
+ * the user afterwards would pin an account the check never compared.
+ */
+function pinnedToApprovedAccount(checkedUserId: string, options: ProCheckoutOptions): ProCheckoutOptions {
+  return options.desktopHandoff && options.accountFingerprint
+    ? { ...options, approvedUserId: checkedUserId }
     : options;
 }
 
@@ -343,8 +348,9 @@ async function startCheckoutInner(
     return false;
   }
 
+  const checkedUserId = c.user.id;
   if (!(await desktopAccountMatches(c, productId, options ?? {}))) return false;
-  return doCheckout(productId, pinnedToApprovedAccount(c, options ?? {}));
+  return doCheckout(productId, pinnedToApprovedAccount(checkedUserId, options ?? {}));
 }
 
 /**
@@ -469,8 +475,9 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
     desktopHandoff,
     accountFingerprint,
   };
+  const checkedUserId = c.user.id;
   if (!(await desktopAccountMatches(c, productId, resumed))) return false;
-  return doCheckout(productId, pinnedToApprovedAccount(c, resumed));
+  return doCheckout(productId, pinnedToApprovedAccount(checkedUserId, resumed));
 }
 
 async function doCheckout(
