@@ -697,6 +697,21 @@ describe('scorecard computation', () => {
     assert.match(markdown, new RegExp(`\\| q02 \\| [^|]+ \\| Category / definition \\| ${notReported.replace(/[.]/g, '\\.')} \\|`));
     assert.match(markdown, /\| q03 \| [^|]+ \| Category \/ definition \| No row \|/);
 
+    // A provider can report traffic without a position; the query was still reported.
+    const noPosition = structuredClone(measured);
+    noPosition.search.googleSearchConsole.queryRows.push({
+      windowLabel: '28d',
+      queryId: 'q03',
+      metrics: {
+        impressions: 20, clicks: 1, ctr: 0.05, averagePosition: null,
+      },
+    });
+    assert.deepEqual(
+      buildScorecard(querySet, noPosition).byIntent.category_definition.search
+        .googleSearchConsole.windows[0].queryCoverage,
+      { queries: 5, rows: 3, reported: 2 },
+    );
+
     const unexplained = structuredClone(measured);
     delete unexplained.search.googleSearchConsole.queryRows[1].reason;
     assert.throws(

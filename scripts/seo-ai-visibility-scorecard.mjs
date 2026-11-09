@@ -894,7 +894,7 @@ function queryCoverage(rows, windowLabel, queries) {
     queries,
     rows: windowRows.length,
     reported: windowRows.filter(({ metrics }) => (
-      SEARCH_PERFORMANCE_METRICS.every((metric) => Number.isFinite(metrics[metric]))
+      SEARCH_PERFORMANCE_METRICS.some((metric) => Number.isFinite(metrics[metric]))
     )).length,
   };
 }

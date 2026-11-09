@@ -1001,6 +1001,17 @@ describe('Search Console reviewed-query lookups', () => {
     assert.equal(snapshot.reviewedQueries.status, 'partial');
   });
 
+  it('records a row with missing counts as unavailable instead of filling in a zero', async () => {
+    const snapshot = await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async ({ expression }) => ({ rows: [{ keys: [expression], impressions: 12, position: 4 }] }),
+    }, { querySet });
+    const [lookup] = snapshot.reviewedQueries.windows[0].lookups;
+    assert.equal(lookup.status, 'unavailable');
+    assert.match(lookup.reason, /without clicks or impressions/);
+    assert.deepEqual([lookup.clicks, lookup.impressions, lookup.position], [null, null, null]);
+  });
+
   it('is unavailable with a reason when no query set is supplied', async () => {
     const snapshot = await collectFrom(memoryTransport());
     assert.equal(snapshot.reviewedQueries.status, 'unavailable');

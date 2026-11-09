@@ -919,14 +919,12 @@ function readLookup(lookup, response) {
     return unmeasuredLookup(lookup, 'unavailable', 'Search Console answered with rows for other queries');
   }
   const [row] = matching;
-  return {
-    ...lookup,
-    status: 'reported',
-    reason: null,
-    clicks: finite(row.clicks) ?? 0,
-    impressions: finite(row.impressions) ?? 0,
-    position: finite(row.position),
-  };
+  const clicks = finite(row.clicks);
+  const impressions = finite(row.impressions);
+  if (clicks === null || impressions === null) {
+    return unmeasuredLookup(lookup, 'unavailable', 'Search Console returned a row without clicks or impressions');
+  }
+  return { ...lookup, status: 'reported', reason: null, clicks, impressions, position: finite(row.position) };
 }
 
 /**
