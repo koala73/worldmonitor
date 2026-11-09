@@ -6,6 +6,7 @@ import {
   ACQUISITION_TTL_MS,
   acquisitionCheckoutMetadata,
   acquisitionCookieStorage,
+  acquisitionFromCheckoutMetadata,
   captureFirstTouchAcquisition,
   loadFirstTouchAcquisition,
   normalizeAcquisitionSource,
@@ -196,5 +197,32 @@ describe('acquisitionCheckoutMetadata', () => {
   it('re-validates its input so a crafted value never reaches provider metadata', () => {
     assert.deepEqual(acquisitionCheckoutMetadata({ referrer: 'bad host', medium: 'cpc' }), { wm_acq_medium: 'cpc' });
     assert.deepEqual(acquisitionCheckoutMetadata(undefined), {});
+  });
+});
+
+describe('acquisitionFromCheckoutMetadata', () => {
+  it('reads back exactly what acquisitionCheckoutMetadata wrote', () => {
+    const source = { source: 'twitter', medium: 'social', campaign: 'launch', referrer: 't.co', landing: 'pricing', firstSeen: '2026-10-24' };
+    assert.deepEqual(acquisitionFromCheckoutMetadata(acquisitionCheckoutMetadata(source)), source);
+  });
+
+  it('ignores unrelated metadata keys and re-validates values', () => {
+    assert.deepEqual(
+      acquisitionFromCheckoutMetadata({
+        wm_user_id: 'user_1',
+        wm_attribution: 'mcp',
+        affonso_referral: 'abc',
+        wm_acq_referrer: 'direct',
+        wm_acq_first_seen: '2026-02-31',
+        wm_acq_campaign: '<script>',
+      }),
+      { referrer: 'direct', campaign: 'script' },
+    );
+  });
+
+  it('returns null when no acquisition key is usable', () => {
+    assert.equal(acquisitionFromCheckoutMetadata({ wm_user_id: 'user_1' }), null);
+    assert.equal(acquisitionFromCheckoutMetadata(undefined), null);
+    assert.equal(acquisitionFromCheckoutMetadata(['wm_acq_source']), null);
   });
 });

@@ -290,3 +290,14 @@ export function acquisitionCheckoutMetadata(input: unknown): Record<string, stri
   }
   return metadata;
 }
+
+/** The source record a checkout stamped onto provider metadata, re-validated. */
+export function acquisitionFromCheckoutMetadata(metadata: unknown): AcquisitionSource | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const raw = metadata as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const [key, metadataKey] of Object.entries(METADATA_KEYS)) {
+    fields[key] = raw[metadataKey];
+  }
+  return normalizeAcquisitionSource(fields);
+}
