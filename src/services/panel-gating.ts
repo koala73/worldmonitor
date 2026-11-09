@@ -12,12 +12,12 @@
  * none of them, so the dependency runs one way.
  */
 
-import { isDesktopRuntime } from '@/config/desktop-runtime';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import type { AuthSession } from './auth-state';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
 import { buildDesktopProHandoffUrl } from './desktop-checkout-handoff';
+import { isDesktopRuntime } from './desktop-runtime';
 import { getEntitlementState } from './entitlements';
 import { openExternalUrl } from './external-navigation';
 import type { ClientEntitlementBelief } from './premium-denial';

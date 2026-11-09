@@ -27,10 +27,6 @@ async function settledDesktopUserId(): Promise<string | null> {
   const current = getAuthState();
   if (!current.isPending) return current.user?.id ?? null;
 
-  // The click is the first thing that needs auth: start the load now instead
-  // of waiting for the idle callback. Single-flight in clerk.ts.
-  void import('./clerk').then((clerk) => clerk.initClerk()).catch(() => {});
-
   return new Promise((resolve) => {
     let done = false;
     let unsubscribe: () => void = () => {};
@@ -41,6 +37,11 @@ async function settledDesktopUserId(): Promise<string | null> {
       unsubscribe();
       resolve(userId);
     };
+    // The click is the first thing that needs auth: start the load now instead
+    // of waiting for the idle callback (single-flight in clerk.ts). A load that
+    // fails will never settle auth state, so stop waiting at once (offline
+    // desktop) rather than holding the click for the whole timeout.
+    void import('./clerk').then((clerk) => clerk.initClerk()).catch(() => finish(null));
     const timer = setTimeout(() => finish(getAuthState().user?.id ?? null), AUTH_SETTLE_TIMEOUT_MS);
     // subscribeAuthState emits the current state synchronously, so `finish`
     // can run before the unsubscribe handle exists.

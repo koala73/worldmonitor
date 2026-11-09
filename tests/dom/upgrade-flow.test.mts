@@ -149,6 +149,18 @@ describe('openUpgradePlans', () => {
     expect(showCheckoutErrorToast).not.toHaveBeenCalled();
   });
 
+  it('stops waiting at once when the Clerk load fails (offline desktop)', async () => {
+    // A failed load never settles auth state. Without this the click would
+    // sit on the full timeout before the browser opened.
+    vi.useFakeTimers();
+    desktop = true;
+    authPending = true;
+    initClerk.mockRejectedValueOnce(new Error('clerk-load-failed'));
+    await openUpgradePlans();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(openExternalUrl).toHaveBeenCalledWith('https://worldmonitor.app/pro?wm_checkout_handoff=desktop#pricing', null, NO_POPUP);
+  });
+
   it('still opens the plans, unbound, when the account cannot be hashed', async () => {
     desktop = true;
     authUser = { id: 'user_1' };

@@ -20,6 +20,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
+import { fingerprintCheckoutAccount } from '../../shared/checkout-attribution';
 
 const openBillingPortal = vi.fn(async () => ({ outcome: 'opened' as const, url: 'https://portal' }));
 const getSubscription = vi.fn<() => { planKey: string } | null>(() => null);
@@ -36,6 +37,15 @@ vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
   isDesktopRuntime: () => desktopRuntime,
 }));
 
+// The desktop handoff names the signed-in app account for /pro to check
+// (#10342). Auth is settled here; the pending-auth wait is covered in
+// tests/dom/upgrade-flow.test.mts.
+const DESKTOP_USER_ID = 'user_1';
+vi.mock('@/services/auth-state', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/auth-state')>()),
+  getAuthState: () => ({ user: { id: DESKTOP_USER_ID, name: 'U', email: 'u@example.com', role: 'free' as const }, isPending: false }),
+}));
+
 vi.mock('@/services/billing', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/billing')>()),
   openBillingPortal: (...args: unknown[]) => openBillingPortal(...(args as [])),
@@ -45,6 +55,7 @@ vi.mock('@/services/billing', async (importOriginal) => ({
 const { PanelGateReason, resolveGateAction } = await import('@/services/panel-gating');
 
 const PRO_ORIGIN = 'https://worldmonitor.app';
+const DESKTOP_ACCOUNT = await fingerprintCheckoutAccount(DESKTOP_USER_ID);
 
 let openSpy: MockInstance<typeof window.open>;
 let reloadSpy: MockInstance<() => void>;
@@ -210,7 +221,7 @@ describe('resolveGateAction — desktop runtime (#5911)', () => {
 
     expect(tauriInvocations[0]).toEqual({
       command: 'open_url',
-      payload: { url: `${PRO_ORIGIN}/pro` },
+      payload: { url: `${PRO_ORIGIN}/pro?wm_checkout_handoff=desktop&wm_checkout_account=${DESKTOP_ACCOUNT}` },
     });
     expect(openSpy).not.toHaveBeenCalled();
   });
@@ -223,7 +234,9 @@ describe('resolveGateAction — desktop runtime (#5911)', () => {
 
     expect(tauriInvocations[0]).toEqual({
       command: 'open_url',
-      payload: { url: `${PRO_ORIGIN}/pro?wm_reactivate_plan=pro_business_yearly#pricing` },
+      payload: {
+        url: `${PRO_ORIGIN}/pro?wm_reactivate_plan=pro_business_yearly&wm_checkout_handoff=desktop&wm_checkout_account=${DESKTOP_ACCOUNT}#pricing`,
+      },
     });
     expect(openSpy).not.toHaveBeenCalled();
   });
