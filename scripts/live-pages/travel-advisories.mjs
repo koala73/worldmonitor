@@ -420,8 +420,9 @@ function advisoryPageScript() {
   // no pointerType, so the tap's type comes from its pointerdown.
   // A press also focuses the country before its click (on touch, after
   // pointerup). That focus is the pointer's, so it opens no card: only
-  // keyboard focus does. The click ends the press; a press with no click
-  // ends on a timer.
+  // keyboard focus does. The click ends the press. A press released off
+  // the map gets no click, so any release starts a fallback timer, and a key
+  // press ends it at once, since keyboard focus always follows one.
   let lastPointer = '';
   let pressing = false;
   let pressTimer = 0;
@@ -434,9 +435,10 @@ function advisoryPageScript() {
     pressing = true;
     clearTimeout(pressTimer);
   });
-  map.addEventListener('pointerup', () => {
-    pressTimer = setTimeout(release, 1000);
+  document.addEventListener('pointerup', () => {
+    if (pressing) pressTimer = setTimeout(release, 1000);
   });
+  document.addEventListener('keydown', release, true);
   map.addEventListener('pointercancel', release);
   map.addEventListener('click', (event) => {
     release();

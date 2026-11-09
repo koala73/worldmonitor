@@ -207,6 +207,17 @@ describe('travel advisory map page script', () => {
     expect(tip().textContent).toContain('Tap again for the full row and links');
   });
 
+  it('still opens the card on keyboard focus after a mouse press released off the map', () => {
+    mount();
+    land('FR').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+    document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    land('VE').dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    expect(tip().hidden).toBe(false);
+    expect(tip().textContent).toContain('Venezuela');
+    expect(tip().textContent).toContain('Press Enter for the full row and links');
+  });
+
   it('matches a typed straight apostrophe against a typographic one', () => {
     mount();
     const search = document.querySelector<HTMLInputElement>('#advisory-search')!;
