@@ -39,7 +39,10 @@ import {
   CII_GDELT_LEVEL_PROTEST_SATURATION,
   CII_OUTAGE_ASN_NATIONAL_SHARE,
   CII_OUTAGE_EXAM_TERMS,
+  CII_OUTAGE_FADE_MS,
   CII_OUTAGE_FUTURE_SKEW_MS,
+  CII_OUTAGE_NEGATION_COORDINATORS,
+  CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS,
   CII_OUTAGE_NEGATION_TERMS,
   CII_OUTAGE_NEGATION_WINDOW_WORDS,
   CII_OUTAGE_SCORED_CAUSES,
@@ -211,70 +214,85 @@ export function outageCountryCode(outage: any): string | null {
 }
 
 const foldOutageText = (text: unknown) => String(text ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
-const wordRun = (text: string) => ` ${text.split(/[^\p{L}\p{N}]+/u).filter(Boolean).join(' ')} `;
 const LATIN_TERM = /^[a-z0-9 ]+$/;
 
-/**
- * Lexical term matching for outage text (see CII_OUTAGE_EXAM_TERMS): a
- * Latin-script term must equal a whole word or run of words; an
- * Arabic-script term may sit inside a word.
- */
-function outageTermMatcher(terms: readonly string[]): (text: string) => boolean {
-  const folded = terms.map(foldOutageText);
-  const latin = folded.filter((t) => LATIN_TERM.test(t)).map(wordRun);
-  const other = folded.filter((t) => !LATIN_TERM.test(t));
-  return (text) => {
-    const run = wordRun(text);
-    return latin.some((t) => run.includes(t)) || other.some((t) => text.includes(t));
-  };
-}
-const namesExam = outageTermMatcher(CII_OUTAGE_EXAM_TERMS);
+/** The words of outage text and, as their own tokens, the punctuation between them. A hyphen or apostrophe inside a word only splits it. */
+const outageTokens = (text: string): string[] => text.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}\s'’-]+/gu) ?? [];
+const foldedTerms = (terms: readonly string[]) => terms.map((term) => outageTokens(foldOutageText(term)));
+const EXAM_TERMS = foldedTerms(CII_OUTAGE_EXAM_TERMS);
+const UNREST_TERMS = foldedTerms(CII_OUTAGE_UNREST_TERMS);
+const NEGATIONS = foldedTerms(CII_OUTAGE_NEGATION_TERMS);
+const NEGATION_NOUN_PHRASE_WORDS = new Set(CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS.map(foldOutageText));
+const NEGATION_COORDINATORS = new Set(CII_OUTAGE_NEGATION_COORDINATORS.map(foldOutageText));
 
-const outageWords = (text: string) => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-const UNREST_TERMS = CII_OUTAGE_UNREST_TERMS.map((term) => outageWords(foldOutageText(term)));
-const NEGATIONS = CII_OUTAGE_NEGATION_TERMS.map((term) => outageWords(foldOutageText(term)));
-
-/** Whether `term` (as words) sits at word `i`: Latin words exactly, Arabic-script words inside the word. */
-function termAt(words: string[], i: number, term: string[]): boolean {
+/** Whether `term` (as words) sits at token `i`: Latin words exactly, Arabic-script words inside the word. */
+function termAt(tokens: string[], i: number, term: string[]): boolean {
   return term.every((part, k) => {
-    const word = words[i + k];
+    const word = tokens[i + k];
     if (word == null) return false;
     return LATIN_TERM.test(part) ? word === part : word.includes(part);
   });
 }
 
-/** Whether a negation ends within CII_OUTAGE_NEGATION_WINDOW_WORDS words before word `i`. */
-function negatedAt(words: string[], i: number): boolean {
-  for (let start = Math.max(0, i - CII_OUTAGE_NEGATION_WINDOW_WORDS); start < i; start++) {
-    for (const negation of NEGATIONS) {
-      if (start + negation.length > i) continue;
-      const hit = negation.every((part, k) => {
-        const word = words[start + k]!;
-        return word === part || (!LATIN_TERM.test(part) && word === `و${part}`);
-      });
-      if (hit) return true;
+/** Whether a negation's last word is token `last`. */
+function negationEndsAt(tokens: string[], last: number): boolean {
+  return NEGATIONS.some((negation) => {
+    const start = last - negation.length + 1;
+    if (start < 0) return false;
+    return negation.every((part, k) => {
+      const word = tokens[start + k]!;
+      return word === part || (!LATIN_TERM.test(part) && word === `و${part}`);
+    });
+  });
+}
+
+/**
+ * Whether a negation governs the term at token `i`. Walks back through the
+ * term's own noun phrase, at most CII_OUTAGE_NEGATION_WINDOW_WORDS words;
+ * anything else (punctuation, "but", a verb, an unrelated noun) ends the walk.
+ */
+function negatedAt(tokens: string[], i: number): boolean {
+  let j = i - 1;
+  let bridged = 0;
+  while (j >= 0 && bridged <= CII_OUTAGE_NEGATION_WINDOW_WORDS) {
+    if (negationEndsAt(tokens, j)) return true;
+    if (NEGATION_NOUN_PHRASE_WORDS.has(tokens[j]!)) {
+      j -= 1;
+      bridged += 1;
+    } else if (NEGATION_COORDINATORS.has(tokens[j]!) && UNREST_TERMS.some((term) => term.length === 1 && termAt(tokens, j - 1, term))) {
+      j -= 2;
+      bridged += 2;
+    } else {
+      return false;
     }
   }
   return false;
 }
 
-/** Whether the text carries an unrest term that no negation cancels (see CII_OUTAGE_NEGATION_TERMS). */
-function namesUnrest(text: string): boolean {
-  const words = outageWords(text);
-  for (let i = 0; i < words.length; i++) {
-    if (UNREST_TERMS.some((term) => termAt(words, i, term)) && !negatedAt(words, i)) return true;
+/** Whether the tokens carry one of `terms` that no negation cancels (see CII_OUTAGE_NEGATION_TERMS). */
+function namesTerm(tokens: string[], terms: string[][]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    if (terms.some((term) => termAt(tokens, i, term)) && !negatedAt(tokens, i)) return true;
   }
   return false;
 }
 
 /**
  * Whether the record is a routine exam shutdown: its description or title
- * names an exam and carries no unrest, election, conflict or military wording
- * (lexical; see CII_OUTAGE_EXAM_TERMS and CII_OUTAGE_UNREST_TERMS).
+ * names an exam, not negated, and carries no unrest, election, conflict or
+ * military wording (lexical; see CII_OUTAGE_EXAM_TERMS and
+ * CII_OUTAGE_UNREST_TERMS). The "." keeps a negation at the end of the
+ * description from reaching into the title.
  */
 export function isExamShutdown(outage: any): boolean {
-  const text = foldOutageText(`${outage?.description ?? ''} ${outage?.title ?? ''}`);
-  return namesExam(text) && !namesUnrest(text);
+  const tokens = outageTokens(foldOutageText(`${outage?.description ?? ''} . ${outage?.title ?? ''}`));
+  return namesTerm(tokens, EXAM_TERMS) && !namesTerm(tokens, UNREST_TERMS);
+}
+
+/** When the outage was last active: its end, or now while ongoing (`endedAt` 0). */
+function outageLastActive(outage: any, nowMs: number): number {
+  const end = Number(outage?.endedAt);
+  return Number.isFinite(end) && end > 0 ? Math.min(end, nowMs) : nowMs;
 }
 
 export type OutageVerdict = 'scored' | 'cause' | 'window' | 'exam' | 'asnBelowNationalShare' | 'asnImpactUnknown';
@@ -282,22 +300,23 @@ export type OutageVerdict = 'scored' | 'cause' | 'window' | 'exam' | 'asnBelowNa
 /**
  * Why an outage does or does not score now. It scores when its cause is in
  * construct (CII_OUTAGE_SCORED_CAUSES), it was active at some point in the
- * last CII_OUTAGE_WINDOW_MS, and it is not an exam shutdown. `endedAt` 0
- * means ongoing. A record with no start time cannot be placed in the window,
- * and one starting more than CII_OUTAGE_FUTURE_SKEW_MS ahead has not begun.
+ * last CII_OUTAGE_WINDOW_MS, and it is not an exam shutdown. Only a
+ * government-directed shutdown can be one: a military strike on an exam
+ * ministry is not a routine exam cut. `endedAt` 0 means ongoing. A record
+ * with no start time cannot be placed in the window, and one starting more
+ * than CII_OUTAGE_FUTURE_SKEW_MS ahead has not begun.
  * An ASN-attributed record (`attribution: 'asn'`, set by the parser from the
  * payload's `asnOutages`) also needs a measured national impact above
  * CII_OUTAGE_ASN_NATIONAL_SHARE; an unmeasured one, or an upper bound above
  * it, is unknown and never scores.
  */
 export function outageVerdict(outage: any, nowMs: number): OutageVerdict {
-  if (!CII_OUTAGE_SCORED_CAUSES.has(String(outage?.cause || '').toUpperCase())) return 'cause';
+  const cause = String(outage?.cause || '').toUpperCase();
+  if (!CII_OUTAGE_SCORED_CAUSES.has(cause)) return 'cause';
   const start = Number(outage?.detectedAt);
   if (!Number.isFinite(start) || start <= 0 || start > nowMs + CII_OUTAGE_FUTURE_SKEW_MS) return 'window';
-  const end = Number(outage?.endedAt);
-  const lastActive = Number.isFinite(end) && end > 0 ? Math.min(end, nowMs) : nowMs;
-  if (lastActive < nowMs - CII_OUTAGE_WINDOW_MS) return 'window';
-  if (isExamShutdown(outage)) return 'exam';
+  if (outageLastActive(outage, nowMs) < nowMs - CII_OUTAGE_WINDOW_MS) return 'window';
+  if (cause === 'GOVERNMENT_DIRECTED' && isExamShutdown(outage)) return 'exam';
   if (outage?.attribution === 'asn') {
     const impact = outage?.nationalImpact == null ? NaN : Number(outage.nationalImpact);
     if (!Number.isFinite(impact)) return 'asnImpactUnknown';
@@ -309,6 +328,55 @@ export function outageVerdict(outage: any, nowMs: number): OutageVerdict {
 
 export function isScoredOutage(outage: any, nowMs: number): boolean {
   return outageVerdict(outage, nowMs) === 'scored';
+}
+
+function outageSeverityPoints(outage: any): number {
+  const sev = String(outage?.severity || '').toUpperCase();
+  if (sev.includes('TOTAL') || sev === 'NATIONWIDE') return 30;
+  if (sev.includes('MAJOR') || sev === 'REGIONAL') return 15;
+  if (sev.includes('PARTIAL') || sev.includes('LOCAL') || sev.includes('MINOR')) return 5;
+  return 0;
+}
+
+/** A record's weight: 1 until the last CII_OUTAGE_FADE_MS of the window, then linear to 0 (P3). */
+function outageFade(outage: any, nowMs: number): number {
+  const remaining = CII_OUTAGE_WINDOW_MS - (nowMs - outageLastActive(outage, nowMs));
+  return Math.max(0, Math.min(1, remaining / CII_OUTAGE_FADE_MS));
+}
+
+/**
+ * Raw outage points per country, uncapped. Records of one country whose
+ * intervals overlap (transitively) are one shutdown filed several times, so
+ * they count once, at their highest faded severity (P6). The maximum of
+ * continuous fades has no step (P3).
+ */
+function outagePointsByCountry(outages: any[], nowMs: number): Map<string, number> {
+  const scored = new Map<string, any[]>();
+  for (const outage of outages) {
+    const code = outageCountryCode(outage);
+    if (!code || !isScoredOutage(outage, nowMs)) continue;
+    const records = scored.get(code);
+    if (records) records.push(outage);
+    else scored.set(code, [outage]);
+  }
+  const points = new Map<string, number>();
+  for (const [code, records] of scored) {
+    records.sort((a, b) => Number(a.detectedAt) - Number(b.detectedAt));
+    let total = 0;
+    let shutdownEnd = -Infinity;
+    let shutdownPeak = 0;
+    for (const record of records) {
+      if (Number(record.detectedAt) > shutdownEnd) {
+        total += shutdownPeak;
+        shutdownPeak = 0;
+        shutdownEnd = -Infinity;
+      }
+      shutdownEnd = Math.max(shutdownEnd, outageLastActive(record, nowMs));
+      shutdownPeak = Math.max(shutdownPeak, outageSeverityPoints(record) * outageFade(record, nowMs));
+    }
+    points.set(code, total + shutdownPeak);
+  }
+  return points;
 }
 
 function climateSeverityScore(value: unknown): number {
@@ -556,9 +624,8 @@ interface CountrySignals {
   gdeltUnrestEscalation: number;
   ucdpWar: boolean;
   ucdpMinor: boolean;
-  outageTotalCount: number;
-  outageMajorCount: number;
-  outagePartialCount: number;
+  /** Raw outage points (see outagePointsByCountry), before the cap of 50. */
+  outagePoints: number;
   climateSeverity: number;
   fireCount: number;
   fireHighCount: number;
@@ -605,7 +672,7 @@ function emptySignals(): CountrySignals {
     gdeltConflictEscalation: 0,
     gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
-    outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
+    outagePoints: 0,
     climateSeverity: 0,
     fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
@@ -1642,13 +1709,8 @@ export function computeCIIScores(
 
   // --- Outages (string enum severity) ---
   // Only government-directed and military-action outages active inside the window.
-  for (const o of aux.outages) {
-    const code = outageCountryCode(o) ?? '';
-    if (!data[code] || !isScoredOutage(o, computedAt)) continue;
-    const sev = String(o.severity || '').toUpperCase();
-    if (sev.includes('TOTAL') || sev === 'NATIONWIDE') data[code].outageTotalCount++;
-    else if (sev.includes('MAJOR') || sev === 'REGIONAL') data[code].outageMajorCount++;
-    else if (sev.includes('PARTIAL') || sev.includes('LOCAL') || sev.includes('MINOR')) data[code].outagePartialCount++;
+  for (const [code, points] of outagePointsByCountry(aux.outages, computedAt)) {
+    if (data[code]) data[code].outagePoints = points;
   }
 
   // --- Climate ---
@@ -1816,7 +1878,7 @@ export function computeCIIScores(
     const unrestFatalityBoost = Math.min(30, d.protestFatalities * 5 * multiplier);
     // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
     const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
-    const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
+    const outageBoost = Math.min(50, d.outagePoints);
     const unrest = Math.min(100, Math.round(
       unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost + d.gdeltUnrestEscalation,
     ));

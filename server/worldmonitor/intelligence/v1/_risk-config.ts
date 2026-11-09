@@ -211,6 +211,14 @@ export const CII_OUTAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const CII_OUTAGE_ASN_NATIONAL_SHARE = 0.4;
 /**
+ * A record's weight falls linearly from 1 to 0 over this last part of
+ * CII_OUTAGE_WINDOW_MS, measured from when it was last active. Without the
+ * fade a 50-point outage term left the score in one step on the day it aged
+ * out, 7.5 final points against P3's limit of 5. 50 raw points over 24 hours
+ * is at most about 0.3 final points an hour.
+ */
+export const CII_OUTAGE_FADE_MS = 24 * 60 * 60 * 1000;
+/**
  * A record's start time may run this far ahead of the scorer's clock (producer
  * and scorer clocks differ), the same 5 minutes the strike feed allows.
  */
@@ -260,26 +268,43 @@ export const CII_OUTAGE_UNREST_TERMS: readonly string[] = [
   'militaires', 'couvre feu',
   // Round-2 review: a strike here is a labour action; whole words only, so "airstrike" does not match.
   'protested', 'strike', 'strikes', 'rally', 'rallies', 'militant', 'militants', 'violence', 'security operation',
+  'war', 'wars', 'attack', 'attacks', 'armed', 'insurgent', 'insurgents', 'insurgency', 'offensive', 'crackdown', 'crackdowns',
   'protesta', 'protestas', 'disturbios', 'elecciones', 'toque de queda', 'golpe de estado',
   'احتجاج', 'مظاهرات', 'تظاهرات', 'اضطرابات', 'انتخابات', 'اشتباكات', 'قتال', 'عسكري', 'حظر التجول', 'حظر تجول', 'انقلاب', 'نزاع',
   'خۆپیشاندان', 'ئاژاوە', 'هەڵبژاردن', 'شەڕ', 'سەربازی', 'کودەتا',
 ];
 /**
- * A negation within the three words before an unrest term cancels it: "Exam
- * season shutdown, no protests reported" is still a routine exam shutdown.
- * Matched LEXICALLY like the terms above: Latin-script entries must equal a
- * word (or run of words); Arabic-script entries must equal a word or follow
- * the conjunction "و" attached to it ("ولا"). English, French, Spanish,
- * Arabic and Kurdish (Sorani).
+ * A negation cancels the exam or unrest term in its own noun phrase: "Exam
+ * season shutdown, no protests reported" is still a routine exam shutdown,
+ * and "Shutdown, not related to exams" is not one. Only the next word, or
+ * CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS, may sit between the negation and the
+ * term, so a clause boundary (punctuation, "but", "mais", "pero", "لكن") or
+ * any other word ends its reach: in "without warning as protests spread" the
+ * protests are not negated. A miss keeps a real shutdown scoring, the safer
+ * error. Matched LEXICALLY like the terms above: Latin-script entries must
+ * equal a word (or run of words); Arabic-script entries must equal a word or
+ * follow the conjunction "و" attached to it ("ولا"). English, French,
+ * Spanish, Arabic and Kurdish (Sorani).
  */
 export const CII_OUTAGE_NEGATION_TERMS: readonly string[] = [
-  'no', 'not', 'without', 'never', 'lack of', 'none',
+  'no', 'not', 'without', 'never', 'lack of', 'none', 'unrelated',
   'pas', 'sans', 'aucun', 'aucune', 'jamais', 'ni',
   'sin', 'ningun', 'ninguna', 'nunca',
   'لا', 'دون', 'بدون', 'بلا', 'لم', 'ليس', 'لن', 'عدم', 'غياب',
   'بێ', 'بەبێ', 'نە', 'هیچ',
 ];
-/** How many words before an unrest term a negation reaches. */
+/** Words that may sit between a negation and the term it cancels: determiners, modifiers and "related to" links. */
+export const CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS: readonly string[] = [
+  'a', 'an', 'any', 'the', 'even', 'single', 'major', 'large', 'scale', 'significant', 'further', 'new', 'violent',
+  'mass', 'widespread', 'national', 'reported', 'report', 'reports', 'sign', 'signs', 'evidence', 'of',
+  'related', 'linked', 'connected', 'due', 'to', 'caused', 'by', 'because', 'for',
+  'de', 'd', 'des', 'du', 'la', 'le', 'les', 'eu', 'un', 'une',
+  'hubo', 'se', 'el', 'los', 'las', 'una', 'registraron', 'reportaron',
+  'توجد', 'يوجد', 'وجود', 'أي', 'تسجل', 'تسجيل',
+];
+/** "no protests or riots": a coordinator carries a negation across one more unrest term. */
+export const CII_OUTAGE_NEGATION_COORDINATORS: readonly string[] = ['or', 'nor', 'ou', 'o', 'أو'];
+/** At most this many words may sit between a negation and the term it cancels. */
 export const CII_OUTAGE_NEGATION_WINDOW_WORDS = 3;
 
 /**
