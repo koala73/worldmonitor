@@ -48,7 +48,7 @@ execFileSync('bash', [SCRIPT, mode], {
 });
 ```
 
-The timeout needs `killSignal: 'SIGKILL'` to be a hard deadline. With the default `SIGTERM`, a child that ignores the signal still blocks the call until it exits on its own. A probe confirmed it: a script with `trap '' TERM` held a 300ms `execFileSync` deadline for 3030ms. With `SIGKILL` it threw `ETIMEDOUT` at 305ms, and also at 302ms when a grandchild still held stdout open.
+The timeout needs `killSignal: 'SIGKILL'` to bound the call. With the default `SIGTERM`, a child that ignores the signal still blocks the call until it exits on its own. A probe confirmed it: a script with `trap '' TERM` held a 300ms `execFileSync` deadline for 3030ms. With `SIGKILL` it threw `ETIMEDOUT` at 305ms, and also at 302ms when a grandchild still held stdout open. `SIGKILL` reaches only the direct child. That grandchild kept running, orphaned, after the call returned. The deadline frees the test, not the process tree.
 
 When a wrapper catches child errors to read `err.status`, rethrow the timeout. Otherwise a hang reads as `status: null`:
 
