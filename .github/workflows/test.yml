@@ -1031,8 +1031,9 @@ jobs:
         # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
         shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
