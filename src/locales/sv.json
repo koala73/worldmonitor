@@ -2727,6 +2727,12 @@
           "placeholder": "Valfritt"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Gillar du World Monitor?",
+      "body": "En stjärna på GitHub hjälper andra att hitta den.",
+      "star": "Stjärnmärk på GitHub",
+      "dismiss": "Dölj och fråga inte igen"
     }
   },
   "popups": {

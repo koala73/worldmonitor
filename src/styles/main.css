@@ -842,6 +842,23 @@ canvas,
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* GitHub star prompt: copy gets the full width, the action sits under it. */
+.update-toast.github-star-prompt {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "icon body close"
+    ". action action";
+  align-items: start;
+  row-gap: 10px;
+  width: min(340px, calc(100vw - 32px));
+}
+
+.github-star-prompt .update-toast-icon { grid-area: icon; }
+.github-star-prompt .update-toast-body { grid-area: body; align-self: center; }
+.github-star-prompt .update-toast-dismiss { grid-area: close; }
+.github-star-prompt .update-toast-action { grid-area: action; justify-self: start; }
+
 .beta-badge {
   display: inline-flex;
   align-items: center;

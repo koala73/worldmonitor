@@ -3191,6 +3191,12 @@
           "placeholder": "اختياري"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "هل تستمتع بـ World Monitor؟",
+      "body": "النجم على GitHub يساعد الآخرين على العثور عليه.",
+      "star": "إضافة نجم على GitHub",
+      "dismiss": "إغلاق وعدم السؤال مجددًا"
     }
   },
   "popups": {

@@ -3207,6 +3207,12 @@
           "placeholder": "Opcionalno"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Vam se sviđa World Monitor?",
+      "body": "Zvijezda na GitHubu pomaže drugim ljudima da ga pronađu.",
+      "star": "Daj zvijezdu na GitHubu",
+      "dismiss": "Odbaci i ne pitaj ponovno"
     }
   },
   "popups": {

@@ -3111,6 +3111,12 @@
           "placeholder": "По избор"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Харесвате ли World Monitor?",
+      "body": "Звезда на GitHub помага на други хора да го открият.",
+      "star": "Звезда на GitHub",
+      "dismiss": "Скрий и не питай отново"
     }
   },
   "popups": {

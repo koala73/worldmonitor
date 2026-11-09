@@ -3131,6 +3131,12 @@
           "placeholder": "Opțional"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Îți place World Monitor?",
+      "body": "O stea pe GitHub ajută alte persoane să o găsească.",
+      "star": "Adaugă stea pe GitHub",
+      "dismiss": "Închide și nu mai întreba"
     }
   },
   "popups": {

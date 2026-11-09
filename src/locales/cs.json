@@ -3151,6 +3151,12 @@
           "placeholder": "Volitelné"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "Máte rádi World Monitor?",
+      "body": "Hvězda na GitHubu pomůže ostatním lidi ji najít.",
+      "star": "Dát hvězdu na GitHubu",
+      "dismiss": "Skrýt a neptat se znovu"
     }
   },
   "popups": {

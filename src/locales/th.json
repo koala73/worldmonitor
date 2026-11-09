@@ -3091,6 +3091,12 @@
           "placeholder": "ไม่จำเป็น"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "ชอบ World Monitor ไหม?",
+      "body": "ดาวบน GitHub ช่วยให้คนอื่นค้นหามันได้ง่ายขึ้น",
+      "star": "ให้ดาวบน GitHub",
+      "dismiss": "ซ่อน และอย่าถามอีก"
     }
   },
   "popups": {

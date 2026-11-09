@@ -3091,6 +3091,12 @@
           "placeholder": "オプション"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "World Monitor を気に入っていただけましたか？",
+      "body": "GitHub でスターをつけると、他のユーザーが見つけやすくなります。",
+      "star": "GitHub でスターをつける",
+      "dismiss": "非表示にして二度と表示しない"
     }
   },
   "popups": {

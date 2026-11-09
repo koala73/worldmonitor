@@ -3111,6 +3111,12 @@
           "placeholder": "İsteğe bağlı"
         }
       }
+    },
+    "githubStarPrompt": {
+      "title": "World Monitor'ı beğeniyor musunuz?",
+      "body": "GitHub'da bir yıldız, başkalarının onu bulmasına yardımcı olur.",
+      "star": "GitHub'da Yıldız Ver",
+      "dismiss": "Kapat ve bir daha sorma"
     }
   },
   "popups": {
