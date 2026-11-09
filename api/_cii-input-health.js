@@ -13,14 +13,17 @@
 //   fallback        some or all of the scored levels came from the last good
 //                   snapshot (`snapshotAt` is its producer clock, `filled` the
 //                   countries taken from it): the read was missing or stale, or
-//                   lost countries. Scores hold, but the input is dead.
+//                   lost countries with a register gone. Scores hold, but the
+//                   input is dead.
 // A report may also carry `sourcesMissing` (a live read lacked one of its
-// sources: dead), `droppedCountries` (countries no read has listed for longer
-// than the snapshot may stand in, now absent) and `snapshotReadFailed`. The
-// last two are not dead on their own: a register can stop listing a country,
-// and a live input that merely lost one is a `warnings` entry, visible beside
-// the states without raising the verdict. Either rides on a dead entry when
-// the input is dead for another reason.
+// sources: dead), `filled` on a live state (countries a read with every
+// register reporting no longer lists, scored from the snapshot),
+// `droppedCountries` (countries no read has listed for longer than the snapshot
+// may stand in, now absent) and `snapshotReadFailed`. Only `sourcesMissing` is
+// dead on its own: a register can stop listing a country, and a live input that
+// merely lost one is a `warnings` entry, visible beside the states without
+// raising the verdict. The others ride on a dead entry when the input is dead
+// for another reason.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
 // An unreadable key rejects the whole build, so it surfaces as a stale
@@ -150,8 +153,15 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     } else {
       healthy.add(id);
     }
-    // A country dropped at the source while the input is otherwise healthy.
-    if (healthy.has(id) && detail.droppedCountries) warnings.push({ id, state, droppedCountries: detail.droppedCountries });
+    // A country delisted at the source while the input is otherwise healthy.
+    if (healthy.has(id) && (detail.filled || detail.droppedCountries)) {
+      warnings.push({
+        id,
+        state,
+        ...(detail.filled ? { filled: detail.filled } : {}),
+        ...(detail.droppedCountries ? { droppedCountries: detail.droppedCountries } : {}),
+      });
+    }
   }
 
   const unfedFamilies = Object.entries(CII_INPUT_POLICY.families)

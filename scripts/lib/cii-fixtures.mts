@@ -235,7 +235,8 @@ function trimStrikeTally(raw: unknown): unknown {
 /**
  * Tier-1 levels, `fetchedAt` (the producer clock the advisory age gate reads)
  * and, from the stored item list, one levelled `{ sourceCountry, country, level }`
- * item per source: the scorer reads which travel registers are present.
+ * item per source, plus the seeder's `registersPresent`: the scorer reads which
+ * travel registers are present.
  */
 function trimAdvisories(v: any): Obj {
   if (!isObj(v.byCountry)) return {};
@@ -249,6 +250,7 @@ function trimAdvisories(v: any): Obj {
     ...(v.fetchedAt != null ? { fetchedAt: v.fetchedAt } : {}),
     ...(isObj(v.seenAt) ? { seenAt: tier1Entries(v.seenAt) } : {}),
     ...(items ? { advisories: items } : {}),
+    ...(Array.isArray(v.registersPresent) ? { registersPresent: v.registersPresent } : {}),
   };
 }
 

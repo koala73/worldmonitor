@@ -189,6 +189,10 @@ describe('CII advisory provenance alarm', () => {
 // with no alarm (QA −37 in P8a). The countries a fresh snapshot still lists are
 // filled from it, disclosed as fallback, and the input alarms.
 describe('CII advisory partial feed loss', () => {
+  const bothRegisters = [
+    { sourceCountry: 'US', country: 'QA', level: 'caution', title: 't', source: 'US State Dept' },
+    { sourceCountry: 'AU', country: 'QA', level: 'caution', title: 't', source: 'Australia DFAT Smartraveller' },
+  ];
   const LOST = ['LB', 'QA', 'UA'];
   const partial = (f: (typeof FIXTURES)[number]) => {
     const byCountry = { ...liveLevels(f) };
@@ -200,19 +204,41 @@ describe('CII advisory partial feed loss', () => {
     const states = assessCiiInputAvailability([], t.aux, f.nowMs, false);
     const reports = withCiiInputQuietClocks(states, null, f.nowMs, { details: ciiInputDetails(t.aux) });
     const health = assessCiiInputs({ inputs: reports }, f.nowMs);
-    return { t, states, reports, alarm: health.dead.find((d: { id: string }) => d.id === 'advisories') };
+    return { t, states, reports, warnings: health.warnings, alarm: health.dead.find((d: { id: string }) => d.id === 'advisories') };
   }
 
-  it('a live map that lost Tier-1 countries is filled from a fresh snapshot and alarms', () => {
+  // A register can stop listing a country. With every register still reporting,
+  // the fill is disclosed on the country and as a warning; it holds riskScores
+  // at COVERAGE_PARTIAL only when a register is actually gone.
+  it('a live map that lost Tier-1 countries with every register reporting is filled from a fresh snapshot as a warning, not an alarm', () => {
     for (const f of FIXTURES) {
-      const v = verdict(f, { ...f.inputs, advisories: { byCountry: partial(f) }, advisoriesLastGood: snapshot(f, HOUR_MS) });
+      const v = verdict(f, { ...f.inputs, advisories: { byCountry: partial(f), advisories: bothRegisters }, advisoriesLastGood: snapshot(f, HOUR_MS) });
       assert.deepEqual(combined(v.t), combined(table(f, f.inputs)), `${f.label}: the lost countries keep their scores`);
       const d = disclosure(v.t);
       for (const code of LOST) assert.equal(d[code], `${liveLevels(f)[code]}/fallback`, `${f.label} ${code}`);
       assert.equal(d.IR, `${liveLevels(f).IR}/live`, `${f.label} IR stays live`);
-      assert.equal(v.states.advisories, 'fallback', f.label);
-      assert.deepEqual(v.alarm, { id: 'advisories', state: 'fallback', ageMin: 60, filled: LOST }, f.label);
+      assert.equal(v.states.advisories, 'live', f.label);
+      assert.equal(v.alarm, undefined, f.label);
+      assert.deepEqual(v.warnings, [{ id: 'advisories', state: 'live', filled: LOST }], f.label);
     }
+  });
+
+  it('a live map that lost Tier-1 countries with a register missing is filled from a fresh snapshot and alarms', () => {
+    for (const f of FIXTURES) {
+      const v = verdict(f, { ...f.inputs, advisories: { byCountry: partial(f), advisories: [bothRegisters[1]!] }, advisoriesLastGood: snapshot(f, HOUR_MS) });
+      assert.equal(disclosure(v.t)[LOST[0]!], `${liveLevels(f)[LOST[0]!]}/fallback`, f.label);
+      assert.equal(v.states.advisories, 'fallback', f.label);
+      assert.deepEqual(v.alarm, { id: 'advisories', state: 'fallback', ageMin: 60, filled: LOST, sourcesMissing: ['US'] }, f.label);
+      assert.deepEqual(v.warnings, [], f.label);
+    }
+  });
+
+  it('a read with no live map at all still alarms on the fill: only a live read with its registers can be a warning', () => {
+    const f = FIXTURES[0]!;
+    const v = verdict(f, { ...f.inputs, advisories: null, advisoriesLastGood: snapshot(f, HOUR_MS) });
+    assert.equal(v.states.advisories, 'fallback');
+    assert.equal(v.alarm?.state, 'fallback');
+    assert.deepEqual(v.warnings, []);
   });
 
   it('a lost country is not filled from an expired snapshot: it is absent', () => {
@@ -237,9 +263,8 @@ describe('CII advisory partial feed loss', () => {
       assert.equal(d.LB, '/absent', `${f.label}: LB last seen past the maximum age`);
       assert.equal(d.QA, `${liveLevels(f).QA}/fallback`, `${f.label}: QA last seen inside it`);
       assert.deepEqual(v.reports.advisories.droppedCountries, ['LB'], f.label);
-      assert.deepEqual(v.alarm, {
-        id: 'advisories', state: 'fallback', ageMin: Math.floor((CII_ADVISORY_MAX_AGE_MS - HOUR_MS) / 60_000), filled: ['QA'], droppedCountries: ['LB'],
-      }, f.label);
+      assert.equal(v.alarm, undefined, f.label);
+      assert.deepEqual(v.warnings, [{ id: 'advisories', state: 'live', filled: ['QA'], droppedCountries: ['LB'] }], f.label);
     }
   });
 
@@ -285,6 +310,21 @@ describe('CII advisory partial feed loss', () => {
     const auOnly = verdict(f, { ...f.inputs, advisories: { byCountry: liveLevels(f), advisories: items(['AU']) } });
     assert.deepEqual(auOnly.reports.advisories.sourcesMissing, ['US']);
     assert.deepEqual(auOnly.alarm, { id: 'advisories', state: 'live', sourcesMissing: ['US'] });
+  });
+
+  it('registersPresent, from the full fetch, decides which register is missing over the capped item list', () => {
+    const f = FIXTURES[0]!;
+    const usCapped = verdict(f, { ...f.inputs, advisories: { byCountry: liveLevels(f), advisories: [bothRegisters[1]!], registersPresent: ['AU', 'US'] } });
+    assert.equal(usCapped.reports.advisories.sourcesMissing, undefined, 'US is in the full fetch, only absent from the capped list');
+    assert.equal(usCapped.alarm, undefined);
+    const usGone = verdict(f, { ...f.inputs, advisories: { byCountry: liveLevels(f), advisories: bothRegisters, registersPresent: ['AU'] } });
+    assert.deepEqual(usGone.reports.advisories.sourcesMissing, ['US'], 'the field also overrides a list that still shows the register');
+  });
+
+  it('a payload written before registersPresent still reads the register state from its item list', () => {
+    const f = FIXTURES[0]!;
+    const old = verdict(f, { ...f.inputs, advisories: { byCountry: liveLevels(f), advisories: [bothRegisters[1]!] } });
+    assert.deepEqual(old.reports.advisories.sourcesMissing, ['US']);
   });
 
   it('a payload without its item list cannot say which source failed, and claims nothing', () => {
@@ -381,6 +421,21 @@ describe('advisory register loss: seeder failedSources and scorer sourcesMissing
     assert.deepEqual(r.failedSources, ['AU']);
     assert.deepEqual(r.sourcesMissing, r.failedSources);
     assert.deepEqual(r.fromTrim, r.failedSources);
+  });
+
+  // fetchAll stores 15 items per feed, newest first; failedSources sees them all.
+  it('a register whose 15 newest items are all unlevelled is present: the capped list does not decide', async () => {
+    const newest = Array.from({ length: 20 }, (_, i) => (
+      `<item><title>Worldwide caution notice ${i}</title><link>https://travel.state.gov/notice/${i}</link><pubDate>Mon, 26 Oct 2026 00:00:00 GMT</pubDate></item>`
+    )).join('');
+    const stateDept = STATE_DEPT_RSS.replace('<channel>', `<channel>${newest}`);
+    const report = await fetchAll({ feeds: [STATE_DEPT, SMARTRAVELLER, CDC], doFetch: routed({ [STATE_DEPT.url]: respond(stateDept), [SMARTRAVELLER.url]: respond(SMARTRAVELLER_RSS) }) });
+    const storedStateDept = report.advisories.filter((item: { source: string }) => item.source === 'US State Dept');
+    assert.equal(storedStateDept.length, 15);
+    assert.equal(storedStateDept.every((item: { level: string }) => item.level === 'info'), true, 'the scenario: no levelled State Dept item survives the cap');
+    assert.deepEqual(report.registersPresent, ['AU', 'US']);
+    const r = await both({ [STATE_DEPT.url]: respond(stateDept), [SMARTRAVELLER.url]: respond(SMARTRAVELLER_RSS) });
+    assert.deepEqual(r, { failedSources: [], sourcesMissing: [], fromTrim: [] });
   });
 
   it('both registers up: neither names a source', async () => {

@@ -300,22 +300,27 @@ is then purged.
   levels, so a read that lost one of them can still pass the seeder's coverage
   check. A Tier-1 country that the snapshot lists but the live read does not is
   filled from the snapshot and disclosed as `fallback`, provided its last
-  sighting is within 72 hours.
+  sighting is within 72 hours. With every register still reporting, the country
+  was delisted at the source, so the fill is a warning (`ciiInputs.warnings`
+  lists the `filled` countries) and not a dead input.
 - **A dropped country.** A country that no read has listed for more than 72
   hours is absent. It is reported in `droppedCountries`, so a source that stops
   listing a country never vanishes silently. A register can legitimately stop
   publishing advice for a country, so this is a warning (`ciiInputs.warnings`)
   rather than a dead input while the rest of the feed is live.
-- **A lost source.** A live read whose stored item list has no levelled
-  item from one of the travel registers (`US`, `AU`) is reported with
-  `sourcesMissing`. This is the same test the seeder uses for `failedSources`
-  on its own seed-meta (`scripts/shared/advisory-registers.mjs`).
+- **A lost source.** A live read from which the seeder got no levelled item
+  for one of the travel registers (`US`, `AU`) is reported with
+  `sourcesMissing`. The seeder publishes `registersPresent` from its full
+  fetch, using the same test as `failedSources` on its own seed-meta
+  (`scripts/shared/advisory-registers.mjs`). A payload without that field is
+  read from its stored item list.
 - **Expiry.** A snapshot more than 72 hours old is not used. The advisory boost
   and floor of the countries it would have covered are then absent.
 - **Health.** The risk-scores seed-meta reports the advisories input as
-  `fallback` (with `snapshotAt` and the `filled` countries), `missing`, or
-  `live` with `sourcesMissing`. Each of these marks `riskScores`
-  `COVERAGE_PARTIAL` in `/api/health` from the first affected build.
+  `fallback` (with `snapshotAt` and the `filled` countries) when the read failed
+  or a register is gone, `missing`, or `live` with `sourcesMissing`. Each of
+  these marks `riskScores` `COVERAGE_PARTIAL` in `/api/health` from the first
+  affected build.
 - **An unreadable snapshot.** If the snapshot itself cannot be read, the build
   goes ahead without it and the report carries `snapshotReadFailed`.
 

@@ -322,16 +322,21 @@ export const ADVISORY_SOURCE_HEALTH_FIELD = '_sourceHealth';
 // publishes while the other register clears MIN_ADVISORY_COUNTRY_COVERAGE, so
 // this is what keeps a one-register index from reading as healthy.
 function summarizeSourceHealth(feeds, itemsByFeed) {
-  const missingRegisters = [];
+  const registers = new Set();
+  const missing = new Set();
   const emptyFeeds = [];
   feeds.forEach((feed, i) => {
     const items = itemsByFeed[i];
     if (items.length === 0) emptyFeeds.push(feed.name);
-    if (feed.levelParser && !items.some(isLevelledAdvisoryItem)) {
-      missingRegisters.push(feed.sourceCountry);
-    }
+    if (!feed.levelParser) return;
+    registers.add(feed.sourceCountry);
+    if (!items.some(isLevelledAdvisoryItem)) missing.add(feed.sourceCountry);
   });
-  return { missingRegisters: [...new Set(missingRegisters)].sort(), emptyFeeds };
+  return {
+    missingRegisters: [...missing].sort(),
+    registersPresent: [...registers].filter((register) => !missing.has(register)).sort(),
+    emptyFeeds,
+  };
 }
 
 export function advisoryPublishTransform(data) {
@@ -391,6 +396,9 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
     byCountry,
     byCountryName: BY_COUNTRY_NAME,
     advisories,
+    // From the full fetch: `advisories` above is a capped slice and cannot say
+    // whether a register contributed. The CII scorer reads this.
+    registersPresent: sourceHealth.registersPresent,
     fetchedAt: new Date().toISOString(),
     [ADVISORY_SOURCE_HEALTH_FIELD]: sourceHealth,
   };

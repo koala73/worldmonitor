@@ -1,8 +1,9 @@
 // The travel-advisory registers and the one test of whether a register
-// contributed. scripts/seed-security-advisories.mjs uses it for its source
-// health (`failedSources` on seed-meta) and the CII scorer uses it on the
-// stored item list (`sourcesMissing` on the risk-scores input report), so the
-// two cannot disagree about which register is missing.
+// contributed. scripts/seed-security-advisories.mjs uses it on everything it
+// fetched for its source health (`failedSources` on seed-meta) and publishes
+// the outcome as `registersPresent`; the CII scorer reads that field for
+// `sourcesMissing` on the risk-scores input report, so the two cannot disagree
+// about which register is missing.
 
 /**
  * `sourceCountry` of every advisory feed with a `levelParser`: the registers
@@ -22,4 +23,17 @@ export function missingAdvisoryRegisters(items, registers = ADVISORY_LEVEL_REGIS
     (Array.isArray(items) ? items : []).filter(isLevelledAdvisoryItem).map((item) => String(item.sourceCountry ?? '')),
   );
   return registers.filter((register) => !present.has(register)).sort();
+}
+
+/**
+ * The registers a stored advisory payload is missing, or null when it cannot
+ * say. `registersPresent` comes from the seeder's full fetch. The stored item
+ * list is only the newest 15 per feed, so a register whose newest items carry
+ * no level is absent from it while still being in the index; the list is read
+ * only for payloads written before the field existed.
+ */
+export function missingRegistersFromPayload(payload, registers = ADVISORY_LEVEL_REGISTERS) {
+  const present = payload?.registersPresent;
+  if (Array.isArray(present)) return registers.filter((register) => !present.includes(register)).sort();
+  return Array.isArray(payload?.advisories) ? missingAdvisoryRegisters(payload.advisories, registers) : null;
 }

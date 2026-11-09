@@ -67,12 +67,13 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - **P3b, P3c.** A campaign of 5 units/day for 3 days, then nothing. The score is sampled every 3 hours for 8 days. No 3-hour drop may exceed 5. The campaign's contribution (score with it minus score without it) must halve in 4–6 days.
 - **P5c.** "Against the evidence" means against the blend: A blends above B but scores below it.
 - **P7a** nulls each input in turn. Every country whose terms change must report a coverage below 1 and below its coverage with the input present. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
-- **P8a.** Each parsed input is replaced by its empty value. For advisories it is what a failed read now produces: the live read is null and the last good snapshot, taken from the same fixture, stands in (Stage B2 removed the fallback table). No country may move by more than **K = 10**.
-- **P8b.** An advisory provenance flip raises an input-health alarm. Each case states whether it must alarm, so every case asserts, and a fixture that cannot build the cases fails. The cases are:
+- **P8a.** Each parsed input is replaced by its empty value. For advisories that is null with no usable snapshot, the worst a failed read can do once the last good snapshot has expired. A failed advisory read is also measured with that snapshot, taken from the same fixture, standing in through the real read path (Stage B2 removed the fallback table). No country may move by more than **K = 10** in any of these cases.
+- **P8b.** An advisory provenance flip raises an input-health alarm when the read or a register was lost. A Tier-1 country delisted while every register still reports is a change at the source: it is disclosed as a warning and does not alarm. No flip may go unreported. Each case states which it must be, so every case asserts, and a fixture that cannot build the cases fails. The cases are:
   - a live read, which must not alarm;
   - a live read with both level sources, which must not alarm;
   - a live read without the US source;
-  - a partial live map with a fresh snapshot;
+  - a partial live map with a fresh snapshot and every register reporting, which must warn and not alarm;
+  - a partial live map with a fresh snapshot and a register missing;
   - a failed read with a fresh snapshot;
   - a failed read with an expired snapshot;
   - a failed read with no snapshot;

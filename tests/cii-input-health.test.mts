@@ -238,7 +238,7 @@ describe('CII input health, producer to verdict', () => {
     });
   });
 
-  it('a live read that lost Tier-1 countries fills them from the snapshot, alarms, and carries them at their last sighting', async () => {
+  it('a live read that lost Tier-1 countries with its registers intact fills them from the snapshot, warns, and carries them at their last sighting', async () => {
     const fetchedAt = new Date(NOW - 20 * MIN).toISOString();
     stubRedis({
       ...liveFeedsWithoutRealtimeConflict(),
@@ -261,10 +261,24 @@ describe('CII input health, producer to verdict', () => {
       seenAt: { UA: Date.parse(fetchedAt), QA: NOW - 2 * 60 * MIN },
     });
     const meta = JSON.parse(writes.filter((write) => write.key === SEED_META_KEY).at(-1)!.value);
-    assert.deepEqual(meta.inputs.advisories, { state: 'fallback', snapshotAt: NOW - 2 * 60 * MIN, filled: ['QA'] });
-    assert.ok(riskScoresHealth(meta).ciiInputs.dead.some((input: { id: string; state: string }) => (
-      input.id === 'advisories' && input.state === 'fallback'
-    )));
+    assert.deepEqual(meta.inputs.advisories, { state: 'live', snapshotAt: NOW - 2 * 60 * MIN, filled: ['QA'] });
+    const entry = riskScoresHealth(meta);
+    assert.equal(entry.ciiInputs.dead.some((input: { id: string }) => input.id === 'advisories'), false);
+    assert.deepEqual(entry.ciiInputs.warnings, [{ id: 'advisories', state: 'live', filled: ['QA'] }]);
+  });
+
+  it('a live read that lost Tier-1 countries with a register gone fills them from the snapshot and alarms', async () => {
+    const fetchedAt = new Date(NOW - 20 * MIN).toISOString();
+    stubRedis({
+      ...liveFeedsWithoutRealtimeConflict(),
+      'intelligence:advisories:v1': JSON.stringify({ byCountry: { UA: 'do-not-travel' }, advisories: [levelItems[0]], fetchedAt }),
+      [CII_ADVISORY_LAST_GOOD_KEY]: JSON.stringify({ byCountry: { QA: 'reconsider', UA: 'do-not-travel' }, fetchedAt: NOW - 2 * 60 * MIN }),
+    });
+    await getRiskScores({} as never, {} as never);
+    const meta = JSON.parse(writes.filter((write) => write.key === SEED_META_KEY).at(-1)!.value);
+    assert.deepEqual(meta.inputs.advisories, { state: 'fallback', snapshotAt: NOW - 2 * 60 * MIN, filled: ['QA'], sourcesMissing: ['AU'] });
+    const entry = riskScoresHealth(meta);
+    assert.ok(entry.ciiInputs.dead.some((input: { id: string; state: string }) => input.id === 'advisories' && input.state === 'fallback'));
   });
 
   it('a Redis error on the last good snapshot does not reject the build, and is recorded', async () => {
@@ -394,6 +408,13 @@ describe('assessCiiInputs', () => {
     assert.deepEqual(result.warnings, [{ id: 'advisories', state: 'live', droppedCountries: ['LB'] }]);
   });
 
+  it('a country filled from the snapshot with its sources live is a warning with the detail, not dead', () => {
+    const inputs = { ...allLive(), advisories: { state: 'live', snapshotAt: NOW - 60 * MIN, filled: ['QA'], droppedCountries: ['LB'] } };
+    const result = assessCiiInputs({ inputs }, NOW);
+    assert.deepEqual(result.dead, []);
+    assert.deepEqual(result.warnings, [{ id: 'advisories', state: 'live', filled: ['QA'], droppedCountries: ['LB'] }]);
+  });
+
   it('a missing source is still dead, and carries any dropped countries with it', () => {
     const inputs = { ...allLive(), advisories: { state: 'live', sourcesMissing: ['AU'], droppedCountries: ['LB'] } };
     const result = assessCiiInputs({ inputs }, NOW);
@@ -430,6 +451,12 @@ describe('composeRiskScoresInputHealth', () => {
     const entry = riskScoresHealth(meta(allLive()));
     assert.equal(entry.status, 'OK');
     assert.equal(entry.ciiInputs.states.acled, 'live');
+  });
+
+  it('a filled advisory country alone leaves riskScores OK and shows the warning', () => {
+    const entry = riskScoresHealth(meta({ ...allLive(), advisories: { state: 'live', snapshotAt: NOW - 60 * MIN, filled: ['QA'] } }));
+    assert.equal(entry.status, 'OK');
+    assert.deepEqual(entry.ciiInputs.warnings, [{ id: 'advisories', state: 'live', filled: ['QA'] }]);
   });
 
   it('a dropped advisory country alone leaves riskScores OK and shows the warning', () => {

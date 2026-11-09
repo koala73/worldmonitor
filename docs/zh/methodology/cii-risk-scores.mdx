@@ -133,16 +133,18 @@ composite = baseline * 0.4
   评分器改用该快照，并标注 `advisoryProvenance: fallback`。
 - **部分丢失**：`byCountry` 取美国与澳大利亚等级中的较高者，因此丢失其中一个来源的读取仍可能通过
   种子器的覆盖检查。快照中有而实时读取中没有的 Tier-1 国家，在其最近一次出现不超过 72 小时时，会从快照
-  补齐并标注为 `fallback`。
+  补齐并标注为 `fallback`。若所有登记源仍在报告，则说明该国是在来源处被移除，此时补齐只是一条警告
+  （`ciiInputs.warnings` 列出 `filled` 国家），而不是失效输入。
 - **被移除的国家**：超过 72 小时没有任何读取列出的国家不再计分，并以 `droppedCountries` 报告，
   因此某个来源停止列出一个国家时不会悄无声息地消失。登记源可以正当地停止发布某国的建议，因此在
   其余数据仍为实时时，这只是一条警告（`ciiInputs.warnings`），而不是失效输入。
-- **来源丢失**：实时读取存储的条目列表中没有某个旅行登记源（`US`、`AU`）的带等级条目时，以
-  `sourcesMissing` 报告；这与种子器在自身 seed-meta 上写 `failedSources` 所用的判断相同
-  （`scripts/shared/advisory-registers.mjs`）。
+- **来源丢失**：种子器未能从某个旅行登记源（`US`、`AU`）获得带等级条目时，该实时读取以
+  `sourcesMissing` 报告。种子器根据完整抓取结果发布 `registersPresent`，所用判断与其在自身 seed-meta
+  上写 `failedSources` 相同（`scripts/shared/advisory-registers.mjs`）；不含该字段的载荷则按其存储的
+  条目列表判断。
 - **过期**：超过 72 小时的快照不再使用，其本应覆盖的国家的警示加成与下限均不存在。
-- **健康检查**：risk-scores 的 seed-meta 把警示输入报告为 `fallback`（附 `snapshotAt` 与补齐的
-  `filled` 国家）、`missing`，或带 `sourcesMissing` 的 `live`。每种情况都会自第一次受影响的构建起
+- **健康检查**：risk-scores 的 seed-meta 在读取失败或登记源丢失时把警示输入报告为 `fallback`（附
+  `snapshotAt` 与补齐的 `filled` 国家），也可能报告为 `missing`，或带 `sourcesMissing` 的 `live`。每种情况都会自第一次受影响的构建起
   在 `/api/health` 中把 `riskScores` 标为 `COVERAGE_PARTIAL`。
 - **快照无法读取**：构建照常进行，不使用快照，报告中带 `snapshotReadFailed`。
 

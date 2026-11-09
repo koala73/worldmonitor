@@ -20,7 +20,7 @@ import {
   WILDFIRE_FIRES_SUMMARY_KEY,
   type WildfireFireIntensity,
 } from '../../../../scripts/shared/wildfire-fires-summary.mjs';
-import { missingAdvisoryRegisters } from '../../../../scripts/shared/advisory-registers.mjs';
+import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
@@ -170,9 +170,9 @@ export interface AdvisorySnapshot {
   /** The seeder's `fetchedAt`; null for a live payload written before it carried one. */
   fetchedAtMs: number | null;
   /**
-   * Travel registers (scripts/shared/advisory-registers.mjs) with no levelled
-   * item in the payload's stored list, the seeder's own `failedSources` test;
-   * null when the payload carries no list.
+   * Travel registers (scripts/shared/advisory-registers.mjs) the seeder's full
+   * fetch did not get a level from, its own `failedSources` test; null when the
+   * payload carries neither `registersPresent` nor an item list.
    */
   missingRegisters: string[] | null;
 }
@@ -199,9 +199,8 @@ function advisorySnapshotFromSeed(raw: unknown, nowMs: number, requireClock: boo
     return null;
   }
   // byCountry is the max over the US and Australian registers, so losing one
-  // still clears the seeder's coverage bound; the item list shows which.
-  const items = (raw as { advisories?: unknown }).advisories;
-  const missingRegisters = Array.isArray(items) ? missingAdvisoryRegisters(items) : null;
+  // still clears the seeder's coverage bound; registersPresent shows which.
+  const missingRegisters = missingRegistersFromPayload(raw);
   const seenRaw = (raw as { seenAt?: unknown }).seenAt;
   const seenAtMs = seenRaw && typeof seenRaw === 'object' && !Array.isArray(seenRaw)
     ? Object.fromEntries(Object.entries(seenRaw).filter(([, ms]) => typeof ms === 'number' && Number.isFinite(ms) && ms > 0 && ms <= nowMs))
@@ -948,8 +947,8 @@ export interface AuxiliarySources {
   // missing or stale read; `fetchedAtMs` is the seeder clock when known.
   // `filled` lists the Tier-1 countries whose entry came from that snapshot
   // (all of them on a fallback read, the ones a live read lost otherwise), and
-  // `snapshotAtMs` its seeder clock. `sourcesMissing`: level sources absent
-  // from a live read's item list.
+  // `snapshotAtMs` its seeder clock. `sourcesMissing`: travel registers the
+  // seeder's full fetch got no level from.
   advisories: {
     byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'>;
     provenance?: 'live' | 'fallback';
@@ -1375,11 +1374,12 @@ export const CII_HEALTH_INPUT_IDS = [
 ] as const;
 export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
 type CiiInputRead = 'present' | 'missing' | 'not_configured';
-/** `fallback`: this build's read was missing or stale and the last good snapshot was scored. */
+/** `fallback`: the last good snapshot was scored because this build's read was missing or stale, or filled countries a read lost with a register gone. */
 export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured' | 'fallback';
 /**
  * `snapshotAt`/`filled`: the producer clock of the snapshot scored and the
- * Tier-1 countries taken from it. `sourcesMissing`: level sources a live read
+ * Tier-1 countries taken from it (on a `live` state: delisted at the source
+ * with every register reporting). `sourcesMissing`: level sources a live read
  * lacked. `snapshotReadFailed`: the snapshot could not be read.
  */
 export interface CiiInputReport {
@@ -1445,7 +1445,11 @@ export function assessCiiInputAvailability(
   } as Record<CiiInputId, CiiInputState>;
   for (const [id, field] of Object.entries(CII_INPUT_AUX_FIELD) as Array<[Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources]>) {
     const read = aux.inputReads?.[id] ?? 'missing';
-    if (id === 'advisories' && (aux.advisories?.provenance === 'fallback' || (aux.advisories?.filled?.length ?? 0) > 0)) {
+    // A live read that lost a country with every register still reporting is a
+    // change at the source: disclosed per country and as a health warning. It
+    // is a dead input only when the read failed or a register is gone.
+    if (id === 'advisories' && (aux.advisories?.provenance === 'fallback'
+      || ((aux.advisories?.filled?.length ?? 0) > 0 && (aux.advisories?.sourcesMissing?.length ?? 0) > 0))) {
       states[id] = 'fallback';
     } else if (read !== 'present') {
       states[id] = read;
