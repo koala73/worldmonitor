@@ -776,6 +776,7 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/data/search-links/',
       'scripts/search-links.mjs',
       'scripts/lib/search-links.mjs',
+      'scripts/lib/main-module.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -826,6 +827,7 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/data/search-links/countries.json',
         'scripts/search-links.mjs',
         'scripts/lib/search-links.mjs',
+        'scripts/lib/main-module.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
