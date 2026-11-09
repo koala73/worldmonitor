@@ -106,6 +106,21 @@ and without flagged queries. This repository is public, so a query needs 20
 impressions before its text joins this list. The `topQueries` rows take the 20
 largest queries overall and have no such floor.
 
+**Reviewed queries are looked up directly.** `reviewedQueries` holds one
+`equals` lookup per query in `query-set.json` and per window, 50 small requests
+through the same retrying transport, plus the set's `querySetId` and
+`querySetDigest`. A live probe on 2026-11-09 found that `equals` ignores case
+but not spacing, so the expression is the reviewed text trimmed, with inner
+whitespace collapsed, and lowercased. The request groups by query because a
+request with no dimension answers an unknown query with a zero row, while
+grouped it answers with no row. Each lookup is `reported`, `not-reported` (no
+row: under Google's privacy threshold or no impressions, not a zero) or
+`unavailable` (the request failed, with the reason). A daily-quota 429 stops the
+remaining lookups and marks them `unavailable`. The mapping into the scorecard
+refuses lookups made for a different query set. A snapshot from before these
+lookups maps to no query rows, because no reviewed query ever reached the
+top-20 list that used to feed them.
+
 **The daily series is by property.** `performance.daily` holds one row per date
 over the widest window, all queries and non-brand. The summary sums it into
 seven-day periods ending on the latest date (rolling, not Monday-to-Sunday

@@ -27,6 +27,7 @@ import {
   toScorecardSearchExport,
 } from '../scripts/seo-gsc-collect.mjs';
 import { normalizeSearchExport } from '../scripts/seo-ai-visibility-collector.mjs';
+import { computeQuerySetDigest } from '../scripts/seo-ai-visibility-scorecard.mjs';
 
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
 
@@ -993,5 +994,209 @@ describe('Search Console live transport resilience', () => {
       () => assertNoSecrets(JSON.stringify({ property: 'sc-domain:worldmonitor.app' }), { property: 'sc-domain:worldmonitor.app' }),
       /refusing to write/,
     );
+  });
+});
+
+describe('Search Console reviewed-query lookups', () => {
+  const lookupOf = (snapshot, label, queryId) => snapshot.reviewedQueries.windows
+    .find((window) => window.label === label)
+    .lookups.find((lookup) => lookup.queryId === queryId);
+  const exportedRow = (exported, label, queryId) => exported.windows
+    .find((window) => window.label === label)
+    .queryRows.find((row) => row.queryId === queryId);
+
+  it('looks up every reviewed query in every window and records the query set identity', async () => {
+    const { snapshot } = await collect();
+    const section = snapshot.reviewedQueries;
+    assert.equal(section.querySetId, querySet.querySetId);
+    assert.equal(section.querySetDigest, computeQuerySetDigest(querySet));
+    assert.equal(section.operator, 'equals');
+    assert.deepEqual(section.windows.map((window) => window.label), ['28d', '90d']);
+    for (const window of section.windows) {
+      assert.deepEqual(
+        window.lookups.map((lookup) => lookup.queryId),
+        querySet.queries.map((query) => query.id),
+      );
+    }
+  });
+
+  it('matches a reviewed query on the lowercased, space-collapsed text Google stores', async () => {
+    const { snapshot } = await collect();
+    const pricing = lookupOf(snapshot, '28d', 'q23');
+    assert.equal(pricing.query, 'World Monitor pricing');
+    assert.equal(pricing.expression, 'world monitor pricing');
+    assert.equal(pricing.status, 'reported');
+    assert.equal(pricing.reason, null);
+    assert.deepEqual(
+      [pricing.clicks, pricing.impressions, pricing.position],
+      [2, 40, 6.5],
+    );
+    const row = exportedRow(toScorecardSearchExport(snapshot, { querySet }), '28d', 'q23');
+    assert.deepEqual(row, {
+      queryId: 'q23',
+      query: 'World Monitor pricing',
+      clicks: 2,
+      impressions: 40,
+      ctr: 0.05,
+      position: 6.5,
+      reason: null,
+    });
+
+    const expressions = [];
+    const spaced = {
+      ...querySet,
+      queries: [{ ...querySet.queries[22], query: '  World   Monitor PRICING ' }],
+    };
+    const section = (await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async ({ expression }) => { expressions.push(expression); return { rows: [] }; },
+    }, { querySet: spaced })).reviewedQueries;
+    assert.deepEqual(expressions, ['world monitor pricing']);
+    assert.equal(section.windows[0].lookups[0].expression, 'world monitor pricing');
+  });
+
+  it('reports a query Google returns no row for as not reported, never as zero', async () => {
+    const { snapshot } = await collect();
+    const gdelt = lookupOf(snapshot, '28d', 'q18');
+    assert.equal(gdelt.status, 'not-reported');
+    assert.match(gdelt.reason, /not reported by Search Console/i);
+    assert.deepEqual([gdelt.clicks, gdelt.impressions, gdelt.position], [null, null, null]);
+
+    const exported = toScorecardSearchExport(snapshot, { querySet });
+    const row = exportedRow(exported, '28d', 'q18');
+    assert.deepEqual(
+      [row.clicks, row.impressions, row.ctr, row.position],
+      [null, null, null, null],
+    );
+    assert.match(row.reason, /privacy threshold/);
+
+    const normalized = normalizeSearchExport(exported, {
+      querySet,
+      observedAt: '2026-09-24T00:00:00Z',
+      provider: 'Google Search Console',
+      schemaVersion: 2,
+    });
+    const normalizedRow = normalized.queryRows.find(
+      (entry) => entry.windowLabel === '28d' && entry.queryId === 'q18',
+    );
+    assert.deepEqual(normalizedRow.metrics, {
+      impressions: null, clicks: null, ctr: null, averagePosition: null,
+    });
+    assert.equal(normalizedRow.reason, row.reason);
+    assert.equal(normalized.status, 'partial');
+  });
+
+  it('records a failed or unrecorded lookup as unavailable with its reason and keeps going', async () => {
+    const { snapshot } = await collect();
+    const failed = lookupOf(snapshot, '28d', 'q12');
+    assert.equal(failed.status, 'unavailable');
+    assert.match(failed.reason, /lookup failed: .*HTTP 500/);
+    const unrecorded = lookupOf(snapshot, '28d', 'q01');
+    assert.equal(unrecorded.status, 'unavailable');
+    assert.match(unrecorded.reason, /no lookup was recorded/);
+    assert.equal(lookupOf(snapshot, '90d', 'q23').status, 'reported');
+    assert.equal(snapshot.reviewedQueries.status, 'partial');
+    assert.match(snapshot.reviewedQueries.reason, /28d: 23 of 25 lookups unavailable/);
+
+    const row = exportedRow(toScorecardSearchExport(snapshot, { querySet }), '28d', 'q12');
+    assert.deepEqual([row.impressions, row.clicks], [null, null]);
+    assert.match(row.reason, /HTTP 500/);
+  });
+
+  it('stops looking up once the quota runs out and says so for every remaining query', async () => {
+    let calls = 0;
+    const snapshot = await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async () => {
+        calls += 1;
+        if (calls === 2) throw new QuotaExhaustedError('Search Console daily quota is exhausted (HTTP 429)');
+        return { rows: [] };
+      },
+    }, { querySet });
+    assert.equal(calls, 2);
+    const [window] = snapshot.reviewedQueries.windows;
+    assert.equal(window.lookups[0].status, 'not-reported');
+    for (const lookup of window.lookups.slice(1)) {
+      assert.equal(lookup.status, 'unavailable');
+      assert.match(lookup.reason, /quota was exhausted/);
+    }
+    assert.equal(snapshot.reviewedQueries.status, 'partial');
+  });
+
+  it('records a row with missing counts as unavailable instead of filling in a zero', async () => {
+    const snapshot = await collectFrom({
+      ...memoryTransport(),
+      lookupQuery: async ({ expression }) => ({ rows: [{ keys: [expression], impressions: 12, position: 4 }] }),
+    }, { querySet });
+    const [lookup] = snapshot.reviewedQueries.windows[0].lookups;
+    assert.equal(lookup.status, 'unavailable');
+    assert.match(lookup.reason, /without clicks or impressions/);
+    assert.deepEqual([lookup.clicks, lookup.impressions, lookup.position], [null, null, null]);
+  });
+
+  it('is unavailable with a reason when no query set is supplied', async () => {
+    const snapshot = await collectFrom(memoryTransport());
+    assert.equal(snapshot.reviewedQueries.status, 'unavailable');
+    assert.match(snapshot.reviewedQueries.reason, /no reviewed query set was supplied/);
+    assert.deepEqual(snapshot.reviewedQueries.windows, []);
+  });
+
+  it('refuses to map lookups that were made for a different query set', async () => {
+    const { snapshot } = await collect();
+    const edited = structuredClone(querySet);
+    edited.queries[22].query = 'World Monitor price';
+    const exported = toScorecardSearchExport(snapshot, { querySet: edited });
+    for (const window of exported.windows) assert.deepEqual(window.queryRows, []);
+    assert.match(exported.reason, /lookups were made for query set seo-ai-visibility-v1 \(sha256:[0-9a-f]{12}/);
+    assert.match(exported.reason, /not the supplied/);
+  });
+
+  it('maps a snapshot that predates the lookups to no query rows, with the reason', () => {
+    const committed = JSON.parse(readFileSync(
+      repoPath('docs/research/seo-ai-visibility/gsc/2026-11-03.json'),
+      'utf8',
+    ));
+    assert.equal(committed.reviewedQueries, undefined);
+    const exported = toScorecardSearchExport(committed, { querySet });
+    for (const window of exported.windows) assert.deepEqual(window.queryRows, []);
+    assert.match(exported.reason, /predates reviewed-query lookups/);
+    assert.doesNotMatch(exported.reason, /top 20/);
+  });
+
+  it('summarizes how many reviewed queries Google reported in the markdown', async () => {
+    const { markdown } = await collect();
+    assert.match(markdown, /### Reviewed queries/);
+    assert.match(markdown, /\| 28d \| 25 \| 1 \| 1 \| 23 \|/);
+    assert.match(markdown, /\| World Monitor pricing \| 40 \| 2 \| 5\.0% \| 6\.5 \|/);
+  });
+
+  it('asks Google for an exact match on the query dimension, retrying a 5xx', async () => {
+    const bodies = [];
+    let calls = 0;
+    const transport = createLiveTransport({
+      accessToken: 't',
+      property: 'sc-domain:example.com',
+      fetchImpl: async (_url, init) => {
+        calls += 1;
+        bodies.push(JSON.parse(init.body));
+        return calls === 1 ? jsonResponse(503, {}) : jsonResponse(200, { responseAggregationType: 'byProperty' });
+      },
+      sleep: async () => {},
+    });
+    const response = await transport.lookupQuery({
+      expression: 'world monitor pricing',
+      startDate: '2026-08-27',
+      endDate: '2026-09-23',
+    });
+    assert.deepEqual(response, { responseAggregationType: 'byProperty' });
+    assert.equal(calls, 2);
+    // Without a dimension Google answers an unknown query with a zero row;
+    // grouped by query it answers with no row, which is the honest outcome.
+    assert.deepEqual(bodies[1].dimensions, ['query']);
+    assert.deepEqual(bodies[1].dimensionFilterGroups[0].filters, [
+      { dimension: 'query', operator: 'equals', expression: 'world monitor pricing' },
+    ]);
+    assert.equal(bodies[1].dataState, 'final');
+    assert.deepEqual([bodies[1].startDate, bodies[1].endDate], ['2026-08-27', '2026-09-23']);
   });
 });

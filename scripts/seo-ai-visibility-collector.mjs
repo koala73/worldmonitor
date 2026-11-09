@@ -498,10 +498,15 @@ export function normalizeSearchExport(
         row,
         { includeIndexedPages: false },
       );
+      const reason = optionalBoundedString(row.reason, 'query row reason');
+      const measured = SEARCH_PERFORMANCE_METRICS.some((metric) => metrics[metric] !== null);
+      invariant(measured || reason !== null, 'a query row with no metrics must carry a reason');
+      invariant(!measured || reason === null, 'a query row with metrics must not carry a reason');
       return {
         windowLabel: window.label,
         queryId: queryIdForRow(row, queryIndexes),
         metrics,
+        ...(reason === null ? {} : { reason }),
       };
     });
     const normalizedPageRows = rawPageRows.map((row) => ({

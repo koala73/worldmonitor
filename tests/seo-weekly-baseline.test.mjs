@@ -46,6 +46,7 @@ async function gscSnapshot() {
     windows: deriveWindows(OBSERVED_AT),
     propertyKind: transport.manifest.propertyKind,
     reportedTotals: transport.manifest.reportedTotals,
+    querySet,
     revision: REVISION,
   });
 }
@@ -179,28 +180,24 @@ describe('weekly baseline: Search Console', () => {
     const gsc = await gscSnapshot();
     const window = windowOf(gsc.performance, '28d');
     window.siteTotals = { status: 'unavailable', reason: 'the site view was not collected' };
-    window.topQueries.push({ query: reviewed('q23'), brand: true, clicks: 7, impressions: 70, position: 1.5 });
     const { baseline } = build({ gsc });
     const source = baseline.search.googleSearchConsole;
     assert.deepEqual(
       windowOf(source, '28d').metrics,
       Object.fromEntries(SEARCH_METRICS.map((metric) => [metric, null])),
     );
-    assert.equal(source.queryRows.length, 1, 'the reviewed row itself is kept');
+    const pricing = source.queryRows.find((row) => row.windowLabel === '28d' && row.queryId === 'q23');
+    assert.equal(pricing.metrics.impressions, 40, 'the reviewed row itself is kept');
     assert.match(source.reason, /28d: no by-property site totals/);
   });
 });
 
 describe('weekly baseline: reviewed queries only', () => {
-  it('maps exact reviewed query text and drops everything else', async () => {
+  it('maps every reviewed query from its own lookup and ignores the top-query list', async () => {
     const snapshots = await allSnapshots();
     const gscWindow = windowOf(snapshots.gsc.performance, '28d');
-    gscWindow.topQueries.push(
-      { query: reviewed('q23'), brand: true, clicks: 7, impressions: 70, position: 1.5 },
-      // Case and spacing variants are different queries, not the reviewed one.
-      { query: reviewed('q23').toLowerCase(), brand: true, clicks: 3, impressions: 30, position: 2 },
-      { query: 'an unreviewed query', brand: false, clicks: 1, impressions: 10, position: 9 },
-    );
+    // The top-query list no longer feeds query rows, even on an exact match.
+    gscWindow.topQueries.push({ query: reviewed('q21'), brand: true, clicks: 7, impressions: 70, position: 1.5 });
     snapshots.bing.queries.windows['28d'].topQueries.push({
       query: reviewed('q18'),
       brand: true,
@@ -210,13 +207,25 @@ describe('weekly baseline: reviewed queries only', () => {
       avgImpressionPosition: 3.2,
       avgClickPosition: null,
     });
-    const { baseline } = build(snapshots);
+    const { baseline, markdown } = build(snapshots);
     const gscRows = baseline.search.googleSearchConsole.queryRows;
-    assert.deepEqual(gscRows, [{
+    assert.equal(gscRows.length, 2 * querySet.queries.length, 'one row per reviewed query and window');
+    const gscRow = (label, queryId) => gscRows.find((row) => row.windowLabel === label && row.queryId === queryId);
+    assert.deepEqual(gscRow('28d', 'q23'), {
       windowLabel: '28d',
       queryId: 'q23',
-      metrics: { impressions: 70, clicks: 7, ctr: 0.1, averagePosition: 1.5 },
-    }]);
+      metrics: { impressions: 40, clicks: 2, ctr: 0.05, averagePosition: 6.5 },
+    });
+    assert.equal(gscRow('28d', 'q21').metrics.impressions, null);
+    assert.match(gscRow('28d', 'q21').reason, /no lookup was recorded/);
+    assert.deepEqual(gscRow('28d', 'q18').metrics, {
+      impressions: null, clicks: null, ctr: null, averagePosition: null,
+    });
+    assert.match(gscRow('28d', 'q18').reason, /Not reported by Search Console/);
+    assert.match(gscRow('28d', 'q12').reason, /HTTP 500/);
+    assert.match(markdown, /\| Branded \/ entity \| 5 \| 28d: 1 of 5 queries reported \|/);
+    assert.match(markdown, /\| q23 \| World Monitor pricing \| Branded \/ entity \| 40 imp \/ 2 clicks \/ 5% \/ pos 6\.5 \|/);
+    assert.match(markdown, /\| q18 \| World Monitor vs GDELT \| Evaluation \| Not reported by Search Console[^|]* \| 40 imp \/ 4 clicks \/ 10% \/ pos 3\.2 \|/);
     assert.deepEqual(baseline.search.bingWebmaster.queryRows, [{
       windowLabel: '28d',
       queryId: 'q18',
