@@ -46,12 +46,15 @@ import {
 import {
   CHECKOUT_ATTEMPT_STORAGE_KEY,
   CHECKOUT_RETURN_SOURCE_PARAM,
-  DESKTOP_CHECKOUT_HANDOFF,
   parseMissionPreviewAttribution,
   resolveCheckoutContext,
   type CheckoutAttribution,
 } from '../../../shared/checkout-attribution';
-import { desktopAccountDigest, type DesktopCheckoutHandoff } from '../../../shared/desktop-checkout-handoff';
+import {
+  DESKTOP_CHECKOUT_HANDOFF,
+  desktopAccountDigest,
+  type DesktopCheckoutHandoff,
+} from '../../../shared/desktop-checkout-handoff';
 import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
 
 let checkoutInFlight = false;

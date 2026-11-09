@@ -22,11 +22,8 @@ import {
   CHECKOUT_DISCOUNT_PARAM,
   CHECKOUT_ATTRIBUTION_PARAM,
 } from '../pro-test/src/services/checkout-intent-url.ts';
-import {
-  CHECKOUT_HANDOFF_PARAM,
-  CHECKOUT_MISSION_PARAM,
-  CHECKOUT_PANEL_PARAM,
-} from '../shared/checkout-attribution.ts';
+import { CHECKOUT_MISSION_PARAM, CHECKOUT_PANEL_PARAM } from '../shared/checkout-attribution.ts';
+import { CHECKOUT_HANDOFF_PARAM } from '../shared/desktop-checkout-handoff.ts';
 
 describe('parseCheckoutIntentFromSearch', () => {
   it('returns null when no productId param is present (normal page load)', () => {

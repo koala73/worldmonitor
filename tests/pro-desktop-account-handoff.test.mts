@@ -119,9 +119,10 @@ const dialog = () => document.querySelector('[role="dialog"]');
 const button = (label: RegExp) => [...document.querySelectorAll('[role="dialog"] button')]
   .find((el) => label.test(el.textContent ?? '')) as HTMLButtonElement | undefined;
 
-// crypto.subtle.digest settles on a macrotask; setTimeout is mocked here.
-async function settle(): Promise<void> {
-  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+// crypto.subtle.digest settles on a macrotask, and setTimeout is mocked here.
+async function waitFor(condition: () => boolean, label: string): Promise<void> {
+  for (let i = 0; i < 2_000 && !condition(); i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(condition(), label);
 }
 
 it('does not start checkout for the browser account when the desktop app uses another one', async () => {
@@ -129,7 +130,7 @@ it('does not start checkout for the browser account when the desktop app uses an
   const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   assert.deepEqual(f.bodies, [], 'no checkout may be created before the buyer decides');
   assert.ok(dialog(), 'the buyer must be told which account the purchase would upgrade');
   assert.match(dialog()?.textContent ?? '', /b@example\.com/);
@@ -144,7 +145,7 @@ it('switches to the desktop account and resumes the same checkout after sign-in'
   const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   button(/switch account/i)?.click();
   assert.equal(await attempt, false);
   assert.equal(f.signOuts(), 1);
@@ -162,7 +163,7 @@ it('upgrades the browser account only after the buyer confirms, without the desk
   const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   button(/upgrade this account/i)?.click();
   assert.equal(await attempt, true);
   assert.equal(f.bodies.length, 1);
@@ -202,7 +203,7 @@ it('checks the account again when checkout resumes after a sign-in to the wrong 
       + `&wm_checkout_handoff=desktop&wm_checkout_account=${digest(DESKTOP_USER)}#pricing`,
   });
   const resumed = f.checkout.tryResumeCheckoutFromUrl();
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   assert.deepEqual(f.bodies, []);
   assert.ok(dialog());
   button(/cancel/i)?.click();
@@ -214,12 +215,11 @@ it('asks again when the browser account changes while the dialog is open', async
   const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   f.state.user = { id: 'user_other_c', primaryEmailAddress: { emailAddress: 'c@example.com' } };
   button(/upgrade this account/i)?.click();
-  await settle();
+  await waitFor(() => /c@example\.com/.test(dialog()?.textContent ?? ''), 'the dialog asks again for the current account');
   assert.deepEqual(f.bodies, [], 'approval for one account must not check out another');
-  assert.match(dialog()?.textContent ?? '', /c@example\.com/);
   button(/cancel/i)?.click();
   assert.equal(await attempt, false);
 });
@@ -231,7 +231,7 @@ it('keeps the desktop handoff on the page after a canceled resume, so a retry ch
       + `&wm_checkout_handoff=desktop&wm_checkout_account=${digest(DESKTOP_USER)}#pricing`,
   });
   const resumed = f.checkout.tryResumeCheckoutFromUrl();
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   button(/cancel/i)?.click();
   assert.equal(await resumed, false);
   const kept = new URL(f.replacedUrls[0]!, 'https://www.worldmonitor.app');
@@ -244,7 +244,7 @@ it('keeps keyboard focus inside the dialog', async () => {
   const attempt = f.checkout.startCheckout('synthetic-product', {
     desktopHandoff: { account: digest(DESKTOP_USER) },
   });
-  await settle();
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
   const buttons = [...document.querySelectorAll('[role="dialog"] button')];
   assert.equal(document.activeElement, buttons.at(-1));
   document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Tab' }));
