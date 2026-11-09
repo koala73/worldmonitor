@@ -28,9 +28,11 @@
 //   6. dedupe + window      one event per physical incident: country + place,
 //                           reports within 3h of the first one, late reports
 //                           (updates) within 24h; 72h rolling window.
+//                           Reports the gazetteer cannot place are matched by
+//                           the name they carry (see reconcileUnlistedPlaces).
 //
 // Precision rules (CII v15 Stage B3; one physical incident counts once, on
-// the country hit, at the time it happened):
+// the country hit, dated to its first report):
 //   - a retrospective post (old footage, leaked images, an account of an
 //     earlier attack) is not a new strike: the classifier labels `when`, and a
 //     deterministic cue list backs it up;
@@ -93,9 +95,10 @@ const MAX_EVENTS = 400;
 const MAX_STORE_CANDIDATES = 4000;
 
 const KINDS = new Set(['strike', 'intercept', 'claim']);
-// new = happening now or in the past 24h; update = new details on an attack of
-// the past 3 days; past = an older attack. 'unknown' is what an answer without
-// a valid `when` normalizes to: no recency signal, so it cannot stand alone.
+// new = the first report of an attack from the past 24h; update = details added
+// to an attack already reported, or a late report of one from the past 3 days;
+// past = an older attack. 'unknown' is what an answer without a valid `when`
+// normalizes to: no recency signal, so it cannot stand alone.
 const WHEN = new Set(['new', 'update', 'past']);
 const SEVERITY_RANK = { moderate: 0, elevated: 1, high: 2, critical: 3 };
 const KIND_CATEGORY = { strike: 'airstrike', intercept: 'defense', claim: 'claim' };
@@ -276,7 +279,7 @@ Reply with only a JSON array holding one object per input line:
 isStrike=true only when the post reports one specific missile, drone, rocket, air or artillery attack, an explosion caused by one, or an interception, in Saudi Arabia, Yemen, Iran, Iraq, the UAE, Israel, Qatar, Kuwait, Bahrain, Oman, Lebanon, Syria or Jordan.
 isStrike=false for analysis, threats, warnings or sirens with no attack reported, launches with no reported impact or interception, summaries or tallies of many attacks over a period, sightings of aircraft or drones, demolitions, exercises, weapons tests, diplomacy, anniversaries, accidents, and anything outside those countries. For isStrike=false return only {"i":<index>,"isStrike":false}.
 kind: "strike" = an attack hit a target, including an interception whose debris caused deaths, injuries or damage; "intercept" = air defenses intercepted or shot down a missile or drone and no damage is reported; "claim" = an armed group or state claims an attack that the post does not independently report.
-when: "new" = the attack is reported as happening now or within 24 hours before the post date; "update" = new details on an attack from the 3 days before the post (a toll, damage, an official confirmation, aftermath footage, a late report); "past" = the attack happened more than 3 days before the post, or the post shows previously unseen, leaked or newly obtained footage, images or accounts of an earlier attack.
+when: "new" = the first report of an attack happening now or within 24 hours before the post date; "update" = a post adding details to an attack already reported, even within those 24 hours, or a late report of an attack from the 3 days before the post (a toll, damage, an official confirmation, aftermath footage); "past" = the attack happened more than 3 days before the post, or the post shows previously unseen, leaked or newly obtained footage, images or accounts of an earlier attack.
 atSea: true when what was hit or intercepted is a ship or boat at sea or in a waterway, not in a port.
 place: the most specific named location of the impact or interception (city, town, village, base or facility), in English; "" if none is named.
 countryIso2: the country where the impact or interception happened, not the attacker's country and not the launch site.
@@ -350,19 +353,51 @@ function inAnchorHorizon(ts, now) {
   return Number.isFinite(ts) && ts <= now + FUTURE_SKEW_MS && now - ts <= ANCHOR_MS;
 }
 
-// A report the gazetteer could only place at a country centroid keeps the
-// classifier's own place name in its key, so strikes on two unlisted villages
-// stay two incidents instead of merging under the country.
+// Words in a reported place that do not name a particular place: directions
+// (English, and the forms Arabic and Persian share), connecting words, Arabic
+// articles in transliterations, and place types that add nothing to the name.
+const GENERIC_PLACE_WORDS = new Set([
+  'north', 'south', 'east', 'west', 'northern', 'southern', 'eastern', 'western',
+  'northeast', 'northwest', 'southeast', 'southwest', 'northeastern', 'northwestern', 'southeastern', 'southwestern',
+  'central', 'centre', 'center', 'جنوب', 'شمال', 'شرق', 'غرب',
+  'the', 'of', 'in', 'near', 'and', 'al', 'el', 'ar', 'as', 'ad', 'an', 'az', 'ash', 'at', 'adh',
+  'town', 'village', 'city', 'area', 'outskirts',
+]);
+// A part of a reported place with one of these describes a region, not a place.
+const REGION_WORDS = new Set([
+  'region', 'regions', 'province', 'provinces', 'governorate', 'governorates', 'district', 'districts', 'county', 'municipality',
+  'valley', 'countryside', 'border', 'borders', 'frontier', 'coast', 'coastal', 'plain', 'territory', 'territories',
+  'villages', 'towns', 'areas',
+]);
+const COUNTRY_WORDS = new Map(gazetteer.FOCUS_COUNTRIES.map((iso2) => [iso2, new Set(
+  gazetteer.countryTerms(iso2).flatMap((term) => gazetteer.normalizePlaceName(term).split(' ')),
+)]));
+
+/** The particular place a report names, as a slug, or '' for none: unnamed or only a region. */
+function reportedPlaceSlug(reportedPlace, iso2) {
+  const countryWords = COUNTRY_WORDS.get(iso2);
+  for (const part of String(reportedPlace || '').split(/[,،;/]/)) {
+    const words = gazetteer.normalizePlaceName(part).split(' ').filter(Boolean);
+    if (words.some((word) => REGION_WORDS.has(word))) continue;
+    const name = words.filter((word) => !GENERIC_PLACE_WORDS.has(word) && !countryWords.has(word));
+    if (name.length) return name.join('-').slice(0, 40);
+  }
+  return '';
+}
+
+// A report the gazetteer could only place at a country centroid keeps the name
+// it carries in its key, so strikes on two unlisted villages stay two
+// incidents. One naming no particular place keeps the country key, and
+// reconcileUnlistedPlaces joins it to a named incident.
 function incidentPlaceKey(place, reportedPlace) {
   if (!place.countryLevel) return place.key;
-  const slug = gazetteer.normalizePlaceName(reportedPlace).replace(/ /g, '-').slice(0, 40);
-  const countryName = gazetteer.normalizePlaceName(gazetteer.COUNTRY_NAMES[place.iso2]).replace(/ /g, '-');
-  return slug && slug !== countryName ? `${place.key}:${slug}` : place.key;
+  const slug = reportedPlaceSlug(reportedPlace, place.iso2);
+  return slug ? `${place.key}:${slug}` : place.key;
 }
 
 function buildTelegramCandidate(item, classification, now) {
   if (!classification?.isStrike) return null;
-  // Event time, not post time: a post about an older attack is not a strike now.
+  // A post about an older attack is not a strike now.
   if (classification.when === 'past' || isRetrospectivePost(item?.text)) return null;
   const ts = Date.parse(item?.ts);
   if (!item?.id || !inWindow(ts, now)) return null;
@@ -579,9 +614,10 @@ function normalizeStore(store) {
 }
 
 // A ship hit off a town and a strike on the town are two incidents: one
-// scores no country, the other scores the country hit.
+// scores no country, the other scores the country hit. Only Telegram can tell
+// them apart: GDELT geocodes coverage of a ship to the nearest coastal town.
 function placeKeyOf(c) {
-  return `${c.iso2}|${c.placeKey}${c.sea ? '|sea' : ''}`;
+  return `${c.iso2}|${c.placeKey}${c.src === 'telegram' && c.sea ? '|sea' : ''}`;
 }
 
 function groupByPlace(cands) {
@@ -617,6 +653,96 @@ function sessionize(members) {
   return sessions;
 }
 
+// Optimal string alignment distance: edits plus adjacent transpositions.
+function editDistance(a, b) {
+  let beforeLast = [];
+  let last = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(last[j] + 1, row[j - 1] + 1, last[j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) row[j] = Math.min(row[j], beforeLast[j - 2] + 1);
+    }
+    beforeLast = last;
+    last = row;
+  }
+  return last[b.length];
+}
+
+// Two slugs name one place when every word of the shorter is in the longer
+// ("yater", "yater-bint-jbeil"), or they differ by a transliteration's few
+// letters. Names under five letters must match exactly: there, one letter is a
+// different place.
+function sameUnlistedPlace(a, b) {
+  if (a === b) return true;
+  const [fewer, more] = [a.split('-'), b.split('-')].sort((x, y) => x.length - y.length);
+  if (fewer.every((word) => more.includes(word))) return true;
+  const shorter = Math.min(a.length, b.length);
+  const allowed = shorter < 5 ? 0 : shorter < 10 ? 1 : 2;
+  return allowed > 0 && editDistance(a, b) <= allowed;
+}
+
+// Telegram reports the gazetteer could only place at a country centroid. Two
+// spellings of one unlisted place share the earliest report's key. A report
+// naming no particular place joins the named incident nearest in time within
+// INCIDENT_MS, taking its point so the map and the GDELT fold use it; with none
+// near, it stays at the country key, where such reports count once per incident
+// window. Each country and side of the shore is matched on its own.
+function reconcileUnlistedPlaces(candidates) {
+  const telegram = candidates.filter((c) => c.src === 'telegram').sort((a, b) => (a.ts - b.ts) || a.id.localeCompare(b.id));
+  const sides = new Map();
+  for (const c of telegram) {
+    const side = `${c.iso2}|${c.sea === true}`;
+    if (!sides.has(side)) sides.set(side, []);
+    sides.get(side).push(c);
+  }
+  const replaced = new Map();
+  for (const reports of sides.values()) {
+    const countryKey = `${reports[0].iso2}:*`;
+    const spellings = [];
+    const named = [];
+    const unnamed = [];
+    for (const report of reports) {
+      if (report.placeKey === countryKey) {
+        unnamed.push(report);
+        continue;
+      }
+      let resolved = report;
+      if (report.placeKey.startsWith(`${countryKey}:`)) {
+        const slug = report.placeKey.slice(countryKey.length + 1);
+        let spelling = spellings.find((known) => sameUnlistedPlace(known, slug));
+        if (!spelling) {
+          spelling = slug;
+          spellings.push(slug);
+        }
+        if (spelling !== slug) {
+          resolved = { ...report, placeKey: `${countryKey}:${spelling}` };
+          replaced.set(report.id, resolved);
+        }
+      }
+      named.push(resolved);
+    }
+    const sessions = [...groupByPlace(named).values()].flatMap(sessionize)
+      .sort((a, b) => (a.start - b.start) || a.members[0].placeKey.localeCompare(b.members[0].placeKey));
+    for (const report of unnamed) {
+      let nearest = null;
+      let nearestGap = Infinity;
+      for (const session of sessions) {
+        const gap = Math.abs(report.ts - session.start);
+        if (gap <= INCIDENT_MS && gap < nearestGap) {
+          nearest = session;
+          nearestGap = gap;
+        }
+      }
+      if (!nearest) continue;
+      const anchor = nearest.members[0];
+      replaced.set(report.id, { ...report, placeKey: anchor.placeKey, place: anchor.place, lat: anchor.lat, lon: anchor.lon });
+    }
+  }
+  return candidates.map((c) => replaced.get(c.id) || c);
+}
+
 function mergeCandidateStore(previous, additions, now) {
   const store = normalizeStore(previous);
   const byId = new Map();
@@ -630,7 +756,7 @@ function mergeCandidateStore(previous, additions, now) {
   const all = [...byId.values()];
   const telegramByPlace = groupByPlace(all.filter((c) => c.src === 'telegram'));
   for (const [place, members] of groupByPlace(all.filter((c) => c.src === 'gdelt'))) {
-    const telegram = telegramByPlace.get(place) || [];
+    const telegram = [...(telegramByPlace.get(place) || []), ...(telegramByPlace.get(`${place}|sea`) || [])];
     for (const session of sessionize(members)) {
       if (now - session.start <= GDELT_PENDING_TTL_MS || gdeltSupport(session.members).qualifies) continue;
       for (const c of session.members) {
@@ -716,8 +842,16 @@ function hasAttackTime(telegram) {
   return telegram.some((c) => c.when !== 'update');
 }
 
+// Reports that can back an incident with no stand-alone report: Telegram on the
+// incident's side of the shore, GDELT at the place on either side.
+function placeSupport(byPlace, incidentReport) {
+  const telegram = byPlace.get(placeKeyOf(incidentReport)).filter((c) => c.src === 'telegram');
+  const gdelt = (byPlace.get(`${incidentReport.iso2}|${incidentReport.placeKey}`) || []).filter((c) => c.src === 'gdelt');
+  return [...telegram, ...gdelt];
+}
+
 function deriveStrikeEvents(candidates, now) {
-  const valid = (candidates || []).filter((c) => isValidCandidate(c) && inAnchorHorizon(c.ts, now));
+  const valid = reconcileUnlistedPlaces((candidates || []).filter((c) => isValidCandidate(c) && inAnchorHorizon(c.ts, now)));
   const byPlace = groupByPlace(valid);
   const incidents = [];
   for (const members of byPlace.values()) {
@@ -761,7 +895,7 @@ function deriveStrikeEvents(candidates, now) {
   // covers folds into it instead of becoming a second dot.
   for (const incident of pending) {
     const first = incident.members[0];
-    const support = byPlace.get(placeKeyOf(first)).filter((c) => Math.abs(c.ts - incident.start) <= CORROBORATION_WINDOW_MS);
+    const support = placeSupport(byPlace, first).filter((c) => Math.abs(c.ts - incident.start) <= CORROBORATION_WINDOW_MS);
     if (!isCorroborated(support)) continue;
     const covered = published.some((p) => p.iso2 === first.iso2 && p.placeKey === first.placeKey
       && p.sea === (first.sea === true) && Math.abs(p.ts - incident.start) <= CORROBORATION_WINDOW_MS);
@@ -776,9 +910,9 @@ function deriveStrikeEvents(candidates, now) {
     const first = incident.members[0];
     // GDELT dates an article, not the attack: coverage of a Telegram-reported
     // incident keeps arriving for up to a day after it.
-    // Coverage folds only into an incident on the same side of the shore: a
-    // ship hit offshore must not swallow a strike on the town.
-    const folded = published.some((p) => p.iso2 === first.iso2 && p.sea === (first.sea === true)
+    // GDELT cannot tell sea from land (`sea` is true only for a waterway place),
+    // so it folds across the shore: when unsure, count one incident, not two.
+    const folded = published.some((p) => p.iso2 === first.iso2
       && first.ts - p.ts >= -GDELT_FOLD_WINDOW_MS && first.ts - p.ts <= LATE_REPORT_MS
       && gazetteer.distanceKm(p.lat, p.lon, first.lat, first.lon) <= GDELT_FOLD_KM);
     if (folded || !inWindow(first.ts, now)) continue;

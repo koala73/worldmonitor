@@ -1,6 +1,6 @@
 {
   "b3-strike-precision": {
-    "rule": "One physical incident counts once, on the country hit, at the time it happened: the strike feed drops retrospective posts, interceptions and ships at sea, merges every report of one incident, and the scorer reads only the v2 strike tally (CII_STRIKE_TALLY_VERSION) that the fixed relay writes.",
+    "rule": "One physical incident counts once, on the country hit, dated to its first report: the strike feed drops retrospective posts, interceptions and ships at sea, merges every report of one incident, and the scorer reads only the v2 strike tally (CII_STRIKE_TALLY_VERSION) that the fixed relay writes.",
     "fixtureMovers": [],
     "note": "No fixture country moves by 3 or more. The fixtures hold the relay's output, so the relay change cannot show in them. Rejecting their v1 tally moves IR 66 to 65 on 2026-10-23T0946Z and lowers blends by under 1 point elsewhere (IR, LB, SA, SY). A counterfactual on 2026-10-23T0946Z that swaps the production 72h window for the fixed relay's replay of the same posts moves SA 70 to 66 and IR 66 to 62 (PR #9592).",
     "knownGaps": [

@@ -429,9 +429,15 @@ function nearestPlace(lat, lon, iso2, maxKm) {
   return best ? best.place : null;
 }
 
+/** The terms that name a focus country as a location, in every tracked language. */
+function countryTerms(iso2) {
+  return COUNTRY_TERMS[iso2] || [];
+}
+
 module.exports = {
   FOCUS_COUNTRIES,
   COUNTRY_NAMES,
+  countryTerms,
   COUNTRY_CENTROIDS,
   normalizePlaceName,
   findPlaceInText,

@@ -506,9 +506,9 @@ describe('incident integrity', () => {
 });
 
 // CII v15 Stage B3. Global rule: one physical incident counts once, on the
-// country hit, at the time it happened. Each case paraphrases a defect measured
+// country hit, dated to its first report. Each case paraphrases a defect measured
 // in the production window of 2026-10-20..23 (no post text is copied).
-describe('precision: one incident, once, on the country hit, when it happened', () => {
+describe('precision: one incident, once, on the country hit, dated to its first report', () => {
   const events = (cands) => strikes.deriveStrikeEvents(cands, NOW);
   const tally = (evs) => strikes.mergeStrikePressure(null, evs, NOW).days;
 
@@ -614,22 +614,47 @@ describe('precision: one incident, once, on the country hit, when it happened', 
     }
   });
 
-  it('never folds a GDELT land strike into a ship hit at sea nearby', () => {
-    // Duqm, Oman: a tanker hit offshore (Telegram, at sea) and GDELT coverage
-    // of a strike geocoded to the town 6h later. The land rows must not vanish
-    // into the sea incident, whichever is processed first.
+  it('folds GDELT coverage into a ship hit at sea nearby, because GDELT cannot tell sea from land', () => {
+    // A tanker hit off Fujairah: GDELT geocodes its coverage to the coastal
+    // city, and only a waterway place ever carries `sea` on the GDELT side.
+    // The articles describe the same attack and must not score the UAE.
+    const ship = candidate('wamnews_en', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true, severity: 'critical' }), 2 * HOUR);
+    const coverage = strikes.mapGdeltExportToStrikeCandidates([
+      gdeltRow({ id: '1', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 3, url: 'https://a.example/1', added: '20261019104000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+      gdeltRow({ id: '2', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 2, url: 'https://b.example/2', added: '20261019105000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+    ].join('\n'));
+    for (const order of [[ship, ...coverage], [...coverage, ship]]) {
+      const out = events(order);
+      assert.deepEqual(out.map((e) => [e.category, e.countryCode]), [['airstrike', '']]);
+      assert.deepEqual(tally(out), {});
+    }
+    // A Telegram land strike there absorbs the same GDELT rows.
+    const onLand = candidate('wamnews_en', cls({ place: 'Fujairah', countryIso2: 'AE', severity: 'high' }), 2 * HOUR);
+    assert.deepEqual(events([onLand, ...coverage]).map((e) => e.countryCode), ['AE']);
+  });
+
+  it('lets GDELT corroborate a ship hit at sea, and keeps those rows while the report needs them', () => {
+    const ship = candidate('sepah', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true }), 2 * HOUR);
+    const coverage = strikes.mapGdeltExportToStrikeCandidates([
+      gdeltRow({ id: '1', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 3, url: 'https://a.example/1', added: '20261019104000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+      gdeltRow({ id: '2', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 2, url: 'https://b.example/2', added: '20261019105000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }),
+    ].join('\n'));
+    assert.deepEqual(events([ship, ...coverage]).map((e) => [e.category, e.countryCode]), [['airstrike', '']]);
+    assert.deepEqual(events([ship]), [], 'a belligerent\'s report still needs agreement');
+    // One article, past the pending TTL, under the propaganda report at sea.
+    const lone = strikes.mapGdeltExportToStrikeCandidates(gdeltRow({ id: '3', fips: 'AE', lat: 25.12, lon: 56.34, numSources: 1, url: 'https://c.example/3', added: '20261019080000', fullName: 'Fujairah, Fujairah, United Arab Emirates' }));
+    const stored = strikes.mergeCandidateStore(null, [candidate('sepah', cls({ place: 'Fujairah', countryIso2: 'AE', atSea: true }), 4 * HOUR), ...lone], NOW);
+    assert.ok(stored.candidates.some((c) => c.src === 'gdelt'), 'the article still backs the report at sea');
+  });
+
+  it('keeps Telegram reports of a ship and of a strike on the town apart when GDELT covers both', () => {
     const ship = candidate('wfwitness', cls({ place: 'Duqm', countryIso2: 'OM', atSea: true, severity: 'elevated' }), 8 * HOUR);
+    const port = candidate('OSINTdefender', cls({ place: 'Duqm', countryIso2: 'OM', severity: 'high' }), 7 * HOUR);
     const land = strikes.mapGdeltExportToStrikeCandidates([
       gdeltRow({ id: '1', fips: 'MU', lat: 19.66, lon: 57.7, numSources: 3, url: 'https://a.example/1', added: '20261019100000', fullName: 'Duqm, Al Wusta, Oman' }),
       gdeltRow({ id: '2', fips: 'MU', lat: 19.66, lon: 57.7, numSources: 2, url: 'https://b.example/2', added: '20261019100500', fullName: 'Duqm, Al Wusta, Oman' }),
     ].join('\n'));
-    for (const order of [[ship, ...land], [...land, ship]]) {
-      const out = events(order);
-      assert.deepEqual(out.map((e) => [e.category, e.countryCode]).sort(), [['airstrike', ''], ['gdelt', 'OM']]);
-    }
-    // A Telegram land strike there does absorb the same GDELT rows.
-    const onLand = candidate('wfwitness', cls({ place: 'Duqm', countryIso2: 'OM', severity: 'high' }), 8 * HOUR);
-    assert.deepEqual(events([onLand, ...land]).map((e) => e.countryCode), ['OM']);
+    assert.deepEqual(events([ship, port, ...land]).map((e) => e.countryCode).sort(), ['', 'OM']);
   });
 
   it('keeps strikes on two unlisted villages of one country apart', () => {
@@ -642,6 +667,66 @@ describe('precision: one incident, once, on the country hit, when it happened', 
     assert.equal(out.length, 2);
     assert.equal(new Set(out.map((e) => e.id)).size, 2);
     assert.ok(out.every((e) => e.countryCode === 'LB'));
+  });
+
+  describe('reports the gazetteer cannot place', () => {
+    const lb = (place, ageMs, overrides = {}) => candidate(overrides.channel ?? 'wfwitness', cls({ place, countryIso2: 'LB', severity: 'critical', ...overrides.cls }), ageMs);
+
+    for (const other of ['', 'Yatar', 'South Lebanon', 'Southern Lebanon', 'Lebanon', 'southern Lebanon border villages', 'Yater, South Lebanon', 'the town of Yater', 'Yater village']) {
+      it(`counts one strike once when one channel says 'Yater' and another '${other}'`, () => {
+        const named = lb('Yater', 40 * MIN);
+        const second = lb(other, 20 * MIN, { channel: 'Alsaa_plus_EN' });
+        for (const order of [[named, second], [second, named]]) {
+          const out = events(order);
+          assert.equal(out.length, 1, out.map((e) => e.id).join(', '));
+          assert.equal(out[0].countryCode, 'LB');
+          assert.equal(out[0].timestamp, named.ts, 'dated to the first report');
+          assert.deepEqual(tally(out), { '2026-10-19': { LB: [1, 0, 0, 0] } });
+        }
+      });
+    }
+
+    it('dates the incident to an unnamed first report, and takes its place from the named one', () => {
+      const unnamed = lb('', 50 * MIN);
+      const named = candidate('Alsaa_plus_EN', cls({ place: 'Tyre', countryIso2: 'LB', severity: 'high' }), 30 * MIN);
+      const [event, ...rest] = events([named, unnamed]);
+      assert.deepEqual(rest, []);
+      assert.equal(event.timestamp, unnamed.ts);
+      assert.equal(event.locationName, 'Tyre');
+      assert.deepEqual([event.latitude, event.longitude], [named.lat, named.lon]);
+    });
+
+    it('keeps two named villages apart, however close in time or spelling length', () => {
+      for (const [a, b] of [['Yater', 'Kfar Tebnit'], ['Deir Seryan', 'Beit Yahoun'], ['Qarn', 'Qurn']]) {
+        const out = events([lb(a, 40 * MIN), lb(b, 20 * MIN, { channel: 'Alsaa_plus_EN' })]);
+        assert.equal(out.length, 2, `${a} / ${b}`);
+        assert.equal(new Set(out.map((e) => e.id)).size, 2);
+      }
+    });
+
+    it('sends an unnamed report to the nearest named incident, once', () => {
+      const out = events([
+        lb('Yater', 3 * HOUR),
+        lb('', 2 * HOUR - 40 * MIN, { channel: 'Alsaa_plus_EN' }),
+        lb('Kfar Tebnit', 2 * HOUR, { channel: 'OSINTdefender' }),
+      ]);
+      assert.equal(out.length, 2);
+      assert.deepEqual(tally(out), { '2026-10-19': { LB: [2, 0, 0, 0] } });
+      assert.ok(out.every((e) => e.id.includes(':*:')), out.map((e) => e.id).join(', '));
+    });
+
+    it('leaves an unnamed report on its own when no named incident is within the incident window', () => {
+      assert.equal(events([lb('Yater', 6 * HOUR), lb('', 2 * HOUR, { channel: 'Alsaa_plus_EN' })]).length, 2);
+    });
+
+    it('counts unnamed reports of one country in one incident window once', () => {
+      assert.equal(events([lb('', 2 * HOUR), lb('South Lebanon', 90 * MIN, { channel: 'Alsaa_plus_EN' })]).length, 1);
+    });
+
+    it('never merges a report at sea with a land incident while resolving places', () => {
+      const out = events([lb('Yater', 40 * MIN), lb('', 20 * MIN, { channel: 'Alsaa_plus_EN', cls: { atSea: true } })]);
+      assert.deepEqual(out.map((e) => e.countryCode).sort(), ['', 'LB']);
+    });
   });
 
   it('maps an interception but never tallies it as a strike on the country', () => {
@@ -705,6 +790,9 @@ describe('precision: one incident, once, on the country hit, when it happened', 
     assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /launches with no reported impact or interception/);
     assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /summaries or tallies of many attacks/);
     assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /not the attacker's country and not the launch site/);
+    // `when` must not overlap: a toll posted hours after an attack is an update.
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /"new" = the first report of an attack/);
+    assert.match(strikes.STRIKE_CLASSIFIER_PROMPT, /"update" = a post adding details to an attack already reported, even within those 24 hours/);
   });
 });
 
