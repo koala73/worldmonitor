@@ -310,21 +310,45 @@ describe('radar-asn-impact: the budget is spent only on ASN outages that can sco
   });
 });
 
-describe('CII ASN outages: an unknown impact degrades the outages input', () => {
+describe('CII ASN outages: an unknown impact is reported beside the input state', () => {
   const unknownRecord = asnOutage(null, { impactUnknownReason: 'HTTP 403' });
-
-  it('reports the outages input degraded, with the reason, when an in-construct ASN outage cannot be measured', () => {
-    const t = table([unknownRecord]);
+  const iranShutdown: Outage = {
+    id: 'cf-1', countryCode: 'IR', cause: 'GOVERNMENT_DIRECTED', severity: 'OUTAGE_SEVERITY_TOTAL', detectedAt: NOW - HOUR, endedAt: 0, description: 'Nationwide shutdown',
+  };
+  const sudanUnknown = asnOutage(null, { id: 'cf-2', countryCode: 'SD', country: 'Sudan', impactUnknownReason: 'budget' });
+  const assess = (located: Outage[], asn: Outage[]) => {
+    const t = computeCiiScoreTable({ outages: { outages: located, asnOutages: asn } }, { nowMs: NOW, iranEventsEnabled: true });
     const states = assessCiiInputAvailability([], t.aux, NOW, false);
-    assert.equal(states.outages, 'degraded');
     const reports = withCiiInputQuietClocks(states, null, NOW, { exclusions: ciiInputExclusions(t.aux, NOW) });
-    assert.equal(reports.outages.state, 'degraded');
+    return { states, reports, verdict: assessCiiInputs({ inputs: reports }, NOW) };
+  };
+  const deadOutages = (verdict: { dead: Array<{ id: string }> }) => verdict.dead.find((d) => d.id === 'outages');
+
+  it('does not touch a live input for an unknown record outside the scored countries', () => {
+    const { states, reports, verdict } = assess([iranShutdown], [sudanUnknown]);
+    assert.equal(states.outages, 'live');
+    assert.equal(deadOutages(verdict), undefined);
+    assert.equal(reports.outages.excluded!.asnImpactUnknown!.count, 1, 'still audited as an exclusion');
+    assert.equal(reports.outages.excluded!.asnImpactUnknown!.tier1Count, undefined);
+    assert.deepEqual(verdict.unknownImpact, []);
+  });
+
+  it('keeps a live input live beside a Tier-1 unknown record, and reports the unknown separately', () => {
+    const { states, reports, verdict } = assess([iranShutdown], [unknownRecord]);
+    assert.equal(states.outages, 'live');
+    assert.equal(reports.outages.state, 'live');
     assert.equal(reports.outages.excluded!.asnImpactUnknown!.samples[0]!.reason, 'HTTP 403');
-    const verdict = assessCiiInputs({ inputs: reports }, NOW);
-    const dead = verdict.dead.find((d: { id: string }) => d.id === 'outages');
-    assert.ok(dead, 'health lists the outages input as dead');
-    assert.equal(dead.state, 'degraded');
-    assert.deepEqual(dead.excluded, ['asnImpactUnknown']);
+    assert.equal(reports.outages.excluded!.asnImpactUnknown!.tier1Count, 1);
+    assert.deepEqual(reports.outages.excluded!.asnImpactUnknown!.tier1Countries, ['RU']);
+    assert.equal(deadOutages(verdict), undefined, 'an unknown impact is not a dead input');
+    assert.deepEqual(verdict.unknownImpact, [{ id: 'outages', count: 1, countries: ['RU'] }]);
+  });
+
+  it('keeps a quiet input quiet beside a Tier-1 unknown record', () => {
+    const { states, verdict } = assess([], [unknownRecord]);
+    assert.equal(states.outages, 'quiet');
+    assert.equal(deadOutages(verdict), undefined);
+    assert.deepEqual(verdict.unknownImpact, [{ id: 'outages', count: 1, countries: ['RU'] }]);
   });
 
   it('stays live or quiet when every unknown ASN outage is out of construct or out of the window', () => {
@@ -336,6 +360,42 @@ describe('CII ASN outages: an unknown impact degrades the outages input', () => 
   it('stays live when a located outage scores beside a measured ASN outage', () => {
     const t = computeCiiScoreTable({ outages: { outages: [{ ...asnOutage(0.1), countryCode: 'IQ', description: 'protests' }], asnOutages: [asnOutage(0.1)] } }, { nowMs: NOW, iranEventsEnabled: true });
     assert.equal(assessCiiInputAvailability([], t.aux, NOW, false).outages, 'live');
+  });
+
+  it('decides unusable on located outages alone, so one mapped ASN record cannot mask a dead reader (P7b)', () => {
+    const unmapped: Outage = { id: 'cf-3', country: 'Atlantis', cause: 'GOVERNMENT_DIRECTED', severity: 'OUTAGE_SEVERITY_TOTAL', detectedAt: NOW - HOUR, endedAt: 0 };
+    assert.equal(assess([unmapped], [asnOutage(0.6)]).states.outages, 'unusable');
+    assert.notEqual(assess([], [asnOutage(0.6)]).states.outages, 'unusable', 'no located records is not a dead reader');
+  });
+});
+
+describe('radar-asn-impact: the series must be the normalization the measure assumes', () => {
+  const start = Date.parse('2026-10-20T07:00:00Z');
+  const end = Date.parse('2026-10-20T10:00:00Z');
+  const top = { top_0: [{ clientASN: 41039, value: '60' }, { clientASN: 2, value: '40' }] };
+  const fullDown = (t: number) => (t >= start && t < end ? 0 : 1);
+  const measureWith = (meta: unknown, paths: string[] = []) => measureAsnNationalImpact({
+    get: async (path: string) => {
+      paths.push(path);
+      return path.startsWith('/radar/netflows/top/ases') ? top : { ...series(start - WEEK, end + HOUR, fullDown), meta };
+    },
+    countryCode: 'RU', asns: [41039], startMs: start, endMs: end, nowMs: NOW,
+  });
+
+  it('asks Radar for MIN0_MAX', async () => {
+    const paths: string[] = [];
+    const m = await measureWith({ normalization: 'MIN0_MAX' }, paths);
+    assert.ok(Math.abs(m.nationalImpact! - 0.6) < 1e-9, JSON.stringify(m));
+    const timeseries = paths.find((p) => p.startsWith('/radar/netflows/timeseries'))!;
+    assert.match(timeseries, /[?&]normalization=MIN0_MAX(&|$)/);
+  });
+
+  it('reads any other normalization, or none, as unknown', async () => {
+    for (const meta of [{ normalization: 'PERCENTAGE_CHANGE' }, { normalization: 'PERCENTAGE' }, {}, undefined]) {
+      const m = await measureWith(meta);
+      assert.equal(m.nationalImpact, null, JSON.stringify(meta));
+      assert.match(String(m.unknownReason), /normalization/);
+    }
   });
 });
 

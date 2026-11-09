@@ -1343,15 +1343,17 @@ export function buildCiiAuxiliarySources(
   // not quiet: that is how the countryCode/name mismatch hid for months (P7b).
   // ASN-attributed records arrive in `asnOutages`; the attribution comes from
   // that placement, never from a field the record carries.
+  const locatedOutages = arr(outagesRaw, 'outages').map((o) => ({ ...o, attribution: undefined }));
   const outageRecords = [
-    ...arr(outagesRaw, 'outages').map((o) => ({ ...o, attribution: undefined })),
+    ...locatedOutages,
     ...(Array.isArray((outagesRaw as any)?.asnOutages) ? arr(outagesRaw, 'asnOutages') : []).map((o) => ({ ...o, attribution: 'asn' })),
   ];
   const outages = outageRecords.flatMap((o) => {
     const countryCode = outageCountryCode(o);
     return countryCode ? [{ ...o, countryCode }] : [];
   });
-  if (outagesRaw != null && outageRecords.length > 0 && outages.length === 0) inputReads.outages = 'unusable';
+  // Decided on located records alone: one mapped ASN record must not mask a reader that maps none of them.
+  if (outagesRaw != null && locatedOutages.length > 0 && !locatedOutages.some((o) => outageCountryCode(o))) inputReads.outages = 'unusable';
 
   let orefData: AuxiliarySources['orefData'] = null;
   if (orefRaw && typeof orefRaw === 'object') {
@@ -1451,12 +1453,14 @@ export const CII_HEALTH_INPUT_IDS = [
 export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
 /** `unusable`: present, but none of its records map to a country. */
 type CiiInputRead = 'present' | 'missing' | 'unusable' | 'not_configured';
-/** `degraded`: present and read, but some in-construct records could not be judged (an ASN outage with an unknown impact). */
-export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured' | 'degraded';
+export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
 /** Records one construct rule removed from scoring: how many, and up to 5 to audit. */
 export interface CiiInputExclusion {
   count: number;
   samples: Array<{ id: string; title: string; description: string; nationalImpact?: number | null; reason?: string }>;
+  /** `asnImpactUnknown` only: how many of `count` are in a scored (Tier-1) country, and which countries. */
+  tier1Count?: number;
+  tier1Countries?: string[];
 }
 /** `excluded`: records a construct rule removed from scoring, by rule (see ciiInputExclusions). */
 export interface CiiInputReport { state: CiiInputState; quietSince?: number; excluded?: Record<string, CiiInputExclusion> }
@@ -1524,12 +1528,6 @@ export function assessCiiInputAvailability(
       states[id] = fingerprint([], { ...emptyAuxiliarySources(), [field]: aux[field] }) !== baseline ? 'live' : 'quiet';
     }
   }
-  // An in-construct, in-window ASN outage whose national impact is unknown
-  // could have scored: the input cannot be read as calm (unknown is not calm).
-  if (states.outages !== 'missing' && states.outages !== 'unusable'
-    && aux.outages.some((o) => outageVerdict(o, nowMs) === 'asnImpactUnknown')) {
-    states.outages = 'degraded';
-  }
   return states;
 }
 
@@ -1539,7 +1537,9 @@ export function assessCiiInputAvailability(
  * and window rules but are removed by a later one: `examShutdown`
  * (CII_OUTAGE_EXAM_TERMS), `asnBelowNationalShare` (an ASN outage at or
  * below CII_OUTAGE_ASN_NATIONAL_SHARE) and `asnImpactUnknown` (an ASN
- * outage whose national impact could not be measured).
+ * outage whose national impact could not be measured). `asnImpactUnknown`
+ * also names the Tier-1 countries involved, the only ones where the unknown
+ * could have moved a score; it never changes the input's state.
  */
 export function ciiInputExclusions(aux: AuxiliarySources, nowMs: number): CiiInputExclusions {
   const text = (v: unknown) => String(v ?? '').slice(0, CII_EXCLUSION_TEXT_MAX);
@@ -1555,6 +1555,10 @@ export function ciiInputExclusions(aux: AuxiliarySources, nowMs: number): CiiInp
       if (o.attribution === 'asn') sample.nationalImpact = o.nationalImpact == null || !Number.isFinite(Number(o.nationalImpact)) ? null : Number(o.nationalImpact);
       if (verdict === 'asnImpactUnknown') sample.reason = text(o.impactUnknownReason || 'impact not measured');
       entry.samples.push(sample);
+    }
+    if (verdict === 'asnImpactUnknown' && o.countryCode in TIER1_COUNTRIES) {
+      entry.tier1Count = (entry.tier1Count ?? 0) + 1;
+      entry.tier1Countries = [...new Set([...(entry.tier1Countries ?? []), String(o.countryCode)])].sort();
     }
   }
   return Object.keys(byRule).length > 0 ? { outages: byRule } : {};

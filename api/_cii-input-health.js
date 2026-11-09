@@ -11,12 +11,11 @@
 //   missing         the Redis key was absent
 //   unusable        present, but the scorer rejected it (too old or malformed,
 //                   or none of its records map to a country)
-//   degraded        present and read, but a record that could have scored
-//                   could not be judged (an ASN outage whose national impact
-//                   is unknown); `excluded` names the rule. Dead: unknown is
-//                   not calm.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
+// A Tier-1 ASN outage whose national impact could not be measured leaves the
+// state alone (the feed was read). It is listed in `unknownImpact`, for
+// operators, and does not change the health status.
 // An unreadable key rejects the whole build, so it surfaces as a stale
 // riskScores seed-meta rather than as a per-input state.
 //
@@ -68,7 +67,7 @@ export const CII_INPUT_POLICY = Object.freeze({
   families: Object.freeze(Object.fromEntries(Object.entries(FAMILIES).map(([id, members]) => [id, Object.freeze(members)]))),
 });
 
-const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured', 'degraded']);
+const PRODUCER_STATES = new Set(['live', 'quiet', 'missing', 'unusable', 'not_configured']);
 // Only "past its own staleness budget" marks an input stale here. Every other
 // source-check fault is either reported by the producer (missing key) or
 // leaves usable retained data behind (SEED_ERROR).
@@ -87,12 +86,17 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     : null;
   const states = {};
   const dead = [];
+  const unknownImpact = [];
   const notConfigured = [];
   const healthy = new Set();
 
   for (const [id, cfg] of Object.entries(CII_INPUT_POLICY.inputs)) {
     const report = reported?.[id];
     const state = report && PRODUCER_STATES.has(report.state) ? report.state : 'unreported';
+    const asnUnknown = report?.excluded?.asnImpactUnknown;
+    if (Number(asnUnknown?.tier1Count) > 0) {
+      unknownImpact.push({ id, count: Number(asnUnknown.tier1Count), countries: Array.isArray(asnUnknown.tier1Countries) ? asnUnknown.tier1Countries : [] });
+    }
     const sourceCheck = cfg.sourceCheck && STALE_SOURCE_STATUSES.has(sourceStatuses[id]) ? cfg.sourceCheck : null;
     states[id] = state;
 
@@ -102,9 +106,6 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
       healthy.add(id);
     } else if (state === 'missing' || state === 'unusable' || state === 'unreported') {
       dead.push({ id, state });
-    } else if (state === 'degraded') {
-      const excluded = report.excluded && typeof report.excluded === 'object' ? Object.keys(report.excluded) : [];
-      dead.push({ id, state, ...(excluded.length ? { excluded } : {}) });
     } else if (sourceCheck) {
       states[id] = 'stale';
       dead.push({ id, state: 'stale', sourceCheck });
@@ -126,5 +127,5 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     .filter(([, members]) => !members.some((id) => healthy.has(id)))
     .map(([family]) => family);
 
-  return { valid: reported !== null, states, dead, notConfigured, unfedFamilies };
+  return { valid: reported !== null, states, dead, notConfigured, unfedFamilies, unknownImpact };
 }

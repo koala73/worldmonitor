@@ -28,6 +28,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const QUARTER_MS = 15 * 60 * 1000;
 const WEEK_MS = 7 * 24 * HOUR_MS;
 const TOP_ASES_LIMIT = 100;
+/** Radar's `normalization`: one 0-to-max scale across the requested range, so buckets a week apart compare. */
+const SERIES_NORMALIZATION = 'MIN0_MAX';
 
 const iso = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
@@ -138,7 +140,9 @@ export async function measureAsnNationalImpact({ get, countryCode, asns, startMs
         upperBound = true;
       }
       const agg = step === QUARTER_MS ? '15m' : '1h';
-      const series = await get(`/radar/netflows/timeseries?asn=${asn}&dateStart=${iso(from - WEEK_MS)}&dateEnd=${iso(to)}&aggInterval=${agg}&format=json`);
+      const series = await get(`/radar/netflows/timeseries?asn=${asn}&dateStart=${iso(from - WEEK_MS)}&dateEnd=${iso(to)}&aggInterval=${agg}&normalization=${SERIES_NORMALIZATION}&format=json`);
+      // The drop is a ratio of levels on one scale; any other normalization is not that.
+      if (series?.meta?.normalization !== SERIES_NORMALIZATION) return unknown(`AS${asn}: normalization ${series?.meta?.normalization ?? 'missing'}`);
       const { drop, reason } = trafficDrop(series, startMs, end, step);
       if (drop == null) return unknown(`AS${asn}: ${reason}`);
       impact += share * drop;
