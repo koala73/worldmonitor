@@ -55,7 +55,12 @@ afterEach(async () => {
   originalGlobals.clear();
 });
 
-async function fixture(options: { browserUser: string | null; href?: string; responses?: Response[] }) {
+async function fixture(options: {
+  browserUser: string | null;
+  href?: string;
+  responses?: Response[];
+  onGetToken?: (state: { user: unknown }) => void;
+}) {
   mock.method(console, 'error', () => {});
   mock.timers.enable({ apis: ['setTimeout'] });
   const href = options.href ?? 'https://www.worldmonitor.app/pro#pricing';
@@ -96,7 +101,7 @@ async function fixture(options: { browserUser: string | null; href?: string; res
     },
     __checkoutFixture: { clerk: async () => ({
       get user() { return state.user; },
-      session: { getToken: async () => 'synthetic-token' },
+      session: { getToken: async () => { options.onGetToken?.(state); return 'synthetic-token'; } },
       openSignIn: (intent: { afterSignInUrl?: string }) => { signIns.push(intent); },
       // Clerk navigates to its after-sign-out URL unless given a callback.
       signOut: async (callback?: () => void) => {
@@ -302,4 +307,24 @@ it('keeps the pending-payment approval for the account that gave it', async () =
   confirm()?.click();
   await waitFor(() => f.bodies.length === 2, 'checkout retries');
   assert.equal(f.bodies[1]!.bypassPendingGuard, true);
+});
+
+it('checks the account again when another tab switches it while checkout fetches its token', async () => {
+  let switched = false;
+  const f = await fixture({
+    browserUser: DESKTOP_USER,
+    onGetToken: (state) => {
+      if (switched) return;
+      switched = true;
+      state.user = { id: BROWSER_USER, primaryEmailAddress: { emailAddress: 'b@example.com' } };
+    },
+  });
+  assert.equal(await f.checkout.startCheckout('synthetic-product', {
+    desktopHandoff: { account: digest(DESKTOP_USER) },
+  }), false);
+  await waitFor(() => dialog() !== null, 'the account dialog opens for the new account');
+  assert.deepEqual(f.bodies, [], 'the new account token must not create the desktop checkout');
+  button(/upgrade this account/i)?.click();
+  await waitFor(() => f.bodies.length === 1, 'checkout continues once the new account is confirmed');
+  assert.doesNotMatch(String(f.bodies[0]!.returnUrl), /wm_src=desktop/);
 });

@@ -332,8 +332,7 @@ async function startCheckoutInner(
     return false;
   }
 
-  const confirmed = await confirmDesktopAccount(c, productId, options ?? {});
-  return confirmed ? doCheckout(productId, confirmed) : false;
+  return checkoutAs(c, productId, options ?? {});
 }
 
 type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
@@ -343,17 +342,19 @@ type ProCheckoutOptions = NonNullable<Parameters<typeof startCheckout>[1]>;
  * checkout runs on this browser's session. When they differ, the buyer picks:
  * switch to the desktop account and resume this checkout after sign-in, or
  * upgrade the browser account knowingly, which drops the "the app will
- * update" return copy. Resolves the options to check out with, or null when
- * checkout must not start now.
+ * update" return copy. Resolves the options to check out with and the
+ * account they were approved for, or null when checkout must not start now.
  */
 async function confirmDesktopAccount(
   c: LoadedClerk,
   productId: string,
   options: ProCheckoutOptions,
-): Promise<ProCheckoutOptions | null> {
+): Promise<{ options: ProCheckoutOptions; userId?: string } | null> {
   const desktopAccount = options.desktopHandoff?.account;
-  if (!desktopAccount || !c.user) return options;
-  if (await desktopAccountDigest(c.user.id) === desktopAccount) return options;
+  if (!c.user) return { options };
+  if (!desktopAccount || await desktopAccountDigest(c.user.id) === desktopAccount) {
+    return { options, userId: c.user.id };
+  }
 
   const shownUserId = c.user.id;
   const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
@@ -365,7 +366,7 @@ async function confirmDesktopAccount(
   }
   if (choice === 'upgrade-browser-account') {
     const { desktopHandoff: _dropped, ...browserOptions } = options;
-    return browserOptions;
+    return { options: browserOptions, userId: shownUserId };
   }
   if (choice === 'switch-account') {
     const returnUrl = buildCheckoutReturnUrl(window.location.href, productId, options);
@@ -380,6 +381,21 @@ async function confirmDesktopAccount(
     }
   }
   return null;
+}
+
+/**
+ * Checkout runs on whatever session Clerk holds when the token is read, and
+ * another tab can switch it after the account check. doCheckout re-reads the
+ * account at that point and comes back here, without a pending-payment
+ * bypass the new account never approved.
+ */
+async function checkoutAs(c: LoadedClerk, productId: string, options: ProCheckoutOptions): Promise<boolean> {
+  const confirmed = await confirmDesktopAccount(c, productId, options);
+  if (!confirmed) return false;
+  const { bypassPendingGuard: _dropped, ...fresh } = options;
+  return doCheckout(productId, confirmed.options, confirmed.userId
+    ? { userId: confirmed.userId, restart: () => checkoutAs(c, productId, fresh) }
+    : undefined);
 }
 
 export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
@@ -417,14 +433,13 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
       ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
       : {}),
   });
-  const confirmed = await confirmDesktopAccount(c, productId, {
+  return checkoutAs(c, productId, {
     referralCode,
     discountCode,
     attributionSource,
     checkoutAttribution,
     desktopHandoff,
   });
-  return confirmed ? doCheckout(productId, confirmed) : false;
 }
 
 async function doCheckout(
@@ -437,6 +452,7 @@ async function doCheckout(
     desktopHandoff?: DesktopCheckoutHandoff;
     bypassPendingGuard?: boolean;
   },
+  account?: { userId: string; restart: () => Promise<boolean> },
 ): Promise<boolean> {
   const cooldownSeconds = currentCheckoutRateLimitSeconds();
   if (cooldownSeconds > 0) {
@@ -447,6 +463,7 @@ async function doCheckout(
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
   let redirecting = false;
+  let accountChanged = false;
   const checkoutContext = resolveCheckoutContext({
     surface: options.checkoutAttribution ? 'mission-preview' : 'dashboard',
     attribution: options.checkoutAttribution,
@@ -490,6 +507,10 @@ async function doCheckout(
     if (!token) {
       console.error('[checkout] No auth token after retry');
       showCheckoutErrorToast('Your sign-in could not be verified. Please sign in again and retry.');
+      return false;
+    }
+    if (account && (await ensureClerk().catch(() => null))?.user?.id !== account.userId) {
+      accountChanged = true;
       return false;
     }
 
@@ -604,20 +625,10 @@ async function doCheckout(
         // and the redirect proceeds. Inline dialog (no shared component — /pro is
         // a separate build); whitelisted plan name only, raw message to Sentry.
         const planKey = err?.pendingPayment?.planKey;
-        const approvingUserId = (await ensureClerk().catch(() => null))?.user?.id;
         showProPendingPaymentDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           onConfirm: () => {
-            // The pending payment and any desktop-account approval belong to
-            // the account shown here. If another tab switched it, start over.
-            void ensureClerk().catch(() => null).then((c) => {
-              if (c?.user?.id && c.user.id === approvingUserId) {
-                void doCheckout(productId, { ...options, bypassPendingGuard: true });
-              } else {
-                const { bypassPendingGuard: _dropped, ...fresh } = options;
-                void startCheckout(productId, fresh);
-              }
-            });
+            void doCheckout(productId, { ...options, bypassPendingGuard: true }, account);
           },
           onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
         });
@@ -703,6 +714,7 @@ async function doCheckout(
   } finally {
     if (redirecting) holdCheckoutUntilNavigation();
     else releaseCheckout();
+    if (accountChanged) void account?.restart();
   }
 }
 
