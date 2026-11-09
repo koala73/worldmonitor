@@ -1,7 +1,7 @@
 import type { CheckoutAttribution } from './analytics';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { showCheckoutErrorToast } from '@/services/checkout-error-toast';
-import { buildAttributedProUrl } from '../../shared/checkout-attribution';
+import { buildAttributedProUrl, fingerprintCheckoutAccount } from '../../shared/checkout-attribution';
 
 // Reported here, never thrown: the CTAs' catch fallbacks window.open a raw
 // /pro, which drops attribution and inside the desktop WebView opens a second
@@ -25,19 +25,28 @@ function reportPlanOpenFailure(): void {
  * Mission attribution and the visitor's captured affiliate referral (`?ref=`)
  * ride on the URL, and /pro carries both into its own checkout. Desktop
  * WebViews hand the URL to the OS browser (#5911), never to a WebView popup,
- * where a checkout started from /pro could not run 3DS.
+ * where a checkout started from /pro could not run 3DS. That browser has its
+ * own session, so the desktop URL also names the app's account by
+ * fingerprint (#10342) and /pro refuses to charge a different one unseen.
  */
 export async function openUpgradePlans(attribution?: CheckoutAttribution): Promise<void> {
   try {
-    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }] = await Promise.all([
+    const [{ isDesktopRuntime }, { openExternalUrl }, { loadActiveReferral }, { getAuthState }] = await Promise.all([
       import('@/services/runtime'),
       import('@/services/external-navigation'),
       import('@/services/referral-capture'),
+      import('@/services/auth-state'),
     ]);
+    const desktopUserId = isDesktopRuntime() ? getAuthState().user?.id : undefined;
     const url = new URL(buildAttributedProUrl(
       `${WEB_APP_ORIGIN}/pro#pricing`,
       attribution,
-      isDesktopRuntime() ? { desktopHandoff: true } : undefined,
+      isDesktopRuntime()
+        ? {
+          desktopHandoff: true,
+          accountFingerprint: desktopUserId ? await fingerprintCheckoutAccount(desktopUserId) : null,
+        }
+        : undefined,
     ));
     const referral = loadActiveReferral();
     if (referral) url.searchParams.set('ref', referral);

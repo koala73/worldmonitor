@@ -459,6 +459,9 @@ describe('startCheckout on desktop (#5911)', () => {
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
+    // Let the deferred pricing fallback (account fingerprint, then native
+    // launch) settle inside THIS case rather than leak into the next harness.
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.toasts, [], 'must not announce a handoff that did not happen');
@@ -486,20 +489,25 @@ describe('startCheckout on desktop (#5911)', () => {
     ]);
   });
 
-  it('keeps the checkout-error pricing fallback out of the WebView', async () => {
+  it('keeps the checkout-error pricing fallback out of the WebView and names the account', async () => {
     // renderCheckoutErrorSurface's fallbackToPricingPage arm — the other
-    // window.location.assign that survived the first cut.
+    // window.location.assign that survived the first cut. The buyer was
+    // signed in (user_1) to get here, so the handoff carries that account's
+    // fingerprint (#10342; sha256("user_1") prefix, pinned in
+    // tests/checkout-account-fingerprint.test.mts).
     resetHarness(true, { responseStatus: 500, responseBody: '{"error":"boom"}' });
     const checkout = await loadCheckoutModule();
 
     assert.equal(await checkout.startCheckout('pro_monthly'), false);
+    // The fingerprint is hashed asynchronously before the native launch.
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, []);
     assert.deepEqual(harness.invocations, [
       {
         command: 'open_url',
-        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=79b0aa0042b3c056' },
       },
     ]);
   });

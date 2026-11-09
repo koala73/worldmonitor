@@ -23,10 +23,14 @@ import {
   CHECKOUT_ATTRIBUTION_PARAM,
 } from '../pro-test/src/services/checkout-intent-url.ts';
 import {
+  CHECKOUT_ACCOUNT_PARAM,
   CHECKOUT_HANDOFF_PARAM,
   CHECKOUT_MISSION_PARAM,
   CHECKOUT_PANEL_PARAM,
 } from '../shared/checkout-attribution.ts';
+
+// sha256("user_1") prefix, pinned in checkout-account-fingerprint.test.mts.
+const FINGERPRINT = '79b0aa0042b3c056';
 
 describe('parseCheckoutIntentFromSearch', () => {
   it('returns null when no productId param is present (normal page load)', () => {
@@ -88,6 +92,28 @@ describe('parseCheckoutIntentFromSearch', () => {
     assert.equal(mismatched?.checkoutAttribution, undefined);
   });
 
+  it('parses the desktop account fingerprint only with the handoff (#10342)', () => {
+    const bound = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_HANDOFF_PARAM}=desktop`
+      + `&${CHECKOUT_ACCOUNT_PARAM}=${FINGERPRINT}`,
+    );
+    assert.equal(bound?.desktopHandoff, true);
+    assert.equal(bound?.accountFingerprint, FINGERPRINT);
+
+    // No handoff: nothing on /pro consumes the fingerprint, so it is not an intent field.
+    const web = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_ACCOUNT_PARAM}=${FINGERPRINT}`,
+    );
+    assert.equal(web?.accountFingerprint, undefined);
+
+    // Malformed value: dropped, the handoff itself survives.
+    const bad = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_HANDOFF_PARAM}=desktop&${CHECKOUT_ACCOUNT_PARAM}=user_1`,
+    );
+    assert.equal(bad?.desktopHandoff, true);
+    assert.equal(bad?.accountFingerprint, undefined);
+  });
+
   it('ignores unrelated query params', () => {
     const intent = parseCheckoutIntentFromSearch(
       `?utm_source=email&${CHECKOUT_PRODUCT_PARAM}=pro_monthly&utm_campaign=launch`,
@@ -143,10 +169,11 @@ describe('stripCheckoutIntentFromSearch', () => {
     assert.equal(result, '?keep=me');
   });
 
-  it('strips mission preview and desktop handoff intent', () => {
+  it('strips mission preview, desktop handoff and account fingerprint intent', () => {
     const result = stripCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_MISSION_PARAM}=crisis-desk`
-      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&keep=me`,
+      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop`
+      + `&${CHECKOUT_ACCOUNT_PARAM}=${FINGERPRINT}&keep=me`,
     );
     assert.equal(result, '?keep=me');
   });
@@ -211,18 +238,26 @@ describe('buildCheckoutReturnUrl', () => {
     assert.equal(url.hash, '#pricing');
   });
 
-  it('carries preview attribution and desktop handoff through sign-in', () => {
+  it('carries preview attribution, desktop handoff and account fingerprint through sign-in', () => {
+    // The fingerprint must survive the Clerk round trip: the account check
+    // runs again when the post-sign-in resume fires (#10342).
     const returnUrl = buildCheckoutReturnUrl('https://worldmonitor.app/pro', 'pro_monthly', {
       checkoutAttribution: {
         missionId: 'crisis-desk',
         panelKey: 'cii',
       },
       desktopHandoff: true,
+      accountFingerprint: FINGERPRINT,
     });
     const url = new URL(returnUrl);
     assert.equal(url.searchParams.get(CHECKOUT_MISSION_PARAM), 'crisis-desk');
     assert.equal(url.searchParams.get(CHECKOUT_PANEL_PARAM), 'cii');
     assert.equal(url.searchParams.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
+    assert.equal(url.searchParams.get(CHECKOUT_ACCOUNT_PARAM), FINGERPRINT);
+
+    // Stale fingerprint from an earlier click is replaced, not stacked.
+    const next = new URL(buildCheckoutReturnUrl(returnUrl, 'pro_annual', { desktopHandoff: true }));
+    assert.equal(next.searchParams.has(CHECKOUT_ACCOUNT_PARAM), false);
   });
 });
 

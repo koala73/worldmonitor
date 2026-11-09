@@ -260,11 +260,14 @@ export function PricingSection({
   attributionSource,
   checkoutAttribution,
   desktopHandoff,
+  accountFingerprint,
 }: {
   refCode?: string;
   attributionSource?: string;
   checkoutAttribution?: CheckoutAttribution;
   desktopHandoff?: boolean;
+  /** Desktop account behind the handoff; checkout asks before charging another (#10342). */
+  accountFingerprint?: string;
 }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
@@ -300,8 +303,9 @@ export function PricingSection({
       attributionSource,
       checkoutAttribution,
       desktopHandoff,
+      accountFingerprint,
     });
-  }, [refCode, attributionSource, checkoutAttribution, desktopHandoff]);
+  }, [refCode, attributionSource, checkoutAttribution, desktopHandoff, accountFingerprint]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">

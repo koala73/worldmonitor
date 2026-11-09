@@ -12,10 +12,12 @@
  * afterSignInUrl refactor introduced this flow.
  */
 import {
+  CHECKOUT_ACCOUNT_PARAM,
   CHECKOUT_MISSION_PARAM,
   CHECKOUT_PANEL_PARAM,
   CHECKOUT_HANDOFF_PARAM,
   DESKTOP_CHECKOUT_HANDOFF,
+  parseCheckoutAccountFingerprint,
   parseMissionPreviewAttribution,
   isDesktopCheckoutHandoff,
   type CheckoutAttribution,
@@ -34,6 +36,8 @@ export interface CheckoutIntentFromUrl {
   attributionSource?: string;
   checkoutAttribution?: MissionPreviewAttribution;
   desktopHandoff?: boolean;
+  /** Fingerprint of the desktop account the handoff came from (#10342). */
+  accountFingerprint?: string;
 }
 
 /**
@@ -49,6 +53,10 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
     params.get(CHECKOUT_MISSION_PARAM),
     params.get(CHECKOUT_PANEL_PARAM),
   );
+  // Only the desktop-handoff branch of checkout consumes the fingerprint.
+  const accountFingerprint = isDesktopCheckoutHandoff(search)
+    ? parseCheckoutAccountFingerprint(search)
+    : null;
   return {
     productId,
     referralCode: params.get(CHECKOUT_REF_PARAM) ?? undefined,
@@ -56,6 +64,7 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
     attributionSource: params.get(CHECKOUT_ATTRIBUTION_PARAM) ?? undefined,
     ...(checkoutAttribution ? { checkoutAttribution } : {}),
     ...(isDesktopCheckoutHandoff(search) ? { desktopHandoff: true } : {}),
+    ...(accountFingerprint ? { accountFingerprint } : {}),
   };
 }
 
@@ -76,6 +85,7 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_MISSION_PARAM);
   params.delete(CHECKOUT_PANEL_PARAM);
   params.delete(CHECKOUT_HANDOFF_PARAM);
+  params.delete(CHECKOUT_ACCOUNT_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
@@ -99,6 +109,7 @@ export function buildCheckoutReturnUrl(
     // Read below to re-stamp CHECKOUT_HANDOFF_PARAM, and passed by
     // PricingSection; the declaration was the only piece missing.
     desktopHandoff?: boolean;
+    accountFingerprint?: string;
   },
 ): string {
   const url = new URL(currentHref);
@@ -109,6 +120,7 @@ export function buildCheckoutReturnUrl(
   url.searchParams.delete(CHECKOUT_MISSION_PARAM);
   url.searchParams.delete(CHECKOUT_PANEL_PARAM);
   url.searchParams.delete(CHECKOUT_HANDOFF_PARAM);
+  url.searchParams.delete(CHECKOUT_ACCOUNT_PARAM);
   url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
   if (options?.referralCode) url.searchParams.set(CHECKOUT_REF_PARAM, options.referralCode);
   if (options?.discountCode) url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
@@ -125,6 +137,11 @@ export function buildCheckoutReturnUrl(
   }
   if (options?.desktopHandoff) {
     url.searchParams.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
+    // The account check re-runs on the post-sign-in resume, so the
+    // fingerprint has to survive the Clerk round trip (#10342).
+    if (options.accountFingerprint) {
+      url.searchParams.set(CHECKOUT_ACCOUNT_PARAM, options.accountFingerprint);
+    }
   }
   return url.toString();
 }

@@ -46,6 +46,13 @@ export interface CheckoutContext {
 export const CHECKOUT_MISSION_PARAM = 'wm_checkout_mission';
 export const CHECKOUT_PANEL_PARAM = 'wm_checkout_panel';
 export const CHECKOUT_HANDOFF_PARAM = 'wm_checkout_handoff';
+/**
+ * Fingerprint of the account signed in to the desktop app, stamped next to
+ * the desktop handoff (#10342). /pro runs checkout on the OS browser's own
+ * session, so it compares this against the browser account before charging
+ * and refuses a silent purchase for a different one.
+ */
+export const CHECKOUT_ACCOUNT_PARAM = 'wm_checkout_account';
 export const CHECKOUT_RETURN_SOURCE_PARAM = 'wm_src';
 export const DESKTOP_CHECKOUT_HANDOFF = 'desktop';
 export const CHECKOUT_ATTEMPT_STORAGE_KEY = 'wm-last-checkout-attempt';
@@ -143,10 +150,27 @@ export function withCheckoutEventSurface(
   return { ...context, eventSurface };
 }
 
+const ACCOUNT_FINGERPRINT_PATTERN = /^[0-9a-f]{16}$/;
+
+/**
+ * Truncated SHA-256 of a Clerk user id. 64 bits is ample to tell two accounts
+ * apart, and the raw id stays out of URLs, analytics and server logs. Both
+ * the dashboard and /pro compute it, so the hash is pinned by test.
+ */
+export async function fingerprintCheckoutAccount(userId: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId));
+  return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function parseCheckoutAccountFingerprint(search: string): string | null {
+  const value = new URLSearchParams(search).get(CHECKOUT_ACCOUNT_PARAM);
+  return value && ACCOUNT_FINGERPRINT_PATTERN.test(value) ? value : null;
+}
+
 export function buildAttributedProUrl(
   baseUrl: string,
   attribution?: CheckoutAttribution | null,
-  options?: { desktopHandoff?: boolean },
+  options?: { desktopHandoff?: boolean; accountFingerprint?: string | null },
 ): string {
   const preview = parseMissionPreviewAttribution(
     attribution?.missionId,
@@ -159,6 +183,12 @@ export function buildAttributedProUrl(
   }
   if (options?.desktopHandoff) {
     url.searchParams.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
+    // Only /pro's desktop-handoff branch reads the fingerprint; never stamp it
+    // on a web URL, and never forward a value that is not a fingerprint.
+    const fingerprint = options.accountFingerprint;
+    if (fingerprint && ACCOUNT_FINGERPRINT_PATTERN.test(fingerprint)) {
+      url.searchParams.set(CHECKOUT_ACCOUNT_PARAM, fingerprint);
+    }
   }
   return url.toString();
 }

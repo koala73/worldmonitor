@@ -56,6 +56,7 @@ import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
 import {
   isDesktopCheckoutHandoff,
+  parseCheckoutAccountFingerprint,
   parseMissionPreviewAttributionFromSearch,
 } from '../../shared/checkout-attribution';
 
@@ -1386,6 +1387,7 @@ export default function App() {
           attributionSource={getMcpAttributionSource()}
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
           desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+          accountFingerprint={parseCheckoutAccountFingerprint(window.location.search) ?? undefined}
         />
         <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />

@@ -57,6 +57,7 @@ import {
 } from './analytics';
 import {
   buildAttributedProUrl,
+  fingerprintCheckoutAccount,
   parseCheckoutContext,
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
@@ -1035,21 +1036,27 @@ function renderCheckoutErrorSurface(
     return;
   }
   if (fallbackToPricingPage) {
-    const proUrl = buildAttributedProUrl(
-      `${WEB_APP_ORIGIN}/pro`,
-      checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-      { desktopHandoff: isDesktopRuntime() },
-    );
+    const attribution = checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined;
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead
     // of replacing the app. The toast stays on desktop because, unlike the
-    // web redirect, the app is still on screen to show it.
+    // web redirect, the app is still on screen to show it. The buyer was
+    // signed in to reach a checkout error, so the handoff names their account
+    // (#10342) and /pro will not charge a different browser session unseen.
     if (isDesktopRuntime()) {
-      void openExternalUrl(proUrl, null, { desktopPopupFallback: false });
+      const userId = getCurrentClerkUser()?.id;
+      void (async () => {
+        const accountFingerprint = userId ? await fingerprintCheckoutAccount(userId) : null;
+        await openExternalUrl(
+          buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro`, attribution, { desktopHandoff: true, accountFingerprint }),
+          null,
+          { desktopPopupFallback: false },
+        );
+      })();
       showCheckoutErrorToast(error.userMessage);
       return;
     }
-    window.location.assign(proUrl);
+    window.location.assign(buildAttributedProUrl(`${WEB_APP_ORIGIN}/pro`, attribution));
     return;
   }
   showCheckoutErrorToast(error.userMessage);
