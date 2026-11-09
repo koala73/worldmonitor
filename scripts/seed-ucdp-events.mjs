@@ -25,8 +25,6 @@ const REDIS_KEY = 'conflict:ucdp-events:v1';
 // every client stops downloading 2,000 events (662 KB) to render 150 rows and a
 // handful of derived numbers (#5300). The canonical key above is untouched and
 // still serves the RPC, MCP and the map layer. The relay writes it too.
-const BOOTSTRAP_KEY = UCDP_BOOTSTRAP_KEY;
-const BOOTSTRAP_META_KEY = UCDP_BOOTSTRAP_META_KEY;
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
 const MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
@@ -341,7 +339,7 @@ async function main() {
   // missing and the client re-fetches from the RPC.
   try {
     const compact = compactUcdpDashboardPayload(payload);
-    const compactBody = JSON.stringify(['SET', BOOTSTRAP_KEY, JSON.stringify(compact), 'EX', 86400]);
+    const compactBody = JSON.stringify(['SET', UCDP_BOOTSTRAP_KEY, JSON.stringify(compact), 'EX', 86400]);
     const compactResp = await fetch(redisUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
@@ -354,11 +352,11 @@ async function main() {
     const compactMetaResp = await fetch(redisUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['SET', BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
+      body: JSON.stringify(['SET', UCDP_BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
       signal: AbortSignal.timeout(5_000),
     });
     if (!compactMetaResp.ok) throw new Error(`seed-meta HTTP ${compactMetaResp.status}`);
-    console.log(`  Wrote ${BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
+    console.log(`  Wrote ${UCDP_BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
   } catch (e) {
     console.error(`  Compact projection write failed: ${e.message} — canonical key is published, dashboard will fall back to the RPC`);
   }

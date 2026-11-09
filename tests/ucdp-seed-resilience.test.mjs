@@ -239,8 +239,9 @@ describe('UCDP version selection prefers the newest release', () => {
     for (const path of ucdpRedisWriterPaths()) {
       const text = readFileSync(path, 'utf8');
       assert.ok(/compactUcdpDashboardPayload\(/.test(text), `${path} must build the compact projection`);
-      assert.ok(/\bUCDP_BOOTSTRAP_KEY\b/.test(text), `${path} must write the projection key`);
-      assert.ok(/\bUCDP_BOOTSTRAP_META_KEY\b/.test(text), `${path} must write the projection seed-meta`);
+      // Match the write call, not the name: an import alone must not pass.
+      assert.ok(/(?:upstashSet\(|\['SET',\s*)UCDP_BOOTSTRAP_KEY,/.test(text), `${path} must write the projection key`);
+      assert.ok(/(?:upstashSet\(|\['SET',\s*)UCDP_BOOTSTRAP_META_KEY,/.test(text), `${path} must write the projection seed-meta`);
     }
   });
 
