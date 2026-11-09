@@ -29,6 +29,8 @@ import {
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
 import { normalizeCheckoutAttributionSource } from "../../shared/mcp-attribution";
+import { acquisitionFromCheckoutMetadata } from "../../shared/acquisition-source";
+import type { ConversionContext } from "./subscriptionEmails";
 
 export function isBusinessPlan(planKey: string): boolean {
   return PRODUCT_CATALOG[planKey]?.tierGroup === "api_business";
@@ -57,6 +59,7 @@ interface DodoSubscriptionData {
   currency?: string;
   tax_inclusive?: boolean;
   discount_id?: string | null;
+  billing?: { country?: string };
 }
 
 interface DodoPaymentData {
@@ -1414,6 +1417,7 @@ export async function handleSubscriptionActive(
       ? existing?.cancelScheduledAt
       : undefined;
 
+  let referrerUserId: string | undefined;
   if (existing) {
     await ctx.db.patch(existing._id, {
       userId,
@@ -1488,6 +1492,7 @@ export async function handleSubscriptionActive(
       // for an account being erased. `registerInterest.ts` already guards the
       // identical insert on the waitlist path; this is the same rule.
       if (referrer && !(await isAccountDeleting(ctx, referrer.userId))) {
+        referrerUserId = referrer.userId;
         const refereeEmail = (data.customer?.email ?? "").trim().toLowerCase();
         if (refereeEmail) {
           const existingCredit = await ctx.db
@@ -1659,6 +1664,12 @@ export async function handleSubscriptionActive(
   } else if (existing) {
     console.log(`[subscriptionHelpers] subscription.active: existing non-lapsed subscription — skipping email (subscriptionId=${data.subscription_id})`);
   } else if (process.env.RESEND_API_KEY) {
+    const referrerRow = referrerUserId
+      ? await ctx.db
+          .query("users")
+          .withIndex("by_userId", (q) => q.eq("userId", referrerUserId))
+          .first()
+      : null;
     await ctx.scheduler.runAfter(
       0,
       internal.payments.subscriptionEmails.sendSubscriptionEmails,
@@ -1674,9 +1685,48 @@ export async function handleSubscriptionActive(
         // triggers the sign-in line in the welcome, a pointer email to the
         // checkout inbox, and the Billing Email row in the admin alert.
         checkoutEmail: checkoutEmailDiffers ? email.trim() : undefined,
+        conversion: buildConversionContext({
+          metadata: data.metadata,
+          billingCountry: data.billing?.country,
+          purchasedAt: eventTimestamp,
+          referrerEmail: referrerRow?.email,
+          accountFirstSeenAt: userRow?.firstSeenAt,
+        }),
       },
     );
   }
+}
+
+const COUNTRY_CODE = /^[A-Z]{2}$/;
+const MAX_REFERRAL_CODE_LENGTH = 64;
+
+/**
+ * The admin email's conversion record for a first activation. Dodo metadata is
+ * buyer-influenced, so each value is re-validated here. The values are only
+ * read for display: acquisition never feeds `affonso_referral` or
+ * `wm_attribution`.
+ */
+export function buildConversionContext(input: {
+  metadata: Record<string, string> | undefined;
+  billingCountry: unknown;
+  purchasedAt: number;
+  referrerEmail?: string;
+  accountFirstSeenAt?: number;
+}): ConversionContext {
+  const referral = input.metadata?.affonso_referral;
+  const referralCode = typeof referral === "string" && referral.trim()
+    ? referral.trim().slice(0, MAX_REFERRAL_CODE_LENGTH)
+    : undefined;
+  const country = typeof input.billingCountry === "string" ? input.billingCountry.trim().toUpperCase() : "";
+  return {
+    purchasedAt: input.purchasedAt,
+    acquisition: acquisitionFromCheckoutMetadata(input.metadata) ?? undefined,
+    mcpAttribution: normalizeCheckoutAttributionSource(input.metadata?.wm_attribution),
+    referralCode,
+    referrerEmail: referralCode ? input.referrerEmail?.trim() || undefined : undefined,
+    billingCountry: COUNTRY_CODE.test(country) ? country : undefined,
+    accountFirstSeenAt: input.accountFirstSeenAt,
+  };
 }
 
 async function recomputeAcceptedBusinessInvitees(
