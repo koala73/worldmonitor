@@ -495,6 +495,8 @@ export class DataLoaderManager implements AppModule {
   private readonly digestFirstPaintGraceMs = 1500;
   /** A news hydration request that arrived while a news load was still running. */
   private newsHydrationReplay: { forceAll: boolean } | null = null;
+  /** The running news hydration load, including the part after first paint. */
+  private activeNewsLoad: Promise<void> | null = null;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   /** Failure kinds already sent to Sentry this page load (one event per kind). */
   private readonly reportedDigestFailures = new Set<DigestFetchFailureKind>();
@@ -1183,7 +1185,7 @@ export class DataLoaderManager implements AppModule {
     };
 
     const tasks: HydrationTask[] = [];
-    if (this.shouldHydrateNews(forceAll)) {
+    if (this.wantsNewsHydration(forceAll)) {
       tasks.push({ name: 'news', task: () => this.newsHydrationTask(forceAll) });
     }
 
@@ -1389,6 +1391,10 @@ export class DataLoaderManager implements AppModule {
     this.updateSearchIndex();
 
     if (hasPremiumAccess() && runOncePerViewport('premium-briefs', ['daily-market-brief', 'market-implications'])) {
+      // The news task may have released the tiers at first paint. The brief is
+      // built from the headlines and cached for the day, so wait for the late
+      // digest instead of building it from the fallback.
+      await this.waitForNewsLoad();
       await Promise.allSettled([
         this.loadDailyMarketBrief(),
         this.loadMarketImplications(),
@@ -2270,15 +2276,22 @@ export class DataLoaderManager implements AppModule {
       return Promise.resolve();
     }
     this.ctx.inFlight.add('news');
+    let releasedAtFirstPaint = false;
     let markFirstPaint!: () => void;
-    const firstPaint = new Promise<void>((resolve) => { markFirstPaint = resolve; });
+    const firstPaint = new Promise<void>((resolve) => {
+      markFirstPaint = () => { releasedAtFirstPaint = true; resolve(); };
+    });
     const load = (async () => {
       try {
         await this.loadNews({ onFirstPaint: markFirstPaint });
+        // runLoadAllData indexed search when the task resolved, before these
+        // headlines were committed.
+        if (releasedAtFirstPaint && !this.ctx.isDestroyed) this.updateSearchIndex();
       } catch (e) {
         if (!this.ctx.isDestroyed) console.error('[App] news failed:', e);
       } finally {
         this.ctx.inFlight.delete('news');
+        this.activeNewsLoad = null;
         const replay = this.newsHydrationReplay;
         this.newsHydrationReplay = null;
         if (replay && !this.ctx.isDestroyed && this.shouldHydrateNews(replay.forceAll)) {
@@ -2286,7 +2299,23 @@ export class DataLoaderManager implements AppModule {
         }
       }
     })();
+    this.activeNewsLoad = load;
     return Promise.race([load, firstPaint]);
+  }
+
+  /**
+   * Whether a loadAllData() pass should run the news task. While a news load
+   * is running, the pass always does, so newsHydrationTask can record a
+   * replay: `loadedNewsSignature` still describes the PREVIOUS load, and a
+   * user returning to it mid-load would otherwise be skipped.
+   */
+  private wantsNewsHydration(forceAll: boolean): boolean {
+    return this.ctx.inFlight.has('news') || this.shouldHydrateNews(forceAll);
+  }
+
+  /** Resolves once no news hydration load (or its replay) is running. */
+  private async waitForNewsLoad(): Promise<void> {
+    while (this.activeNewsLoad) await this.activeNewsLoad;
   }
 
   async loadNews(options: { onFirstPaint?: () => void } = {}): Promise<void> {

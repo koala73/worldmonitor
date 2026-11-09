@@ -196,6 +196,8 @@ describe('digest coverage follows the selected browser response', () => {
       digestFirstPaintGraceMs: number;
       runHydrationTasks(tasks: Array<{ name: string; task: () => Promise<void> }>, forceAll: boolean): Promise<void>;
       newsHydrationTask(forceAll: boolean): Promise<void>;
+      wantsNewsHydration(forceAll: boolean): boolean;
+      waitForNewsLoad(): Promise<void>;
     };
 
     async function slowDigestLoader(digestPromise: Promise<SelectedNewsDigest | null>) {
@@ -212,7 +214,9 @@ describe('digest coverage follows the selected browser response', () => {
       made.internal.loadIntelNews = async () => [];
       made.internal.clusterNewsForGeneration = async () => ({ clusters: [] });
       const loadNews = vi.spyOn(made.loader, 'loadNews');
-      return { ...made, ctx, hydration, loadNews };
+      const updateSearchIndex = vi.fn();
+      made.loader.updateSearchIndex = updateSearchIndex;
+      return { ...made, ctx, hydration, loadNews, updateSearchIndex };
     }
 
     it('starts the next tier at first paint and still commits the late digest', async () => {
@@ -258,6 +262,77 @@ describe('digest coverage follows the selected browser response', () => {
       resolveDigest({ digest: digest('complete'), servedStale: false });
       await vi.waitFor(() => expect(loadNews).toHaveBeenCalledTimes(2));
       await vi.waitFor(() => expect(ctx.inFlight.has('news')).toBe(false));
+    });
+
+    it('replays a return to the previously loaded work-list made during the wait', async () => {
+      const { internal, hydration, loadNews } = await slowDigestLoader(Promise.resolve({ digest: digest('complete'), servedStale: false }));
+      const politics = [{ key: 'politics', feeds: [{ name: 'Reuters', url: 'https://fixture.test/rss' }], isCustom: false }];
+      const withEnergy = [...politics, { key: 'energy', feeds: [{ name: 'Oil', url: 'https://fixture.test/oil' }], isCustom: false }];
+
+      // Work-list A loads and lands.
+      internal.resolveEnabledNewsCategories = () => politics;
+      await hydration.newsHydrationTask(false);
+      expect(hydration.wantsNewsHydration(false)).toBe(false);
+
+      // The user adds a panel (B); its digest is slow.
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      internal.tryFetchDigest = () => new Promise((resolve) => { resolveDigest = resolve; });
+      internal.resolveEnabledNewsCategories = () => withEnergy;
+      expect(hydration.wantsNewsHydration(false)).toBe(true);
+      await hydration.newsHydrationTask(false);
+
+      // They remove it again before B lands. The recorded signature is still
+      // A's, so only the running load lets the pass through.
+      internal.resolveEnabledNewsCategories = () => politics;
+      expect(hydration.wantsNewsHydration(false)).toBe(true);
+      await hydration.newsHydrationTask(false);
+      expect(loadNews).toHaveBeenCalledTimes(2);
+
+      // B commits B's signature, which no longer matches the panels: replay A.
+      internal.tryFetchDigest = async () => ({ digest: digest('complete'), servedStale: false });
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await vi.waitFor(() => expect(loadNews).toHaveBeenCalledTimes(3));
+      await hydration.waitForNewsLoad();
+      expect(hydration.wantsNewsHydration(false)).toBe(false);
+    });
+
+    it('re-indexes search when the late digest commits', async () => {
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      const { hydration, updateSearchIndex } = await slowDigestLoader(new Promise((resolve) => { resolveDigest = resolve; }));
+
+      await hydration.newsHydrationTask(false);
+      expect(updateSearchIndex).not.toHaveBeenCalled();
+
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await hydration.waitForNewsLoad();
+      expect(updateSearchIndex).toHaveBeenCalledOnce();
+    });
+
+    it('does not re-index search for a load the task already waited on', async () => {
+      const { hydration, updateSearchIndex } = await slowDigestLoader(Promise.resolve({ digest: digest('complete'), servedStale: false }));
+      hydration.digestFirstPaintGraceMs = 1500;
+
+      await hydration.newsHydrationTask(false);
+
+      expect(updateSearchIndex).not.toHaveBeenCalled();
+    });
+
+    it('lets headline consumers wait for the late digest and any replay', async () => {
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      const { ctx, hydration, loadNews } = await slowDigestLoader(new Promise((resolve) => { resolveDigest = resolve; }));
+
+      await hydration.newsHydrationTask(false);
+      await hydration.newsHydrationTask(true);
+      let waited = false;
+      const wait = hydration.waitForNewsLoad().then(() => { waited = true; });
+      await Promise.resolve();
+      expect(waited).toBe(false);
+
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await wait;
+      // Both the original load and its forced replay have finished.
+      expect(loadNews).toHaveBeenCalledTimes(2);
+      expect(ctx.inFlight.has('news')).toBe(false);
     });
 
     it('does not replay a request whose work-list the finished load already covered', async () => {
