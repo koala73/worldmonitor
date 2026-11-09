@@ -64,6 +64,17 @@
       ]
     }
   },
+  "reviewedQueries": {
+    "28d": {
+      "world monitor pricing": "sa-28d-reviewed-pricing.json",
+      "world monitor vs gdelt": "sa-reviewed-no-rows.json",
+      "mcp server for live geopolitical intelligence": "sa-reviewed-error.json"
+    },
+    "90d": {
+      "world monitor pricing": "sa-90d-reviewed-pricing.json",
+      "world monitor vs gdelt": "sa-reviewed-no-rows.json"
+    }
+  },
   "urlInspection": "url-inspection.json",
   "liveProbes": "live-probes.json"
 }

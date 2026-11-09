@@ -51,6 +51,8 @@
  *   --date <YYYY-MM-DD>   snapshot date (default the observation date)
  *   --search-export <p>   also write the scorecard search-export for
  *                         scripts/seo-ai-visibility-collector.mjs
+ *   --query-set <path>    reviewed queries to look up (default
+ *                         docs/research/seo-ai-visibility/query-set.json)
  *   --sample-cap <n>      urlInspection calls per run (default 2000, the quota)
  *   --concurrency <n>     inspections in flight at once (default 5, max 10)
  *   --stdout              print the snapshot instead of writing files
@@ -72,7 +74,7 @@ import {
   robotsTagBlocksIndexing,
   sitemapUrls,
 } from './lib/seo-url-taxonomy.mjs';
-import { PAGE_FAMILIES } from './seo-ai-visibility-scorecard.mjs';
+import { PAGE_FAMILIES, computeQuerySetDigest } from './seo-ai-visibility-scorecard.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -156,6 +158,26 @@ const SITE_VIEWS = Object.freeze({
   dailyNonBrand: { dimensions: ['date'], filter: 'excludingRegex' },
 });
 const PAGE_NON_BRAND_VIEW = 'pageNonBrand';
+
+/**
+ * Reviewed queries are looked up one at a time rather than matched against
+ * the top queries: in every snapshot from 2026-09-25 to 2026-11-03 none of
+ * the 25 reached the top 20.
+ *
+ * Probed live on 2026-11-09: `equals` ignores case ("World Monitor" and
+ * "WORLD MONITOR" both return the row keyed "world monitor") but not spacing
+ * (a leading or doubled space returns nothing). The expression is therefore
+ * the reviewed text trimmed, with inner whitespace collapsed, and lowercased
+ * to the form Google stores.
+ */
+const REVIEWED_QUERY_OPERATOR = 'equals';
+const REVIEWED_QUERY_ROW_LIMIT = 10;
+export const reviewedQueryExpression = (text) => text.trim().replace(/\s+/g, ' ').toLowerCase();
+/**
+ * Google answers a lookup with no row both for a query nobody searched and
+ * for an anonymized one under its privacy threshold. Neither is a zero.
+ */
+export const NOT_REPORTED_REASON = 'Not reported by Search Console: below its privacy threshold or no impressions in this window.';
 const VIEW_REQUESTS = Object.freeze({
   page: { dimensions: ['page'], filter: null },
   query: { dimensions: ['query'], filter: null },
@@ -412,6 +434,12 @@ export function createFixtureTransport(directory) {
       if (page >= pages.length) return { rows: [] };
       return readRecorded(pages[page]);
     },
+    // Recorded by window and the expression actually sent, so a fixture keyed
+    // by the lowercased text also proves the reviewed text was normalized.
+    async lookupQuery({ windowLabel, expression }) {
+      const file = manifest.reviewedQueries?.[windowLabel]?.[expression];
+      return file === undefined ? null : readRecorded(file);
+    },
     async inspect(url) {
       const recorded = inspections[url];
       if (recorded === undefined) return null;
@@ -527,6 +555,21 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch, 
         ...(request.filter ? { dimensionFilterGroups: [queryFilter(request.filter)] } : {}),
         rowLimit: SEARCH_ANALYTICS_ROW_LIMIT,
         startRow: page * SEARCH_ANALYTICS_ROW_LIMIT,
+        dataState: 'final',
+      });
+    },
+    // Grouped by query on purpose: with no dimension Google answers a query it
+    // never saw with a zero row, and grouped it answers with no row at all.
+    async lookupQuery({ expression, startDate, endDate }) {
+      return post(`${SEARCH_ANALYTICS_ENDPOINT}/${encodeURIComponent(property)}/searchAnalytics/query`, {
+        startDate,
+        endDate,
+        dimensions: ['query'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{ dimension: 'query', operator: REVIEWED_QUERY_OPERATOR, expression }],
+        }],
+        rowLimit: REVIEWED_QUERY_ROW_LIMIT,
         dataState: 'final',
       });
     },
@@ -863,6 +906,93 @@ async function collectSiteView(transport, window, view) {
   return { status: 'available', reason: null, rows };
 }
 
+const unmeasuredLookup = (lookup, status, reason) => ({
+  ...lookup, status, reason, clicks: null, impressions: null, position: null,
+});
+
+function readLookup(lookup, response) {
+  if (response === null) return unmeasuredLookup(lookup, 'unavailable', 'no lookup was recorded for this query');
+  const rows = Array.isArray(response?.rows) ? response.rows : [];
+  if (rows.length === 0) return unmeasuredLookup(lookup, 'not-reported', NOT_REPORTED_REASON);
+  const matching = rows.filter((row) => Array.isArray(row.keys) && row.keys[0] === lookup.expression);
+  if (matching.length !== 1) {
+    return unmeasuredLookup(lookup, 'unavailable', 'Search Console answered with rows for other queries');
+  }
+  const [row] = matching;
+  return {
+    ...lookup,
+    status: 'reported',
+    reason: null,
+    clicks: finite(row.clicks) ?? 0,
+    impressions: finite(row.impressions) ?? 0,
+    position: finite(row.position),
+  };
+}
+
+/**
+ * One exact-match lookup per reviewed query and window: 25 queries and two
+ * windows are 50 small requests through the same retrying transport. A failed
+ * lookup is recorded against its query and the rest continue; the quota stops
+ * them all, and every query left unasked says so.
+ */
+async function collectReviewedQueries(transport, windows, querySet) {
+  if (!querySet) {
+    return {
+      status: 'unavailable',
+      reason: 'no reviewed query set was supplied',
+      querySetId: null,
+      querySetDigest: null,
+      operator: REVIEWED_QUERY_OPERATOR,
+      windows: [],
+    };
+  }
+  invariant(typeof transport.lookupQuery === 'function', 'the transport cannot look up reviewed queries');
+  let quotaReason = null;
+  const collected = [];
+  for (const window of windows) {
+    const lookups = [];
+    for (const query of querySet.queries) {
+      const lookup = { queryId: query.id, query: query.query, expression: reviewedQueryExpression(query.query) };
+      if (quotaReason) {
+        lookups.push(unmeasuredLookup(lookup, 'unavailable', quotaReason));
+        continue;
+      }
+      try {
+        lookups.push(readLookup(lookup, await transport.lookupQuery({
+          windowLabel: window.label,
+          expression: lookup.expression,
+          startDate: window.startDate,
+          endDate: window.endDate,
+        })));
+      } catch (error) {
+        if (error instanceof QuotaExhaustedError) {
+          quotaReason = `searchanalytics quota was exhausted: ${error.message}`;
+        }
+        lookups.push(unmeasuredLookup(
+          lookup,
+          'unavailable',
+          quotaReason ?? `the lookup failed: ${error?.message ?? String(error)}`,
+        ));
+      }
+    }
+    collected.push({ label: window.label, startDate: window.startDate, endDate: window.endDate, lookups });
+  }
+  const gaps = collected
+    .map((window) => [window.label, window.lookups.filter((lookup) => lookup.status === 'unavailable').length])
+    .filter(([, count]) => count > 0);
+  const answered = collected.some((window) => window.lookups.some((lookup) => lookup.status !== 'unavailable'));
+  return {
+    status: gaps.length === 0 ? 'available' : (answered ? 'partial' : 'unavailable'),
+    reason: gaps.length === 0
+      ? null
+      : gaps.map(([label, count]) => `${label}: ${count} of ${querySet.queries.length} lookups unavailable`).join('; '),
+    querySetId: querySet.querySetId,
+    querySetDigest: computeQuerySetDigest(querySet),
+    operator: REVIEWED_QUERY_OPERATOR,
+    windows: collected,
+  };
+}
+
 /** The daily by-property series, collected once over the widest window. */
 async function collectDaily(transport, windows) {
   const widest = [...windows].sort((left, right) => (
@@ -1170,6 +1300,7 @@ export async function collectGscSnapshot({
   concurrency = DEFAULT_CONCURRENCY,
   propertyKind = null,
   reportedTotals = {},
+  querySet = null,
   revision = repositoryRevision(),
 }) {
   const inventory = buildInventory(documents);
@@ -1178,6 +1309,7 @@ export async function collectGscSnapshot({
   // there must stop the run before any of the daily inspection quota is spent.
   const performanceRaw = await collectPerformance(transport, windows);
   const dailyRaw = await collectDaily(transport, windows);
+  const reviewedQueries = await collectReviewedQueries(transport, windows, querySet);
   const { sample, records, quotaReason } = await collectIndexation(
     transport,
     inventory,
@@ -1374,6 +1506,7 @@ export async function collectGscSnapshot({
       ),
     },
     performance,
+    reviewedQueries,
     samplingNotes,
     guardrails: [
       'Shares are measured over inspected rows. No sampled share is projected onto a reported total.',
@@ -1509,6 +1642,36 @@ function renderSearchTotals(performance) {
   return lines;
 }
 
+function renderReviewedQueries(section) {
+  if (!section) return [];
+  const lines = ['### Reviewed queries', ''];
+  if (section.windows.length === 0) {
+    lines.push(`Not measured: ${section.reason}.`, '');
+    return lines;
+  }
+  lines.push(`One \`${section.operator}\` lookup per reviewed query (\`${section.querySetId}\`) and window, on the reviewed text lowercased with spaces collapsed, the form Search Console stores. Not reported means Google returned no row: the query fell below its privacy threshold or had no impressions. That is not a zero.`);
+  lines.push('');
+  lines.push('| Window | Looked up | Reported | Not reported | Unavailable |');
+  lines.push('|---|---:|---:|---:|---:|');
+  const count = (window, status) => window.lookups.filter((lookup) => lookup.status === status).length;
+  for (const window of section.windows) {
+    lines.push(`| ${window.label} | ${window.lookups.length} | ${count(window, 'reported')} | ${count(window, 'not-reported')} | ${count(window, 'unavailable')} |`);
+  }
+  lines.push('');
+  const [primary] = section.windows;
+  const reported = primary.lookups.filter((lookup) => lookup.status === 'reported');
+  if (reported.length > 0) {
+    lines.push(`| Reviewed query (${primary.label}) | Impressions | Clicks | CTR | Position |`);
+    lines.push('|---|---:|---:|---:|---:|');
+    for (const lookup of reported) {
+      const ctr = lookup.impressions > 0 ? lookup.clicks / lookup.impressions : null;
+      lines.push(`| ${markdownCell(lookup.query)} | ${lookup.impressions} | ${lookup.clicks} | ${percent(ctr)} | ${lookup.position === null ? 'n/a' : lookup.position.toFixed(1)} |`);
+    }
+    lines.push('');
+  }
+  return lines;
+}
+
 // A query is user text: escape the backslash first, then the pipe that would
 // end the table cell, and flatten line breaks.
 const markdownCell = (value) => String(value)
@@ -1556,6 +1719,7 @@ export function renderGscMarkdown(snapshot) {
   lines.push('');
 
   lines.push(...renderSearchTotals(snapshot.performance));
+  lines.push(...renderReviewedQueries(snapshot.reviewedQueries));
 
   lines.push('## By page family');
   lines.push('');
@@ -1697,6 +1861,36 @@ export function renderGscMarkdown(snapshot) {
 }
 
 /**
+ * The lookups usable for `querySet`, by window label, and the note that says
+ * how they were measured or why there are none.
+ *
+ * A snapshot that predates the lookups has no query rows. The top-query list is
+ * not a fallback: no reviewed query appeared in it in any snapshot through
+ * 2026-11-03, and its keys are lowercased, so most reviewed text could not match.
+ */
+function reviewedLookups(section, querySet) {
+  const none = (note) => ({ byWindow: new Map(), note });
+  if (!querySet) return none('No reviewed query set was supplied, so there are no query rows');
+  if (!section) {
+    return none('This snapshot predates reviewed-query lookups, so it has no query rows; the reviewed queries are unmeasured, not zero');
+  }
+  if (section.querySetId === null) return none(`Reviewed-query lookups were not collected: ${section.reason}`);
+  const digest = computeQuerySetDigest(querySet);
+  if (section.querySetId !== querySet.querySetId || section.querySetDigest !== digest) {
+    const short = (value) => value.slice(0, 'sha256:'.length + 12);
+    return none(`Reviewed-query lookups were made for query set ${section.querySetId} (${short(section.querySetDigest)}), not the supplied ${querySet.querySetId} (${short(digest)}), so no query rows are mapped`);
+  }
+  const count = (window, status) => window.lookups.filter((lookup) => lookup.status === status).length;
+  const counts = section.windows
+    .map((window) => `${window.label}: ${count(window, 'reported')} of ${window.lookups.length} reported, ${count(window, 'not-reported')} not reported, ${count(window, 'unavailable')} unavailable`)
+    .join('; ');
+  return {
+    byWindow: new Map(section.windows.map((window) => [window.label, window.lookups])),
+    note: `Query rows come from one Search Console lookup per reviewed query and window, on the reviewed text lowercased with spaces collapsed (${counts}). A query Search Console does not report has null metrics with that reason: it fell below Google's privacy threshold or had no impressions, which is not a zero`,
+  };
+}
+
+/**
  * Shape the per-family numbers for `scripts/seo-ai-visibility-collector.mjs`.
  *
  * The scorecard stays the single report. This is the feed into it, not a
@@ -1709,8 +1903,9 @@ export function renderGscMarkdown(snapshot) {
  * - Page-family rows are page-grouped sums, which is what a family can mean.
  *   A family with no page row in a truncated window is unmeasured, not zero,
  *   so it gets no row there.
- * - Query rows exist only for reviewed queries, matched on exact text, among
- *   the top queries the snapshot lists per window. Pass `querySet` to get them.
+ * - Query rows come from the snapshot's per-query lookups, one per reviewed
+ *   query and window. A query Google did not report keeps null metrics with
+ *   that reason. Pass `querySet`; lookups made for a different set are refused.
  *
  * `reason` is always set, because the collector downgrades a window without
  * full query and family coverage to partial and must say why.
@@ -1729,11 +1924,11 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
   // else is an absence of a measurement, so null.
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
-  const reviewed = new Set((querySet?.queries ?? []).map((query) => query.query));
+  const lookups = reviewedLookups(snapshot.reviewedQueries, querySet);
   const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
   const notes = [
     'Window totals are Search Console by-property site totals. Page-family rows sum page-grouped rows, where one search counts once per URL it shows, so they are not shares of the site total.',
-    `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries the snapshot lists per window; a reviewed query outside that list has no row, which is not a zero.`,
+    sentence(lookups.note),
     complete
       ? `indexedPages counts sitemap-declared HTML URLs that URL Inspection reported indexed when the snapshot ran (${snapshot.observedAt.slice(0, 10)}); the same count stands in both windows.`
       : sentence(`indexedPages is null: the URL Inspection sample is not a complete count of the ${sample.declared} declared URLs (${snapshot.indexation.reason ?? 'no reason recorded'})`),
@@ -1764,15 +1959,15 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
           position: metrics.averagePosition,
           indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
         })),
-      queryRows: window.topQueries
-        .filter((row) => reviewed.has(row.query))
-        .map((row) => ({
-          query: row.query,
-          clicks: row.clicks,
-          impressions: row.impressions,
-          ctr: row.impressions > 0 ? roundTo(row.clicks / row.impressions, 4) : null,
-          position: finite(row.position),
-        })),
+      queryRows: (lookups.byWindow.get(window.label) ?? []).map((lookup) => ({
+        queryId: lookup.queryId,
+        query: lookup.query,
+        clicks: lookup.clicks,
+        impressions: lookup.impressions,
+        ctr: lookup.impressions > 0 ? roundTo(lookup.clicks / lookup.impressions, 4) : null,
+        position: lookup.position,
+        reason: lookup.reason,
+      })),
     };
   });
   return {
@@ -1793,6 +1988,7 @@ export function parseArgs(argv) {
     outDir: 'docs/research/seo-ai-visibility/gsc',
     date: null,
     searchExport: null,
+    querySet: DEFAULT_QUERY_SET,
     sampleCap: DEFAULT_SAMPLE_CAP,
     concurrency: DEFAULT_CONCURRENCY,
     stdout: false,
@@ -1811,6 +2007,7 @@ export function parseArgs(argv) {
       case '--out-dir': options.outDir = next(); break;
       case '--date': options.date = next(); break;
       case '--search-export': options.searchExport = next(); break;
+      case '--query-set': options.querySet = next(); break;
       case '--sample-cap': options.sampleCap = Number.parseInt(next(), 10); break;
       case '--concurrency': options.concurrency = Number.parseInt(next(), 10); break;
       case '--stdout': options.stdout = true; break;
@@ -1835,6 +2032,8 @@ export function parseArgs(argv) {
   );
   return options;
 }
+
+const DEFAULT_QUERY_SET = 'docs/research/seo-ai-visibility/query-set.json';
 
 const LIVE_SITEMAPS = Object.freeze([
   'https://www.worldmonitor.app/sitemap-main.xml',
@@ -1886,6 +2085,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   }
 
   const windows = deriveWindows(observedAt);
+  const querySet = readJson(resolve(REPO_ROOT, options.querySet));
   const snapshot = await collectGscSnapshot({
     transport,
     documents,
@@ -1895,6 +2095,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     concurrency: options.concurrency,
     propertyKind,
     reportedTotals,
+    querySet,
   });
 
   const date = options.date ?? observedAt.slice(0, 10);
@@ -1918,7 +2119,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     const exportPath = resolve(REPO_ROOT, options.searchExport);
     mkdirSync(dirname(exportPath), { recursive: true });
     const exportJson = assertNoSecrets(
-      `${JSON.stringify(toScorecardSearchExport(snapshot), null, 2)}\n`,
+      `${JSON.stringify(toScorecardSearchExport(snapshot, { querySet }), null, 2)}\n`,
       { property },
     );
     writeFileSync(exportPath, exportJson);

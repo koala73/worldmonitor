@@ -644,6 +644,67 @@ describe('scorecard computation', () => {
     );
   });
 
+  it('shows how many reviewed queries were reported instead of a partial sum', () => {
+    const notReported = 'Not reported by Search Console: below its privacy threshold or no impressions in this window.';
+    const measured = structuredClone(baseline);
+    measured.search.googleSearchConsole = {
+      status: 'partial',
+      property: null,
+      reason: 'Query rows come from one lookup per reviewed query.',
+      windows: [
+        {
+          label: '28d',
+          startDate: '2026-06-30',
+          endDate: '2026-07-27',
+          metrics: {
+            indexedPages: null, impressions: 900, clicks: 90, ctr: 0.1, averagePosition: 5,
+          },
+        },
+      ],
+      queryRows: [
+        {
+          windowLabel: '28d',
+          queryId: 'q01',
+          metrics: {
+            impressions: 100, clicks: 10, ctr: 0.1, averagePosition: 8,
+          },
+        },
+        {
+          windowLabel: '28d',
+          queryId: 'q02',
+          metrics: {
+            impressions: null, clicks: null, ctr: null, averagePosition: null,
+          },
+          reason: notReported,
+        },
+      ],
+      pageFamilyRows: [],
+    };
+
+    const scorecard = buildScorecard(querySet, measured);
+    const [intentWindow] = scorecard.byIntent.category_definition.search
+      .googleSearchConsole.windows;
+    // One unreported query makes the intent sum unknown, not smaller.
+    assert.deepEqual(intentWindow.metrics, {
+      indexedPages: null, impressions: null, clicks: null, ctr: null, averagePosition: null,
+    });
+    assert.deepEqual(intentWindow.queryCoverage, { queries: 5, rows: 2, reported: 1 });
+
+    const markdown = formatScorecardMarkdown(scorecard);
+    assert.match(markdown, /\| Category \/ definition \| 5 \| 28d: 1 of 5 queries reported \|/);
+    assert.match(markdown, /## Reviewed query performance/);
+    assert.match(markdown, /\| q01 \| best real-time global intelligence dashboard for geopolitical risk monitoring \| Category \/ definition \| 100 imp \/ 10 clicks \/ 10% \/ pos 8 \|/);
+    assert.match(markdown, new RegExp(`\\| q02 \\| [^|]+ \\| Category / definition \\| ${notReported.replace(/[.]/g, '\\.')} \\|`));
+    assert.match(markdown, /\| q03 \| [^|]+ \| Category \/ definition \| No row \|/);
+
+    const unexplained = structuredClone(measured);
+    delete unexplained.search.googleSearchConsole.queryRows[1].reason;
+    assert.throws(
+      () => buildScorecard(querySet, unexplained),
+      /queryRows\[1\] has no metrics and must carry a reason/,
+    );
+  });
+
   it('aggregates supported query, page-family, and referral outcome rows', () => {
     const measured = structuredClone(baseline);
     measured.search.googleSearchConsole = {
