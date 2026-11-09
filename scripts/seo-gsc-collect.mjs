@@ -1043,7 +1043,7 @@ function topCoverageReasons(records) {
  * A device view cut short leaves desktop shares and totals wrong rather than
  * merely incomplete, so it reports nothing instead of a smaller list.
  */
-function buildNonBrandQueries(raw) {
+export function buildNonBrandQueries(raw) {
   const unavailable = (reason, window = null) => ({
     status: 'unavailable',
     reason,
@@ -1075,15 +1075,19 @@ function buildNonBrandQueries(raw) {
     if (!current || row.impressions > current.impressions) topPage.set(row.key, row);
   }
 
+  const pageGap = page.recorded
+    ? page.truncationReason
+    : `the ${QUERY_PAGE_VIEW} view was not collected`;
   const queries = [...byQuery].map(([query, entry]) => {
-    const desktopShare = entry.impressions > 0 ? roundTo(entry.desktop / entry.impressions, 3) : null;
+    const desktopShare = entry.impressions > 0 ? entry.desktop / entry.impressions : null;
     return {
       query,
-      page: topPage.get(query)?.secondKey ?? null,
+      // The true top page may be in rows the cut-short view never returned.
+      page: pageGap ? null : (topPage.get(query)?.secondKey ?? null),
       clicks: entry.clicks,
       impressions: entry.impressions,
       position: entry.positioned > 0 ? roundTo(entry.weighted / entry.positioned, 2) : null,
-      desktopShare,
+      desktopShare: desktopShare === null ? null : roundTo(desktopShare, 3),
       likelyAutomated: entry.clicks === LIKELY_AUTOMATED.clicks
         && entry.impressions >= LIKELY_AUTOMATED.minImpressions
         && desktopShare !== null
@@ -1096,9 +1100,6 @@ function buildNonBrandQueries(raw) {
   const automated = queries.filter((row) => row.likelyAutomated);
   const nonBrandImpressions = sumImpressions(queries);
   const likelyAutomatedImpressions = sumImpressions(automated);
-  const pageGap = page.recorded
-    ? page.truncationReason
-    : `the ${QUERY_PAGE_VIEW} view was not collected`;
   return {
     status: pageGap ? 'partial' : 'available',
     reason: pageGap ?? null,
@@ -1642,6 +1643,10 @@ function renderSearchTotals(performance) {
   lines.push('');
   lines.push(`${summary.likelyAutomatedQueries} of ${summary.queries} non-brand queries look automated, ${summary.likelyAutomatedImpressions} of ${summary.nonBrandImpressions} impressions. That is an inference from zero clicks and at least ${Math.round(list.method.minDesktopShare * 100)}% desktop, and the non-brand totals above still include them. Most impressions first, below ${Math.round(LOW_CLICK_CTR * 100)}% CTR.`);
   lines.push('');
+  if (list.reason) {
+    lines.push(`Top pages are withheld: ${list.reason}.`);
+    lines.push('');
+  }
   lines.push('| Query | Top page | Impressions | Clicks | CTR | Position | Desktop | Likely automated |');
   lines.push('|---|---|---:|---:|---:|---:|---:|---|');
   const lowClick = list.rows
@@ -1656,11 +1661,11 @@ function renderSearchTotals(performance) {
   return lines;
 }
 
-// A query is user text: escape the backslash first, then the pipe that would
-// end the table cell, and flatten line breaks.
+// A query is user text in a report that merges without a person reading it.
+// Escape what would end the table cell or render as a link, image or HTML, and
+// `:` and `.` because GFM autolinks a bare URL, www. host or email address.
 const markdownCell = (value) => String(value)
-  .replace(/\\/g, '\\\\')
-  .replace(/\|/g, '\\|')
+  .replace(/[\\|`*_[\]()<>!~:.]/g, '\\$&')
   .replace(/[\r\n]+/g, ' ');
 
 const percent = (ratio) => (ratio === null ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);

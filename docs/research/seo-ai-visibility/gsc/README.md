@@ -103,7 +103,8 @@ inference, because Search Console cannot say who searched. It sets a query
 aside when choosing what to improve and does not change the non-brand totals,
 which stay comparable from week to week. The summary reports the total with
 and without flagged queries. This repository is public, so a query needs 20
-impressions before its text is listed.
+impressions before its text joins this list. The `topQueries` rows take the 20
+largest queries overall and have no such floor.
 
 **The daily series is by property.** `performance.daily` holds one row per date
 over the widest window, all queries and non-brand. The summary sums it into

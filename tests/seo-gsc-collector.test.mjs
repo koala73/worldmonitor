@@ -12,10 +12,12 @@ import {
   createLiveTransport,
   createServiceAccountAssertion,
   decodeServiceAccount,
+  buildNonBrandQueries,
   describeDisagreement,
   buildInventory,
   BRAND_QUERY_PATTERN,
   isBrandQuery,
+  markdownCell,
   pickIndexStatus,
   QuotaExhaustedError,
   weeklyTotals,
@@ -800,6 +802,47 @@ describe('Search Console site totals and brand split', () => {
     assert.deepEqual(bodies[1].dimensions, ['query', 'page']);
     for (const body of bodies) {
       assert.equal(body.dimensionFilterGroups[0].filters[0].operator, 'excludingRegex');
+    }
+  });
+
+  it('compares the unrounded desktop share with the automated cutoff', () => {
+    const row = (device, impressions) => ({ key: 'near cutoff', secondKey: device, clicks: 0, impressions, position: 5 });
+    const list = buildNonBrandQueries({
+      window: { label: '28d' },
+      device: { rows: [row('DESKTOP', 8999), row('MOBILE', 1001)], truncationReason: null, recorded: true },
+      page: { rows: [], truncationReason: null, recorded: true },
+    });
+    assert.equal(list.rows[0].desktopShare, 0.9);
+    assert.equal(list.rows[0].likelyAutomated, false);
+  });
+
+  it('withholds top pages and says why when the page view is cut short', async () => {
+    const { snapshot } = await collect();
+    const list = buildNonBrandQueries({
+      window: { label: '28d' },
+      device: {
+        rows: [{ key: 'pizza index', secondKey: 'MOBILE', clicks: 0, impressions: 500, position: 5 }],
+        truncationReason: null,
+        recorded: true,
+      },
+      page: {
+        rows: [{ key: 'pizza index', secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 9, position: 5 }],
+        truncationReason: 'searchanalytics quota was exhausted after 1 queryNonBrandPage rows: x',
+        recorded: true,
+      },
+    });
+    assert.equal(list.status, 'partial');
+    assert.equal(list.rows[0].page, null);
+    const copy = structuredClone(snapshot);
+    copy.performance.nonBrandQueries = list;
+    assert.match(renderGscMarkdown(copy), /Top pages are withheld: searchanalytics quota was exhausted/);
+  });
+
+  it('keeps Markdown in a query cell from rendering as links, images or HTML', () => {
+    const cell = markdownCell('[x](https://a.example/) <img src=y> ![i](z) www.a.example `c` *b* _d_ ~e~');
+    assert.doesNotMatch(cell, /(?<!\\)</);
+    for (const live of ['[x](', '![i]', 'https://', 'www.a', '`c`', '*b*', '_d_', '~e~']) {
+      assert.equal(cell.includes(live), false, `${live} stays live in ${cell}`);
     }
   });
 
