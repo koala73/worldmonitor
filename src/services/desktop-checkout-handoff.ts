@@ -3,6 +3,7 @@ import {
   CHECKOUT_HANDOFF_PARAM,
   desktopAccountDigest,
   stampDesktopCheckoutHandoff,
+  UNKNOWN_DESKTOP_ACCOUNT,
   type DesktopCheckoutHandoff,
 } from '../../shared/desktop-checkout-handoff';
 
@@ -15,16 +16,16 @@ async function currentDesktopAccount(): Promise<DesktopCheckoutHandoff> {
     // An upgrade click can land before Clerk restores the saved session, and
     // reading it then would hand off a signed-in app as signed out.
     let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      initClerk().catch(() => {}),
-      new Promise((resolve) => { timer = setTimeout(resolve, CLERK_READY_TIMEOUT_MS); }),
+    const ready = await Promise.race([
+      initClerk().then(() => true, () => false),
+      new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), CLERK_READY_TIMEOUT_MS); }),
     ]);
     clearTimeout(timer);
     const user = getCurrentClerkUser();
-    return user ? { account: await desktopAccountDigest(user.id) } : {};
+    if (user) return { account: await desktopAccountDigest(user.id) };
+    return ready ? {} : { account: UNKNOWN_DESKTOP_ACCOUNT };
   } catch {
-    // No Clerk or no WebCrypto: hand off unnamed, as builds before #10342 did.
-    return {};
+    return { account: UNKNOWN_DESKTOP_ACCOUNT };
   }
 }
 

@@ -53,6 +53,7 @@ import {
 import {
   DESKTOP_CHECKOUT_HANDOFF,
   desktopAccountDigest,
+  UNKNOWN_DESKTOP_ACCOUNT,
   type DesktopCheckoutHandoff,
 } from '../../../shared/desktop-checkout-handoff';
 import { getFirstTouchAcquisitionForCheckout } from '../../../shared/acquisition-source';
@@ -356,7 +357,7 @@ async function confirmDesktopAccount(
 
   const shownUserId = c.user.id;
   const browserAccount = c.user.primaryEmailAddress?.emailAddress || 'this account';
-  const choice = await askDesktopAccountChoice(browserAccount);
+  const choice = await askDesktopAccountChoice(browserAccount, desktopAccount !== UNKNOWN_DESKTOP_ACCOUNT);
   // Another tab can switch the browser session while the dialog is open. The
   // buyer approved the account they were shown, not whichever is current.
   if (choice !== 'cancel' && c.user?.id !== shownUserId) {
@@ -603,10 +604,20 @@ async function doCheckout(
         // and the redirect proceeds. Inline dialog (no shared component — /pro is
         // a separate build); whitelisted plan name only, raw message to Sentry.
         const planKey = err?.pendingPayment?.planKey;
+        const approvingUserId = (await ensureClerk().catch(() => null))?.user?.id;
         showProPendingPaymentDialog({
           planDisplayName: resolveProPlanDisplayName(planKey),
           onConfirm: () => {
-            void doCheckout(productId, { ...options, bypassPendingGuard: true });
+            // The pending payment and any desktop-account approval belong to
+            // the account shown here. If another tab switched it, start over.
+            void ensureClerk().catch(() => null).then((c) => {
+              if (c?.user?.id && c.user.id === approvingUserId) {
+                void doCheckout(productId, { ...options, bypassPendingGuard: true });
+              } else {
+                const { bypassPendingGuard: _dropped, ...fresh } = options;
+                void startCheckout(productId, fresh);
+              }
+            });
           },
           onDismiss: () => { /* stay on /pro; pending payment may still complete */ },
         });
@@ -1172,7 +1183,7 @@ type DesktopAccountChoice = 'switch-account' | 'upgrade-browser-account' | 'canc
 
 const PRO_DESKTOP_ACCOUNT_DIALOG_ID = 'wm-pro-desktop-account-dialog';
 
-function askDesktopAccountChoice(browserAccount: string): Promise<DesktopAccountChoice> {
+function askDesktopAccountChoice(browserAccount: string, desktopAccountKnown: boolean): Promise<DesktopAccountChoice> {
   return new Promise((resolve) => {
     document.getElementById(PRO_DESKTOP_ACCOUNT_DIALOG_ID)?.remove();
     const account = escapeHtml(browserAccount);
@@ -1195,9 +1206,11 @@ function askDesktopAccountChoice(browserAccount: string): Promise<DesktopAccount
     const buttonStyle = 'border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;overflow-wrap:anywhere;';
     backdrop.innerHTML = `
       <div style="background:#141414;border:1px solid #2a2a2a;border-radius:8px;padding:20px 22px;max-width:460px;width:100%;color:#e8e8e8;font-family:'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;box-shadow:0 12px 40px rgba(0,0,0,0.5);">
-        <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">This browser uses a different account</h2>
+        <h2 id="${PRO_DESKTOP_ACCOUNT_DIALOG_ID}-title" style="font-size:16px;font-weight:600;margin:0 0 10px 0;color:#fff;">${desktopAccountKnown ? 'This browser uses a different account' : 'Confirm the account to upgrade'}</h2>
         <p style="font-size:13px;line-height:1.5;margin:0 0 18px 0;color:#c8c8c8;overflow-wrap:anywhere;">
-          This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.
+          ${desktopAccountKnown
+            ? `This browser is signed in as <strong style="color:#fff;">${account}</strong>, but your desktop app uses a different account. Checking out here upgrades ${account}, and the desktop app keeps its current plan.`
+            : `This browser is signed in as <strong style="color:#fff;">${account}</strong>. Your desktop app had not finished loading its account, so check that this is the one you use there. Checking out here upgrades ${account}.`}
         </p>
         <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;">
           <button data-choice="cancel" type="button" style="${buttonStyle}background:transparent;color:#aaa;border:1px solid #2a2a2a;">Cancel</button>

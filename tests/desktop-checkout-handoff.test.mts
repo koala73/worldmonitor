@@ -50,6 +50,8 @@ interface HarnessState {
   onProductLoad: () => void;
   onAuthState: (state: { user: { id: string } | null }) => void;
   signInCalls: number;
+  /** How the app's Clerk load settles before the opener reads the session. */
+  initClerk: () => Promise<void>;
   pageShowListeners: Set<(event: { persisted: boolean }) => void>;
 }
 
@@ -127,7 +129,7 @@ function installDocument(): void {
 
 function resetHarness(
   desktop: boolean,
-  overrides: Partial<Pick<HarnessState, 'invokeRejects' | 'currentUser' | 'responseStatus' | 'responseBody'>> = {},
+  overrides: Partial<Pick<HarnessState, 'invokeRejects' | 'currentUser' | 'responseStatus' | 'responseBody' | 'initClerk'>> = {},
 ): void {
   globalThis.__desktopCheckoutHarness = {
     desktop,
@@ -145,6 +147,7 @@ function resetHarness(
     onProductLoad: () => {},
     onAuthState: () => {},
     signInCalls: 0,
+    initClerk: async () => {},
     pageShowListeners: new Set(),
     ...overrides,
   };
@@ -232,7 +235,7 @@ const stubSources: Record<string, string> = {
     export const getCurrentClerkUser = () => globalThis.__desktopCheckoutHarness.currentUser;
     export const getClerkToken = async () => 'tok_test';
     export const openSignIn = () => { globalThis.__desktopCheckoutHarness.signInCalls++; };
-    export const initClerk = async () => {};
+    export const initClerk = () => globalThis.__desktopCheckoutHarness.initClerk();
   `,
   './analytics': `
     export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
@@ -499,6 +502,45 @@ describe('startCheckout on desktop (#5911)', () => {
       {
         command: 'open_url',
         payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+      },
+    ]);
+  });
+
+  it('asks /pro to confirm the account when the app session failed to load', async () => {
+    await settleOpens();
+    resetHarness(true, { currentUser: null, initClerk: async () => { throw new Error('clerk down'); } });
+    const checkout = await loadCheckoutModule();
+
+    assert.equal(await checkout.startCheckout('pro_monthly'), false);
+    await waitForInvocations(1);
+
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.invocations, [
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=unknown' },
+      },
+    ]);
+  });
+
+  it('asks /pro to confirm the account when the app session is still loading', async () => {
+    await settleOpens();
+    resetHarness(true, { currentUser: null, initClerk: () => new Promise(() => {}) });
+    const checkout = await loadCheckoutModule();
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+      assert.equal(await checkout.startCheckout('pro_monthly'), false);
+      await settleOpens();
+      assert.deepEqual(globalThis.__desktopCheckoutHarness.invocations, [], 'waits for the session first');
+      mock.timers.tick(3_000);
+      await waitForInvocations(1);
+    } finally {
+      mock.timers.reset();
+    }
+
+    assert.deepEqual(globalThis.__desktopCheckoutHarness.invocations, [
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop&wm_checkout_account=unknown' },
       },
     ]);
   });

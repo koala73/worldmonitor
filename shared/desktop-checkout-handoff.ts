@@ -11,9 +11,16 @@ export const DESKTOP_CHECKOUT_HANDOFF = 'desktop';
 export const CHECKOUT_DESKTOP_ACCOUNT_PARAM = 'wm_checkout_account';
 
 /**
- * `account` is `desktopAccountDigest` of the account signed in to the app. It
- * is absent when the app was signed out, or was a build from before #10342,
- * and then /pro cannot tell whether its own session is the same account.
+ * The app could not read its own session in time (Clerk still loading or
+ * failed), so /pro must ask which account to upgrade rather than assume.
+ */
+export const UNKNOWN_DESKTOP_ACCOUNT = 'unknown';
+
+/**
+ * `account` is `desktopAccountDigest` of the account signed in to the app, or
+ * `UNKNOWN_DESKTOP_ACCOUNT`. It is absent when the app was signed out, or was
+ * a build from before #10342, and then /pro cannot tell whether its own
+ * session is the same account.
  */
 export interface DesktopCheckoutHandoff {
   account?: string;
@@ -42,5 +49,7 @@ export function parseDesktopCheckoutHandoff(search: string): DesktopCheckoutHand
   const params = new URLSearchParams(search);
   if (params.get(CHECKOUT_HANDOFF_PARAM) !== DESKTOP_CHECKOUT_HANDOFF) return null;
   const account = params.get(CHECKOUT_DESKTOP_ACCOUNT_PARAM);
-  return account && DESKTOP_ACCOUNT_DIGEST_PATTERN.test(account) ? { account } : {};
+  return account && (account === UNKNOWN_DESKTOP_ACCOUNT || DESKTOP_ACCOUNT_DIGEST_PATTERN.test(account))
+    ? { account }
+    : {};
 }

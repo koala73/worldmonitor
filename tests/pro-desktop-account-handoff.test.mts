@@ -55,7 +55,7 @@ afterEach(async () => {
   originalGlobals.clear();
 });
 
-async function fixture(options: { browserUser: string | null; href?: string }) {
+async function fixture(options: { browserUser: string | null; href?: string; responses?: Response[] }) {
   mock.method(console, 'error', () => {});
   mock.timers.enable({ apis: ['setTimeout'] });
   const href = options.href ?? 'https://www.worldmonitor.app/pro#pricing';
@@ -92,7 +92,7 @@ async function fixture(options: { browserUser: string | null; href?: string }) {
     },
     fetch: async (_url: string, init: RequestInit) => {
       bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
+      return options.responses?.shift() ?? Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
     },
     __checkoutFixture: { clerk: async () => ({
       get user() { return state.user; },
@@ -253,4 +253,53 @@ it('keeps keyboard focus inside the dialog', async () => {
   assert.equal(document.activeElement, buttons.at(-1), 'Shift+Tab from the first button wraps to the last');
   document.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'Escape' }));
   assert.equal(await attempt, false);
+});
+
+it('asks which account to upgrade when the desktop app could not read its own session', async () => {
+  const f = await fixture({ browserUser: BROWSER_USER });
+  const attempt = f.checkout.startCheckout('synthetic-product', {
+    desktopHandoff: { account: 'unknown' },
+  });
+  await waitFor(() => dialog() !== null, 'the account dialog opens');
+  assert.deepEqual(f.bodies, [], 'no checkout may be created before the buyer confirms');
+  assert.match(dialog()?.textContent ?? '', /confirm the account to upgrade/i);
+  assert.match(dialog()?.textContent ?? '', /b@example\.com/);
+  assert.doesNotMatch(dialog()?.textContent ?? '', /uses a different account/i,
+    'an unread desktop session is not known to differ');
+  button(/upgrade this account/i)?.click();
+  assert.equal(await attempt, true);
+  assert.equal(f.bodies.length, 1);
+});
+
+it('does not reuse a pending-payment approval after the browser account changes', async () => {
+  const f = await fixture({
+    browserUser: DESKTOP_USER,
+    responses: [Response.json({ error: 'PAYMENT_IN_PROGRESS', pendingPayment: { planKey: 'pro_monthly' } }, { status: 409 })],
+  });
+  assert.equal(await f.checkout.startCheckout('synthetic-product', {
+    desktopHandoff: { account: digest(DESKTOP_USER) },
+  }), false);
+  const confirm = () => document.getElementById('wm-pro-pending-payment-dialog-confirm') as HTMLButtonElement | null;
+  await waitFor(() => confirm() !== null, 'the pending-payment dialog opens');
+  f.state.user = { id: BROWSER_USER, primaryEmailAddress: { emailAddress: 'b@example.com' } };
+  confirm()?.click();
+  await waitFor(() => dialog()?.id === 'wm-pro-desktop-account-dialog', 'the account check runs for the new account');
+  assert.equal(f.bodies.length, 1, 'no checkout for the new account before it is confirmed');
+  button(/upgrade this account/i)?.click();
+  await waitFor(() => f.bodies.length === 2, 'checkout restarts for the confirmed account');
+  assert.equal(f.bodies[1]!.bypassPendingGuard, undefined,
+    'the new account never approved skipping its own pending-payment guard');
+});
+
+it('keeps the pending-payment approval for the account that gave it', async () => {
+  const f = await fixture({
+    browserUser: DESKTOP_USER,
+    responses: [Response.json({ error: 'PAYMENT_IN_PROGRESS', pendingPayment: { planKey: 'pro_monthly' } }, { status: 409 })],
+  });
+  await f.checkout.startCheckout('synthetic-product', { desktopHandoff: { account: digest(DESKTOP_USER) } });
+  const confirm = () => document.getElementById('wm-pro-pending-payment-dialog-confirm') as HTMLButtonElement | null;
+  await waitFor(() => confirm() !== null, 'the pending-payment dialog opens');
+  confirm()?.click();
+  await waitFor(() => f.bodies.length === 2, 'checkout retries');
+  assert.equal(f.bodies[1]!.bypassPendingGuard, true);
 });

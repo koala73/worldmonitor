@@ -35,6 +35,13 @@ describe('desktop checkout handoff contract', () => {
     assert.deepEqual(handoff.parseDesktopCheckoutHandoff('?wm_checkout_handoff=desktop&wm_checkout_account=<x>'), {});
     assert.equal(handoff.parseDesktopCheckoutHandoff(`?wm_checkout_account=${account}`), null);
   });
+
+  it('keeps an account the app could not read, so /pro asks instead of assuming', () => {
+    assert.deepEqual(
+      handoff.parseDesktopCheckoutHandoff('?wm_checkout_handoff=desktop&wm_checkout_account=unknown'),
+      { account: handoff.UNKNOWN_DESKTOP_ACCOUNT },
+    );
+  });
 });
 
 describe('withDesktopCheckoutHandoff', () => {
