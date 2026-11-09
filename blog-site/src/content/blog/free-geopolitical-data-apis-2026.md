@@ -113,7 +113,7 @@ Cloudflare Radar is useful when the geopolitical question touches connectivity: 
 
 Good use cases:
 
-- internet outage monitoring
+- [internet outage monitoring](https://www.worldmonitor.app/tools/internet-outages/)
 - conflict-zone connectivity checks
 - cyber or infrastructure incident context
 - country-level traffic anomalies

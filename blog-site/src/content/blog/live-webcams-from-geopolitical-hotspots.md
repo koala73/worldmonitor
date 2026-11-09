@@ -44,7 +44,7 @@ World Monitor puts these feeds alongside your intelligence data so you can cross
 
 ### Asia-Pacific
 
-- **Taipei** for Taiwan Strait tension monitoring
+- **Taipei** for [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/) tension monitoring
 - **Shanghai** for Chinese economic activity indicators
 - **Tokyo**, **Seoul**, and **Sydney** for regional coverage
 

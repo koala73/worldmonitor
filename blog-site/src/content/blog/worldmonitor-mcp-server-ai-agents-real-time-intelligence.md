@@ -9,7 +9,7 @@ pubDate: "2026-06-10"
 modifiedDate: "2026-07-22"
 ---
 
-Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the country risk score that moved overnight.
+Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the [country risk score](https://www.worldmonitor.app/countries/) that moved overnight.
 
 The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with a **live tool registry**.
 

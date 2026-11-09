@@ -20,7 +20,7 @@ More than most buyers expect. Using [World Monitor's free tier](https://www.worl
 - **Map layer types** across conflicts, military activity, natural disasters, cyber incidents, infrastructure, shipping, and markets
 - **Curated news feeds** aggregated and deduplicated in real time
 - **Country briefs and instability scores** for situational context worldwide
-- **Maritime [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
+- **Maritime [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) monitoring** (Hormuz, Suez, Malacca, [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/)) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
 - Coverage through [localized interfaces](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
 

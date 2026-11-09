@@ -122,7 +122,7 @@ This data is invaluable for humanitarian organizations planning response operati
 2. When triggered, review magnitude/intensity and location
 3. Overlay population density for exposure estimation
 4. Check infrastructure layer for insured asset proximity
-5. Compare with CII for political stability context (claims processing complexity)
+5. Compare with CII for [political stability](https://www.worldmonitor.app/countries/) context (claims processing complexity)
 6. Generate AI brief for initial loss assessment context
 
 ### For Humanitarian Response

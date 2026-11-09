@@ -76,7 +76,7 @@ Click any exchange for trading hours, primary instruments, and current market st
 
 ## Strategic Ports Under Watch
 
-Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps its **strategic-port registry** with:
+[Maritime chokepoints](https://www.worldmonitor.app/chokepoints/) and major ports are the pressure points of global trade. World Monitor maps its **strategic-port registry** with:
 
 - Current operational status
 - Geographic [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) proximity (Suez, Strait of Hormuz, Malacca, Panama Canal)
@@ -145,7 +145,7 @@ Supply chains don't just face geopolitical risk. Environmental events are equall
 - **[USGS](https://earthquake.usgs.gov/) Earthquakes (M4.5+):** Automatic alerts for seismic events near industrial infrastructure
 - **[NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (VIIRS):** Satellite-detected fires that could affect agricultural regions or industrial facilities
 - **NASA EONET:** Volcanic eruptions, floods, and severe storms
-- **Cloudflare Radar:** Internet outages that disrupt digital supply chains
+- **Cloudflare Radar:** [Internet outages](https://www.worldmonitor.app/tools/internet-outages/) that disrupt digital supply chains
 
 All of these layer onto the same map as your commodity and infrastructure data. For more on these capabilities, see [natural disaster monitoring with World Monitor](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/).
 

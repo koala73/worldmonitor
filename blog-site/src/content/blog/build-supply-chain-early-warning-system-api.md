@@ -174,7 +174,7 @@ Validate trade signals against primary datasets such as the [WTO API portal](htt
 
 **Which chokepoints can I monitor?**
 
-Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/), Taiwan Strait, Bosporus, [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/), and the Cape of Good Hope bypass corridor.
+Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/), [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/), Bosporus, [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/), and the Cape of Good Hope bypass corridor.
 
 **How fresh is the disruption data?**
 
