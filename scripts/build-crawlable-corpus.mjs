@@ -2196,11 +2196,13 @@ export async function loadCorpusData({
     livePulse.capturedAt,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
-  const toolsLastmod = laterDate(
+  // The signal-convergence page states when its methodology was last
+  // reviewed, so a search-link edit moves the tools lastmod but not that date.
+  const toolsReviewedOn = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
-    gitFileLastmod(rootDir, searchLinksPath('tools')),
     TOOLS_PAGE_CONTENT_VERSION,
   );
+  const toolsLastmod = laterDate(toolsReviewedOn, gitFileLastmod(rootDir, searchLinksPath('tools')));
   // The hub links every live topic page, so their code moves it too.
   const toolsIndexLastmod = laterDate(
     toolsLastmod,
@@ -2344,6 +2346,7 @@ export async function loadCorpusData({
       comparisons: comparisonsLastmod,
       sources: sourcesLastmod,
     },
+    toolsReviewedOn,
     sourceStats,
     sourceCatalog,
     coverageCatalog,
@@ -5559,7 +5562,7 @@ function signalConvergenceDatasetMetadata(signalConvergence, baseUrl) {
   };
 }
 
-function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snapshotPath }) {
+function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, reviewedOn, snapshotPath }) {
   const path = '/tools/signal-convergence/';
   const metricName = signalConvergence.metricName || 'Geographic Convergence Score';
   const datasetMetadata = signalConvergenceDatasetMetadata(signalConvergence, baseUrl);
@@ -5605,7 +5608,7 @@ ${examples}
       </div>
       <h2>Where to go next</h2>
       <p>Open the <a href="/dashboard">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(lastmod))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(reviewedOn))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -6359,6 +6362,7 @@ function writeCorpus({ data, rootDir, outDir, baseUrl, clean, now, blogPostPaths
       signalConvergence: data.livePulse.signalConvergence,
       baseUrl,
       lastmod: data.lastmod.tools,
+      reviewedOn: data.toolsReviewedOn,
       snapshotPath: data.sources.livePulseSnapshot,
     }),
   );

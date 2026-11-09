@@ -6483,6 +6483,16 @@ describe('live-pulse snapshot injection (#7533)', () => {
           [],
           'family clocks must all track their derivations against an injected pulse',
         );
+        // The tools clock folds the tools search-link ledger; the methodology
+        // review date the convergence page states must not.
+        const reviewedOn = laterDate(gitFileLastmod(repoRoot, data.sources.liveToolsScript), TOOLS_PAGE_CONTENT_VERSION);
+        assert.equal(data.toolsReviewedOn, reviewedOn);
+        assert.match(
+          read(outDir, 'tools/signal-convergence/index.html'),
+          new RegExp(`Methodology reference, last reviewed ${new Date(`${reviewedOn}T00:00:00Z`).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+          })}\\.`),
+        );
       } finally {
         rmSync(outDir, { recursive: true, force: true });
       }
