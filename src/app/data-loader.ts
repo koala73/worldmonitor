@@ -493,6 +493,8 @@ export class DataLoaderManager implements AppModule {
   // First paint does not wait on this: it renders after digestFirstPaintGraceMs.
   private readonly digestRequestTimeoutMs = 25_000;
   private readonly digestFirstPaintGraceMs = 1500;
+  /** A news hydration request that arrived while a news load was still running. */
+  private newsHydrationReplay: { forceAll: boolean } | null = null;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   /** Failure kinds already sent to Sentry this page load (one event per kind). */
   private readonly reportedDigestFailures = new Set<DigestFetchFailureKind>();
@@ -1182,7 +1184,7 @@ export class DataLoaderManager implements AppModule {
 
     const tasks: HydrationTask[] = [];
     if (this.shouldHydrateNews(forceAll)) {
-      tasks.push({ name: 'news', task: () => runGuarded('news', () => this.loadNews()) });
+      tasks.push({ name: 'news', task: () => this.newsHydrationTask(forceAll) });
     }
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
@@ -2253,7 +2255,41 @@ export class DataLoaderManager implements AppModule {
     return generation === this.committedNewsGeneration && !servedStale;
   }
 
-  async loadNews(): Promise<void> {
+  /**
+   * The `news` hydration task. It resolves at the category first paint, not
+   * when a slow digest finally lands: the digest may take up to
+   * digestRequestTimeoutMs (25 s), and every later hydration tier — on mobile,
+   * every later task — would wait behind it. The load keeps running after the
+   * task resolves. A pass that asks for news meanwhile is replayed when the
+   * load ends, so a category change made during the wait is not dropped.
+   */
+  private newsHydrationTask(forceAll: boolean): Promise<void> {
+    if (this.ctx.isDestroyed) return Promise.resolve();
+    if (this.ctx.inFlight.has('news')) {
+      this.newsHydrationReplay = { forceAll: (this.newsHydrationReplay?.forceAll ?? false) || forceAll };
+      return Promise.resolve();
+    }
+    this.ctx.inFlight.add('news');
+    let markFirstPaint!: () => void;
+    const firstPaint = new Promise<void>((resolve) => { markFirstPaint = resolve; });
+    const load = (async () => {
+      try {
+        await this.loadNews({ onFirstPaint: markFirstPaint });
+      } catch (e) {
+        if (!this.ctx.isDestroyed) console.error('[App] news failed:', e);
+      } finally {
+        this.ctx.inFlight.delete('news');
+        const replay = this.newsHydrationReplay;
+        this.newsHydrationReplay = null;
+        if (replay && !this.ctx.isDestroyed && this.shouldHydrateNews(replay.forceAll)) {
+          void this.newsHydrationTask(replay.forceAll);
+        }
+      }
+    })();
+    return Promise.race([load, firstPaint]);
+  }
+
+  async loadNews(options: { onFirstPaint?: () => void } = {}): Promise<void> {
     const generation = this.beginNewsLoad();
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
@@ -2291,6 +2327,7 @@ export class DataLoaderManager implements AppModule {
         digestPromise,
         fallbackDigest: fallbackSelection,
         digestGraceMs: this.digestFirstPaintGraceMs,
+        onFirstPaint: options.onFirstPaint,
         loadCategory: ({ key, feeds, isCustom }, selection, options) => (
           this.loadNewsCategory(
             key,

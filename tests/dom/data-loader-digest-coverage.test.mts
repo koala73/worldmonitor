@@ -191,6 +191,88 @@ describe('digest coverage follows the selected browser response', () => {
     expect(setNewsLocations).toHaveBeenLastCalledWith([]);
   });
 
+  describe('a slow digest does not hold the hydration queue (#10323 review)', () => {
+    type HydrationInternals = {
+      digestFirstPaintGraceMs: number;
+      runHydrationTasks(tasks: Array<{ name: string; task: () => Promise<void> }>, forceAll: boolean): Promise<void>;
+      newsHydrationTask(forceAll: boolean): Promise<void>;
+    };
+
+    async function slowDigestLoader(digestPromise: Promise<SelectedNewsDigest | null>) {
+      const made = await makeLoader();
+      const ctx = (made.loader as unknown as { ctx: AppContext }).ctx;
+      ctx.map = { setNewsLocations: vi.fn(), updateHotspotActivity: vi.fn() } as unknown as AppContext['map'];
+      ctx.monitors = [];
+      ctx.inFlight = new Set();
+      const hydration = made.internal as unknown as HydrationInternals;
+      hydration.digestFirstPaintGraceMs = 0;
+      made.internal.resolveEnabledNewsCategories = () => [{ key: 'politics', feeds: [{ name: 'Reuters', url: 'https://fixture.test/rss' }], isCustom: false }];
+      made.internal.tryFetchDigest = () => digestPromise;
+      made.internal.loadNewsCategory = async () => [];
+      made.internal.loadIntelNews = async () => [];
+      made.internal.clusterNewsForGeneration = async () => ({ clusters: [] });
+      const loadNews = vi.spyOn(made.loader, 'loadNews');
+      return { ...made, ctx, hydration, loadNews };
+    }
+
+    it('starts the next tier at first paint and still commits the late digest', async () => {
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      const { ctx, hydration } = await slowDigestLoader(new Promise((resolve) => { resolveDigest = resolve; }));
+      const natural = vi.fn(async () => {});
+
+      await hydration.runHydrationTasks([
+        { name: 'news', task: () => hydration.newsHydrationTask(false) },
+        { name: 'natural', task: natural },
+      ], false);
+
+      // The queue drained while the digest was still pending.
+      expect(natural).toHaveBeenCalledOnce();
+      expect(ctx.initialLoadComplete).toBe(false);
+      expect(ctx.inFlight.has('news')).toBe(true);
+
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await vi.waitFor(() => expect(ctx.clustersSettled).toBe(true));
+      expect(ctx.initialLoadComplete).toBe(true);
+      expect(ctx.inFlight.has('news')).toBe(false);
+    });
+
+    it('waits for the whole load when the digest arrives within the grace window', async () => {
+      const { ctx, hydration } = await slowDigestLoader(Promise.resolve({ digest: digest('complete'), servedStale: false }));
+      hydration.digestFirstPaintGraceMs = 1500;
+
+      await hydration.newsHydrationTask(false);
+
+      expect(ctx.clustersSettled).toBe(true);
+      expect(ctx.inFlight.has('news')).toBe(false);
+    });
+
+    it('replays a request made during the wait once the load ends', async () => {
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      const { ctx, hydration, loadNews } = await slowDigestLoader(new Promise((resolve) => { resolveDigest = resolve; }));
+
+      await hydration.newsHydrationTask(false);
+      // A forced pass (e.g. a source toggle) arrives while the digest is pending.
+      await hydration.newsHydrationTask(true);
+      expect(loadNews).toHaveBeenCalledOnce();
+
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await vi.waitFor(() => expect(loadNews).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(ctx.inFlight.has('news')).toBe(false));
+    });
+
+    it('does not replay a request whose work-list the finished load already covered', async () => {
+      let resolveDigest!: (value: SelectedNewsDigest | null) => void;
+      const { ctx, hydration, loadNews } = await slowDigestLoader(new Promise((resolve) => { resolveDigest = resolve; }));
+
+      await hydration.newsHydrationTask(false);
+      await hydration.newsHydrationTask(false);
+
+      resolveDigest({ digest: digest('complete'), servedStale: false });
+      await vi.waitFor(() => expect(ctx.inFlight.has('news')).toBe(false));
+      expect(loadNews).toHaveBeenCalledOnce();
+    });
+  });
+
   it('preserves news locations when the news load has no authoritative result', async () => {
     const { loader, internal } = await makeLoader();
     const ctx = (loader as unknown as { ctx: AppContext }).ctx;
