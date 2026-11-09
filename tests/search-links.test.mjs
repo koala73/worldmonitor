@@ -18,7 +18,7 @@ import {
   readQueryPages,
   selectSearchLinks,
 } from '../scripts/lib/search-links.mjs';
-import { loadSearchLinks, runCli, searchLinksPath } from '../scripts/search-links.mjs';
+import { createTargetResolver, loadSearchLinks, runCli, searchLinksPath } from '../scripts/search-links.mjs';
 import { buildQueryPages } from '../scripts/seo-gsc-collect.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -142,6 +142,8 @@ describe('search-link selection', () => {
     assert.throws(() => readQueryPages(repeated), /malformed or repeated page/);
     const unordered = { performance: { queryPages: { status: 'available', rows: [query('q', [page('/a/', 1), page('/b/', 8)])] } } };
     assert.throws(() => readQueryPages(unordered), /not ordered by impressions/);
+    const unknownFlag = { performance: { queryPages: { status: 'available', rows: [query('q', [page('/a/', 9)], null)] } } };
+    assert.throws(() => readQueryPages(unknownFlag), /"q" has no likelyAutomated flag/, 'an unknown flag is not "not automated"');
   });
 });
 
@@ -266,7 +268,7 @@ describe('search links in the built corpus', () => {
 
 describe('search-links CLI', () => {
   const SNAPSHOT = 'docs/research/seo-ai-visibility/gsc/2026-11-16.json';
-  const ROUTES = ['/chokepoints/bab-el-mandeb/', '/use-cases/', '/use-cases/monitor-maritime-security/', '/countries/', '/countries/yemen/'];
+  const ROUTES = ['/chokepoints/', '/chokepoints/bab-el-mandeb/', '/use-cases/', '/use-cases/monitor-maritime-security/', '/countries/', '/countries/yemen/'];
 
   function fixtureRepo() {
     const root = mkdtempSync(join(tmpdir(), 'wm-search-links-'));
@@ -356,6 +358,36 @@ describe('search-links CLI', () => {
       assert.deepEqual(runCli(['--write'], { rootDir: root, log: () => {} }).written, [], 'a rerun is a no-op');
       const links = loadSearchLinks({ rootDir: root, resolves: () => true });
       assert.deepEqual([...links.keys()].sort(), ['/countries/yemen/', '/use-cases/monitor-maritime-security/']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to propose links while a landing page is unbuilt', () => {
+    const root = fixtureRepo();
+    try {
+      rmSync(join(root, 'public/countries/yemen/index.html'));
+      assert.throws(() => runCli(['--write'], { rootDir: root, log: () => {} }), /public\/countries\/yemen\/index\.html is missing/);
+      assert.equal(JSON.parse(readFileSync(join(root, searchLinksPath('countries')), 'utf8')).snapshot, null, 'nothing was written');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves a docs page only when docs/.mintignore leaves it published', () => {
+    const root = mkdtempSync(join(tmpdir(), 'wm-search-links-docs-'));
+    try {
+      for (const file of ['docs/public-page.mdx', 'docs/runbook.md', 'docs/research/notes.mdx', 'docs/research.mdx']) {
+        mkdirSync(dirname(join(root, file)), { recursive: true });
+        writeFileSync(join(root, file), '# page\n');
+      }
+      writeFileSync(join(root, 'docs/.mintignore'), '# kept off the site\nrunbook.md\nresearch/\n');
+      const resolves = createTargetResolver({ rootDir: root, manifest: { sections: {} }, blogPostPaths: new Set() });
+      assert.equal(resolves('/docs/public-page'), true);
+      assert.equal(resolves('/docs/runbook'), false, 'an exact path is ignored');
+      assert.equal(resolves('/docs/research/notes'), false, 'a dir/ prefix is ignored');
+      assert.equal(resolves('/docs/research'), true, 'a dir/ prefix leaves the same-named page published');
+      assert.equal(resolves('/docs/missing'), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

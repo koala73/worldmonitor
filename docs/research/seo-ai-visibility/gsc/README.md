@@ -112,10 +112,11 @@ up to 10 `www` pages and that page's own impressions and position for the
 query. Pages are bare paths: a fragment or query string is folded into its
 page, and other hosts are left out. A page-grouped row counts one search once
 per URL shown, so a query's `impressions` is a sum of page rows. The floor is
-therefore on the top page alone, whose impressions are distinct searches: 20
-before the query's text is committed. `likelyAutomated` is the flag from
-`nonBrandQueries`, so it describes the first window and is `null` when that
-list is unavailable. A cut-short view reports `unavailable` rather than a
+therefore on the largest single URL row, whose impressions are distinct
+searches: 20 before the query's text is committed. Variants of one page that
+differ by fragment or query string are summed for ranking but not for the floor.
+`likelyAutomated` is the flag from `nonBrandQueries`, so it describes the first
+window and is `null` when that list is unavailable. A cut-short view reports `unavailable` rather than a
 shorter list, because the missing rows can hold a query's top page.
 `scripts/search-links.mjs` reads this view to propose links between generated
 pages that rank for the same query.

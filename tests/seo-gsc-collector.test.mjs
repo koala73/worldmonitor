@@ -941,6 +941,28 @@ describe('Search Console site totals and brand split', () => {
     assert.equal(list.rows[0].likelyAutomated, null);
   });
 
+  it('publishes a query only when one URL alone reaches the floor', () => {
+    const page = (key, url, impressions) => ({ key, secondKey: `https://www.worldmonitor.app${url}`, clicks: 0, impressions, position: 6 });
+    const list = buildQueryPages(
+      {
+        window: { label: '90d' },
+        page: {
+          rows: [
+            page('merged variants', '/tools/', 15),
+            page('merged variants', '/tools/#faq', 10),
+            page('one url', '/crises/', 20),
+            page('one url', '/crises/?x=1', 4),
+          ],
+          truncationReason: null,
+          recorded: true,
+        },
+      },
+      { status: 'available', window: '28d', rows: [] },
+    );
+    assert.deepEqual(list.rows.map((row) => row.query), ['one url']);
+    assert.deepEqual(list.rows[0].pages, [{ path: '/crises/', impressions: 24, position: 6 }]);
+  });
+
   it('keeps Markdown in a query cell from rendering as links, images or HTML', () => {
     const cell = queryCell('[x](https://a.example/) <img src=y> ![i](z) www.a.example `c` *b* _d_ ~e~');
     assert.doesNotMatch(cell, /(?<!\\)</);

@@ -1281,8 +1281,8 @@ function queryPagePath(url) {
  * query string are one page.
  *
  * A page-grouped row counts a search once per URL shown, so the query total is
- * a sum of page rows. The top page's impressions are distinct searches, which
- * makes them the publication floor. A view cut short can be missing a query's
+ * a sum of page rows. Only a single URL's row counts distinct searches, so the
+ * publication floor is the largest one. A view cut short can be missing a query's
  * top page, so it reports nothing instead of a smaller list. `likelyAutomated`
  * comes from the first window's device view and is null without it.
  */
@@ -1298,8 +1298,10 @@ export function buildQueryPages(raw, nonBrandQueries) {
     const path = queryPagePath(row.secondKey);
     if (path === null || isBrandQuery(row.key)) continue;
     const pages = byQuery.get(row.key) ?? new Map();
-    const entry = pages.get(path) ?? { impressions: 0, weighted: 0, positioned: 0 };
+    const entry = pages.get(path) ?? { impressions: 0, weighted: 0, positioned: 0, largestUrl: 0 };
     entry.impressions += row.impressions;
+    // Merged URL variants can count one search twice, so the floor reads one URL.
+    entry.largestUrl = Math.max(entry.largestUrl, row.impressions);
     if (row.position !== null) {
       entry.weighted += row.position * row.impressions;
       entry.positioned += row.impressions;
@@ -1321,9 +1323,11 @@ export function buildQueryPages(raw, nonBrandQueries) {
       impressions: ranked.reduce((sum, entry) => sum + entry.impressions, 0),
       likelyAutomated: automated === null ? null : automated.has(query),
       pages: ranked.slice(0, MAX_PAGES_PER_QUERY),
+      largestUrl: Math.max(...[...pages.values()].map((entry) => entry.largestUrl)),
     };
   })
-    .filter((row) => row.pages[0].impressions >= MIN_LISTED_QUERY_IMPRESSIONS)
+    .filter((row) => row.largestUrl >= MIN_LISTED_QUERY_IMPRESSIONS)
+    .map(({ largestUrl, ...row }) => row)
     .sort((left, right) => right.impressions - left.impressions || left.query.localeCompare(right.query))
     .slice(0, MAX_QUERY_PAGE_QUERIES);
   return {
@@ -1333,7 +1337,7 @@ export function buildQueryPages(raw, nonBrandQueries) {
     method: {
       host: QUERY_PAGE_HOST,
       impressionsBasis: 'sum-of-page-rows',
-      minTopPageImpressions: MIN_LISTED_QUERY_IMPRESSIONS,
+      minSingleUrlImpressions: MIN_LISTED_QUERY_IMPRESSIONS,
       maxQueries: MAX_QUERY_PAGE_QUERIES,
       maxPagesPerQuery: MAX_PAGES_PER_QUERY,
       likelyAutomatedWindow: nonBrandQueries.window,

@@ -39,13 +39,29 @@ const SNAPSHOT_DIR = 'docs/research/seo-ai-visibility/gsc';
 
 export const searchLinksPath = (family) => `scripts/data/search-links/${family}.json`;
 
-const docsPageExists = (rootDir, href) => /^\/docs\/[a-z0-9][a-z0-9/-]*$/.test(href)
-  && ['.mdx', '.md'].some((ext) => existsSync(join(rootDir, 'docs', `${href.slice('/docs/'.length)}${ext}`)));
+/**
+ * Mintlify serves every docs page file that docs/.mintignore does not exclude.
+ * The file holds only exact paths and `dir/` prefixes.
+ */
+function createDocsPageResolver(rootDir) {
+  const ignoreFile = join(rootDir, 'docs/.mintignore');
+  const patterns = existsSync(ignoreFile)
+    ? readFileSync(ignoreFile, 'utf8').split('\n').map((line) => line.trim()).filter((line) => line && !line.startsWith('#'))
+    : [];
+  if (patterns.some((pattern) => /[*?[\]!]/.test(pattern))) throw new Error('docs/.mintignore gained a glob; teach search-links to match it');
+  return (href) => {
+    if (!/^\/docs\/[a-z0-9][a-z0-9/-]*$/.test(href)) return false;
+    const page = href.slice('/docs/'.length);
+    return ['.mdx', '.md'].some((ext) => existsSync(join(rootDir, 'docs', `${page}${ext}`))
+      && !patterns.some((pattern) => (pattern.endsWith('/') ? page.startsWith(pattern) : pattern === `${page}${ext}`)));
+  };
+}
 
 /** True for a page the site publishes: a corpus route, a blog post or a docs page. */
 export function createTargetResolver({ rootDir, manifest, blogPostPaths }) {
   const routes = manifestRoutes(manifest);
-  return (href) => routes.has(href) || blogPostPaths.has(href) || docsPageExists(rootDir, href);
+  const docsPageExists = createDocsPageResolver(rootDir);
+  return (href) => routes.has(href) || blogPostPaths.has(href) || docsPageExists(href);
 }
 
 export function blogPostPathsIn(rootDir) {
@@ -77,7 +93,9 @@ export function loadSearchLinks({ rootDir, resolves }) {
   return links;
 }
 
-const git = (rootDir, args) => execFileSync('git', ['-C', rootDir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+// A pre-push hook exports GIT_DIR, which would override -C and read another repository.
+const gitEnv = () => Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+const git = (rootDir, args) => execFileSync('git', ['-C', rootDir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: gitEnv() });
 
 /** A repository path whose committed content is what is on disk. */
 function isCommitted(rootDir, path) {
@@ -116,7 +134,8 @@ function readSources(rootDir, manifest) {
   for (const route of manifestRoutes(manifest)) {
     if (!familyOf(route)) continue;
     const file = join(rootDir, 'public', route, 'index.html');
-    if (!existsSync(file)) continue;
+    // A missing page would drop its links from --write output without a word.
+    if (!existsSync(file)) throw new Error(`public${route}index.html is missing; run npm run build:crawlable-corpus first`);
     sources.set(route, linkedPaths(mainOf(readFileSync(file, 'utf8'))));
   }
   return sources;

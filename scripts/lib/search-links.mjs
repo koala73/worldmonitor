@@ -158,7 +158,10 @@ export function readQueryPages(snapshot, label = 'snapshot') {
         throw new Error(`${label}: "${row.query}" pages are not ordered by impressions`);
       }
     }
-    return { query: row.query, likelyAutomated: row.likelyAutomated === true, pages };
+    if (typeof row.likelyAutomated !== 'boolean') {
+      throw new Error(`${label}: "${row.query}" has no likelyAutomated flag, so automated searches cannot be set aside`);
+    }
+    return { query: row.query, likelyAutomated: row.likelyAutomated, pages };
   });
 }
 
