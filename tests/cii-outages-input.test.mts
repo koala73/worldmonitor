@@ -368,3 +368,158 @@ describe('CII internet outages: exam shutdowns are excluded', () => {
     assert.equal(outageVerdict(ahead(6 * 60 * 1000), now), 'window', 'six minutes ahead is a future record');
   });
 });
+
+describe('CII internet outages: review of 26a5dbdf3 and e7b071b5a (negation scope, vocabulary, one count, no cliff)', () => {
+  const now = Date.parse('2026-06-15T09:00Z');
+  const record = (description: string, cause = 'GOVERNMENT_DIRECTED'): Outage => ({
+    countryCode: 'IQ', cause, severity: 'OUTAGE_SEVERITY_MAJOR', detectedAt: now - HOUR, endedAt: 0, description,
+  });
+  const verdict = (description: string, cause?: string) => outageVerdict(record(description, cause), now);
+
+  it('binds a negation to its own noun phrase, not across a clause', () => {
+    for (const description of [
+      'Mobile data cut without warning as protests spread during exams',
+      'No internet amid protests over leaked exam results',
+      'Shutdowns during baccalaureate exams; no violence, but riots in the capital',
+      'Exam shutdown not lifted despite protests',
+      'Coupure pendant le baccalauréat, pas de violence, mais des émeutes',
+      'Corte durante los exámenes, sin violencia pero disturbios en la capital',
+      'قطع الإنترنت خلال الامتحانات دون عنف لكن احتجاجات',
+    ]) {
+      assert.equal(verdict(description), 'scored', description);
+    }
+  });
+
+  it('still lets a negation cancel its own noun phrase', () => {
+    for (const description of [
+      'Exam shutdown; no reports of any protests',
+      'Exam shutdown, no violent protests',
+      'Exam shutdown, no protests or riots reported',
+      'Exam shutdown, not related to protests',
+      'Coupure pendant le baccalauréat, pas de manifestations',
+      'Corte durante los exámenes, no hubo protestas',
+    ]) {
+      assert.equal(verdict(description), 'exam', description);
+    }
+  });
+
+  it('does not carry a negation from the description into the title', () => {
+    const outage = { ...record('Exam shutdown; no'), title: 'Protests in the capital' };
+    assert.equal(outageVerdict(outage, now), 'scored');
+  });
+
+  it('counts war, attack, armed, insurgent, offensive and crackdown as unrest, as whole words', () => {
+    for (const description of [
+      'Internet shut down during exams and war',
+      'Shutdown during exams amid an armed attack on the capital',
+      'Exam shutdown; opposition crackdown continues',
+      'Exam shutdown as insurgents advance',
+      'Exam shutdown after an insurgent raid',
+      'Exam shutdown during a government offensive',
+    ]) {
+      assert.equal(verdict(description), 'scored', description);
+    }
+    for (const description of ['Exam shutdown; warning issued to operators', 'Exam shutdown; attacker-free period', 'Exam shutdown; unarmored cable']) {
+      assert.equal(verdict(description), 'exam', description);
+    }
+  });
+
+  it('applies the exam exclusion only to government-directed shutdowns', () => {
+    assert.equal(verdict('Outage after an airstrike hit the exam ministry data centre', 'MILITARY_ACTION'), 'scored');
+    assert.equal(verdict('Exam shutdown', 'MILITARY_ACTION'), 'scored');
+    assert.equal(verdict('Exam shutdown'), 'exam');
+  });
+
+  it('does not read a negated exam as an exam', () => {
+    for (const description of [
+      'Nationwide shutdown, not related to exams',
+      'Shutdown unrelated to exams',
+      'Shutdown not due to national exams',
+      'No exams were scheduled; nationwide shutdown ordered',
+    ]) {
+      assert.equal(verdict(description), 'scored', description);
+    }
+    assert.equal(verdict('Exam shutdown, not related to the unrest'), 'exam', 'only the unrest is negated');
+  });
+
+  // P6: one event, one count.
+  const outage = (id: string, severity: string, detectedAt: number, endedAt = 0, countryCode = 'IQ'): Outage => ({
+    id, countryCode, cause: 'GOVERNMENT_DIRECTED', severity: `OUTAGE_SEVERITY_${severity}`, detectedAt, endedAt, description: 'Government-ordered shutdown',
+  });
+  const table = (outages: Outage[], nowMs: number) =>
+    computeCiiScoreTable({ outages: { outages } }, { nowMs, iranEventsEnabled: true }).rows.find((row) => row.region === 'IQ')!;
+
+  it('counts one shutdown filed as several overlapping records once, at its highest severity (P6)', () => {
+    const records = [
+      outage('a', 'MAJOR', now - 6 * HOUR, now - 2 * HOUR),
+      outage('b', 'TOTAL', now - 5 * HOUR, now - 3 * HOUR),
+      outage('c', 'PARTIAL', now - 3 * HOUR, 0),
+      outage('d', 'MAJOR', now - 90 * 60 * 1000, 0),
+    ];
+    assert.equal(table(records, now).parts.outageBoost, 30);
+  });
+
+  it('merges overlap transitively, and only within one country (P6)', () => {
+    const chain = [
+      outage('a', 'MAJOR', now - 9 * HOUR, now - 7 * HOUR),
+      outage('b', 'MAJOR', now - 8 * HOUR, now - 5 * HOUR),
+      outage('c', 'MAJOR', now - 6 * HOUR, now - 4 * HOUR),
+    ];
+    assert.equal(table(chain, now).parts.outageBoost, 15, 'a-b and b-c overlap, so all three are one shutdown');
+    const otherCountry = [outage('a', 'TOTAL', now - 2 * HOUR), outage('b', 'TOTAL', now - 2 * HOUR, 0, 'SD')];
+    assert.equal(table(otherCountry, now).parts.outageBoost, 30, 'the same hours in another country are another shutdown');
+  });
+
+  it('still adds shutdowns that do not overlap, up to the cap', () => {
+    const separate = [outage('a', 'MAJOR', now - 30 * HOUR, now - 28 * HOUR), outage('b', 'PARTIAL', now - 2 * HOUR, now - HOUR)];
+    assert.equal(table(separate, now).parts.outageBoost, 20);
+    const many = [
+      outage('a', 'TOTAL', now - 50 * HOUR, now - 48 * HOUR),
+      outage('b', 'TOTAL', now - 30 * HOUR, now - 28 * HOUR),
+    ];
+    assert.equal(table(many, now).parts.outageBoost, 50);
+  });
+
+  it('lets an excluded record neither merge with nor add to a scored one', () => {
+    const records = [outage('a', 'MAJOR', now - 2 * HOUR), { ...outage('b', 'TOTAL', now - 2 * HOUR), description: 'Exam shutdown' }];
+    assert.equal(table(records, now).parts.outageBoost, 15);
+  });
+
+  // P3: no cliff when a record ages out of the window.
+  it('fades a record out near the end of the window, within the P3 step limit', () => {
+    // Two distinct total shutdowns (they do not overlap) that age out inside one hourly sample.
+    const endedAt = now;
+    const records = [outage('a', 'TOTAL', endedAt - 3 * HOUR, endedAt - 60_000), outage('b', 'TOTAL', endedAt - 30_000, endedAt)];
+    assert.equal(table(records, endedAt).parts.outageBoost, 50);
+    let previous = table(records, endedAt + 6 * DAY - HOUR / 2).blended;
+    let largestDrop = 0;
+    for (let t = endedAt + 6 * DAY + HOUR / 2; t <= endedAt + 8 * DAY; t += HOUR) {
+      const current = table(records, t).blended;
+      largestDrop = Math.max(largestDrop, previous - current);
+      previous = current;
+    }
+    assert.ok(largestDrop <= 5, `largest hourly drop of the blended score, ${largestDrop}, exceeds the P3 limit of 5`);
+    // Measured on the raw term too: the whole 50 raw points must not leave in one step.
+    const halfway = table(records, endedAt + 6.5 * DAY).parts.outageBoost;
+    assert.ok(halfway > 0 && halfway < 50, `halfway through the fade the term is ${halfway}`);
+    assert.equal(table(records, endedAt + 7 * DAY + HOUR).parts.outageBoost, 0);
+  });
+
+  it('holds full weight for an ongoing outage however old, and until the fade starts', () => {
+    assert.equal(table([outage('a', 'MAJOR', now - 20 * DAY)], now).parts.outageBoost, 15);
+    assert.equal(table([outage('a', 'MAJOR', now - 8 * DAY, now - 5 * DAY)], now).parts.outageBoost, 15);
+  });
+
+  it('keeps a merged shutdown continuous as its most severe record fades before a milder one', () => {
+    const records = [outage('total', 'TOTAL', now - 10 * HOUR, now - 9 * HOUR), outage('partial', 'PARTIAL', now - 10 * HOUR, now)];
+    const boost = (t: number) => table(records, t).parts.outageBoost;
+    assert.equal(boost(now), 30);
+    let previous = boost(now + 6 * DAY - 10 * HOUR);
+    for (let t = now + 6 * DAY - 9 * HOUR; t <= now + 8 * DAY; t += HOUR) {
+      const current = boost(t);
+      assert.ok(previous - current <= 2, `step ${previous} to ${current} at +${(t - now) / HOUR}h`);
+      previous = current;
+    }
+    assert.equal(boost(now + 7 * DAY + HOUR), 0);
+  });
+});
