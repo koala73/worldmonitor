@@ -56,6 +56,7 @@ ${renderLiveDataLinks(LIVE_PAGE_RELATED[page.slug] ?? [], escapeHtml, 'Related l
       { name: page.h1, path: page.path },
     ]),
     body,
+    inlineScript: page.script ?? '',
   });
 }
 
