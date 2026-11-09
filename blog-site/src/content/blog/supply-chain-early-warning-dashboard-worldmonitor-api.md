@@ -11,7 +11,7 @@ modifiedDate: "2026-09-10"
 
 A supply chain early warning dashboard should answer one question before the weekly operations meeting: which routes, commodities, suppliers, or countries need attention now?
 
-WorldMonitor is useful here because it does not treat supply chain risk as a single feed. It connects maritime chokepoints, port activity, fuel shortages, energy disruptions, customs flows, commodity prices, trade policy, natural disasters, conflict events, and country risk into one API surface.
+WorldMonitor is useful here because it does not treat supply chain risk as a single feed. It connects [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), port activity, fuel shortages, energy disruptions, customs flows, commodity prices, trade policy, natural disasters, conflict events, and country risk into one API surface.
 
 This guide gives you a practical dashboard design you can build with the [WorldMonitor API](https://www.worldmonitor.app/docs/api-reference) or the [WorldMonitor MCP server](https://www.worldmonitor.app/docs/mcp-overview). For a narrower implementation path, see the tutorial on how to [build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/), then add alert delivery with the [Slack and Teams alert workflow](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/).
 
@@ -160,7 +160,7 @@ The archive is not bureaucracy. It lets you explain why an alert fired two weeks
 
 ## Use the scenarios API for what-if checks
 
-For severe route exposure, pair live monitoring with scenario analysis. WorldMonitor's [Scenarios API](https://www.worldmonitor.app/docs/api-scenarios) can run predefined supply-chain disruption scenarios such as Hormuz tanker blockade, Taiwan Strait closure, Suez and Bab-el-Mandeb simultaneous disruption, Panama drought, Baltic grain disruption, and tariff escalation.
+For severe route exposure, pair live monitoring with scenario analysis. WorldMonitor's [Scenarios API](https://www.worldmonitor.app/docs/api-scenarios) can run predefined supply-chain disruption scenarios such as Hormuz tanker blockade, [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/) closure, Suez and Bab-el-Mandeb simultaneous disruption, Panama drought, Baltic grain disruption, and tariff escalation.
 
 Use scenarios when the question shifts from "what is happening?" to "what happens to our exposure if this closes?"
 

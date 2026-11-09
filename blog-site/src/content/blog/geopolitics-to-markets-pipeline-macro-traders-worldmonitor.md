@@ -58,7 +58,7 @@ The Market Radar is a regime check, not a trade recommendation. It combines seve
 - technical trend
 - hash rate
 - mining cost
-- fear and greed
+- [fear and greed](https://www.worldmonitor.app/tools/fear-and-greed-index/)
 
 The radar's BUY/CASH verdict is intentionally broad. It answers whether the environment looks more risk-on or defensive across known signals. For a macro trader, that helps size conviction. The same geopolitical event can produce different market reactions in a fragile liquidity regime than in a broad risk-on regime.
 

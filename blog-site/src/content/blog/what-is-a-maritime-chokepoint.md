@@ -13,7 +13,7 @@ A maritime chokepoint is a narrow passage where a large share of global trade, e
 
 Chokepoints matter because rerouting is expensive, slow, or sometimes impossible. When a canal, strait, or sea lane is disrupted, the effects can move from vessel schedules to freight rates, commodity prices, insurance costs, factory inventories, and national security planning.
 
-The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and Taiwan Strait. But the operational question is not just "is this place famous?" It is:
+The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/). But the operational question is not just "is this place famous?" It is:
 
 > Is the passage strategically concentrated, exposed to disruption, and connected to a trade or energy flow that matters?
 

@@ -69,7 +69,7 @@ Open-source intelligence verification is the practice of testing claims against 
 
 **What free tools can journalists use to verify breaking news?**
 
-USGS (earthquakes), NASA FIRMS (thermal anomalies), Cloudflare Radar (internet outages), public AIS aggregators (ship traffic), and flight-tracking services each cover one signal. World Monitor's value is having all of them as layers on one map, with anomaly detection such as convergence flags, density alerts, and dark-ship events running continuously.
+USGS (earthquakes), NASA FIRMS (thermal anomalies), Cloudflare Radar ([internet outages](https://www.worldmonitor.app/tools/internet-outages/)), public AIS aggregators (ship traffic), and flight-tracking services each cover one signal. World Monitor's value is having all of them as layers on one map, with anomaly detection such as convergence flags, density alerts, and dark-ship events running continuously.
 
 **How fast can an event be verified with open sources?**
 

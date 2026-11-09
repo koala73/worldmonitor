@@ -13,7 +13,7 @@ Claude is useful for reasoning through messy questions. It is less useful when t
 
 Ask a normal chat model "what is happening in the Red Sea right now?" and it has to lean on memory, web search, or whatever you paste into the prompt. That is fine for background research. It is not fine when you need to know whether a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) is stressed, a country-risk score moved, or a conflict signal is still fresh.
 
-WorldMonitor's [MCP server](https://www.worldmonitor.app/docs/mcp-overview) gives Claude a live tool connection. You add one connector URL, approve the OAuth flow, and Claude can call the same intelligence surfaces behind the [WorldMonitor dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): country risk, conflicts, markets, maritime chokepoints, aviation, cyber, energy, news intelligence, forecasts, and more.
+WorldMonitor's [MCP server](https://www.worldmonitor.app/docs/mcp-overview) gives Claude a live tool connection. You add one connector URL, approve the OAuth flow, and Claude can call the same intelligence surfaces behind the [WorldMonitor dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): country risk, conflicts, markets, [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), aviation, cyber, energy, news intelligence, forecasts, and more.
 
 You do not need to write an app. You do not need to understand JSON-RPC. You only need a paid WorldMonitor tier and a Claude client that supports custom connectors.
 
@@ -138,7 +138,7 @@ label about the assessment quality. Do not turn that confidence label into an
 event probability.
 ```
 
-Claude should look for corroborating signals: news intelligence, conflict events, natural disasters, aviation or maritime anomalies, market reaction, internet outages, or country risk changes depending on the claim.
+Claude should look for corroborating signals: news intelligence, conflict events, natural disasters, aviation or maritime anomalies, market reaction, [internet outages](https://www.worldmonitor.app/tools/internet-outages/), or country risk changes depending on the claim.
 
 The workflow pairs well with the journalist guide to [verifying breaking news with OSINT signals](/blog/posts/verify-breaking-news-osint-workflow-journalists/). The difference is that MCP lets you do it conversationally.
 

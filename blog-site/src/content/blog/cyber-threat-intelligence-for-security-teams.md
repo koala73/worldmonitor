@@ -57,7 +57,7 @@ Additional command-and-control intelligence feeds providing broader coverage of 
 
 ## Internet Outage Detection (Cloudflare Radar)
 
-World Monitor integrates **[Cloudflare Radar](https://radar.cloudflare.com/)** data to detect and map internet outages globally. This reveals:
+World Monitor integrates **[Cloudflare Radar](https://radar.cloudflare.com/)** data to detect and map [internet outages](https://www.worldmonitor.app/tools/internet-outages/) globally. This reveals:
 
 - **Government-ordered shutdowns** during protests or elections
 - **Infrastructure failures** from natural disasters or attacks

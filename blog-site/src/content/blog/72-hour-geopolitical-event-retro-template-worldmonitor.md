@@ -103,7 +103,7 @@ For a humanitarian event:
 - natural disasters
 - advisories
 - logistics and access conditions
-- country resilience and instability context
+- [country resilience](https://www.worldmonitor.app/countries/) and instability context
 
 For a market event:
 

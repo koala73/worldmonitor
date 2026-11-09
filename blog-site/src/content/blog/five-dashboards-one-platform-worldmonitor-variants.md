@@ -74,7 +74,7 @@ Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intel
 - Central bank policy trackers with [BIS](https://www.bis.org/) data
 - Stablecoin peg monitoring (USDT, USDC, DAI, FDUSD, USDe)
 - BTC spot ETF flow tracker (IBIT, FBTC, GBTC, and 7 more)
-- Fear & Greed Index with 30-day history
+- [Fear & Greed Index](https://www.worldmonitor.app/tools/fear-and-greed-index/) with 30-day history
 - Bitcoin technical signals (SMA50, SMA200, VWAP, Mayer Multiple)
 - Gulf FDI investments tied to Saudi and UAE Vision 2030 programs
 - Financial centers ranked by GFCI

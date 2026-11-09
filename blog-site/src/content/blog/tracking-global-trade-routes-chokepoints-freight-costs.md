@@ -33,7 +33,7 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 
 ## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
 The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
