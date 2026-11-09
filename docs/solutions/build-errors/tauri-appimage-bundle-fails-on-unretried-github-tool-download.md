@@ -59,6 +59,8 @@ The bundler skips every tool that already exists in its tool directory. See `pre
   run: bash scripts/prefetch-appimage-tools.sh x86_64
 ```
 
+This is the x86_64 canary. The release workflow uses the same steps, but its Linux-ARM64 leg passes `aarch64` both in the cache key and to the prefetch script (`${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}`). Hardcoding `x86_64` there would leave the ARM64 tools missing, and the bundler would download them itself, unretried.
+
 The monthly key refreshes the tools served from moving `master`/`continuous` URLs instead of freezing them for as long as the twice-weekly canary keeps the cache alive.
 
 The appimagetool download in `scripts/repack-linux-appimage.sh` was a bare `wget` with the same exposure. It now goes through `fetch-with-retry.sh`, ahead of its unchanged SHA-256 check.
@@ -72,7 +74,7 @@ The failure was a missing retry inside a third-party tool, not an outage too lon
 - When a build tool downloads at build time, look for a "skip if present" seam (a cache directory, a `--tools-dir` flag, an env var) and fill it yourself with retries, rather than relying on retrying the whole command.
 - A whole-step retry like `retryAttempts` that fires immediately does not survive an outage of more than a minute or two. Retries need backoff measured in minutes.
 - Retry only failures that can change: no response, 408, 429, 5xx, cut-off transfers. Fail at once on other 4xx, or a removed asset costs minutes of pointless backoff.
-- When `@tauri-apps/cli` is upgraded, recheck `prepare_tools` for renamed tools or changed URLs. A drifted name does not break the build; the bundler just downloads that tool itself again, unretried. `tests/appimage-tool-prefetch.test.mjs` pins the expected file names, and `tests/ci-workflow-coverage.test.mts` pins the restore → prefetch → build order in both workflows.
+- When `@tauri-apps/cli` is upgraded, recheck `prepare_tools` for renamed tools or changed URLs and update the prefetch script to match. Drift can fail in two ways. If the old URL still serves, the prefetched file sits under a name the bundler no longer checks, so the bundler downloads the renamed tool itself, unretried. If the old asset is gone, the prefetch gets a 404 and fails the build before Tauri runs (except for the optional appimage plugin, which only warns). `tests/appimage-tool-prefetch.test.mjs` pins the expected file names, and `tests/ci-workflow-coverage.test.mts` pins the restore → prefetch → build order in both workflows.
 
 ## Related
 
