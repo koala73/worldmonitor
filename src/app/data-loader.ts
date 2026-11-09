@@ -915,6 +915,7 @@ export class DataLoaderManager implements AppModule {
         retained ? 'retained' : fallback ? 'saved' : 'none',
         reported.deadlineExpired,
         firstFailure ? 'failed' : 'none',
+        firstFailure ? classifyDigestFetchFailure(e, deadlineExpired) : undefined,
       );
       this.reportDigestCoverage(fallback, fallback ? 'stale' : 'unavailable');
       return fallback ? { digest: fallback, servedStale: true } : null;
@@ -932,6 +933,7 @@ export class DataLoaderManager implements AppModule {
     fallback: 'retained' | 'saved' | 'none',
     deadlineExpired: boolean,
     retry: 'none' | 'recovered' | 'failed',
+    retryFailure?: DigestFetchFailureKind,
   ): void {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (isPageUnloading()) return;
@@ -951,6 +953,8 @@ export class DataLoaderManager implements AppModule {
         // Whether the one retry ran: 'recovered' rendered fresh news after a
         // delay, 'failed' left the panels empty, 'none' was not attempted.
         'digest.retry': retry,
+        // How the retry itself failed, which can differ from the first failure.
+        ...(retryFailure ? { 'digest.retry.failure': retryFailure } : {}),
       },
       extra: { timeoutMs: this.digestRequestTimeoutMs },
       // Tags do not split issues; one group per kind keeps timeouts, 5xx and

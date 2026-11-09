@@ -608,6 +608,7 @@ describe('digest coverage follows the selected browser response', () => {
           'digest.fallback': 'none',
           'digest.retry': 'recovered',
         });
+        expect(events[0]!.ctx.tags).not.toHaveProperty('digest.retry.failure');
       });
 
       it('gives up after the retry fails and reports both attempts as one event', async () => {
@@ -629,6 +630,7 @@ describe('digest coverage follows the selected browser response', () => {
           'digest.failure': 'timeout',
           'digest.fallback': 'none',
           'digest.retry': 'failed',
+          'digest.retry.failure': 'network',
         });
       });
 
