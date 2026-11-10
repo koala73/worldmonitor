@@ -145,15 +145,46 @@ test('/pro checkout service fires checkout-start on both paths', () => {
     "no trackFunnelEvent('checkout-start', …surface:'pro-resume') emission in tryResumeCheckoutFromUrl");
 });
 
-test('tracker tags are async and the pro SPA excludes query strings', () => {
+test('tracker tags are async', () => {
   for (const page of ['pro-test/index.html', 'pro-test/welcome.html']) {
     const tag = read(page).match(/<script[^>]+abacus\.worldmonitor\.app\/script\.js[^>]*>/)[0];
     assert.ok(/\basync\b/.test(tag),
       `${page}: tracker must be async — a plain defer script delays DOMContentLoaded behind the analytics host`);
   }
-  const proTag = read('pro-test/index.html').match(/<script[^>]+abacus[^>]*>/)[0];
-  assert.ok(proTag.includes('data-exclude-search="true"'),
-    'pro-test/index.html: data-exclude-search missing — checkout-intent (wm_checkout_*) and Clerk handshake params would land in analytics');
+});
+
+test('the pro SPA redacts sensitive params per payload and keeps utm_*', async () => {
+  const html = read('pro-test/index.html');
+  const proTag = html.match(/<script[^>]+abacus[^>]*>/)[0];
+  assert.ok(!proTag.includes('data-exclude-search'),
+    'pro-test/index.html: data-exclude-search would drop utm_* attribution on /pro');
+  assert.ok(proTag.includes('data-before-send="__wmUmamiBeforeSend"'),
+    'pro-test/index.html: tracker has no before-send redaction hook');
+  // The hook is an async-safe inline script: it must precede the tracker tag.
+  const hookScript = html.match(/<script nonce="wm-static-bootstrap">\s*(\(function \(\) \{[\s\S]*?\}\)\(\);)\s*<\/script>/);
+  assert.ok(hookScript, 'pro-test/index.html: inline before-send hook script missing');
+  assert.ok(html.indexOf(hookScript[0]) < html.indexOf(proTag), 'hook must be defined before the async tracker tag');
+  // Same list as the shared one.
+  const { SENSITIVE_URL_PARAM_RE } = await import('../shared/sensitive-url-params.ts');
+  const inlineRe = hookScript[1].match(/var SENSITIVE = \/(.+)\/i;/)[1];
+  assert.equal(inlineRe, SENSITIVE_URL_PARAM_RE.source, 'inline /pro regex drifted from shared/sensitive-url-params.ts');
+  // Behaviour: run the real script.
+  const vm = await import('node:vm');
+  const win = {};
+  vm.runInNewContext(hookScript[1], { window: win, location: { origin: 'https://www.worldmonitor.app' }, URL, Object });
+  const hook = win.__wmUmamiBeforeSend;
+  const sensitive = ['wm_checkout_ref', 'wm_checkout_discount', 'wm_checkout_account', '__clerk_ticket', '__clerk_status', 'token', 'email'];
+  const url = `/pro?utm_source=mcp&utm_medium=tool&wm_checkout_product=pdt_1&${sensitive.map((k) => `${k}=x`).join('&')}#frag`;
+  const out = hook('event', { url, referrer: `https://x.test/?token=t&utm_source=chatgpt.com` });
+  const params = new URL(out.url, 'https://www.worldmonitor.app').searchParams;
+  for (const k of sensitive) assert.equal(params.has(k), false, `${k} must be removed on /pro`);
+  assert.equal(params.get('utm_source'), 'mcp');
+  assert.equal(params.get('utm_medium'), 'tool');
+  assert.equal(params.get('wm_checkout_product'), 'pdt_1', 'non-secret funnel params survive');
+  assert.ok(!out.url.startsWith('http'), 'relative url stays relative');
+  assert.ok(!out.url.includes('#'), 'hash dropped');
+  assert.equal(new URL(out.referrer).searchParams.has('token'), false);
+  assert.equal(new URL(out.referrer).searchParams.get('utm_source'), 'chatgpt.com');
 });
 
 test('checkout-success is durable across the entitlement reload', () => {
