@@ -5911,19 +5911,33 @@ const SOURCE_INCIDENT_DIAGNOSTIC_FIELDS = [
   'poolCounts', 'minPoolCounts', 'coverage', 'decisionGroups', 'failedDatasets',
   'dominantFailureMode', 'lastSourceFailureCode', 'consecutiveSourceFailures',
   'chinaStatus', 'seedStatus', 'counts', 'problems', 'degradedStreak', 'degradedProblemKey', 'reason',
+  // Set by the composers after classification: chokepoint transits missing
+  // their measurable inputs, the CII input audit, the read-model gate, and the
+  // vulnerability floors a COVERAGE_PARTIAL compares against.
+  'missingMeasurable', 'ciiInputs', 'readModelReady', 'requiredVulnerabilityCoverage',
 ];
 // Per-field cap on the serialized value: a coverage block can list every
 // country, and Sentry rejects oversized events whole.
 const SOURCE_INCIDENT_FIELD_MAX_CHARS = 4_000;
 
+/**
+ * A check field as it goes into a Sentry incident: unchanged when small, else
+ * its first SOURCE_INCIDENT_FIELD_MAX_CHARS characters (JSON for objects) and
+ * a truncation mark. Strings are capped too: `degradedProblemKey` is a
+ * serialized copy of the China problems.
+ */
 function boundedIncidentValue(value) {
-  if (value === null || typeof value !== 'object') return value;
-  const json = JSON.stringify(value);
-  return json.length <= SOURCE_INCIDENT_FIELD_MAX_CHARS
+  if (value === null || (typeof value !== 'object' && typeof value !== 'string')) return value;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length <= SOURCE_INCIDENT_FIELD_MAX_CHARS
     ? value
-    : `${json.slice(0, SOURCE_INCIDENT_FIELD_MAX_CHARS)}…[truncated]`;
+    : `${text.slice(0, SOURCE_INCIDENT_FIELD_MAX_CHARS)}…[truncated]`;
 }
 
+/**
+ * Report one `<source>:<status>` incident to Sentry with the check fields that
+ * say how stale it is and why it fired. Resolves true when Sentry accepted it.
+ */
 async function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
   const separator = key.lastIndexOf(':');
   const name = key.slice(0, separator);
