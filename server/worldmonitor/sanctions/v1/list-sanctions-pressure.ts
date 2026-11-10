@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-import { splitSanctionsAttribution } from '../../../../src/shared/sanctions-attribution';
+import { splitSanctionsAttribution } from '../../../../shared/sanctions-attribution';
 
 const REDIS_CACHE_KEY = 'sanctions:pressure:v1';
 const DEFAULT_MAX_ITEMS = 25;

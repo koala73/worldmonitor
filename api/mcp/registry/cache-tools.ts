@@ -1,7 +1,7 @@
 import { spokenChokepointStatus, spokenForecastPredictions, spokenPredictionMarkets } from '../spoken-narrators';
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
-import { splitSanctionsAttribution } from '../../../src/shared/sanctions-attribution';
+import { splitSanctionsAttribution } from '../../../shared/sanctions-attribution';
 import type { ListSanctionsPressureResponse } from '../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
 import { projectSupplyChainData } from './_shipping-freight';
