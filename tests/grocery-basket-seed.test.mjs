@@ -106,3 +106,116 @@ describe('seed-grocery-basket fetchCountryItems', () => {
     assert.equal(routeUpdates.size, items.length - 1, 'every surviving item recorded its route before the country resolved');
   });
 });
+
+describe('grocery basket comparability', () => {
+  const units = {
+    sugar: '1kg', salt: '1kg', rice: '1kg', pasta: '500g', potatoes: '1kg',
+    oil: '1L', flour: '1kg', eggs: '12pc', milk: '1L', bread: '400g',
+  };
+  const items = (count, price) => Object.entries(units).slice(0, count).map(([itemId, unit]) => ({
+    itemId, unit, usdPrice: price, localPrice: price, available: true,
+  }));
+  const [partial, complete, gained] = COUNTRIES;
+  const now = new Date('2026-11-10T06:02:00Z');
+  const previousWeek = {
+    basketVersion: 3,
+    fetchedAt: '2026-11-03T06:00:00Z',
+    countries: [
+      { code: partial.code, totalUsd: 7, items: items(7, 1) },
+      { code: complete.code, totalUsd: 20, items: items(10, 2) },
+      { code: gained.code, totalUsd: 18, items: items(9, 2) },
+    ],
+  };
+  const options = {
+    now,
+    getFxRatesFn: fakeFx,
+    routes: noRoutes,
+    fetchCountryItemsFn: async ({ code }) => code === partial.code ? items(8, 1)
+      : code === complete.code ? items(10, 2.1451) : code === gained.code ? items(10, 2.5) : [],
+  };
+
+  it('ranks complete baskets and compares only complete baskets in the prior week', async () => {
+    const sameWeek = { ...previousWeek, fetchedAt: '2026-11-10T00:05:00Z' };
+    const data = await fetchGroceryBasketPrices(sameWeek, { ...options, priorSnapshot: previousWeek });
+    assert.equal(data.cheapestCountry, complete.code);
+    assert.equal(data.mostExpensiveCountry, gained.code);
+    assert.equal(data.countries[0].wowPct, null);
+    assert.equal(data.countries[1].totalUsd, 21.5);
+    assert.equal(data.countries[1].wowPct, 7.5);
+    assert.equal(data.countries[2].wowPct, null);
+    assert.equal(data.wowAvgPct, 7.5);
+    assert.equal(data.prevFetchedAt, previousWeek.fetchedAt);
+  });
+
+  it('suppresses the average when no compatible prior-week observation is available', async () => {
+    for (const snapshot of [
+      { ...previousWeek, basketVersion: 2 },
+      { ...previousWeek, fetchedAt: '2026-11-10T00:05:00Z' },
+      { ...previousWeek, countries: [{ code: gained.code, items: items(9, 2) }] },
+    ]) {
+      const data = await fetchGroceryBasketPrices(snapshot, options);
+      assert.equal(data.wowAvailable, false);
+      assert.ok(data.countries.every(({ wowPct }) => wowPct === null));
+    }
+  });
+});
+
+it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices', async (t) => {
+  const country = COUNTRIES.find(({ code }) => code === 'US');
+  const product = (slug) => `https://www.target.com/p/${slug}`;
+  const learnedUrl = product('old-milk-route');
+  const offer = (productName, price, quantity, unit, matchesStaple = true) => ({
+    matchesStaple, productName, price, currency: 'USD', quantity, unit,
+  });
+  const entries = {
+    rice: offer('Plain white rice, 1 lb', 0.89, 1, 'lb'),
+    flour: offer('All purpose flour, 5 lb', 3.99, 5, 'lb'),
+    eggs: offer('Large eggs, 18 pack', 6, 18, 'pc'),
+    oil: offer('Pure canola oil, 900 ml', 4.5, 900, 'ml'),
+    salt: offer('Unavailable 10 kg salt, with a 1 kg recommendation', 2.75, 10, 'kg', false),
+    potatoes: offer('Sweet potato', 1.5, 1, 'kg', false),
+    milk: offer('Milk without a declared size', 3, 0, 'ml'),
+    sugar: offer('Sugar', 3, 1, 'l'),
+  };
+  const itemQueries = {
+    'white rice': 'rice', 'all purpose': 'flour', 'fresh eggs': 'eggs', 'canola oil': 'oil',
+    'table salt': 'salt', 'potatoes': 'potatoes', 'fresh whole milk': 'milk', 'white granulated': 'sugar',
+  };
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const request = JSON.parse(options.body);
+    if (url === 'https://api.firecrawl.dev/v1/scrape') {
+      // A learned route must pass the same checks as fresh search results.
+      return Response.json({ data: { extract: request.url === learnedUrl
+        ? offer('Whole milk, 2 litres', 6, 2, 'l') : null } });
+    }
+    assert.equal(url, 'https://api.exa.ai/search');
+    const itemId = itemQueries[Object.keys(itemQueries).find(query => request.query.startsWith(query))];
+    return Response.json({ results: [
+      { url: product('no-offer'), summary: 'USD 0.99' },
+      ...(itemId ? [{ url: product(itemId), summary: JSON.stringify(entries[itemId]) }] : []),
+    ] });
+  });
+  const originalKey = process.env.EXA_API_KEYS;
+  const originalFirecrawl = process.env.FIRECRAWL_API_KEY;
+  process.env.EXA_API_KEYS = 'test';
+  process.env.FIRECRAWL_API_KEY = 'test';
+  t.after(() => {
+    if (originalKey === undefined) delete process.env.EXA_API_KEYS;
+    else process.env.EXA_API_KEYS = originalKey;
+    if (originalFirecrawl === undefined) delete process.env.FIRECRAWL_API_KEY;
+    else process.env.FIRECRAWL_API_KEY = originalFirecrawl;
+  });
+  const results = await fetchCountryItems(country, {
+    fxRate: 1,
+    learnedRoutes: new Map([['US:milk', { url: learnedUrl, hits: 1, failsSinceSuccess: 0 }]]),
+    routeUpdates: new Map(),
+    routeDeletes: new Set(),
+  });
+  const prices = Object.fromEntries(results.map(item => [item.itemId, item.usdPrice]));
+  assert.equal(prices.rice, 1.9621);
+  assert.equal(prices.flour, 1.7593);
+  assert.equal(prices.eggs, 4);
+  assert.equal(prices.oil, 5);
+  assert.equal(prices.milk, 3);
+  for (const itemId of ['salt', 'potatoes', 'sugar', 'pasta', 'bread']) assert.equal(prices[itemId], null);
+});
