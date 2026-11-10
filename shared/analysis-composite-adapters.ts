@@ -53,6 +53,7 @@ export interface ExposureEvent {
   type: string;
   lat: number;
   lon: number;
+  reportedCountry?: string;
 }
 
 function coords(entry: unknown): { lat: number; lon: number } | null {
@@ -102,9 +103,12 @@ export function firesToExposureEvents(payload: unknown, limit = 50): ExposureEve
 export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): ExposureEvent[] {
   const raw = (payload as { events?: unknown[] })?.events;
   if (!Array.isArray(raw)) return [];
+  type UcdpRecord = { id?: unknown; country?: unknown; dateStart?: unknown; hasPreciseLocation?: unknown };
+  // A UCDP row without point precision sits on a district or country
+  // centroid, so a radius around it describes no real place.
   const dated = raw
-    .map((e) => ({ e: e as { id?: unknown; country?: unknown; dateStart?: unknown }, c: coords(e) }))
-    .filter((x): x is { e: { id?: unknown; country?: unknown; dateStart?: unknown }; c: { lat: number; lon: number } } => x.c !== null)
+    .map((e) => ({ e: e as UcdpRecord, c: coords(e) }))
+    .filter((x): x is { e: UcdpRecord; c: { lat: number; lon: number } } => x.c !== null && x.e.hasPreciseLocation === true)
     .sort((a, b) => Date.parse(nonEmptyString(b.e.dateStart)) - Date.parse(nonEmptyString(a.e.dateStart)))
     .slice(0, limit);
   return dated.map(({ e, c }, i) => ({
@@ -112,6 +116,7 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
     name: `Conflict event${nonEmptyString(e.country) ? ` — ${nonEmptyString(e.country)}` : ''}`,
     type: 'conflict',
     ...c,
+    ...(nonEmptyString(e.country) ? { reportedCountry: nonEmptyString(e.country) } : {}),
   }));
 }
 

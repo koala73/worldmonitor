@@ -167,9 +167,7 @@ describe('wave-2 analysis tools: user-input bounds', () => {
     }
   });
 
-  it('get_population_exposure rejects out-of-range coordinates instead of guessing a country', () => {
-    // Euclidean nearest-centroid has no notion of a valid globe, so lat 999
-    // previously resolved to Mali and returned a real-looking estimate.
+  it('get_population_exposure rejects out-of-range coordinates', () => {
     const tool = findTool('get_population_exposure');
     return tool._execute({ mode: 'point', lat: 999, lon: -999 }, '', {}, {}).then((result) => {
       assert.match(result.error, /lat must be within/);
@@ -184,7 +182,16 @@ describe('wave-2 analysis tools: user-input bounds', () => {
     for (const [lat, lon] of [[90, 180], [-90, -180], [0, 0]]) {
       const result = await tool._execute({ mode: 'point', lat, lon, radius_km: 10 }, '', {}, {});
       assert.equal(result.error, undefined, `lat=${lat} lon=${lon} must be accepted`);
-      assert.equal(typeof result.data.exposure.exposedPopulation, 'number');
+      assert.equal(result.data.exposure, null, 'no density-table country there');
+    }
+  });
+
+  it('get_population_exposure point mode uses the country under the point, or returns null', async () => {
+    const tool = findTool('get_population_exposure');
+    for (const [lat, lon, country] of [[50.45, 30.52, 'UKR'], [-33.45, -70.67, null], [30.27, -97.74, null], [52.52, 13.405, null]]) {
+      const result = await tool._execute({ mode: 'point', lat, lon }, '', {}, {});
+      assert.equal(result.error, undefined);
+      assert.equal(result.data.exposure?.country ?? null, country, `lat=${lat} lon=${lon}`);
     }
   });
 

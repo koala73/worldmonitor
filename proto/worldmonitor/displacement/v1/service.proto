@@ -29,7 +29,7 @@ service DisplacementService {
     option (sebuf.http.config) = {path: "/get-cross-border-movements", method: HTTP_METHOD_GET};
   }
 
-  // GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
+  // GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point as the average density of the country containing it times the circle area. A point outside those 20 countries gets no exposure.
   rpc GetPopulationExposure(GetPopulationExposureRequest) returns (GetPopulationExposureResponse) {
     option (sebuf.http.config) = {path: "/get-population-exposure", method: HTTP_METHOD_GET};
   }

@@ -90,7 +90,7 @@ compositeScore =
 
 ### Population Exposure Estimation
 
-Active events (conflicts, earthquakes, floods, wildfires) are matched to the nearest centroid in the local 20-country priority population table and then estimated from `population / area` density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
+Each active event (conflicts, earthquakes, floods, wildfires) is estimated as the `population / area` density of its country times the area of a circle with the event-type radius. The country is the one the event reports. A bare point, such as an earthquake or an API request, is matched to a country by its outline. Only countries in the local priority population table have a density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
 
 | Event Type      | Radius | Rationale                                |
 | --------------- | ------ | ---------------------------------------- |
@@ -99,7 +99,7 @@ Active events (conflicts, earthquakes, floods, wildfires) are matched to the nea
 | **Floods**      | 100 km | Watershed and drainage basin extent      |
 | **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
 
-If an event falls outside the priority centroid table, the fallback density uses a synthetic `50,000,000 / 500,000 km2` country profile. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
+An event outside that table gets no estimate, and so does a conflict event located only to a district or country. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
 
 ---
 
