@@ -90,6 +90,8 @@ function toUcdpGeoEvent(proto: ProtoUcdpEvent): UcdpGeoEvent {
     date_end: proto.dateEnd ? new Date(proto.dateEnd).toISOString().substring(0, 10) : '',
     latitude: proto.location?.latitude ?? 0,
     longitude: proto.location?.longitude ?? 0,
+    hasPreciseLocation: proto.hasPreciseLocation === true,
+    locationName: proto.locationName,
     country: proto.country,
     side_a: proto.sideA,
     side_b: proto.sideB,

@@ -1658,10 +1658,10 @@
       "dataPreparing": "Đang làm mới dữ liệu sẵn sàng công nghệ — sẽ xuất hiện ngay."
     },
     "populationExposure": {
-      "totalAffected": "Tổng bị Ảnh hưởng",
-      "affectedCount": "{{count}} bị ảnh hưởng",
-      "radiusKm": "bán kính {{km}}km",
-      "infoTooltip": "<strong>Ước tính Dân số bị Phơi nhiễm</strong> Dân số ước tính trong bán kính tác động sự kiện. Dựa trên dữ liệu mật độ quốc gia WorldPop.<ul><li>Xung đột: bán kính 50km</li><li>Động đất: bán kính 100km</li><li>Lũ lụt: bán kính 100km</li><li>Cháy rừng: bán kính 30km</li></ul>"
+      "estimateWithin": "Khoảng {{count}} người trong bán kính {{km}} km",
+      "method": "Ước tính dựa trên mật độ dân số trung bình của quốc gia.",
+      "empty": "Không có địa điểm sự kiện đủ điều kiện",
+      "infoTooltip": "Chỉ hiển thị các sự kiện có vị trí chính xác tại quốc gia có dữ liệu mật độ dân số. Các khu vực ước tính có thể chồng lấn."
     },
     "securityAdvisories": {
       "loading": "Đang tải cảnh báo du lịch...",

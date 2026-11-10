@@ -1,11 +1,10 @@
 /**
- * Population exposure core — shared between the dashboard
- * (src/services/population-exposure.ts) and the server RPC handler
- * (server/worldmonitor/displacement/v1/get-population-exposure.ts).
+ * Population density reference data and point-query exposure model.
  *
  * Country-density approximation: nearest priority-country centroid supplies a
  * pop/area density, multiplied by the event radius disc. Deliberately coarse —
- * there is no city-level population dataset in the repo.
+ * there is no city-level population dataset in the repo. The dashboard uses
+ * the event's reported country instead of this nearest-centroid model.
  *
  * Dependency-free: importable from Vite client code, Vercel Edge bundles,
  * server handlers, and tsx tests alike.

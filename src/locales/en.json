@@ -1850,10 +1850,10 @@
       "infoTooltip": "<strong>Technology readiness</strong> World Bank composite score, 0–100. Weights are research and development 35%, internet 30%, broadband 20%, and mobile 15%. Internet users are a population percentage; mobile subscriptions are per 100 people; research spending is a share of economic output. Missing values show a dash. Data spans 2019–2024."
     },
     "populationExposure": {
-      "totalAffected": "Total Affected",
-      "affectedCount": "{{count}} affected",
-      "radiusKm": "{{km}}km radius",
-      "infoTooltip": "<strong>Population Exposure Estimates</strong> Estimated population within event impact radius. Based on WorldPop country density data.<ul><li>Conflict: 50km radius</li><li>Earthquake: 100km radius</li><li>Flood: 100km radius</li><li>Wildfire: 30km radius</li></ul>"
+      "estimateWithin": "~{{count}} people within {{km}} km",
+      "method": "Estimates use country-average population density.",
+      "empty": "No eligible event locations",
+      "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap."
     },
     "securityAdvisories": {
       "loading": "Fetching travel advisories...",

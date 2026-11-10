@@ -1658,10 +1658,10 @@
       "dataPreparing": "기술 준비도 데이터 새로고침 중 — 곧 표시됩니다."
     },
     "populationExposure": {
-      "totalAffected": "총 영향 인구",
-      "affectedCount": "{{count}}명 영향",
-      "radiusKm": "{{km}}km 반경",
-      "infoTooltip": "<strong>인구 노출 추정</strong> 사건 영향 반경 내 추정 인구. WorldPop 국가 밀도 데이터 기반.<ul><li>분쟁: 50km 반경</li><li>지진: 100km 반경</li><li>홍수: 100km 반경</li><li>산불: 30km 반경</li></ul>"
+      "estimateWithin": "반경 {{km}}km 내 약 {{count}}명",
+      "method": "추정에는 해당 국가의 평균 인구 밀도를 사용합니다.",
+      "empty": "조건에 맞는 사건 위치 없음",
+      "infoTooltip": "위치가 정확하고 국가 인구 밀도 데이터가 있는 사건만 표시합니다. 추정 범위는 서로 겹칠 수 있습니다."
     },
     "securityAdvisories": {
       "loading": "여행 주의보 가져오는 중...",

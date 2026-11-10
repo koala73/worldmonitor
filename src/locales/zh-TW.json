@@ -1658,10 +1658,10 @@
       "dataPreparing": "重新整理技術就緒資料中——即將顯示。"
     },
     "populationExposure": {
-      "totalAffected": "受影響總數",
-      "affectedCount": "{{count}}人受影響",
-      "radiusKm": "{{km}}km半徑",
-      "infoTooltip": "<strong>人口暴露估計</strong>事件影響半徑內的估計人口。基於WorldPop國家人口密度資料。<ul><li>衝突：50km半徑</li><li>地震：100km半徑</li><li>洪水：100km半徑</li><li>野火：30km半徑</li></ul>"
+      "estimateWithin": "半徑 {{km}} 公里內約有 {{count}} 人",
+      "method": "估算使用該國的平均人口密度。",
+      "empty": "沒有符合條件的事件地點",
+      "infoTooltip": "僅顯示位置明確且所在國家有人口密度資料的事件。估算區域可能重疊。"
     },
     "securityAdvisories": {
       "loading": "正在載入旅行警告...",

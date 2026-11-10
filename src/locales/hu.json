@@ -1804,10 +1804,10 @@
       "infoTooltip": "<strong>Technológiai felkészültség</strong> Világbank összetett pontszáma, 0–100. A súlyozások: kutatás és fejlesztés 35%, internet 30%, szélessáv 20% és mobil 15%. Az internetes felhasználók a lakosság százaléka; a mobil előfizetések száma 100 emberenként; a kutatási kiadások a gazdasági kibocsátás aránya. A hiányzó értékeket kötőjel jelzi. Az adatok 2019–2024 közötti időszakot foglalnak magukban."
     },
     "populationExposure": {
-      "totalAffected": "Érintett összesen",
-      "affectedCount": "{{count}} érintett",
-      "radiusKm": "{{km}} km sugár",
-      "infoTooltip": "<strong>Népességi expozícióbecslések</strong> Becsült népesség az esemény hatásvonalán belül. A WorldPop országsűrűség-adatok alapján.<ul><li>Konfliktus: 50 km sugár</li><li>Földrengés: 100 km sugár</li><li>Árvíz: 100 km sugár</li><li>Erdőtűz: 30 km sugár</li></ul>"
+      "estimateWithin": "Körülbelül {{count}} ember {{km}} km-es körzetben",
+      "method": "A becslések az ország átlagos népsűrűségén alapulnak.",
+      "empty": "Nincs megfelelő eseményhelyszín",
+      "infoTooltip": "Csak pontos helyszínnel rendelkező események jelennek meg azokban az országokban, amelyekről van népsűrűségi adat. A becsült területek átfedhetik egymást."
     },
     "securityAdvisories": {
       "loading": "Utazási tanácsok letöltése...",

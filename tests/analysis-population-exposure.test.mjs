@@ -11,12 +11,48 @@ import {
   MAX_EXPOSURE_RADIUS_KM,
 } from '../shared/analysis-population-exposure.ts';
 import { getPopulationExposure } from '../server/worldmonitor/displacement/v1/get-population-exposure.ts';
+import { enrichEventsWithExposure } from '../src/services/population-exposure.ts';
+import { normalizeAcledProtestEvents } from '../scripts/seed-unrest-events.mjs';
+import ucdpCandidate from '../scripts/shared/ucdp-candidate.cjs';
 import {
   Z_THRESHOLD_LOW,
   Z_THRESHOLD_MEDIUM,
   Z_THRESHOLD_HIGH,
   getBaselineSeverity,
 } from '../shared/analysis-temporal-severity.ts';
+
+describe('dashboard population exposure', () => {
+  it('retains point precision from the provider codes', () => {
+    const coordinates = { latitude: '13.58', longitude: '44.02' };
+    const acledEvents = normalizeAcledProtestEvents([1, '1', 2, 3, undefined].map((geo_precision, i) => ({
+      ...coordinates, geo_precision, event_id_cnty: String(i),
+    })));
+    assert.deepEqual(acledEvents.map(e => e.hasPreciseLocation), [true, true, false, false, false]);
+    assert.equal(ucdpCandidate.hasPreciseUcdpLocation({ ...coordinates, where_prec: '1' }), true);
+    assert.equal(ucdpCandidate.hasPreciseUcdpLocation({ ...coordinates, where_prec: 2 }), false);
+    assert.equal(ucdpCandidate.hasPreciseUcdpLocation(coordinates), false);
+    assert.equal(ucdpCandidate.hasPreciseUcdpLocation({ ...coordinates, where_prec: 1, longitude: '' }), false);
+  });
+
+  it('only estimates precise locations with a supported country density', () => {
+    const point = { id: 'point', name: 'Taiz', type: 'conflict', country: 'Yemen (North Yemen)', lat: 13.58, lon: 44.02, hasPreciseLocation: true };
+    const events = [
+      { ...point, id: 'country', name: 'Brazil (39 reports)', country: 'Brazil', lat: -10, lon: -55, hasPreciseLocation: undefined },
+      { ...point, id: 'nested', name: 'Texas, United States (6 reports)', country: 'United States', lat: 31.11, lon: -97.65, hasPreciseLocation: undefined },
+      { ...point, id: 'broad', hasPreciseLocation: false },
+      { ...point, id: 'unknown-precision', hasPreciseLocation: undefined },
+      { ...point, id: 'unsupported', country: 'Chile', lat: -33.45, lon: -70.6667 },
+      { ...point, id: 'invalid', lat: 91 },
+      { ...point, id: 'missing-coordinates', lat: 0, lon: 0 },
+      point,
+    ];
+
+    const density = PRIORITY_COUNTRIES.YEM.pop / PRIORITY_COUNTRIES.YEM.area;
+    assert.deepEqual(enrichEventsWithExposure(events).map(e => [e.eventId, e.exposedPopulation, e.exposureRadiusKm]), [
+      ['point', Math.round(density * Math.PI * 50 ** 2), 50],
+    ]);
+  });
+});
 
 describe('analysis-population-exposure core', () => {
   it('keeps the priority table and centroids aligned', () => {

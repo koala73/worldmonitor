@@ -1666,10 +1666,10 @@
       "dataPreparing": "Se reîmprospătează datele de tech readiness — vor apărea în scurt timp."
     },
     "populationExposure": {
-      "totalAffected": "Total afectat",
-      "affectedCount": "{{count}} afectat",
-      "radiusKm": "{{km}}km rază",
-      "infoTooltip": "<strong>Estimări ale expunerii populației</strong> Populația estimată în raza de impact a evenimentului. Pe baza datelor WorldPop despre densitatea țării.<ul><li>Conflict: rază de 50 km</li><li>Cutremur: rază de 100 km</li><li>Inundație: rază de 100 km</li><li>Incendiu: rază de 30 km</li></ul>"
+      "estimateWithin": "Aproximativ {{count}} de persoane pe o rază de {{km}} km",
+      "method": "Estimările se bazează pe densitatea medie a populației din țară.",
+      "empty": "Nicio locație de eveniment eligibilă",
+      "infoTooltip": "Sunt afișate doar evenimentele cu localizare precisă din țări cu date despre densitatea populației. Zonele estimate se pot suprapune."
     },
     "securityAdvisories": {
       "loading": "Se preiau avizele de călătorie...",

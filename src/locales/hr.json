@@ -1813,10 +1813,10 @@
       "infoTooltip": "<strong>Tehnološka spremnost</strong> Kompozitni rezultat Svjetske banke, 0–100. Težine su istraživanje i razvoj 35%, internet 30%, širokopojasna veza 20% i mobilni 15%. Korisnici interneta su postotak populacije; mobilne pretplate su na 100 osoba; rashodi istraživanja su dio ekonomskog rezultata. Nedostajuće vrijednosti prikazuju crtu. Podaci obuhvaćaju 2019–2024."
     },
     "populationExposure": {
-      "totalAffected": "Ukupno pogođenih",
-      "affectedCount": "{{count}} pogođenih",
-      "radiusKm": "Radijus od {{km}} km",
-      "infoTooltip": "<strong>Procjene izloženosti stanovništva</strong> Procijenjena populacija u radijusu utjecaja događaja. Na osnovu podataka gustoće stanovništva WorldPop.<ul><li>Konflikt: 50 km radijus</li><li>Potres: 100 km radijus</li><li>Poplava: 100 km radijus</li><li>Požar: 30 km radijus</li></ul>"
+      "estimateWithin": "Oko {{count}} ljudi u krugu od {{km}} km",
+      "method": "Procjene se temelje na prosječnoj gustoći stanovništva države.",
+      "empty": "Nema odgovarajućih lokacija događaja",
+      "infoTooltip": "Prikazuju se samo događaji s preciznom lokacijom u državama za koje postoje podaci o gustoći stanovništva. Procijenjena se područja mogu preklapati."
     },
     "securityAdvisories": {
       "loading": "Preuzimanje putnih savjeta...",

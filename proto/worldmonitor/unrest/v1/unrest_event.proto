@@ -47,6 +47,8 @@ message UnrestEvent {
   ConfidenceLevel confidence = 16;
   // Source article URLs, when provided by the upstream feed.
   repeated string source_urls = 17;
+  // True when the source identifies a specific event location, such as ACLED geo_precision 1.
+  optional bool has_precise_location = 18;
 }
 
 // UnrestCluster represents a geographic cluster of related unrest events.

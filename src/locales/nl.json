@@ -1138,10 +1138,10 @@
       "recentMissing": "Geen gegevens dit keer van {{countries}}; hun bestanden konden niet worden geladen, wat niet nul verplaatsing betekent."
     },
     "populationExposure": {
-      "totalAffected": "Totaal getroffen",
-      "affectedCount": "{{count}} getroffen",
-      "radiusKm": "straal van {{km}}km",
-      "infoTooltip": "<strong>Blootstellingsschattingen van de bevolking</strong> Geschatte populatie binnen de impactradius van de gebeurtenis. Gebaseerd op gegevens over de landdichtheid van WorldPop.<ul><li>Conflict: straal van 50 km</li><li>Aardbeving: straal van 100 km</li><li>Overstroming: straal van 100 km</li><li>Natuurbrand: straal van 30 km</li></ul>"
+      "estimateWithin": "Ongeveer {{count}} mensen binnen een straal van {{km}} km",
+      "method": "De schattingen zijn gebaseerd op de gemiddelde bevolkingsdichtheid van het land.",
+      "empty": "Geen geschikte gebeurtenislocaties",
+      "infoTooltip": "Alleen gebeurtenissen met een precieze locatie en beschikbare bevolkingsdichtheid voor het land worden getoond. De geschatte gebieden kunnen elkaar overlappen."
     },
     "countryTimeline": {
       "now": "nu",

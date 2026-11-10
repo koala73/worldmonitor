@@ -1649,10 +1649,10 @@
       "dataPreparing": "Aktualizace dat technologické připravenosti — zobrazí se krátce."
     },
     "populationExposure": {
-      "totalAffected": "Celkem zasaženo",
-      "affectedCount": "Zasaženo: {{count}}",
-      "radiusKm": "Rádius {{km}} km",
-      "infoTooltip": "<strong>Odhady expozice obyvatelstva</strong> Odhadovaný počet obyvatel v okruhu dopadu události. Na základě dat hustoty zalidnění zemí z WorldPop.<ul><li>Konflikt: rádius 50 km</li><li>Zemětřesení: rádius 100 km</li><li>Záplavy: rádius 100 km</li><li>Požár: rádius 30 km</li></ul>"
+      "estimateWithin": "Přibližně {{count}} lidí v okruhu {{km}} km",
+      "method": "Odhady vycházejí z průměrné hustoty zalidnění dané země.",
+      "empty": "Žádné vhodné lokality událostí",
+      "infoTooltip": "Zobrazují se pouze přesně lokalizované události v zemích s údaji o hustotě zalidnění. Odhadované oblasti se mohou překrývat."
     },
     "securityAdvisories": {
       "loading": "Načítání cestovních varování...",

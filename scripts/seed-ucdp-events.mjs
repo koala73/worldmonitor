@@ -18,6 +18,7 @@ const {
   fetchCandidatePages,
   capWithAnnualFloor,
   candidateContentMeta,
+  hasPreciseUcdpLocation,
 } = ucdpCandidate;
 
 const REDIS_KEY = 'conflict:ucdp-events:v1';
@@ -276,6 +277,8 @@ async function main() {
       longitude: Number(e.longitude) || 0,
     },
     country: e.country || '',
+    hasPreciseLocation: hasPreciseUcdpLocation(e),
+    locationName: (e.where_coordinates || '').substring(0, 200),
     sideA: (e.side_a || '').substring(0, 200),
     sideB: (e.side_b || '').substring(0, 200),
     deathsBest: Number(e.best) || 0,

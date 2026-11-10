@@ -3793,7 +3793,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    const ucdpTask = (async () => {
       try {
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
@@ -3807,7 +3807,7 @@ export class DataLoaderManager implements AppModule {
           // the same empty result until the Railway seed refreshes the key.
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
           this.showColdLoadError('ucdp-events');
-          return;
+          return [];
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
@@ -3820,11 +3820,14 @@ export class DataLoaderManager implements AppModule {
           this.ctx.map?.setUcdpEvents(events);
         }
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
+        return events;
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
         dataFreshness.recordError('ucdp_events', String(error));
+        return [];
       }
-    })());
+    })();
+    tasks.push(ucdpTask.then(() => undefined));
 
     tasks.push((async () => {
       try {
@@ -3959,22 +3962,22 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const ucdpEvts = (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.getEvents?.() || [];
+      const ucdpEvts = await ucdpTask;
       const events = [
-        ...(this.ctx.intelligenceCache.protests?.events || []).slice(0, 10).map(e => ({
-          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict' as const, name: e.title || 'Protest',
+        ...(await protestsTask).filter(e => e.hasPreciseLocation === true).slice(0, 10).map(e => ({
+          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
+          name: e.city ? `${e.city}, ${e.country}` : e.title,
+          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })),
-        ...ucdpEvts.slice(0, 10).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence as string, name: `${e.side_a} vs ${e.side_b}`,
+        ...ucdpEvts.filter(e => e.hasPreciseLocation === true).slice(0, 10).map(e => ({
+          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
+          name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
+          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })),
       ];
-      if (events.length > 0) {
-        const exposures = await enrichEventsWithExposure(events);
-        this.callPanel('population-exposure', 'setExposures', exposures);
-        if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
-      } else {
-        this.callPanel('population-exposure', 'setExposures', []);
-      }
+      const exposures = enrichEventsWithExposure(events);
+      this.callPanel('population-exposure', 'setExposures', exposures);
+      if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
     } catch (error) {
       console.error('[Intelligence] Population exposure fetch failed:', error);
       this.callPanel('population-exposure', 'showError');
