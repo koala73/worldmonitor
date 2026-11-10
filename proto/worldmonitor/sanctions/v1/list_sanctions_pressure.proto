@@ -35,11 +35,16 @@ message ListSanctionsPressureResponse {
   // Distinct designations with neither a country association nor a vessel flag,
   // across the full snapshot. Older snapshots may omit this summary.
   UnattributedSanctionsPressure unattributed = 14;
-  // Top 12 vessel flag registries. A flag is often one of convenience, so these
-  // counts are not sanctions pressure on the flag state. Older snapshots omit them.
+  // Top 12 vessel flag registries, ordered by new vessel count, then vessel count.
+  // A registry outside the top 12 may still flag sanctioned vessels. A flag is often
+  // one of convenience, so these counts are not sanctions pressure on the flag state.
+  // Empty for snapshots written before this field existed.
   repeated FlagRegistrySanctionsPressure flag_registries = 15;
 }
 
+// FlagRegistrySanctionsPressure counts sanctioned vessels by flag registry. The response
+// lists at most 12 registries, ordered by new vessel count, then vessel count, so an
+// omitted registry may still flag sanctioned vessels. Older snapshots return none.
 message FlagRegistrySanctionsPressure {
   string country_code = 1;
   string country_name = 2;

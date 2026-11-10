@@ -2577,7 +2577,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             entryCount: { type: 'integer' }, vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
           } },
           flagRegistries: { type: 'array', description: 'Top vessel flag registries. A flag is often one of convenience and is not counted in countries.', items: { type: 'object', properties: {
-            countryCode: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
+            countryCode: { type: 'string' }, countryName: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
           } } },
         },
       },
