@@ -1627,7 +1627,7 @@
       "infoTooltip": "تُعرض فقط الأحداث ذات المواقع الدقيقة التي تتوفر لبلدانها بيانات الكثافة السكانية. قد تتداخل المناطق المقدّرة.",
       "eventCount_zero": "{{count}} حدث",
       "eventCount_one": "{{count}} حدث",
-      "eventCount_two": "{{count}} حدثان",
+      "eventCount_two": "حدثان",
       "eventCount_few": "{{count}} أحداث",
       "eventCount_many": "{{count}} حدثًا",
       "eventCount_other": "{{count}} حدث"
