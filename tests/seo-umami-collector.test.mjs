@@ -14,6 +14,7 @@ import {
   referrerFamily,
   renderUmamiMarkdown,
   runCli,
+  toScorecardReferralExport,
   utmSourceFamily,
 } from '../scripts/seo-umami-collect.mjs';
 
@@ -377,6 +378,39 @@ describe('Umami referral collector', () => {
     assert.equal(chatgpt.utmVisitorDays, null);
     assert.equal(chatgpt.basis, 'referrer-only');
     assert.match(chatgpt.reason, /utm_source counts are unavailable \(metrics\?type=utmSource failed with HTTP 500/);
+  });
+
+  it('keeps the utm_source counts, marked partial, when every referrer day failed', async () => {
+    const down = new Error('[seo-umami] metrics?type=referrer failed with HTTP 500 after 3 attempts');
+    const { referrers } = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.referrers]: Object.fromEntries(Array.from({ length: 28 }, (_, day) => [day, down])) }),
+      observedAt: OBSERVED_AT,
+    });
+    const { chatgpt } = referrers.referrerFamilies;
+    assert.equal(referrers.availability, 'unavailable');
+    assert.equal(chatgpt.availability, 'partial');
+    assert.equal(chatgpt.visitorDays, 12);
+    assert.equal(chatgpt.referrerVisitorDays, null);
+    assert.equal(chatgpt.basis, 'utm-only');
+    assert.match(chatgpt.reason, /referrer metrics are unavailable \(metrics\?type=referrer failed with HTTP 500/);
+  });
+
+  it('tells the scorecard the AI families are the larger of two signals, and why a utm_source shortfall happened', async () => {
+    const classification = { families: [{ id: 'chatgpt', hostSuffixes: ['chatgpt.com'] }] };
+    const snapshot = await collectUmamiSnapshot({ transport: memoryTransport(responses()), observedAt: OBSERVED_AT });
+    const combined = toScorecardReferralExport(snapshot, { classification });
+    assert.match(combined.reason, /larger of its referrer count .* and its utm_source count, never their sum/);
+    assert.match(combined.reason, /chatgpt 12\b/);
+    assert.doesNotMatch(combined.reason, /utm_source counts are/);
+
+    const down = new Error('[seo-umami] metrics?type=utmSource failed with HTTP 500 after 3 attempts');
+    const degraded = await collectUmamiSnapshot({
+      transport: memoryTransport(responses(), { [ENDPOINTS.utmSources]: Object.fromEntries(Array.from({ length: 28 }, (_, day) => [day, down])) }),
+      observedAt: OBSERVED_AT,
+    });
+    const fallback = toScorecardReferralExport(degraded, { classification });
+    assert.match(fallback.reason, /chatgpt 7 \(partial, referrer-only\)/);
+    assert.match(fallback.reason, /utm_source counts are unavailable: .*HTTP 500/);
   });
 
   it('reports the fixture chatgpt family at least as large as both of its inputs', async () => {

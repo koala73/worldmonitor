@@ -407,6 +407,7 @@ function buildChannels(fetched) {
 const MAX_TOP_UTM_SOURCES = 10;
 const COMBINED_BASIS = 'max-of-referrer-and-utm-lower-bound';
 const REFERRER_ONLY_BASIS = 'referrer-only';
+const UTM_ONLY_BASIS = 'utm-only';
 
 /**
  * The `utm_source` rows, classified. Unavailable when no day answered; a
@@ -483,8 +484,31 @@ function buildReferrers(fetched, channels, utmFetched) {
       source: 'channel direct',
     };
   const googleSearchAi = { availability: 'unavailable', reason: GOOGLE_SEARCH_AI_REASON, visitorDays: null };
+  // A malformed utm_source payload degrades to "unavailable" like a failed request.
+  let utm;
+  try {
+    utm = buildUtmSources(utmFetched);
+  } catch (error) {
+    utm = unavailable(ENDPOINTS.utmSources, failureReason(error));
+  }
   if (payload === null) {
-    return { ...unavailable(ENDPOINTS.referrers, reason), referrerFamilies: { google_search_ai: googleSearchAi, unknown_direct: unknownDirect } };
+    // Without referrer rows the utm_source counts still measure the AI
+    // families; report them as partial instead of dropping them.
+    const utmOnly = utm.availability === 'unavailable'
+      ? {}
+      : Object.fromEntries(AI_FAMILIES.map((family) => [family, {
+        availability: 'partial',
+        reason: [`Umami referrer metrics are unavailable (${reason}), so this is the utm_source count alone and misses visits that carry only a referrer`, utm.reason].filter(Boolean).join('. '),
+        visitorDays: utm.byFamily[family].visitorDays,
+        referrerVisitorDays: null,
+        utmVisitorDays: utm.byFamily[family].visitorDays,
+        basis: UTM_ONLY_BASIS,
+      }]));
+    return {
+      ...unavailable(ENDPOINTS.referrers, reason),
+      utmSources: utm,
+      referrerFamilies: { ...utmOnly, google_search_ai: googleSearchAi, unknown_direct: unknownDirect },
+    };
   }
   const rows = pickRows(payload, ENDPOINTS.referrers)
     .filter((row) => row.key !== '')
@@ -503,13 +527,6 @@ function buildReferrers(fetched, channels, utmFetched) {
   const status = dailyStatus(fetched, fetched.capped
     ? `Umami returned the ${REFERRER_ROW_LIMIT}-row limit on at least one day, so that day's long tail is cut and family sums are lower bounds`
     : null);
-  // A malformed utm_source payload degrades to "unavailable" like a failed request.
-  let utm;
-  try {
-    utm = buildUtmSources(utmFetched);
-  } catch (error) {
-    utm = unavailable(ENDPOINTS.utmSources, failureReason(error));
-  }
   return {
     endpoint: ENDPOINTS.referrers,
     ...status,
@@ -626,7 +643,7 @@ export function toScorecardReferralExport(snapshot, { classification }) {
       ? 'not measured'
       : measured.visitorDays === null
         ? `unavailable (${brief(measured.reason)})`
-        : `${measured.visitorDays}${measured.availability === 'available' ? '' : ` (${measured.availability})`}`;
+        : `${measured.visitorDays}${measured.availability === 'available' ? '' : ` (${measured.availability}${measured.basis && measured.basis !== COMBINED_BASIS ? `, ${measured.basis}` : ''})`}`;
     // Where the classification and the Umami host rules disagree, say so: the
     // count above follows the Umami rules.
     const elsewhere = hostSuffixes
@@ -637,6 +654,7 @@ export function toScorecardReferralExport(snapshot, { classification }) {
   });
   const sectionNotes = [
     ['Referrer', referrers],
+    ['utm_source', referrers.utmSources],
     ['Channel (the unknown_direct source)', snapshot.channels],
   ]
     .filter(([, section]) => section && section.availability !== 'available')
@@ -648,7 +666,7 @@ export function toScorecardReferralExport(snapshot, { classification }) {
     `${REFERRAL_METRICS.filter((metric) => metric !== 'sessions').join(', ')} are null: the weekly Umami collection reads no landing-page or event breakdown.`,
     'The 90d window is null: Umami keeps 30 days of raw events.',
     'There are no referrer by landing-page segments: Umami referrer counts are visitor-days with no landing-page dimension.',
-    `Referrer families, ${window.label} visitor-days by the Umami collector's host rules: ${families.join('; ')}.`,
+    `Referrer families, ${window.label} visitor-days. Each AI family is the larger of its referrer count (the Umami collector's host rules) and its utm_source count, never their sum: the two cannot be joined per visit, so the figure is a lower bound. ${families.join('; ')}.`,
     ...sectionNotes.map((note) => (/[.!?]$/.test(note) ? note : `${note}.`)),
   ];
   return {
