@@ -30,6 +30,7 @@ export async function getEnergyPrices(
       : result.prices;
     const now = Date.now();
     return {
+      ...(commodities.length === 0 ? result : {}),
       prices: prices.map(price => price.commodity === 'brent' || price.commodity === 'wti' ? {
         ...price,
         ...eiaWeeklySpotProvenance(price.priceAt, now),
