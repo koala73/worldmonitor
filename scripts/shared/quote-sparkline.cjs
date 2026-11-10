@@ -11,7 +11,7 @@ const SPARKLINE_WINDOW_SECONDS = 24 * 60 * 60;
 const SPARKLINE_HISTORY_QUERY = '?range=2d&interval=5m';
 
 const SPIKE_MAD_MULTIPLE = 10;
-const SPIKE_MIN_MOVE = 0.005;
+const SPIKE_MIN_MOVE = 0.002;
 const SPIKE_MAD_RADIUS = 30;
 // Thin contracts skip minutes all the time; a trading gap is a closed market.
 const TRADING_GAP_SECONDS = 15 * 60;
