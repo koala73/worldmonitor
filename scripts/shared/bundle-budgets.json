@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 473351
+    "raw": 475530
   },
   "chunks": {
     "analytics": {
@@ -83,7 +83,7 @@
       "files": 1
     },
     "tab-store": {
-      "raw": 8979,
+      "raw": 10117,
       "files": 1
     },
     "tauri-bridge": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71289,
+      "raw": 71847,
       "files": 1
     },
     "theme-manager": {
@@ -99,17 +99,17 @@
       "files": 1
     },
     "web-origin": {
-      "raw": 2543,
+      "raw": 3026,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1523977
+      "raw": 1540488
     },
     "chunks": {
       "App": {
-        "raw": 964009,
+        "raw": 979803,
         "files": 1
       },
       "ai-flow-settings": {
@@ -165,11 +165,11 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 160699,
+        "raw": 161147,
         "files": 1
       },
       "index": {
-        "raw": 39532,
+        "raw": 39620,
         "files": 2
       },
       "layout-batch": {
@@ -217,7 +217,7 @@
         "files": 1
       },
       "settings-persistence": {
-        "raw": 7959,
+        "raw": 8140,
         "files": 1
       },
       "source-provenance": {
