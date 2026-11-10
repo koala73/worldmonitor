@@ -96,9 +96,11 @@ function normalizeReferrer(value: unknown): string | undefined {
   return host === DIRECT || HOST_PATTERN.test(host) ? host : undefined;
 }
 
-function normalizePath(value: unknown): string | undefined {
+/** A path kept only when its family is listed and agrees with the recorded landing, if any. */
+function normalizePath(value: unknown, landing: string | undefined): string | undefined {
   if (typeof value !== 'string' || value.length > MAX_PATH_LENGTH || !PATH_PATTERN.test(value)) return undefined;
-  return landingFamily(value) ? value : undefined;
+  const family = landingFamily(value);
+  return family && (!landing || family === landing) ? value : undefined;
 }
 
 function normalizeDay(value: unknown): string | undefined {
@@ -121,7 +123,7 @@ export function normalizeAcquisitionSource(input: unknown): AcquisitionSource | 
     campaign: normalizeToken(raw.campaign),
     referrer: normalizeReferrer(raw.referrer),
     landing,
-    path: normalizePath(raw.path),
+    path: normalizePath(raw.path, landing),
     firstSeen: normalizeDay(raw.firstSeen),
   };
   const result: AcquisitionSource = {};
