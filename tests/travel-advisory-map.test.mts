@@ -147,19 +147,31 @@ describe('travel advisory map section', () => {
     const section = travelAdvisoriesPage.renderSection(read(payload()), { live: true });
     const answer = section.match(/<p data-live-answer>([^<]*)<\/p>/)?.[1] ?? '';
     assert.match(answer, /^As of Nov 7, 2026, 9:20 AM UTC, the US State Department rates 2 countries Level 4: Do Not Travel, and Australia’s Smartraveller tells travellers not to go to 2 countries\. The two governments give different advice for \d+ countries\.$/);
-    assert.match(section, /<tr id="advisory-af"><th scope="row">Afghanistan<\/th><td class="lvl lvl-4"><a href="https:\/\/travel\.state\.gov\/af" rel="nofollow">Level 4: Do Not Travel<\/a>/);
+    assert.match(section, /<tr id="advisory-af" data-us="4" data-au="4"><th scope="row">Afghanistan<\/th><td class="lvl lvl-4"><span class="lvl-pill l4" aria-hidden="true">4<\/span><a href="https:\/\/travel\.state\.gov\/af" rel="nofollow">Level 4: Do Not Travel<\/a>/);
     assert.match(section, /<a href="https:\/\/www\.smartraveller\.gov\.au\/af" rel="nofollow">Do not travel<\/a>/);
     const faq = JSON.parse(section.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '{}');
     assert.equal(faq.mainEntity[0].acceptedAnswer.text, answer);
   });
 
-  it('colours the map from the US levels inside the live section, so a swap recolours it', () => {
+  it('colours each map view inside the live section, so a swap recolours it', () => {
     const section = travelAdvisoriesPage.renderSection(read(payload()), { live: true });
     const style = section.match(/<style>([^<]*)<\/style>/)?.[1] ?? '';
-    assert.match(style, /\.advisory-map \[data-iso2="AF"\]\{fill:var\(--lvl-4\)\}/);
-    assert.match(style, /\.advisory-map \[data-iso2="RU"\]\{fill:var\(--lvl-4\)\}/);
-    assert.equal((style.match(/\[data-iso2="[A-Z]{2}"\]\{fill:/g) || []).length, CODES.length, 'one rule per country with a US level');
     assert.doesNotMatch(style, /[<>]/);
+    const fills = new Map<string, string>();
+    for (const [, view, codes, token] of style.matchAll(/\.advisory-figure\[data-view="(\w+)"\] :is\(([^)]*)\)\{fill:var\((--[\w-]+)\)\}/g)) {
+      for (const [, code] of codes.matchAll(/\[data-iso2="([A-Z]{2})"\]/g)) {
+        assert.ok(!fills.has(`${view}:${code}`), `${view}:${code} is coloured once`);
+        fills.set(`${view}:${code}`, token);
+      }
+    }
+    assert.equal(fills.get('US:AF'), '--lvl-4');
+    assert.equal(fills.get('US:RU'), '--lvl-4');
+    assert.equal(fills.get('AU:FR'), '--lvl-4');
+    assert.equal(fills.get('gap:AF'), '--gap-0', 'both say do not travel');
+    assert.match(fills.get('gap:FR') ?? '', /^--gap-[123]$/);
+    for (const view of ['US', 'AU', 'gap']) {
+      assert.equal([...fills.keys()].filter((key) => key.startsWith(`${view}:`)).length, CODES.length, `${view} colours every listed country`);
+    }
   });
 
   it('makes no dated claim and draws no colours without a reading', () => {
@@ -178,7 +190,7 @@ describe('travel advisory map page', () => {
   };
 
   it('does not paint the built map as "no US advisory" when there is no reading', () => {
-    const noLevel = /\.advisory-map path\s*\{[^}]*fill:\s*var\(--lvl-none\)/;
+    const noLevel = /\.advisory-map \.land\s*\{[^}]*fill:\s*var\(--lvl-none\)/;
     const empty = renderLiveTopicPage({ page: travelAdvisoriesPage, record: null, baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
     assert.doesNotMatch(empty, noLevel, 'without a reading every country would claim no US advisory');
     const filled = renderLiveTopicPage({ page: travelAdvisoriesPage, record: read(payload()), baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
@@ -190,6 +202,7 @@ describe('travel advisory map page', () => {
     const codes = new Set(worldMapShapes().map((shape) => shape.iso2));
     for (const code of ['US', 'FR', 'RU', 'CN', 'BR', 'AU', 'XK', 'SS']) assert.ok(codes.has(code), code);
     assert.ok(!worldMapShapes().some((shape) => shape.name === 'Antarctica'));
+    assert.deepEqual(worldMapShapes().filter((shape) => !shape.iso2).map((shape) => shape.name), [], 'every shape maps to the register that covers it');
     const html = renderLiveTopicPage({ page: travelAdvisoriesPage, record: read(payload()), baseUrl: 'https://www.worldmonitor.app', lastmod: '2026-11-07', tpl });
     const svgAt = html.indexOf('<svg class="advisory-map"');
     const sectionAt = html.indexOf('<!--wm-live:travel-advisory-map-->');
@@ -255,7 +268,7 @@ ${travelAdvisoriesPage.renderSection(null, { live: false })}
     assert.equal(response.headers.get('x-wm-live-page'), 'travel-advisory-map');
     assert.ok(html.includes(figure), 'the figure is served as built');
     assert.match(html, /the US State Department rates 2 countries Level 4: Do Not Travel/);
-    assert.match(html, /\.advisory-map \[data-iso2="AF"\]\{fill:var\(--lvl-4\)\}/);
+    assert.match(html, /\.advisory-figure\[data-view="US"\] :is\(\[data-iso2="AF"\],\[data-iso2="RU"\]\)\{fill:var\(--lvl-4\)\}/);
     assert.equal(new URL(calls.find((url) => url.includes(liveTopicRpcPath(travelAdvisoriesPage)))!).search, '?public=1');
   });
 
