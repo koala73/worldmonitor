@@ -757,6 +757,59 @@ describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-11
   });
 });
 
+describe('marketingBeforeSend — injected screen capture blocked by permission policy (WORLDMONITOR-121)', () => {
+  // Verbatim production event: Chrome 124 / Windows on `/`, an unhandled
+  // rejection whose only frames are `<anonymous>:1` and an injected
+  // `window.__wpxTakeSnapshot` at `<anonymous>:183`. No first-party code calls
+  // getDisplayMedia, and the page's permission policy refuses display-capture.
+  const DISPLAY_CAPTURE_MESSAGE = 'Failed to execute \'getDisplayMedia\' on \'MediaDevices\': Access to the feature "display-capture" is disallowed by permission policy.';
+  const captureEvent = (value: string, frames: { filename?: string; function?: string }[]): PolicyEvent => ({
+    exception: { values: [{ type: 'NotAllowedError', value, stacktrace: { frames } }] },
+  });
+
+  it('drops the refusal raised from an injected snapshot script', () => {
+    const event = captureEvent(DISPLAY_CAPTURE_MESSAGE, [
+      { filename: '<anonymous>' },
+      { filename: '<anonymous>', function: 'window.__wpxTakeSnapshot' },
+    ]);
+    assert.equal(marketingBeforeSend(event), null);
+    // Some captures carry the DOMException name inside the value.
+    const prefixed = captureEvent(`NotAllowedError: ${DISPLAY_CAPTURE_MESSAGE}`, [{ filename: '<anonymous>' }]);
+    assert.equal(marketingBeforeSend(prefixed), null);
+  });
+
+  // Positive control: if this bundle ever asks for screen capture, a refusal
+  // breaks that feature and must page. It would ride a `/pro/assets/*.js` frame.
+  it('keeps the refusal when a marketing-bundle frame is on the stack', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: '/pro/assets/index-a1b2c3.js' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps the refusal when the caller is an inline script on the marketing document', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: 'https://www.worldmonitor.app/' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a frameless refusal', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, []);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // A frame with no filename could be the one that attributes the call to us,
+  // so an otherwise-anonymous stack containing one still reports.
+  it('keeps a refusal when a frame has no usable filename', () => {
+    for (const unnamed of [{}, { filename: '' }, { filename: '   ' }]) {
+      const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, unnamed]);
+      assert.equal(marketingBeforeSend(kept), kept, JSON.stringify(unnamed));
+    }
+  });
+
+  it('keeps an unrelated permission-policy refusal from an evaluated script', () => {
+    const kept = captureEvent('Failed to execute \'getUserMedia\' on \'MediaDevices\': Access to the feature "camera" is disallowed by permission policy.', [{ filename: '<anonymous>' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
 describe('marketingBeforeSend — injected eval blocked by CSP (WORLDMONITOR-129)', () => {
   // Verbatim production event: Edge 150 / Windows on `/pro`, an `onerror`
   // capture whose only frames are two `<anonymous>:1` entries — a script

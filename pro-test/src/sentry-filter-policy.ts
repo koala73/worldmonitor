@@ -551,6 +551,14 @@ const MASKED_URL_FRAME = /^webkit-masked-url:/;
  */
 const CSP_EVAL_BLOCK = /unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval/;
 /**
+ * Chrome's refusal of a screen-capture request under the page's permission
+ * policy. No first-party code on either surface calls `getDisplayMedia`.
+ * Deliberately NOT in `MARKETING_IGNORE_ERRORS`: if this bundle ever adds
+ * screen capture, a refusal breaks that feature and must page, so only a frame
+ * gate may drop it.
+ */
+const DISPLAY_CAPTURE_BLOCKED = /^(?:NotAllowedError: )?Failed to execute 'getDisplayMedia' on 'MediaDevices': Access to the feature "display-capture" is disallowed by permission policy/;
+/**
  * Chrome's wording for a `<script>` whose inline source failed to parse when it
  * was inserted: the DOM call is prefixed onto the parse error. Deliberately NOT
  * in `MARKETING_IGNORE_ERRORS`: this bundle appends scripts too (turnstile.ts,
@@ -792,6 +800,20 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // injection.
   if (nonInfraFrames.length === 0
       && CSP_EVAL_BLOCK.test(msg)
+      && frames.some((f) => f.filename === '<anonymous>')) return null;
+
+  // An injected snapshot script asking for screen capture. WORLDMONITOR-121 is
+  // the shape: Chrome 124 / Windows at `/`, an unhandled rejection whose only
+  // frames are `<anonymous>:1` and `window.__wpxTakeSnapshot` at
+  // `<anonymous>:183`, refused by our permission policy. It came back after
+  // five plain resolves: this bundle runs its own Sentry client, so the
+  // dashboard's filters never applied. Gated like the eval rule above, on the
+  // WHOLE stack being `<anonymous>` or infra, so a first-party caller (an asset
+  // frame, or the document URL for an inline script) still reports, and a
+  // frame with no filename keeps the event reporting.
+  if (nonInfraFrames.length === 0
+      && frames.every((f) => Boolean(f.filename?.trim()))
+      && DISPLAY_CAPTURE_BLOCKED.test(msg)
       && frames.some((f) => f.filename === '<anonymous>')) return null;
 
   // An injected script inserting a `<script>` whose inline source fails to
