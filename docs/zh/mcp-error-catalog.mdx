@@ -520,7 +520,7 @@ JMESPath 引擎解析表达式时抛出 —— 语法错误、未闭合的方括
 
 少数工具在 `content[0].text` 内返回自己的应用层错误信封，而非通过 JSON-RPC `-32602`。这些在 [工具参考](/zh/mcp-tools-reference) 中按工具记录 —— 本目录列出它们以便客户端识别该模式：
 
-- **`describe_tool`** 返回 `{ "error": "missing_tool_name", "hint": "..." }` 或 `{ "error": "unknown_tool", "requested": "...", "available": [...] }`。配额豁免 —— 错误输入不消耗配额槽位。见 [工具参考 → `describe_tool`](/zh/mcp-tools-reference#describe_tool)。
+- **`describe_tool`** 返回 `{ "error": "missing_tool_name", "hint": "..." }` 或 `{ "error": "unknown_tool", "requested": "...", "available": [...] }`。配额豁免 —— 错误输入不消耗配额槽位。见 [工具参考 → `describe_tool`](/zh/mcp-tools/meta#describe_tool)。
 
 若你要构建通用信封检测器，对目录类信封以前导下划线（`_budget_exceeded`、`_jmespath_error`）为键，对每工具信封以顶层 `error: string` 为键。
 

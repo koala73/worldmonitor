@@ -659,7 +659,7 @@ The expression parsed and ran, but the projected output exceeded **256 KB** (`JM
 
 A handful of tools return their own application-level error envelopes inside `content[0].text` rather than via JSON-RPC `-32602`. These are documented per-tool in the [Tools Reference](/mcp-tools-reference) — the catalog calls them out so a client can recognise the pattern:
 
-- **`describe_tool`** returns `{ "error": "missing_tool_name", "hint": "..." }` or `{ "error": "unknown_tool", "requested": "...", "available": [...] }`. Quota-exempt — bad input does not consume a quota slot. See [Tools Reference → `describe_tool`](/mcp-tools-reference#describe_tool).
+- **`describe_tool`** returns `{ "error": "missing_tool_name", "hint": "..." }` or `{ "error": "unknown_tool", "requested": "...", "available": [...] }`. Quota-exempt — bad input does not consume a quota slot. See [Tools Reference → `describe_tool`](/mcp-tools/meta#describe_tool).
 
 If you build a generic envelope detector, key off the leading underscore (`_budget_exceeded`, `_jmespath_error`) for the catalog-class envelopes and off a top-level `error: string` for per-tool envelopes.
 

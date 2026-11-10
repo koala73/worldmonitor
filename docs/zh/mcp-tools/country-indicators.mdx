@@ -1,0 +1,198 @@
+---
+title: "MCP 工具：国家指标与资源"
+sidebarTitle: "国家指标与资源"
+description: "World Monitor MCP 工具参考：NO2 活动、人口结构、评分卡、韧性、矿产、矿山与宏观历史。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_demographics_capability`](/mcp-tools/country-indicators#get_demographics_capability)、[`get_macro_history`](/mcp-tools/country-indicators#get_macro_history)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_no2_activity`
+
+基于 Sentinel-5P 对流层 NO2 的工业活动方向，覆盖 167 个国家和 32 个工业集群：最新 56 天窗口与前三年同期日期对比，给出 changePercent 以及经 10% 死区后的 direction。没有读数的区域带有 exclusion；在前几年数据仍在回填时，baseline_backfill_pending 是预期状态，不是故障。可按 country_code（该国及其境内集群）、region_id 或 kind 过滤。每日播种，从不实时调用 Copernicus；请转载 attribution。需要付费套餐；一次下游请求，API 套餐权重 2。只读。
+
+每个区域报告 `windowStart`、`windowEnd`、`validDays`（无云且通过质量过滤像元足够的天数）、以 mol/m2 计的平均 NO2 柱浓度、进入基线的往年年份、`changePercent`、`signalValue`（10% 死区之外的变化，死区内为 0）和 `direction`（`strengthening`、`weakening`、`unchanged`）。没有读数的区域 `direction: null`，并带有封闭词汇表中的 `exclusion`：`request_failed`、`baseline_backfill_pending`、`insufficient_valid_days`、`insufficient_baseline_years`。响应携带 `method`（由路由的 `methodVersion` 固定的常量）、`generatedAt`、`stale`（超过 72 小时健康预算时为 true）以及 `attribution` 中必须保留的署名，例如 "Contains modified Copernicus Sentinel data 2023-2026"。方法说明见[中国活动即时预测方法论](/zh/methodology/china-activity-nowcast)。
+
+**参数（工具专用）：**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country_code` | string | 可选。ISO 3166-1 alpha-2 代码（"DE"）、alpha-3（"DEU"）或英文名称（"Germany"）。返回该国区域及其境内的所有集群；跨国集群（`gulf-states`、`rotterdam-antwerp`）没有国家代码。 |
+| `region_id` | string | 可选的注册表 id，例如 `country-cn` 或 `yangtze-river-delta`。与其他过滤条件按 AND 组合。 |
+| `kind` | `string: country / cluster` | 可选。`country` 为国家多边形，`cluster` 为命名工业集群；省略则两者都返回。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `No2ActivityUnavailableReason` 枚举。`NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案（过滤条件未命中任何注册区域，重试无效），`upstreamUnavailable: false`。`NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` 是客户端错误（畸形过滤条件直接到达 handler；网关会先返回 HTTP 400），`upstreamUnavailable: false`。其余原因表示故障（`seed_missing`、`invalid_dataset`、`cache_unavailable`），`upstreamUnavailable: true`。区域级 `exclusion` 不会撤回整个响应：`baseline_backfill_pending`、`insufficient_valid_days` 和 `insufficient_baseline_years` 表示方法拒绝给出它无法支撑的读数，而 `request_failed` 表示该区域自身的来源刷新失败时间已超过保留数据的有效期。
+
+- **API 端点：** `GET /api/economic/v1/get-no2-activity`
+- **访问：** `subscription` — 需要 Pro 订阅。RPC 工具：没有 `summary` 参数（用 `jmespath` 裁剪响应）。
+- **类型：** 规范 NO2 活动路由的 RPC 代理（handler 负责过滤、合约校验和未命中分类）。
+- **新鲜度预算：** 最多 **72 小时** 后 `stale`（每日播种节奏的三倍，与 `/api/health` 一致）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_five_factor_scorecard`
+
+返回冻结版 v1 五因素评分卡。一次调用必须且只能选择一个国家、一个官方集团，或一个自定义成员列表。响应读取同一个原子快照，因此国家与集团使用相同的证据批次和方法版本。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `country_code` | string | 三选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
+| `preset` | string | 三选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
+| `members` | string[] | 三选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
+
+- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 规范 RPC 代理，读取 `scorecard:five-factor:v1`；请求时不获取上游来源。
+- **新鲜度：** 每日播种，新鲜度预算为 36 小时。
+
+读取每个支柱的 `score` 与 `subScore` 前，必须先检查 `hasScore`。当标志为 false 时，proto3 的零只是占位值，不是评分。读取输入数值前，必须先检查 `available` 与 `hasValue`。`insufficientReasons` 与 `unavailableReason` 会说明缺失原因，包括来源政策限制 `redistribution-blocked`。
+
+集团的食品和能源支柱先汇总实际生产与消费，再计算评分。人口结构、科技与国防的连续子分数按人口加权。因此，集团评分不是成员档位的简单平均。参见[五因素评分卡方法](/zh/methodology/five-factor-scorecard)。
+
+<CodeGroup>
+
+```bash 国家
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"country_code":"DE"}}
+  }'
+```
+
+```bash 官方集团
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"preset":"ASEAN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+紧凑列出冻结评分卡批次中的所有国家。每条记录保留支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过 MCP 输出预算。
+
+- **参数：** 无
+- **API 端点：** `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
+
+如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
+读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
+### `get_resilience_indicators`
+
+在完整的 72 行指标注册表上解释单个国家的国家韧性指数分数。每一行都带有归一化分量分数、活动评分器使用的运行时权重、策略生效后的有效贡献、已观测或插补状态、观测年龄与来源溯源。各项贡献会与每个已发布的维度分数对账，因此无需重新实现条件公式即可审计一个分数。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 说明 |
+|------|------|-----:|------|
+| `country_code` | string | 是 | ISO 3166-1 alpha-2 国家代码，例如 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/resilience/v1/get-resilience-indicators`
+- **访问权限：** `subscription` — REST 与 MCP 两条路径都需要 Pro 订阅。
+- **类型：** 对实际运行的评分器分支所做的请求内追踪，并非第二套评分实现。
+- **新鲜度：** 读取由六小时公共分数缓存引用的不可变追踪代次。该追踪存放在独立的七小时边车中，使分数与排名读取保持轻量。
+
+该工具不接受 `jmespath`。两个运行时都会以 JSON-RPC `-32602` 或 HTTP 400 拒绝非空投影，因为投影可能使被允许的原始值脱离授权其再分发的署名与抓取字段。
+
+各行区分 `observed`、`imputed`、`missing`、`fallback`、`source-failure`、`inactive`、`retired` 与 `not-applicable` 状态。请先读状态再读值：已退役或未启用的行是显式的，不会声称虚假的对账结果。
+
+原始来源值是选择性提供的，并且失败关闭。只有在观测值为实测、每个参与贡献的提供方都已完成再分发审查、所需署名齐备，且贡献种子具有抓取时间戳时，该行才会包含原始值。受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名以及已知时的来源年份——抑制通过原始值策略状态与原因报告，绝不用数值零表示。`observationProvenance` 用于区分确切的选定来源与仅来自注册表的署名。逐来源的决策表参见[指标许可决策](/zh/methodology/resilience-indicator-licensing)。
+
+`sourceYear` 是提供方测量该现象的时间，`retrievedAt` 是 WorldMonitor 抓取它的时间。两者不可互换，观测年龄始终依据观测日期推导。对于复合指标，`sourceYear` 取贡献年份中最早的一个。
+
+公共的 `get_resilience_score` 响应不受该工具影响，并保持模式兼容。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
+  }'
+```
+
+### `get_mineral_production`
+
+各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `commodity` | string | 否 | 品种 id 或名称（`cobalt`、`lithium`、`ree` 等） |
+| `iso2` | string | 否 | ISO 3166-1 alpha-2 生产国过滤 |
+| `stage` | string: mine / refinery | 否 | 限制为开采或冶炼阶段 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-mineral-production`
+- **类型：** 缓存读取 — Redis 种子 `supply-chain:mineral-production:v1`。
+- **新鲜度：** 年度 MCS 版本。USGS 的 W（withheld）保持标记，不会被当成 0。
+
+### `get_commodity_geo`
+
+精选的静态清单，收录 71 座主要矿山，含坐标、国家、矿种、运营商、状态（producing、development、exploration），以及有记录时的年产量和产量排名标签。矿种：金、银、铜、锂、钴、稀土、镍、铂、钯、铁矿石和铀。它回答某种矿产在哪里开采、矿山由谁运营；不含国家产量总量、市场份额、冶炼或价格。`mineral` 为精确且区分大小写的匹配（"Gold"、"Rare Earths"）；`country` 为不区分大小写的子串匹配。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `mineral` | string | 否 | 按矿产类型筛选（例如 "Gold"、"Copper"、"Lithium"） |
+| `country` | string | 否 | 按国家名称筛选（例如 "Australia"、"Chile"） |
+
+- **API 端点：** 无 — 此工具不读取缓存也不发起 HTTP 请求。
+- **类型：** 静态注册表 — 筛选捆绑的 `MINING_SITES_RAW` 常量（内存中，随 MCP server 的边缘捆绑包发布）。亚毫秒级，无上游调用。数据集仅在 MCP server 重新部署并刷新注册表时更新。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_commodity_geo","arguments":{}}
+  }'
+```
+
+</CodeGroup>

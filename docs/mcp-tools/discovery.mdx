@@ -1,0 +1,229 @@
+---
+title: "MCP tools: discovery and typed parsing"
+sidebarTitle: "Discovery and typed parsing"
+description: "How to discover World Monitor MCP tools cheaply: describe_tool, typed parsing with outputSchema, and the spoken mode for voice agents."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom. If you are starting from a REST route instead of a tool name, use the [API coverage table](/mcp-overview#api-coverage); per-tool **API endpoints** lines mean exact `_apiPaths` declarations, while `none directly` means the tool returns data without claiming an equivalent REST route.
+
+MCP coverage is intentionally curated. Some OpenAPI operations are REST-only because they mutate state, pass through LLM cost, fetch paid/high-cardinality upstreams on cache miss, or need manual cache-key mapping. The [API coverage section](/mcp-overview#api-coverage) names the enforced categories and links the current follow-up trackers.
+
+### `describe_tool` — one tool's definition on demand
+
+Since v1.34.0, `tools/list` ships each tool's complete `description` (every registered description fits a 1,024-byte per-tool budget, enforced in CI) together with its `inputSchema` and `outputSchema` (v1.6.0), so the model can choose a tool and author a [JMESPath projection](/mcp-jmespath) from the listing alone. `describe_tool` returns that same definition for one tool, for re-reading a single entry without re-listing the whole catalog:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "describe_tool", "arguments": { "tool_name": "get_chokepoint_status" } }
+}
+```
+
+Response — identical to that tool's `tools/list` entry: the same `description` and the same `inputSchema.properties` text. Every entry also carries `_meta["worldmonitor/access"]` (the tier marker: `free`, `free-account`, or `subscription`) and `_meta["worldmonitor/weight"]` (what one call costs in [budget units](/usage-rate-limits#mcp-calls-against-an-api-plan): 1, 2, or 3), and UI-bearing tools add `_meta.ui.resourceUri`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, a port-country coverage index, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
+      }
+    ],
+    "structuredContent": { "name": "get_chokepoint_status", "description": "…", "inputSchema": {}, "outputSchema": {}, "annotations": {}, "_meta": {} }
+  }
+}
+```
+
+`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration. Two common workflows:
+
+- **Re-reading one tool mid-session.** Call `describe_tool` to get a single tool's definition back into context without paying for the whole `tools/list` catalog again.
+- **First-time JMESPath authoring against an unfamiliar response.** Call `describe_tool` to read the `outputSchema` (see next section) without paying a quota slot for a real `tools/call`.
+
+`describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match. The `available` array lets the LLM self-correct in one extra call.
+
+The full per-tool reference for `describe_tool` (parameters, response shape, quota posture) is at [`describe_tool`](/mcp-tools/meta#describe_tool) under Meta.
+
+### `outputSchema` — typed parsing without a sample call
+
+As of v1.6.0, every tool's `tools/list` entry declares a spec-defined [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema). The schema describes `result.structuredContent`; its first `anyOf` branch is the tool's documented payload shape, which is also the document `result.content[0].text` serializes on an ordinary call (a projection or `summary: true` reshapes the text and is wrapped in `structuredContent`; see the table below) — letting clients author projections, validate responses, or generate types without ever issuing a real `tools/call`.
+
+Schemas are emitted **unconditionally** on every `tools/list`, regardless of the negotiated `protocolVersion`. Clients on the older `2025-03-26` floor still receive them and (per spec) are expected to ignore unknown fields rather than fail.
+
+**`structuredContent` and the shape of the advertised schema (v1.21.0).** Every successful `tools/call` returns the payload twice: as JSON text in `result.content[0].text`, and as an object in `result.structuredContent`. Strict MCP clients require this: once a tool advertises an `outputSchema`, the official SDK rejects a result with no `structuredContent` (`-32600`) and validates the one it gets against the schema (`-32602`). Four kinds of response are not a tool's documented shape, so the advertised schema names them:
+
+```json
+{
+  "type": "object",
+  "anyOf": [
+    { "…": "the tool's documented shape — the schema shown below" },
+    { "required": ["projection"] },
+    { "required": ["data", "_attribution"] },
+    { "required": ["_budget_exceeded"] },
+    { "required": ["_jmespath_error"] },
+    { "required": ["spoken", "citations"] }
+  ]
+}
+```
+
+The last branch appears only on tools that accept `response_mode` (see [Spoken mode](#spoken-mode-for-voice-agents) below).
+
+| Response | `content[0].text` | `structuredContent` |
+|---|---|---|
+| Normal call | the payload | the same payload |
+| `jmespath` projection, or a cache tool's `summary: true` | the reshaped value (any JSON value) | `{ "projection": <that value> }`, because the field must be an object |
+| Projection on a licence-bearing tool | `{ "data": …, "_attribution": … }` | the same object |
+| `_budget_exceeded` or `_jmespath_error` | the envelope | the same envelope |
+| `response_mode: "spoken"` | the spoken envelope `{ "tool", "spoken", "citations", "stale", "asOf" }` | the same envelope |
+
+The text is byte-identical to what earlier versions returned, so a client that reads only `content[0].text` sees no change. To read a tool's documented shape programmatically, take `outputSchema.anyOf[0]`.
+
+Worked example — the `outputSchema` documented shape (its `anyOf[0]`) for `get_country_risk`:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
+      "properties": {
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
+      }
+    },
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
+  }
+}
+```
+
+Cache tools wrap their declared `data` shape in the standard freshness envelope:
+
+```json
+{
+  "type": "object",
+  "required": ["cached_at", "stale", "data"],
+  "properties": {
+    "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
+    "data":      { "type": "object", "properties": { /* per-tool fields */ } }
+  }
+}
+```
+
+A typed-parsing sketch in TypeScript using the schema for compile-time hints:
+
+```ts
+// Synthesise types from the schema once (e.g. with json-schema-to-typescript).
+type CountryRisk = {
+  countryCode: string;
+  countryName: string;
+  ciiHistory?: {
+    methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
+    points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;
+    change: { fromDate: string; fromScore: number; toDate: string; toScore: number; delta: number } | null;
+    versionBreaks: Array<{ date: string; from: string; to: string }>;
+  };
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
+};
+
+const reply = await callTool('get_country_risk', { country_code: 'IR' });
+const text = reply.result?.content?.[0]?.text;
+if (typeof text !== 'string') throw new Error('no text payload');
+
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
+if ('_budget_exceeded' in parsed) {
+  // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
+} else {
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
+}
+```
+
+Things to know:
+
+- `additionalProperties` is left implicit (= true) on every schema, so producer-side forward-compatible additions don't suddenly fail validation.
+- Per-array `items.properties` lists known fields but does NOT enumerate every observed key — the schema is a **hint surface** for JMESPath authoring, not a bytecode-level contract.
+- The documented shape (`anyOf[0]`) describes the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) replace the payload entirely; since v1.21.0 each has its own branch in the advertised `anyOf`, as do projections, so a strict client accepts them. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
+
+Universal arguments:
+
+- Every tool accepts `jmespath` (string), an optional server-side projection applied after per-tool filters and `summary`.
+- Every cache tool also accepts `summary` (boolean), which returns counts plus 3-item samples instead of full lists.
+- Seven analytical tools accept `response_mode` (`"full"` or `"spoken"`), which replaces the payload with a short spoken-style answer plus citations, and `spoken_language` (`"en"` or `"ar"`), which sets the language of that answer. See [Spoken mode](#spoken-mode-for-voice-agents).
+- The per-tool tables below list only tool-specific arguments declared by the registry; the universal injected arguments are intentionally documented once here.
+
+### Spoken mode for voice agents
+
+`response_mode: "spoken"` serves voice and avatar agents that read an answer aloud. It is accepted by `get_country_risk`, `get_world_brief`, `get_chokepoint_status`, `get_forecast_predictions`, `get_prediction_markets`, `get_media_perspective` and `get_resilience_indicators`; each advertises the argument in its `inputSchema` and the envelope branch in its `outputSchema`. Any other tool rejects the argument with `-32602` (`violations[].field === "response_mode"`), as does an unknown mode value. The default, `"full"`, is byte-identical to omitting the argument.
+
+The response replaces the documented payload with:
+
+```json
+{
+  "tool": "get_country_risk",
+  "spoken": "Iraq scores 62 out of 100 on the instability index, and the trend is rising. The largest contribution comes from armed conflict, at 72. The travel advisory is reconsider travel, and 132 sanctioned entities are linked to the country.",
+  "language": "en",
+  "citations": [
+    { "source": "WorldMonitor Composite Instability Index (v14)", "asOf": "2026-11-01T08:40:00.000Z", "stale": false }
+  ],
+  "stale": false,
+  "asOf": "2026-11-01T08:40:00.000Z"
+}
+```
+
+- `spoken` is 2-3 sentences, at most 500 characters, built from the tool's structured fields by a fixed template: no model call, so the same data always reads the same way, and every number spoken is one the payload carries. Percentages are read as "41 percent", moves as "down 3 points", ages as "about 25 minutes ago". The text carries no markdown, links, parentheses, raw codes or field names.
+- `citations[]` carries `source`, optional `title` and `url`, `asOf` (ISO-8601 or `null`) and `stale`, so the agent can show or log where the sentences came from.
+- Freshness is spoken, not only flagged: a stale cache snapshot, a last-known-good world brief, an old risk reading, a partial media read or a failed upstream read each change the wording, and `stale` is `true` on the envelope and its citations. Both describe the data the sentences read aloud. A bundle tool's full-mode `cached_at` is its oldest key and its `stale` covers every key, so a static reference table or a dataset the sentences do not mention never sets the spoken age or caveat. `asOf` is the time of the narrated data, or `null` when the payload carries none.
+- The full payload is omitted. Call again without `response_mode` (or with a `jmespath` projection) when you need the documented shape.
+- `jmespath` applies to the envelope, so `{"response_mode": "spoken", "jmespath": "spoken"}` returns only the sentence. `summary: true` cannot be combined with the spoken mode, because the sentences are built from the full lists.
+- `spoken_language: "ar"` returns the sentences in Modern Standard Arabic, and `language` on the envelope says which language was spoken (`"en"` by default). The Arabic answer comes from the same template data path, so it speaks the same numbers, caveats and freshness as the English one, and its `citations`, `stale` and `asOf` are identical. Countries, chokepoints, risk levels, dimensions and categories are named in Arabic. Numbers stay in Western digits. Headline, market and forecast titles keep their published language, except that a media-perspective headline published in Arabic is read as published. `get_country_risk {"country_code": "IQ", "response_mode": "spoken", "spoken_language": "ar"}` begins "درجة العراق على مؤشر عدم الاستقرار 62 من 100، والاتجاه تصاعدي." `spoken_language` is rejected with `-32602` without `response_mode: "spoken"` and on tools without the spoken mode.

@@ -1,0 +1,130 @@
+---
+title: "MCP tools: Chokepoints & supply chain"
+sidebarTitle: "Chokepoints & supply chain"
+description: "World Monitor MCP tool reference for shipping chokepoints, supply vulnerabilities and supply-chain data: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_chokepoint_status`
+
+Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, port-country coverage index, plus static reference data (chokepoint geometry, canonical chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
+| `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
+| `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
+| `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it. |
+| `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
+| `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref. |
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-chokepoint-status`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **12 h** for chokepoint flows, **14 d** for the PortWatch chokepoint reference, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
+- **Per-country content freshness (PortWatch slice):** `stale: true` also flags when a decision-critical country's own observation (`CN`/`HK`) is older than **72 h**, even though the run's heartbeat is fresh and all 174 countries are published. The seeder reuses a cached country payload while upstream `max(date)` has not advanced, so transport age and record count both read healthy while an individual country's data is days old. This mirrors the `STALE_CONTENT` verdict on `/api/health` for the same seed key — see [Health endpoints](/health-endpoints). `stale` stays a single boolean, so it does not say which dimension tripped; `/api/health` names the stale country.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences. With a `chokepoint` filter: risk level, 7-day incidents, oil flow against baseline and today's transits. Without one: how many chokepoints are disrupted and which, the highest risk level, and the flow through the disrupted one. When the transit summaries or oil flows it reads are stale, a caveat naming them replaces the last sentence; `asOf` is the transit summaries' `fetchedAt`, not the bundle's `cached_at`, which the annual baselines table usually sets. Citations name the monitor and the baseline source.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_chokepoint_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+**Chokepoint panel admission.**
+
+On Pro and Pro Business, `get_chokepoint_status` opens one signed `chokepoints` allocation. Repeated filters, `summary` and JMESPath views share that allocation. Complete effective requested source subsets reuse their uncapped originals; changing the normalized dataset subset or chokepoint selector can reacquire sources under the same allocation. Unknown-only dataset selectors use the full bundle. A keyed filter with no match retains the original map, so it cannot manufacture complete empty coverage. Sparse AIS, unavailable today counts and partial modeled flows remain visible and retryable.
+
+Use the returned `panelRequest.token` as `panel_request` only for this tool. Explicit `refresh: true` requires a UUID `request_id` and no reader token; the same UUID retries that allocation. Authorized receipt reads report current usage without reserving another allocation; unknown usage omits the numeric notice. API and free-account calls retain per-tool accounting and reject these paid controls.
+
+An uncached execution uses the existing six dataset GETs, six metadata GETs and one activation EXISTS command. The 64-read admission bound counts tool executions, not those 13 Redis commands. Reuse checks selected source shapes, availability, publication clocks and CN/HK critical content age, both after lookup and before cache storage. Partial, malformed, unassessed or expired originals are not cached as complete. Reference-year baselines and modeled flow publication dates do not prove current metered oil or fresh underlying history. The private wrapped cache remains 512 KiB; tool output remains 128 KiB. This admission change does not add website details, histories, warnings or provider reads.
+
+### `get_chokepoint_dependencies`
+
+Returns the highest-scoring country and commodity dependencies for one maritime chokepoint. The inverse index is built from the same pass as the country index, so the score, state, transit share, and methodology version reconcile with `get_supply_vulnerabilities`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `chokepoint_id` | string | Required canonical id, such as `hormuz_strait` or `malacca_strait`. |
+| `page_size` | integer | Optional result limit from 1 to 100. Default 25. |
+
+- **API endpoint:** `GET /api/supply-chain/v1/get-chokepoint-dependencies`
+- **Access:** `subscription` — this RPC-backed tool requires a Pro subscription.
+- **Kind:** Redis projection read from `supply-chain:chokepoint-dependencies:v1`.
+- **Freshness:** the daily snapshot has a 72-hour TTL. An unscored dependency remains in the response with its explicit state and reasons.
+- **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_chokepoint_dependencies","arguments":{"chokepoint_id":"hormuz_strait","page_size":25}}}
+```
+
+### `get_supply_vulnerabilities`
+
+Returns the reviewed commodity-vulnerability portfolio for one country. Every row includes an absolute score and band when minimum evidence exists, component detail, coverage, stale reasons, source provenance, and `methodologyVersion`. A missing score is unknown, not zero.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country_code` | string | Required ISO 3166-1 alpha-2 country code, such as `AE`, `JP`, or `DE`. Input is case-insensitive. |
+
+- **API endpoint:** `GET /api/supply-chain/v1/get-country-vulnerabilities`
+- **Access:** `subscription` — this RPC-backed tool requires a Pro subscription.
+- **Kind:** Redis projection read from `supply-chain:vulnerability:v1`.
+- **Freshness:** the daily snapshot has a 72-hour TTL. Read each row's `state`, `reasons`, and evidence `stale` fields because upstream datasets have different freshness budgets.
+- **Methodology:** [Commodity Vulnerability Methodology](/methodology/supply-vulnerability).
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_supply_vulnerabilities","arguments":{"country_code":"AE"}}}
+```
+
+### `get_supply_chain_data`
+
+Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 19 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows / freight-rates / gscpi>` | Restrict the response to one or more sub-datasets (equity shipping-stress proxy, customs revenue, COMTRADE flows, freight rates, GSCPI). Omit for all. |
+| `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
+| `reporter` | string | Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China"). |
+| `limit` | number | Cap each list dataset (carriers, months, flows, freight indices and GSCPI observations) to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`, `GET /api/supply-chain/v1/get-shipping-rates`
+- **Access:** `subscription`. Requires a Pro subscription because the bundle includes Pro-only COMTRADE flows. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** freight **19 h**, GSCPI and customs revenue **2 d**.
+
+`freight-rates.indices[]` includes source, frequency, observation date, period movement and baseline statistics. The z-score uses the mean and population standard deviation of stored history excluding the latest point. It is null with fewer than 12 baseline points or zero variance. Weekly SSE history retains up to 56 points as future observations accumulate; it cannot be backfilled. `gscpi.series.observations` keeps the newest `limit` months in chronological order. GSCPI is attributed to the Federal Reserve Bank of New York, and values are subject to revision.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_supply_chain_data","arguments":{"dataset":["freight-rates","gscpi"],"limit":12}}
+  }'
+```
+
+</CodeGroup>
