@@ -255,6 +255,9 @@ describe('English i18n shell split', () => {
       'components.energyComplex.unknownQuoteSource',
       'components.energyComplex.stalePrice',
       'components.energyComplex.liveTapeSource',
+      // Commodity sparkline span labels interpolate a start time, so the
+      // healer cannot repair them after first paint (#10424).
+      'components.deckgl.tooltip.sinceDate',
       ...eagerChromeKeys(),
     ];
 

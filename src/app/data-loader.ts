@@ -2893,7 +2893,10 @@ export class DataLoaderManager implements AppModule {
 
       const commoditiesPanel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
       const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
-      const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
+      const mapCommodity = (c: MarketData) => ({
+        symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline,
+        sparklineIntervalSeconds: c.sparklineIntervalSeconds, sparklineStartAt: c.sparklineStartAt,
+      });
       const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
       const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
       const filterEnergyTape = (data: MarketData[]) => data.filter((item) => energySymbols.has(item.symbol));
@@ -2917,6 +2920,8 @@ export class DataLoaderManager implements AppModule {
             price: q.price != null ? q.price : null,
             change: q.change ?? null,
             sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+            sparklineIntervalSeconds: q.sparklineIntervalSeconds,
+            sparklineStartAt: q.sparklineStartAt,
             priceSource: q.priceSource,
             priceBasis: q.priceBasis,
             priceAt: q.priceAt,
