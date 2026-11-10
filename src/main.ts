@@ -1,5 +1,6 @@
 import './styles/base-layer.css';
 import './bootstrap/zod-csp';
+import './bootstrap/abort-signal-fallbacks';
 import { initPwaInstall } from '@/services/pwa-install';
 import { SITE_VARIANT } from '@/config/variant';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';

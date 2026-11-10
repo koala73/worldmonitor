@@ -1,3 +1,4 @@
+import './bootstrap/abort-signal-fallbacks';
 import './styles/main.css';
 import './styles/settings-window.css';
 import { SettingsManager } from '@/services/settings-manager';
