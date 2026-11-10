@@ -160,9 +160,10 @@ function renderTable(chosen) {
 const isEmptyLedger = (ledger) => !ledger
   || (Object.keys(ledger.pages ?? {}).length === 0 && (ledger.exclusions ?? []).length === 0);
 
-const sameLinks = (left, right) => (isEmptyLedger(left) && isEmptyLedger(right))
-  || JSON.stringify({ pages: left?.pages, exclusions: left?.exclusions })
-    === JSON.stringify({ pages: right.pages, exclusions: right.exclusions });
+const sameLinks = (left, right) => (isEmptyLedger(right)
+  ? !left
+  : JSON.stringify({ pages: left?.pages, exclusions: left?.exclusions })
+    === JSON.stringify({ pages: right.pages, exclusions: right.exclusions }));
 
 export function parseArgs(argv) {
   const options = { snapshot: null, write: false };
