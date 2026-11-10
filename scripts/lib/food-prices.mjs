@@ -117,6 +117,10 @@ const DA_COLUMNS = [
   ['Chili (Green)', 'Red Chili (Local)', 'Calamansi', 'Sugar (Refined)', 'Fresh Pork (Kasim, Local)', 'Fresh Pork (Kasim, Imported)', 'Fresh Pork Liempo (Local)', 'Fresh Pork Liempo (Imported)', 'Fresh Whole Chicken'],
 ];
 
+/**
+ * Parse the first three pages of a DA daily price PDF into retail observations for `date`.
+ * Throws when the printed date, the table frame or any column label differs from DA_COLUMNS.
+ */
 export function parseDa(pages, date) {
   const result = [];
   const [year, month, day] = date.split('-');
