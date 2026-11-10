@@ -255,12 +255,81 @@ const TRAFFIC_STATUS_BANDS = [
 // The band is read from the printed share, not the unrounded ratio, so the
 // label and the figure beside it always agree (9.9% prints "10%" and reads
 // Restricted, not Severely restricted).
-function trafficStatusSentence(official, name) {
+//
+// PortWatch publishes each day about a week after it ends (the latest day was
+// 8-9 days old on 2026-11-09/10), so the attribution states that age: a reader
+// asking about "right now" must see that the traffic share is not live. The
+// age is omitted when it is unknown or 0 days (a same-day figure needs no
+// caveat, and "published today" would be a claim about PortWatch's release
+// time that the record does not carry).
+function trafficStatusSentence(official, name, lagDays = null) {
   if (official.baselineShare === null || official.latestDate === null) return null;
   const pct = Number(official.baselineShare.replace(/[,%]/g, ''));
   if (!Number.isFinite(pct)) return null;
   const { label } = TRAFFIC_STATUS_BANDS.find((band) => pct < band.below);
-  return `${label}: traffic through ${name} was ${official.baselineShare} of its year-earlier level in the seven published days to ${official.latestDate} (IMF PortWatch).`;
+  const age = Number.isInteger(lagDays) && lagDays > 0
+    ? `, latest day ${lagDays} ${lagDays === 1 ? 'day' : 'days'} old`
+    : '';
+  return `${label}: traffic through ${name} was ${official.baselineShare} of its year-earlier level in the seven published days to ${official.latestDate} (IMF PortWatch${age}).`;
+}
+
+/**
+ * Whole UTC calendar days between the latest IMF PortWatch day (YYYY-MM-DD)
+ * and the reading's time (an ISO string or epoch milliseconds). Null when
+ * either side is missing or the day is after the reading.
+ */
+export function portwatchLagDays(officialLatestDate, asOf) {
+  const day = isoDay(officialLatestDate);
+  if (day === null) return null;
+  const timestamp = typeof asOf === 'number' ? asOf : Date.parse(String(asOf ?? ''));
+  if (!Number.isFinite(timestamp)) return null;
+  const days = Math.floor(timestamp / 86_400_000) - Date.parse(`${day}T00:00:00Z`) / 86_400_000;
+  return Number.isInteger(days) && days >= 0 ? days : null;
+}
+
+/**
+ * The tool note's clause on PortWatch's publication lag, e.g. "published with
+ * a lag; the latest published day is 8 days before this snapshot". The built
+ * page and the client refresh both use it, so the note cannot disagree with
+ * the age stated in the answer.
+ */
+export function portwatchLagNote(officialLatestDate, asOf) {
+  const lagDays = portwatchLagDays(officialLatestDate, asOf);
+  if (lagDays === null) return 'published with a lag of several days';
+  if (lagDays === 0) return 'published with a lag; the latest published day is the day of this snapshot';
+  return `published with a lag; the latest published day is ${lagDays} ${lagDays === 1 ? 'day' : 'days'} before this snapshot`;
+}
+
+// "5 warnings" / "1 AIS disruption" → 5 / 1. The labels come from
+// chokepointCoverageMetrics; an upstream label that does not lead with a
+// count is left out of the prose rather than guessed at.
+function leadingCount(label) {
+  const match = String(label ?? '').trim().match(/^(\d[\d,]*)\b/);
+  if (!match) return null;
+  const count = Number(match[1].replace(/,/g, ''));
+  return Number.isFinite(count) ? count : null;
+}
+
+// The live signals that answer "right now": navigational warnings and AIS
+// disruption events. AIS events are never called transits (the relay's
+// zone-exit count overstates real transits roughly tenfold).
+function liveSignalsClause(warnings, aisEvents, name) {
+  const warningCount = leadingCount(warnings);
+  const aisCount = leadingCount(aisEvents);
+  const counted = (count, singular, plural) => (count === 0
+    ? `no ${plural}`
+    : `${formatNumber(count, 0)} ${count === 1 ? singular : plural}`);
+  const parts = [
+    warningCount === null ? null : counted(warningCount, 'navigational warning', 'navigational warnings'),
+    aisCount === null ? null : counted(aisCount, 'AIS disruption event', 'AIS disruption events'),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const singular = parts.length === 1 && (warningCount ?? aisCount) === 1;
+  return `${parts.join(' and ')} ${singular ? 'is' : 'are'} reported for ${name}.`;
+}
+
+function capitalizeFirst(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 // Shared evidence policy for both static HTML and live hydration. The badge is
@@ -273,6 +342,7 @@ export function chokepointEvidenceNarrative({
   bandLabel,
   description,
   asOfText,
+  asOf = null,
   partial,
   warningsLabel,
   congestionLabel,
@@ -298,7 +368,12 @@ export function chokepointEvidenceNarrative({
   const dated = String(asOfText || '').trim();
   const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
 
-  const trafficStatus = trafficStatusSentence(official, name);
+  const lagDays = official.latestDate === null ? null : portwatchLagDays(officialLatestDate, asOf);
+  const trafficStatus = trafficStatusSentence(official, name, lagDays);
+  // The timestamp is stated once: it leads the live-signals sentence when
+  // there is one, and the snapshot sentence otherwise.
+  const signals = liveSignalsClause(warnings, aisEvents, name);
+  const lead = signals === null ? null : `${snapshotLead}, ${signals}`;
   let passage;
   if (partial === true) {
     const officialClause = officialCountSentences(official, name, { through: false })
@@ -306,11 +381,17 @@ export function chokepointEvidenceNarrative({
     const caveat = trafficStatus === null
       ? 'World Monitor cannot verify operational passage status from this snapshot.'
       : 'The status compares traffic with its year-earlier level; it is not an official open or closed declaration.';
-    passage = `${snapshotLead}, source coverage for ${name} is partial. ${officialClause} ${caveat}`;
+    const coverage = lead === null
+      ? `${snapshotLead}, source coverage for ${name} is partial.`
+      : `${lead} Source coverage for ${name} is partial.`;
+    passage = `${coverage} ${officialClause} ${caveat}`;
   } else {
     const officialClause = officialCountSentences(official, name, { through: true })
       ?? `no IMF PortWatch daily transit count is published for ${name}.`;
-    passage = `${snapshotLead}, ${officialClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
+    const counted = lead === null
+      ? `${snapshotLead}, ${officialClause}`
+      : `${lead} ${capitalizeFirst(officialClause)}`;
+    passage = `${counted} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
   }
   if (trafficStatus !== null) passage = `${trafficStatus} ${passage}`;
 
@@ -1549,6 +1630,7 @@ export async function loadChokepoint(tool) {
       bandLabel: view.status,
       description: view.description,
       asOfText: formatDateTime(view.fetchedAt),
+      asOf: view.fetchedAt,
       partial: view.partial,
       warningsLabel: view.navigationalWarnings,
       congestionLabel: view.congestion,
@@ -1560,7 +1642,9 @@ export async function loadChokepoint(tool) {
       baselineFrom: view.baselineFrom,
       baselineTo: view.baselineTo,
     });
-    const openStatus = tool.querySelector('[data-chokepoint-open-status]');
+    // The built page puts the answer just above the tool, under the H1.
+    const openStatus = tool.querySelector('[data-chokepoint-open-status]')
+      ?? (tool.previousElementSibling?.matches('[data-chokepoint-open-status]') ? tool.previousElementSibling : null);
     if (openStatus && narrative !== null) openStatus.textContent = narrative.passage;
     const scoreDriver = tool.querySelector('[data-chokepoint-score-driver]');
     if (scoreDriver && narrative !== null) {
@@ -1574,6 +1658,7 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-official-transits]', official.latestTransits ?? '—');
     setText(tool, '[data-chokepoint-official-date]', official.latestDate ?? '');
     setText(tool, '[data-chokepoint-official-average]', official.average ?? '—');
+    setText(tool, '[data-chokepoint-lag-note]', portwatchLagNote(official.latestDate === null ? null : view.officialLatestDate, view.fetchedAt));
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (official.latestTransits === null ? '—' : 'Unavailable'));
     setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
