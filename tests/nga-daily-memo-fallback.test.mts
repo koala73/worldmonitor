@@ -94,6 +94,9 @@ describe('NGA daily memo fallback', () => {
     // block; skipping that block would return a short list as complete.
     const unseparated = iv.replace('052129Z NOV 26\n', `${summary}\n052129Z NOV 26\n`);
     assert.equal(parseNgaDailyMemo(unseparated, '4', 'NAVAREA IV', NOW), null);
+    // The same holds for a following notice with no warning id of its own.
+    const unseparatedBare = iv.replace('052129Z NOV 26\n', `${summary}\n061700Z NOV 26\nNAVAREA IV\n1. NOTICE.\n\n052129Z NOV 26\n`);
+    assert.equal(parseNgaDailyMemo(unseparatedBare, '4', 'NAVAREA IV', NOW), null);
   });
 
   it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {
