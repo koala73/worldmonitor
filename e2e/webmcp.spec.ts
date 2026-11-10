@@ -44,8 +44,10 @@ const DASHBOARD_TOOL_NAMES = [
   'switch_monitor',
 ];
 const HOMEPAGE_TOOL_NAMES = [
+  'getCountryScorecard',
   'getWorldMonitorMcpEndpoint',
-  'launchWorldMonitor',
+  'listCountryScorecards',
+  'openDashboard',
 ];
 const PRODUCTION_DASHBOARDS = [
   { origin: 'https://www.worldmonitor.app', variant: 'full' },
