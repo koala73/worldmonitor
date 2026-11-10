@@ -2764,7 +2764,8 @@
       "sections": {
         "countries": "الدول المعاقَبة",
         "entries": "التسميات الأخيرة",
-        "programs": "البرامج"
+        "programs": "البرامج",
+        "countryAttribution": "البلدان وسجلات الأعلام"
       },
       "empty": {
         "countries": "لا توجد نسبة دول متاحة.",

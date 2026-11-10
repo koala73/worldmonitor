@@ -2947,6 +2947,7 @@
       },
       "sections": {
         "countries": "Sanctioned countries",
+        "countryAttribution": "Countries and flag registries",
         "entries": "Recent designations",
         "programs": "Programs"
       },

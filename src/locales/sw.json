@@ -2689,7 +2689,8 @@
       "sections": {
         "countries": "Nchi zilizoidhinishwa",
         "entries": "Majina ya hivi majuzi",
-        "programs": "Mipango"
+        "programs": "Mipango",
+        "countryAttribution": "Nchi na sajili za bendera"
       },
       "empty": {
         "countries": "Hakuna sifa ya nchi inayopatikana.",

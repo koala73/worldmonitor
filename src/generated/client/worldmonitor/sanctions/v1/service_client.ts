@@ -19,6 +19,7 @@ export interface ListSanctionsPressureResponse {
   aircraftCount: number;
   semaCount: number;
   semaError?: string;
+  unattributed?: UnattributedSanctionsPressure;
 }
 
 export interface SanctionsEntry {
@@ -47,6 +48,12 @@ export interface ProgramSanctionsPressure {
   program: string;
   entryCount: number;
   newEntryCount: number;
+}
+
+export interface UnattributedSanctionsPressure {
+  entryCount: number;
+  vesselCount: number;
+  aircraftCount: number;
 }
 
 export interface LookupSanctionEntityRequest {

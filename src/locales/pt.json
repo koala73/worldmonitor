@@ -2348,7 +2348,8 @@
       "sections": {
         "countries": "Países sancionados",
         "entries": "Designações recentes",
-        "programs": "Programas"
+        "programs": "Programas",
+        "countryAttribution": "Países e registros de bandeira"
       },
       "empty": {
         "countries": "Nenhuma atribuição de país disponível.",

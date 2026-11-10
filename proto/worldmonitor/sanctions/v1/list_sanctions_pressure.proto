@@ -16,6 +16,7 @@ message ListSanctionsPressureRequest {
 // ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
 message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
+  // Top 12 countries. A designation can be associated with more than one country.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;
   int64 fetched_at = 4;
@@ -30,4 +31,13 @@ message ListSanctionsPressureResponse {
   int32 sema_count = 12;
   // Present when the SEMA source failed while other sanctions data remained available.
   optional string sema_error = 13;
+  // Distinct designations without a country association, across the full snapshot.
+  // Older snapshots may omit this summary.
+  UnattributedSanctionsPressure unattributed = 14;
+}
+
+message UnattributedSanctionsPressure {
+  int32 entry_count = 1;
+  int32 vessel_count = 2;
+  int32 aircraft_count = 3;
 }

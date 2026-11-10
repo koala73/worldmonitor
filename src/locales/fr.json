@@ -2734,7 +2734,8 @@
       "sections": {
         "countries": "Pays sanctionnés",
         "entries": "Désignations récentes",
-        "programs": "Programmes"
+        "programs": "Programmes",
+        "countryAttribution": "Pays et registres de pavillon"
       },
       "empty": {
         "countries": "Aucune attribution de pays disponible.",

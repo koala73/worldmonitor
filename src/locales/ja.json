@@ -2714,7 +2714,8 @@
       "sections": {
         "countries": "制裁国",
         "entries": "最近の指定",
-        "programs": "プログラム"
+        "programs": "プログラム",
+        "countryAttribution": "国と船籍登録"
       },
       "empty": {
         "countries": "国の帰属情報がありません。",

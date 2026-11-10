@@ -2340,7 +2340,8 @@
       "sections": {
         "countries": "Sanktionerade länder",
         "entries": "Senaste beteckningar",
-        "programs": "Program"
+        "programs": "Program",
+        "countryAttribution": "Länder och flaggregister"
       },
       "empty": {
         "countries": "Ingen landsattribution tillgänglig.",
