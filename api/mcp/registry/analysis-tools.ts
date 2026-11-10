@@ -953,8 +953,8 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       'Same method as the dashboard: the average density (population / area) of the country the point is in, times the ' +
       'event-type circle area (50 km for conflict, 100 km for earthquakes and floods, 30 km for fires). Only the 20 countries ' +
       'in the countries table have a density; anywhere else gets no estimate (point mode returns exposure null, events mode ' +
-      'leaves the event out). Conflict events located only to a district or country are left out. Modes: events (default) ' +
-      'ranks the current seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. ' +
+      'leaves the event out). Conflict events without a point location are left out. Modes: events (default) ' +
+      'ranks the seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. ' +
       'Coarse screening numbers with no city-level data behind them: ranking signals, not casualty projections.',
     inputSchema: {
       type: 'object',
