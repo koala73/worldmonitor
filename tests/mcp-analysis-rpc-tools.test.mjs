@@ -1240,6 +1240,26 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.events[0].country, 'PSE');
   });
 
+  it('keeps a supported wildfire after a full feed of misses before applying the result limit', async () => {
+    const payloads = analysisPayloads();
+    payloads['wildfire:fires:v1'].fireDetections = [
+      ...Array.from({ length: 15000 }, (_, i) => ({
+        id: `unsupported-${i}`, frp: 100,
+        location: { latitude: 45 + (i % 10) / 100, longitude: 75 + (i % 10) / 100 },
+      })),
+      { id: 'supported', frp: 1, location: { latitude: 31.52, longitude: 34.45 } },
+    ];
+    installUpstashStub(payloads);
+    for (const limit of [1, 0]) {
+      const result = await findTool('get_population_exposure')._execute(
+        { mode: 'events', event_source: 'wildfires', limit }, '', {}, {},
+      );
+      assert.deepEqual(result.data.events.map(event => event.id), ['supported']);
+      assert.equal(result.data.events[0].country, 'PSE');
+      assert.equal(result.data.events[0].nearestCountry, 'PSE');
+    }
+  });
+
   it('returns folded conflict locations with current country names in events mode', async () => {
     const payloads = analysisPayloads();
     payloads['conflict:ucdp-events:v1'].events = [

@@ -8,6 +8,7 @@ import {
   listCountryPopulations,
 } from '../shared/analysis-population-exposure.ts';
 import { densityCountryAt, estimatePointExposure } from '../shared/population-density-country-at.ts';
+import { inRing, ringEdgesNearLatitude } from '../shared/population-density-geometry.ts';
 import PALESTINE from '../shared/population-density-palestine.json' with { type: 'json' };
 import BOUNDARIES from '../shared/population-density-boundaries.json' with { type: 'json' };
 import { resolveCountryCode } from '../shared/country-code-resolve.ts';
@@ -135,6 +136,41 @@ describe('analysis-population-exposure core', () => {
       const result = estimateExposure(31.0, 34.8, 'ISR', bad);
       assert.equal(result.exposedPopulation, 0);
       assert.equal(result.exposureRadiusKm, 0);
+    }
+  });
+});
+
+describe('indexed country geometry', () => {
+  const referenceInRing = (lon, lat, ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+
+  it('preserves ray casting at vertices, integer latitude bands, and across the dateline', () => {
+    for (const polygons of Object.values(BOUNDARIES.countries)) {
+      for (const ring of polygons.flat()) {
+        for (const [lon, lat] of [ring[0], ring[Math.floor(ring.length / 2)]]) {
+          for (const y of [lat, Math.floor(lat), lat - 0.01, lat + 0.01]) {
+            assert.equal(inRing(lon, y, ring), referenceInRing(lon, y, ring));
+          }
+        }
+      }
+    }
+  });
+
+  it('visits only nearby latitude edges of the largest Russia ring', () => {
+    const ring = BOUNDARIES.countries.RU.map(p => p[0]).sort((a, b) => b.length - a.length)[0];
+    const edges = ringEdgesNearLatitude(ring, 45.99, 0.05);
+    assert.ok(edges.length < ring.length / 8, 'a miss must not scan the full Eurasian ring');
+    for (let i = 1; i < ring.length; i++) {
+      const south = Math.min(ring[i - 1][1], ring[i][1]);
+      const north = Math.max(ring[i - 1][1], ring[i][1]);
+      if (south <= 46.04 && north >= 45.94) assert.ok(edges.includes(i), 'keep every potentially near edge');
     }
   });
 });
