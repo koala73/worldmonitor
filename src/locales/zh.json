@@ -1665,7 +1665,8 @@
       "estimateWithin": "半径 {{km}} 公里内约有 {{count}} 人",
       "method": "估算使用该国的平均人口密度。",
       "empty": "没有符合条件的事件地点",
-      "infoTooltip": "仅显示位置明确且所在国家有人口密度数据的事件。估算区域可能重叠。"
+      "infoTooltip": "仅显示位置明确且所在国家有人口密度数据的事件。估算区域可能重叠。",
+      "eventCount_other": "{{count}} 起事件"
     },
     "securityAdvisories": {
       "loading": "正在加载旅行警告...",
@@ -2715,7 +2716,7 @@
         "countries": "受制裁国家",
         "entries": "最近指定",
         "programs": "计划",
-        "countryAttribution": "国家及船旗登记地"
+        "flagRegistries": "船舶旗籍登记"
       },
       "empty": {
         "countries": "无国家归属信息。",

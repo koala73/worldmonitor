@@ -1656,7 +1656,11 @@
       "estimateWithin": "Přibližně {{count}} lidí v okruhu {{km}} km",
       "method": "Odhady vycházejí z průměrné hustoty zalidnění dané země.",
       "empty": "Žádné vhodné lokality událostí",
-      "infoTooltip": "Zobrazují se pouze přesně lokalizované události v zemích s údaji o hustotě zalidnění. Odhadované oblasti se mohou překrývat."
+      "infoTooltip": "Zobrazují se pouze přesně lokalizované události v zemích s údaji o hustotě zalidnění. Odhadované oblasti se mohou překrývat.",
+      "eventCount_one": "{{count}} událost",
+      "eventCount_few": "{{count}} události",
+      "eventCount_many": "{{count}} událostí",
+      "eventCount_other": "{{count}} událostí"
     },
     "securityAdvisories": {
       "loading": "Načítání cestovních varování...",
@@ -2745,7 +2749,7 @@
         "countries": "Země s sankcemi",
         "entries": "Nedávné designace",
         "programs": "Programy",
-        "countryAttribution": "Země a vlajkové registry"
+        "flagRegistries": "Registry vlajek plavidel"
       },
       "empty": {
         "countries": "Žádná přiřazení zemí není dostupná.",

@@ -52,6 +52,34 @@ describe('dashboard population exposure', () => {
       ['point', Math.round(density * Math.PI * 50 ** 2), 50],
     ]);
   });
+
+  it('folds events at the same location into one row with their count', () => {
+    const kyiv = { name: 'Kyiv city, Ukraine', type: 'state-based', country: 'Ukraine', lat: 50.45, lon: 30.52333, hasPreciseLocation: true };
+    const events = [
+      { ...kyiv, id: '643820' },
+      { ...kyiv, id: 'vyshhorod', name: 'Vyshhorod town, Ukraine', lat: 50.58476, lon: 30.4898 },
+      { ...kyiv, id: '643824' },
+      { ...kyiv, id: 'projected', lat: 50.4500004, eventCount: 3 },
+    ];
+    const density = PRIORITY_COUNTRIES.UKR.pop / PRIORITY_COUNTRIES.UKR.area;
+    const estimate = Math.round(density * Math.PI * 50 ** 2);
+    assert.deepEqual(enrichEventsWithExposure(events).map(e => [e.eventId, e.eventName, e.eventCount, e.exposedPopulation]), [
+      ['643820', 'Kyiv city, Ukraine', 5, estimate],
+      ['vyshhorod', 'Vyshhorod town, Ukraine', 1, estimate],
+    ]);
+  });
+
+  it('spends the row limit on distinct locations and still counts later repeats', () => {
+    const point = { name: 'p', type: 'conflict', country: 'Ukraine', hasPreciseLocation: true };
+    const events = [
+      { ...point, id: 'a1', lat: 50, lon: 30 },
+      { ...point, id: 'a2', lat: 50, lon: 30 },
+      { ...point, id: 'b', lat: 49, lon: 31 },
+      { ...point, id: 'c', lat: 48, lon: 32 },
+      { ...point, id: 'a3', lat: 50, lon: 30 },
+    ];
+    assert.deepEqual(enrichEventsWithExposure(events, 2).map(e => [e.eventId, e.eventCount]), [['a1', 3], ['b', 1]]);
+  });
 });
 
 describe('analysis-population-exposure core', () => {

@@ -1146,7 +1146,10 @@
       "estimateWithin": "Cerca de {{count}} pessoas num raio de {{km}} km",
       "method": "As estimativas usam a densidade populacional média do país.",
       "empty": "Nenhum local de evento atende aos critérios",
-      "infoTooltip": "Só são exibidos eventos com localização precisa em países com dados de densidade populacional. As áreas estimadas podem se sobrepor."
+      "infoTooltip": "Só são exibidos eventos com localização precisa em países com dados de densidade populacional. As áreas estimadas podem se sobrepor.",
+      "eventCount_one": "{{count}} evento",
+      "eventCount_many": "{{count}} eventos",
+      "eventCount_other": "{{count}} eventos"
     },
     "countryTimeline": {
       "now": "agora",
@@ -2349,7 +2352,7 @@
         "countries": "Países sancionados",
         "entries": "Designações recentes",
         "programs": "Programas",
-        "countryAttribution": "Países e registros de bandeira"
+        "flagRegistries": "Registos de bandeira de navios"
       },
       "empty": {
         "countries": "Nenhuma atribuição de país disponível.",

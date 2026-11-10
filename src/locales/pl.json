@@ -1591,7 +1591,11 @@
       "estimateWithin": "Około {{count}} osób w promieniu {{km}} km",
       "method": "Szacunki opierają się na średniej gęstości zaludnienia kraju.",
       "empty": "Brak lokalizacji zdarzeń spełniających kryteria",
-      "infoTooltip": "Wyświetlane są tylko zdarzenia o dokładnej lokalizacji w krajach z dostępnymi danymi o gęstości zaludnienia. Szacowane obszary mogą się nakładać."
+      "infoTooltip": "Wyświetlane są tylko zdarzenia o dokładnej lokalizacji w krajach z dostępnymi danymi o gęstości zaludnienia. Szacowane obszary mogą się nakładać.",
+      "eventCount_one": "{{count}} zdarzenie",
+      "eventCount_few": "{{count}} zdarzenia",
+      "eventCount_many": "{{count}} zdarzeń",
+      "eventCount_other": "{{count}} zdarzeń"
     },
     "countryTimeline": {
       "now": "Teraz",
@@ -2745,7 +2749,7 @@
         "countries": "Kraje objęte sankcjami",
         "entries": "Niedawne desygnacje",
         "programs": "Programy",
-        "countryAttribution": "Kraje i rejestry bander"
+        "flagRegistries": "Rejestry flag statków"
       },
       "empty": {
         "countries": "Brak przypisania kraju.",

@@ -1819,7 +1819,9 @@
       "estimateWithin": "Körülbelül {{count}} ember {{km}} km-es körzetben",
       "method": "A becslések az ország átlagos népsűrűségén alapulnak.",
       "empty": "Nincs megfelelő eseményhelyszín",
-      "infoTooltip": "Csak pontos helyszínnel rendelkező események jelennek meg azokban az országokban, amelyekről van népsűrűségi adat. A becsült területek átfedhetik egymást."
+      "infoTooltip": "Csak pontos helyszínnel rendelkező események jelennek meg azokban az országokban, amelyekről van népsűrűségi adat. A becsült területek átfedhetik egymást.",
+      "eventCount_one": "{{count}} esemény",
+      "eventCount_other": "{{count}} esemény"
     },
     "securityAdvisories": {
       "loading": "Utazási tanácsok letöltése...",
@@ -2794,7 +2796,7 @@
         "countries": "Szankcionált országok",
         "entries": "Legutóbbi bejelentések",
         "programs": "Programok",
-        "countryAttribution": "Országok és lobogó szerinti nyilvántartások"
+        "flagRegistries": "Hajólobogó-nyilvántartások"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",

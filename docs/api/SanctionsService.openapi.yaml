@@ -475,6 +475,10 @@ components:
                     description: Present when the SEMA source failed while other sanctions data remained available.
                 unattributed:
                     $ref: '#/components/schemas/UnattributedSanctionsPressure'
+                flagRegistries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlagRegistrySanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         SanctionsEntry:
             type: object
@@ -560,6 +564,23 @@ components:
                 aircraftCount:
                     type: integer
                     format: int32
+        FlagRegistrySanctionsPressure:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                countryName:
+                    type: string
+                vesselCount:
+                    type: integer
+                    format: int32
+                newVesselCount:
+                    type: integer
+                    format: int32
+            description: |-
+                FlagRegistrySanctionsPressure counts sanctioned vessels by flag registry. The response
+                 lists at most 12 registries, ordered by new vessel count, then vessel count, so an
+                 omitted registry may still flag sanctioned vessels. Older snapshots return none.
         LookupSanctionEntityRequest:
             type: object
             properties:
