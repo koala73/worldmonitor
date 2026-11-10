@@ -12,4 +12,3 @@ export function inRing(lon: number, lat: number, ring: Ring): boolean {
   }
   return inside;
 }
-
