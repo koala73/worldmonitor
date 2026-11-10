@@ -111,7 +111,6 @@ export class PanelTabBar {
     this.optionsBtn.title = t('dashboardTabs.newTabOptions');
     this.optionsBtn.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
     this.optionsBtn.setAttribute('aria-expanded', 'false');
-    this.optionsBtn.setAttribute('aria-controls', 'dashboard-tab-options');
     this.optionsBtn.addEventListener('click', () => this.toggleNewTabOptions());
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
@@ -290,7 +289,10 @@ export class PanelTabBar {
 
     this.notice = notice;
     this.noticeKind = kind;
-    if (kind === 'options') this.optionsBtn.setAttribute('aria-expanded', 'true');
+    if (kind === 'options') {
+      this.optionsBtn.setAttribute('aria-expanded', 'true');
+      this.optionsBtn.setAttribute('aria-controls', notice.id);
+    }
     document.addEventListener('mousedown', this.onNoticeOutsideClick);
     document.addEventListener('keydown', this.onNoticeKeyDown);
     focus.focus();
@@ -305,6 +307,7 @@ export class PanelTabBar {
     this.notice = null;
     this.noticeKind = null;
     this.optionsBtn.setAttribute('aria-expanded', 'false');
+    this.optionsBtn.removeAttribute('aria-controls');
     if (restoreFocus) anchor?.focus();
   }
 

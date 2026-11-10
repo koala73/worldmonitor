@@ -121,6 +121,17 @@ describe('PanelTabBar new tab options popover', () => {
     expect(optionsBtn().getAttribute('aria-expanded')).toBe('false');
   });
 
+  it('points aria-controls at the popover only while the popover exists', () => {
+    expect(optionsBtn().hasAttribute('aria-controls')).toBe(false);
+
+    optionsBtn().click();
+    const controlled = document.getElementById(optionsBtn().getAttribute('aria-controls') ?? '');
+    expect(controlled).toBe(popover());
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(optionsBtn().hasAttribute('aria-controls')).toBe(false);
+  });
+
   it('closes on an outside mousedown but not on one inside it or on its button', () => {
     optionsBtn().click();
 
