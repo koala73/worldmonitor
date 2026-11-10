@@ -12,7 +12,7 @@ import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
-import type { MarketData, InternetOutage } from '@/types';
+import type { MarketData, InternetOutage, UcdpGeoEvent } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
@@ -468,6 +468,8 @@ export class DataLoaderManager implements AppModule {
   private orefUnsubscribe: (() => void) | null = null;
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
+  // The scheduled refresh replaces intelligenceCache before fetching new data.
+  private ucdpExposureEvents?: UcdpGeoEvent[];
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -3808,7 +3810,7 @@ export class DataLoaderManager implements AppModule {
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
-        this.ctx.intelligenceCache.ucdpEvents = events;
+        this.ucdpExposureEvents = events;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
@@ -3957,7 +3959,8 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const { protests, ucdpEvents } = this.ctx.intelligenceCache;
+      const { protests } = this.ctx.intelligenceCache;
+      const ucdpEvents = this.ucdpExposureEvents;
       const perSourceLimit = 10;
       const exposures = [
         ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({

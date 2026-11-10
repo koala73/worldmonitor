@@ -20,7 +20,6 @@ import type { SanctionsPressureResult } from '@/services/sanctions-pressure';
 import type { RadiationWatchResult } from '@/services/radiation';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 import type { Earthquake } from '@/services/earthquakes';
-import type { UcdpGeoEvent } from '@/types';
 
 export type { CountryBriefSignals } from '@/types';
 
@@ -42,7 +41,6 @@ export interface UnifiedSettingsController {
 
 export interface IntelligenceCache {
   conflicts?: ConflictEvent[];
-  ucdpEvents?: UcdpGeoEvent[];
   // Coordinate-resolved sources whose country-detail attribution depends on precision
   // country geometry. They are ingested during the visible-data fan-out (before
   // geometry is ready, so attribution is coarse/empty) and replayed once

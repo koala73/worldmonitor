@@ -341,6 +341,8 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
 
     await loader.loadIntelligenceSignals();
+    // App replaces this cache before each scheduled intelligence refresh.
+    ctx.intelligenceCache = {};
     await loader.loadIntelligenceSignals();
 
     expect(setExposures).toHaveBeenCalledTimes(2);
