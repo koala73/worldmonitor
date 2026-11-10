@@ -210,7 +210,7 @@ describe("adminNewSubscriptionHtml", () => {
         acquisition: { source: "chatgpt-com", referrer: "direct", landing: "dashboard", firstSeen: "2026-03-20" },
       },
     });
-    expect(html).toMatch(/Source:<\/td><td[^>]*>chatgpt-com</);
+    expect(html).toMatch(/Source:<\/td><td[^>]*>ChatGPT \(chatgpt-com\)</);
     expect(html).toMatch(/Referrer:<\/td><td[^>]*>none recorded \(source from utm tag\)</);
     expect(html).not.toMatch(/Referrer:<\/td><td[^>]*>direct</);
   });
