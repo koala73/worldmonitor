@@ -86,6 +86,9 @@ import {
   saveTabsState,
   generateTabId,
   buildNewTabPanels,
+  clearNewTabPanels,
+  hasNewTabPanels,
+  saveNewTabPanels,
 } from '@/services/tab-store';
 import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
@@ -1490,9 +1493,25 @@ export class PanelLayoutManager implements AppModule {
       onAdd: () => this.addTab(),
       onRename: (id, name) => this.renameTab(id, name),
       onDelete: (id) => this.deleteTab(id),
+      hasNewTabPanels,
+      onSaveNewTabPanels: () => this.saveActiveTabAsNewTabPanels(),
+      onClearNewTabPanels: () => this.useDefaultNewTabPanels(),
     });
     mount.appendChild(this.panelTabBar.getElement());
     this.updateTabCapLock();
+  }
+
+  private saveActiveTabAsNewTabPanels(): void {
+    // The same capture a tab snapshot uses, so unsaved drags and toggles count.
+    const { persisted } = saveNewTabPanels(this.captureCurrentTabState().snapshot);
+    this.panelTabBar?.refresh();
+    showToast(t(persisted ? 'dashboardTabs.newTabStartsSaved' : 'dashboardTabs.newTabPanelsNotSaved'));
+  }
+
+  private useDefaultNewTabPanels(): void {
+    clearNewTabPanels();
+    this.panelTabBar?.refresh();
+    showToast(t('dashboardTabs.newTabStartsDefault'));
   }
 
   /**
