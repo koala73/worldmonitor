@@ -98,6 +98,7 @@ export function hasNativeAbortSignalTimeout(): boolean {
     && AbortSignal.timeout !== fallbackTimeoutSignal;
 }
 
+/** Same as `hasNativeAbortSignalTimeout`, for `AbortSignal.any`. */
 export function hasNativeAbortSignalAny(): boolean {
   return typeof AbortSignal !== 'undefined'
     && typeof AbortSignal.any === 'function'

@@ -12,6 +12,7 @@
  */
 import { fallbackAnySignal, fallbackTimeoutSignal } from '@/services/timeout-signal';
 
+/** Define the missing functions on `AbortSignal`; a no-op where both are native. */
 export function installAbortSignalFallbacks(): void {
   if (typeof AbortSignal === 'undefined' || typeof AbortController === 'undefined') return;
   const target = AbortSignal as unknown as Record<string, unknown>;
