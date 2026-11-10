@@ -2718,7 +2718,7 @@ describe('homepage WebMCP source registration', () => {
 
   it('observes registerTool promises', () => {
     assert.ok(homepageSourceScript);
-    assert.match(homepageSourceScript.body, /Promise\.resolve\(provider\.registerTool\(tools\[i\]\)\)/);
+    assert.match(homepageSourceScript.body, /Promise\.resolve\(results\[i\]\)\.then\(/);
     assert.match(homepageSourceScript.body, /function \(\) \{ return false; \}/);
   });
 
@@ -2726,20 +2726,20 @@ describe('homepage WebMCP source registration', () => {
     const result = runHomepage(collectingHomepageProvider);
     assert.deepEqual(result.registered.map((tool) => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
     assert.equal(result.registered[0].annotations.readOnlyHint, false);
-    assert.equal(result.registered[1].annotations.readOnlyHint, true);
+    assert.ok(result.registered.slice(1).every((tool) => tool.annotations.readOnlyHint === true));
     assert.ok(result.registered.every((tool) => typeof tool.title === 'string'));
   });
 
   it('returns native values and routes launch requests safely', async () => {
     const finance = runHomepage(collectingHomepageProvider);
-    const launch = finance.registered.find((tool) => tool.name === 'launchWorldMonitor');
+    const launch = finance.registered.find((tool) => tool.name === 'openDashboard');
     const launchResult = await launch.execute({ monitor: 'finance' });
     assert.equal(launchResult, 'Opening the finance monitor: https://finance.worldmonitor.app/dashboard');
     assert.equal(finance.navigatedTo, 'https://finance.worldmonitor.app/dashboard');
 
     for (const bad of ['xyz', 'constructor', '__proto__', 'toString', 'valueOf']) {
       const fallback = runHomepage(collectingHomepageProvider);
-      await fallback.registered.find((tool) => tool.name === 'launchWorldMonitor').execute({ monitor: bad });
+      await fallback.registered.find((tool) => tool.name === 'openDashboard').execute({ monitor: bad });
       assert.equal(fallback.navigatedTo, 'https://www.worldmonitor.app/dashboard');
     }
 
@@ -2750,6 +2750,43 @@ describe('homepage WebMCP source registration', () => {
     assert.equal(endpointResult.endpoint, 'https://worldmonitor.app/mcp');
     assert.equal(endpointResult.transport, 'streamableHttp');
     assert.equal(endpointResult.tools, undefined);
+  });
+
+  it('pages and filters the public scorecard list, and summarizes one country', async (t) => {
+    const pillar = (name, hasScore) => ({ pillar: name, hasScore, score: hasScore ? 4 : 0, band: hasScore ? 'strong-capability' : '', inputCoverage: 0.8, inputs: [{ source: 'World Bank' }, { source: 'World Bank' }, { source: 'UN WPP' }, { source: 'SIPRI' }, { source: 'OWID' }] });
+    const cards = Array.from({ length: 20 }, (_, i) => ({ countryCode: `A${String.fromCharCode(65 + i)}`, pillars: [pillar('food', true), pillar('energy', i % 2 === 0)] }));
+    const requested = [];
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      requested.push(url);
+      if (url.endsWith('countryCode=ZZ')) return new Response('{}', { status: 503 });
+      const body = url.includes('list-five-factor-scorecards')
+        ? { scorecards: cards, computedAt: '2026-11-10T12:00:00.000Z' }
+        : { scorecard: { countryCode: 'AB', methodologyVersion: '1.0.0', computedAt: '2026-11-10T12:00:00.000Z', pillars: cards[1].pillars } };
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const { registered } = runHomepage(collectingHomepageProvider);
+    const list = registered.find((tool) => tool.name === 'listCountryScorecards');
+    const detail = registered.find((tool) => tool.name === 'getCountryScorecard');
+
+    const first = await list.execute({});
+    assert.equal(first.total, 20);
+    assert.equal(first.scorecards.length, 15);
+    assert.equal(first.nextOffset, 15);
+    assert.deepEqual(first.scorecards[1], { countryCode: 'AB', scores: { food: 4, energy: null } });
+    const last = await list.execute({ offset: 15 });
+    assert.equal(last.scorecards.length, 5);
+    assert.equal(last.nextOffset, null);
+    const filtered = await list.execute({ countryCodes: ['ab', 'AC', 'QQ'] });
+    assert.deepEqual(filtered.scorecards.map((row) => row.countryCode), ['AB', 'AC']);
+    assert.throws(() => list.execute({ countryCodes: ['A1'] }), /two-letter ISO/);
+
+    const one = await detail.execute({ countryCode: 'ab' });
+    assert.equal(requested.at(-1), 'https://www.worldmonitor.app/api/scorecard/v1/get-five-factor-scorecard?countryCode=AB');
+    assert.deepEqual(one.pillars[0], { pillar: 'food', score: 4, band: 'strong-capability', inputCoverage: 0.8, sources: ['World Bank', 'UN WPP', 'SIPRI'] });
+    assert.equal(one.pillars[1].score, null);
+    assert.equal(one.evidenceUrl, requested.at(-1));
+    assert.throws(() => detail.execute({ countryCode: 'DEU' }), /two-letter ISO/);
+    await assert.rejects(detail.execute({ countryCode: 'ZZ' }), /HTTP 503/);
   });
 
   it('does not call the obsolete batch API', () => {
@@ -2776,7 +2813,7 @@ describe('homepage WebMCP source registration', () => {
         return Promise.reject(new DOMException('duplicate', 'InvalidStateError'));
       },
     }));
-    assert.equal(result.registered.length, 2);
+    assert.equal(result.registered.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
     await settlePromises();
   });
 
@@ -3461,7 +3498,7 @@ describe('legacy WebMCP compatibility', () => {
       result.documentListeners.get('DOMContentLoaded')();
       result.windowListeners.get('load')();
       assert.deepEqual(registered.map(tool => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
-      assert.equal(calls, batch ? 1 : 2);
+      assert.equal(calls, batch ? 1 : WEBMCP_HOMEPAGE_TOOL_NAMES.length);
       assert.equal(registered[1].execute({}).endpoint, 'https://worldmonitor.app/mcp');
       await settlePromises();
     });
@@ -3474,7 +3511,7 @@ describe('legacy WebMCP compatibility', () => {
     harness.runtime.navigator = navigator;
     registerWebMcpTools(createBindings(), harness.runtime);
     assert.deepEqual(registered.map(tool => tool.name), DASHBOARD_TOOL_NAMES);
-    assert.equal(runHomepage(collectingHomepageProvider, navigator).registered.length, 2);
+    assert.equal(runHomepage(collectingHomepageProvider, navigator).registered.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
   });
 
   it('contains rejected legacy batch registrations on both pages', async () => {
