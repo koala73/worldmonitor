@@ -17,7 +17,9 @@ message ListSanctionsPressureRequest {
 message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
   // Top 12 countries by address or nationality, or for a Canadian SEMA person or entity
-  // the state its regulation targets. A designation can be associated with more than one
+  // the state its regulation targets when the matching OFAC record gives no country. SEMA
+  // vessels, the Ukraine and Moldova regulations and the thematic JVCFOR, Hamas and Settler
+  // regimes give no country. A designation can be associated with more than one
   // country. Vessel flags and aircraft registries are counted in flag_registries instead.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;

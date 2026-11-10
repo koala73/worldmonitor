@@ -355,7 +355,8 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
   it('serves vessel flag registries apart from countries, and none for older snapshots', async () => {
     const panama = { countryCode: 'PA', countryName: 'Panama', vesselCount: 276, newVesselCount: 2 };
     cacheStore.set(REDIS_KEY, cachedPayload({ flagRegistries: [panama] }));
-    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries, [panama]);
+    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries,
+      [{ ...panama, aircraftCount: 0, newAircraftCount: 0 }]);
     cacheStore.set(REDIS_KEY, cachedPayload());
     assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries, []);
   });
