@@ -13,7 +13,7 @@
  */
 
 import * as Sentry from '@sentry/react';
-import { ensureClerk, type LoadedClerk } from './clerk';
+import { ensureClerk, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, type LoadedClerk } from './clerk';
 export { ensureClerk } from './clerk';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
@@ -292,6 +292,10 @@ async function startCheckoutInner(
   try {
     c = await ensureClerk();
   } catch (err) {
+    if (err instanceof SiteDataBlockedError) {
+      showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
+      return false;
+    }
     console.error('[checkout] Failed to load Clerk:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
     showCheckoutErrorToast('Sign-in could not load. Please try again.');
@@ -853,7 +857,7 @@ function showCheckoutLoadingToast(): void {
   setTimeout(() => toast.remove(), 5_000);
 }
 
-function showCheckoutErrorToast(message = 'Checkout is unavailable right now. Please try again. If this continues, contact support@worldmonitor.app.'): void {
+export function showCheckoutErrorToast(message = 'Checkout is unavailable right now. Please try again. If this continues, contact support@worldmonitor.app.'): void {
   const id = 'wm-checkout-error-toast';
   document.getElementById(id)?.remove();
   const toast = document.createElement('div');

@@ -305,9 +305,15 @@ describe('Clerk translator isolation', () => {
       protectionStops: 0,
     };
     const { ensureClerk } = await loadClerkServiceWithFailedLoad();
-
-    await assert.rejects(ensureClerk(), /simulated Clerk load failure/);
-    await assert.rejects(ensureClerk(), /simulated Clerk load failure/);
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+    Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: { localStorage: {} } });
+    try {
+      await assert.rejects(ensureClerk(), /simulated Clerk load failure/);
+      await assert.rejects(ensureClerk(), /simulated Clerk load failure/);
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+      else Reflect.deleteProperty(globalThis, 'window');
+    }
     assert.deepEqual(globalThis.__proClerkLoadHarness, {
       loadCalls: 2,
       protectionStarts: 2,
