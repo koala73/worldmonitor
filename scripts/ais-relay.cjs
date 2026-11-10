@@ -3556,13 +3556,14 @@ const _sparklineHistories = new Map();
 
 async function _commoditySparkline(symbol, quote) {
   const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
-  let cached = _sparklineHistories.get(symbol);
-  if (cached?.firstBarAt !== firstBarAt) {
+  const cacheable = Number.isFinite(firstBarAt);
+  let cached = cacheable ? _sparklineHistories.get(symbol) : null;
+  if (!cached || cached.firstBarAt !== firstBarAt) {
     await sleep(150);
     const history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
     cached = { firstBarAt, chart: history?.chart ?? null };
-    if (history) _sparklineHistories.set(symbol, cached);
-    else logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
+    if (history && cacheable) _sparklineHistories.set(symbol, cached);
+    if (!history) logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
   }
   const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
   return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };

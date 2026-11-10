@@ -253,11 +253,12 @@ export async function fetchYahooQuoteChart(symbol, {
   let sparkline = null;
   if (sparklineWindow) {
     const sessionStart = chart?.chart?.result?.[0]?.timestamp?.[0] ?? lastTradeAt;
-    let history = historyCache ? await historyCache.load(symbol, sessionStart).catch(() => null) : null;
+    const cacheable = historyCache && Number.isFinite(sessionStart);
+    let history = cacheable ? await historyCache.load(symbol, sessionStart).catch(() => null) : null;
     if (!history) {
       await sleep(delayMs);
       history = await fetchJson(`${url}${SPARKLINE_HISTORY_QUERY}`, { maxRetries: 0 }).catch(() => null);
-      if (history && historyCache) await historyCache.save(symbol, sessionStart, history).catch(() => {});
+      if (history && cacheable) await historyCache.save(symbol, sessionStart, history).catch(() => {});
       if (!history) console.warn(`  [YAHOO] ${symbol} sparkline history unavailable; publishing today's bars only`);
     }
     const { sparkline: values, ...labels } = buildQuoteSparkline(chart, history);
