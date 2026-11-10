@@ -1,7 +1,7 @@
 /**
  * Finds which density-table country contains a point, for exposure callers
  * that hold only a lat/lon (the REST RPC, MCP point mode, earthquake and fire
- * feeds). The outlines come from `public/data/countries.geojson` via
+ * feeds). The outlines come from `public/data/countries-50m.json` via
  * `scripts/generate-population-density-boundaries.mjs`.
  *
  * Kept apart from `analysis-population-exposure.ts` so the dashboard, which
