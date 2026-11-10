@@ -198,7 +198,7 @@ async function fetchCommodityQuotes() {
     try {
       let parsed;
       try {
-        parsed = await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS });
+        parsed = await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS, sparklineWindow: true });
       } catch {
         misses++;
         continue;

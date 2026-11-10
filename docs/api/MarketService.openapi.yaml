@@ -325,6 +325,8 @@ paths:
                                           - 93
                                           - 92
                                           - 91.6
+                                      "sparklineIntervalSeconds": 300
+                                      "sparklineStartAt": 1794290700000
                                       "symbol": "BZ=F"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
@@ -3756,7 +3758,7 @@ components:
                     items:
                         type: number
                         format: double
-                        description: Sparkline data points.
+                        description: Sparkline closes, oldest first. Bars with no trades are left out.
                 priceSource:
                     type: string
                     description: Observed price provider, when known for Brent and WTI.
@@ -3767,6 +3769,14 @@ components:
                     type: integer
                     format: int64
                     description: 'Provider observation time in Unix epoch milliseconds, with daily spot dates represented at midnight UTC. Warning: Values > 2^53 may lose precision in JavaScript'
+                sparklineIntervalSeconds:
+                    type: integer
+                    format: int32
+                    description: 'Width of each sparkline bar in seconds: 300 for the 24-hour intraday series, 86400 for daily closes.'
+                sparklineStartAt:
+                    type: integer
+                    format: int64
+                    description: 'Start of the first sparkline bar in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
             required:
                 - symbol
             description: CommodityQuote represents a commodity price observation.

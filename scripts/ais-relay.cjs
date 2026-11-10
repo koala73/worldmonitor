@@ -123,6 +123,7 @@ const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const { SPARKLINE_HISTORY_QUERY, buildQuoteSparkline } = require('./shared/quote-sparkline.cjs');
 const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
@@ -3549,6 +3550,23 @@ async function _withPreviousSessionChange(symbol, quote) {
   return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
 }
 
+// History bars before the default chart's first bar never change, so one
+// history request per symbol per session covers every 5-minute cycle.
+const _sparklineHistories = new Map();
+
+async function _commoditySparkline(symbol, quote) {
+  const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
+  let cached = _sparklineHistories.get(symbol);
+  if (cached?.firstBarAt !== firstBarAt) {
+    await sleep(150);
+    const history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+    cached = { firstBarAt, chart: history?.chart ?? null };
+    if (history) _sparklineHistories.set(symbol, cached);
+  }
+  const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
+  return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
   return _fetchYahooChartOnce(symbol, query)
     .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
@@ -3784,14 +3802,15 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
-  const toQuote = (symbol, meta, yahoo) => ({
-    symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline,
+  const toQuote = async (symbol, meta, yahoo) => ({
+    symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
+    ...(await _commoditySparkline(symbol, yahoo)),
     ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
   });
   for (const s of COMMODITY_SYMBOLS) {
     const meta = COMMODITY_META.get(s) || { name: s, display: s };
     const yahoo = await fetchYahooChartDirect(s);
-    if (yahoo) quotes.push(toQuote(s, meta, yahoo));
+    if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
     else missing.push(s);
     await sleep(150);
   }
@@ -3801,7 +3820,7 @@ async function seedCommodityQuotes() {
     for (const s of missing) {
       const meta = COMMODITY_META.get(s);
       const yahoo = await fetchYahooChartDirect(s);
-      if (yahoo) quotes.push(toQuote(s, meta, yahoo));
+      if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
       await sleep(200);
     }
   }

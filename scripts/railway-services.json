@@ -104,6 +104,7 @@
       "scripts/shared/ucdp-candidate.cjs",
       "scripts/_ucdp-dashboard.mjs",
       "scripts/shared/yahoo-closed-session.cjs",
+      "scripts/shared/quote-sparkline.cjs",
       "scripts/source-attribution.mjs",
       "public/.well-known/mcp/server-card.json",
       "shared/compare-and-delete-script.cjs",
@@ -1237,6 +1238,7 @@
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
       "scripts/shared/yahoo-closed-session.cjs",
+      "scripts/shared/quote-sparkline.cjs",
       "shared/ai-tokens.json",
       "shared/crypto.json",
       "shared/defi-tokens.json",
@@ -1663,6 +1665,7 @@
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/yahoo-closed-session.cjs",
+      "scripts/shared/quote-sparkline.cjs",
       "shared/commodities.json"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
@@ -2058,6 +2061,7 @@
       "scripts/seed-fx-yoy.mjs",
       "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/yahoo-closed-session.cjs",
+      "scripts/shared/quote-sparkline.cjs",
       "scripts/shared/compare-and-delete-script.cjs"
     ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"

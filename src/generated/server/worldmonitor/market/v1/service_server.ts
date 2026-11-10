@@ -65,6 +65,8 @@ export interface CommodityQuote {
   priceSource?: string;
   priceBasis?: string;
   priceAt?: number;
+  sparklineIntervalSeconds?: number;
+  sparklineStartAt?: number;
 }
 
 export interface GetPhysicalPremiumsRequest {

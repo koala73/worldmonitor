@@ -26,9 +26,10 @@
 // the CONNECT pool), add a second leg following the
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
-import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline } from './_seed-utils.mjs';
 import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
 import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
+import { SPARKLINE_HISTORY_QUERY, buildQuoteSparkline } from './shared/quote-sparkline.cjs';
 
 const RETRYABLE_STATUSES = new Set([429, 503]);
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -197,9 +198,11 @@ export async function fetchYahooJson(url, opts = {}) {
  * Fetch and parse one Yahoo quote. A chart rolled to a session that has not
  * traded costs a second, staggered request for the daily chart holding the
  * last completed session's previous close; without it the change reads 0.00%.
+ * `sparklineWindow` costs one more request for the 24-hour sparkline's history.
  */
 export async function fetchYahooQuoteChart(symbol, {
   delayMs = 150,
+  sparklineWindow = false,
   fetchJson = (url, options) => fetchYahooJson(url, { label: symbol, ...options }),
 } = {}) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
@@ -213,5 +216,13 @@ export async function fetchYahooQuoteChart(symbol, {
     previousClose = previousSessionClose(daily, lastTradeAt);
   }
   const quote = parseYahooChart(chart, symbol, { previousClose });
-  return quote && { ...quote, ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', lastTradeAt * 1000) };
+  if (!quote) return null;
+  let sparkline = null;
+  if (sparklineWindow) {
+    await sleep(delayMs);
+    const history = await fetchJson(`${url}${SPARKLINE_HISTORY_QUERY}`, { maxRetries: 0 }).catch(() => null);
+    const { sparkline: values, ...labels } = buildQuoteSparkline(chart, history);
+    sparkline = { sparkline: roundSparkline(values), ...labels };
+  }
+  return { ...quote, ...sparkline, ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', lastTradeAt * 1000) };
 }
