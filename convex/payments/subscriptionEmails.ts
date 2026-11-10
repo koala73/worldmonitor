@@ -443,30 +443,30 @@ function dayBeforePurchase(day: string, purchasedAt: number): string {
 }
 
 // Stored utm_source tokens are dash-normalized (`chatgpt.com` → `chatgpt-com`).
-const AI_ASSISTANT_SOURCES: Readonly<Record<string, string>> = {
-  "chatgpt-com": "ChatGPT",
-  "chat-openai-com": "ChatGPT",
-  openai: "ChatGPT",
-  perplexity: "Perplexity",
-  "perplexity-ai": "Perplexity",
-  claude: "Claude",
-  "claude-ai": "Claude",
-  anthropic: "Claude",
-  copilot: "Copilot",
-  "copilot-com": "Copilot",
-  "copilot-microsoft-com": "Copilot",
-  gemini: "Gemini",
-  "gemini-google-com": "Gemini",
-  grok: "Grok",
-  "grok-com": "Grok",
-  deepseek: "DeepSeek",
-  "chat-deepseek-com": "DeepSeek",
-  "meta-ai": "Meta AI",
-  poe: "Poe",
-};
+const AI_ASSISTANT_SOURCES: ReadonlyMap<string, string> = new Map([
+  ["chatgpt-com", "ChatGPT"],
+  ["chat-openai-com", "ChatGPT"],
+  ["openai", "ChatGPT"],
+  ["perplexity", "Perplexity"],
+  ["perplexity-ai", "Perplexity"],
+  ["claude", "Claude"],
+  ["claude-ai", "Claude"],
+  ["anthropic", "Claude"],
+  ["copilot", "Copilot"],
+  ["copilot-com", "Copilot"],
+  ["copilot-microsoft-com", "Copilot"],
+  ["gemini", "Gemini"],
+  ["gemini-google-com", "Gemini"],
+  ["grok", "Grok"],
+  ["grok-com", "Grok"],
+  ["deepseek", "DeepSeek"],
+  ["chat-deepseek-com", "DeepSeek"],
+  ["meta-ai", "Meta AI"],
+  ["poe", "Poe"],
+]);
 
 function sourceLabel(source: string | undefined): string | undefined {
-  const name = source ? AI_ASSISTANT_SOURCES[source] : undefined;
+  const name = source ? AI_ASSISTANT_SOURCES.get(source) : undefined;
   return name ? `${name} (${source})` : source;
 }
 

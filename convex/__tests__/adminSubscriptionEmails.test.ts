@@ -232,6 +232,8 @@ describe("adminNewSubscriptionHtml", () => {
     expect(sourceRow("perplexity-ai")).toBe("Perplexity (perplexity-ai)");
     expect(sourceRow("claude-ai", { medium: "referral" })).toBe("Claude (claude-ai) / referral");
     expect(sourceRow("twitter", { medium: "social" })).toBe("twitter / social");
+    expect(sourceRow("constructor")).toBe("constructor");
+    expect(sourceRow("tostring")).toBe("tostring");
   });
 
   test("a referral alone counts as a captured source", () => {
