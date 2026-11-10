@@ -6,7 +6,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { toApiUrl } from '@/services/runtime';
 import type { SanctionsEntry as ProtoSanctionsEntry, SanctionsEntityType as ProtoSanctionsEntityType, CountrySanctionsPressure as ProtoCountryPressure, ProgramSanctionsPressure as ProtoProgramPressure, ListSanctionsPressureResponse, UnattributedSanctionsPressure, FlagRegistrySanctionsPressure } from '@/generated/client/worldmonitor/sanctions/v1/service_client';
 import { SanctionsServiceClient } from '@/services/generated-rpc-clients';
-import { splitSanctionsAttribution } from '../../shared/sanctions-attribution';
+import { normalizeFlagRegistries, splitSanctionsAttribution } from '../../shared/sanctions-attribution';
 
 export type { FlagRegistrySanctionsPressure };
 
@@ -102,7 +102,7 @@ function reviveSanctionsPressureResult(result: SanctionsPressureResult): Sanctio
   return {
     ...result,
     ...splitSanctionsAttribution(result.countries ?? [], result.unattributed),
-    flagRegistries: result.flagRegistries ?? [],
+    flagRegistries: normalizeFlagRegistries(result.flagRegistries),
     fetchedAt: reviveDate(result.fetchedAt),
     datasetDate: reviveNullableDate(result.datasetDate),
     entries: result.entries.map((entry) => ({
@@ -167,6 +167,7 @@ function toProgram(raw: ProtoProgramPressure): ProgramSanctionsPressure {
 }
 
 
+
 function toResult(response: ListSanctionsPressureResponse): SanctionsPressureResult {
   return {
     fetchedAt: parseEpoch(response.fetchedAt as string | number | undefined) || new Date(),
@@ -180,12 +181,7 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
     vesselCount: response.vesselCount ?? 0,
     aircraftCount: response.aircraftCount ?? 0,
     ...splitSanctionsAttribution((response.countries ?? []).map(toCountry), response.unattributed),
-    flagRegistries: (response.flagRegistries ?? []).map(registry => ({
-      countryCode: registry.countryCode,
-      countryName: registry.countryName,
-      vesselCount: registry.vesselCount ?? 0,
-      newVesselCount: registry.newVesselCount ?? 0,
-    })),
+    flagRegistries: normalizeFlagRegistries(response.flagRegistries),
     programs: (response.programs ?? []).map(toProgram),
     entries: (response.entries ?? []).map(toEntry),
   };

@@ -2716,7 +2716,7 @@
         "countries": "制裁国",
         "entries": "最近の指定",
         "programs": "プログラム",
-        "flagRegistries": "船籍登録国"
+        "flagRegistries": "船籍・航空機登録国"
       },
       "empty": {
         "countries": "国の帰属情報がありません。",

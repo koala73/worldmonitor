@@ -62,6 +62,8 @@ export interface FlagRegistrySanctionsPressure {
   countryName: string;
   vesselCount: number;
   newVesselCount: number;
+  aircraftCount: number;
+  newAircraftCount: number;
 }
 
 export interface LookupSanctionEntityRequest {

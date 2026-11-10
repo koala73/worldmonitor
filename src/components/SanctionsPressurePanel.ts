@@ -131,8 +131,9 @@ export class SanctionsPressurePanel extends Panel {
   }
 
   private renderFlagRegistryRow(registry: FlagRegistrySanctionsPressure): string {
-    const newFlag = registry.newVesselCount > 0
-      ? `<span class="sanctions-pill sanctions-pill-new">${escapeHtml(t('components.sanctionsPressure.pills.newCount', { count: registry.newVesselCount }))}</span>`
+    const newCount = registry.newVesselCount + registry.newAircraftCount;
+    const newFlag = newCount > 0
+      ? `<span class="sanctions-pill sanctions-pill-new">${escapeHtml(t('components.sanctionsPressure.pills.newCount', { count: newCount }))}</span>`
       : '';
     return `
       <div class="sanctions-row">
@@ -140,7 +141,7 @@ export class SanctionsPressurePanel extends Panel {
           <div class="sanctions-row-title">${escapeHtml(registry.countryName)}</div>
           <div class="sanctions-row-meta">${escapeHtml(registry.countryCode)}</div>
         </div>
-        <div class="sanctions-row-flags">${newFlag}<span class="sanctions-pill">🚢 ${registry.vesselCount}</span></div>
+        <div class="sanctions-row-flags">${newFlag}${this.renderAssetCounts(registry)}</div>
       </div>
     `;
   }

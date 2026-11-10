@@ -2716,7 +2716,7 @@
         "countries": "제재 대상국",
         "entries": "최근 지정",
         "programs": "프로그램",
-        "flagRegistries": "선박 국적 등록부"
+        "flagRegistries": "선박 국적 및 항공기 등록부"
       },
       "empty": {
         "countries": "국가 귀속 정보가 없습니다.",

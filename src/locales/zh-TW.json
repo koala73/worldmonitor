@@ -2716,7 +2716,7 @@
         "countries": "受制裁國家",
         "entries": "最近指定",
         "programs": "計劃",
-        "flagRegistries": "船舶旗籍登記"
+        "flagRegistries": "船舶旗籍與航空器登記"
       },
       "empty": {
         "countries": "無國家歸屬資訊。",

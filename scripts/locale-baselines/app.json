@@ -1513,7 +1513,7 @@
   "components.sanctionsPressure.pills.sema": "sema-ca",
   "components.sanctionsPressure.sections.countries": "Sanctioned countries",
   "components.sanctionsPressure.sections.entries": "Recent designations",
-  "components.sanctionsPressure.sections.flagRegistries": "Vessel flag registries",
+  "components.sanctionsPressure.sections.flagRegistries": "Flag and aircraft registries",
   "components.sanctionsPressure.sections.programs": "Programs",
   "components.sanctionsPressure.summary.aircraft": "Aircraft",
   "components.sanctionsPressure.summary.new": "New",

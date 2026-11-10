@@ -4838,6 +4838,13 @@ describe('get_sanctions_data screening contract', () => {
       assert.deepEqual(result.pressure, current);
     }
   });
+  it('fills aircraft counts on flag registries from snapshots that predate them', () => {
+    const pressure = { entries: [], countries: [], flagRegistries: [{ countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1 }] };
+    const result = tool._postFilter(structuredClone({ pressure }), {});
+    assert.deepEqual(result.pressure.flagRegistries, [
+      { countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1, aircraftCount: 0, newAircraftCount: 0 },
+    ]);
+  });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };
     const result = tool._postFilter(structuredClone(data), { screen: 'Northern Star', min_score: 100, country: 'RU', entity_type: 'vessel', limit: 1 });
