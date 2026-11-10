@@ -28,7 +28,7 @@ tags: [github-actions, postmerge-monitor, platform-incident, false-alarm, convex
 - 43 red ticks over 7.5 hours with one unchanging message naming run 42670983808.
 - The run's jobs listing is empty, or contains only jobs that concluded `success` or `skipped`.
 - Unrelated workflows (Umami Storage Monitor, Analytics Collector Monitor, the styleLayout budget) failed with zero jobs in the same 20-minute window. That points to a GitHub platform problem and rules out the workflow file.
-- The `convex-deployed` tag was an ancestor of the failed head, and `git diff --name-only <tag> <head> -- <skipProofPaths>` was empty.
+- `git diff --name-only <convex-deployed tag> origin/main -- <skipProofPaths>` was empty. This is the comparison the monitor makes, because `main` can move ahead without a new run.
 
 ## What Didn't Work
 
@@ -37,7 +37,7 @@ tags: [github-actions, postmerge-monitor, platform-incident, false-alarm, convex
 
 ## Solution
 
-PR #10367. A run that concluded `failure` whose attempt lists no `failure`, `cancelled` or `timed_out` job did not fail to deploy, because nothing ran. For a workflow with a deployed-baseline check (`skipProofPaths` plus `deployedTagRef`), the monitor now asks the question it already asks after a green run: does the tag hold every bundled change on `main`?
+PR #10367. A run that concluded `failure` while every job in its attempt concluded `success` or `skipped` has no failed deploy, even if a job such as `convex-changes` ran. Any other job conclusion, including `neutral` or null, keeps `RUN_FAILED`. For a workflow with a deployed-baseline check (`skipProofPaths` plus `deployedTagRef`), the monitor now asks the question it already asks after a green run: does the tag hold every bundled change on `main`?
 
 - Drift: `ALARM DEPLOY_BEHIND_BASELINE`, unchanged.
 - Current: `OK RUN_ABORTED_NOT_DUE`.
@@ -67,7 +67,7 @@ I verified the fix against live GitHub. The replay pinned the Convex run listing
 
 - When an alarm clears a failure based on a new read, that read's own errors must keep the alarm. In this monitor `UNKNOWN` is a non-failing state, so any throw that reaches the per-workflow catch on a red path silently turns red into a warning. The test 'keeps RUN_FAILED when the failed run job listing is unreadable' covers HTTP 503, a transport timeout and HTTP 404.
 - To diagnose a run with no failing step, read `actions/runs/<id>/attempts/<n>/jobs`. If `total_count` is 0, or every listed job is green, check other workflows in the same window before blaming the YAML.
-- Workers have no baseline check, so an aborted Worker run still alarms until someone re-runs it. Re-running the aborted run is the remedy.
+- Workers have no baseline check, so an aborted Worker run still alarms until a newer run succeeds. Do not re-run the aborted run: a re-run deploys that run's original commit, which can be older than the Worker code on `main`. Start a fresh run with `gh workflow run <workflow>.yml --ref main` instead, since both Worker workflows accept `workflow_dispatch`.
 
 ## Related Issues
 
