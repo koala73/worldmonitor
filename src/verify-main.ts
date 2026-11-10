@@ -7,6 +7,7 @@
  * `?claim=` so a result can be shared as a link.
  */
 import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import { renderClaimCardHtml, renderFactChecksHtml } from '@/components/claim-card';
 import {
   CLAIM_MAX_CHARS,
