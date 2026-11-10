@@ -614,6 +614,85 @@ export function readDeployedBaselineSha({ git, tagRef }) {
 }
 
 /**
+ * Is production behind main for a workflow with a deployed-baseline proof?
+ *
+ * Returns null when the workflow has no proof, an OK result when the
+ * baseline already has every bundled change on main, and an ALARM or UNKNOWN
+ * result otherwise.
+ */
+function judgeDeployedBaseline({ workflow, run, skipProof }) {
+  // Is production behind main? Evaluated for EVERY convex result, not only a
+  // skipped deploy (#7359 review finding 2). "The newest run deployed" does not
+  // mean production has current main: if a later watched-path commit produces no
+  // run at all (Actions degraded, a broken trigger, a workflow edit), the newest
+  // run stays a green DEPLOYED and the monitor was blind to the drift until the
+  // 7-day no-run backstop. The tag-vs-main comparison is the real question and
+  // does not depend on what any particular run did, so it is asked first.
+  if (!workflow.skipProofPaths || typeof skipProof !== 'function') return null;
+  let upToDate = null;
+  try {
+    upToDate = skipProof();
+  } catch (error) {
+    // Swallowing every throw was correct while the proof was local-git only:
+    // "Local proof failures (git, missing gh) ... are ALARM" (see the file
+    // header). The baseline read is still local, but re-throw anything the
+    // classifier calls transport unreadability so the outer handler reports
+    // UNKNOWN — a blip must never page on-call claiming production is behind.
+    if (isGithubRecordUnreadability(error)) throw error;
+    // No baseline recorded yet (the tag is written by the first deploy after
+    // this landed). Nothing to compare against, and it clears itself on the
+    // next deploy — a visible UNKNOWN, not a claim that production is behind.
+    if (error?.deployedBaselineUnset === true) {
+      return {
+        state: 'UNKNOWN',
+        verdict: 'DEPLOY_BASELINE_UNSET',
+        runId: run.runId,
+        detail: `run ${run.runId}: ${error.message}`,
+      };
+    }
+    upToDate = null;
+  }
+  // Proven drift and an unreadable baseline are different alarms: the first
+  // says a deploy is owed, the second says the monitor is blind. Conflating
+  // them sends on-call after the wrong thing.
+  if (upToDate === false) {
+    return {
+      state: 'ALARM',
+      verdict: 'DEPLOY_BEHIND_BASELINE',
+      runId: run.runId,
+      detail: `${workflow.skipProofPaths.join(', ')} changed between the last successful deploy and current main — production is behind`,
+    };
+  }
+  if (upToDate !== true) {
+    return {
+      state: 'ALARM',
+      verdict: 'DEPLOY_BASELINE_UNPROVEN',
+      runId: run.runId,
+      detail: `run ${run.runId}: the deployed baseline could not be read`,
+    };
+  }
+  return {
+    state: 'OK',
+    verdict: 'DEPLOY_BASELINE_CURRENT',
+    runId: run.runId,
+    detail: 'production already has every bundled change on main',
+  };
+}
+
+/**
+ * True when a completed run's attempt lists no job that failed, was cancelled,
+ * or timed out: GitHub ended the run outside its jobs. An unread listing is
+ * not that proof.
+ */
+function abortedOutsideJobs(jobs) {
+  if (!(jobs instanceof Map)) return false;
+  for (const job of jobs.values()) {
+    if (job.conclusion !== 'success' && job.conclusion !== 'skipped') return false;
+  }
+  return true;
+}
+
+/**
  * Decide the alarm verdict for one workflow.
  *
  * `run` is the resolved newest run (RUN_FOUND / NO_RUN_IN_WINDOW / NO_RUN),
@@ -694,11 +773,27 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
     return { state: 'ALARM', verdict: 'RUN_SKIPPED', runId: run.runId, detail: `run ${run.runId} concluded ${conclusion} — a deploy workflow that never deploys is not healthy` };
   }
   if (conclusion !== 'success') {
-    return {
+    const failed = {
       state: 'ALARM',
       verdict: 'RUN_FAILED',
       runId: run.runId,
       detail: `run ${run.runId} (${run.displayTitle ?? run.event ?? '?'}) concluded ${conclusion}`,
+    };
+    // GitHub can fail a run outside every job: during the 2026-11-09 Actions
+    // incident Convex Deploy runs 42670918755 and 42670983808 concluded failure
+    // with no job failed and no deploy attempted. Nothing failed to deploy, so
+    // the deployed-baseline proof answers whether production is behind. A
+    // workflow without that proof keeps the failure.
+    if (conclusion !== 'failure' || !abortedOutsideJobs(jobs)) return failed;
+    const baseline = judgeDeployedBaseline({ workflow, run, skipProof });
+    if (baseline === null) return failed;
+    if (baseline.state === 'ALARM') return baseline;
+    if (baseline.state !== 'OK') return failed;
+    return {
+      state: 'OK',
+      verdict: 'RUN_ABORTED_NOT_DUE',
+      runId: run.runId,
+      detail: `run ${run.runId} concluded failure with no job failed, and production already has every bundled change on main`,
     };
   }
   if (Array.isArray(workflow.triggerPaths) && workflow.triggerPaths.length > 0) {
@@ -732,57 +827,8 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
   // keeping the `deploy` id as the YAML key. The jobs API returns the display
   // name, so each workflow declares the deploy job name the API actually
   // publishes via `deployJobName`.
-  // Is production behind main? Evaluated for EVERY convex result, not only a
-  // skipped deploy (#7359 review finding 2). "The newest run deployed" does not
-  // mean production has current main: if a later watched-path commit produces no
-  // run at all (Actions degraded, a broken trigger, a workflow edit), the newest
-  // run stays a green DEPLOYED and the monitor was blind to the drift until the
-  // 7-day no-run backstop. The tag-vs-main comparison is the real question and
-  // does not depend on what any particular run did, so it is asked first.
-  if (workflow.skipProofPaths && typeof skipProof === 'function') {
-    let upToDate = null;
-    try {
-      upToDate = skipProof();
-    } catch (error) {
-      // Swallowing every throw was correct while the proof was local-git only:
-      // "Local proof failures (git, missing gh) ... are ALARM" (see the file
-      // header). The baseline read is still local, but re-throw anything the
-      // classifier calls transport unreadability so the outer handler reports
-      // UNKNOWN — a blip must never page on-call claiming production is behind.
-      if (isGithubRecordUnreadability(error)) throw error;
-      // No baseline recorded yet (the tag is written by the first deploy after
-      // this landed). Nothing to compare against, and it clears itself on the
-      // next deploy — a visible UNKNOWN, not a claim that production is behind.
-      if (error?.deployedBaselineUnset === true) {
-        return {
-          state: 'UNKNOWN',
-          verdict: 'DEPLOY_BASELINE_UNSET',
-          runId: run.runId,
-          detail: `run ${run.runId}: ${error.message}`,
-        };
-      }
-      upToDate = null;
-    }
-    // Proven drift and an unreadable baseline are different alarms: the first
-    // says a deploy is owed, the second says the monitor is blind. Conflating
-    // them sends on-call after the wrong thing.
-    if (upToDate === false) {
-      return {
-        state: 'ALARM',
-        verdict: 'DEPLOY_BEHIND_BASELINE',
-        runId: run.runId,
-        detail: `${workflow.skipProofPaths.join(', ')} changed between the last successful deploy and current main — production is behind`,
-      };
-    }
-    if (upToDate !== true) {
-      return {
-        state: 'ALARM',
-        verdict: 'DEPLOY_BASELINE_UNPROVEN',
-        runId: run.runId,
-        detail: `run ${run.runId}: the deployed baseline could not be read`,
-      };
-    }
-  }
+  const baseline = judgeDeployedBaseline({ workflow, run, skipProof });
+  if (baseline !== null && baseline.state !== 'OK') return baseline;
 
   const deployName = workflow.deployJobName ?? 'deploy';
   const deployJobs = [...(jobs?.entries() ?? [])].filter(([name]) => name === deployName);
@@ -865,6 +911,19 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
           runId: run.runId,
           runAttempt: run.runAttempt,
         });
+      } else if (run.verdict === 'RUN_FOUND' && run.conclusion === 'failure' && workflow.skipProofPaths) {
+        // This listing can only clear a failed run, so an unreadable listing
+        // leaves jobs unset and the run stays RUN_FAILED.
+        try {
+          jobs = readRunJobs({
+            gh,
+            repository,
+            runId: run.runId,
+            runAttempt: run.runAttempt,
+          });
+        } catch {
+          jobs = null;
+        }
       }
       const skipProof = workflow.skipProofPaths
         ? () => {

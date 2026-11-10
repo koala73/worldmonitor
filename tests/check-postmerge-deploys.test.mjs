@@ -1420,26 +1420,26 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
   }
 
   /** Newest convex run, with a configurable deploy-job conclusion. */
-  function convexGh(joined, deployConclusion = 'skipped') {
+  function convexGh(joined, deployConclusion = 'skipped', { runConclusion = 'success', jobs = null } = {}) {
     if (/workflows\/convex-deploy\.yml\/runs/.test(joined)) {
       return JSON.stringify({
         workflow_runs: [{
-          id: 810, created_at: '2026-08-29T13:35:51Z', conclusion: 'success', run_attempt: 1, head_sha: '7'.repeat(40),
+          id: 810, created_at: '2026-08-29T13:35:51Z', conclusion: runConclusion, run_attempt: 1, head_sha: '7'.repeat(40),
         }],
       });
     }
     if (/actions\/runs\/810\/attempts/.test(joined)) {
-      return jobsPayload([{ name: 'deploy', conclusion: deployConclusion, status: 'completed' }]);
+      return jobsPayload(jobs ?? [{ name: 'deploy', conclusion: deployConclusion, status: 'completed' }]);
     }
     return null;
   }
 
-  function runMonitor({ git, deployConclusion = 'skipped' }) {
+  function runMonitor({ git, deployConclusion = 'skipped', runConclusion, jobs }) {
     return checkPostmergeDeploys({
       repository: 'koala73/worldmonitor',
       gh: (args) => {
         const joined = args.join(' ');
-        const answer = healthyOtherWorkflows(joined) ?? convexGh(joined, deployConclusion);
+        const answer = healthyOtherWorkflows(joined) ?? convexGh(joined, deployConclusion, { runConclusion, jobs });
         if (answer === null) throw new Error(`unexpected gh call: ${joined}`);
         return answer;
       },
@@ -1530,6 +1530,88 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
       git: (args) => (args[0] === 'rev-parse' ? `${deployedHead}\n` : ''),
     }));
     assert.equal(convex.state, 'OK');
+  });
+
+  // Runs 42670918755 and 42670983808 (2026-11-09) concluded failure during a
+  // GitHub Actions incident: one listed only a green convex-changes job, the
+  // other listed no jobs at all. Production already had every bundled change,
+  // yet the monitor reported RUN_FAILED for 7.5 hours until the next merge.
+  const abortedListings = [
+    ['no jobs created', []],
+    ['only the diff job ran', [{ name: 'convex-changes', conclusion: 'success', status: 'completed' }]],
+  ];
+  const currentGit = (args) => (args[0] === 'rev-parse' ? `${BASELINE_SHA}\n` : '');
+
+  it('defers a run GitHub aborted outside every job to the deployed baseline', () => {
+    for (const [label, jobs] of abortedListings) {
+      const convex = convexResult(runMonitor({ git: currentGit, runConclusion: 'failure', jobs }));
+      assert.equal(convex.state, 'OK', label);
+      assert.equal(convex.verdict, 'RUN_ABORTED_NOT_DUE', label);
+      assert.match(convex.detail, /810/, label);
+    }
+  });
+
+  it('alarms that production is behind when an aborted run left a bundled change undeployed', () => {
+    for (const [label, jobs] of abortedListings) {
+      const convex = convexResult(runMonitor({ git: driftGit(BASELINE_SHA), runConclusion: 'failure', jobs }));
+      assert.equal(convex.state, 'ALARM', label);
+      assert.equal(convex.verdict, 'DEPLOY_BEHIND_BASELINE', label);
+    }
+  });
+
+  it('keeps an aborted run with an unset baseline as RUN_FAILED', () => {
+    for (const [label, jobs] of abortedListings) {
+      const convex = convexResult(runMonitor({ git: () => '', runConclusion: 'failure', jobs }));
+      assert.equal(convex.state, 'ALARM', label);
+      assert.equal(convex.verdict, 'RUN_FAILED', label);
+    }
+  });
+
+  it('keeps RUN_FAILED when the failed run job listing is unreadable', () => {
+    for (const message of ['gh: Server Error (HTTP 503)', 'dial tcp: i/o timeout', 'gh: Not Found (HTTP 404)']) {
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: (args) => {
+          const joined = args.join(' ');
+          if (/actions\/runs\/810\/attempts/.test(joined)) throw new Error(message);
+          const answer = healthyOtherWorkflows(joined) ?? convexGh(joined, 'skipped', { runConclusion: 'failure' });
+          if (answer === null) throw new Error(`unexpected gh call: ${joined}`);
+          return answer;
+        },
+        git: currentGit,
+        now: Date.parse('2026-08-29T13:40:00Z'),
+      });
+      const convex = convexResult(results);
+      assert.equal(convex.state, 'ALARM', message);
+      assert.equal(convex.verdict, 'RUN_FAILED', message);
+      assert.equal(summarizeResults(results).exitCode, 1, message);
+    }
+  });
+
+  it('still reports RUN_FAILED when any job of the failed run failed', () => {
+    const failedJobs = [
+      [{ name: 'convex-changes', conclusion: 'success', status: 'completed' }, { name: 'deploy', conclusion: 'failure', status: 'completed' }],
+      [{ name: 'convex-changes', conclusion: 'success', status: 'completed' }, { name: 'repair-stale-on-hold-derived-state', conclusion: 'failure', status: 'completed' }],
+      [{ name: 'convex-changes', conclusion: 'cancelled', status: 'completed' }],
+      [{ name: 'convex-changes', conclusion: 'timed_out', status: 'completed' }],
+    ];
+    for (const jobs of failedJobs) {
+      const convex = convexResult(runMonitor({ git: currentGit, runConclusion: 'failure', jobs }));
+      assert.equal(convex.state, 'ALARM', JSON.stringify(jobs));
+      assert.equal(convex.verdict, 'RUN_FAILED', JSON.stringify(jobs));
+    }
+  });
+
+  it('keeps an aborted run of a workflow with no baseline proof as RUN_FAILED', () => {
+    const verdict = judgeWorkflow({
+      workflow: WORKER,
+      run: run({ conclusion: 'failure', runId: 558 }),
+      jobs: new Map(),
+      deploymentRequired: false,
+      now: NOW,
+    });
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'RUN_FAILED');
   });
 
   it('reports an unrecorded baseline as UNKNOWN, not as a failed deploy', () => {
