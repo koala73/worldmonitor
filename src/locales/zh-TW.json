@@ -1666,7 +1666,9 @@
       "method": "估算使用該國的平均人口密度。",
       "empty": "沒有符合條件的事件地點",
       "infoTooltip": "僅顯示位置明確且所在國家有人口密度資料的事件。估算區域可能重疊。",
-      "eventCount_other": "{{count}} 起事件"
+      "eventCount_other": "{{count}} 起事件",
+      "coverageShown": "已顯示事件：{{shown}} / {{total}}",
+      "coverageLeftOut": "未顯示：{{imprecise}} 起無精確位置，{{noEstimate}} 起位於無人口密度資料的國家，{{otherPlaces}} 起在每個來源前 10 個地點之後"
     },
     "securityAdvisories": {
       "loading": "正在載入旅行警告...",

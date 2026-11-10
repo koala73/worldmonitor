@@ -458,6 +458,14 @@ export interface PopulationExposure {
   eventCount: number;
 }
 
+// Every feed event lands in exactly one bucket: a shown row or one of the three left-out reasons.
+export interface ExposureCoverage {
+  totalEvents: number;
+  withoutPreciseLocation: number;
+  withoutEstimate: number;
+  atOtherPlaces: number;
+}
+
 // Military base operator types
 export type MilitaryBaseType =
   | 'us-nato'      // United States and NATO allies

@@ -48,7 +48,7 @@ describe('dashboard population exposure', () => {
     ];
 
     const density = PRIORITY_COUNTRIES.YEM.pop / PRIORITY_COUNTRIES.YEM.area;
-    assert.deepEqual(enrichEventsWithExposure(events).map(e => [e.eventId, e.exposedPopulation, e.exposureRadiusKm]), [
+    assert.deepEqual(enrichEventsWithExposure(events).exposures.map(e => [e.eventId, e.exposedPopulation, e.exposureRadiusKm]), [
       ['point', Math.round(density * Math.PI * 50 ** 2), 50],
     ]);
   });
@@ -63,7 +63,7 @@ describe('dashboard population exposure', () => {
     ];
     const density = PRIORITY_COUNTRIES.UKR.pop / PRIORITY_COUNTRIES.UKR.area;
     const estimate = Math.round(density * Math.PI * 50 ** 2);
-    assert.deepEqual(enrichEventsWithExposure(events).map(e => [e.eventId, e.eventName, e.eventCount, e.exposedPopulation]), [
+    assert.deepEqual(enrichEventsWithExposure(events).exposures.map(e => [e.eventId, e.eventName, e.eventCount, e.exposedPopulation]), [
       ['643820', 'Kyiv city, Ukraine', 5, estimate],
       ['vyshhorod', 'Vyshhorod town, Ukraine', 1, estimate],
     ]);
@@ -78,7 +78,25 @@ describe('dashboard population exposure', () => {
       { ...point, id: 'c', lat: 48, lon: 32 },
       { ...point, id: 'a3', lat: 50, lon: 30 },
     ];
-    assert.deepEqual(enrichEventsWithExposure(events, 2).map(e => [e.eventId, e.eventCount]), [['a1', 3], ['b', 1]]);
+    assert.deepEqual(enrichEventsWithExposure(events, 2).exposures.map(e => [e.eventId, e.eventCount]), [['a1', 3], ['b', 1]]);
+  });
+
+  it('counts every event it leaves out, by reason', () => {
+    const point = { name: 'p', type: 'conflict', country: 'Ukraine', hasPreciseLocation: true };
+    const events = [
+      { ...point, id: 'a1', lat: 50, lon: 30 },
+      { ...point, id: 'a2', lat: 50, lon: 30, eventCount: 2 },
+      { ...point, id: 'b', lat: 49, lon: 31 },
+      { ...point, id: 'c', lat: 48, lon: 32 },
+      { ...point, id: 'c2', lat: 48, lon: 32 },
+      { ...point, id: 'broad', hasPreciseLocation: false, lat: 50, lon: 30 },
+      { ...point, id: 'unknown', hasPreciseLocation: undefined, lat: 50, lon: 30 },
+      { ...point, id: 'chile', country: 'Chile', lat: -33.45, lon: -70.6667 },
+      { ...point, id: 'null-island', lat: 0, lon: 0 },
+    ];
+    const { exposures, coverage } = enrichEventsWithExposure(events, 2);
+    assert.deepEqual(exposures.map(e => [e.eventId, e.eventCount]), [['a1', 3], ['b', 1]]);
+    assert.deepEqual(coverage, { totalEvents: 10, withoutPreciseLocation: 2, withoutEstimate: 2, atOtherPlaces: 2 });
   });
 });
 

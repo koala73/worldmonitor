@@ -1630,7 +1630,9 @@
       "eventCount_two": "حدثان",
       "eventCount_few": "{{count}} أحداث",
       "eventCount_many": "{{count}} حدثًا",
-      "eventCount_other": "{{count}} حدث"
+      "eventCount_other": "{{count}} حدث",
+      "coverageShown": "الأحداث المعروضة: {{shown}} من {{total}}",
+      "coverageLeftOut": "غير معروضة: {{imprecise}} بلا موقع دقيق، و{{noEstimate}} في بلدان بلا بيانات كثافة، و{{otherPlaces}} بعد أول 10 أماكن لكل مصدر"
     },
     "satelliteFires": {
       "region": "المنطقة",

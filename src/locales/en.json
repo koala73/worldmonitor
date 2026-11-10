@@ -1867,7 +1867,9 @@
       "eventCount_other": "{{count}} events",
       "method": "Estimates use country-average population density.",
       "empty": "No eligible event locations",
-      "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap."
+      "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap.",
+      "coverageShown": "Events shown: {{shown}} of {{total}}",
+      "coverageLeftOut": "Not shown: {{imprecise}} with no precise location, {{noEstimate}} in countries without density data, {{otherPlaces}} past the first 10 places per source"
     },
     "securityAdvisories": {
       "loading": "Fetching travel advisories...",

@@ -1,7 +1,7 @@
 import { createTimeoutSignal } from '@/services/timeout-signal';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AcledConflictEvent as ProtoAcledEvent, UcdpViolenceEvent as ProtoUcdpEvent, ListAcledEventsResponse, ListUcdpEventsResponse, IranEvent, ListIranEventsResponse } from '@/generated/client/worldmonitor/conflict/v1/service_client';
-import type { UcdpGeoEvent, UcdpEventType } from '@/types';
+import type { ExposureCoverage, UcdpGeoEvent, UcdpEventType } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
@@ -115,9 +115,17 @@ export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   aggregates?: Record<string, UcdpTabAggregate>;
   totalEvents?: number;
   exposureEvents?: Array<ProtoUcdpEvent & { exposureEventCount?: number }>;
+  exposureCoverage?: ExposureCoverage;
 };
 
 export type UcdpExposureEvent = UcdpGeoEvent & { eventCount?: number };
+
+// Coverage counts are only true of the full feed. The dashboard derives them
+// itself from a full-feed fetch, and takes the projection's when it gets rows.
+// A projection published before exposureCoverage existed has none to show.
+export type UcdpExposureInput =
+  | { source: 'full-feed'; events: UcdpExposureEvent[] }
+  | { source: 'projection'; events: UcdpExposureEvent[]; coverage?: ExposureCoverage };
 
 // UCDP appends a former name: "Yemen (North Yemen)", "DR Congo (Zaire)".
 // Classification and forecast code key on the raw name, so strip it for display only.
@@ -167,7 +175,7 @@ interface UcdpEventsResponse {
   data: UcdpGeoEvent[];
   cached_at: string;
   fromCache: boolean;
-  exposureData?: UcdpExposureEvent[];
+  exposure: UcdpExposureInput;
 }
 
 export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
@@ -179,7 +187,13 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
       data: events,
       cached_at: '',
       fromCache: false,
-      exposureData: hydrated.exposureEvents?.map(e => ({ ...toUcdpGeoEvent(e), eventCount: e.exposureEventCount })),
+      exposure: hydrated.exposureEvents
+        ? {
+          source: 'projection',
+          events: hydrated.exposureEvents.map(e => ({ ...toUcdpGeoEvent(e), eventCount: e.exposureEventCount })),
+          coverage: hydrated.exposureCoverage,
+        }
+        : { source: 'projection', events },
     };
   }
 
@@ -195,6 +209,7 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
     data: events,
     cached_at: '',
     fromCache: ucdpBreaker.getDataState().mode === 'cached',
+    exposure: { source: 'full-feed', events },
   };
 }
 

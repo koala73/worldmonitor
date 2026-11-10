@@ -1681,7 +1681,9 @@
       "eventCount_one": "{{count}} событие",
       "eventCount_few": "{{count}} события",
       "eventCount_many": "{{count}} событий",
-      "eventCount_other": "{{count}} событий"
+      "eventCount_other": "{{count}} событий",
+      "coverageShown": "Показано событий: {{shown}} из {{total}}",
+      "coverageLeftOut": "Не показаны: {{imprecise}} без точного местоположения, {{noEstimate}} в странах без данных о плотности, {{otherPlaces}} после первых 10 мест по каждому источнику"
     },
     "securityAdvisories": {
       "loading": "Загрузка предупреждений...",

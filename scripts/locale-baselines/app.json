@@ -1334,6 +1334,8 @@
   "components.playback.skipToStart": "Skip to start",
   "components.playback.storageUnavailable": "Playback is unavailable because this browser is blocking site storage. Allow site data for this site to start saving snapshots.",
   "components.playback.toggleMode": "Toggle Playback Mode",
+  "components.populationExposure.coverageLeftOut": "Not shown: {{imprecise}} with no precise location, {{noEstimate}} in countries without density data, {{otherPlaces}} past the first 10 places per source",
+  "components.populationExposure.coverageShown": "Events shown: {{shown}} of {{total}}",
   "components.populationExposure.empty": "No eligible event locations",
   "components.populationExposure.estimateWithin": "~{{count}} people within {{km}} km",
   "components.populationExposure.eventCount_one": "{{count}} event",

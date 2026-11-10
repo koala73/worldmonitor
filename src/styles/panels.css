@@ -838,6 +838,14 @@
   font-weight: 500;
 }
 
+.popexp-coverage {
+  padding: 8px 10px;
+  color: var(--text-dim);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
 /* ----------------------------------------------------------
    Climate Anomaly Panel
    ---------------------------------------------------------- */

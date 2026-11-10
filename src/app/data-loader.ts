@@ -123,7 +123,7 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { currentUcdpCountryName, fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureEvent } from '@/services/conflict';
+import { currentUcdpCountryName, fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureInput } from '@/services/conflict';
 import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
@@ -136,7 +136,7 @@ import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate,
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { getNo2ActivityData } from '@/services/no2-activity';
-import { enrichEventsWithExposure } from '@/services/population-exposure';
+import { addExposureCoverage, enrichEventsWithExposure } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -469,7 +469,7 @@ export class DataLoaderManager implements AppModule {
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
   // The scheduled refresh replaces intelligenceCache before fetching new data.
-  private ucdpExposureEvents?: UcdpExposureEvent[];
+  private ucdpExposure?: UcdpExposureInput;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -3817,7 +3817,7 @@ export class DataLoaderManager implements AppModule {
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
-        this.ucdpExposureEvents = result.exposureData ?? events;
+        this.ucdpExposure = result.exposure;
         ucdpReceived = true;
         ucdpFromCache = result.fromCache;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
@@ -3969,26 +3969,27 @@ export class DataLoaderManager implements AppModule {
 
     try {
       const { protests } = this.ctx.intelligenceCache;
-      const ucdpEvents = this.ucdpExposureEvents;
+      const ucdpInput = this.ucdpExposure;
       const perSourceLimit = 10;
-      const ucdpExposures = enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
+      const ucdp = enrichEventsWithExposure((ucdpInput?.events ?? []).map(e => ({
         id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
         name: e.locationName ? `${e.locationName}, ${currentUcdpCountryName(e.country)}` : `${e.side_a} vs ${e.side_b}`,
         country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
       })), perSourceLimit);
-      const exposures = [
-        ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
-          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
-          name: e.city ? `${e.city}, ${e.country}` : e.title,
-          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-        })), perSourceLimit),
-        ...ucdpExposures,
-      ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
-      if (exposures.length === 0 && (!protests || !ucdpEvents)) {
+      const unrest = enrichEventsWithExposure((protests?.events ?? []).map(e => ({
+        id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
+        name: e.city ? `${e.city}, ${e.country}` : e.title,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+      })), perSourceLimit);
+      const exposures = [...unrest.exposures, ...ucdp.exposures]
+        .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
+      const ucdpCoverage = ucdpInput?.source === 'full-feed' ? ucdp.coverage : ucdpInput?.coverage;
+      const coverage = ucdpCoverage && (protests ? addExposureCoverage(unrest.coverage, ucdpCoverage) : ucdpCoverage);
+      if (exposures.length === 0 && (!protests || !ucdpInput)) {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
-        const hasCachedUcdp = ucdpExposures.length > 0 && (!ucdpReceived || ucdpFromCache);
-        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp);
+        const hasCachedUcdp = ucdp.exposures.length > 0 && (!ucdpReceived || ucdpFromCache);
+        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp, coverage);
       }
       if (!protestsUpdated || !ucdpReceived) {
         dataFreshness.recordError('worldpop', 'Exposure source data unavailable');

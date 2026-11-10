@@ -1831,7 +1831,9 @@
       "infoTooltip": "Prikazuju se samo događaji s preciznom lokacijom u državama za koje postoje podaci o gustoći stanovništva. Procijenjena se područja mogu preklapati.",
       "eventCount_one": "{{count}} događaj",
       "eventCount_few": "{{count}} događaja",
-      "eventCount_other": "{{count}} događaja"
+      "eventCount_other": "{{count}} događaja",
+      "coverageShown": "Prikazani događaji: {{shown}} od {{total}}",
+      "coverageLeftOut": "Nisu prikazani: {{imprecise}} bez točne lokacije, {{noEstimate}} u zemljama bez podataka o gustoći, {{otherPlaces}} nakon prvih 10 mjesta po izvoru"
     },
     "securityAdvisories": {
       "loading": "Preuzimanje putnih savjeta...",

@@ -1624,7 +1624,9 @@
       "infoTooltip": "Seuls les événements précisément localisés dans des pays disposant de données de densité de population sont affichés. Les zones estimées peuvent se chevaucher.",
       "eventCount_one": "{{count}} événement",
       "eventCount_many": "{{count}} événements",
-      "eventCount_other": "{{count}} événements"
+      "eventCount_other": "{{count}} événements",
+      "coverageShown": "Événements affichés : {{shown}} sur {{total}}",
+      "coverageLeftOut": "Non affichés : {{imprecise}} sans localisation précise, {{noEstimate}} dans des pays sans données de densité, {{otherPlaces}} au-delà des 10 premiers lieux par source"
     },
     "satelliteFires": {
       "region": "Région",
