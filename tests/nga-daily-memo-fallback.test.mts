@@ -90,6 +90,10 @@ describe('NGA daily memo fallback', () => {
     assert.equal(parseNgaDailyMemo(unknownBare, '4', 'NAVAREA IV', NOW), null);
     const otherArea = withSummary.replace('1. NAVAREA IV WARNINGS IN FORCE', '1. HYDROLANT WARNINGS IN FORCE');
     assert.equal(parseNgaDailyMemo(otherArea, '4', 'NAVAREA IV', NOW), null);
+    // Without the blank line after it, the next warning joins the summary
+    // block; skipping that block would return a short list as complete.
+    const unseparated = iv.replace('052129Z NOV 26\n', `${summary}\n052129Z NOV 26\n`);
+    assert.equal(parseNgaDailyMemo(unseparated, '4', 'NAVAREA IV', NOW), null);
   });
 
   it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {

@@ -105,9 +105,14 @@ export function parseNgaDailyMemo(
     // The area's own in-force summary (Sentry WORLDMONITOR-1C4): a dated
     // block whose id line is the bare authority and whose body indexes the
     // warning numbers already listed. It names no hazard, so skip it; any
-    // other bare-authority block still fails the memo below.
+    // other bare-authority block still fails the memo below. A warning id
+    // inside the summary means its blank separator is missing, and skipping
+    // the block would drop that warning, so the memo fails instead.
     const bareIndex = blockLines.slice(0, 2).findIndex((line) => line.trim() === authority);
-    if (bareIndex >= 0 && inForceSummaryRe.test(blockLines[bareIndex + 1]?.trim() ?? '')) continue;
+    if (bareIndex >= 0 && inForceSummaryRe.test(blockLines[bareIndex + 1]?.trim() ?? '')) {
+      if (blockLines.some((line) => idRe.test(line.trim()))) return null;
+      continue;
+    }
     const idIndex = blockLines.slice(0, 3).findIndex((line) => idRe.test(line.trim()));
     // An unrecognized block means the format changed or the file is
     // truncated; a partial list would read as fewer hazards.
