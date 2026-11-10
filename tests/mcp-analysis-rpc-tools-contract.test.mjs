@@ -188,10 +188,11 @@ describe('wave-2 analysis tools: user-input bounds', () => {
 
   it('get_population_exposure point mode uses the country under the point, or returns null', async () => {
     const tool = findTool('get_population_exposure');
-    for (const [lat, lon, country] of [[50.45, 30.52, 'UKR'], [-33.45, -70.67, null], [30.27, -97.74, null], [52.52, 13.405, null]]) {
+    for (const [lat, lon, country] of [[50.45, 30.52, 'UKR'], [6.45, 3.39, 'NGA'], [31.52, 34.45, 'PSE'], [-33.45, -70.67, null], [30.27, -97.74, null], [52.52, 13.405, null]]) {
       const result = await tool._execute({ mode: 'point', lat, lon }, '', {}, {});
       assert.equal(result.error, undefined);
       assert.equal(result.data.exposure?.country ?? null, country, `lat=${lat} lon=${lon}`);
+      assert.equal(result.data.exposure?.nearestCountry ?? null, country);
     }
   });
 

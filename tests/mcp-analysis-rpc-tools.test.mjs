@@ -1248,6 +1248,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       { id: 'kyiv', place: 'Kyiv', magnitude: 4, ...at(50.45, 30.52), occurredAt: Date.now() },
     ];
     payloads['conflict:ucdp-events:v1'].events = [
+      { id: 'gaza', country: 'Israel', dateStart: '2026-07-28', ...at(31.52, 34.45), hasPreciseLocation: true },
       { id: 'precise', country: 'Sudan', dateStart: '2026-07-28', ...at(15.5, 32.5), hasPreciseLocation: true },
       { id: 'country-level', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: false },
       { id: 'unknown-precision', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5) },
@@ -1264,6 +1265,8 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     const byId = Object.fromEntries(result.data.events.map((event) => [event.id, event.country]));
     assert.equal(byId.kyiv, 'UKR');
     assert.equal(byId.precise, 'SDN');
+    assert.equal(byId.gaza, 'PSE');
+    for (const event of result.data.events) assert.equal(event.nearestCountry, event.country);
     for (const id of ['santiago', 'country-level', 'unknown-precision', 'reported-elsewhere']) {
       assert.equal(id in byId, false, `${id} must not get an estimate`);
     }

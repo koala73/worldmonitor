@@ -13,6 +13,8 @@
  */
 
 import { resolveCountryCode } from './country-code-resolve';
+import PALESTINE from './population-density-palestine.json';
+import { inRing, type Ring } from './population-density-geometry';
 
 export interface PriorityCountryInfo {
   name: string;
@@ -95,7 +97,11 @@ export function estimateExposure(
   radiusKm: number,
 ): ExposureEstimate | null {
   if (!isUsableEventPoint(lat, lon)) return null;
-  const code = resolveCountryCode(country);
+  let code = resolveCountryCode(country);
+  // UCDP labels Gaza and West Bank events as Israel. Correct only points
+  // actually inside PS; coastal snapping must not widen this override.
+  if (code === 'IL' && (PALESTINE as Ring[][]).some(([outer, ...holes]) => outer
+    && inRing(lon, lat, outer) && !holes.some((hole) => inRing(lon, lat, hole)))) code = 'PS';
   const entry = code ? DENSITY_BY_ISO2.get(code) : undefined;
   if (!entry) return null;
   const effectiveRadiusKm = Math.max(0, Number.isFinite(radiusKm) ? radiusKm : 0);
