@@ -312,7 +312,38 @@
          Umami site as the dashboard so the funnel joins end-to-end.
          data-domains must list www (exact-hostname match; apex 301s to www).
          Static nonce satisfies the strict-dynamic CSP. -->
-    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-exclude-search="true" nonce="wm-static-bootstrap"></script>
+    <!-- Umami before-send hook (must be defined before the async tracker runs).
+         Replaces dropping the whole query string so utm_* survive while the sensitive keys
+         from shared/sensitive-url-params.ts (SENSITIVE_URL_PARAM_RE) are
+         removed. The regex below is a copy; tests/funnel-analytics-policy.test.mjs
+         asserts it stays identical (here and in welcome.html). The hash is dropped (Clerk can carry material there). -->
+    <script nonce="wm-static-bootstrap">
+    (function () {
+      var SENSITIVE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
+      function clean(raw) {
+        if (typeof raw !== 'string' || raw.length === 0) return raw;
+        try {
+          var abs = /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.indexOf('//') === 0;
+          var u = new URL(raw, location.origin);
+          var keys = [];
+          u.searchParams.forEach(function (_v, k) { keys.push(k); });
+          var changed = false;
+          keys.forEach(function (k) { if (SENSITIVE.test(k)) { u.searchParams.delete(k); changed = true; } });
+          if (u.hash) { u.hash = ''; changed = true; }
+          if (!changed) return raw;
+          return abs ? u.toString() : u.pathname + u.search;
+        } catch (e) { return raw; }
+      }
+      window.__wmUmamiBeforeSend = function (_type, payload) {
+        if (!payload || typeof payload !== 'object') return payload;
+        var out = Object.assign({}, payload);
+        if (typeof out.url === 'string') out.url = clean(out.url);
+        if (typeof out.referrer === 'string') out.referrer = clean(out.referrer);
+        return out;
+      };
+    })();
+    </script>
+    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-before-send="__wmUmamiBeforeSend" nonce="wm-static-bootstrap"></script>
   </head>
   <body>
     <div id="root">

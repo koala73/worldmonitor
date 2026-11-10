@@ -1634,6 +1634,10 @@
       "infoTooltip": "<strong>Technologické události</strong> Nadcházející a nedávné technologické události: konference, uvedení produktů, regulační slyšení a hovory o výsledcích. Agregováno z oficiálních kalendářů a průmyslových zdrojů."
     },
     "techReadiness": {
+      "ranked": "V žebříčku",
+      "unranked": "Mimo žebříček",
+      "coverageRequirement": "Minimální pokrytí pro zařazení",
+      "coverageLabel": "Dostupné ukazatele",
       "internetUsers": "Uživatelé internetu",
       "mobileSubscriptions": "Mobilní předplatná",
       "rdSpending": "Výdaje na výzkum a vývoj",

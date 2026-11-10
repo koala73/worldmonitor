@@ -1599,6 +1599,10 @@
       "infoTooltip": "<strong>Événements tech</strong> Événements technologiques à venir et récents : conférences, lancements de produits, auditions réglementaires et appels de résultats. Agrégés à partir de calendriers officiels et sources de l'industrie."
     },
     "techReadiness": {
+      "ranked": "Classés",
+      "unranked": "Non classés",
+      "coverageRequirement": "Couverture minimale pour être classé",
+      "coverageLabel": "Indicateurs disponibles",
       "internetUsers": "Utilisateurs Internet",
       "mobileSubscriptions": "Abonnements mobiles",
       "rdSpending": "Dépenses de recherche et développement",

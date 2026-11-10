@@ -1789,6 +1789,10 @@
       "soon": "به‌زودی"
     },
     "techReadiness": {
+      "ranked": "رتبه‌بندی‌شده",
+      "unranked": "بدون رتبه",
+      "coverageRequirement": "حداقل پوشش برای رتبه‌بندی",
+      "coverageLabel": "شاخص‌های موجود",
       "internetUsers": "کاربران اینترنت",
       "mobileSubscriptions": "اشتراک‌های تلفن همراه",
       "rdSpending": "هزینه تحقیق و توسعه",

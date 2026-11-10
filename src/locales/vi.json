@@ -1643,6 +1643,10 @@
       "infoTooltip": "<strong>Sự kiện công nghệ</strong> Các sự kiện công nghệ sắp tới và gần đây: hội nghị, ra mắt sản phẩm, phiên điều trần quản lý và cuộc gọi thu nhập. Tổng hợp từ lịch sự kiện chính thức và nguồn ngành."
     },
     "techReadiness": {
+      "ranked": "Có xếp hạng",
+      "unranked": "Không có xếp hạng",
+      "coverageRequirement": "Số chỉ số tối thiểu để xếp hạng",
+      "coverageLabel": "Chỉ số có dữ liệu",
       "internetUsers": "Người dùng Internet",
       "mobileSubscriptions": "Thuê bao Di động",
       "rdSpending": "Chi phí nghiên cứu và phát triển",

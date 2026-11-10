@@ -78,14 +78,70 @@ const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_BEFORE_SEND_HOOK = '__wmUmamiBeforeSend';
 
-/** Umami `data-before-send` hook: strip the shared sensitive-param list from
- * the payload's url and referrer. Returns the payload itself when clean. */
-function redactUmamiPayload(_type: string, payload: unknown): unknown {
+const LANDING_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
+const LANDING_UTM_MAX_LENGTH = 100;
+let landingUtm: Array<[string, string]> = [];
+let landingUtmPageviewConsumed = false;
+
+/** Remember the inbound utm_* values before the map URL sync rewrites the
+ * address bar. The Umami tracker loads after first paint, so its first
+ * pageview can see a URL with no campaign tags; the before-send hook
+ * re-attaches these to that one pageview. */
+export function rememberLandingUtm(search: string): void {
+  const params = new URLSearchParams(search);
+  const next: Array<[string, string]> = [];
+  for (const key of LANDING_UTM_KEYS) {
+    const value = params.get(key);
+    if (value) next.push([key, value.slice(0, LANDING_UTM_MAX_LENGTH)]);
+  }
+  landingUtm = next;
+}
+
+/** Append the remembered utm_* params to `raw`, keeping an absolute or
+ * relative URL in its original form. Returns `raw` when it cannot be parsed. */
+function withLandingUtm(raw: string): string {
+  const base = window.location?.origin;
+  const wasAbsolute = /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//');
+  let parsed: URL;
+  try {
+    parsed = base ? new URL(raw, base) : new URL(raw);
+  } catch {
+    return raw;
+  }
+  for (const [key, value] of landingUtm) parsed.searchParams.set(key, value);
+  const out = parsed.toString();
+  if (wasAbsolute || !base) return out;
+  return out.startsWith(parsed.origin) ? out.slice(parsed.origin.length) || '/' : out;
+}
+
+function urlHasUtmSource(raw: string): boolean {
+  const query = raw.split('#')[0]!.split('?')[1] ?? '';
+  return new URLSearchParams(query).has('utm_source');
+}
+
+/** Umami `data-before-send` hook: on the first pageview, re-attach the
+ * landing utm_* values when the payload url lost them, then strip the shared
+ * sensitive-param list from the payload's url and referrer. Pageviews arrive
+ * as `type === 'event'` with no `name`; custom events carry a name. The first
+ * pageview consumes the re-attach whether or not it needed it, so later
+ * in-app navigations do not keep claiming the campaign. Returns the payload
+ * itself when clean. */
+function redactUmamiPayload(type: string, payload: unknown): unknown {
   if (!payload || typeof payload !== 'object') return payload;
   const record = payload as Record<string, unknown>;
   let next: Record<string, unknown> | null = null;
+  if (type === 'event' && !record.name && !landingUtmPageviewConsumed) {
+    landingUtmPageviewConsumed = true;
+    const url = record.url;
+    if (landingUtm.length > 0 && typeof url === 'string' && !urlHasUtmSource(url)) {
+      const attached = withLandingUtm(url);
+      if (attached !== url) {
+        next = { ...record, url: attached };
+      }
+    }
+  }
   for (const field of ['url', 'referrer'] as const) {
-    const raw = record[field];
+    const raw = (next ?? record)[field];
     if (typeof raw !== 'string') continue;
     const redacted = redactSensitiveUrl(raw, window.location?.origin);
     if (redacted !== raw) {
@@ -972,6 +1028,8 @@ export function resetAnalyticsForTesting(): void {
   latestIdentityRevision = 0;
   proFunnelReplaysAwaitingDelivery = 0;
   layoutCustomizationsSent.clear();
+  landingUtm = [];
+  landingUtmPageviewConsumed = false;
 }
 
 export function trackGateHit(feature: string): void {
