@@ -2384,7 +2384,15 @@
       "noData": "Datos de energía temporalmente indisponibles - se reintentará",
       "liveTape": "Transmisión en vivo",
       "liveTapeSource": "Cotizaciones de mercado",
-      "infoTooltip": "<strong>Complejo Energético</strong> Señales de energía física y comercializable en un solo lugar:<ul><li><strong>Métricas de la Administración de Información Energética de EE.UU.</strong>: WTI, Brent, producción de EE.UU. e inventarios</li><li><strong>Operaciones en vivo</strong>: Precios de energía comercializables como crudo y gas natural</li><li><strong>Propósito</strong>: Separar estrés energético físico de paneles macro y de productos básicos más amplios</li></ul>"
+      "infoTooltip": "<strong>Complejo Energético</strong> Señales de energía física y comercializable en un solo lugar:<ul><li><strong>Métricas de la Administración de Información Energética de EE.UU.</strong>: WTI, Brent, producción de EE.UU. e inventarios</li><li><strong>Operaciones en vivo</strong>: Precios de energía comercializables como crudo y gas natural</li><li><strong>Propósito</strong>: Separar estrés energético físico de paneles macro y de productos básicos más amplios</li></ul>",
+      "marketTape": "Cotizaciones de mercado",
+      "futures": "Contratos de futuros",
+      "dailySpot": "Precio al contado diario",
+      "eiaWeeklySpot": "Precio al contado de la EIA · media semanal",
+      "weekEnding": "Semana que termina el {{date}}",
+      "unknownPriceDate": "Hora de observación no disponible",
+      "unknownQuoteSource": "Fuente de la cotización no disponible",
+      "stalePrice": "Desactualizado"
     },
     "consumerPrices": {
       "tabs": {

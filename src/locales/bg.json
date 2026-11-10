@@ -2375,7 +2375,15 @@
       "noData": "Енергийните данни временно недостъпни - ще се повтори",
       "liveTape": "Живи хроника",
       "liveTapeSource": "Котировки на пазара",
-      "infoTooltip": "<strong>Енергиен комплекс</strong> Физически и търговски енергийни сигнали на едно място:<ul><li><strong>Метрики на US Energy Information Administration</strong>: WTI, Brent, американско производство и запаси</li><li><strong>Живо табло</strong>: Търговски енергийни цени като суров нефт и природен газ</li><li><strong>Цел</strong>: Разделяне на физическия енергиен стрес от по-широката макро и стокова панели</li></ul>"
+      "infoTooltip": "<strong>Енергиен комплекс</strong> Физически и търговски енергийни сигнали на едно място:<ul><li><strong>Метрики на US Energy Information Administration</strong>: WTI, Brent, американско производство и запаси</li><li><strong>Живо табло</strong>: Търговски енергийни цени като суров нефт и природен газ</li><li><strong>Цел</strong>: Разделяне на физическия енергиен стрес от по-широката макро и стокова панели</li></ul>",
+      "marketTape": "Пазарни котировки",
+      "futures": "Фючърси",
+      "dailySpot": "Дневна спот цена",
+      "eiaWeeklySpot": "Спот цена на EIA · седмична средна",
+      "weekEnding": "Седмица до {{date}}",
+      "unknownPriceDate": "Часът на наблюдение не е наличен",
+      "unknownQuoteSource": "Източникът на котировката не е наличен",
+      "stalePrice": "Остаряло"
     },
     "consumerPrices": {
       "tabs": {

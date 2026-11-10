@@ -2366,7 +2366,15 @@
       "noData": "能源数据暂时不可用 - 将重试",
       "liveTape": "实时行情",
       "liveTapeSource": "市场报价",
-      "infoTooltip": "<strong>能源市场</strong> 实物和可交易能源信号整合显示：<ul><li><strong>美国能源信息署指标</strong>：WTI、布伦特油价、美国产量和库存</li><li><strong>实时行情</strong>：原油和天然气等可交易能源价格</li><li><strong>目的</strong>：将实物能源压力与更广泛的宏观和商品面板分离</li></ul>"
+      "infoTooltip": "<strong>能源市场</strong> 实物和可交易能源信号整合显示：<ul><li><strong>美国能源信息署指标</strong>：WTI、布伦特油价、美国产量和库存</li><li><strong>实时行情</strong>：原油和天然气等可交易能源价格</li><li><strong>目的</strong>：将实物能源压力与更广泛的宏观和商品面板分离</li></ul>",
+      "marketTape": "市场报价",
+      "futures": "期货",
+      "dailySpot": "每日现货价",
+      "eiaWeeklySpot": "EIA 现货价 · 周均价",
+      "weekEnding": "截至 {{date}} 的一周",
+      "unknownPriceDate": "观测时间不可用",
+      "unknownQuoteSource": "报价来源不可用",
+      "stalePrice": "已过时"
     },
     "consumerPrices": {
       "tabs": {

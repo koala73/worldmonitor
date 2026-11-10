@@ -2384,7 +2384,15 @@
       "noData": "Données énergétiques temporairement indisponibles - nouvelle tentative en cours",
       "liveTape": "Flux en direct",
       "liveTapeSource": "Cotations de marché",
-      "infoTooltip": "<strong>Complexe énergétique</strong> Signaux énergétiques physiques et négociables en un seul endroit :<ul><li><strong>Métriques de l'Administration américaine de l'information sur l'énergie</strong> : WTI, Brent, production américaine et stocks</li><li><strong>Transmission directe</strong> : Prix négociables de l'énergie comme le brut et le gaz naturel</li><li><strong>Objectif</strong> : Différencier le stress énergétique physique des panneaux macroéconomiques et de matières premières plus larges</li></ul>"
+      "infoTooltip": "<strong>Complexe énergétique</strong> Signaux énergétiques physiques et négociables en un seul endroit :<ul><li><strong>Métriques de l'Administration américaine de l'information sur l'énergie</strong> : WTI, Brent, production américaine et stocks</li><li><strong>Transmission directe</strong> : Prix négociables de l'énergie comme le brut et le gaz naturel</li><li><strong>Objectif</strong> : Différencier le stress énergétique physique des panneaux macroéconomiques et de matières premières plus larges</li></ul>",
+      "marketTape": "Cours du marché",
+      "futures": "Contrats à terme",
+      "dailySpot": "Cours au comptant quotidien",
+      "eiaWeeklySpot": "Cours au comptant de l’EIA · moyenne hebdomadaire",
+      "weekEnding": "Semaine se terminant le {{date}}",
+      "unknownPriceDate": "Heure d’observation indisponible",
+      "unknownQuoteSource": "Source du cours indisponible",
+      "stalePrice": "Obsolète"
     },
     "consumerPrices": {
       "tabs": {

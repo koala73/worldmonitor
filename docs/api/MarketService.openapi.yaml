@@ -318,8 +318,7 @@ paths:
                                       "display": "example"
                                       "name": "WorldMonitor Analyst"
                                       "price": 75.25
-                                      "sparkline":
-                                          - 1.5
+                                      "priceAt": 1717200000000
                                       "symbol": "GC=F"
                             schema:
                                 $ref: '#/components/schemas/ListCommodityQuotesResponse'
@@ -3752,6 +3751,16 @@ components:
                         type: number
                         format: double
                         description: Sparkline data points.
+                priceSource:
+                    type: string
+                    description: Observed price provider, when known for Brent and WTI.
+                priceBasis:
+                    type: string
+                    description: '"futures" for a futures quote, "spot" for a daily spot observation.'
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Provider observation time as Unix epoch milliseconds, independent of cache time.. Warning: Values > 2^53 may lose precision in JavaScript'
             required:
                 - symbol
             description: CommodityQuote represents a commodity price quote from Yahoo Finance.

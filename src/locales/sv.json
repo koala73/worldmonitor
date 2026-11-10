@@ -1991,7 +1991,15 @@
       "noData": "Energidata är tillfälligt otillgänglig - försöker igen",
       "liveTape": "Direktfeed",
       "liveTapeSource": "Marknadsnoteringar",
-      "infoTooltip": "<strong>Energikomplex</strong> Fysiska och handelbara energisignaler på ett ställe:<ul><li><strong>US Energy Information Administration-mätare</strong>: WTI, Brent, amerikansk produktion och behållningar</li><li><strong>Livetape</strong>: Handelbara energipriser som råolja och naturgas</li><li><strong>Syfte</strong>: Separera fysisk energistress från bredare makro- och råvarupaneler</li></ul>"
+      "infoTooltip": "<strong>Energikomplex</strong> Fysiska och handelbara energisignaler på ett ställe:<ul><li><strong>US Energy Information Administration-mätare</strong>: WTI, Brent, amerikansk produktion och behållningar</li><li><strong>Livetape</strong>: Handelbara energipriser som råolja och naturgas</li><li><strong>Syfte</strong>: Separera fysisk energistress från bredare makro- och råvarupaneler</li></ul>",
+      "marketTape": "Marknadsnoteringar",
+      "futures": "Terminskontrakt",
+      "dailySpot": "Dagligt spotpris",
+      "eiaWeeklySpot": "EIA:s spotpris · veckomedel",
+      "weekEnding": "Vecka som slutar {{date}}",
+      "unknownPriceDate": "Observationstid saknas",
+      "unknownQuoteSource": "Kurskälla saknas",
+      "stalePrice": "Inaktuellt"
     },
     "consumerPrices": {
       "tabs": {

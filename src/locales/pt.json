@@ -1998,7 +1998,15 @@
       "noData": "Dados de energia temporariamente indisponíveis - tentando novamente",
       "liveTape": "Fita ao vivo",
       "liveTapeSource": "Cotações de mercado",
-      "infoTooltip": "<strong>Complexo Energético</strong> Sinais de energia física e negociáveis em um só lugar:<ul><li><strong>Métricas da Administração de Informações de Energia dos EUA</strong>: WTI, Brent, produção dos EUA e estoques</li><li><strong>Live tape</strong>: Preços de energia negociáveis como petróleo e gás natural</li><li><strong>Propósito</strong>: Separar estresse de energia física de painéis macro e de commodities mais amplos</li></ul>"
+      "infoTooltip": "<strong>Complexo Energético</strong> Sinais de energia física e negociáveis em um só lugar:<ul><li><strong>Métricas da Administração de Informações de Energia dos EUA</strong>: WTI, Brent, produção dos EUA e estoques</li><li><strong>Live tape</strong>: Preços de energia negociáveis como petróleo e gás natural</li><li><strong>Propósito</strong>: Separar estresse de energia física de painéis macro e de commodities mais amplos</li></ul>",
+      "marketTape": "Cotações de mercado",
+      "futures": "Contratos futuros",
+      "dailySpot": "Preço à vista diário",
+      "eiaWeeklySpot": "Preço à vista da EIA · média semanal",
+      "weekEnding": "Semana encerrada em {{date}}",
+      "unknownPriceDate": "Hora de observação indisponível",
+      "unknownQuoteSource": "Fonte da cotação indisponível",
+      "stalePrice": "Desatualizado"
     },
     "consumerPrices": {
       "tabs": {

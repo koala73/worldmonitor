@@ -2384,7 +2384,15 @@
       "noData": "Dati energetici temporaneamente non disponibili - nuovo tentativo in corso",
       "liveTape": "Nastro in tempo reale",
       "liveTapeSource": "Quotazioni di mercato",
-      "infoTooltip": "<strong>Complesso energetico</strong> Segnali energetici fisici e negoziabili in un unico posto:<ul><li><strong>Metriche US Energy Information Administration</strong>: WTI, Brent, produzione US e giacenze</li><li><strong>Live tape</strong>: Prezzi energetici negoziabili come greggio e gas naturale</li><li><strong>Scopo</strong>: Separare lo stress energetico fisico dai pannelli macro e delle materie prime più generali</li></ul>"
+      "infoTooltip": "<strong>Complesso energetico</strong> Segnali energetici fisici e negoziabili in un unico posto:<ul><li><strong>Metriche US Energy Information Administration</strong>: WTI, Brent, produzione US e giacenze</li><li><strong>Live tape</strong>: Prezzi energetici negoziabili come greggio e gas naturale</li><li><strong>Scopo</strong>: Separare lo stress energetico fisico dai pannelli macro e delle materie prime più generali</li></ul>",
+      "marketTape": "Quotazioni di mercato",
+      "futures": "Contratti a termine",
+      "dailySpot": "Prezzo a pronti giornaliero",
+      "eiaWeeklySpot": "Prezzo a pronti EIA · media settimanale",
+      "weekEnding": "Settimana conclusa il {{date}}",
+      "unknownPriceDate": "Ora di osservazione non disponibile",
+      "unknownQuoteSource": "Fonte della quotazione non disponibile",
+      "stalePrice": "Non aggiornato"
     },
     "consumerPrices": {
       "tabs": {

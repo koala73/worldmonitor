@@ -2375,7 +2375,15 @@
       "noData": "Energiedaten vorübergehend nicht verfügbar – wird erneut versucht",
       "liveTape": "Live-Daten",
       "liveTapeSource": "Marktnotierungen",
-      "infoTooltip": "<strong>Energiekomplex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>"
+      "infoTooltip": "<strong>Energiekomplex</strong> Physische und handelbare Energiesignale an einem Ort:<ul><li><strong>US Energy Information Administration Metriken</strong>: WTI, Brent, US-Produktion und Bestände</li><li><strong>Live Tape</strong>: Handelbare Energiepreise wie Rohöl und Erdgas</li><li><strong>Zweck</strong>: Physische Energiespannungen von breiteren Makro- und Rohstoff-Panels trennen</li></ul>",
+      "marketTape": "Marktkurse",
+      "futures": "Terminkontrakte",
+      "dailySpot": "Täglicher Kassapreis",
+      "eiaWeeklySpot": "EIA-Kassapreis · Wochendurchschnitt",
+      "weekEnding": "Woche bis {{date}}",
+      "unknownPriceDate": "Beobachtungszeit unbekannt",
+      "unknownQuoteSource": "Kursquelle unbekannt",
+      "stalePrice": "Veraltet"
     },
     "consumerPrices": {
       "tabs": {

@@ -2384,7 +2384,15 @@
       "noData": "Datele energetice temporar indisponibile - va reîncerca",
       "liveTape": "Bandă Live",
       "liveTapeSource": "Cote de piață",
-      "infoTooltip": "<strong>Complexul energetic</strong> Semnale energetice fizice și tranzacționabile într-un singur loc:<ul><li><strong>Metrice US Energy Information Administration</strong>: WTI, Brent, producție SUA și stocuri</li><li><strong>Bandă live</strong>: Prețuri energetice tranzacționabile precum crude și gaze naturale</li><li><strong>Scop</strong>: Separarea stresului energetic fizic de panouri macroeconomice și de mărfuri mai largi</li></ul>"
+      "infoTooltip": "<strong>Complexul energetic</strong> Semnale energetice fizice și tranzacționabile într-un singur loc:<ul><li><strong>Metrice US Energy Information Administration</strong>: WTI, Brent, producție SUA și stocuri</li><li><strong>Bandă live</strong>: Prețuri energetice tranzacționabile precum crude și gaze naturale</li><li><strong>Scop</strong>: Separarea stresului energetic fizic de panouri macroeconomice și de mărfuri mai largi</li></ul>",
+      "marketTape": "Cotații de piață",
+      "futures": "Contracte futures",
+      "dailySpot": "Preț spot zilnic",
+      "eiaWeeklySpot": "Preț spot EIA · medie săptămânală",
+      "weekEnding": "Săptămâna încheiată la {{date}}",
+      "unknownPriceDate": "Ora observației nu este disponibilă",
+      "unknownQuoteSource": "Sursa cotației nu este disponibilă",
+      "stalePrice": "Neactualizat"
     },
     "consumerPrices": {
       "tabs": {

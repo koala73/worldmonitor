@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.market.v1;
 
 import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
 
 // MarketQuote represents a stock or index quote from Finnhub or Yahoo Finance.
 message MarketQuote {
@@ -97,6 +98,12 @@ message CommodityQuote {
   double change = 5;
   // Sparkline data points.
   repeated double sparkline = 6;
+  // Observed price provider, when known for Brent and WTI.
+  optional string price_source = 7;
+  // "futures" for a futures quote, "spot" for a daily spot observation.
+  optional string price_basis = 8;
+  // Provider observation time as Unix epoch milliseconds, independent of cache time.
+  optional int64 price_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 
 // SectorPerformance represents performance data for a market sector.

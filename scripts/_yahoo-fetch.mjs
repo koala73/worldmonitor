@@ -28,6 +28,7 @@
 
 import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart } from './_seed-utils.mjs';
 import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
+import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 
 const RETRYABLE_STATUSES = new Set([429, 503]);
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -203,10 +204,14 @@ export async function fetchYahooQuoteChart(symbol, {
 } = {}) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
   const chart = await fetchJson(url);
-  if (!awaitsSessionOpen(chart)) return parseYahooChart(chart, symbol);
-  await sleep(delayMs);
-  // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
-  const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
-  const lastTradeAt = chart.chart.result[0].meta.regularMarketTime;
-  return parseYahooChart(chart, symbol, { previousClose: previousSessionClose(daily, lastTradeAt) });
+  const lastTradeAt = chart?.chart?.result?.[0]?.meta?.regularMarketTime;
+  let previousClose = null;
+  if (awaitsSessionOpen(chart)) {
+    await sleep(delayMs);
+    // Optional: a 429 with Retry-After must not hold the sequential basket for minutes.
+    const daily = await fetchJson(`${url}${PREVIOUS_SESSION_CHART_QUERY}`, { maxRetries: 0 }).catch(() => null);
+    previousClose = previousSessionClose(daily, lastTradeAt);
+  }
+  const quote = parseYahooChart(chart, symbol, { previousClose });
+  return quote && { ...quote, ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', lastTradeAt * 1000) };
 }

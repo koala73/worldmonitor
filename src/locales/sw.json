@@ -1064,7 +1064,15 @@
       "noData": "Data ya nishati haipatikani kwa sasa - itajaribu tena",
       "liveTape": "Mtiririko wa moja kwa moja",
       "liveTapeSource": "Nukuu za soko",
-      "infoTooltip": "<strong>Nishati Ngumu</strong> Kimwili na vienya vya nishati vya biashara katika mahali pamoja:<ul><li><strong>Hesabu za US Energy Information Administration</strong>: WTI, Brent, uzalishaji wa US, na hifadhi</li><li><strong>Tepe halisi</strong>: Biashara ya bei za nishati kama mafuta nchi kavu na gesi asilia</li><li><strong>Kusudi</strong>: Tenga matatizo ya nishati ya kimwili kutoka kwa makro na mitambo ya biashara pana</li></ul>"
+      "infoTooltip": "<strong>Nishati Ngumu</strong> Kimwili na vienya vya nishati vya biashara katika mahali pamoja:<ul><li><strong>Hesabu za US Energy Information Administration</strong>: WTI, Brent, uzalishaji wa US, na hifadhi</li><li><strong>Tepe halisi</strong>: Biashara ya bei za nishati kama mafuta nchi kavu na gesi asilia</li><li><strong>Kusudi</strong>: Tenga matatizo ya nishati ya kimwili kutoka kwa makro na mitambo ya biashara pana</li></ul>",
+      "marketTape": "Bei za soko",
+      "futures": "Mikataba ya bei za baadaye",
+      "dailySpot": "Bei ya papo hapo ya siku",
+      "eiaWeeklySpot": "Bei ya papo hapo ya EIA · wastani wa wiki",
+      "weekEnding": "Wiki inayoishia {{date}}",
+      "unknownPriceDate": "Muda wa uchunguzi haupatikani",
+      "unknownQuoteSource": "Chanzo cha bei hakipatikani",
+      "stalePrice": "Imepitwa na wakati"
     },
     "supplyChain": {
       "chokepoints": "Vizuizi vya njia",

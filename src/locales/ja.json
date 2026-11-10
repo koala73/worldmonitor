@@ -2366,7 +2366,15 @@
       "noData": "エネルギーデータは一時的に利用できません - 再試行します",
       "liveTape": "ライブテープ",
       "liveTapeSource": "市場相場",
-      "infoTooltip": "<strong>エネルギー複合体</strong> 物理的およびトレード可能なエネルギーシグナルを一箇所に：<ul><li><strong>米国エネルギー情報局指標</strong>：WTI、ブレント、米国生産、在庫</li><li><strong>ライブテープ</strong>：原油や天然ガスなどのトレード可能なエネルギー価格</li><li><strong>目的</strong>：物理的なエネルギー・ストレスをより広いマクロおよび商品パネルから分離</li></ul>"
+      "infoTooltip": "<strong>エネルギー複合体</strong> 物理的およびトレード可能なエネルギーシグナルを一箇所に：<ul><li><strong>米国エネルギー情報局指標</strong>：WTI、ブレント、米国生産、在庫</li><li><strong>ライブテープ</strong>：原油や天然ガスなどのトレード可能なエネルギー価格</li><li><strong>目的</strong>：物理的なエネルギー・ストレスをより広いマクロおよび商品パネルから分離</li></ul>",
+      "marketTape": "市場相場",
+      "futures": "先物",
+      "dailySpot": "日次スポット価格",
+      "eiaWeeklySpot": "EIAスポット価格 · 週平均",
+      "weekEnding": "{{date}}までの週",
+      "unknownPriceDate": "観測時刻不明",
+      "unknownQuoteSource": "価格情報源不明",
+      "stalePrice": "更新期限超過"
     },
     "consumerPrices": {
       "tabs": {
