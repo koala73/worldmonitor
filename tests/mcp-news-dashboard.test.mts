@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOOL_REGISTRY, buildPublicTool } from '../api/mcp/registry/index.ts';
-import { NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
+import { COUNTRY_VIEW_META, MARKET_RADAR_META, NEWS_DASHBOARD_META } from '../api/mcp/ui/news-dashboard-app.ts';
 import Ajv2020 from 'ajv/dist/2020.js';
 
 test('public headline schema advertises one translation headline and up to eight brief headlines', () => {
@@ -23,6 +23,20 @@ test('dashboard CSP permits the tile, sprite and boundary dependencies requested
   ]) {
     assert.ok(csp.connectDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
     assert.ok(csp.resourceDomains.includes(new URL(url).origin), `Blocked map asset: ${url}`);
+  }
+});
+
+// Hosts build the view sandbox from _meta.ui.csp and already grant
+// `img-src 'self' data:`. A bare scheme such as `data:` or `https:` in an
+// origin list would also open script-src and style-src, so every entry must
+// be a specific https origin (ora.ai docks views that list one).
+test('plugin view CSP origin lists name specific https origins, never a bare scheme', () => {
+  for (const [name, meta] of Object.entries({ NEWS_DASHBOARD_META, COUNTRY_VIEW_META, MARKET_RADAR_META })) {
+    for (const [list, origins] of Object.entries(meta.ui.csp)) {
+      for (const origin of origins as string[]) {
+        assert.match(origin, /^https:\/\/(\*\.)?[a-z0-9.-]+\.[a-z]{2,}$/i, `${name}.${list} lists ${origin}`);
+      }
+    }
   }
 });
 

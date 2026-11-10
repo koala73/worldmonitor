@@ -332,7 +332,7 @@ test('an HTTP status failure is never retried', async () => {
   assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
 });
 
-test('fails when agent_auth.skill is not the issuer origin /auth.md', async () => {
+test('fails when agent_auth.skill is not the canonical host /auth.md', async () => {
   const server = createHealthyFixtureServer({ skillFor: () => 'https://www.worldmonitor.app/auth.md' });
   const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-skill-host-');
 
@@ -341,7 +341,7 @@ test('fails when agent_auth.skill is not the issuer origin /auth.md', async () =
   assert.match(report.failures[0].detail, /expected http:\/\/127\.0\.0\.1:\d+\/auth\.md/);
 });
 
-test('fails when the issuer /auth.md redirects instead of serving markdown', async () => {
+test('fails when the canonical /auth.md redirects instead of serving markdown', async () => {
   const server = createHealthyFixtureServer({
     onAuthMd: (_req, res) => {
       res.writeHead(301, { location: 'https://www.worldmonitor.app/auth.md' }).end();

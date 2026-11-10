@@ -4267,9 +4267,10 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
       // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
       assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
-      // Scanners require skill == <issuer>/auth.md. The apex serves it because
-      // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
-      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
+      // ora.ai compares skill with the /auth.md published on the scanned domain,
+      // so every host names the apex copy. The apex serves it because /auth.md
+      // is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+      assert.equal(json.agent_auth.skill, 'https://worldmonitor.app/auth.md', `skill is the apex /auth.md for ${host}`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
       // auth.md v0.2's identity_endpoint takes {"type":"anonymous"} and returns
       // an identity_assertion; /oauth/register is RFC 7591 DCR, so it must not

@@ -24,14 +24,23 @@ const MAX_TOKEN_LENGTH = 64;
 const DIRECT = 'direct';
 const HOST_PATTERN = /^(?=.{1,253}$)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const LANDING_FAMILIES = new Set([
-  'homepage',
-  'dashboard',
-  'pricing',
-  'documentation',
-  'developer_mcp',
-  'use-cases',
-]);
+const LANDING_PREFIXES: readonly (readonly [prefix: string, family: string])[] = [
+  ['/dashboard', 'dashboard'],
+  ['/pro', 'pricing'],
+  ['/mcp', 'developer_mcp'],
+  ['/api', 'developer_mcp'],
+  ['/docs', 'documentation'],
+  ['/use-cases', 'use-cases'],
+  ['/chokepoints', 'chokepoints'],
+  ['/countries', 'countries'],
+  ['/crises', 'crises'],
+  ['/compare', 'compare'],
+  ['/tools', 'tools'],
+  ['/research', 'research'],
+  ['/agent', 'agent'],
+  ['/blog', 'blog'],
+];
+const LANDING_FAMILIES = new Set(['homepage', ...LANDING_PREFIXES.map(([, family]) => family)]);
 
 export interface AcquisitionSource {
   source?: string;
@@ -70,17 +79,11 @@ function normalizeToken(value: unknown): string | undefined {
   return token || undefined;
 }
 
-/** Page family of the landing path, matching content-attribution's buckets. */
+/** Page family of the landing path, or undefined for an unlisted page. */
 function landingFamily(pathname: string): string | undefined {
   const path = pathname.toLowerCase().replace(/\/+$/, '') || '/';
-  const under = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
   if (path === '/') return 'homepage';
-  if (under('/dashboard')) return 'dashboard';
-  if (under('/pro')) return 'pricing';
-  if (under('/mcp') || under('/api')) return 'developer_mcp';
-  if (under('/docs')) return 'documentation';
-  if (under('/use-cases')) return 'use-cases';
-  return undefined;
+  return LANDING_PREFIXES.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`))?.[1];
 }
 
 function normalizeReferrer(value: unknown): string | undefined {
@@ -231,6 +234,46 @@ export function acquisitionCookieStorage(
       write(key, '', 0);
     },
   };
+}
+
+/**
+ * The Set-Cookie value that records this navigation as the first touch, or
+ * null when the request already carries an unexpired record. It runs the
+ * browser capture over the request's Cookie header, so an edge handler writes
+ * exactly the cookie, attributes included, that page script would.
+ */
+export function firstTouchSetCookie(input: {
+  url: string;
+  cookieHeader: string | null;
+  referrer: string | null;
+  now: number;
+}): string | null {
+  let url: URL;
+  try {
+    url = new URL(input.url);
+  } catch {
+    return null;
+  }
+  const writes: string[] = [];
+  const jar = {
+    // A write replaces the only cookie the storage reads, so the read-back
+    // after a write sees the written value, as document.cookie would.
+    get cookie() {
+      const last = writes[writes.length - 1];
+      return last === undefined ? input.cookieHeader ?? '' : last.split(';')[0] ?? '';
+    },
+    set cookie(value: string) {
+      writes.push(value);
+    },
+  };
+  captureFirstTouchAcquisition(acquisitionCookieStorage(jar, url), {
+    search: url.search,
+    pathname: url.pathname,
+    referrer: input.referrer ?? '',
+    now: input.now,
+  });
+  // A stale or malformed record is removed before the new one is written.
+  return writes[writes.length - 1] ?? null;
 }
 
 /**
