@@ -168,6 +168,17 @@ describe('normalizeAcquisitionSource', () => {
     assert.equal(normalizeAcquisitionSource({ path: atLimit })?.path, atLimit);
   });
 
+  it('drops a landing path whose family contradicts the recorded landing', () => {
+    assert.deepEqual(
+      normalizeAcquisitionSource({ landing: 'pricing', path: '/countries/iran/' }),
+      { landing: 'pricing' },
+    );
+    assert.deepEqual(
+      normalizeAcquisitionSource({ landing: 'countries', path: '/countries/iran/' }),
+      { landing: 'countries', path: '/countries/iran/' },
+    );
+  });
+
   it('returns null for non-objects and for objects with no usable field', () => {
     assert.equal(normalizeAcquisitionSource(null), null);
     assert.equal(normalizeAcquisitionSource('direct'), null);
@@ -335,16 +346,20 @@ describe('firstTouchSetCookie', () => {
     });
   });
 
-  it('keeps the cookie well under the browser limit with the longest accepted path', () => {
-    const longest = `/countries/${'a'.repeat(120 - '/countries/'.length)}`;
+  it('keeps the largest accepted record under half the 4096-byte browser cookie limit', () => {
+    const longest = `/countries/${'%/'.repeat(60)}`.slice(0, 120);
+    const label = 'r'.repeat(63);
+    const longestHost = `${label}.${label}.${label}.${'r'.repeat(253 - 3 * 64)}`;
     const setCookie = firstTouchSetCookie({
       url: `https://www.worldmonitor.app${longest}?utm_source=${'s'.repeat(80)}&utm_medium=${'m'.repeat(80)}&utm_campaign=${'c'.repeat(80)}`,
       cookieHeader: null,
-      referrer: `https://${'r'.repeat(60)}.example.com/`,
+      referrer: `https://${longestHost}/`,
       now: NOW,
     });
     assert.equal(cookieRecord(setCookie).path, longest);
-    assert.ok(setCookie!.length < 1024, `Set-Cookie is ${setCookie!.length} bytes`);
+    assert.equal(cookieRecord(setCookie).referrer, longestHost);
+    assert.ok(setCookie!.length > 1024, `fixture exercises the encoding-heavy worst case (${setCookie!.length} bytes)`);
+    assert.ok(setCookie!.length < 2048, `Set-Cookie is ${setCookie!.length} bytes`);
   });
 
   it('keeps a stored record written before the path existed', () => {
