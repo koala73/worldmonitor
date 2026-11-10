@@ -3,6 +3,7 @@
  * services/desktop-sign-in-page.ts; this file wires it to the DOM and Clerk.
  */
 
+import './bootstrap/abort-signal-fallbacks';
 import { getClerk, getClerkSessionToken, getCurrentClerkUser, initClerk, openSignIn, subscribeClerk } from '@/services/clerk';
 import { resolveLaunch, runDesktopSignInContinue, type LaunchStorage } from '@/services/desktop-sign-in-page';
 import { safeStorageGet } from '@/utils/safe-storage';

@@ -1,3 +1,4 @@
+import './bootstrap/abort-signal-fallbacks';
 import './styles/plugin-market.css';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';

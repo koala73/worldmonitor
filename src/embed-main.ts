@@ -1,3 +1,4 @@
+import './bootstrap/abort-signal-fallbacks';
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
 import './styles/embed.css';
