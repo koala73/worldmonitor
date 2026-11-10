@@ -87,6 +87,23 @@ export function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
   return fallbackAnySignal(signals);
 }
 
+/**
+ * Whether the engine itself implements `AbortSignal.timeout` / `AbortSignal.any`.
+ * A `typeof` check stops meaning that once the dashboard installs the
+ * fallbacks, so code that reports which mechanism ran must ask these.
+ */
+export function hasNativeAbortSignalTimeout(): boolean {
+  return typeof AbortSignal !== 'undefined'
+    && typeof AbortSignal.timeout === 'function'
+    && AbortSignal.timeout !== fallbackTimeoutSignal;
+}
+
+export function hasNativeAbortSignalAny(): boolean {
+  return typeof AbortSignal !== 'undefined'
+    && typeof AbortSignal.any === 'function'
+    && (AbortSignal.any as unknown) !== fallbackAnySignal;
+}
+
 /** The `AbortSignal.any` fallback alone, with no native check; see `fallbackTimeoutSignal`. */
 export function fallbackAnySignal(signals: Iterable<AbortSignal>): AbortSignal {
   const controller = new AbortController();
