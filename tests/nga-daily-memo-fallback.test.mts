@@ -65,6 +65,50 @@ describe('NGA daily memo fallback', () => {
     assert.equal(parseNgaDailyMemo(MAINTENANCE_PAGE, 'P', 'HYDROPAC', NOW), null);
   });
 
+  it('skips the area\'s own in-force summary notice, which carries no warning number', () => {
+    // NAVAREA IV began listing its in-force summary as a block of its own on
+    // 2026-11-09 (Sentry WORLDMONITOR-1C4): a date-time group, the bare
+    // authority, then the list of warning numbers. It is an index of the
+    // warnings already in the memo, not a hazard.
+    const iv = MEMO_FIXTURES[NGA_DAILY_MEMO_URLS[0]!]!;
+    const summary = [
+      '061615Z NOV 26',
+      'NAVAREA IV',
+      '1. NAVAREA IV WARNINGS IN FORCE AS OF 061615Z NOV. ',
+      '   ALL THE INFORCE WARNINGS ARE LISTED HERE.',
+      '   1070/2026, 227/2025.',
+      '2. CANCEL NAVAREA IV 1060/26.',
+    ].join('\n');
+    const withSummary = iv.replace('052129Z NOV 26\n', `${summary}\n\n052129Z NOV 26\n`);
+    assert.notEqual(withSummary, iv);
+    const parsed = parseNgaDailyMemo(withSummary, '4', 'NAVAREA IV', NOW);
+    assert.deepEqual(parsed?.map((w) => [w.msgNumber, w.subregion]), [[1070, ''], [227, '25']]);
+
+    // Only that exact notice is skipped: a bare-authority block saying anything
+    // else is still a format change, and another area's summary is not ours.
+    const unknownBare = withSummary.replace('WARNINGS IN FORCE AS OF 061615Z NOV.', 'NEW FORMAT NOTICE.');
+    assert.equal(parseNgaDailyMemo(unknownBare, '4', 'NAVAREA IV', NOW), null);
+    const otherArea = withSummary.replace('1. NAVAREA IV WARNINGS IN FORCE', '1. HYDROLANT WARNINGS IN FORCE');
+    assert.equal(parseNgaDailyMemo(otherArea, '4', 'NAVAREA IV', NOW), null);
+    // Without the blank line after it, the next warning joins the summary
+    // block; skipping that block would return a short list as complete.
+    const unseparated = iv.replace('052129Z NOV 26\n', `${summary}\n052129Z NOV 26\n`);
+    assert.equal(parseNgaDailyMemo(unseparated, '4', 'NAVAREA IV', NOW), null);
+    // The same holds for a following notice with no warning id of its own.
+    const unseparatedBare = iv.replace('052129Z NOV 26\n', `${summary}\n061700Z NOV 26\nNAVAREA IV\n1. NOTICE.\n\n052129Z NOV 26\n`);
+    assert.equal(parseNgaDailyMemo(unseparatedBare, '4', 'NAVAREA IV', NOW), null);
+    // Undated notices with no date-time group: another area's warning id,
+    // another area's bare authority, and a legacy MSGID preamble.
+    for (const joined of [
+      'HYDROLANT 123/26.\nNORTH ATLANTIC.',
+      'HYDROLANT\n1. NOTICE.',
+      'MSGID/GENADMIN/NGA NAVSAFETY WASHINGTON DC//\nRMKS/\nNAVAREA IV 228/22(25).',
+    ]) {
+      const memo = iv.replace('052129Z NOV 26\n', `${summary}\n${joined}\n\n052129Z NOV 26\n`);
+      assert.equal(parseNgaDailyMemo(memo, '4', 'NAVAREA IV', NOW), null, joined);
+    }
+  });
+
   it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {
     const pac = MEMO_FIXTURES[NGA_DAILY_MEMO_URLS[3]!]!;
     const reformatted = pac.replace('HYDROPAC 3229/26', 'HYDROPAC WARNING 3229-26');
