@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -307,9 +307,6 @@ describe('search-links CLI', () => {
       const links = route === '/use-cases/' ? '<a href="/blog/posts/houthi-shipping/">Houthi</a>' : '';
       write(`public${route}index.html`, `<html><body><nav><a href="/chokepoints/bab-el-mandeb/">x</a></nav><main><h1>${route}</h1>${links}</main></body></html>`);
     }
-    for (const family of SEARCH_LINK_FAMILIES) {
-      write(searchLinksPath(family), JSON.stringify({ snapshot: null, pages: {}, exclusions: [] }));
-    }
     write(searchLinksPath('chokepoints'), JSON.stringify({
       snapshot: null,
       pages: {},
@@ -363,12 +360,34 @@ describe('search-links CLI', () => {
     }
   });
 
+  it('writes no ledger for a family with nothing to hold, and removes one the proposal empties or that is already empty', () => {
+    const root = fixtureRepo();
+    try {
+      writeFileSync(join(root, searchLinksPath('tools')), JSON.stringify({ snapshot: null, pages: {}, exclusions: [] }));
+      writeFileSync(join(root, searchLinksPath('crises')), JSON.stringify({
+        snapshot: 'docs/research/seo-ai-visibility/gsc/2026-11-09.json',
+        pages: { '/crises/red-sea/': [{ href: '/countries/yemen/', anchor: 'Red sea crisis' }] },
+        exclusions: [],
+      }));
+      const result = runCli(['--write'], { rootDir: root, log: () => {} });
+      assert.deepEqual(result.written, [searchLinksPath('countries'), searchLinksPath('crises'), searchLinksPath('tools'), searchLinksPath('use-cases')]);
+      assert.deepEqual(
+        SEARCH_LINK_FAMILIES.filter((family) => existsSync(join(root, searchLinksPath(family)))),
+        ['countries', 'chokepoints', 'use-cases'],
+        'only ledgers holding links or exclusions exist',
+      );
+      assert.deepEqual(runCli(['--write'], { rootDir: root, log: () => {} }).written, [], 'a rerun is a no-op');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('refuses to propose links while a landing page is unbuilt', () => {
     const root = fixtureRepo();
     try {
       rmSync(join(root, 'public/countries/yemen/index.html'));
       assert.throws(() => runCli(['--write'], { rootDir: root, log: () => {} }), /public\/countries\/yemen\/index\.html is missing/);
-      assert.equal(JSON.parse(readFileSync(join(root, searchLinksPath('countries')), 'utf8')).snapshot, null, 'nothing was written');
+      assert.equal(existsSync(join(root, searchLinksPath('countries'))), false, 'nothing was written');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

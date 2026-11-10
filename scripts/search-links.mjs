@@ -15,7 +15,7 @@
  * rerun with --write.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -155,8 +155,15 @@ function renderTable(chosen) {
   return lines.join('\n');
 }
 
-const sameLinks = (left, right) => JSON.stringify({ pages: left?.pages, exclusions: left?.exclusions })
-  === JSON.stringify({ pages: right.pages, exclusions: right.exclusions });
+// A ledger with no links and no exclusions is not committed: an empty file
+// would still move its pages' lastmod.
+const isEmptyLedger = (ledger) => !ledger
+  || (Object.keys(ledger.pages ?? {}).length === 0 && (ledger.exclusions ?? []).length === 0);
+
+const sameLinks = (left, right) => (isEmptyLedger(right)
+  ? !left
+  : JSON.stringify({ pages: left?.pages, exclusions: left?.exclusions })
+    === JSON.stringify({ pages: right.pages, exclusions: right.exclusions }));
 
 export function parseArgs(argv) {
   const options = { snapshot: null, write: false };
@@ -198,6 +205,10 @@ export function runCli(argv, { rootDir = REPO_ROOT, log = console.log } = {}) {
   }
   for (const family of changed) {
     const file = join(rootDir, searchLinksPath(family));
+    if (isEmptyLedger(ledgers[family])) {
+      rmSync(file, { force: true });
+      continue;
+    }
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, formatLedger(ledgers[family]));
   }
