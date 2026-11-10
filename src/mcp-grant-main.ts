@@ -1,4 +1,5 @@
 import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Apex `/mcp-grant` page bootstrap.
