@@ -6,9 +6,12 @@ import {
   classifyUcdpEvents,
   summarizeUcdpEvents,
   selectUcdpPanelRows,
+  selectUcdpExposureRows,
   compactUcdpDashboardPayload,
 } from '../scripts/_ucdp-dashboard.mjs';
 import { deriveUcdpClassifications } from '../src/services/conflict/ucdp-classify.ts';
+import { enrichEventsWithExposure } from '../src/services/population-exposure.ts';
+import { PRIORITY_COUNTRIES } from '../shared/analysis-population-exposure.ts';
 
 const NOW = Date.parse('2026-07-14T00:00:00.000Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -144,6 +147,38 @@ test('projection shrinks the payload while preserving every displayed number', (
   const before = JSON.stringify(full).length;
   const after = JSON.stringify(compact).length;
   assert.ok(after < before / 2, `projection should at least halve the payload (was ${before}, now ${after})`);
+});
+
+test('selects eligible exposure rows before the independent panel cap', () => {
+  const point = { ...fixture()[0], country: 'Yemen (North Yemen)', hasPreciseLocation: true };
+  const panelRows = Array.from({ length: UCDP_PANEL_ROWS_PER_TAB }, (_, i) => ({
+    ...point, id: `panel-${i}`, hasPreciseLocation: false,
+  }));
+  const eligible = Array.from({ length: 12 }, (_, i) => ({ ...point, id: `exposure-${i}` }));
+  const events = [
+    ...panelRows,
+    { ...point, country: 'Chile' },
+    { ...point, location: { latitude: 91, longitude: 10 } },
+    { ...point, location: { latitude: 0, longitude: 0 } },
+    ...eligible,
+  ];
+  const compact = compactUcdpDashboardPayload({ events }, NOW);
+  assert.deepEqual(compact.events, panelRows);
+  assert.deepEqual(compact.exposureEvents, eligible.slice(0, 10));
+  assert.deepEqual(compact.aggregates, summarizeUcdpEvents(events));
+});
+
+test('seeded exposure eligibility agrees with the dashboard for UCDP country labels', () => {
+  const countries = [
+    ...Object.entries(PRIORITY_COUNTRIES).flatMap(([code, { name }]) => [code, name]),
+    'Yemen (North Yemen)', 'Russia (Soviet Union)', 'DR Congo (Zaire)', 'Myanmar (Burma)', 'Chile', 'Unknown',
+  ];
+  for (const country of countries) {
+    const point = { id: 'point', country, location: { latitude: 1, longitude: 2 }, hasPreciseLocation: true };
+    const [projected] = selectUcdpExposureRows([point]);
+    const [estimate] = enrichEventsWithExposure([{ ...point, name: country, type: 'conflict', lat: 1, lon: 2 }]);
+    assert.equal(Boolean(projected), Boolean(estimate), country);
+  }
 });
 
 test('bootstrap projection size does not grow with the full event count', () => {

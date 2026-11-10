@@ -114,6 +114,7 @@ export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   classifications?: Record<string, UcdpConflictStatus>;
   aggregates?: Record<string, UcdpTabAggregate>;
   totalEvents?: number;
+  exposureEvents?: ProtoUcdpEvent[];
 };
 
 import type { UcdpConflictStatus } from './ucdp-classify';
@@ -158,12 +159,20 @@ interface UcdpEventsResponse {
   data: UcdpGeoEvent[];
   cached_at: string;
   fromCache: boolean;
+  exposureData?: UcdpGeoEvent[];
 }
 
 export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
-    return { success: true, count: events.length, data: events, cached_at: '', fromCache: false };
+    return {
+      success: true,
+      count: events.length,
+      data: events,
+      cached_at: '',
+      fromCache: false,
+      exposureData: hydrated.exposureEvents?.map(toUcdpGeoEvent),
+    };
   }
 
   const resp = await ucdpBreaker.execute(async () => {

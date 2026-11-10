@@ -360,7 +360,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     expect(recordError).toHaveBeenCalledWith('worldpop', 'Exposure source data unavailable');
   });
 
-  it('reads beyond the UCDP projection for exposure while preserving the UCDP panel projection', async () => {
+  it('uses separate UCDP exposure rows while preserving the UCDP panel projection', async () => {
     const point = {
       id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
       type_of_violence: 'state-based', hasPreciseLocation: true,
@@ -369,14 +369,11 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
       ...point, id: `projected-${i}`, hasPreciseLocation: false,
     }));
     const aggregates = { UCDP_VIOLENCE_TYPE_STATE_BASED: { count: 51, totalDeaths: 0 } };
-    const hydrated = { events: projected, totalEvents: 51, aggregates };
+    const hydrated = { events: projected, totalEvents: 51, aggregates, exposureEvents: [point] };
     mocks.getHydratedData.mockImplementation(key => key === 'ucdpEvents' ? hydrated : undefined);
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
-    mocks.fetchUcdpEvents
-      .mockResolvedValueOnce({ success: true, data: projected })
-      .mockResolvedValueOnce({ success: true, data: [...projected, point] });
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({ success: true, data: projected, exposureData: [point] });
     const { loader, ctx } = await makeLoader();
-    ctx.panelSettings['population-exposure'] = { enabled: true, name: 'Population Exposure', priority: 0 };
     const setExposures = vi.fn();
     const setEvents = vi.fn();
     ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
@@ -384,7 +381,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
     await loader.loadIntelligenceSignals();
 
-    expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated], []]);
+    expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated]]);
     expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
     expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })]);
   });

@@ -3,16 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../src/app/data-loader.ts', import.meta.url), 'utf8');
-const start = source.indexOf('const ucdpTask = (async () => {');
-const registration = 'tasks.push(ucdpTask.then(() => undefined));';
-const end = source.indexOf(registration, start) + registration.length;
+const start = source.lastIndexOf('tasks.push((async () => {', source.indexOf('const wantsFullUcdpSet'));
+const end = source.indexOf('})());', start) + '})());'.length;
 const closure = source.slice(start, end)
   .replace('(this.ctx.panels[\'ucdp-events\'] as UcdpEventsPanel)', "this.ctx.panels['ucdp-events']");
 const conflictStart = source.indexOf('const conflictsTask = (async () => {');
 const conflictEnd = source.indexOf('tasks.push(conflictsTask.then(() => undefined));', conflictStart)
   + 'tasks.push(conflictsTask.then(() => undefined));'.length;
 const run = new Function('tasks', 'fetchConflictEvents', 'ingestConflictsForCountryData', 'fetchUcdpEvents', 'hydratedUcdp', 'dataFreshness',
-  source.slice(conflictStart, conflictEnd) + '\n' + closure);
+  'let ucdpReceived, ucdpFromCache;\n' + source.slice(conflictStart, conflictEnd) + '\n' + closure);
 const dateMs = Date.parse('2026-09-16T00:00:00Z');
 const type = 'UCDP_VIOLENCE_TYPE_STATE_BASED';
 
