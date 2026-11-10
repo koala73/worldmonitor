@@ -13,6 +13,7 @@ import {
   createServiceAccountAssertion,
   decodeServiceAccount,
   buildNonBrandQueries,
+  buildQueryPages,
   describeDisagreement,
   buildInventory,
   BRAND_QUERY_PATTERN,
@@ -40,6 +41,21 @@ const collect = async (fixtures = FIXTURES) => {
     { log: silent },
   );
   return { snapshot, markdown };
+};
+
+/**
+ * The repository is public: a query's text needs one page with 20 impressions,
+ * and a page is a bare www path that cannot carry a tracking parameter.
+ */
+const assertPublishableQueryPages = (list, label) => {
+  for (const row of list.rows) {
+    assert.ok(row.pages[0].impressions >= 20, `${label}: "${row.query}" is published below the floor`);
+    assert.ok(row.pages.length <= 10, `${label}: "${row.query}" lists more than 10 pages`);
+    for (const page of row.pages) {
+      assert.match(page.path, /^\/[^?#]*$/, `${label}: "${row.query}" names ${page.path}, not a bare path`);
+    }
+  }
+  assert.ok(list.rows.length <= 500, `${label}: more than 500 queries`);
 };
 
 const querySet = JSON.parse(
@@ -293,6 +309,23 @@ describe('Search Console collector secrecy', () => {
       /property identifier/,
     );
     assert.equal(assertNoSecrets('{"ok":true}', { property: 'sc-domain:example.test' }), '{"ok":true}');
+  });
+
+  it('publishes query pages only above the floor and as bare paths in every committed snapshot', () => {
+    assert.throws(
+      () => assertPublishableQueryPages({ rows: [{ query: 'rare', pages: [{ path: '/', impressions: 19 }] }] }, 'probe'),
+      /below the floor/,
+    );
+    assert.throws(
+      () => assertPublishableQueryPages({ rows: [{ query: 'q', pages: [{ path: 'https://www.worldmonitor.app/', impressions: 20 }] }] }, 'probe'),
+      /not a bare path/,
+    );
+    const directory = repoPath('docs/research/seo-ai-visibility/gsc');
+    for (const name of readdirSync(directory).filter((entry) => entry.endsWith('.json'))) {
+      const snapshot = JSON.parse(readFileSync(join(directory, name), 'utf8'));
+      const list = snapshot.performance?.queryPages;
+      if (list) assertPublishableQueryPages(list, name);
+    }
   });
 
   it('keeps every committed research artifact free of credential markers', () => {
@@ -837,6 +870,97 @@ describe('Search Console site totals and brand split', () => {
     const copy = structuredClone(snapshot);
     copy.performance.nonBrandQueries = list;
     assert.match(renderGscMarkdown(copy), /Top pages are withheld: searchanalytics quota was exhausted/);
+  });
+
+  it('lists every www page each non-brand query showed over the widest window', async () => {
+    const { snapshot } = await collect();
+    const list = snapshot.performance.queryPages;
+    assert.equal(list.status, 'available');
+    assert.equal(list.window, '90d');
+    assert.deepEqual(list.rows, [
+      {
+        query: 'kerch strait',
+        impressions: 3040,
+        likelyAutomated: true,
+        pages: [
+          { path: '/chokepoints/kerch-strait/', impressions: 3000, position: 9 },
+          { path: '/blog/posts/black-sea-shipping/', impressions: 40, position: 12.5 },
+        ],
+      },
+      {
+        query: 'bab el mandeb',
+        impressions: 25,
+        likelyAutomated: false,
+        pages: [{ path: '/chokepoints/bab-el-mandeb/', impressions: 25, position: 6 }],
+      },
+    ]);
+    assertPublishableQueryPages(list, 'fixture snapshot');
+  });
+
+  it('keeps a query out of the query pages until one page alone has 20 impressions', async () => {
+    const { snapshot } = await collect();
+    // 15 + 10 page rows can be one search counted twice, so the sum is no floor.
+    assert.equal(snapshot.performance.queryPages.rows.some((row) => row.query === 'split query'), false);
+  });
+
+  it('reports the query pages as unavailable when the view was not collected or was cut short', async () => {
+    const { snapshot } = await collect(`${FIXTURES}quota/`);
+    assert.equal(snapshot.performance.queryPages.status, 'unavailable');
+    assert.match(snapshot.performance.queryPages.reason, /90d queryNonBrandPage view was not collected/);
+    assert.deepEqual(snapshot.performance.queryPages.rows, []);
+
+    const cut = buildQueryPages({
+      window: { label: '90d' },
+      page: {
+        rows: [{ key: 'pizza index', secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 90, position: 5 }],
+        truncationReason: 'stopped after 40 pages of queryNonBrandPage rows',
+        recorded: true,
+      },
+    }, { status: 'available', window: '28d', rows: [] });
+    assert.equal(cut.status, 'unavailable');
+    assert.equal(cut.reason, 'stopped after 40 pages of queryNonBrandPage rows');
+    assert.deepEqual(cut.rows, []);
+  });
+
+  it('caps the query pages at 500 queries of 10 pages and leaves automation unknown without the device view', () => {
+    const rows = [];
+    for (let query = 0; query < 501; query += 1) {
+      rows.push({ key: `query ${query}`, secondKey: 'https://www.worldmonitor.app/', clicks: 0, impressions: 1000 - query, position: 4 });
+    }
+    for (let page = 0; page < 12; page += 1) {
+      rows.push({ key: 'query 0', secondKey: `https://www.worldmonitor.app/p${page}/`, clicks: 0, impressions: 30, position: 8 });
+    }
+    const list = buildQueryPages(
+      { window: { label: '90d' }, page: { rows, truncationReason: null, recorded: true } },
+      { status: 'unavailable', window: '28d', rows: [] },
+    );
+    assert.equal(list.rows.length, 500);
+    assert.equal(list.rows.at(-1).query, 'query 499');
+    assert.equal(list.rows[0].pages.length, 10);
+    assert.equal(list.rows[0].impressions, 1000 + 12 * 30);
+    assert.equal(list.rows[0].likelyAutomated, null);
+  });
+
+  it('publishes a query only when one URL alone reaches the floor', () => {
+    const page = (key, url, impressions) => ({ key, secondKey: `https://www.worldmonitor.app${url}`, clicks: 0, impressions, position: 6 });
+    const list = buildQueryPages(
+      {
+        window: { label: '90d' },
+        page: {
+          rows: [
+            page('merged variants', '/tools/', 15),
+            page('merged variants', '/tools/#faq', 10),
+            page('one url', '/crises/', 20),
+            page('one url', '/crises/?x=1', 4),
+          ],
+          truncationReason: null,
+          recorded: true,
+        },
+      },
+      { status: 'available', window: '28d', rows: [] },
+    );
+    assert.deepEqual(list.rows.map((row) => row.query), ['one url']);
+    assert.deepEqual(list.rows[0].pages, [{ path: '/crises/', impressions: 24, position: 6 }]);
   });
 
   it('keeps Markdown in a query cell from rendering as links, images or HTML', () => {

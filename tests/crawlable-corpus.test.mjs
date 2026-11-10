@@ -123,6 +123,8 @@ import { LIVE_TOPIC_PAGES_CONTENT_VERSION } from '../scripts/build-live-topic-pa
 import { LIVE_TOPIC_PAGES } from '../scripts/live-pages/index.mjs';
 import { LIVE_PAGE_LINKS_PATH } from '../scripts/live-pages/related-links.mjs';
 import { RELATED_READING_PATH } from '../scripts/related-reading.mjs';
+import { SEARCH_LINK_FAMILIES } from '../scripts/lib/search-links.mjs';
+import { searchLinksPath } from '../scripts/search-links.mjs';
 import { MAX_RELATED_COUNTRIES } from '../scripts/country-related-links.mjs';
 import { ACCURACY_CONTENT_VERSION } from '../scripts/build-accuracy-page.mjs';
 import { SITUATION_CONTENT_VERSION, SITUATION_PAGE_INPUT_PATHS } from '../scripts/build-situation-page.mjs';
@@ -1782,6 +1784,7 @@ describe('crawlable corpus generator', () => {
       'scripts/chokepoint-page-content.mjs',
       'scripts/chokepoint-eia-baselines.mjs',
       'scripts/live-pages/related-links.mjs',
+      'scripts/data/search-links/chokepoints.json',
     ]);
   });
 
@@ -3379,7 +3382,20 @@ describe('crawlable corpus generator', () => {
           assert.ok(words(item.textContent).length <= 10, `${route} live data lines must stay one short line`);
         }
         const liveLinksWordCount = words(liveLinksBlock?.textContent).length;
-        const navigationWordCount = relatedLinksWordCount + liveLinksWordCount;
+        // Search links (scripts/lib/search-links.mjs) are a third navigation
+        // block: a one-word heading and 0-5 query anchors of at most 10 words.
+        const searchLinksBlock = countryDocument.querySelector('[data-search-links]');
+        const searchLinkItems = [...(searchLinksBlock?.querySelectorAll('li') || [])];
+        assert.ok(searchLinkItems.length <= 5, `${route} must list at most 5 search links, got ${searchLinkItems.length}`);
+        for (const item of searchLinkItems) {
+          assert.ok(words(item.textContent).length <= 10, `${route} search-link lines must stay one short line`);
+        }
+        const searchLinksWordCount = words(searchLinksBlock?.textContent).length;
+        assert.ok(
+          searchLinksWordCount - searchLinkItems.reduce((sum, item) => sum + words(item.textContent).length, 0) <= 1,
+          `${route} search-links block must be its heading and its links`,
+        );
+        const navigationWordCount = relatedLinksWordCount + liveLinksWordCount + searchLinksWordCount;
         const basePageWordCeiling = country.headlineEligible === false ? 950 : 900;
         const pageWordCeiling = basePageWordCeiling + developmentsWordCount + navigationWordCount;
         assert.ok(
@@ -5773,10 +5789,11 @@ describe('crawlable corpus generator', () => {
         gitFileLastmod(repoRoot, data.sources.microstateTerritories),
         gitFileLastmod(repoRoot, RELATED_READING_PATH),
         gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
+        gitFileLastmod(repoRoot, searchLinksPath('countries')),
         ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
         COUNTRY_PAGE_CONTENT_VERSION,
       ),
-      'countries lastmod must fold snapshot, pulse, movement-claim expiry, geographic inputs, related reading, related-country inputs and the page content version',
+      'countries lastmod must fold snapshot, pulse, movement-claim expiry, geographic inputs, related reading, search links, related-country inputs and the page content version',
     );
     // #7518 set COUNTRY_PAGE_CONTENT_VERSION and CII_COUNTRY_PAGE_CONTENT_VERSION
     // to the same date, so the two clocks coincide by value. Pin the DERIVATION
@@ -6247,6 +6264,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
         ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
         gitFileLastmod(repoRoot, RELATED_READING_PATH),
         gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
+        ...SEARCH_LINK_FAMILIES.map((family) => gitFileLastmod(repoRoot, searchLinksPath(family))),
         COUNTRY_PAGE_CONTENT_VERSION,
         CII_COUNTRY_PAGE_CONTENT_VERSION,
         COUNTRIES_INDEX_CONTENT_VERSION,
@@ -6295,6 +6313,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
           gitFileLastmod(repoRoot, data.sources.microstateTerritories),
           gitFileLastmod(repoRoot, RELATED_READING_PATH),
           gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
+          gitFileLastmod(repoRoot, searchLinksPath('countries')),
           ...COUNTRY_RELATED_LINK_SOURCES.map((key) => gitFileLastmod(repoRoot, data.sources[key])),
           COUNTRY_PAGE_CONTENT_VERSION,
         );
@@ -6312,7 +6331,11 @@ describe('live-pulse snapshot injection (#7533)', () => {
             pageFor(manifest.sections.countries.index),
           ]],
           ['countryInstabilityIndex', [
-            laterDate(countriesLastmod, CII_RANKING_PAGE_CONTENT_VERSION),
+            laterDate(
+              countriesLastmod,
+              CII_RANKING_PAGE_CONTENT_VERSION,
+              gitFileLastmod(repoRoot, searchLinksPath('country-instability-index')),
+            ),
             'country-instability-index/index.html',
           ]],
           ['chokepoints', [
@@ -6329,6 +6352,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
               gitFileLastmod(repoRoot, data.sources.crisisEditorial),
               gitFileLastmod(repoRoot, RELATED_READING_PATH),
               gitFileLastmod(repoRoot, LIVE_PAGE_LINKS_PATH),
+              gitFileLastmod(repoRoot, searchLinksPath('crises')),
               pulseDate,
               data.resilience.capturedAt,
               ...data.crises.map((crisis) => crisis.editorial.lastReviewed),
@@ -6339,6 +6363,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
           ['tools', [
             laterDate(
               gitFileLastmod(repoRoot, data.sources.liveToolsScript),
+              gitFileLastmod(repoRoot, searchLinksPath('tools')),
               TOOLS_PAGE_CONTENT_VERSION,
             ),
             'tools/natural-hazard-pulse/index.html',
@@ -6347,6 +6372,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
           ['toolsIndex', [
             laterDate(
               gitFileLastmod(repoRoot, data.sources.liveToolsScript),
+              gitFileLastmod(repoRoot, searchLinksPath('tools')),
               TOOLS_PAGE_CONTENT_VERSION,
               LIVE_TOPIC_PAGES_CONTENT_VERSION,
               ...data.sources.liveTopicPagesInputs.map((path) => gitFileLastmod(repoRoot, path)),
@@ -6357,6 +6383,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
             laterDate(
               LIVE_TOPIC_PAGES_CONTENT_VERSION,
               ...data.sources.liveTopicPagesInputs.map((path) => gitFileLastmod(repoRoot, path)),
+              gitFileLastmod(repoRoot, searchLinksPath('tools')),
               data.livePulse.liveTopics ? pulseDate : null,
             ),
             pageFor(LIVE_TOPIC_PAGES[0].path),
@@ -6369,7 +6396,12 @@ describe('live-pulse snapshot injection (#7533)', () => {
             pageFor(manifest.sections.research.index),
           ]],
           ['useCases', [
-            laterDate(USE_CASES_CONTENT_VERSION, gitFileLastmod(repoRoot, data.sources.useCases), gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs')),
+            laterDate(
+              USE_CASES_CONTENT_VERSION,
+              gitFileLastmod(repoRoot, data.sources.useCases),
+              gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs'),
+              gitFileLastmod(repoRoot, searchLinksPath('use-cases')),
+            ),
             pageFor(manifest.sections.useCases.index),
           ]],
           ['coverage', [
@@ -6392,6 +6424,7 @@ describe('live-pulse snapshot injection (#7533)', () => {
               SITUATION_CONTENT_VERSION,
               ...data.sources.situationInputs.map((path) => gitFileLastmod(repoRoot, path)),
               gitFileLastmod(repoRoot, data.sources.crisisRegistry),
+              gitFileLastmod(repoRoot, searchLinksPath('monitor-the-situation')),
               pulseDate,
             ),
             pageFor(manifest.sections.situation.index),
@@ -6449,6 +6482,16 @@ describe('live-pulse snapshot injection (#7533)', () => {
           failures,
           [],
           'family clocks must all track their derivations against an injected pulse',
+        );
+        // The tools clock folds the tools search-link ledger; the methodology
+        // review date the convergence page states must not.
+        const reviewedOn = laterDate(gitFileLastmod(repoRoot, data.sources.liveToolsScript), TOOLS_PAGE_CONTENT_VERSION);
+        assert.equal(data.toolsReviewedOn, reviewedOn);
+        assert.match(
+          read(outDir, 'tools/signal-convergence/index.html'),
+          new RegExp(`Methodology reference, last reviewed ${new Date(`${reviewedOn}T00:00:00Z`).toLocaleDateString('en-US', {
+            month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+          })}\\.`),
         );
       } finally {
         rmSync(outDir, { recursive: true, force: true });

@@ -23,12 +23,14 @@ import {
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // Same inputs as useCasesLastmod in scripts/build-crawlable-corpus.mjs: version
-// stamps plus the UTC git lastmod of the use-cases builder. A pinned calendar
-// date fails when that file is committed on a later UTC day.
+// stamps plus the UTC git lastmod of the use-cases builder, its workflows and
+// its search links. A pinned calendar date fails when one of those files is
+// committed on a later UTC day.
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
   gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
   gitFileLastmod(repoRoot, 'scripts/data/use-case-workflows.mjs'),
+  gitFileLastmod(repoRoot, 'scripts/data/search-links/use-cases.json'),
 ].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {

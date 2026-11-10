@@ -69,6 +69,11 @@
       ],
       "dailyNonBrand": [
         "sa-90d-daily-nonbrand.json"
+      ],
+      "queryNonBrandPage": [
+        "sa-90d-query-nonbrand-page-0.json",
+        "sa-90d-query-nonbrand-page-1.json",
+        "sa-90d-query-nonbrand-page-2.json"
       ]
     }
   },

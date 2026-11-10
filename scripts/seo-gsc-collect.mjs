@@ -102,6 +102,9 @@ const MAX_URLS_PER_LIST = 5;
 const MAX_FLAGGED_URLS = 50;
 const MAX_TOP_QUERIES = 20;
 const MAX_NON_BRAND_QUERIES = 500;
+const MAX_QUERY_PAGE_QUERIES = 500;
+const MAX_PAGES_PER_QUERY = 10;
+const QUERY_PAGE_HOST = 'www.worldmonitor.app';
 const MAX_LOW_CLICK_QUERIES_IN_SUMMARY = 30;
 const LOW_CLICK_CTR = 0.05;
 /**
@@ -1026,11 +1029,20 @@ async function collectNonBrandQueries(transport, windows) {
   };
 }
 
+const widestWindow = (windows) => [...windows].sort((left, right) => (
+  Date.parse(left.startDate) - Date.parse(right.startDate)
+))[0];
+
+/** Every page each non-brand query showed, collected once over the widest window. */
+async function collectQueryPages(transport, windows) {
+  const widest = widestWindow(windows);
+  if (!widest) return null;
+  return { window: widest, page: await collectPagedRows(transport, widest, QUERY_PAGE_VIEW) };
+}
+
 /** The daily by-property series, collected once over the widest window. */
 async function collectDaily(transport, windows) {
-  const widest = [...windows].sort((left, right) => (
-    Date.parse(left.startDate) - Date.parse(right.startDate)
-  ))[0];
+  const widest = widestWindow(windows);
   if (!widest) return null;
   return {
     window: widest,
@@ -1251,7 +1263,90 @@ export function buildNonBrandQueries(raw) {
   };
 }
 
-function buildPerformance(performance, inventory, indexedByFamily, daily, nonBrandQueries) {
+/** A www URL as a bare path, or null for another host or a non-URL. */
+function queryPagePath(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  return parsed.host === QUERY_PAGE_HOST ? parsed.pathname : null;
+}
+
+/**
+ * Every www page each non-brand query showed, with that page's own impressions
+ * and position for the query, so a page that ranks for a query can be told
+ * apart from the page that ranks best. Rows that differ only by fragment or
+ * query string are one page.
+ *
+ * A page-grouped row counts a search once per URL shown, so the query total is
+ * a sum of page rows. Only a single URL's row counts distinct searches, so the
+ * publication floor is the largest one. A view cut short can be missing a query's
+ * top page, so it reports nothing instead of a smaller list. `likelyAutomated`
+ * comes from the first window's device view and is null without it.
+ */
+export function buildQueryPages(raw, nonBrandQueries) {
+  const unavailable = (reason, window = null) => ({ status: 'unavailable', reason, window, method: null, rows: [] });
+  if (!raw) return unavailable('no window was requested');
+  const { window, page } = raw;
+  if (!page.recorded) return unavailable(`the ${window.label} ${QUERY_PAGE_VIEW} view was not collected`, window.label);
+  if (page.truncationReason) return unavailable(page.truncationReason, window.label);
+
+  const byQuery = new Map();
+  for (const row of page.rows) {
+    const path = queryPagePath(row.secondKey);
+    if (path === null || isBrandQuery(row.key)) continue;
+    const pages = byQuery.get(row.key) ?? new Map();
+    const entry = pages.get(path) ?? { impressions: 0, weighted: 0, positioned: 0, largestUrl: 0 };
+    entry.impressions += row.impressions;
+    // Merged URL variants can count one search twice, so the floor reads one URL.
+    entry.largestUrl = Math.max(entry.largestUrl, row.impressions);
+    if (row.position !== null) {
+      entry.weighted += row.position * row.impressions;
+      entry.positioned += row.impressions;
+    }
+    pages.set(path, entry);
+    byQuery.set(row.key, pages);
+  }
+  const automated = nonBrandQueries.status === 'unavailable'
+    ? null
+    : new Set(nonBrandQueries.rows.filter((row) => row.likelyAutomated).map((row) => row.query));
+  const rows = [...byQuery].map(([query, pages]) => {
+    const ranked = [...pages].map(([path, entry]) => ({
+      path,
+      impressions: entry.impressions,
+      position: entry.positioned > 0 ? roundTo(entry.weighted / entry.positioned, 2) : null,
+    })).sort((left, right) => right.impressions - left.impressions || left.path.localeCompare(right.path));
+    return {
+      query,
+      impressions: ranked.reduce((sum, entry) => sum + entry.impressions, 0),
+      likelyAutomated: automated === null ? null : automated.has(query),
+      pages: ranked.slice(0, MAX_PAGES_PER_QUERY),
+      largestUrl: Math.max(...[...pages.values()].map((entry) => entry.largestUrl)),
+    };
+  })
+    .filter((row) => row.largestUrl >= MIN_LISTED_QUERY_IMPRESSIONS)
+    .map(({ largestUrl, ...row }) => row)
+    .sort((left, right) => right.impressions - left.impressions || left.query.localeCompare(right.query))
+    .slice(0, MAX_QUERY_PAGE_QUERIES);
+  return {
+    status: 'available',
+    reason: null,
+    window: window.label,
+    method: {
+      host: QUERY_PAGE_HOST,
+      impressionsBasis: 'sum-of-page-rows',
+      minSingleUrlImpressions: MIN_LISTED_QUERY_IMPRESSIONS,
+      maxQueries: MAX_QUERY_PAGE_QUERIES,
+      maxPagesPerQuery: MAX_PAGES_PER_QUERY,
+      likelyAutomatedWindow: nonBrandQueries.window,
+    },
+    rows,
+  };
+}
+
+function buildPerformance(performance, inventory, indexedByFamily, daily, nonBrandQueriesRaw, queryPagesRaw) {
   const routeFamily = new Map(inventory.urls.map((entry) => [entry.url, entry]));
   const windows = performance.map(({ window, dimensions, site }) => {
     const totals = newAccumulator();
@@ -1370,12 +1465,14 @@ function buildPerformance(performance, inventory, indexedByFamily, daily, nonBra
     };
   });
   const partial = windows.some((window) => window.status !== 'available');
+  const nonBrandQueries = buildNonBrandQueries(nonBrandQueriesRaw);
   return {
     status: windows.length === 0 ? 'unavailable' : (partial ? 'partial' : 'available'),
     reason: windows.length === 0 ? 'no window was requested' : null,
     windows,
     daily: buildDaily(daily),
-    nonBrandQueries: buildNonBrandQueries(nonBrandQueries),
+    nonBrandQueries,
+    queryPages: buildQueryPages(queryPagesRaw, nonBrandQueries),
   };
 }
 
@@ -1433,6 +1530,7 @@ export async function collectGscSnapshot({
   const dailyRaw = await collectDaily(transport, windows);
   const reviewedQueries = await collectReviewedQueries(transport, windows, querySet);
   const nonBrandQueriesRaw = await collectNonBrandQueries(transport, windows);
+  const queryPagesRaw = await collectQueryPages(transport, windows);
   const { sample, records, quotaReason } = await collectIndexation(
     transport,
     inventory,
@@ -1496,7 +1594,7 @@ export async function collectGscSnapshot({
     );
   }
 
-  const performance = buildPerformance(performanceRaw, inventory, byFamily, dailyRaw, nonBrandQueriesRaw);
+  const performance = buildPerformance(performanceRaw, inventory, byFamily, dailyRaw, nonBrandQueriesRaw, queryPagesRaw);
   for (const window of performance.windows) {
     if (window.status !== 'available') samplingNotes.push(`${window.label}: ${window.reason}`);
     if (window.unmapped.urls > 0) {

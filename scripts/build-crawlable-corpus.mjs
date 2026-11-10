@@ -29,6 +29,8 @@ import {
   renderContextualComparisons,
 } from './build-comparison-pages.mjs';
 import { RELATED_READING_PATH, loadRelatedReading, renderRelatedReading } from './related-reading.mjs';
+import { blogPostPathsIn, createTargetResolver, loadSearchLinks, searchLinksPath } from './search-links.mjs';
+import { placeSearchLinks } from './lib/search-links.mjs';
 import { LIVE_PAGE_LINKS_PATH, chokepointLiveLinks, countryLiveLinks, crisisLiveLinks, renderLiveDataLinks } from './live-pages/related-links.mjs';
 import {
   USE_CASE_PAGES,
@@ -204,6 +206,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
   CHOKEPOINT_PAGE_CONTENT_PATH,
   EIA_OIL_TRANSIT_BASELINES_PATH,
   LIVE_PAGE_LINKS_PATH,
+  searchLinksPath('chokepoints'),
 ]);
 /** Compare pages interpolate live provider and chokepoint counts (#7744). */
 export const COMPARISON_PAGE_LASTMOD_PATHS = Object.freeze([
@@ -2158,6 +2161,7 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('countries')),
     // Inputs of the related-country links (scripts/country-related-links.mjs).
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     gitFileLastmod(rootDir, TENSION_PAIRS_PATH),
@@ -2176,6 +2180,7 @@ export async function loadCorpusData({
   const countryInstabilityIndexLastmod = laterDate(
     countriesLastmod,
     CII_RANKING_PAGE_CONTENT_VERSION,
+    gitFileLastmod(rootDir, searchLinksPath('country-instability-index')),
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -2191,10 +2196,13 @@ export async function loadCorpusData({
     livePulse.capturedAt,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
-  const toolsLastmod = laterDate(
+  // The signal-convergence page states when its methodology was last
+  // reviewed, so a search-link edit moves the tools lastmod but not that date.
+  const toolsReviewedOn = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
     TOOLS_PAGE_CONTENT_VERSION,
   );
+  const toolsLastmod = laterDate(toolsReviewedOn, gitFileLastmod(rootDir, searchLinksPath('tools')));
   // The hub links every live topic page, so their code moves it too.
   const toolsIndexLastmod = laterDate(
     toolsLastmod,
@@ -2205,6 +2213,7 @@ export async function loadCorpusData({
   const liveTopicsLastmod = laterDate(
     LIVE_TOPIC_PAGES_CONTENT_VERSION,
     ...LIVE_TOPIC_PAGES_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
+    gitFileLastmod(rootDir, searchLinksPath('tools')),
     livePulse.liveTopics ? livePulse.capturedAt : null,
   );
   const crisesLastmod = laterDate(
@@ -2212,6 +2221,7 @@ export async function loadCorpusData({
     gitFileLastmod(rootDir, CRISIS_EDITORIAL_PATH),
     gitFileLastmod(rootDir, RELATED_READING_PATH),
     gitFileLastmod(rootDir, LIVE_PAGE_LINKS_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('crises')),
     livePulse.capturedAt,
     // The country readings table renders resilience scores and ranks, and
     // each page states when its editorial copy was last reviewed.
@@ -2227,6 +2237,7 @@ export async function loadCorpusData({
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
     gitFileLastmod(rootDir, 'scripts/data/use-case-workflows.mjs'),
+    gitFileLastmod(rootDir, searchLinksPath('use-cases')),
   );
   const coverageCatalog = await loadCoverageCatalog({
     importModule: (relativePath) => importRepoModule(rootDir, relativePath),
@@ -2249,6 +2260,7 @@ export async function loadCorpusData({
     SITUATION_CONTENT_VERSION,
     ...SITUATION_PAGE_INPUT_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    gitFileLastmod(rootDir, searchLinksPath('monitor-the-situation')),
     livePulse.capturedAt,
   );
   const comparisonsLastmod = comparisonPageLastmod({
@@ -2334,6 +2346,7 @@ export async function loadCorpusData({
       comparisons: comparisonsLastmod,
       sources: sourcesLastmod,
     },
+    toolsReviewedOn,
     sourceStats,
     sourceCatalog,
     coverageCatalog,
@@ -2466,6 +2479,11 @@ export function withSchemaContext(entry) {
   return { '@context': SCHEMA_ORG_CONTEXT_URL, ...rest };
 }
 
+// Source page path -> its search links for the build in progress. pageDocument
+// reads it because a dozen renderers here and every external builder's `tpl`
+// reach the template, and only the template sees the composed <main>.
+let searchLinksByPath = new Map();
+
 function pageDocument({
   baseUrl,
   path,
@@ -2517,6 +2535,8 @@ function pageDocument({
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>`;
   const renderedFooter = footerBody || 'World Monitor reference pages. Dated snapshots are published here; live readings are labelled separately.';
+  const mainHtml = `${body}\n${renderContextualComparisons(path, escapeHtml)}`;
+  const searchLinks = placeSearchLinks(mainHtml, path, searchLinksByPath.get(path), escapeHtml);
   // The rendered half of #7980. `author` in JSON-LD is what a machine reads;
   // a quality rater and a human reader want a name on the page that publishes
   // the score. Rendered here rather than inside each body so no page family
@@ -2644,8 +2664,7 @@ ${renderedNav}
       </nav>
     </header>
     <main>
-${body}
-${renderContextualComparisons(path, escapeHtml)}
+${mainHtml}${searchLinks ? `\n${searchLinks}` : ''}
     </main>
     <footer>${renderedByline}${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
@@ -5543,7 +5562,7 @@ function signalConvergenceDatasetMetadata(signalConvergence, baseUrl) {
   };
 }
 
-function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snapshotPath }) {
+function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, reviewedOn, snapshotPath }) {
   const path = '/tools/signal-convergence/';
   const metricName = signalConvergence.metricName || 'Geographic Convergence Score';
   const datasetMetadata = signalConvergenceDatasetMetadata(signalConvergence, baseUrl);
@@ -5589,7 +5608,7 @@ ${examples}
       </div>
       <h2>Where to go next</h2>
       <p>Open the <a href="/dashboard">live dashboard</a> for map layers, or read the full methodology in <a href="/docs/geographic-convergence">geographic convergence</a>. Country pages expose related instability scores; this page is the citable correlation definition.</p>
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(lastmod))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(downloadHref)}">${CONVERGENCE_DATASET_DOWNLOAD}</a>. Snapshot: World Monitor weekly pulse snapshot. Methodology reference, last reviewed ${escapeHtml(prettyDate(reviewedOn))}. Methodology: <a href="/docs/geographic-convergence">Geographic Convergence Detection</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -5983,12 +6002,33 @@ export async function buildCorpus({
   clean = true,
   livePulseSnapshotPath,
   now = Date.now(),
+  // Where scripts/data/search-links/ is read from, so a test can build the
+  // real corpus against its own ledgers.
+  searchLinksRootDir = rootDir,
 } = {}) {
   const data = await loadCorpusData({ rootDir, livePulseSnapshotPath, now });
+  const blogPostPaths = blogPostPathsIn(rootDir);
+  const changelogPages = chunk(data.changelog, CHANGELOG_PAGE_SIZE);
+  const manifest = buildManifest({
+    data,
+    baseUrl,
+    changelogPageCount: changelogPages.length,
+  });
+  searchLinksByPath = loadSearchLinks({
+    rootDir: searchLinksRootDir,
+    resolves: createTargetResolver({ rootDir, manifest, blogPostPaths }),
+  });
+  try {
+    writeCorpus({ data, rootDir, outDir, baseUrl, clean, now, blogPostPaths, changelogPages });
+  } finally {
+    searchLinksByPath = new Map();
+  }
+  writeGeneratedFile(outDir, 'crawlable-corpus.json', `${JSON.stringify(manifest, null, 2)}\n`);
+  return manifest;
+}
+
+function writeCorpus({ data, rootDir, outDir, baseUrl, clean, now, blogPostPaths, changelogPages }) {
   const countrySlugByCode = new Map(data.countries.map((country) => [country.code, country.slug]));
-  const blogPostPaths = new Set(readdirSync(join(rootDir, 'blog-site/src/content/blog'))
-    .filter((file) => file.endsWith('.md'))
-    .map((file) => `/blog/posts/${file.slice(0, -3)}/`));
   const chokepointPageLinks = buildChokepointPageLinks({ ...data, blogPostPaths });
   const relatedReading = loadRelatedReading({ rootDir, blogPostPaths });
   if (clean) {
@@ -6322,6 +6362,7 @@ export async function buildCorpus({
       signalConvergence: data.livePulse.signalConvergence,
       baseUrl,
       lastmod: data.lastmod.tools,
+      reviewedOn: data.toolsReviewedOn,
       snapshotPath: data.sources.livePulseSnapshot,
     }),
   );
@@ -6382,7 +6423,6 @@ export async function buildCorpus({
     );
   }
 
-  const changelogPages = chunk(data.changelog, CHANGELOG_PAGE_SIZE);
   changelogPages.forEach((releases, pageIndex) => {
     writeGeneratedFile(
       outDir,
@@ -6396,14 +6436,6 @@ export async function buildCorpus({
       }),
     );
   });
-
-  const manifest = buildManifest({
-    data,
-    baseUrl,
-    changelogPageCount: changelogPages.length,
-  });
-  writeGeneratedFile(outDir, 'crawlable-corpus.json', `${JSON.stringify(manifest, null, 2)}\n`);
-  return manifest;
 }
 
 function parseArgs(argv) {
