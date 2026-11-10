@@ -202,6 +202,19 @@ describe("adminNewSubscriptionHtml", () => {
     expect(html).not.toContain("not captured");
   });
 
+  test("a tagged link with no referrer header does not read as a direct visit", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: {
+        purchasedAt: PURCHASED_AT,
+        acquisition: { source: "chatgpt-com", referrer: "direct", landing: "dashboard", firstSeen: "2026-03-20" },
+      },
+    });
+    expect(html).toMatch(/Source:<\/td><td[^>]*>chatgpt-com</);
+    expect(html).toMatch(/Referrer:<\/td><td[^>]*>none sent \(source from utm tag\)</);
+    expect(html).not.toMatch(/Referrer:<\/td><td[^>]*>direct</);
+  });
+
   test("a referral alone counts as a captured source", () => {
     const html = adminNewSubscriptionHtml({
       ...base,
