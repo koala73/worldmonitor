@@ -333,6 +333,7 @@ export interface OilAnalytics {
 
 function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
   const change = proto.change;
+  const priceDate = new Date(proto.priceAt);
   return {
     id: proto.commodity,
     name: proto.name,
@@ -342,7 +343,7 @@ function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
     changePct: Math.round(change * 10) / 10,
     unit: proto.unit,
     trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',
-    lastUpdated: proto.priceAt ? new Date(proto.priceAt).toISOString() : new Date().toISOString(),
+    lastUpdated: proto.priceAt > 0 && Number.isFinite(priceDate.getTime()) ? priceDate.toISOString() : '',
   };
 }
 

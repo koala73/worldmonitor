@@ -255,6 +255,8 @@ The response replaces the documented payload with:
 
 Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver premiums, physical-premium divergence regimes, crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only. `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
 
+Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage supplies daily spot prices on the scheduled seed path when available. For daily spot, midnight UTC represents the provider's observation date. Undated quotes are marked `stale`. Dated futures quotes go stale after 30 minutes and daily spot prices after four days.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
@@ -1236,7 +1238,9 @@ Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, e
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
 - **Freshness budget:** per slice — most daily-seeded slices (electricity prices, Ember, gas storage, EU aggregate gas storage, fuel shortages) allow **48 h** and EIA petroleum **72 h**; weekly US gas and crude inventories allow **14 d**; slower registries (disruptions, renewable/fossil shares, crisis policies) allow 7 d to ~400 d. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget, even when `dataset` selects a subset.
 
-The storage histories keep their own units: EU gas in TWh (`gasTwh`), US gas in billion cubic feet (`storBcf`), US commercial crude in million barrels (`stocksMb`). `eia-petroleum` stays in thousand barrels. Each history is newest first and carries its observation date; a null dataset or weekly change means unavailable, not zero. For example, `{"dataset":["eu-gas-storage","nat-gas-storage"],"limit":5}` compares the latest gas-storage reports.
+The storage histories keep their own units. EU gas is in TWh (`gasTwh`), US gas is in billion cubic feet (`storBcf`), and US commercial crude is in million barrels (`stocksMb`). Each history is newest first and carries its observation date. A null dataset or weekly change means the value is unavailable.
+
+Within `eia-petroleum`, Brent and WTI are weekly EIA spot averages in USD per barrel. They carry a week-ending `date`, `priceSource: "EIA"`, `priceBasis: "spot"`, `frequency: "weekly"`, and an observation-level `stale` flag that turns on after 10 days or when the date is missing.
 
 <CodeGroup>
 

@@ -94,6 +94,17 @@ describe('cron seeders (fetchYahooQuoteChart)', () => {
     assert.equal(live.urls.length, 1);
   });
 
+  it('keeps the Yahoo observation timestamp on the Brent futures quote', async () => {
+    const brent = structuredClone(GC_LIVE_1D);
+    const { meta } = brent.chart.result[0];
+    meta.symbol = 'BZ=F';
+    const { fetchJson } = stubYahoo([['/BZ%3DF', brent]]);
+    const quote = await fetchQuote('BZ=F', fetchJson);
+    assert.equal(quote.priceBasis, 'futures');
+    assert.equal(quote.priceSource, 'Yahoo Finance');
+    assert.equal(quote.priceAt, meta.regularMarketTime * 1000);
+  });
+
   it('keeps the quote when the daily chart request fails', async () => {
     const failing = stubYahoo([['/LE%3DF', LE_ROLLED_1D]]);
     const quote = await fetchQuote('LE=F', failing.fetchJson);

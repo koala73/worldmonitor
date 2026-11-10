@@ -1109,6 +1109,14 @@
     "energyComplex": {
       "noData": "Energy data temporarily unavailable - will retry",
       "liveTape": "Live Tape",
+      "marketTape": "Market quotes",
+      "futures": "Futures",
+      "dailySpot": "Daily spot",
+      "eiaWeeklySpot": "EIA spot · weekly average",
+      "weekEnding": "Week ending {{date}}",
+      "unknownPriceDate": "Observation time unavailable",
+      "unknownQuoteSource": "Quote source unavailable",
+      "stalePrice": "Stale",
       "liveTapeSource": "Market quotes",
       "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>US Energy Information Administration metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
     },

@@ -257,6 +257,9 @@ export interface MarketData {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  priceSource?: string;
+  priceBasis?: string;
+  priceAt?: number;
 }
 
 export interface CryptoData {

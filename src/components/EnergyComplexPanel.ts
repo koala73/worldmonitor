@@ -6,6 +6,8 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
+import { EIA_WEEKLY_SPOT_MAX_AGE_MS, isCrudeOilTicker, isStaleOilPrice } from '../../shared/oil-price-observation';
+import { oilTapeObservationLabel } from './_oil-tape-observation';
 
 function hasAnalytics(data: OilAnalytics | null): boolean {
   return !!(data?.wtiPrice || data?.brentPrice || data?.usProduction || data?.usInventory);
@@ -139,15 +141,9 @@ export class EnergyComplexPanel extends Panel {
   }
 
   private render(): void {
-    // Suppress EIA price cards when live tape already covers the same commodity
-    // to avoid showing two different prices for the same product (EIA is weekly/stale).
-    const tapeCoveredSymbols = new Set(this.tape.filter(d => d.price !== null).map(d => d.symbol));
-    const wtiInTape = tapeCoveredSymbols.has('CL=F');
-    const brentInTape = tapeCoveredSymbols.has('BZ=F');
-
     const metrics = [
-      wtiInTape ? null : this.analytics?.wtiPrice,
-      brentInTape ? null : this.analytics?.brentPrice,
+      this.analytics?.wtiPrice,
+      this.analytics?.brentPrice,
       this.analytics?.usProduction,
       this.analytics?.usInventory,
     ].filter(Boolean);
@@ -193,15 +189,25 @@ export class EnergyComplexPanel extends Panel {
               if (!metric) return '';
               const trendColor = getTrendColor(metric.trend, metric.name.includes('Production'));
               const change = `${metric.changePct > 0 ? '+' : ''}${metric.changePct.toFixed(1)}%`;
+              const isOilPrice = metric.id === 'brent' || metric.id === 'wti';
+              const date = metric.lastUpdated.slice(0, 10);
+              const priceDate = isOilPrice
+                ? [
+                    date ? t('components.energyComplex.weekEnding', { date }) : t('components.energyComplex.unknownPriceDate'),
+                    isStaleOilPrice(Date.parse(metric.lastUpdated), EIA_WEEKLY_SPOT_MAX_AGE_MS)
+                      ? t('components.energyComplex.stalePrice') : '',
+                  ].filter(Boolean).join(' · ')
+                : date;
               return `
                 <div class="energy-summary-card">
                   <div class="energy-summary-head">
                     <span class="energy-summary-name">${escapeHtml(metric.name)}</span>
                     <span class="energy-summary-trend" style="color:${escapeHtml(trendColor)}">${escapeHtml(getTrendIndicator(metric.trend))}</span>
                   </div>
+                  ${isOilPrice ? `<div class="indicator-date">${escapeHtml(t('components.energyComplex.eiaWeeklySpot'))}</div>` : ''}
                   <div class="energy-summary-value">${escapeHtml(formatOilValue(metric.current, metric.unit))} <span class="energy-unit">${escapeHtml(metric.unit)}</span></div>
                   <div class="energy-summary-change" style="color:${escapeHtml(trendColor)}">${escapeHtml(change)}</div>
-                  <div class="indicator-date">${escapeHtml(metric.lastUpdated.slice(0, 10))}</div>
+                  <div class="indicator-date">${escapeHtml(priceDate)}</div>
                 </div>
               `;
             }).join('')}
@@ -249,7 +255,7 @@ export class EnergyComplexPanel extends Panel {
         ` : ''}
         ${this.tape.length > 0 ? `
           <div class="energy-tape-section">
-            <div class="energy-section-title">${t('components.energyComplex.liveTape')}</div>
+            <div class="energy-section-title">${t('components.energyComplex.marketTape')}</div>
             <div class="commodities-grid energy-tape-grid">
               ${this.tape.map((item) => `
                 <div class="commodity-item energy-tape-card">
@@ -257,6 +263,7 @@ export class EnergyComplexPanel extends Panel {
                   ${miniSparkline(item.sparkline, item.change, 60, 18)}
                   <div class="commodity-price">${escapeHtml(formatPrice(item.price!))}</div>
                   <div class="commodity-change ${getChangeClass(item.change ?? 0)}">${formatChange(item.change ?? 0)}</div>
+                  ${isCrudeOilTicker(item.symbol) ? `<div class="indicator-date">${escapeHtml(oilTapeObservationLabel(item))}</div>` : ''}
                 </div>
               `).join('')}
             </div>

@@ -86,6 +86,7 @@
       "scripts/shared/market-hours.cjs",
       "scripts/shared/market-quote-refresh.cjs",
       "scripts/shared/market-seed-universe.cjs",
+      "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/notification-link-suppression.cjs",
       "scripts/shared/notify-fields.cjs",
@@ -1231,6 +1232,7 @@
       "scripts/shared/etf-flow-provider.mjs",
       "scripts/shared/etfs.json",
       "scripts/shared/gulf.json",
+      "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/other-tokens.json",
       "scripts/shared/stablecoin-classifier.cjs",
       "scripts/shared/stablecoins.json",
@@ -1659,6 +1661,7 @@
       "scripts/seed-commodity-quotes.mjs",
       "scripts/shared/commodities.json",
       "scripts/shared/compare-and-delete-script.cjs",
+      "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/yahoo-closed-session.cjs",
       "shared/commodities.json"
     ],
@@ -2053,6 +2056,7 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-fx-yoy.mjs",
+      "scripts/shared/oil-quote-provenance.cjs",
       "scripts/shared/yahoo-closed-session.cjs",
       "scripts/shared/compare-and-delete-script.cjs"
     ],

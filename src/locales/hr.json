@@ -1071,7 +1071,15 @@
       "noData": "Energetski podaci privremeno nisu dostupni — pokušaj će se ponoviti",
       "liveTape": "Uživo Trak",
       "liveTapeSource": "Tržišne cijene",
-      "infoTooltip": "<strong>Energetski kompleks</strong> Fizički i trgovinski signali energije na jednom mjestu:<ul><li><strong>Metrike Administracije za energetske informacije SAD-a</strong>: WTI, Brent, proizvodnja SAD-a i zalihe</li><li><strong>Uživo</strong>: Trgovinski cijeni energije kao što su sirova nafta i prirodni plin</li><li><strong>Svrha</strong>: Odvojenost fizičkog stresa energije od šire makroekonomske i robe panela</li></ul>"
+      "infoTooltip": "<strong>Energetski kompleks</strong> Fizički i trgovinski signali energije na jednom mjestu:<ul><li><strong>Metrike Administracije za energetske informacije SAD-a</strong>: WTI, Brent, proizvodnja SAD-a i zalihe</li><li><strong>Uživo</strong>: Trgovinski cijeni energije kao što su sirova nafta i prirodni plin</li><li><strong>Svrha</strong>: Odvojenost fizičkog stresa energije od šire makroekonomske i robe panela</li></ul>",
+      "marketTape": "Tržišne kotacije",
+      "futures": "Terminski ugovori",
+      "dailySpot": "Dnevna spot cijena",
+      "eiaWeeklySpot": "Spot cijena EIA-e · tjedni prosjek",
+      "weekEnding": "Tjedan koji završava {{date}}",
+      "unknownPriceDate": "Vrijeme opažanja nije dostupno",
+      "unknownQuoteSource": "Izvor kotacije nije dostupan",
+      "stalePrice": "Zastarjelo"
     },
     "supplyChain": {
       "chokepoints": "Uska Grla",

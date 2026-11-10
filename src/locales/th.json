@@ -2370,7 +2370,15 @@
       "noData": "ข้อมูลพลังงานไม่พร้อมใช้งานชั่วคราว - จะลองใหม่",
       "liveTape": "เทปสด",
       "liveTapeSource": "ใบเสนอราคาตลาด",
-      "infoTooltip": "<strong>สัญญาณพลังงาน</strong> สัญญาณพลังงานจริงและสามารถซื้อขายได้ในที่เดียว:<ul><li><strong>เมตริก US Energy Information Administration</strong>: WTI, Brent การผลิตสหรัฐฯ และสต็อก</li><li><strong>Live tape</strong>: ราคาพลังงานที่สามารถซื้อขายได้เช่น น้ำมันดิบและแก๊สธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดด้านพลังงานจริงจากแผงมหภาคและสินค้าที่กว้างขึ้น</li></ul>"
+      "infoTooltip": "<strong>สัญญาณพลังงาน</strong> สัญญาณพลังงานจริงและสามารถซื้อขายได้ในที่เดียว:<ul><li><strong>เมตริก US Energy Information Administration</strong>: WTI, Brent การผลิตสหรัฐฯ และสต็อก</li><li><strong>Live tape</strong>: ราคาพลังงานที่สามารถซื้อขายได้เช่น น้ำมันดิบและแก๊สธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดด้านพลังงานจริงจากแผงมหภาคและสินค้าที่กว้างขึ้น</li></ul>",
+      "marketTape": "ราคาตลาด",
+      "futures": "สัญญาซื้อขายล่วงหน้า",
+      "dailySpot": "ราคาสปอตรายวัน",
+      "eiaWeeklySpot": "ราคาสปอตของ EIA · ค่าเฉลี่ยรายสัปดาห์",
+      "weekEnding": "สัปดาห์สิ้นสุดวันที่ {{date}}",
+      "unknownPriceDate": "ไม่มีเวลาที่บันทึกราคา",
+      "unknownQuoteSource": "ไม่มีแหล่งที่มาของราคา",
+      "stalePrice": "ข้อมูลเก่า"
     },
     "consumerPrices": {
       "tabs": {

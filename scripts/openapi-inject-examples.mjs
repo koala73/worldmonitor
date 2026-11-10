@@ -387,7 +387,7 @@ function overrideStringExample(key, context = {}) {
   // both the query param (`symbols`) and response quote fields (`symbol`).
   if ((key === 'symbols' || key === 'symbol')
       && (where.includes('listcommodityquotes') || where.includes('list-commodity-quotes'))) {
-    return 'GC=F';
+    return 'BZ=F';
   }
   return undefined;
 }
@@ -1156,6 +1156,16 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'ListCommodityQuotes'
+    && context.exampleSurface === 'response') {
+    return {
+      quotes: [{
+        symbol: 'BZ=F', name: 'Brent Crude Oil', display: 'Brent',
+        price: 91.60, change: -1.05, sparkline: [93, 92, 91.60],
+        priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt: 1794291360000,
+      }],
+    };
+  }
   if (depth === 0 && context.operationId === 'GetWebcamImage'
     && context.exampleSurface === 'response') {
     return {
