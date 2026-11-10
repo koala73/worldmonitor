@@ -39,13 +39,13 @@ message CountryPopulationEntry {
   int32 density_per_km2 = 4;
 }
 
-// ExposureResult contains the population exposure estimate.
+// ExposureResult contains the population exposure estimate. It is absent for a point outside every priority country.
 message ExposureResult {
   // Estimated exposed population.
   int64 exposed_population = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Radius used for the estimate in km.
   double exposure_radius_km = 2;
-  // ISO3 code of nearest priority country.
+  // ISO3 code of the priority country containing the point, whose density was used.
   string nearest_country = 3;
   // Population density used for the estimate.
   int32 density_per_km2 = 4;

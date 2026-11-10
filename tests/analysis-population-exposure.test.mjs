@@ -3,13 +3,13 @@ import { describe, it } from 'node:test';
 
 import {
   PRIORITY_COUNTRIES,
-  EXPOSURE_CENTROIDS,
-  computeBoundedExposure,
-  computeExposure,
+  estimateExposure,
   getRadiusForEventType,
   listCountryPopulations,
-  MAX_EXPOSURE_RADIUS_KM,
 } from '../shared/analysis-population-exposure.ts';
+import { densityCountryAt, estimatePointExposure } from '../shared/population-density-country-at.ts';
+import BOUNDARIES from '../shared/population-density-boundaries.json' with { type: 'json' };
+import { resolveCountryCode } from '../shared/country-code-resolve.ts';
 import { getPopulationExposure } from '../server/worldmonitor/displacement/v1/get-population-exposure.ts';
 import { enrichEventsWithExposure } from '../src/services/population-exposure.ts';
 import { normalizeAcledProtestEvents } from '../scripts/seed-unrest-events.mjs';
@@ -54,34 +54,89 @@ describe('dashboard population exposure', () => {
   });
 });
 
+const densityOf = (iso3) => PRIORITY_COUNTRIES[iso3].pop / PRIORITY_COUNTRIES[iso3].area;
+
 describe('analysis-population-exposure core', () => {
-  it('keeps the priority table and centroids aligned', () => {
-    const countryCodes = Object.keys(PRIORITY_COUNTRIES).sort();
-    const centroidCodes = Object.keys(EXPOSURE_CENTROIDS).sort();
-    assert.deepEqual(countryCodes, centroidCodes);
-    assert.equal(countryCodes.length, 20);
-    for (const [code, [lat, lon]] of Object.entries(EXPOSURE_CENTROIDS)) {
-      assert.ok(lat >= -90 && lat <= 90, `${code} lat in range`);
-      assert.ok(lon >= -180 && lon <= 180, `${code} lon in range`);
+  it('has an outline for every country in the density table and nothing else', () => {
+    const tableCodes = Object.keys(PRIORITY_COUNTRIES).map((iso3) => resolveCountryCode(iso3)).sort();
+    assert.equal(tableCodes.length, 20);
+    assert.deepEqual(Object.keys(BOUNDARIES.countries).sort(), tableCodes);
+  });
+
+  it('applies the reported country density to the circle area', () => {
+    for (const country of ['ISR', 'IL', 'Israel']) {
+      assert.deepEqual(estimateExposure(31.0, 34.8, country, 50), {
+        exposedPopulation: Math.round(densityOf('ISR') * Math.PI * 50 * 50),
+        exposureRadiusKm: 50,
+        country: 'ISR',
+        densityPerKm2: Math.round(densityOf('ISR')),
+      });
     }
   });
 
-  it('picks the nearest centroid and applies density * area', () => {
-    // Point right on Israel's centroid.
-    const exposure = computeExposure(31.0, 34.8, 50);
-    assert.equal(exposure.nearestCountry, 'ISR');
-    const density = PRIORITY_COUNTRIES.ISR.pop / PRIORITY_COUNTRIES.ISR.area;
-    assert.equal(exposure.densityPerKm2, Math.round(density));
-    assert.equal(exposure.exposedPopulation, Math.round(density * Math.PI * 50 * 50));
-    assert.equal(exposure.exposureRadiusKm, 50);
+  it('returns null for a country outside the density table or an unusable point', () => {
+    assert.equal(estimateExposure(-33.45, -70.67, 'Chile', 50), null);
+    assert.equal(estimateExposure(31, 34.8, '', 50), null);
+    assert.equal(estimateExposure(91, 34.8, 'ISR', 50), null);
+    assert.equal(estimateExposure(0, 0, 'NGA', 50), null);
+    assert.equal(estimateExposure(Number.NaN, 34.8, 'ISR', 50), null);
   });
 
-  it('resolves interior points, not just exact centroids', () => {
-    // Kyiv is nearer the Ukraine centroid than any other.
-    const exposure = computeExposure(50.45, 30.52, 100);
-    assert.equal(exposure.nearestCountry, 'UKR');
+  it('treats non-finite and negative radii as zero rather than NaN', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+      const result = estimateExposure(31.0, 34.8, 'ISR', bad);
+      assert.equal(result.exposedPopulation, 0);
+      assert.equal(result.exposureRadiusKm, 0);
+    }
   });
+});
 
+describe('point exposure by country outline', () => {
+  const places = [
+    ['Kyiv', 50.45, 30.52, 'UKR'],
+    ['Lviv', 49.84, 24.03, 'UKR'],
+    ["Sana'a", 15.37, 44.19, 'YEM'],
+    ['Gaza City', 31.5, 34.47, 'PSE'],
+    ['Tel Aviv', 32.08, 34.78, 'ISR'],
+    ['Taipei', 25.03, 121.57, 'TWN'],
+    ['Hargeisa', 9.56, 44.06, 'SOM'],
+    ['Khartoum', 15.5, 32.56, 'SDN'],
+    ['Ouagadougou', 12.37, -1.53, 'BFA'],
+    ['Vladivostok', 43.12, 131.89, 'RUS'],
+    ['Santiago', -33.45, -70.67, null],
+    ['Brasilia', -15.79, -47.88, null],
+    ['Asuncion', -25.26, -57.58, null],
+    ['Austin', 30.27, -97.74, null],
+    ['Berlin', 52.52, 13.405, null],
+    ['Rzeszow', 50.04, 22.0, null],
+    ['Niamey', 13.51, 2.11, null],
+    ['Gulf of Guinea', 2, 3, null],
+  ];
+
+  for (const [name, lat, lon, iso3] of places) {
+    it(`${name} gets ${iso3 ? `${iso3} density` : 'no estimate'}`, async () => {
+      const estimate = estimatePointExposure(lat, lon, 50);
+      if (iso3 === null) {
+        assert.equal(densityCountryAt(lat, lon), null);
+        assert.equal(estimate, null);
+      } else {
+        assert.equal(estimate?.country, iso3);
+        assert.equal(estimate.exposedPopulation, Math.round(densityOf(iso3) * Math.PI * 50 * 50));
+      }
+
+      const rest = await getPopulationExposure(/** @type {never} */ ({}), { mode: 'exposure', lat, lon, radius: 50 });
+      assert.equal(rest.success, true);
+      assert.equal(rest.exposure?.nearestCountry, iso3 ?? undefined);
+    });
+  }
+
+  it('prefers the reported country over the outline', () => {
+    assert.equal(estimatePointExposure(31.5, 34.47, 50, 'Israel')?.country, 'ISR');
+    assert.equal(estimatePointExposure(31.5, 34.47, 50, 'Chile'), null);
+  });
+});
+
+describe('population table', () => {
   it('maps event types to radii with a 50km default', () => {
     assert.equal(getRadiusForEventType('earthquake'), 100);
     assert.equal(getRadiusForEventType('flood'), 100);
@@ -124,41 +179,16 @@ describe('analysis-temporal-severity core', () => {
   });
 });
 
-describe('exposure radius clamping', () => {
-  it('caps free-form agent radii so an absurd request cannot return an absurd population', () => {
-    // Unclamped, radius 20000 returned ~5.6e11 people — roughly 69x the world
-    // population — because density is multiplied across the whole disc.
-    const wild = computeBoundedExposure(31.0, 34.8, 20000);
-    assert.equal(wild.exposureRadiusKm, MAX_EXPOSURE_RADIUS_KM, 'result reports the radius actually used');
-    const capped = computeExposure(31.0, 34.8, MAX_EXPOSURE_RADIUS_KM);
-    assert.equal(wild.exposedPopulation, capped.exposedPopulation);
-    assert.ok(wild.exposedPopulation < 8.1e9 * 10, 'stays within an order of magnitude of world population');
-  });
-
-  it('leaves in-range radii untouched', () => {
-    for (const r of [1, 30, 50, 100, MAX_EXPOSURE_RADIUS_KM]) {
-      assert.equal(computeExposure(31.0, 34.8, r).exposureRadiusKm, r);
-    }
-  });
-
-  it('treats non-finite and negative radii as zero rather than NaN', () => {
-    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
-      const result = computeBoundedExposure(31.0, 34.8, bad);
-      assert.equal(result.exposedPopulation, 0);
-      assert.equal(result.exposureRadiusKm, 0);
-    }
-  });
-});
-
 describe('v1 population-exposure compatibility', () => {
   it('preserves the existing unbounded REST radius contract', async () => {
-    const radius = MAX_EXPOSURE_RADIUS_KM + 1;
+    const radius = 1001;
     const result = await getPopulationExposure(
       /** @type {never} */ ({}),
       { mode: 'exposure', lat: 31.0, lon: 34.8, radius },
     );
 
-    assert.equal(result.exposure?.exposureRadiusKm, radius);
-    assert.deepEqual(result.exposure, computeExposure(31.0, 34.8, radius));
+    const { country, ...estimate } = estimateExposure(31.0, 34.8, 'ISR', radius);
+    assert.deepEqual(result.exposure, { ...estimate, nearestCountry: country });
+    assert.equal(result.exposure.exposureRadiusKm, radius);
   });
 });
