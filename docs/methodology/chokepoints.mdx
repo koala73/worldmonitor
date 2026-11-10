@@ -138,9 +138,10 @@ The `disrupted` boolean is separate from the color badge: it is true when each
 of the latest three individual days is below 85% of the same `baseline90d`.
 
 `latestDate` is the last PortWatch day the 7-day window covers. PortWatch
-publishes about four days behind and not every day, so `flowRatio` can stay the
-same across several days of requests. Read `latestDate` to see how current the
-ratio is. It is an empty string on an estimate cached before the field existed.
+publishes with a lag of several days (8-9 days in November 2026) and not every
+day, so `flowRatio` can stay the same across several days of requests. Read
+`latestDate` to see how current the ratio is. It is an empty string on an
+estimate cached before the field existed.
 
 Each published flow estimate may also include live hazard context from
 `portwatch:disruptions:active:v1`. The seeder looks for the nearest active
