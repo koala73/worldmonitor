@@ -34,38 +34,42 @@ const STAPLES = {
   oil: 'pure canola or rapeseed oil, excluding blended oils',
   flour: 'plain all-purpose wheat flour',
   eggs: 'fresh whole chicken eggs in the shell',
-  milk: 'plain whole dairy milk, excluding powdered and flavored milk',
+  milk: 'plain whole or full-cream dairy milk, excluding powdered and flavored milk',
   bread: 'plain white bread sold as a loaf',
 };
 
 const OFFER_SCHEMA = {
   type: 'object',
   properties: {
-    matchesStaple: { type: 'boolean' },
+    offerEvidence: { type: 'string', description: 'Briefly identify the main product, what the price covers, and whether the page offers it for sale.' },
     productName: { type: 'string' },
     price: { type: 'number' },
     currency: { type: 'string' },
     quantity: { type: 'number' },
     unit: { type: 'string', enum: Object.keys(UNIT_FACTORS) },
+    matchesStaple: { type: 'boolean', description: 'True when the main product is the requested staple and has a price and quantity for the same available offer.' },
   },
-  required: ['matchesStaple', 'productName', 'price', 'currency', 'quantity', 'unit'],
+  required: ['offerEvidence', 'productName', 'price', 'currency', 'quantity', 'unit', 'matchesStaple'],
 };
 
 function offerPrompt(item, currency) {
   return `Extract the main product's available retail offer for ${STAPLES[item.id]}.
-Set matchesStaple to false on category, search or review pages, for a different product, or if
-the main product is unavailable or lacks an explicit price or pack quantity. Copy the displayed
-productName. Return the shelf price for the entire pack and its ISO currency code (expected
-${currency}). For loose fresh potatoes, a price explicitly quoted per kg or lb is also valid.
-Exclude member-only prices, related-product prices and per-unit prices for packaged goods.
-Return the total net quantity covered by that exact price, including all pieces in a multipack.
-Use pc for the number of eggs.
-Only convert units supported by the schema. Never infer a pack size, product type or currency
-from the query, or combine a price and quantity from different offers.`;
+Use offerEvidence to explain which price and quantity belong to the main product.
+Set matchesStaple to true when this is a product page and the main product matches the staple,
+is offered for sale, and displays both its price and quantity. A shelf price beside an Add to
+cart or Add to trolley control is an offer, even if the page also shows a reference unit price.
+Copy the main productName, the shelf price for the entire pack and its ISO currency code
+(expected ${currency}). Use the retailer's displayed country to interpret local currency symbols.
+Return the total quantity covered by that exact price, including all pieces in a multipack.
+Use pc for the number of eggs. For loose fresh potatoes, a price quoted per kg or lb is valid.
+Set matchesStaple to false on category, search and review pages, for a different or unavailable
+product, or when only a member price, reference price or related product's price is shown.
+Only use units in the schema. Never guess a quantity or combine details from different offers.`;
 }
 
 function normalizeOffer(offer, item, currency, fxRate) {
   if (offer?.matchesStaple !== true || typeof offer.productName !== 'string' || !offer.productName.trim()) return null;
+  if (typeof offer.offerEvidence !== 'string' || !offer.offerEvidence.trim()) return null;
   if (offer.currency !== currency || !Number.isFinite(offer.price) ||
       offer.price <= (CURRENCY_MIN[currency] ?? 0) || offer.price >= 100000) return null;
   if (!Number.isFinite(offer.quantity) || offer.quantity <= 0) return null;

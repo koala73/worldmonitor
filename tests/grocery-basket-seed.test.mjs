@@ -166,6 +166,7 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   const learnedUrl = product('old-milk-route');
   const offer = (productName, price, quantity, unit, matchesStaple = true) => ({
     matchesStaple, productName, price, currency: 'USD', quantity, unit,
+    offerEvidence: `Main product offer for ${productName}`,
   });
   const entries = {
     rice: offer('Plain white rice, 1 lb', 0.89, 1, 'lb'),
