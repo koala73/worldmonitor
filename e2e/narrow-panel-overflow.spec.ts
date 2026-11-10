@@ -196,3 +196,64 @@ test('a selected Commodities tab stays visible in the narrow tab bar', async ({ 
   // The bar fades its last 24px; only the end of the row may sit under it.
   expect(result.atEnd || result.right >= 24, 'the selected tab ends clear of the edge fade').toBe(true);
 });
+
+const legacyTechReadiness = [
+  {
+    country: 'SXM', countryName: 'Sint Maarten (Dutch part)', score: 100, rank: 1,
+    components: { internet: null, mobile: 100, broadband: null, rdSpend: null },
+  },
+  {
+    country: 'KOR', countryName: 'Korea, Rep.', score: 98.1, rank: 2,
+    components: { internet: 97.9, mobile: 100, broadband: 95.6, rdSpend: 98.87 },
+  },
+  {
+    country: 'MCO', countryName: 'Monaco', score: 93, rank: 5,
+    components: { internet: 99, mobile: 71.6, broadband: 100, rdSpend: null },
+  },
+];
+
+for (const { mode, width, hydrate } of [
+  { mode: 'desktop', width: 420, hydrate: true },
+  { mode: 'mobile', width: 271, hydrate: false },
+]) {
+  test(`tech readiness corrects legacy rankings on ${mode}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: hydrate ? 1280 : 390, height: 720 });
+    let fallbackRequests = 0;
+    await page.route(url => url.pathname === '/api/bootstrap' && url.searchParams.get('keys') === 'techReadiness', async route => {
+      fallbackRequests += 1;
+      await route.fulfill({ json: { data: { techReadiness: legacyTechReadiness }, missing: [] } });
+    });
+    await page.goto('/tests/runtime-harness.html');
+    await page.evaluate(async ({ hydrate, width, fixture }) => {
+      await import('/src/styles/main.css');
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      if (hydrate) {
+        const { __testing__ } = await import('/src/services/bootstrap.ts');
+        __testing__.seedHydrationCacheForTests({ techReadiness: fixture });
+      }
+      const { TechReadinessPanel } = await import('/src/components/TechReadinessPanel.ts');
+      document.getElementById('runtime-harness')?.remove();
+      const grid = document.createElement('div');
+      grid.className = 'panels-grid';
+      grid.style.cssText = `box-sizing:content-box;height:auto;width:${width}px;grid-template-columns:${width}px`;
+      document.body.appendChild(grid);
+      const panel = new TechReadinessPanel();
+      grid.appendChild(panel.getElement());
+      await panel.refresh();
+    }, { hydrate, width, fixture: legacyTechReadiness });
+
+    const panel = page.locator('[data-panel="tech-readiness"]');
+    const rows = panel.locator('.readiness-item');
+    await expect(rows.locator('.readiness-name')).toHaveText(['Korea, Rep.', 'Monaco', 'Sint Maarten (Dutch part)']);
+    await expect(rows.locator('.readiness-rank')).toHaveText(['#1', '#2', '—']);
+    await expect(rows.locator('.readiness-score')).toHaveText(['98.1', '93', '—']);
+    await expect(rows.locator('.readiness-coverage')).toHaveText(['4/4', '3/4', '1/4']);
+    await expect(panel.locator('.readiness-coverage-summary')).toContainText('Ranked 2 · Unranked 1');
+    await expect(panel.locator('.readiness-coverage-summary')).toContainText('Minimum coverage to rank · 3/4');
+    expect(fallbackRequests).toBe(hydrate ? 0 : 1);
+    const content = panel.locator('.panel-content');
+    expect(await content.evaluate(el => el.scrollWidth)).toBeLessThanOrEqual(await content.evaluate(el => el.clientWidth));
+    await panel.screenshot({ path: testInfo.outputPath(`tech-readiness-${mode}.png`) });
+  });
+}

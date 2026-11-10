@@ -1643,6 +1643,10 @@
       "infoTooltip": "<strong>科技活動</strong> 即將舉行和近期的科技活動：會議、產品釋出、監管聽證會和財報電話會議。從官方活動日曆和行業來源彙總。"
     },
     "techReadiness": {
+      "ranked": "已排名",
+      "unranked": "未排名",
+      "coverageRequirement": "參與排名所需的最少指標數",
+      "coverageLabel": "可用指標",
       "internetUsers": "網際網路使用者",
       "mobileSubscriptions": "移動訂閱",
       "rdSpending": "研究和開發支出",

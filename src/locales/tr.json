@@ -1647,6 +1647,10 @@
       "infoTooltip": "<strong>Teknoloji Etkinlikleri</strong> Yaklaşan ve son teknoloji etkinlikleri: konferanslar, ürün lansmanları, düzenleyici oturumlar ve kazanç görüşmeleri. Resmi etkinlik takvimleri ve sektör kaynaklarından derlenmektedir."
     },
     "techReadiness": {
+      "ranked": "Sıralanan",
+      "unranked": "Sıralama dışı",
+      "coverageRequirement": "Sıralama için gereken asgari kapsam",
+      "coverageLabel": "Mevcut göstergeler",
       "internetUsers": "Internet Kullanicilari",
       "mobileSubscriptions": "Mobil Abonelikler",
       "rdSpending": "Araştırma ve geliştirme harcaması",

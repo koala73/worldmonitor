@@ -921,6 +921,10 @@
       "infoTooltip": "<strong>Tech-evenementen</strong> Aankomende en recente technologie-evenementen: conferenties, productlanceringen, regelgevende hoorzittingen en winstgesprekken. Samengesteld uit officiële evenementenkalenders en industriebronnen."
     },
     "techReadiness": {
+      "ranked": "Met rang",
+      "unranked": "Geen rang",
+      "coverageRequirement": "Minimale dekking voor rangschikking",
+      "coverageLabel": "Beschikbare indicatoren",
       "internetUsers": "Internetgebruikers",
       "mobileSubscriptions": "Mobiele abonnementen",
       "rdSpending": "Onderzoeks- en ontwikkelingsbegroting",

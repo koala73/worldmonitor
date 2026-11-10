@@ -1643,6 +1643,10 @@
       "infoTooltip": "<strong>テックイベント</strong> 今後および最近のテクノロジーイベント：カンファレンス、製品ローンチ、規制公聴会、決算コール。公式イベントカレンダーおよび業界ソースから集約。"
     },
     "techReadiness": {
+      "ranked": "順位あり",
+      "unranked": "順位なし",
+      "coverageRequirement": "順位付けに必要な指標数",
+      "coverageLabel": "利用可能な指標",
       "internetUsers": "インターネットユーザー",
       "mobileSubscriptions": "モバイル契約数",
       "rdSpending": "研究開発支出",
