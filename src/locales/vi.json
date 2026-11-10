@@ -1666,7 +1666,9 @@
       "method": "Ước tính dựa trên mật độ dân số trung bình của quốc gia.",
       "empty": "Không có địa điểm sự kiện đủ điều kiện",
       "infoTooltip": "Chỉ hiển thị các sự kiện có vị trí chính xác tại quốc gia có dữ liệu mật độ dân số. Các khu vực ước tính có thể chồng lấn.",
-      "eventCount_other": "{{count}} sự kiện"
+      "eventCount_other": "{{count}} sự kiện",
+      "coverageShown": "Sự kiện được hiển thị: {{shown}} trên {{total}}",
+      "coverageLeftOut": "Không hiển thị: {{imprecise}} không có vị trí chính xác, {{noEstimate}} ở các quốc gia không có dữ liệu mật độ, {{otherPlaces}} sau 10 địa điểm đầu tiên của mỗi nguồn"
     },
     "securityAdvisories": {
       "loading": "Đang tải cảnh báo du lịch...",

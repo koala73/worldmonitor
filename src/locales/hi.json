@@ -1821,7 +1821,9 @@
       "empty": "कोई पात्र घटना स्थल नहीं",
       "infoTooltip": "केवल सटीक स्थान वाली घटनाएँ दिखाई जाती हैं जिनके देश का जनसंख्या घनत्व उपलब्ध है। अनुमानित क्षेत्र एक-दूसरे से आंशिक रूप से मिल सकते हैं।",
       "eventCount_one": "{{count}} घटना",
-      "eventCount_other": "{{count}} घटनाएँ"
+      "eventCount_other": "{{count}} घटनाएँ",
+      "coverageShown": "दिखाई गई घटनाएँ: {{total}} में से {{shown}}",
+      "coverageLeftOut": "नहीं दिखाई गईं: {{imprecise}} बिना सटीक स्थान के, {{noEstimate}} उन देशों में जिनका घनत्व डेटा नहीं है, {{otherPlaces}} हर स्रोत के पहले 10 स्थानों के बाद"
     },
     "securityAdvisories": {
       "loading": "यात्रा सलाह ले रहे हैं...",

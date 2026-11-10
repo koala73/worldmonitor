@@ -1595,7 +1595,9 @@
       "eventCount_one": "{{count}} zdarzenie",
       "eventCount_few": "{{count}} zdarzenia",
       "eventCount_many": "{{count}} zdarzeń",
-      "eventCount_other": "{{count}} zdarzeń"
+      "eventCount_other": "{{count}} zdarzeń",
+      "coverageShown": "Pokazane zdarzenia: {{shown}} z {{total}}",
+      "coverageLeftOut": "Niepokazane: {{imprecise}} bez dokładnej lokalizacji, {{noEstimate}} w krajach bez danych o gęstości, {{otherPlaces}} poza pierwszymi 10 miejscami z każdego źródła"
     },
     "countryTimeline": {
       "now": "Teraz",

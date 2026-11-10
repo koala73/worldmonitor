@@ -1147,7 +1147,9 @@
       "empty": "Geen geschikte gebeurtenislocaties",
       "infoTooltip": "Alleen gebeurtenissen met een precieze locatie en beschikbare bevolkingsdichtheid voor het land worden getoond. De geschatte gebieden kunnen elkaar overlappen.",
       "eventCount_one": "{{count}} gebeurtenis",
-      "eventCount_other": "{{count}} gebeurtenissen"
+      "eventCount_other": "{{count}} gebeurtenissen",
+      "coverageShown": "Getoonde gebeurtenissen: {{shown}} van {{total}}",
+      "coverageLeftOut": "Niet getoond: {{imprecise}} zonder precieze locatie, {{noEstimate}} in landen zonder dichtheidsgegevens, {{otherPlaces}} na de eerste 10 plaatsen per bron"
     },
     "countryTimeline": {
       "now": "nu",

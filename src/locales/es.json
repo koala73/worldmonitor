@@ -1685,7 +1685,9 @@
       "infoTooltip": "Solo se muestran eventos con ubicación precisa en países con datos de densidad de población. Las áreas estimadas pueden superponerse.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventos",
-      "eventCount_other": "{{count}} eventos"
+      "eventCount_other": "{{count}} eventos",
+      "coverageShown": "Eventos mostrados: {{shown}} de {{total}}",
+      "coverageLeftOut": "No mostrados: {{imprecise}} sin ubicación precisa, {{noEstimate}} en países sin datos de densidad, {{otherPlaces}} después de los 10 primeros lugares por fuente"
     },
     "countryTimeline": {
       "now": "ahora",

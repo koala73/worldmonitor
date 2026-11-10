@@ -1676,7 +1676,9 @@
       "infoTooltip": "Sunt afișate doar evenimentele cu localizare precisă din țări cu date despre densitatea populației. Zonele estimate se pot suprapune.",
       "eventCount_one": "{{count}} eveniment",
       "eventCount_few": "{{count}} evenimente",
-      "eventCount_other": "{{count}} de evenimente"
+      "eventCount_other": "{{count}} de evenimente",
+      "coverageShown": "Evenimente afișate: {{shown}} din {{total}}",
+      "coverageLeftOut": "Neafișate: {{imprecise}} fără locație precisă, {{noEstimate}} în țări fără date de densitate, {{otherPlaces}} după primele 10 locuri pe sursă"
     },
     "securityAdvisories": {
       "loading": "Se preiau avizele de călătorie...",

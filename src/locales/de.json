@@ -1681,7 +1681,9 @@
       "empty": "Keine geeigneten Ereignisorte",
       "infoTooltip": "Angezeigt werden nur Ereignisse mit genauem Ort und verfügbaren Daten zur Bevölkerungsdichte des Landes. Die geschätzten Gebiete können sich überschneiden.",
       "eventCount_one": "{{count}} Ereignis",
-      "eventCount_other": "{{count}} Ereignisse"
+      "eventCount_other": "{{count}} Ereignisse",
+      "coverageShown": "Angezeigte Ereignisse: {{shown}} von {{total}}",
+      "coverageLeftOut": "Nicht angezeigt: {{imprecise}} ohne genauen Ort, {{noEstimate}} in Ländern ohne Dichtedaten, {{otherPlaces}} nach den ersten 10 Orten je Quelle"
     },
     "countryTimeline": {
       "now": "Jetzt",

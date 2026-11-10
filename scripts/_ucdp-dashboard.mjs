@@ -15,7 +15,8 @@
  *             all 12 variant configs. Clients that switch it on re-fetch the full
  *             set from the RPC; they do not need it in everyone's boot payload.
  *   4. exposure — the first ten eligible locations from the full set, each with
- *             its event count, independent of the conflict panel's per-tab cap.
+ *             its event count, independent of the conflict panel's per-tab cap,
+ *             plus counts of the events those rows leave out.
  *
  * So the projection ships: the rows we render + the aggregates we compute +
  * the classifications we derive. ~662 KB -> ~55 KB, with every number on screen
@@ -155,40 +156,52 @@ export function selectUcdpPanelRows(events, rowsPerTab = UCDP_PANEL_ROWS_PER_TAB
   return kept;
 }
 
-// One row per location, carrying how many events the full feed reports there.
-// The rounding matches the dashboard's grouping in src/services/population-exposure.ts.
+// One row per location, carrying how many events the full feed reports there,
+// and a count of the feed events the rows leave out, by reason.
+// Both match the dashboard's grouping in src/services/population-exposure.ts.
 export function selectUcdpExposureRows(events) {
   const rows = new Map();
+  const coverage = { totalEvents: events.length, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0 };
   for (const event of events) {
-    if (event.hasPreciseLocation !== true) continue;
+    if (event.hasPreciseLocation !== true) {
+      coverage.withoutPreciseLocation += 1;
+      continue;
+    }
     const { latitude, longitude } = event.location ?? {};
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
-      || Math.abs(latitude) > 90 || Math.abs(longitude) > 180
-      || (latitude === 0 && longitude === 0)) continue;
-    if (typeof event.country !== 'string') continue;
-    const country = countryNames.countryNameToIso2(event.country)
-      ?? iso3ToIso2[event.country.trim().toUpperCase()];
-    if (!EXPOSURE_COUNTRIES.has(country)) continue;
+    const country = Number.isFinite(latitude) && Number.isFinite(longitude)
+      && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+      && !(latitude === 0 && longitude === 0) && typeof event.country === 'string'
+      ? countryNames.countryNameToIso2(event.country) ?? iso3ToIso2[event.country.trim().toUpperCase()]
+      : undefined;
+    if (!EXPOSURE_COUNTRIES.has(country)) {
+      coverage.withoutEstimate += 1;
+      continue;
+    }
     const key = `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
     const row = rows.get(key);
     if (row) {
       row.exposureEventCount += 1;
       continue;
     }
-    if (rows.size === UCDP_EXPOSURE_ROWS) continue;
+    if (rows.size === UCDP_EXPOSURE_ROWS) {
+      coverage.atOtherPlaces += 1;
+      continue;
+    }
     rows.set(key, { ...event, exposureEventCount: 1 });
   }
-  return [...rows.values()];
+  return { rows: [...rows.values()], coverage };
 }
 
 export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPerTab = UCDP_PANEL_ROWS_PER_TAB) {
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return payload;
 
   const events = payload.events;
+  const exposure = selectUcdpExposureRows(events);
   return {
     ...payload,
     events: selectUcdpPanelRows(events, rowsPerTab),
-    exposureEvents: selectUcdpExposureRows(events),
+    exposureEvents: exposure.rows,
+    exposureCoverage: exposure.coverage,
     // Everything the UI derives from the full set, precomputed so the capped
     // array cannot change what the user sees.
     classifications: classifyUcdpEvents(events, nowMs),

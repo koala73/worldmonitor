@@ -1671,7 +1671,9 @@
       "empty": "Ölçütleri karşılayan olay konumu yok",
       "infoTooltip": "Yalnızca konumu kesin olarak bilinen ve ülkesine ait nüfus yoğunluğu verisi bulunan olaylar gösterilir. Tahmin alanları çakışabilir.",
       "eventCount_one": "{{count}} olay",
-      "eventCount_other": "{{count}} olay"
+      "eventCount_other": "{{count}} olay",
+      "coverageShown": "Gösterilen olaylar: {{total}} olaydan {{shown}}",
+      "coverageLeftOut": "Gösterilmeyen: kesin konumu olmayan {{imprecise}}, yoğunluk verisi olmayan ülkelerde {{noEstimate}}, kaynak başına ilk 10 yerden sonra {{otherPlaces}}"
     },
     "securityAdvisories": {
       "loading": "Seyahat uyarıları yükleniyor...",

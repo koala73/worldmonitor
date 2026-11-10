@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
-import type { PopulationExposure } from '@/types';
+import type { ExposureCoverage, PopulationExposure } from '@/types';
 import { formatPopulation } from '@/services/population-exposure';
 import { t } from '@/services/i18n';
 
@@ -16,7 +16,7 @@ export class PopulationExposurePanel extends Panel {
     this.showLoading(t('common.calculatingExposure'));
   }
 
-  public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false): void {
+  public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false, coverage?: ExposureCoverage): void {
     if (hasCachedUcdp) {
       this.setDataBadge('cached', 'UCDP');
     } else {
@@ -24,7 +24,7 @@ export class PopulationExposurePanel extends Panel {
     }
     this.setCount(exposures.length);
     if (exposures.length === 0) {
-      this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.populationExposure.empty')}</div>`);
+      this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.populationExposure.empty')}</div>${this.renderCoverage(coverage)}`);
       return;
     }
 
@@ -43,8 +43,23 @@ export class PopulationExposurePanel extends Panel {
       <div class="popexp-panel-content">
         <div class="popexp-method">${t('components.populationExposure.method')}</div>
         <div class="popexp-list">${cards}</div>
+        ${this.renderCoverage(coverage)}
       </div>
     `);
+  }
+
+  private renderCoverage(coverage: ExposureCoverage | undefined) {
+    if (!coverage || coverage.totalEvents === 0) return safeHtml``;
+    const n = (value: number) => value.toLocaleString();
+    const shown = coverage.totalEvents - coverage.withoutPreciseLocation - coverage.withoutEstimate - coverage.atOtherPlaces;
+    return safeHtml`<div class="popexp-coverage">
+      <div>${t('components.populationExposure.coverageShown', { shown: n(shown), total: n(coverage.totalEvents) })}</div>
+      <div>${t('components.populationExposure.coverageLeftOut', {
+        imprecise: n(coverage.withoutPreciseLocation),
+        noEstimate: n(coverage.withoutEstimate),
+        otherPlaces: n(coverage.atOtherPlaces),
+      })}</div>
+    </div>`;
   }
 
   private getTypeIcon(type: string): string {

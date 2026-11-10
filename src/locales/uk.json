@@ -1833,7 +1833,9 @@
       "eventCount_one": "{{count}} подія",
       "eventCount_few": "{{count}} події",
       "eventCount_many": "{{count}} подій",
-      "eventCount_other": "{{count}} подій"
+      "eventCount_other": "{{count}} подій",
+      "coverageShown": "Показано подій: {{shown}} з {{total}}",
+      "coverageLeftOut": "Не показано: {{imprecise}} без точного розташування, {{noEstimate}} у країнах без даних про щільність, {{otherPlaces}} після перших 10 місць для кожного джерела"
     },
     "securityAdvisories": {
       "loading": "Завантаження рекомендацій щодо подорожей...",

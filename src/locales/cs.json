@@ -1660,7 +1660,9 @@
       "eventCount_one": "{{count}} událost",
       "eventCount_few": "{{count}} události",
       "eventCount_many": "{{count}} událostí",
-      "eventCount_other": "{{count}} událostí"
+      "eventCount_other": "{{count}} událostí",
+      "coverageShown": "Zobrazené události: {{shown}} z {{total}}",
+      "coverageLeftOut": "Nezobrazeno: {{imprecise}} bez přesné polohy, {{noEstimate}} v zemích bez údajů o hustotě, {{otherPlaces}} za prvními 10 místy každého zdroje"
     },
     "securityAdvisories": {
       "loading": "Načítání cestovních varování...",

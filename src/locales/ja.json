@@ -1666,7 +1666,9 @@
       "method": "推計には各国の平均人口密度を使用します。",
       "empty": "条件を満たすイベント地点がありません",
       "infoTooltip": "正確な位置と国の人口密度データが得られるイベントのみを表示します。推計対象の範囲は重なる場合があります。",
-      "eventCount_other": "{{count}}件のイベント"
+      "eventCount_other": "{{count}}件のイベント",
+      "coverageShown": "表示中のイベント: {{total}}件中{{shown}}件",
+      "coverageLeftOut": "非表示: 正確な位置なし {{imprecise}}件、人口密度データのない国 {{noEstimate}}件、各ソースの最初の10地点以降 {{otherPlaces}}件"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",

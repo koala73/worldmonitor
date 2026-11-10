@@ -1147,7 +1147,9 @@
       "empty": "Inga händelseplatser uppfyller kraven",
       "infoTooltip": "Endast händelser med en exakt plats i länder med uppgifter om befolkningstäthet visas. De uppskattade områdena kan överlappa.",
       "eventCount_one": "{{count}} händelse",
-      "eventCount_other": "{{count}} händelser"
+      "eventCount_other": "{{count}} händelser",
+      "coverageShown": "Visade händelser: {{shown}} av {{total}}",
+      "coverageLeftOut": "Visas inte: {{imprecise}} utan exakt plats, {{noEstimate}} i länder utan täthetsdata, {{otherPlaces}} efter de första 10 platserna per källa"
     },
     "countryTimeline": {
       "now": "nu",

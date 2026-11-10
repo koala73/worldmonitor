@@ -4,7 +4,7 @@ import type { AppContext } from '@/app/app-context';
 import type { ConflictEvent } from '@/services/conflict';
 import { dataFreshness } from '@/services/data-freshness';
 import type { Earthquake } from '@/services/earthquakes';
-import type { PopulationExposure, SocialUnrestEvent } from '@/types';
+import type { ExposureCoverage, PopulationExposure, SocialUnrestEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   fetchEarthquakes: vi.fn(),
@@ -335,15 +335,18 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
       ...ucdp, id: `unsupported-ucdp-${i}`, latitude: 91,
     }));
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [...unsupportedAcled, acled] });
+    const fullFeed = (data: unknown[], fromCache: boolean) => ({
+      success: true, data, fromCache, exposure: { source: 'full-feed', events: data },
+    });
     mocks.fetchUcdpEvents
-      .mockResolvedValueOnce({ success: true, data: [...unsupportedUcdp, ucdp], fromCache: false })
+      .mockResolvedValueOnce(fullFeed([...unsupportedUcdp, ucdp], false))
       .mockResolvedValueOnce({ success: false, data: [] })
-      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: true })
-      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: false });
+      .mockResolvedValueOnce(fullFeed([ucdp], true))
+      .mockResolvedValueOnce(fullFeed([ucdp], false));
     const { loader, ctx } = await makeLoader();
     const recordUpdate = vi.spyOn(dataFreshness, 'recordUpdate');
     const recordError = vi.spyOn(dataFreshness, 'recordError');
-    const setExposures = vi.fn<(exposures: PopulationExposure[], hasCachedUcdp: boolean) => void>();
+    const setExposures = vi.fn<(exposures: PopulationExposure[], hasCachedUcdp: boolean, coverage?: ExposureCoverage) => void>();
     ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
 
     await loader.loadIntelligenceSignals();
@@ -356,6 +359,9 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadIntelligenceSignals();
 
     expect(setExposures.mock.calls.map(([, hasCachedUcdp]) => hasCachedUcdp)).toEqual([false, true, true, false]);
+    expect(setExposures.mock.calls[0]?.[2]).toEqual({
+      totalEvents: 22, withoutPreciseLocation: 0, withoutEstimate: 20, atOtherPlaces: 0,
+    });
     for (const [exposures] of setExposures.mock.calls) {
       expect(exposures.map(exposure => exposure.eventId)).toEqual(['aden', 'taiz']);
     }
@@ -375,7 +381,11 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     const hydrated = { events: projected, totalEvents: 51, aggregates, exposureEvents: [point] };
     mocks.getHydratedData.mockImplementation(key => key === 'ucdpEvents' ? hydrated : undefined);
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
-    mocks.fetchUcdpEvents.mockResolvedValueOnce({ success: true, data: projected, exposureData: [point], fromCache: false });
+    const exposureCoverage = { totalEvents: 51, withoutPreciseLocation: 50, withoutEstimate: 0, atOtherPlaces: 0 };
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({
+      success: true, data: projected, fromCache: false,
+      exposure: { source: 'projection', events: [point], coverage: exposureCoverage },
+    });
     const { loader, ctx } = await makeLoader();
     const setExposures = vi.fn();
     const setEvents = vi.fn();
@@ -386,7 +396,29 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
     expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated]]);
     expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
-    expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })], false);
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith(
+      [expect.objectContaining({ eventId: 'eligible' })], false, exposureCoverage,
+    );
+  });
+
+  it('hides coverage counts when the projection predates them', async () => {
+    const point = {
+      id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+      type_of_violence: 'state-based', hasPreciseLocation: true, eventCount: 2,
+    };
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({
+      success: true, data: [point], fromCache: false, exposure: { source: 'projection', events: [point] },
+    });
+    const { loader, ctx } = await makeLoader();
+    const setExposures = vi.fn();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+
+    await loader.loadIntelligenceSignals();
+
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith(
+      [expect.objectContaining({ eventId: 'eligible', eventCount: 2 })], false, undefined,
+    );
   });
 
   it.each(['unrest', 'ucdp', 'neither'] as const)(
@@ -395,12 +427,12 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
       if (failedSource !== 'unrest') {
         mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
       }
+      const data = failedSource === 'ucdp' ? [] : [{
+        id: 'legacy-row', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+        side_a: 'Side A', side_b: 'Side B', type_of_violence: 'state-based',
+      }];
       mocks.fetchUcdpEvents.mockResolvedValue({
-        success: failedSource !== 'ucdp',
-        data: failedSource === 'ucdp' ? [] : [{
-          id: 'legacy-row', country: 'Yemen', latitude: 13.58, longitude: 44.02,
-          side_a: 'Side A', side_b: 'Side B', type_of_violence: 'state-based',
-        }],
+        success: failedSource !== 'ucdp', data, exposure: { source: 'full-feed', events: data },
       });
       const { loader, ctx } = await makeLoader();
       const setExposures = vi.fn();
@@ -411,7 +443,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
       if (failedSource === 'neither') {
         expect(showError).not.toHaveBeenCalled();
-        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false);
+        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false, expect.objectContaining({ withoutPreciseLocation: 1 }));
       } else {
         expect(showError).toHaveBeenCalledOnce();
         expect(setExposures).not.toHaveBeenCalled();

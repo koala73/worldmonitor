@@ -1821,7 +1821,9 @@
       "empty": "Nincs megfelelő eseményhelyszín",
       "infoTooltip": "Csak pontos helyszínnel rendelkező események jelennek meg azokban az országokban, amelyekről van népsűrűségi adat. A becsült területek átfedhetik egymást.",
       "eventCount_one": "{{count}} esemény",
-      "eventCount_other": "{{count}} esemény"
+      "eventCount_other": "{{count}} esemény",
+      "coverageShown": "Megjelenített események: {{shown}} / {{total}}",
+      "coverageLeftOut": "Nem látható: {{imprecise}} pontos hely nélkül, {{noEstimate}} sűrűségadat nélküli országokban, {{otherPlaces}} a forrásonkénti első 10 helyen túl"
     },
     "securityAdvisories": {
       "loading": "Utazási tanácsok letöltése...",
