@@ -3204,7 +3204,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         envelopeMeta,
         maxPayloadBytes,
         beforePublish: beforePublish
-          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId, lockFence })
           : undefined,
         publishAtomically: publishAtomically
           ? (publishContext) => publishAtomically(data, { ...publishContext, runId })

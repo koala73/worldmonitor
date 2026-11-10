@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS, allSettledWithConcurrency } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, readSeedSnapshot, writeExtraKey, bulkReadLearnedRoutes, bulkWriteLearnedRoutes, isAllowedRouteHost, processItemRoute, getSharedFxRates, SHARED_FX_FALLBACKS, allSettledWithConcurrency } from './_seed-utils.mjs';
 
 const config = loadSharedConfig('grocery-basket.json');
 export const COUNTRIES = config.countries;
@@ -454,14 +454,18 @@ const isMain = process.argv[1]?.endsWith('seed-grocery-basket.mjs');
 if (isMain) {
   loadEnvFile(import.meta.url);
   const previousKey = `${CANONICAL_KEY}:prev`;
-  const [prevSnapshot, priorSnapshot] = await Promise.all([
-    readSeedSnapshot(CANONICAL_KEY),
-    readSeedSnapshot(previousKey),
-  ]);
-  const now = new Date();
-  const baseline = selectPriorWeek(now, prevSnapshot, priorSnapshot);
+  let baselineToSave;
 
-  await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBasketPrices(baseline, { now }), {
+  await runSeed('economic', 'grocery-basket', CANONICAL_KEY, async () => {
+    const [current, prior] = await Promise.all([
+      readSeedSnapshot(CANONICAL_KEY, { strict: true }),
+      readSeedSnapshot(previousKey, { strict: true }),
+    ]);
+    const now = new Date();
+    const baseline = selectPriorWeek(now, current, prior);
+    baselineToSave = baseline !== prior ? baseline : undefined;
+    return fetchGroceryBasketPrices(baseline, { now });
+  }, {
     ttlSeconds: CACHE_TTL,
     // Countries run COUNTRY_CONCURRENCY at a time (items within a country run
     // concurrently). Every fetch is individually bounded (15/30s AbortSignal.timeout),
@@ -479,13 +483,12 @@ if (isMain) {
       return true;
     },
     recordCount: (data) => data?.countries?.length || 0,
-    // Preserve the prior-week baseline when the current week is reseeded.
-    extraKeys: baseline ? [{
-      key: previousKey,
-      transform: () => baseline,
-      ttl: CACHE_TTL * 2,
-      declareRecords,
-    }] : undefined,
+    // Save the baseline before replacing its only copy in the canonical key.
+    beforePublish: async (_data, { lockFence }) => {
+      if (baselineToSave) {
+        await writeExtraKey(previousKey, baselineToSave, CACHE_TTL * 2, undefined, { lockFence });
+      }
+    },
 
     declareRecords,
     schemaVersion: 1,

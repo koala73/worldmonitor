@@ -75,7 +75,7 @@ const GROCERY_BASKET = {
     wowPct: code === 'GB' ? 2.5 : null,
     items: ['rice', 'eggs', 'milk'].map((itemId, j) => {
       const price = i === 0 && itemId === 'milk' ? null : 2 + i + j;
-      return { itemId, itemName: itemId, unit: '1 kg', localPrice: price, usdPrice: price, available: price !== null };
+      return { itemId, itemName: itemId, unit: ['1 kg', '12 pc', '1 L'][j], localPrice: price, usdPrice: price, available: price !== null };
     }),
   })),
 };
