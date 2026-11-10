@@ -1498,6 +1498,31 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     ]);
   });
 
+  it('get_market_data: Christmas closing quotes stay fresh until the holiday weekend ends', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-12-26T12:00:00Z'));
+    const quote = { symbol: 'CL=F', price: 85, priceBasis: 'futures', priceAt: Date.parse('2026-12-24T18:44Z') };
+    mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [quote] } });
+    const out = await callTool('get_market_data', { asset_class: ['commodity'] });
+    assert.deepEqual(out.data['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+  });
+
+  it('get_energy_intelligence: observation freshness follows the next EIA release', async (t) => {
+    for (const [date, now, stale] of [
+      ['2025-12-12', '2025-12-29T21:59Z', false],
+      ['2025-12-12', '2025-12-30T22:01Z', true],
+      ['2026-11-06', '2026-11-19T23:59Z', true],
+      ['2026-11-13', '2026-11-19T23:59Z', false],
+    ]) {
+      t.mock.method(Date, 'now', () => Date.parse(now));
+      mockCacheKeys({ 'energy:eia-petroleum:v1': { brent: { date, current: 85 } } }, {
+        'seed-meta:energy:eia-petroleum': { fetchedAt: Date.parse(now) - 60_000, recordCount: 1 },
+      });
+      const out = await callTool('get_energy_intelligence', { dataset: ['eia-petroleum'] });
+      assert.equal(out.data['eia-petroleum'].brent.stale, stale, now);
+      t.mock.restoreAll();
+    }
+  });
+
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
     // Live clock: this test asserts on the MCP projection, which re-derives
     // transport freshness against Date.now(). A pinned fixture time expires
@@ -3098,8 +3123,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
+    const latestFriday = new Date();
+    latestFriday.setUTCDate(latestFriday.getUTCDate() - ((latestFriday.getUTCDay() + 2) % 7));
     const eiaPayload = {
-      brent: { date: new Date(Date.now() - 11 * 86_400_000).toISOString().slice(0, 10), current: 121.17 },
+      brent: { date: latestFriday.toISOString().slice(0, 10), current: 121.17 },
       stocks: { current: 832.1 },
     };
     const electricityPayload = { countries: [{ iso: 'DE', priceEurMwh: 88 }] };
