@@ -9,7 +9,7 @@
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is the sole credential-free, daily-quota-free data tool and has a separate fail-closed 10/min/IP anonymous limit; describe_tool and all other tool calls need subscription auth."
+      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is daily-quota-free and has a separate fail-closed 10/min/IP anonymous limit. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. describe_tool is quota-exempt and needs a signed-in account."
     },
     "rest": {
       "base": "https://api.worldmonitor.app",
@@ -85,7 +85,7 @@
     "mcp": "curl -X POST https://worldmonitor.app/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
   },
   "authentication": {
-    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is the sole credential-free, daily-quota-free data tool; describe_tool and all other tool calls are subscription-gated.",
+    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is daily-quota-free. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. describe_tool is quota-exempt and needs a signed-in account.",
     "freeDataTool": {
       "name": "get_sources",
       "dailyQuota": false,

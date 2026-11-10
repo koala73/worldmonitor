@@ -10,6 +10,16 @@ A single codebase produces specialized variants — geopolitical (World Monitor)
 
 The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
 
+## Common questions this site answers
+
+- [Is the Strait of Hormuz open right now?](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/): live disruption score, navigational warnings and IMF PortWatch daily transits.
+- [Which shipping chokepoints are disrupted?](https://www.worldmonitor.app/chokepoints/): status of every tracked chokepoint with source timestamps.
+- [What conflicts and crises are active?](https://www.worldmonitor.app/crises/): one tracker per crisis.
+- [Free alternative to Dataminr](https://www.worldmonitor.app/blog/alternatives/dataminr/) · [Free alternative to ACLED](https://www.worldmonitor.app/blog/alternatives/acled/)
+- Free alternative to Liveuamap, and the best geopolitical risk dashboards compared: see the Comparisons section below.
+- [Alerts on escalation, by email, Telegram, Slack and more](https://www.worldmonitor.app/blog/posts/alerts-notification-channels-worldmonitor/) (Pro)
+- [Free MCP server for geopolitical data](https://www.worldmonitor.app/docs/mcp-quickstart): connect Claude, ChatGPT, Codex or Cursor at [worldmonitor.app/mcp](https://worldmonitor.app/mcp); a free account works.
+
 ## Product identity and press references
 
 - [Product identity and press references](https://www.worldmonitor.app/world-monitor.md): Official name, canonical domain, contact details, and the press list — WIRED, The Atlantic, El País, The Economic Times, Arabian Business, Entrepreneur Middle East, Silicon Canals and L'Orient Today — each linked to its article.
@@ -36,7 +46,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 **How an agent should call it:**
 
-- [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
+- [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`); the API key header `X-WorldMonitor-Key: wm_<40-hex>` is a paid feature. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server card](https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
 - [REST API guide](https://www.worldmonitor.app/openapi.md): API key required for protected routes. Send the `X-WorldMonitor-Key` header for those routes. The public scorecard routes `/api/scorecard/v1/get-five-factor-scorecard`, `/api/scorecard/v1/get-bloc-scorecard`, and `/api/scorecard/v1/list-five-factor-scorecards` accept requests without credentials, with a per-IP limit of 30 requests per 60 seconds. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 3,269,510 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.worldmonitor.app/docs/cli): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command, or `brew install worldmonitor` with [Homebrew](https://formulae.brew.sh/formula/worldmonitor). `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
@@ -124,7 +134,7 @@ A comparison hub plus 12 head-to-head and category pages. Every page uses the sa
 - [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
 - [Forecast Accuracy Scorecard](https://www.worldmonitor.app/accuracy/): The standing forecast-resolution record: the forecast track record, its current status and methodology, and a machine-readable JSON distribution
 - [Chokepoint Status Open Dataset](https://www.worldmonitor.app/data/v1/chokepoints/README.md): Daily status of every tracked maritime chokepoint as [JSON](https://www.worldmonitor.app/data/v1/chokepoints/latest.json) and [CSV](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv), with a JSON Schema and a datasheet. Free to reuse under CC BY 4.0 with attribution, no key required
-- [Monitor the Situation](https://www.worldmonitor.app/monitor-the-situation/): One live board of current headlines, the 14 crisis trackers grouped by region, shipping chokepoint status and internet outages, each reading stamped with the time it was taken
+- [Monitor the Situation](https://www.worldmonitor.app/monitor-the-situation/): One live board of current headlines, the 18 crisis trackers grouped by region, shipping chokepoint status and internet outages, each reading stamped with the time it was taken
 - [Machine-Readable Pricing](https://www.worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://www.worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations

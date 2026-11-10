@@ -350,11 +350,16 @@ const RESTATED_FACT_PHRASES = new Map([
   ]],
   ['ARCHITECTURE.md', [{ pattern: /\b\d+ observed source hosts\b/g, occurrences: 1, keys: ['sourceHosts'] }]],
   ['public/llms-full.txt', [PROVIDERS_ACROSS_HOSTS]],
+  ['public/llms.txt', [{ pattern: /\b\d+ crisis trackers\b/g, occurrences: 1, keys: ['crisisTrackers'] }]],
   ['blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', [PROVIDERS_ACROSS_HOSTS]],
   ['api/oauth/authorize.js', [CONSENT_PROVIDERS]],
   ['mcp-grant.html', [CONSENT_PROVIDERS]],
 ]);
-const RESTATED_FACT_VALUES = { ...facts.depthProofStats, sourceHosts: sourceAttribution.activeHosts };
+const RESTATED_FACT_VALUES = {
+  ...facts.depthProofStats,
+  sourceHosts: sourceAttribution.activeHosts,
+  crisisTrackers: readJson('shared/crawlable-crises.json').length,
+};
 
 function restateFacts(path, source) {
   let result = source;
@@ -550,6 +555,33 @@ for (const path of new Set([
 transform('docs/about.mdx', (source) => restateFacts('docs/about.mdx', replacePreviousPrices(source)));
 for (const path of RESTATED_FACT_PHRASES.keys()) {
   if (path !== 'docs/about.mdx' && !applicationJsonLdGroups.has(path)) transform(path, (source) => restateFacts(path, source));
+}
+
+/**
+ * The free-tier sentence every agent-facing file states verbatim (markdown
+ * wrapping and JSON escaping aside). A file that drops or rewords it fails the
+ * derived check instead of drifting back to "every data tool needs a paid plan".
+ * tests/agent-files-free-tier.test.mjs reads this constant from source.
+ */
+const FREE_TIER_SENTENCE = "`get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed.";
+const FREE_TIER_FILES = [
+  'public/agents.md',
+  'public/developers.md',
+  'public/mcp-server.md',
+  'public/api/llms.txt',
+  'public/agent.txt',
+  'public/agent-view.json',
+  'public/llms.txt',
+  'public/developers/llms.txt',
+];
+for (const path of FREE_TIER_FILES) {
+  transform(path, (source) => {
+    const flat = (text) => text.replace(/\s+/g, ' ');
+    if (!flat(source).includes(flat(FREE_TIER_SENTENCE))) {
+      throw new Error(`${path}: must state the free-tier sentence verbatim: ${FREE_TIER_SENTENCE}`);
+    }
+    return source;
+  });
 }
 
 /** The free-account MCP allowance, worded once for every pricing surface (#9144). */
