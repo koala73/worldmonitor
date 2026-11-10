@@ -210,7 +210,7 @@ describe("adminNewSubscriptionHtml", () => {
         acquisition: { source: "chatgpt-com", referrer: "direct", landing: "dashboard", firstSeen: "2026-03-20" },
       },
     });
-    expect(html).toMatch(/Source:<\/td><td[^>]*>chatgpt-com</);
+    expect(html).toMatch(/Source:<\/td><td[^>]*>ChatGPT \(chatgpt-com\)</);
     expect(html).toMatch(/Referrer:<\/td><td[^>]*>none recorded \(source from utm tag\)</);
     expect(html).not.toMatch(/Referrer:<\/td><td[^>]*>direct</);
   });
@@ -221,6 +221,19 @@ describe("adminNewSubscriptionHtml", () => {
       conversion: { purchasedAt: PURCHASED_AT, acquisition: { medium: "email", referrer: "direct" } },
     });
     expect(html).toMatch(/Referrer:<\/td><td[^>]*>direct</);
+  });
+
+  test("an AI assistant source reads by its product name, with the stored tag beside it", () => {
+    const sourceRow = (source: string, extra: Record<string, string> = {}) => adminNewSubscriptionHtml({
+      ...base,
+      conversion: { purchasedAt: PURCHASED_AT, acquisition: { source, ...extra } },
+    }).match(/Source:<\/td><td[^>]*>([^<]*)</)?.[1];
+    expect(sourceRow("chatgpt-com")).toBe("ChatGPT (chatgpt-com)");
+    expect(sourceRow("perplexity-ai")).toBe("Perplexity (perplexity-ai)");
+    expect(sourceRow("claude-ai", { medium: "referral" })).toBe("Claude (claude-ai) / referral");
+    expect(sourceRow("twitter", { medium: "social" })).toBe("twitter / social");
+    expect(sourceRow("constructor")).toBe("constructor");
+    expect(sourceRow("tostring")).toBe("tostring");
   });
 
   test("a referral alone counts as a captured source", () => {
