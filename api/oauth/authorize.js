@@ -222,7 +222,8 @@ ${clientHostLine}${localhostWarn}
 <li>Markets: stocks, commodities, crypto &amp; FX</li>
 </ul>
 <hr>
-<a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in with WorldMonitor Pro</a>
+<a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in to World Monitor</a>
+<p class="hint">A free account works. Pro raises the daily allowance.</p>
 <div class="disclosure" id="dt"><a id="tk" role="button" tabindex="0">Use API key instead</a></div>
 <form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize" style="display:none;margin-top:1.25rem">
 <input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">

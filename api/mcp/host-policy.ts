@@ -28,6 +28,40 @@ export function isChatGptHost(req: Request): boolean {
   return /^openai-mcp\//i.test(userAgent) && !/\(codex\)/i.test(userAgent);
 }
 
+/**
+ * The Codex CLI sends `codex-mcp-client/<version>` or `openai-mcp/<version> (Codex)`.
+ * Neither opens a sign-in window on its own: the user runs
+ * `codex mcp login worldmonitor`.
+ */
+export function isCodexClient(req: Request): boolean {
+  const userAgent = req.headers.get('User-Agent') ?? '';
+  return /codex-mcp-client\//i.test(userAgent) || /\(codex\)/i.test(userAgent);
+}
+
+/**
+ * Claude Code sends `claude-code/<version> (...)`. Since the connect-time
+ * challenge it shows the server as needing auth until the user runs `/mcp`
+ * and chooses Authenticate.
+ */
+export function isClaudeCodeClient(req: Request): boolean {
+  const userAgent = req.headers.get('User-Agent') ?? '';
+  return /^claude-code\//i.test(userAgent);
+}
+
+/**
+ * The sign-in step for clients that do not start OAuth by themselves after the
+ * anonymous 401. `null` for every other client: its generic `nextStep` stands.
+ */
+export function connectInstruction(req: Request): string | null {
+  if (isCodexClient(req)) {
+    return 'Run `codex mcp login worldmonitor` in a terminal, then restart Codex. A free World Monitor account works.';
+  }
+  if (isClaudeCodeClient(req)) {
+    return 'In Claude Code run /mcp, select worldmonitor and choose Authenticate. A free World Monitor account works.';
+  }
+  return null;
+}
+
 /** Tools a ChatGPT request never sees or reaches. */
 export const CHATGPT_HIDDEN_TOOLS: ReadonlySet<string> = new Set([START_UPGRADE_TOOL]);
 

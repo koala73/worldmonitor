@@ -15393,6 +15393,9 @@
           "path": "api/customer-portal.ts"
         },
         {
+          "path": "api/mcp/auth.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {

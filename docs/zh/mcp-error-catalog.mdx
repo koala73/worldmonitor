@@ -105,6 +105,8 @@ Content-Type: application/json
 
 订阅不活跃故意不属于此列表。已确认的免费账户（配置正确但无权益行，或内部一致的 tier-0 行）使用免费账户额度。服务方已确认失效的订阅也遵循同一路径：共享权益门禁将已结束的覆盖期视为已确认的免费状态。不带该失效标记的付费权益过期或停用才会返回终止性 `-32002` / HTTP 403；无法确定或可重试的校验故障使用 `-32603` / HTTP 503。
 
+情况 1 的 `error.data` 带 `reason`（固定为 `no-account`）、`nextStep`、`upgradeUrl` 和 `setupUrl`（各客户端的接入指南）。请按 `error.data.reason` 分支，不要匹配消息文本。`nextStep` 随客户端而变：Codex（`codex-mcp-client/…` 或 `openai-mcp/… (Codex)`）提示在终端运行 `codex mcp login worldmonitor` 后重启 Codex；Claude Code（`claude-code/…`）提示运行 `/mcp`，选择 `worldmonitor` 并选 Authenticate；其他客户端在 `initialize` 或匿名 `GET` 发现探测被拒时不再提及 `get_sources`，在受限 `tools/call` 被拒时沿用下例文案。匿名 `GET` 发现探测返回同样的负载，`id` 为 `null`。
+
 示例线上负载（情况 1）：
 
 ```json
@@ -113,7 +115,13 @@ Content-Type: application/json
   "id": 7,
   "error": {
     "code": -32001,
-    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header."
+    "message": "Sign-in required. Connect with OAuth (your client opens World Monitor sign-in; a free account works) or send an API key in the X-WorldMonitor-Key header.",
+    "data": {
+      "reason": "no-account",
+      "nextStep": "Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account, or call get_sources, which needs no credential. Subscribe to Pro at the upgrade URL for the full daily allowance.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "setupUrl": "https://www.worldmonitor.app/docs/mcp-quickstart"
+    }
   }
 }
 ```

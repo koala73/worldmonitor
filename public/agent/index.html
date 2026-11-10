@@ -63,6 +63,13 @@
 }</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="cursor" aria-label="Copy Cursor mcp.json">Copy</button></div>
       </article>
 
+      <article class="client" id="codex">
+        <h3>Codex</h3>
+        <p>Add the server, then run the login command to sign in. Codex does not open the sign-in window by itself; the login command does.</p>
+        <div class="cmd"><pre><code>codex mcp add worldmonitor --url https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="codex" aria-label="Copy Codex add command">Copy</button></div>
+        <div class="cmd"><pre><code>codex mcp login worldmonitor</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="codex" aria-label="Copy Codex login command">Copy</button></div>
+      </article>
+
       <article class="client" id="gemini">
         <h3>Gemini CLI</h3>
         <p>Add the server (use <code>-s user</code> to make it available in every project), then run <code>/mcp auth worldmonitor</code> inside Gemini CLI to sign in.</p>
@@ -86,7 +93,7 @@
 
       <article class="client" id="generic">
         <h3>Any other MCP client</h3>
-        <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves and open the sign-in window. Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
+        <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves; some open sign-in automatically, others need a login command (Codex) or an Authenticate step (Claude Code). Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
         <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP endpoint">Copy</button></div>
         <p>Check the connection and browse the tools with the MCP Inspector:</p>
         <div class="cmd"><pre><code>npx @modelcontextprotocol/inspector --server-url https://worldmonitor.app/mcp --transport http</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP Inspector command">Copy</button></div>

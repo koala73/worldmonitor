@@ -8,6 +8,7 @@ import {
   MCP_DEFAULT_BURST_PER_MINUTE,
   PRODUCTION_DEPS,
   resolveAuthContext,
+  mcpAnonymousRefusalResponse,
   runContextPreChecks,
   validateProMcpAuthorization,
   wwwAuthHeader,
@@ -995,7 +996,7 @@ async function mcpHandlerInner(
 
   if (anonymousAuthProbe) {
     usage.phase = 'auth';
-    return authRequiredResponse(null, resourceMetadataUrl, corsHeaders);
+    return mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, null, { handshake: true });
   }
 
   if (req.method === 'HEAD') {
@@ -1248,7 +1249,9 @@ async function mcpHandlerInner(
   const challengeAnonymous = (method === 'initialize' && (modernEra || !isGenericHttpClient(req)))
     || (modernEra && !isFreeTierToolCall && uiResourceReadUri === null);
   if (challengeAnonymous && !hasCredentials(req) && !WELL_KNOWN_MCP_PATHS.has(requestPathname)) {
-    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
+    const denied = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id, {
+      handshake: method === 'initialize',
+    });
     if (!denied.ok) {
       usage.phase = 'auth';
       return denied.response;
