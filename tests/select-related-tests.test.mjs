@@ -126,6 +126,18 @@ describe('selectRelatedTests', () => {
     );
   });
 
+  it('selects every file when tsconfig aliases cannot be read with certainty', () => {
+    const configs = {
+      'an unparseable config': '{ "compilerOptions": { /* block comment */ "paths": { "@/*": ["./src/*"] } } }\n',
+      'paths that may come from an extended config': '{ "extends": "./tsconfig.base.json" }\n',
+    };
+    for (const [label, config] of Object.entries(configs)) {
+      const root = fixture({ ...FILES, 'tsconfig.json': config });
+      const inventory = listInventory(root);
+      assert.deepEqual(selectRelatedTests({ root, inventory, changed: ['docs/notes.md'] }), inventory, label);
+    }
+  });
+
   it('terminates on import cycles', () => {
     const cyclic = fixture({
       'package.json': FILES['package.json'],

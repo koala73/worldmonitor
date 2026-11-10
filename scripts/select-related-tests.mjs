@@ -41,14 +41,24 @@ export function listInventory(root = ROOT) {
 }
 
 // tsconfig.json `paths` with a trailing `/*`, as tsx applies them: `@/*` -> `./src/*`.
+// Returns null when the aliases cannot be known for certain: a config that does
+// not parse once whole-line comments are dropped, or one that `extends` another
+// file (which may hold the paths). The caller then selects every test, because
+// a missed alias would silently skip tests rather than run extra ones.
 export function readPathAliases(root = ROOT) {
-  let config;
+  let text;
   try {
-    // tsconfig allows comments; drop line comments that are not inside a string.
-    config = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8').replace(/^\s*\/\/.*$/gm, ''));
+    text = readFileSync(join(root, 'tsconfig.json'), 'utf8');
   } catch {
     return [];
   }
+  let config;
+  try {
+    config = JSON.parse(text.replace(/^\s*\/\/.*$/gm, ''));
+  } catch {
+    return null;
+  }
+  if (config.extends) return null;
   return Object.entries(config.compilerOptions?.paths ?? {})
     .filter(([pattern, targets]) => pattern.endsWith('/*') && targets[0]?.endsWith('/*'))
     .map(([pattern, targets]) => [pattern.slice(0, -1), posix.normalize(targets[0].slice(0, -1))]);
@@ -94,6 +104,7 @@ export function selectRelatedTests({ root = ROOT, changed, inventory, readSource
     if (basename(stem).length >= MIN_BASENAME) needles.add(basename(stem));
   }
   const aliases = readPathAliases(root);
+  if (aliases === null) return [...inventory];
   const read = (file) => {
     try { return readSource(file); } catch { return ''; }
   };
