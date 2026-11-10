@@ -1819,7 +1819,9 @@
       "estimateWithin": "Takriban watu {{count}} ndani ya eneo la kilomita {{km}}",
       "method": "Makadirio yanatumia wastani wa msongamano wa watu nchini.",
       "empty": "Hakuna maeneo ya matukio yanayokidhi vigezo",
-      "infoTooltip": "Matukio yanaonyeshwa ikiwa eneo lake linajulikana kwa usahihi na nchi ina data ya msongamano wa watu. Maeneo yaliyokadiriwa yanaweza kuingiliana."
+      "infoTooltip": "Matukio yanaonyeshwa ikiwa eneo lake linajulikana kwa usahihi na nchi ina data ya msongamano wa watu. Maeneo yaliyokadiriwa yanaweza kuingiliana.",
+      "eventCount_one": "{{count}} tukio",
+      "eventCount_other": "{{count}} matukio"
     },
     "securityAdvisories": {
       "loading": "Inaleta mashauri ya usafiri...",

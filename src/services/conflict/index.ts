@@ -114,8 +114,16 @@ export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   classifications?: Record<string, UcdpConflictStatus>;
   aggregates?: Record<string, UcdpTabAggregate>;
   totalEvents?: number;
-  exposureEvents?: ProtoUcdpEvent[];
+  exposureEvents?: Array<ProtoUcdpEvent & { exposureEventCount?: number }>;
 };
+
+export type UcdpExposureEvent = UcdpGeoEvent & { eventCount?: number };
+
+// UCDP appends a former name: "Yemen (North Yemen)", "DR Congo (Zaire)".
+// Classification and forecast code key on the raw name, so strip it for display only.
+export function currentUcdpCountryName(country: string): string {
+  return country.replace(/\s*\([^)]*\)\s*$/, '').trim() || country;
+}
 
 import type { UcdpConflictStatus } from './ucdp-classify';
 export { deriveConflictHistory, deriveUcdpClassifications } from './ucdp-classify';
@@ -159,7 +167,7 @@ interface UcdpEventsResponse {
   data: UcdpGeoEvent[];
   cached_at: string;
   fromCache: boolean;
-  exposureData?: UcdpGeoEvent[];
+  exposureData?: UcdpExposureEvent[];
 }
 
 export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
@@ -171,7 +179,7 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
       data: events,
       cached_at: '',
       fromCache: false,
-      exposureData: hydrated.exposureEvents?.map(toUcdpGeoEvent),
+      exposureData: hydrated.exposureEvents?.map(e => ({ ...toUcdpGeoEvent(e), eventCount: e.exposureEventCount })),
     };
   }
 

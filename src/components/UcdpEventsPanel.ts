@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { t } from '@/services/i18n';
-import type { UcdpTabAggregate } from '@/services/conflict';
+import { currentUcdpCountryName, type UcdpTabAggregate } from '@/services/conflict';
 import { bindActivationKeys } from '@/utils/activation';
 
 // The panel's tabs are the three UCDP violence types. The projection keys its
@@ -123,7 +123,7 @@ export class UcdpEventsPanel extends Panel {
         const actors = `${escapeHtml(e.side_a)} vs ${escapeHtml(e.side_b)}`;
 
         return `<tr class="ucdp-row" data-lat="${e.latitude}" data-lon="${e.longitude}" tabindex="0">
-          <td class="ucdp-country">${escapeHtml(e.country)}</td>
+          <td class="ucdp-country">${escapeHtml(currentUcdpCountryName(e.country))}</td>
           <td class="ucdp-deaths">${deathsHtml}</td>
           <td class="ucdp-date">${e.date_start}</td>
           <td class="ucdp-actors">${actors}</td>

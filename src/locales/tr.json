@@ -1669,7 +1669,9 @@
       "estimateWithin": "{{km}} km yarıçap içinde yaklaşık {{count}} kişi",
       "method": "Tahminler ülkenin ortalama nüfus yoğunluğuna dayanır.",
       "empty": "Ölçütleri karşılayan olay konumu yok",
-      "infoTooltip": "Yalnızca konumu kesin olarak bilinen ve ülkesine ait nüfus yoğunluğu verisi bulunan olaylar gösterilir. Tahmin alanları çakışabilir."
+      "infoTooltip": "Yalnızca konumu kesin olarak bilinen ve ülkesine ait nüfus yoğunluğu verisi bulunan olaylar gösterilir. Tahmin alanları çakışabilir.",
+      "eventCount_one": "{{count}} olay",
+      "eventCount_other": "{{count}} olay"
     },
     "securityAdvisories": {
       "loading": "Seyahat uyarıları yükleniyor...",

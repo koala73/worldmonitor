@@ -17,23 +17,38 @@ interface EventForExposure {
   hasPreciseLocation?: boolean;
   lat: number;
   lon: number;
+  eventCount?: number;
+}
+
+// UCDP reports separate events at one geocoded point. Rounding to about 100 m
+// folds them; scripts/_ucdp-dashboard.mjs groups its exposure rows the same way.
+function locationKey(lat: number, lon: number): string {
+  return `${lat.toFixed(3)},${lon.toFixed(3)}`;
 }
 
 export function enrichEventsWithExposure(
   events: EventForExposure[],
   limit = events.length,
 ): PopulationExposure[] {
-  const exposures: PopulationExposure[] = [];
+  const byLocation = new Map<string, PopulationExposure>();
   for (const event of events) {
-    if (exposures.length >= limit) break;
     if (event.hasPreciseLocation !== true || !Number.isFinite(event.lat) || !Number.isFinite(event.lon)
       || Math.abs(event.lat) > 90 || Math.abs(event.lon) > 180 || (event.lat === 0 && event.lon === 0)) continue;
     const country = resolveCountryCode(event.country);
     const density = country ? densityByCountry.get(country) : undefined;
     if (density === undefined) continue;
 
+    const eventCount = event.eventCount ?? 1;
+    const key = locationKey(event.lat, event.lon);
+    const existing = byLocation.get(key);
+    if (existing) {
+      existing.eventCount += eventCount;
+      continue;
+    }
+    if (byLocation.size >= limit) continue;
+
     const radius = getRadiusForEventType(event.type);
-    exposures.push({
+    byLocation.set(key, {
       eventId: event.id,
       eventName: event.name,
       eventType: event.type,
@@ -41,9 +56,10 @@ export function enrichEventsWithExposure(
       lon: event.lon,
       exposedPopulation: Math.round(density * Math.PI * radius ** 2),
       exposureRadiusKm: radius,
+      eventCount,
     });
   }
-  return exposures;
+  return [...byLocation.values()];
 }
 
 export function formatPopulation(n: number): string {

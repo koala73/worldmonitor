@@ -1828,7 +1828,10 @@
       "estimateWithin": "Oko {{count}} ljudi u krugu od {{km}} km",
       "method": "Procjene se temelje na prosječnoj gustoći stanovništva države.",
       "empty": "Nema odgovarajućih lokacija događaja",
-      "infoTooltip": "Prikazuju se samo događaji s preciznom lokacijom u državama za koje postoje podaci o gustoći stanovništva. Procijenjena se područja mogu preklapati."
+      "infoTooltip": "Prikazuju se samo događaji s preciznom lokacijom u državama za koje postoje podaci o gustoći stanovništva. Procijenjena se područja mogu preklapati.",
+      "eventCount_one": "{{count}} događaj",
+      "eventCount_few": "{{count}} događaja",
+      "eventCount_other": "{{count}} događaja"
     },
     "securityAdvisories": {
       "loading": "Preuzimanje putnih savjeta...",

@@ -1336,6 +1336,8 @@
   "components.playback.toggleMode": "Toggle Playback Mode",
   "components.populationExposure.empty": "No eligible event locations",
   "components.populationExposure.estimateWithin": "~{{count}} people within {{km}} km",
+  "components.populationExposure.eventCount_one": "{{count}} event",
+  "components.populationExposure.eventCount_other": "{{count}} events",
   "components.populationExposure.infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap.",
   "components.populationExposure.method": "Estimates use country-average population density.",
   "components.positioning247.commodities": "COMMODITIES",

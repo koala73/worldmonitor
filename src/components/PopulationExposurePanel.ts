@@ -34,6 +34,7 @@ export class PopulationExposurePanel extends Panel {
         <div class="popexp-card-name">${typeIcon} ${e.eventName}</div>
         <div class="popexp-card-pop">
           ${t('components.populationExposure.estimateWithin', { count: formatPopulation(e.exposedPopulation), km: e.exposureRadiusKm })}
+          ${e.eventCount > 1 ? `· ${t('components.populationExposure.eventCount', { count: e.eventCount })}` : ''}
         </div>
       </div>`;
     }));

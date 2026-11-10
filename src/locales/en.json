@@ -1863,6 +1863,8 @@
     },
     "populationExposure": {
       "estimateWithin": "~{{count}} people within {{km}} km",
+      "eventCount_one": "{{count}} event",
+      "eventCount_other": "{{count}} events",
       "method": "Estimates use country-average population density.",
       "empty": "No eligible event locations",
       "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap."
