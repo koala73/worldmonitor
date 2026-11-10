@@ -264,3 +264,43 @@ describe('the cron seeder caches the history chart per session', () => {
     assert.equal(quote.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
   });
 });
+
+describe('history caches need a session to key on', () => {
+  const historyTs = Array.from({ length: 30 * 12 }, (_, i) => T0 - 30 * 3600 + i * 300);
+  const history = chart(historyTs, historyTs.map(() => 90.5), '5m');
+  const undated = () => {
+    const c = chart([], []);
+    c.chart.result[0].meta = { regularMarketPrice: 91, chartPreviousClose: 90 };
+    return c;
+  };
+
+  it('the cron path never serves cached history when the chart has no session time', async () => {
+    const { fetchYahooQuoteChart, createSparklineHistoryCache } = await import('../scripts/_yahoo-fetch.mjs');
+    const store = new Map();
+    const historyCache = createSparklineHistoryCache(async ([verb, key, value]) => {
+      if (verb === 'GET') return { result: store.get(key) ?? null };
+      store.set(key, value);
+      return { result: 'OK' };
+    }, 'test:history:');
+    const urls = [];
+    const fetchJson = async (url) => { urls.push(url); return structuredClone(url.endsWith(SPARKLINE_HISTORY_QUERY) ? history : undated()); };
+    await fetchYahooQuoteChart('BZ=F', { fetchJson, delayMs: 0, sparklineWindow: true, historyCache });
+    await fetchYahooQuoteChart('BZ=F', { fetchJson, delayMs: 0, sparklineWindow: true, historyCache });
+    assert.equal(urls.filter((u) => u.endsWith(SPARKLINE_HISTORY_QUERY)).length, 2);
+    assert.equal(store.size, 0, 'nothing cached under an undefined session');
+  });
+
+  it('the relay never reuses history when the quote has no session time', async () => {
+    const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+    const start = source.indexOf('const _sparklineHistories');
+    const end = source.indexOf('function fetchYahooChartDirect(');
+    const calls = [];
+    const commoditySparkline = Function(
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'buildQuoteSparkline', 'logThrottled',
+      `${source.slice(start, end)}\nreturn _commoditySparkline;`,
+    )(async (_s, q) => { calls.push(q); return { chart: structuredClone(history) }; }, async () => {}, SPARKLINE_HISTORY_QUERY, buildQuoteSparkline, () => {});
+    await commoditySparkline('BZ=F', { chart: undated(), lastTradeAt: undefined });
+    await commoditySparkline('BZ=F', { chart: undated(), lastTradeAt: undefined });
+    assert.equal(calls.length, 2);
+  });
+});
