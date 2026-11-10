@@ -46,11 +46,13 @@ import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import {
   API_PLAN_REQUIRED_MESSAGE,
+  HANDSHAKE_NO_ACCOUNT_NEXT_STEP,
   SUBSCRIPTION_LAPSED_MESSAGE,
   buildMcpStructuredDenial,
   type McpStaticDenialReason,
 } from './upgrade';
 import { relayMcpCheckout } from './checkout';
+import { connectInstruction } from './host-policy';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -242,10 +244,25 @@ export function mcpStructuredDenialResponse(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
-  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
+  opts?: {
+    wwwAuthError?: string;
+    message?: string;
+    code?: number;
+    status?: number;
+    /** Replaces the reason's default `nextStep`. `reason` never changes. */
+    nextStep?: string;
+    /** Additive `data` fields; they cannot replace `reason` or `upgradeUrl`. */
+    extraData?: Record<string, string>;
+  },
 ): Response {
   const built = buildMcpStructuredDenial({ reason });
-  const { data } = built;
+  const data: Record<string, unknown> = {
+    ...built.data,
+    ...(opts?.nextStep !== undefined ? { nextStep: opts.nextStep } : {}),
+  };
+  for (const [key, value] of Object.entries(opts?.extraData ?? {})) {
+    if (!(key in data)) data[key] = value;
+  }
   // A caller may keep its own, more specific `message` (e.g. the credential
   // mechanics on the auth-resolution 401s) while still gaining the machine-
   // readable `data`. Overriding the message never changes `data.reason`, so an
@@ -272,6 +289,32 @@ export function mcpStructuredDenialResponse(
       headers: withMcpNoStore(headers),
     },
   );
+}
+
+/** Where an agent or user reads how to connect each client. */
+export const MCP_SETUP_URL = 'https://www.worldmonitor.app/docs/mcp-quickstart';
+
+/**
+ * The refusal for a request with no credential at all. `handshake` marks the
+ * anonymous `initialize` and the GET discovery probe: a client refused there
+ * cannot call get_sources, so its generic `nextStep` leaves that tool out.
+ * Codex and Claude Code do not start sign-in from the 401 by themselves, so
+ * they get the exact step to run instead.
+ */
+export function mcpAnonymousRefusalResponse(
+  req: Request,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+  opts?: { handshake?: boolean },
+): Response {
+  const nextStep = connectInstruction(req) ?? (opts?.handshake ? HANDSHAKE_NO_ACCOUNT_NEXT_STEP : undefined);
+  return mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+    message: 'Sign-in required. Connect with OAuth (your client opens World Monitor sign-in; a free account works) '
+      + 'or send an API key in the X-WorldMonitor-Key header.',
+    nextStep,
+    extraData: { setupUrl: MCP_SETUP_URL },
+  });
 }
 
 function userKeyValidationBackpressureResponse(
@@ -405,6 +448,7 @@ export async function resolveAuthContext(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
+  opts?: { handshake?: boolean },
 ): Promise<AuthResolution | AuthResolutionRejected> {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (authHeader.startsWith('Bearer ')) {
@@ -445,9 +489,7 @@ export async function resolveAuthContext(
     // every other denial does, which is what SERVER_INSTRUCTIONS advertises.
     return {
       ok: false,
-      response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
-        message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.',
-      }),
+      response: mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, id, opts),
     };
   }
   const validKeys = getOperatorKeys();

@@ -14,7 +14,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 </Note>
 
 <Info>
-**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
+**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** 免费账户和 Pro 账户都在授权页点击 _"Sign in to World Monitor"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
 
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
@@ -134,7 +134,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
    这是唯一的产品 MCP 传输端点。已列出的生产别名（`www` 以及各仪表盘子域）不是额外的服务器。这些主机上普通 GET/HEAD `/mcp` 与 `/api/mcp` 会 308 到 `https://worldmonitor.app/mcp`；普通 GET/HEAD `/.well-known/mcp` 与 `/.well-known/mcp.json` 会 308 到 `https://worldmonitor.app/.well-known/mcp` 与 `https://worldmonitor.app/.well-known/mcp.json`。查询字符串不会转发。传输层 POST/SSE/replay 会收到 HTTP 410，JSON-RPC `-32000` 提示客户端改用 `https://worldmonitor.app/mcp`。`api` 主机继续为已按该主机配置的连接器提供传输层，其 `/.well-known/mcp` 卡片仍会重定向；新客户端请配置 `https://worldmonitor.app/mcp`。
 
-2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
+2. **在授权页点击 "Sign in to World Monitor"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
 3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，refresh token 在最近一次刷新后 30 天内有效）。
 

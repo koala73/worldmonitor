@@ -196,6 +196,7 @@ button:hover{background:#1d4ed8}
 button:disabled{opacity:.5;cursor:default}
 .pro-cta{display:block;width:100%;padding:.75rem;background:#2d8a6e;color:#fff;border:none;font-family:inherit;font-size:.9rem;font-weight:500;letter-spacing:.02em;text-align:center;text-decoration:none;cursor:pointer;border-radius:0}
 .pro-cta:hover{background:#246e58}
+.cta-note{font-size:.75rem;color:#8a8a8a;margin-top:.5rem;text-align:center}
 .disclosure{margin-top:1rem;text-align:center}
 .disclosure a{font-size:.75rem;color:#555;text-decoration:none;letter-spacing:.02em;cursor:pointer}
 .disclosure a:hover{color:#888;text-decoration:underline}
@@ -222,7 +223,8 @@ ${clientHostLine}${localhostWarn}
 <li>Markets: stocks, commodities, crypto &amp; FX</li>
 </ul>
 <hr>
-<a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in with WorldMonitor Pro</a>
+<a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in to World Monitor</a>
+<p class="cta-note">A free account works. Pro raises the daily allowance.</p>
 <div class="disclosure" id="dt"><a id="tk" role="button" tabindex="0">Use API key instead</a></div>
 <form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize" style="display:none;margin-top:1.25rem">
 <input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">

@@ -152,6 +152,16 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
 };
 
 /**
+ * `nextStep` for the anonymous handshake refusal (`initialize` and the GET
+ * discovery probe). A client refused there has no session, so it cannot call
+ * get_sources either; the shared no-account copy above keeps naming it because
+ * a refused `tools/call` can still reach that tool.
+ */
+export const HANDSHAKE_NO_ACCOUNT_NEXT_STEP =
+  'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account. '
+  + 'Subscribe to Pro at the upgrade URL for the full daily allowance.';
+
+/**
  * Auth-layer messages that carry a call to buy. Exported so auth.ts builds
  * them and host-policy.ts can recognise them on the way out to ChatGPT.
  */
