@@ -16,7 +16,12 @@ export class PopulationExposurePanel extends Panel {
     this.showLoading(t('common.calculatingExposure'));
   }
 
-  public setExposures(exposures: PopulationExposure[]): void {
+  public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false): void {
+    if (hasCachedUcdp) {
+      this.setDataBadge('cached', 'UCDP');
+    } else {
+      this.clearDataBadge();
+    }
     this.setCount(exposures.length);
     if (exposures.length === 0) {
       this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.populationExposure.empty')}</div>`);

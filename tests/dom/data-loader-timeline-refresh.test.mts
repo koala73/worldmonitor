@@ -336,13 +336,14 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     }));
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [...unsupportedAcled, acled] });
     mocks.fetchUcdpEvents
-      .mockResolvedValueOnce({ success: true, data: [...unsupportedUcdp, ucdp] })
+      .mockResolvedValueOnce({ success: true, data: [...unsupportedUcdp, ucdp], fromCache: false })
       .mockResolvedValueOnce({ success: false, data: [] })
-      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: true });
+      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: true })
+      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: false });
     const { loader, ctx } = await makeLoader();
     const recordUpdate = vi.spyOn(dataFreshness, 'recordUpdate');
     const recordError = vi.spyOn(dataFreshness, 'recordError');
-    const setExposures = vi.fn<(exposures: PopulationExposure[]) => void>();
+    const setExposures = vi.fn<(exposures: PopulationExposure[], hasCachedUcdp: boolean) => void>();
     ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
 
     await loader.loadIntelligenceSignals();
@@ -351,12 +352,14 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadIntelligenceSignals();
     ctx.intelligenceCache = {};
     await loader.loadIntelligenceSignals();
+    ctx.intelligenceCache = {};
+    await loader.loadIntelligenceSignals();
 
-    expect(setExposures).toHaveBeenCalledTimes(3);
+    expect(setExposures.mock.calls.map(([, hasCachedUcdp]) => hasCachedUcdp)).toEqual([false, true, true, false]);
     for (const [exposures] of setExposures.mock.calls) {
       expect(exposures.map(exposure => exposure.eventId)).toEqual(['aden', 'taiz']);
     }
-    expect(recordUpdate.mock.calls.filter(([source]) => source === 'worldpop')).toEqual([['worldpop', 2]]);
+    expect(recordUpdate.mock.calls.filter(([source]) => source === 'worldpop')).toEqual([['worldpop', 2], ['worldpop', 2]]);
     expect(recordError).toHaveBeenCalledWith('worldpop', 'Exposure source data unavailable');
   });
 
@@ -372,7 +375,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     const hydrated = { events: projected, totalEvents: 51, aggregates, exposureEvents: [point] };
     mocks.getHydratedData.mockImplementation(key => key === 'ucdpEvents' ? hydrated : undefined);
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
-    mocks.fetchUcdpEvents.mockResolvedValueOnce({ success: true, data: projected, exposureData: [point] });
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({ success: true, data: projected, exposureData: [point], fromCache: false });
     const { loader, ctx } = await makeLoader();
     const setExposures = vi.fn();
     const setEvents = vi.fn();
@@ -383,7 +386,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
     expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated]]);
     expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
-    expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })]);
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })], false);
   });
 
   it.each(['unrest', 'ucdp', 'neither'] as const)(
@@ -408,7 +411,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
       if (failedSource === 'neither') {
         expect(showError).not.toHaveBeenCalled();
-        expect(setExposures).toHaveBeenCalledExactlyOnceWith([]);
+        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false);
       } else {
         expect(showError).toHaveBeenCalledOnce();
         expect(setExposures).not.toHaveBeenCalled();

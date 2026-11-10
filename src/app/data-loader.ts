@@ -3971,22 +3971,24 @@ export class DataLoaderManager implements AppModule {
       const { protests } = this.ctx.intelligenceCache;
       const ucdpEvents = this.ucdpExposureEvents;
       const perSourceLimit = 10;
+      const ucdpExposures = enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
+        id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
+        name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+      })), perSourceLimit);
       const exposures = [
         ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
           id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
           name: e.city ? `${e.city}, ${e.country}` : e.title,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })), perSourceLimit),
-        ...enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
-          name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
-          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-        })), perSourceLimit),
+        ...ucdpExposures,
       ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       if (exposures.length === 0 && (!protests || !ucdpEvents)) {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
-        this.callPanel('population-exposure', 'setExposures', exposures);
+        const hasCachedUcdp = ucdpExposures.length > 0 && (!ucdpReceived || ucdpFromCache);
+        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp);
       }
       if (!protestsUpdated || !ucdpReceived) {
         dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
