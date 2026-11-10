@@ -2370,7 +2370,15 @@
       "noData": "Dữ liệu năng lượng tạm thời không khả dụng - sẽ thử lại",
       "liveTape": "Bản ghi trực tiếp",
       "liveTapeSource": "Báo giá thị trường",
-      "infoTooltip": "<strong>Phức hợp năng lượng</strong> Các tín hiệu năng lượng vật lý và có thể giao dịch trong một nơi:<ul><li><strong>Số liệu Cục Thông tin Năng lượng Hoa Kỳ</strong>: WTI, Brent, sản xuất Hoa Kỳ và hàng tồn kho</li><li><strong>Tape trực tiếp</strong>: Các giá năng lượng có thể giao dịch như dầu thô và khí tự nhiên</li><li><strong>Mục đích</strong>: Tách căng thẳng năng lượng vật lý khỏi các bảng điều khiển vĩ mô và hàng hóa rộng hơn</li></ul>"
+      "infoTooltip": "<strong>Phức hợp năng lượng</strong> Các tín hiệu năng lượng vật lý và có thể giao dịch trong một nơi:<ul><li><strong>Số liệu Cục Thông tin Năng lượng Hoa Kỳ</strong>: WTI, Brent, sản xuất Hoa Kỳ và hàng tồn kho</li><li><strong>Tape trực tiếp</strong>: Các giá năng lượng có thể giao dịch như dầu thô và khí tự nhiên</li><li><strong>Mục đích</strong>: Tách căng thẳng năng lượng vật lý khỏi các bảng điều khiển vĩ mô và hàng hóa rộng hơn</li></ul>",
+      "marketTape": "Báo giá thị trường",
+      "futures": "Hợp đồng tương lai",
+      "dailySpot": "Giá giao ngay hằng ngày",
+      "eiaWeeklySpot": "Giá giao ngay EIA · trung bình tuần",
+      "weekEnding": "Tuần kết thúc ngày {{date}}",
+      "unknownPriceDate": "Không có thời điểm quan sát",
+      "unknownQuoteSource": "Không có nguồn báo giá",
+      "stalePrice": "Đã cũ"
     },
     "consumerPrices": {
       "tabs": {

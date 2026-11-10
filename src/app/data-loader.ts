@@ -2915,6 +2915,9 @@ export class DataLoaderManager implements AppModule {
             price: q.price != null ? q.price : null,
             change: q.change ?? null,
             sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+            priceSource: q.priceSource,
+            priceBasis: q.priceBasis,
+            priceAt: q.priceAt,
           }));
           const commodityMapped = filterCommodityTape(data).map(mapCommodity);
           const energyMapped = filterEnergyTape(data);

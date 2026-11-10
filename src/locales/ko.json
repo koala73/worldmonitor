@@ -2370,7 +2370,15 @@
       "noData": "에너지 데이터를 일시적으로 사용할 수 없습니다 - 재시도 예정",
       "liveTape": "실시간 테이프",
       "liveTapeSource": "시장 호가",
-      "infoTooltip": "<strong>에너지 복합</strong> 물리적 및 거래 가능한 에너지 신호를 한 곳에서 확인:<ul><li><strong>미국 에너지정보청 지표</strong>: WTI, Brent, 미국 생산, 재고</li><li><strong>라이브 시장</strong>: 원유 및 천연가스 같은 거래 가능한 에너지 가격</li><li><strong>목적</strong>: 물리적 에너지 스트레스를 광범위한 거시 및 상품 패널과 분리</li></ul>"
+      "infoTooltip": "<strong>에너지 복합</strong> 물리적 및 거래 가능한 에너지 신호를 한 곳에서 확인:<ul><li><strong>미국 에너지정보청 지표</strong>: WTI, Brent, 미국 생산, 재고</li><li><strong>라이브 시장</strong>: 원유 및 천연가스 같은 거래 가능한 에너지 가격</li><li><strong>목적</strong>: 물리적 에너지 스트레스를 광범위한 거시 및 상품 패널과 분리</li></ul>",
+      "marketTape": "시장 시세",
+      "futures": "선물",
+      "dailySpot": "일일 현물가",
+      "eiaWeeklySpot": "EIA 현물가 · 주간 평균",
+      "weekEnding": "{{date}}에 끝나는 주",
+      "unknownPriceDate": "관측 시각을 알 수 없음",
+      "unknownQuoteSource": "시세 출처를 알 수 없음",
+      "stalePrice": "갱신 지연"
     },
     "consumerPrices": {
       "tabs": {

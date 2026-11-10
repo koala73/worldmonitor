@@ -8,6 +8,7 @@ import { projectSupplyChainData } from './_shipping-freight';
 import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
+import { eiaWeeklySpotProvenance, isCrudeOilTicker, isStaleOilPrice, oilTapeMaxAgeMs } from '../../../shared/oil-price-observation';
 import { normalizeSocialVelocity } from '../../_social-velocity.js';
 // @ts-expect-error - existing Edge-safe JavaScript module has no declaration.
 import { assessContentAge } from '../../_content-age.js';
@@ -1084,7 +1085,13 @@ export const CACHE_TOOLS: ToolDef[] = [
       'commodities-bootstrap': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: {
+            symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior observation.' },
+            priceSource: { type: 'string', description: 'Price provider for Brent and WTI, when known.' },
+            priceBasis: { type: 'string', enum: ['futures', 'spot'], description: 'Futures quote or daily spot observation for Brent and WTI.' },
+            priceAt: { type: 'number', description: 'Provider observation time in epoch milliseconds. Daily spot dates use midnight UTC.' },
+            stale: { type: 'boolean', description: 'Brent or WTI quote is undated or exceeds its observation age budget.' },
+          } } },
         },
       },
       'physical-premium': PHYSICAL_PREMIUM_OUTPUT_SCHEMA,
@@ -1212,6 +1219,18 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       normalizePhysicalDivergenceDataset(data);
+      const commodities = data['commodities-bootstrap'] as {
+        quotes?: Array<{ symbol: string; priceBasis?: string; priceAt?: number }>;
+      } | null;
+      if (Array.isArray(commodities?.quotes)) {
+        const now = Date.now();
+        data['commodities-bootstrap'] = {
+          ...commodities,
+          quotes: commodities.quotes.map(quote => isCrudeOilTicker(quote.symbol) ? {
+            ...quote, stale: isStaleOilPrice(quote.priceAt, oilTapeMaxAgeMs(quote.priceBasis), now),
+          } : quote),
+        };
+      }
       const symbols = argStrList(params.symbols);
       if (symbols.length > 0) {
         for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
@@ -3044,8 +3063,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     outputSchema: cacheEnvelope({
       'eia-petroleum': { type: ['object', 'null'], additionalProperties: {
         type: 'object', properties: {
-          current: { type: 'number' }, previous: { type: ['number', 'null'] }, date: { type: 'string' },
+          current: { type: 'number' }, previous: { type: ['number', 'null'] },
+          date: { type: 'string', description: 'EIA observation date. For spot prices, the week ending date.' },
           unit: { type: 'string', description: 'Source unit. Stocks and production use thousand barrels and thousand barrels per day; prices use USD per barrel.' },
+          priceSource: { const: 'EIA' }, priceBasis: { const: 'spot' }, frequency: { const: 'weekly' },
+          stale: { type: 'boolean', description: 'Spot observation is undated or older than 10 days.' },
         },
       } },
       index: { type: ['object', 'null'], properties: { regions: { type: 'array', items: { type: 'object' } } } },
@@ -3113,6 +3135,20 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      const petroleum = data['eia-petroleum'] as Record<string, { date?: string }> | null;
+      if (petroleum && typeof petroleum === 'object' && !Array.isArray(petroleum)) {
+        const annotated: Record<string, unknown> = { ...petroleum };
+        const now = Date.now();
+        for (const commodity of ['brent', 'wti']) {
+          const point = petroleum[commodity];
+          if (!point || typeof point !== 'object') continue;
+          annotated[commodity] = {
+            ...point,
+            ...eiaWeeklySpotProvenance(Date.parse(point.date ?? ''), now),
+          };
+        }
+        data['eia-petroleum'] = annotated;
+      }
       const countries = resolveCountryFilter(params.country, 'country');
       if (countries.length > 0) {
         data._all = pickMapKeys(data._all, countries);

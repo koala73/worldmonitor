@@ -5,6 +5,7 @@
  */
 
 import { CHROME_UA, sleep } from './_seed-utils.mjs';
+import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 
 export const AV_PHYSICAL_MAP = {
   'CL=F': 'WTI',
@@ -70,7 +71,10 @@ export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
     const change = (Number.isFinite(prev) && prev > 0) ? ((latest - prev) / prev) * 100 : 0;
     // Build sparkline from last 7 daily closes (oldest → newest)
     const sparkline = data.slice(0, 7).map(d => parseFloat(d.value)).filter(Number.isFinite).reverse();
-    return { price: latest, change, sparkline };
+    return {
+      price: latest, change, sparkline,
+      ...crudeOilQuoteProvenance(yahooSymbol, 'Alpha Vantage', 'spot', Date.parse(data[0].date)),
+    };
   } catch (err) {
     console.warn(`  [AV] ${fn} parse error: ${err.message}`);
     return null;
