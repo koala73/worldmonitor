@@ -47,7 +47,7 @@ describe('MCP free-tier discovery parity', () => {
     // describe_tool is `free-account` in the server card: quota-exempt, but not anonymous.
     assert.match(agentView.endpoints.mcp.note, /describe_tool.*signed-in account/i);
     assert.doesNotMatch(agentView.authentication.summary, /describe_tool.*anonymous/i);
-    assert.match(developerGuide, /`describe_tool` requires subscription credentials/i);
+    assert.match(developerGuide, /`describe_tool` is quota-exempt and needs a signed-in account/i);
   });
 
   it('keeps published dashboard-key quotas aligned with runtime enforcement', () => {

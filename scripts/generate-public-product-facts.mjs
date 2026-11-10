@@ -572,6 +572,7 @@ const FREE_TIER_FILES = [
   'public/agent.txt',
   'public/agent-view.json',
   'public/llms.txt',
+  'public/developers/llms.txt',
 ];
 for (const path of FREE_TIER_FILES) {
   transform(path, (source) => {

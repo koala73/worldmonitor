@@ -22,6 +22,7 @@ const FILES = [
   'public/agent.txt',
   'public/agent-view.json',
   'public/llms.txt',
+  'public/developers/llms.txt',
 ];
 
 const STALE_CLAIM = /other than `get_sources` require|every other data call needs subscription/i;
