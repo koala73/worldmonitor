@@ -160,7 +160,7 @@ export function travelAdvisoriesRecord(payload, now = Date.now()) {
     if (!entry.alert || posted > entry.alert.postedAt) entry.alert = { title: advisory.title, link: advisory.link, postedAt: posted };
   }
   const countries = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name, 'en'));
-  for (const country of countries) country.health.sort((a, b) => b.level - a.level || b.updatedAt.localeCompare(a.updatedAt));
+  for (const country of countries) country.health.sort((a, b) => b.level - a.level || (b.updatedAt > a.updatedAt) - (b.updatedAt < a.updatedAt));
 
   const counts = {};
   for (const source of SOURCE_IDS) {
