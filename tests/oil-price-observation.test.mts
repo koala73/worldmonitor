@@ -25,6 +25,8 @@ describe('oil price observation freshness', () => {
   });
 
   it('allows the daily break but detects a two-hour-old Tuesday quote during trading', () => {
+    assert.equal(tapeStale('2026-11-10T21:31Z', '2026-11-10T22:02Z'), false);
+    assert.equal(tapeStale('2026-11-10T21:29Z', '2026-11-10T22:02Z'), true);
     assert.equal(tapeStale('2026-11-10T21:59Z', '2026-11-10T22:50Z'), false);
     assert.equal(tapeStale('2026-11-10T21:59Z', '2026-11-10T23:20Z'), false);
     assert.equal(tapeStale('2026-11-10T21:59Z', '2026-11-10T23:31Z'), true);
@@ -40,10 +42,11 @@ describe('oil price observation freshness', () => {
 
   it('keeps invalid, missing, future and old observations stale', () => {
     const now = at('2026-11-07T15:00Z');
-    for (const priceAt of [undefined, NaN, Infinity, 0, -1, now + 1, at('2026-10-30T21:59Z')]) {
+    for (const priceAt of [undefined, NaN, Infinity, 0, -1, now + 1]) {
       assert.equal(isStaleOilPrice(priceAt, oilTapeMaxAgeMs('futures', now), now), true);
-      assert.equal(eiaWeeklySpotProvenance(priceAt, now).stale, priceAt === at('2026-10-30T21:59Z') ? false : true);
+      assert.equal(eiaWeeklySpotProvenance(priceAt, now).stale, true);
     }
+    assert.equal(tapeStale('2026-10-30T21:59Z', '2026-11-07T15:00Z'), true);
   });
 
   it('preserves the daily spot budget and conservative unknown-basis budget', () => {
