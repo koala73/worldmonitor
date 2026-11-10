@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { cpSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { providerIdentityDigest, PROVIDER_IDENTITY_REVIEW } from '../../scripts/source-attribution.mjs';
 import { buildCentroids } from '../../scripts/build-country-centroids.mjs';
 import { buildToolEntries } from '../../scripts/build-coverage-catalog.mjs';
 import { buildJudgedSubjectTerms } from '../../scripts/build-judged-subject-terms.mjs';
 import { dedupeSharedSchemaSubtrees } from '../../scripts/openapi-dedup-schemas.mjs';
+import { loadCountryCorpusIdentities } from '../../scripts/build-crawlable-corpus.mjs';
+import { MIN_CORPUS_COUNTRIES, renderCountryCorpusModule } from '../../scripts/generate-country-corpus-slugs.mjs';
 import { portableLocale } from './generator-locale-env.mjs';
 
 const directory = process.argv[2];
@@ -48,7 +51,17 @@ const spec = { components: { schemas: { Chain: structuredClone(schema), Haiti: s
 assert.ok(dedupeSharedSchemaSubtrees(spec).replacedRefs > 0);
 artifacts.openapi = JSON.stringify(spec);
 
-execFileSync(process.execPath, [...process.execArgv, 'scripts/generate-country-corpus-slugs.mjs', '--check'], { stdio: 'pipe' });
+// The same comparison `generate-country-corpus-slugs.mjs --check` makes, run in
+// this process (already under the requested locale) instead of a child that
+// reloads the whole crawlable-corpus module graph for every locale.
+const root = new URL('../../', import.meta.url);
+const countries = loadCountryCorpusIdentities(fileURLToPath(root));
+assert.ok(countries.length >= MIN_CORPUS_COUNTRIES, `corpus country universe collapsed to ${countries.length}`);
+assert.equal(
+  renderCountryCorpusModule(countries),
+  readFileSync(new URL('api/_country-corpus-slugs.generated.js', root), 'utf8'),
+  'api/_country-corpus-slugs.generated.js is stale under this locale',
+);
 console.log(JSON.stringify({
   hostLocale: new Intl.Collator().resolvedOptions().locale,
   portableLocale,

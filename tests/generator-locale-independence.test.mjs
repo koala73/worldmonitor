@@ -1,10 +1,11 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import ts from 'typescript';
 
@@ -17,40 +18,52 @@ const LOCALES = [
   'uk-UA', 'el-GR', 'pt-BR', 'nl-NL', 'sw-KE',
 ];
 
-function runProbe(locale, directory, portable = false) {
+// Each probe is its own process, because the host locale is fixed at process
+// start, and each gets its own copy of the generator inputs, because the
+// generators write their outputs next to them. That lets the probes run
+// concurrently: one after another they took ~110s of a unit shard in CI.
+const PROBE_CONCURRENCY = Math.min(4, availableParallelism());
+const directories = [];
+
+function makeDirectory() {
+  const directory = mkdtempSync(join(tmpdir(), 'generator-locales-'));
+  directories.push(directory);
+  for (const path of ['scripts/shared', 'scripts/data', 'shared', 'public/data']) {
+    mkdirSync(join(directory, path), { recursive: true });
+  }
+  for (const file of [
+    'scripts/generate-country-bboxes.cjs', 'scripts/generate-iso3-maps.cjs',
+    'scripts/build-country-names.cjs', 'scripts/build-news-places.mjs',
+    'scripts/build-outbreak-places.mjs', 'public/data/countries.geojson',
+    'shared/country-names.json', 'scripts/shared/country-names.json',
+    'scripts/data/outbreak-places.json',
+  ]) cpSync(join(ROOT, file), join(directory, file));
+  writeFileSync(join(directory, 'words'), '');
+  writeFileSync(join(directory, 'propernames'), '');
+  const city = (name, code) => ['1', name, name, '', '1', '1', 'P', 'PPL', code, '', '01', '', '', '', '100001'].join('\t');
+  writeFileSync(join(directory, 'cities'), [city('Chain', 'CH'), city('Haiti', 'CH'), city('Aarhus', 'DK'), city('Aachen', 'DK')].join('\n'));
+  writeFileSync(join(directory, 'admin1'), '');
+  return directory;
+}
+
+async function runProbe(locale, portable = false) {
   const lang = `${locale.replace('-', '_')}.UTF-8`;
-  return JSON.parse(execFileSync(process.execPath, [
+  const { stdout } = await promisify(execFile)(process.execPath, [
     '--import', new URL('./_lib/generator-locale-env.mjs', import.meta.url).href,
-    'tests/_lib/generator-locale-probe.mjs', directory,
+    'tests/_lib/generator-locale-probe.mjs', makeDirectory(),
   ], {
     cwd: ROOT,
     env: { ...process.env, LANG: lang, LC_ALL: lang, WM_GENERATOR_LOCALE: locale, WM_GENERATOR_PORTABLE_LOCALE: portable ? '1' : '0' },
     encoding: 'utf8',
     timeout: 30_000,
-  }));
+  });
+  return JSON.parse(stdout);
 }
 
-describe('generator locale independence', () => {
-  let directory;
+describe('generator locale independence', { concurrency: PROBE_CONCURRENCY }, () => {
   let baseline;
-  before(() => {
-    directory = mkdtempSync(join(tmpdir(), 'generator-locales-'));
-    for (const path of ['scripts/shared', 'scripts/data', 'shared', 'public/data']) {
-      mkdirSync(join(directory, path), { recursive: true });
-    }
-    for (const file of [
-      'scripts/generate-country-bboxes.cjs', 'scripts/generate-iso3-maps.cjs',
-      'scripts/build-country-names.cjs', 'scripts/build-news-places.mjs',
-      'scripts/build-outbreak-places.mjs', 'public/data/countries.geojson',
-      'shared/country-names.json', 'scripts/shared/country-names.json',
-      'scripts/data/outbreak-places.json',
-    ]) cpSync(join(ROOT, file), join(directory, file));
-    writeFileSync(join(directory, 'words'), '');
-    writeFileSync(join(directory, 'propernames'), '');
-    const city = (name, code) => ['1', name, name, '', '1', '1', 'P', 'PPL', code, '', '01', '', '', '', '100001'].join('\t');
-    writeFileSync(join(directory, 'cities'), [city('Chain', 'CH'), city('Haiti', 'CH'), city('Aarhus', 'DK'), city('Aachen', 'DK')].join('\n'));
-    writeFileSync(join(directory, 'admin1'), '');
-    baseline = runProbe('en-US', directory);
+  before(async () => {
+    baseline = await runProbe('en-US');
     if (process.platform !== 'win32') assert.equal(baseline.hostLocale, 'en-US');
     assert.equal(baseline.digest, baseline.reviewedDigest);
     assert.equal(baseline.corpusCurrent, true);
@@ -58,11 +71,11 @@ describe('generator locale independence', () => {
     assert.ok(baseline.artifacts['scripts/data/outbreak-places.json'].includes('Chain'));
     assert.ok(baseline.artifacts.openapi.includes('"$ref"'));
   });
-  after(() => { if (directory) rmSync(directory, { recursive: true, force: true }); });
+  after(() => { for (const directory of directories) rmSync(directory, { recursive: true, force: true }); });
 
   for (const locale of LOCALES) {
-    it(`preserves reviewed digests and generated bytes under ${locale}`, () => {
-      const actual = runProbe(locale, directory);
+    it(`preserves reviewed digests and generated bytes under ${locale}`, async () => {
+      const actual = await runProbe(locale);
       if (process.platform !== 'win32') assert.equal(actual.hostLocale, locale, 'child process must use the requested host locale');
       assert.deepEqual(actual.defaultOrder, [...actual.samples].sort((a, b) => a.localeCompare(b, locale)));
       assert.equal(actual.digest, actual.reviewedDigest);
@@ -74,8 +87,8 @@ describe('generator locale independence', () => {
     });
   }
 
-  it('exercises default Czech collation when the OS cannot switch its locale', () => {
-    const actual = runProbe('cs-CZ', directory, true);
+  it('exercises default Czech collation when the OS cannot switch its locale', async () => {
+    const actual = await runProbe('cs-CZ', true);
     assert.equal(actual.portableLocale, true);
     assert.deepEqual(actual.defaultOrder, [...actual.samples].sort((a, b) => a.localeCompare(b, 'cs-CZ')));
     assert.deepEqual(actual.artifacts, baseline.artifacts);
