@@ -51,19 +51,22 @@ describe('Umami tag on crawlable pages', () => {
     };
 
     it('renders exactly one tracker with the dashboard ID on each page family', () => {
-      const pages = [
-        firstChild('countries'),
-        'chokepoints/strait-of-hormuz',
-        firstChild('crises'),
-        firstChild('compare'),
-        firstChild('tools'),
-        'use-cases',
-        firstChild('use-cases'),
-        'research',
-        firstChild('research'),
-      ].filter((page) => page && existsSync(join(outDir, page, 'index.html')));
-      assert.ok(pages.length >= 6, `too few page families found: ${pages.join(', ')}`);
-      for (const page of pages) {
+      const families = {
+        countries: firstChild('countries'),
+        chokepoint: 'chokepoints/strait-of-hormuz',
+        crises: firstChild('crises'),
+        compare: firstChild('compare'),
+        tools: firstChild('tools'),
+        'use-cases hub': 'use-cases',
+        'use-case page': firstChild('use-cases'),
+        'research hub': 'research',
+        'research report': firstChild('research'),
+      };
+      // A family that stops building must fail here, not drop out of the check.
+      for (const [family, page] of Object.entries(families)) {
+        assert.ok(page && existsSync(join(outDir, page, 'index.html')), `${family}: no page in the built corpus`);
+      }
+      for (const page of Object.values(families)) {
         const html = readFileSync(join(outDir, page, 'index.html'), 'utf8');
         const tags = html.match(TRACKER_RE) || [];
         assert.equal(tags.length, 1, `${page}: expected one Umami tag, found ${tags.length}`);
