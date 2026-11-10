@@ -763,7 +763,7 @@ describe('marketingBeforeSend — injected screen capture blocked by permission 
   // `window.__wpxTakeSnapshot` at `<anonymous>:183`. No first-party code calls
   // getDisplayMedia, and the page's permission policy refuses display-capture.
   const DISPLAY_CAPTURE_MESSAGE = 'Failed to execute \'getDisplayMedia\' on \'MediaDevices\': Access to the feature "display-capture" is disallowed by permission policy.';
-  const captureEvent = (value: string, frames: { filename: string; function?: string }[]): PolicyEvent => ({
+  const captureEvent = (value: string, frames: { filename?: string; function?: string }[]): PolicyEvent => ({
     exception: { values: [{ type: 'NotAllowedError', value, stacktrace: { frames } }] },
   });
 
@@ -793,6 +793,15 @@ describe('marketingBeforeSend — injected screen capture blocked by permission 
   it('keeps a frameless refusal', () => {
     const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, []);
     assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // A frame with no filename could be the one that attributes the call to us,
+  // so an otherwise-anonymous stack containing one still reports.
+  it('keeps a refusal when a frame has no usable filename', () => {
+    for (const unnamed of [{}, { filename: '' }, { filename: '   ' }]) {
+      const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, unnamed]);
+      assert.equal(marketingBeforeSend(kept), kept, JSON.stringify(unnamed));
+    }
   });
 
   it('keeps an unrelated permission-policy refusal from an evaluated script', () => {
