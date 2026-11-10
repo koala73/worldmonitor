@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 472404
+    "raw": 473351
   },
   "chunks": {
     "analytics": {
-      "raw": 49817,
+      "raw": 50480,
       "files": 1
     },
     "auth-state": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142903,
+      "raw": 142938,
       "files": 1
     },
     "map-layer-definitions": {
@@ -79,7 +79,7 @@
       "files": 1
     },
     "sensitive-url-params": {
-      "raw": 2907,
+      "raw": 2944,
       "files": 1
     },
     "tab-store": {
@@ -99,17 +99,17 @@
       "files": 1
     },
     "web-origin": {
-      "raw": 2331,
+      "raw": 2543,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1523976
+      "raw": 1523977
     },
     "chunks": {
       "App": {
-        "raw": 964008,
+        "raw": 964009,
         "files": 1
       },
       "ai-flow-settings": {

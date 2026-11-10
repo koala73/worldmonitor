@@ -58,7 +58,7 @@
       "id": "bread",
       "name": "Bread",
       "query": "white bread loaf 400g",
-      "unit": "loaf"
+      "unit": "400g"
     }
   ],
   "countries": [
