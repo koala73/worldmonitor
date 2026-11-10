@@ -2730,7 +2730,7 @@
         "entries": "Son tanımlamalar",
         "programs": "Programlar",
         "flagRegistries": "Gemi bayrağı ve hava aracı sicilleri",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "SEMA düzenlemelerinin hedef ülkeleri"
       },
       "empty": {
         "countries": "Ülke atılması mevcut değildir.",
@@ -2754,7 +2754,7 @@
         "program": "Program",
         "undated": "tarihsiz"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Düzenlemelerin hedef ülkeleri vatandaşlık veya adres kanıtı değildir. Ülke risk puanlarına ve özet raporlara dahil edilmez."
     },
     "radiationWatch": {
       "title": "Radyasyon İzlemesi",

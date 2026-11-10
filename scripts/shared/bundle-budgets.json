@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 474987
+    "raw": 475470
   },
   "chunks": {
     "analytics": {
@@ -99,7 +99,7 @@
       "files": 1
     },
     "web-origin": {
-      "raw": 2543,
+      "raw": 3026,
       "files": 1
     }
   },

@@ -2799,7 +2799,7 @@
         "entries": "हाल के नामांकन",
         "programs": "कार्यक्रम",
         "flagRegistries": "पोत ध्वज और विमान रजिस्ट्रियाँ",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "SEMA नियमों के लक्षित देश"
       },
       "empty": {
         "countries": "कोई देश नामांकन उपलब्ध नहीं।",
@@ -2823,7 +2823,7 @@
         "program": "कार्यक्रम",
         "undated": "तिथि निर्दिष्ट नहीं"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "नियमों के लक्षित देश राष्ट्रीयता या पते का प्रमाण नहीं हैं। इन्हें देशों के जोखिम स्कोर और संक्षिप्त रिपोर्ट में शामिल नहीं किया जाता।"
     },
     "radiationWatch": {
       "title": "विकिरण निगरानी",

@@ -2730,7 +2730,7 @@
         "entries": "Aktuelle Listungen",
         "programs": "Programme",
         "flagRegistries": "Flaggen- und Luftfahrzeugregister",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "Zielstaaten der SEMA-Verordnungen"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",
@@ -2754,7 +2754,7 @@
         "program": "Programm",
         "undated": "ohne Datum"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Zielstaaten der Verordnungen sind kein Nachweis für Staatsangehörigkeit oder Adresse. Sie werden bei Länderrisikobewertungen und Lageberichten nicht berücksichtigt."
     },
     "radiationWatch": {
       "title": "Strahlungsüberwachung",

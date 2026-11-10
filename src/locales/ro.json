@@ -2741,7 +2741,7 @@
         "entries": "Desemnări recente",
         "programs": "Programe",
         "flagRegistries": "Registre de pavilion ale navelor și de înmatriculare a aeronavelor",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "Țări vizate de reglementările SEMA"
       },
       "empty": {
         "countries": "Nicio atribuire de țară disponibilă.",
@@ -2766,7 +2766,7 @@
         "undated": "fără dată"
       },
       "designations_few": "{{count}} desemnări",
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Țările vizate de reglementări nu constituie dovezi privind naționalitatea sau adresa. Sunt excluse din scorurile de risc ale țărilor și din sinteze."
     },
     "radiationWatch": {
       "title": "Monitorizare Radiații",

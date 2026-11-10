@@ -2741,7 +2741,7 @@
         "entries": "Designaciones recientes",
         "programs": "Programas",
         "flagRegistries": "Registros de banderas de buques y de aeronaves",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "Países objetivo de los reglamentos SEMA"
       },
       "empty": {
         "countries": "Sin atribución de país disponible.",
@@ -2766,7 +2766,7 @@
         "undated": "sin fecha"
       },
       "designations_many": "{{count}} designaciones",
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Los países objetivo de los reglamentos no son pruebas de nacionalidad ni de domicilio. Se excluyen de las puntuaciones de riesgo de los países y de los informes."
     },
     "radiationWatch": {
       "title": "Monitoreo de Radiación",

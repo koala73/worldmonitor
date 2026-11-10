@@ -2799,7 +2799,7 @@
         "entries": "Legutóbbi bejelentések",
         "programs": "Programok",
         "flagRegistries": "Hajólobogó- és légijármű-nyilvántartások",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "A SEMA-rendeletek célországai"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",
@@ -2823,7 +2823,7 @@
         "program": "Program",
         "undated": "Dátum nélkül"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "A rendeletek célországai nem igazolják az állampolgárságot vagy a címet. Nem szerepelnek az országkockázati pontszámokban és az összefoglalókban."
     },
     "radiationWatch": {
       "title": "Sugárzásfigyelés",

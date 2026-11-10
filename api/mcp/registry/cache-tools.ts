@@ -2611,10 +2611,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     _postFilter: (data, params) => {
       const { countries, days, cursor } = sanctionsArguments(params);
       const pressure = data.pressure as ListSanctionsPressureResponse | null | undefined;
-      if (Array.isArray(pressure?.countries)) {
+      if (pressure) {
         data.pressure = {
           ...pressure,
-          ...splitSanctionsAttribution(pressure.countries, pressure.unattributed),
+          regulationTargets: pressure.regulationTargets ?? [],
+          ...(Array.isArray(pressure.countries) ? splitSanctionsAttribution(pressure.countries, pressure.unattributed) : {}),
           ...(Array.isArray(pressure.flagRegistries) ? { flagRegistries: normalizeFlagRegistries(pressure.flagRegistries) } : {}),
         };
       }

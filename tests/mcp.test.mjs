@@ -4835,7 +4835,7 @@ describe('get_sanctions_data screening contract', () => {
     const current = { entries: [], countries, unattributed };
     for (const pressure of [legacy, current]) {
       const result = tool._postFilter(structuredClone({ pressure }), { country: 'RU' });
-      assert.deepEqual(result.pressure, current);
+      assert.deepEqual(result.pressure, { ...current, regulationTargets: [] });
     }
   });
   it('fills aircraft counts on flag registries from snapshots that predate them', () => {
@@ -4851,6 +4851,12 @@ describe('get_sanctions_data screening contract', () => {
     assert.deepEqual(result.pressure.regulationTargets, regulationTargets);
     assert.deepEqual(result.pressure.countries, []);
     assert.ok(tool.outputSchema.properties.data.properties.pressure.properties.regulationTargets);
+  });
+  it('defaults regulation targets for older snapshots and preserves cache misses', () => {
+    for (const pressure of [{ entries: [], countries: [] }, {}]) {
+      assert.deepEqual(tool._postFilter({ pressure }, {}).pressure.regulationTargets, []);
+    }
+    assert.equal(tool._postFilter({ pressure: null }, {}).pressure, null);
   });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };

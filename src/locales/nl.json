@@ -2346,7 +2346,7 @@
         "entries": "Recente aanwijzingen",
         "programs": "Programma's",
         "flagRegistries": "Vlaggen- en luchtvaartuigregisters",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "Doellanden van SEMA-regelgeving"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",
@@ -2370,7 +2370,7 @@
         "program": "Programma",
         "undated": "zonder datum"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Doellanden van regelgeving zijn geen bewijs van nationaliteit of adres. Ze worden uitgesloten van landenrisicoscores en samenvattingen."
     },
     "radiationWatch": {
       "title": "Stralingsbewaking",

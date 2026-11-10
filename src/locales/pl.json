@@ -2752,7 +2752,7 @@
         "entries": "Niedawne desygnacje",
         "programs": "Programy",
         "flagRegistries": "Rejestry bander statków i statków powietrznych",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "Państwa objęte przepisami SEMA"
       },
       "empty": {
         "countries": "Brak przypisania kraju.",
@@ -2778,7 +2778,7 @@
       },
       "designations_few": "{{count}} desygnacje",
       "designations_many": "{{count}} desygnacji",
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "Państwa objęte przepisami nie stanowią dowodu obywatelstwa ani adresu. Są wyłączone z ocen ryzyka krajów i raportów skrótowych."
     },
     "radiationWatch": {
       "title": "Monitoring promieniowania",

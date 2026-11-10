@@ -2719,7 +2719,7 @@
         "entries": "การระบุตัวตนเมื่อเร็ว ๆ นี้",
         "programs": "โปรแกรม",
         "flagRegistries": "ทะเบียนธงเรือและทะเบียนอากาศยาน",
-        "regulationTargets": "SEMA regulation targets"
+        "regulationTargets": "ประเทศเป้าหมายของข้อบังคับ SEMA"
       },
       "empty": {
         "countries": "ไม่มีข้อมูลการระบุประเทศ",
@@ -2742,7 +2742,7 @@
         "program": "โปรแกรม",
         "undated": "ไม่มีวันที่"
       },
-      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
+      "targetExplanation": "ประเทศเป้าหมายของข้อบังคับไม่ใช่หลักฐานด้านสัญชาติหรือที่อยู่ จึงไม่นำมารวมในคะแนนความเสี่ยงของประเทศและรายงานสรุป"
     },
     "radiationWatch": {
       "title": "ระบบเฝ้าระวังการแผ่รังสี",
