@@ -1,4 +1,5 @@
 import './bootstrap/zod-csp';
+import './bootstrap/abort-signal-fallbacks';
 import mapLibreWorkerAsset from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import './styles/base-layer.css';
 import { pluginNewsViewSchema, PLUGIN_NEWS_VIEW_INPUT_SCHEMA, PLUGIN_MAP_LAYERS, type PluginNewsView } from '../shared/plugin-news-view';

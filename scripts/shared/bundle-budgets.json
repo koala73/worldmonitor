@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 470918
+    "raw": 473351
   },
   "chunks": {
     "analytics": {
-      "raw": 48409,
+      "raw": 50480,
       "files": 1
     },
     "auth-state": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 142991,
+      "raw": 142938,
       "files": 1
     },
     "map-layer-definitions": {
@@ -71,7 +71,7 @@
       "files": 1
     },
     "runtime-config": {
-      "raw": 10377,
+      "raw": 10340,
       "files": 1
     },
     "safe-storage": {
@@ -79,7 +79,7 @@
       "files": 1
     },
     "sensitive-url-params": {
-      "raw": 2887,
+      "raw": 2944,
       "files": 1
     },
     "tab-store": {
@@ -91,37 +91,33 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71332,
+      "raw": 71289,
       "files": 1
     },
     "theme-manager": {
       "raw": 1616,
       "files": 1
     },
-    "timeout-signal": {
-      "raw": 1238,
-      "files": 1
-    },
     "web-origin": {
-      "raw": 867,
+      "raw": 2543,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1520263
+      "raw": 1523977
     },
     "chunks": {
       "App": {
-        "raw": 960210,
+        "raw": 964009,
         "files": 1
       },
       "ai-flow-settings": {
-        "raw": 2192,
+        "raw": 2155,
         "files": 1
       },
       "analysis-framework-store": {
-        "raw": 9788,
+        "raw": 9751,
         "files": 1
       },
       "audience-profile": {
@@ -137,7 +133,7 @@
         "files": 1
       },
       "checkout": {
-        "raw": 15575,
+        "raw": 15498,
         "files": 1
       },
       "cloud-prefs-sync": {
@@ -165,15 +161,15 @@
         "files": 1
       },
       "feeds": {
-        "raw": 100785,
+        "raw": 100781,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 160742,
+        "raw": 160699,
         "files": 1
       },
       "index": {
-        "raw": 39580,
+        "raw": 39532,
         "files": 2
       },
       "layout-batch": {
@@ -205,7 +201,7 @@
         "files": 1
       },
       "persistent-cache": {
-        "raw": 3973,
+        "raw": 3936,
         "files": 1
       },
       "pinned-webcams": {
@@ -221,11 +217,11 @@
         "files": 1
       },
       "settings-persistence": {
-        "raw": 8007,
+        "raw": 7959,
         "files": 1
       },
       "source-provenance": {
-        "raw": 90506,
+        "raw": 90675,
         "files": 1
       },
       "storage-facility-registry-store": {
@@ -237,7 +233,7 @@
         "files": 1
       },
       "user-location": {
-        "raw": 7455,
+        "raw": 7532,
         "files": 1
       },
       "widget-store": {

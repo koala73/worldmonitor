@@ -1445,6 +1445,10 @@
       "infoTooltip": "<strong>Wydarzenia technologiczne</strong> Nadchodzące i ostatnie wydarzenia technologiczne: konferencje, premiery produktów, przesłuchania regulacyjne i telekonferencje wynikowe. Agregowane z oficjalnych kalendarzy wydarzeń i źródeł branżowych."
     },
     "techReadiness": {
+      "ranked": "Sklasyfikowane",
+      "unranked": "Bez klasyfikacji",
+      "coverageRequirement": "Minimalne pokrycie do klasyfikacji",
+      "coverageLabel": "Dostępne wskaźniki",
       "internetUsers": "Użytkownicy Internetu",
       "mobileSubscriptions": "Subskrypcje mobilne",
       "rdSpending": "Wydatki na badania i rozwój",

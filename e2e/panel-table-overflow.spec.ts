@@ -63,15 +63,20 @@ const RADIATION_OBSERVATIONS = {
 const GROCERY_COUNTRIES = ['US', 'GB', 'DE', 'FR', 'JP', 'BR', 'IN', 'ZA', 'AE', 'LB'];
 const GROCERY_BASKET = {
   fetchedAt: '2026-11-01T00:00:00Z',
-  cheapestCountry: 'IN',
-  mostExpensiveCountry: 'GB',
+  basketVersion: 3,
+  cheapestCountry: 'GB',
+  mostExpensiveCountry: 'LB',
   upstreamUnavailable: false,
-  wowAvgPct: 0,
-  wowAvailable: false,
-  prevFetchedAt: '',
+  wowAvgPct: 2.5,
+  wowAvailable: true,
+  prevFetchedAt: '2026-10-25T00:00:00Z',
   countries: GROCERY_COUNTRIES.map((code, i) => ({
-    code, name: `Country ${code}`, currency: 'USD', flag: code, totalUsd: 20 + i, fxRate: 1, wowPct: 0,
-    items: ['rice', 'eggs', 'milk'].map((itemId, j) => ({ itemId, itemName: itemId, unit: '1 kg', localPrice: 2 + i + j, usdPrice: 2 + i + j, available: true })),
+    code, name: `Country ${code}`, currency: 'USD', flag: code, totalUsd: i === 0 ? 5 : 9 + 3 * i, fxRate: 1,
+    wowPct: code === 'GB' ? 2.5 : null,
+    items: ['rice', 'eggs', 'milk'].map((itemId, j) => {
+      const price = i === 0 && itemId === 'milk' ? null : 2 + i + j;
+      return { itemId, itemName: itemId, unit: ['1 kg', '12 pc', '1 L'][j], localPrice: price, usdPrice: price, available: price !== null };
+    }),
   })),
 };
 
@@ -661,13 +666,17 @@ test('harness-mounted price and stock tables use the shared table style', async 
 
 // The total row's separator was a translucent white, invisible on the light
 // theme's white panel. It must use the theme's border colour.
-test('the grocery total row keeps a visible separator in both themes', async ({ browser }) => {
+test('the grocery total row keeps a visible separator and shows coverage in both themes', async ({ browser }, testInfo) => {
   test.setTimeout(180_000);
   for (const theme of ['light', 'dark'] as const) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: theme });
     const page = await context.newPage();
     const settings = { 'grocery-basket': { name: 'grocery-basket', enabled: true, priority: 0 } };
-    await seedAnonymousDashboard(page, 'full', { localStorage: { 'worldmonitor-panels': JSON.stringify(settings), 'worldmonitor-theme': theme } });
+    await seedAnonymousDashboard(page, 'full', { localStorage: {
+      'worldmonitor-panels': JSON.stringify(settings),
+      'worldmonitor-theme': theme,
+      'worldmonitor-panel-col-spans': JSON.stringify({ 'grocery-basket': 3 }),
+    } });
     await routeFixtures(page);
     await page.goto('/dashboard');
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -678,6 +687,16 @@ test('the grocery total row keeps a visible separator in both themes', async ({ 
         return panel.locator('tr.gb-total-row').count();
       }, { timeout: 90_000 })
       .toBe(1);
+    const totals = panel.locator('td.gb-total');
+    await expect(totals.nth(0)).toContainText('2/3');
+    await expect(totals.nth(0)).not.toHaveClass(/gb-cheapest/);
+    await expect(totals.nth(0).locator('.gb-wow')).toHaveCount(0);
+    await expect(totals.nth(1)).toHaveClass(/gb-cheapest/);
+    await expect(totals.nth(1)).toContainText('3/3');
+    await expect(totals.nth(1)).toContainText('2.5%');
+    await panel.locator('.panel-resize-handle').press('ArrowDown');
+    await totals.nth(0).scrollIntoViewIfNeeded();
+    await panel.screenshot({ path: testInfo.outputPath(`grocery-coverage-${theme}.png`) });
     const separator = await panel.evaluate((el) => {
       const cell = el.querySelector('tr.gb-total-row td')!;
       const probe = document.createElement('span');

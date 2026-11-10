@@ -33,6 +33,8 @@ import {
   situationSections,
 } from './scripts/situation-page/sections.mjs';
 import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry';
+import { firstTouchSetCookie } from './shared/acquisition-source';
+import { next } from '@vercel/functions/middleware';
 
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
@@ -220,7 +222,58 @@ function uaConditionedRedirectHeaders(location: URL): Record<string, string> {
   };
 }
 
+/**
+ * A person opening a page, as opposed to a crawler, an API or asset fetch, or
+ * a speculative prefetch the person may never view.
+ */
+function isHumanPageNavigation(request: Request, url: URL): boolean {
+  if (request.method !== 'GET') return false;
+  if (BOT_UA.test(request.headers.get('user-agent') ?? '')) return false;
+  const path = url.pathname;
+  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/')) return false;
+  // The live-page branch's own fetch of the built page carries no visitor
+  // cookies; a cookie set on it would be copied onto the visitor's response.
+  if (url.searchParams.has(BUILT_PAGE_PARAM)) return false;
+  const purpose = `${request.headers.get('sec-purpose') ?? ''} ${request.headers.get('purpose') ?? ''}`;
+  if (/prefetch/i.test(purpose)) return false;
+  const dest = request.headers.get('sec-fetch-dest');
+  if (dest) return dest === 'document';
+  return /text\/html/i.test(request.headers.get('accept') ?? '');
+}
+
+function withSetCookie(response: Response, setCookie: string): Response {
+  // Copied rather than mutated: Response.redirect() and fetch() responses
+  // have immutable headers.
+  const headers = new Headers(response.headers);
+  headers.append('set-cookie', setCookie);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// The static content pages (corpus, blog) run no capture script, and the
+// visit that reaches /pro from one of them would otherwise record /pro and
+// an internal referrer as the first touch. Page-script captures remain as
+// the fallback for desktop and self-hosted builds, which have no middleware.
+// A synchronous routing result stays synchronous.
 export default function middleware(request: Request) {
+  const response = route(request);
+  return response instanceof Promise
+    ? response.then((resolved) => withFirstTouch(request, resolved))
+    : withFirstTouch(request, response);
+}
+
+function withFirstTouch(request: Request, response: Response | undefined): Response | undefined {
+  if (!isHumanPageNavigation(request, new URL(request.url))) return response;
+  const setCookie = firstTouchSetCookie({
+    url: request.url,
+    cookieHeader: request.headers.get('cookie'),
+    referrer: request.headers.get('referer'),
+    now: Date.now(),
+  });
+  if (!setCookie) return response;
+  return response ? withSetCookie(response, setCookie) : next({ headers: { 'set-cookie': setCookie } });
+}
+
+function route(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;

@@ -922,6 +922,10 @@
       "infoTooltip": "<strong>Eventos tech</strong> Eventos tecnológicos próximos e recentes: conferências, lançamentos de produtos, audiências regulatórias e chamadas de resultados. Agregados de calendários oficiais e fontes da indústria."
     },
     "techReadiness": {
+      "ranked": "Classificados",
+      "unranked": "Sem classificação",
+      "coverageRequirement": "Cobertura mínima para classificação",
+      "coverageLabel": "Indicadores disponíveis",
       "internetUsers": "Usuários da Internet",
       "mobileSubscriptions": "Assinaturas móveis",
       "rdSpending": "Gastos em pesquisa e desenvolvimento",

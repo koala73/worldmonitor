@@ -9,6 +9,9 @@ import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
+// The seed includes its methodology version in both the bootstrap and RPC JSON.
+type GroceryBasketSnapshot = ListGroceryBasketPricesResponse & { basketVersion?: number };
+
 export class GroceryBasketPanel extends Panel {
   constructor() {
     super({ id: 'grocery-basket', title: t('panels.groceryBasket'), infoTooltip: t('components.groceryBasket.infoTooltip') });
@@ -16,7 +19,7 @@ export class GroceryBasketPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      const hydrated = getHydratedData('groceryBasket') as ListGroceryBasketPricesResponse | undefined;
+      const hydrated = getHydratedData('groceryBasket') as GroceryBasketSnapshot | undefined;
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderBasket(hydrated);
@@ -36,7 +39,7 @@ export class GroceryBasketPanel extends Panel {
     }
   }
 
-  private renderBasket(data: ListGroceryBasketPricesResponse): void {
+  private renderBasket(data: GroceryBasketSnapshot): void {
     if (!data.countries?.length) {
       this.showError(t('common.failedMarketData'), () => void this.fetchData());
       return;
@@ -44,6 +47,7 @@ export class GroceryBasketPanel extends Panel {
 
     const countries = data.countries;
     const itemIds = countries[0]?.items?.map(i => i.itemId) ?? [];
+    const normalized = (data.basketVersion ?? 0) >= 3;
 
     const headerCells = countries.map(c =>
       `<th scope="col" class="gb-country-header" title="${escapeHtml(c.name)}">${escapeHtml(c.flag)}<br><span class="gb-country-name">${escapeHtml(c.name)}</span></th>`
@@ -64,29 +68,32 @@ export class GroceryBasketPanel extends Panel {
         if (!item?.available || !item.usdPrice || !item.localPrice) {
           return `<td class="gb-cell gb-na">—</td>`;
         }
-        const isHigh = rowMax !== null && Math.abs(item.usdPrice - rowMax) < eps;
-        const isLow = rowMin !== null && Math.abs(item.usdPrice - rowMin) < eps;
+        const isHigh = normalized && rowMax !== null && Math.abs(item.usdPrice - rowMax) < eps;
+        const isLow = normalized && rowMin !== null && Math.abs(item.usdPrice - rowMin) < eps;
         const cls = isLow ? 'gb-cheapest' : isHigh ? 'gb-priciest' : '';
         return `<td class="gb-cell ${cls}">$${item.usdPrice.toFixed(2)}<span class="gb-local">${item.localPrice.toFixed(2)} ${escapeHtml(country.currency)}</span></td>`;
       }).join('');
       return `<tr><td class="gb-item-name">${escapeHtml(firstItem?.itemName ?? itemId)}<span class="gb-unit">${escapeHtml(firstItem?.unit ?? '')}</span></td>${cells}</tr>`;
     }).join('');
 
-    const totalRow = `<tr class="gb-total-row"><td class="gb-item-name"><strong>Total</strong></td>${countries.map(c => {
-      const isLow = c.code === data.cheapestCountry;
-      const isHigh = c.code === data.mostExpensiveCountry;
+    const totalRow = `<tr class="gb-total-row"><td class="gb-item-name"><strong>Observed total</strong></td>${countries.map(c => {
+      const found = c.items.filter(item => item.available && item.usdPrice > 0).length;
+      const complete = normalized && found === itemIds.length && found > 0;
+      const isLow = complete && c.code === data.cheapestCountry;
+      const isHigh = complete && c.code === data.mostExpensiveCountry;
       const cls = isLow ? 'gb-cheapest' : isHigh ? 'gb-priciest' : '';
       let wowBadge = '';
-      if (c.wowPct != null) {
+      if (complete && data.wowAvailable && c.wowPct != null) {
         const sign = c.wowPct >= 0 ? '▲' : '▼';
         const wowCls = c.wowPct >= 0 ? 'bm-wow-up' : 'bm-wow-down';
         wowBadge = `<span class="gb-wow ${wowCls}">${sign}${Math.abs(c.wowPct).toFixed(1)}%</span>`;
       }
-      return `<td class="gb-cell gb-total ${cls}"><strong>$${c.totalUsd.toFixed(2)}</strong>${wowBadge}</td>`;
+      const total = found > 0 ? `$${c.totalUsd.toFixed(2)}` : '—';
+      return `<td class="gb-cell gb-total ${cls}"><strong>${total}</strong><span class="gb-local">${found}/${itemIds.length}</span>${wowBadge}</td>`;
     }).join('')}</tr>`;
 
     let wowSummary = '';
-    if (data.wowAvailable && data.wowAvgPct !== undefined) {
+    if (normalized && data.wowAvailable && data.wowAvgPct !== undefined) {
       const avg = data.wowAvgPct;
       const sign = avg >= 0 ? '▲' : '▼';
       const cls = avg >= 0 ? 'bm-wow-up' : 'bm-wow-down';
@@ -94,9 +101,13 @@ export class GroceryBasketPanel extends Panel {
     }
 
     const updatedAt = data.fetchedAt ? new Date(data.fetchedAt).toLocaleDateString() : '';
+    const coverageNote = normalized
+      ? 'Rankings and WoW use full baskets.'
+      : 'Awaiting standardized basket prices.';
 
     const html = `
       <div class="gb-wrapper">
+        <div class="bm-wow-summary">${coverageNote}</div>
         ${wowSummary}
         <div class="gb-scroll table-scroll table-scroll-pinned-start" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="wm-table gb-table">

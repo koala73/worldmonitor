@@ -4713,7 +4713,7 @@ describe('crawlable corpus generator', () => {
       const hormuzPassage = hormuz.match(/data-chokepoint-open-status>([^<]*)</)?.[1] ?? '';
       assert.match(
         hormuzPassage,
-        /^(?:(?:Severely restricted|Restricted|Reduced|Steady): traffic through the Strait of Hormuz was [\d.]+% of its year-earlier level in the seven published days to .+ \(IMF PortWatch\)\. )?As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The status compares traffic with its year-earlier level; it is not an official open or closed declaration|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
+        /^(?:(?:Severely restricted|Restricted|Reduced|Steady): traffic through the Strait of Hormuz was [\d.]+% of its year-earlier level in the seven published days to .+ \(IMF PortWatch(?:, latest day \d+ days? old)?\)\. )?As of .+ (?:World Monitor cannot verify operational passage status from this snapshot|The status compares traffic with its year-earlier level; it is not an official open or closed declaration|The (?:Green|Yellow|Red) disruption score is a risk signal; it does not verify unrestricted passage or operational closure)\.$/,
         'the passage answers from source coverage',
       );
       assert.doesNotMatch(
@@ -5021,7 +5021,7 @@ describe('crawlable corpus generator', () => {
         );
         const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
         const passageText = document.querySelector('[data-chokepoint-open-status]')?.textContent ?? '';
-        const asOfText = passageText.match(/(?:^|\(IMF PortWatch\)\. )As of (.*), (?:source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
+        const asOfText = passageText.match(/(?:^|\(IMF PortWatch[^)]*\)\. )As of (.*?), (?:(?:no|\d[\d,]*) (?:navigational warnings?|AIS disruption events?)|source coverage|IMF PortWatch counted|no IMF PortWatch daily transit count)/)?.[1];
         assert.ok(asOfText, `${meta.name} passage evidence must carry an as-of timestamp`);
         const official = chokepointOfficialMetrics(pulse);
         const expectedNarrative = chokepointEvidenceNarrative({
@@ -5030,6 +5030,7 @@ describe('crawlable corpus generator', () => {
           bandLabel: pulse.status,
           description: pulse.description,
           asOfText,
+          asOf: pulse.asOf,
           partial: pulse.partial === true
             || official.latestTransits == null
             || pulse.navigationalWarningsAvailable !== true
@@ -5058,7 +5059,9 @@ describe('crawlable corpus generator', () => {
           official.baselineShare !== null,
           `${meta.name} must lead with a traffic status exactly when a baseline share is published`,
         );
-        if (expectedNarrative.passage.includes('source coverage')) {
+        // The coverage clause can open its own sentence ("Source coverage …")
+        // after the dated signals sentence, so match it case-insensitively.
+        if (/source coverage/i.test(expectedNarrative.passage)) {
           assert.match(
             passageText,
             official.baselineShare !== null
@@ -5803,7 +5806,15 @@ describe('crawlable corpus generator', () => {
       laterDate(data.lastmod.countries, CII_COUNTRY_PAGE_CONTENT_VERSION),
       'the CII country clock must derive from the generic country clock',
     );
-    assert.equal(data.lastmod.research, RESEARCH_PAGE_CONTENT_VERSION);
+    // A report edition's dateModified advances the research clock (the Hormuz
+    // report's 1.0.1 summary rewording, 2026-11-10), so pin the derivation.
+    assert.equal(
+      data.lastmod.research,
+      laterDate(
+        ...data.researchReports.map(({ report }) => report.dateModified),
+        RESEARCH_PAGE_CONTENT_VERSION,
+      ),
+    );
     assert.equal(
       data.lastmod.chokepoints,
       laterDate(

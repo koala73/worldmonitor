@@ -374,8 +374,10 @@ interface HomepageTool {
 }
 
 const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
-  launchWorldMonitor: { monitor: 'world' },
+  openDashboard: { monitor: 'world' },
   getWorldMonitorMcpEndpoint: {},
+  listCountryScorecards: { countryCodes: ['DE'] },
+  getCountryScorecard: { countryCode: 'DE' },
 };
 
 const WEBMCP_MAINTAINER_SOURCES = [
@@ -628,7 +630,24 @@ describe('WebMCP canonical inventories', () => {
     }
   });
 
-  it('keeps homepage metadata, schemas, annotations, and outputs inside the shared budgets', async () => {
+  it('keeps homepage metadata, schemas, annotations, and outputs inside the shared budgets', async (t) => {
+    // The scorecard tools read the public scorecard routes. Serve the largest
+    // realistic shapes: 196 countries, five pillars, long source names.
+    const pillars = ['food', 'energy', 'demographics', 'technology', 'defense'].map((pillar) => ({
+      pillar,
+      hasScore: true,
+      score: 5,
+      band: 'strong-capability',
+      inputCoverage: 0.75,
+      inputs: Array.from({ length: 8 }, (_, i) => ({ source: `${'Very long statistical source name '.repeat(4)}${i}` })),
+    }));
+    const countries = Array.from({ length: 196 }, (_, i) => `${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + Math.floor(i / 26))}`);
+    t.mock.method(globalThis, 'fetch', async (url: string) => {
+      const body = url.includes('list-five-factor-scorecards')
+        ? { scorecards: countries.map((countryCode) => ({ countryCode, pillars })), computedAt: '2026-11-10T12:00:00.000Z' }
+        : { scorecard: { countryCode: 'DE', methodologyVersion: '1.0.0', computedAt: '2026-11-10T12:00:00.000Z', pillars } };
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
     const ajv = new Ajv2020({ allErrors: true, strict: true });
     for (const tool of homepageTools()) {
       assert.ok(tool.name.length <= WEBMCP_TOOL_BUDGETS.nameChars, `${tool.name}: name`);

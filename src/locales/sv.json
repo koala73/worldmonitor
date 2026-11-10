@@ -921,6 +921,10 @@
       "infoTooltip": "<strong>Teknikevenemang</strong> Kommande och senaste teknikevenemang: konferenser, produktlanseringar, regulatoriska utfrågningar och resultatsamtal. Samlade från officiella evenemangskalendrar och branschkällor."
     },
     "techReadiness": {
+      "ranked": "Rankade",
+      "unranked": "Orankade",
+      "coverageRequirement": "Minsta täckning för rankning",
+      "coverageLabel": "Tillgängliga indikatorer",
       "internetUsers": "Internetanvändare",
       "mobileSubscriptions": "Mobilabonnemang",
       "rdSpending": "Forskning- och utvecklingskostnader",

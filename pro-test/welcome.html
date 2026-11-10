@@ -12,15 +12,21 @@
          WITHOUT executing the dashboard SPA — the SPA registers its own richer
          WebMCP tools separately (src/services/webmcp.ts), but the apex serves
          this static welcome page, not the SPA. Spec:
-         https://webmachinelearning.github.io/webmcp/. Registers synchronously at
-         parse time when the provider is already present (native WebMCP), and
-         retries once on DOMContentLoaded/load for a provider installed later
-         (e.g. a scanner polyfill); the registration guard keeps it idempotent, and
-         it is a no-op in browsers without a supported WebMCP provider. The MCP server is
-         the remote HTTP (Streamable HTTP) transport at https://worldmonitor.app/mcp
-         — getWorldMonitorMcpEndpoint hands agents that endpoint. The nonce is added
-         by Vite (html.cspNonce) at build time, so this inline script needs no CSP
-         script-src hash (deploy-config.test). -->
+         https://webmachinelearning.github.io/webmcp/. Each tool is an object
+         literal passed straight to registerTool, so static readers (ora.ai)
+         see every tool. document.modelContext comes first; navigator.modelContext
+         is the trailing fallback for older builds, and its batch provideContext
+         API receives the same literals. Registers synchronously at parse time
+         when the provider is already present (native WebMCP), and retries once
+         on DOMContentLoaded/load for a provider installed later (e.g. a scanner
+         polyfill); the registration guard keeps it idempotent, and it is a
+         no-op in browsers without a supported WebMCP provider. The scorecard
+         tools read the public, credential-free five-factor scorecard routes
+         (PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts) on the page's origin. The MCP
+         server is the remote HTTP (Streamable HTTP) transport at
+         https://worldmonitor.app/mcp — getWorldMonitorMcpEndpoint hands agents
+         that endpoint. The nonce is added by Vite (html.cspNonce) at build time,
+         so this inline script needs no CSP script-src hash (deploy-config.test). -->
     <script>
       (function () {
         var MONITORS = {
@@ -31,104 +37,263 @@
           energy: 'https://energy.worldmonitor.app/dashboard',
           happy: 'https://happy.worldmonitor.app/dashboard'
         };
-        var tools = [
-          {
-            name: 'launchWorldMonitor',
-            title: 'Launch World Monitor',
-            description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                monitor: {
-                  type: 'string',
-                  enum: ['world', 'tech', 'finance', 'commodity', 'energy', 'happy'],
-                  description: 'Which monitor to open. Defaults to "world".'
-                }
+        // Same origin as the page (www in production, localhost in development),
+        // so a local /pro/welcome.html reads its own dev API, not production.
+        var PAGE_ORIGIN = typeof window !== 'undefined' && window.location && /^https?:\/\//.test(String(window.location.origin))
+          ? String(window.location.origin)
+          : 'https://www.worldmonitor.app';
+        var SCORECARD_API = PAGE_ORIGIN + '/api/scorecard/v1/';
+        var COUNTRY_CODE_RE = /^[A-Za-z]{2}$/;
+        function readScorecards(path) {
+          return fetch(SCORECARD_API + path, { headers: { Accept: 'application/json' } }).then(function (res) {
+            if (!res.ok) throw new Error('World Monitor scorecards returned HTTP ' + res.status + '.');
+            return res.json();
+          });
+        }
+        // Every tool is an object literal passed straight to registerTool.
+        function registerTools(modelContext) {
+          return [
+            modelContext.registerTool({
+              name: 'openDashboard',
+              title: 'Open World Monitor Dashboard',
+              description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  monitor: {
+                    type: 'string',
+                    enum: ['world', 'tech', 'finance', 'commodity', 'energy', 'happy'],
+                    description: 'Which monitor to open. Defaults to "world".'
+                  }
+                },
+                additionalProperties: false
               },
-              additionalProperties: false
-            },
-            annotations: { readOnlyHint: false },
-            execute: function (args) {
-              var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
-              // Own-property lookup only — self-validate here rather than trust the
-              // host to enforce inputSchema, so an off-enum key (incl. prototype
-              // keys like "constructor"/"__proto__") can never resolve into
-              // window.location. Unknown keys fall back to the world map.
-              var url = Object.prototype.hasOwnProperty.call(MONITORS, key) ? MONITORS[key] : MONITORS.world;
-              if (url === MONITORS.world) key = 'world';
-              try {
-                window.location.assign(url);
-              } catch (e) {
-                throw new Error('World Monitor could not open the dashboard.');
+              annotations: { readOnlyHint: false },
+              execute: function (args) {
+                var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
+                // Own-property lookup only — self-validate here rather than trust the
+                // host to enforce inputSchema, so an off-enum key (incl. prototype
+                // keys like "constructor"/"__proto__") can never resolve into
+                // window.location. Unknown keys fall back to the world map.
+                var url = Object.prototype.hasOwnProperty.call(MONITORS, key) ? MONITORS[key] : MONITORS.world;
+                if (url === MONITORS.world) key = 'world';
+                try {
+                  window.location.assign(url);
+                } catch (e) {
+                  throw new Error('World Monitor could not open the dashboard.');
+                }
+                return 'Opening the ' + key + ' monitor: ' + url;
               }
-              return 'Opening the ' + key + ' monitor: ' + url;
-            }
-          },
-          {
-            name: 'getWorldMonitorMcpEndpoint',
-            title: 'Get World Monitor MCP Endpoint',
-            description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
-            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-            annotations: { readOnlyHint: true },
-            execute: function () {
-              // No tool count here — the live server card is the source of truth
-              // (a hardcoded number would drift). Agents read the catalog from it.
-              return {
-                endpoint: 'https://worldmonitor.app/mcp',
-                transport: 'streamableHttp',
-                serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
-                auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
-                publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
-              };
-            }
-          }
-        ];
+            }),
+            modelContext.registerTool({
+              name: 'getWorldMonitorMcpEndpoint',
+              title: 'Get World Monitor MCP Endpoint',
+              description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
+              inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+              annotations: { readOnlyHint: true },
+              execute: function () {
+                // No tool count here — the live server card is the source of truth
+                // (a hardcoded number would drift). Agents read the catalog from it.
+                return {
+                  endpoint: 'https://worldmonitor.app/mcp',
+                  transport: 'streamableHttp',
+                  serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
+                  auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
+                  publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
+                };
+              }
+            }),
+            modelContext.registerTool({
+              name: 'listCountryScorecards',
+              title: 'List Country Scorecards',
+              description: 'Browse five-factor capability scorecards (food, energy, demographics, technology, defense) for ranked countries, 1-5 per pillar, in pages of up to 15 countries. A null score means too little data. No account needed. Use getCountryScorecard for one country in detail.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  countryCodes: {
+                    type: 'array',
+                    items: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+                    maxItems: 15,
+                    description: 'ISO 3166-1 alpha-2 codes to return, such as ["DE", "JP"]. Omit to page through every country.'
+                  },
+                  offset: {
+                    type: 'integer',
+                    minimum: 0,
+                    description: 'Number of countries to skip, for paging. Defaults to 0.'
+                  },
+                  limit: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 15,
+                    description: 'Countries per page, 1 to 15. Defaults to 15.'
+                  }
+                },
+                additionalProperties: false
+              },
+              annotations: { readOnlyHint: true },
+              execute: function (args) {
+                var input = args || {};
+                var wanted = null;
+                if (Array.isArray(input.countryCodes) && input.countryCodes.length > 0) {
+                  if (input.countryCodes.length > 15) throw new Error('countryCodes holds at most 15 codes.');
+                  wanted = {};
+                  for (var i = 0; i < input.countryCodes.length; i++) {
+                    var code = input.countryCodes[i];
+                    if (typeof code !== 'string' || !COUNTRY_CODE_RE.test(code)) {
+                      throw new Error('countryCodes must hold two-letter ISO country codes.');
+                    }
+                    wanted[code.toUpperCase()] = true;
+                  }
+                }
+                var offset = typeof input.offset === 'number' && input.offset >= 0 ? Math.floor(input.offset) : 0;
+                var limit = typeof input.limit === 'number' && input.limit >= 1 ? Math.min(15, Math.floor(input.limit)) : 15;
+                return readScorecards('list-five-factor-scorecards').then(function (body) {
+                  var matches = [];
+                  var cards = Array.isArray(body.scorecards) ? body.scorecards : [];
+                  for (var c = 0; c < cards.length; c++) {
+                    if (!wanted || Object.prototype.hasOwnProperty.call(wanted, cards[c].countryCode)) matches.push(cards[c]);
+                  }
+                  var rows = [];
+                  var page = matches.slice(offset, offset + limit);
+                  for (var r = 0; r < page.length; r++) {
+                    var scores = {};
+                    var pillars = Array.isArray(page[r].pillars) ? page[r].pillars : [];
+                    for (var p = 0; p < pillars.length; p++) {
+                      scores[pillars[p].pillar] = pillars[p].hasScore ? pillars[p].score : null;
+                    }
+                    rows.push({ countryCode: page[r].countryCode, scores: scores });
+                  }
+                  return {
+                    total: matches.length,
+                    offset: offset,
+                    nextOffset: offset + rows.length < matches.length ? offset + rows.length : null,
+                    computedAt: body.computedAt || null,
+                    unavailable: Boolean(body.unavailable),
+                    scorecards: rows
+                  };
+                });
+              }
+            }),
+            modelContext.registerTool({
+              name: 'getCountryScorecard',
+              title: 'Get Country Scorecard',
+              description: "Read one country's five-factor capability scorecard: each pillar's 1-5 score, band, input coverage and data sources, plus a link to the full evidence JSON. No account needed.",
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  countryCode: {
+                    type: 'string',
+                    pattern: '^[A-Za-z]{2}$',
+                    description: 'ISO 3166-1 alpha-2 country code, such as "DE".'
+                  }
+                },
+                required: ['countryCode'],
+                additionalProperties: false
+              },
+              annotations: { readOnlyHint: true },
+              execute: function (args) {
+                var code = args && typeof args.countryCode === 'string' ? args.countryCode : '';
+                if (!COUNTRY_CODE_RE.test(code)) {
+                  throw new Error('countryCode must be a two-letter ISO country code.');
+                }
+                var path = 'get-five-factor-scorecard?countryCode=' + code.toUpperCase();
+                return readScorecards(path).then(function (body) {
+                  var card = body.scorecard || {};
+                  var pillars = Array.isArray(card.pillars) ? card.pillars : [];
+                  var summary = [];
+                  for (var p = 0; p < pillars.length; p++) {
+                    var sources = [];
+                    var inputs = Array.isArray(pillars[p].inputs) ? pillars[p].inputs : [];
+                    for (var i = 0; i < inputs.length && sources.length < 3; i++) {
+                      var source = inputs[i] && typeof inputs[i].source === 'string' ? inputs[i].source.slice(0, 60) : '';
+                      if (source && sources.indexOf(source) === -1) sources.push(source);
+                    }
+                    summary.push({
+                      pillar: pillars[p].pillar,
+                      score: pillars[p].hasScore ? pillars[p].score : null,
+                      band: pillars[p].band || null,
+                      inputCoverage: pillars[p].inputCoverage,
+                      sources: sources
+                    });
+                  }
+                  return {
+                    countryCode: card.countryCode || code.toUpperCase(),
+                    unavailable: Boolean(body.unavailable),
+                    computedAt: card.computedAt || null,
+                    methodologyVersion: card.methodologyVersion || null,
+                    pillars: summary,
+                    evidenceUrl: SCORECARD_API + path
+                  };
+                });
+              }
+            })
+          ];
+        }
         var registrationStarted = false;
         var registered = false;
+        function settle(results) {
+          var accepted = [];
+          for (var i = 0; i < results.length; i++) {
+            accepted.push(Promise.resolve(results[i]).then(
+              function () { return true; },
+              function () { return false; }
+            ));
+          }
+          Promise.all(accepted).then(function (values) {
+            registered = values.some(function (value) { return value; });
+          });
+        }
+        // Wraps each registerTool so one throwing call cannot stop the rest.
+        function guarded(modelContext) {
+          return {
+            registerTool: function (tool) {
+              try {
+                return modelContext.registerTool(tool);
+              } catch (e) {
+                return Promise.reject(e);
+              }
+            }
+          };
+        }
         function register() {
           if (registrationStarted || registered) return;
-          var provider = null;
+          var current = null;
           try {
-            provider = typeof document !== 'undefined' ? document.modelContext : null;
+            current = typeof document !== 'undefined' ? document.modelContext : null;
           } catch (e) {
             return;
           }
-          if (!provider || typeof provider.registerTool !== 'function') {
-            try {
-              provider = typeof navigator !== 'undefined' ? navigator.modelContext : null;
-            } catch (e) {
-              return;
-            }
-          }
-          if (!provider) return;
-          if (typeof provider.registerTool !== 'function') {
-            if (typeof provider.provideContext !== 'function') return;
+          if (current && typeof current.registerTool === 'function') {
             registrationStarted = true;
-            try {
-              Promise.resolve(provider.provideContext({ tools: tools })).then(
-                function () { registered = true; },
-                function () { registered = false; }
-              );
-            } catch (e) {
-              registered = false;
-            }
+            settle(registerTools(guarded(current)));
             return;
           }
-          registrationStarted = true;
-          var registrations = [];
-          for (var i = 0; i < tools.length; i++) {
-            try {
-              registrations.push(Promise.resolve(provider.registerTool(tools[i])).then(
-                function () { return true; },
-                function () { return false; }
-              ));
-            } catch (e) {
-              registrations.push(Promise.resolve(false));
-            }
+          // Trailing compatibility fallback for builds that only expose the
+          // deprecated navigator.modelContext alias.
+          var legacy = null;
+          try {
+            legacy = typeof navigator !== 'undefined' ? navigator.modelContext : null;
+          } catch (e) {
+            return;
           }
-          Promise.all(registrations).then(function (accepted) {
-            registered = accepted.some(function (value) { return value; });
-          });
+          if (!legacy) return;
+          if (typeof legacy.registerTool === 'function') {
+            registrationStarted = true;
+            settle(registerTools(guarded(legacy)));
+            return;
+          }
+          if (typeof legacy.provideContext !== 'function') return;
+          registrationStarted = true;
+          var batch = [];
+          registerTools({ registerTool: function (tool) { batch.push(tool); } });
+          try {
+            Promise.resolve(legacy.provideContext({ tools: batch })).then(
+              function () { registered = true; },
+              function () { registered = false; }
+            );
+          } catch (e) {
+            registered = false;
+          }
         }
         register();
         // Retry once for a provider installed after this head script runs (e.g. a
@@ -147,7 +312,38 @@
          site as the dashboard so acquisition → dashboard → checkout joins.
          data-domains must list www (exact-hostname match; apex 301s to www).
          Static nonce satisfies the strict-dynamic CSP (deploy-config CSP). -->
-    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
+    <!-- Umami before-send hook (must be defined before the async tracker runs).
+         Replaces dropping the whole query string so utm_* survive while the sensitive keys
+         from shared/sensitive-url-params.ts (SENSITIVE_URL_PARAM_RE) are
+         removed. The regex below is a copy; tests/funnel-analytics-policy.test.mjs
+         asserts it stays identical (here and in index.html). The hash is dropped (Clerk can carry material there). -->
+    <script nonce="wm-static-bootstrap">
+    (function () {
+      var SENSITIVE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
+      function clean(raw) {
+        if (typeof raw !== 'string' || raw.length === 0) return raw;
+        try {
+          var abs = /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.indexOf('//') === 0;
+          var u = new URL(raw, location.origin);
+          var keys = [];
+          u.searchParams.forEach(function (_v, k) { keys.push(k); });
+          var changed = false;
+          keys.forEach(function (k) { if (SENSITIVE.test(k)) { u.searchParams.delete(k); changed = true; } });
+          if (u.hash) { u.hash = ''; changed = true; }
+          if (!changed) return raw;
+          return abs ? u.toString() : u.pathname + u.search;
+        } catch (e) { return raw; }
+      }
+      window.__wmUmamiBeforeSend = function (_type, payload) {
+        if (!payload || typeof payload !== 'object') return payload;
+        var out = Object.assign({}, payload);
+        if (typeof out.url === 'string') out.url = clean(out.url);
+        if (typeof out.referrer === 'string') out.referrer = clean(out.referrer);
+        return out;
+      };
+    })();
+    </script>
+    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-before-send="__wmUmamiBeforeSend" nonce="wm-static-bootstrap"></script>
     <title>World Monitor: Free Geopolitical Intelligence Dashboard</title>
     <meta name="description" content="World Monitor: real-time geopolitical intelligence dashboard. A free live map of conflicts, shipping, flights, markets and cyber, with an API and MCP server." />
     <meta name="lastmod" content="2026-11-09" />

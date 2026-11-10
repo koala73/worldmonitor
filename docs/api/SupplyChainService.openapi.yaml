@@ -5154,7 +5154,7 @@ components:
                 officialLatestDate:
                     type: string
                     description: |-
-                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                        IMF PortWatch latest published day, YYYY-MM-DD (lag of several days); empty means
                          withhold official_latest_total and official_avg_7d (absent below 7 days).
                 officialLatestTotal:
                     type: integer

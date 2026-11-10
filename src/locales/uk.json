@@ -1799,6 +1799,10 @@
       "soon": "НЕЗАБАРОМ"
     },
     "techReadiness": {
+      "ranked": "У рейтингу",
+      "unranked": "Поза рейтингом",
+      "coverageRequirement": "Мінімум показників для рейтингу",
+      "coverageLabel": "Доступні показники",
       "internetUsers": "Користувачі Інтернету",
       "mobileSubscriptions": "Мобільні підписки",
       "rdSpending": "Видатки на дослідження та розробки",

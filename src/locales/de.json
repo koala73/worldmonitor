@@ -1479,6 +1479,10 @@
       "infoTooltip": "<strong>Tech-Veranstaltungen</strong> Bevorstehende und aktuelle Technologieveranstaltungen: Konferenzen, Produkteinführungen, regulatorische Anhörungen und Earnings Calls. Aggregiert aus offiziellen Veranstaltungskalendern und Branchenquellen."
     },
     "techReadiness": {
+      "ranked": "Platziert",
+      "unranked": "Ohne Platzierung",
+      "coverageRequirement": "Mindestabdeckung für die Rangliste",
+      "coverageLabel": "Verfügbare Indikatoren",
       "internetUsers": "Internetnutzer",
       "mobileSubscriptions": "Mobilfunkverträge",
       "rdSpending": "Ausgaben für Forschung und Entwicklung",

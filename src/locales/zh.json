@@ -1643,6 +1643,10 @@
       "infoTooltip": "<strong>科技活动</strong> 即将举行和近期的科技活动：会议、产品发布、监管听证会和财报电话会议。从官方活动日历和行业来源汇总。"
     },
     "techReadiness": {
+      "ranked": "已排名",
+      "unranked": "未排名",
+      "coverageRequirement": "参与排名所需的最少指标数",
+      "coverageLabel": "可用指标",
       "internetUsers": "互联网用户",
       "mobileSubscriptions": "移动订阅",
       "rdSpending": "研究和开发支出",

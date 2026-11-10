@@ -17,11 +17,14 @@ const MAP_ASSET_ORIGINS = [
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
 ];
+// No `data:` in resourceDomains: hosts already grant `img-src 'self' data:`
+// (MCP Apps spec, Host Behavior), which covers the inline SVG icons in the view
+// CSS, and a bare scheme here would also widen script-src and style-src.
 export const NEWS_DASHBOARD_META = {
   ui: {
     csp: {
       connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
-      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS, 'data:'],
+      resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
       frameDomains: [],
       baseUriDomains: [ASSET_ORIGIN],
     },
@@ -30,7 +33,7 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export const COUNTRY_VIEW_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org', 'data:'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export const MARKET_RADAR_META = {

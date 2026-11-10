@@ -10,6 +10,7 @@ import handler, {
   buildJsonRpcError,
   classifyJsonRpcRequest,
   liftProtocolErrorFromToolResult,
+  compactDocsToolList,
   normalizeToolCallResponseBody,
 } from '../api/docs-mcp.ts';
 import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
@@ -355,12 +356,54 @@ describe('docs-mcp handler', () => {
     assert.equal(await res.text(), sse);
   });
 
-  it('forwards non-tools/call methods without buffering or rewriting', async () => {
-    const sse = 'event: message\ndata: {"jsonrpc":"2.0","id":3,"result":{"tools":[]}}\n\n';
+  it('forwards other methods without buffering or rewriting', async () => {
+    const sse = 'event: message\ndata: {"jsonrpc":"2.0","id":3,"result":{"protocolVersion":"2025-06-18"}}\n\n';
     mockUpstream(sse);
-    const res = await handler(post('{"jsonrpc":"2.0","id":3,"method":"tools/list"}'));
+    const res = await handler(post('{"jsonrpc":"2.0","id":3,"method":"initialize"}'));
     assert.equal(res.status, 200);
     assert.equal(await res.text(), sse);
+  });
+
+  // Mintlify's tools/list spent ~9.4 KB (~770 tokens per tool, ora.ai asks for
+  // <=400); the filesystem tool alone listed every mounted OpenAPI file.
+  it('compacts the upstream tools/list descriptions and keeps names, schemas and annotations', async () => {
+    const schema = { type: 'object', properties: { query: { type: 'string', description: 'Search query' } }, required: ['query'], additionalProperties: false };
+    const annotations = { readOnlyHint: true, destructiveHint: false };
+    const upstreamTools = [
+      { name: 'search_world_monitor', title: 'Search documentation', description: 'Search across the knowledge base. '.repeat(20), inputSchema: schema, annotations },
+      { name: 'query_docs_filesystem_world_monitor', title: 'Query documentation filesystem', description: `Run a read-only query. OpenAPI specs are mounted at: ${'`/openapi/api/X.openapi.yaml`, '.repeat(150)}`, inputSchema: schema, annotations },
+      { name: 'submit_feedback', title: 'Submit documentation feedback', description: 'Report a problem. '.repeat(20), inputSchema: schema, annotations: { readOnlyHint: false } },
+      { name: 'future_tool', description: 'kept as is', inputSchema: schema },
+    ];
+    const sse = `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: 4, result: { tools: upstreamTools } })}\n\n`;
+    mockUpstream(sse);
+    const res = await handler(post('{"jsonrpc":"2.0","id":4,"method":"tools/list"}'));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'text/event-stream');
+    const text = await res.text();
+    assert.ok(text.startsWith('event: message\ndata: ') && text.endsWith('\n\n'), 'SSE framing is preserved');
+    const { result, id } = JSON.parse(text.split('\n').find((l) => l.startsWith('data: ')).slice('data: '.length));
+    assert.equal(id, 4);
+    assert.deepEqual(result.tools.map((tool) => tool.name), upstreamTools.map((tool) => tool.name));
+    for (const [index, tool] of result.tools.entries()) {
+      assert.deepEqual(tool.inputSchema, upstreamTools[index].inputSchema);
+      assert.deepEqual(tool.annotations, upstreamTools[index].annotations);
+      assert.equal(tool.title, upstreamTools[index].title);
+    }
+    assert.equal(result.tools[3].description, 'kept as is');
+    for (const [index, tool] of result.tools.slice(0, 3).entries()) {
+      assert.notEqual(tool.description, upstreamTools[index].description, `${tool.name} gets a compact description`);
+    }
+    assert.match(result.tools[1].description, /\/openapi\/api\//);
+    for (const tool of result.tools.slice(0, 3)) {
+      // ~4 characters per token: 400 tokens is about 1,600 characters per tool.
+      assert.ok(JSON.stringify(tool).length < 1_600, `${tool.name} stays under ~400 tokens`);
+    }
+  });
+
+  it('passes a tools/list it cannot rewrite through untouched', () => {
+    assert.equal(compactDocsToolList({ jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'x' } }), null);
+    assert.equal(compactDocsToolList({ jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'other', description: 'd' }] } }), null);
   });
 
   it('never forwards the caller credential or cookies to the third-party docs host', async () => {
