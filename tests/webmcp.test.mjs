@@ -2789,6 +2789,23 @@ describe('homepage WebMCP source registration', () => {
     await assert.rejects(detail.execute({ countryCode: 'ZZ' }), /HTTP 503/);
   });
 
+  it('reads scorecards from the page origin and keeps source labels distinct after truncation', async (t) => {
+    const longName = `${'Statistical agency with a very long publication name '.repeat(2)}`;
+    const requested = [];
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      requested.push(url);
+      return new Response(JSON.stringify({ scorecard: { countryCode: 'DE', pillars: [{ pillar: 'food', hasScore: true, score: 3, band: 'mixed', inputCoverage: 1, inputs: [{ source: `${longName}A` }, { source: `${longName}B` }, { source: 'World Bank' }] }] } }), { status: 200 });
+    });
+    const registered = [];
+    const document = { modelContext: collectingHomepageProvider(registered), addEventListener: () => {} };
+    const window = { location: { origin: 'http://localhost:3000', assign: () => {} }, addEventListener: () => {} };
+    runHomepageInline(window, document, {});
+    const result = await registered.find((tool) => tool.name === 'getCountryScorecard').execute({ countryCode: 'DE' });
+    assert.equal(requested[0], 'http://localhost:3000/api/scorecard/v1/get-five-factor-scorecard?countryCode=DE');
+    assert.equal(result.evidenceUrl, requested[0]);
+    assert.deepEqual(result.pillars[0].sources, [longName.slice(0, 60), 'World Bank']);
+  });
+
   it('does not call the obsolete batch API', () => {
     let provideCalls = 0;
     const result = runHomepage(() => ({ provideContext: () => { provideCalls += 1; } }));

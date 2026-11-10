@@ -22,7 +22,7 @@
          polyfill); the registration guard keeps it idempotent, and it is a
          no-op in browsers without a supported WebMCP provider. The scorecard
          tools read the public, credential-free five-factor scorecard routes
-         (PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts) on this origin. The MCP
+         (PUBLIC_NO_AUTH_RPC_PATHS in server/gateway.ts) on the page's origin. The MCP
          server is the remote HTTP (Streamable HTTP) transport at
          https://worldmonitor.app/mcp — getWorldMonitorMcpEndpoint hands agents
          that endpoint. The nonce is added by Vite (html.cspNonce) at build time,
@@ -37,7 +37,12 @@
           energy: 'https://energy.worldmonitor.app/dashboard',
           happy: 'https://happy.worldmonitor.app/dashboard'
         };
-        var SCORECARD_API = 'https://www.worldmonitor.app/api/scorecard/v1/';
+        // Same origin as the page (www in production, localhost in development),
+        // so a local /pro/welcome.html reads its own dev API, not production.
+        var PAGE_ORIGIN = typeof window !== 'undefined' && window.location && /^https?:\/\//.test(String(window.location.origin))
+          ? String(window.location.origin)
+          : 'https://www.worldmonitor.app';
+        var SCORECARD_API = PAGE_ORIGIN + '/api/scorecard/v1/';
         var COUNTRY_CODE_RE = /^[A-Za-z]{2}$/;
         function readScorecards(path) {
           return fetch(SCORECARD_API + path, { headers: { Accept: 'application/json' } }).then(function (res) {
@@ -200,8 +205,8 @@
                     var sources = [];
                     var inputs = Array.isArray(pillars[p].inputs) ? pillars[p].inputs : [];
                     for (var i = 0; i < inputs.length && sources.length < 3; i++) {
-                      var source = inputs[i] && inputs[i].source;
-                      if (typeof source === 'string' && source && sources.indexOf(source) === -1) sources.push(source.slice(0, 60));
+                      var source = inputs[i] && typeof inputs[i].source === 'string' ? inputs[i].source.slice(0, 60) : '';
+                      if (source && sources.indexOf(source) === -1) sources.push(source);
                     }
                     summary.push({
                       pillar: pillars[p].pillar,

@@ -550,14 +550,16 @@ async function walkHost(host) {
     fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
   }
-  // agent_auth.skill must name the /auth.md published on the probed canonical
-  // host (every metadata host points at the apex copy) and be served there
+  // agent_auth.skill must name the apex /auth.md (every production metadata
+  // host points at that one copy) and be served there
   // without a redirect. That depends on the /auth.md exemption in the
   // Cloudflare apex→www rule, which no in-process test can see.
   checks += 1;
   const skill = meta.agent_auth?.skill;
-  if (skill !== `${host}/auth.md`) {
-    fail(host, 'agent_auth skill', `expected ${host}/auth.md, got ${safeUrlLabel(skill)}`);
+  // Production hosts all name the apex copy; a local fixture names its own.
+  const skillOrigin = /^https:\/\/(?:[a-z0-9-]+\.)?worldmonitor\.app$/i.test(host) ? CANONICAL_ORIGIN : host;
+  if (skill !== `${skillOrigin}/auth.md`) {
+    fail(host, 'agent_auth skill', `expected ${skillOrigin}/auth.md, got ${safeUrlLabel(skill)}`);
   } else {
     try {
       const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });

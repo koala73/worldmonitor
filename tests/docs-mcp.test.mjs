@@ -391,6 +391,9 @@ describe('docs-mcp handler', () => {
       assert.equal(tool.title, upstreamTools[index].title);
     }
     assert.equal(result.tools[3].description, 'kept as is');
+    for (const [index, tool] of result.tools.slice(0, 3).entries()) {
+      assert.notEqual(tool.description, upstreamTools[index].description, `${tool.name} gets a compact description`);
+    }
     assert.match(result.tools[1].description, /\/openapi\/api\//);
     for (const tool of result.tools.slice(0, 3)) {
       // ~4 characters per token: 400 tokens is about 1,600 characters per tool.
