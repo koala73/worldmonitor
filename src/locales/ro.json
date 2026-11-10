@@ -1673,7 +1673,10 @@
       "estimateWithin": "Aproximativ {{count}} de persoane pe o rază de {{km}} km",
       "method": "Estimările se bazează pe densitatea medie a populației din țară.",
       "empty": "Nicio locație de eveniment eligibilă",
-      "infoTooltip": "Sunt afișate doar evenimentele cu localizare precisă din țări cu date despre densitatea populației. Zonele estimate se pot suprapune."
+      "infoTooltip": "Sunt afișate doar evenimentele cu localizare precisă din țări cu date despre densitatea populației. Zonele estimate se pot suprapune.",
+      "eventCount_one": "{{count}} eveniment",
+      "eventCount_few": "{{count}} evenimente",
+      "eventCount_other": "{{count}} de evenimente"
     },
     "securityAdvisories": {
       "loading": "Se preiau avizele de călătorie...",
@@ -2735,7 +2738,7 @@
         "countries": "Țări sancționate",
         "entries": "Desemnări recente",
         "programs": "Programe",
-        "countryAttribution": "Țări și registre de pavilion"
+        "flagRegistries": "Registre de pavilion ale navelor"
       },
       "empty": {
         "countries": "Nicio atribuire de țară disponibilă.",

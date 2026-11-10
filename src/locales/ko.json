@@ -1665,7 +1665,8 @@
       "estimateWithin": "반경 {{km}}km 내 약 {{count}}명",
       "method": "추정에는 해당 국가의 평균 인구 밀도를 사용합니다.",
       "empty": "조건에 맞는 사건 위치 없음",
-      "infoTooltip": "위치가 정확하고 국가 인구 밀도 데이터가 있는 사건만 표시합니다. 추정 범위는 서로 겹칠 수 있습니다."
+      "infoTooltip": "위치가 정확하고 국가 인구 밀도 데이터가 있는 사건만 표시합니다. 추정 범위는 서로 겹칠 수 있습니다.",
+      "eventCount_other": "{{count}}개 사건"
     },
     "securityAdvisories": {
       "loading": "여행 주의보 가져오는 중...",
@@ -2715,7 +2716,7 @@
         "countries": "제재 대상국",
         "entries": "최근 지정",
         "programs": "프로그램",
-        "countryAttribution": "국가 및 선적 등록부"
+        "flagRegistries": "선박 국적 등록부"
       },
       "empty": {
         "countries": "국가 귀속 정보가 없습니다.",

@@ -12,7 +12,7 @@ import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
-import type { MarketData, InternetOutage, UcdpGeoEvent } from '@/types';
+import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
@@ -123,7 +123,7 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents } from '@/services/conflict';
+import { currentUcdpCountryName, fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureEvent } from '@/services/conflict';
 import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
@@ -469,7 +469,7 @@ export class DataLoaderManager implements AppModule {
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
   // The scheduled refresh replaces intelligenceCache before fetching new data.
-  private ucdpExposureEvents?: UcdpGeoEvent[];
+  private ucdpExposureEvents?: UcdpExposureEvent[];
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -3973,8 +3973,8 @@ export class DataLoaderManager implements AppModule {
       const perSourceLimit = 10;
       const ucdpExposures = enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
         id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
-        name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
-        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+        name: e.locationName ? `${e.locationName}, ${currentUcdpCountryName(e.country)}` : `${e.side_a} vs ${e.side_b}`,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
       })), perSourceLimit);
       const exposures = [
         ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({

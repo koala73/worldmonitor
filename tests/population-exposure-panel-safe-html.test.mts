@@ -16,6 +16,7 @@ async function loadPopulationExposurePanel() {
   const stubModules = new Map<string, string>([
     ['i18n-stub', `export function t(key, params) {
       if (key === 'components.populationExposure.estimateWithin') return '~' + params.count + ' people within ' + params.km + ' km';
+      if (key === 'components.populationExposure.eventCount') return params.count + ' events';
       return key;
     }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
@@ -227,8 +228,9 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
       lon: 0,
       exposedPopulation: 125_000,
       exposureRadiusKm: 25,
+      eventCount: 1,
     };
-    panel.setExposures([event, { ...event, eventId: 'evt-2', eventName: 'Nearby event', lat: 0.1 }]);
+    panel.setExposures([event, { ...event, eventId: 'evt-2', eventName: 'Nearby event', lat: 0.1, eventCount: 2 }]);
 
     await new Promise((resolve) => setTimeout(resolve, 180));
 
@@ -238,6 +240,7 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
     assert.doesNotMatch(content.innerHTML, /R&D <alert>/);
     assert.equal(content.innerHTML.match(/~125K people within 25 km/g)?.length, 2);
     assert.doesNotMatch(content.innerHTML, /250K|affected/i);
+    assert.deepEqual([...content.innerHTML.matchAll(/\d+ events/g)].map(m => m[0]), ['2 events']);
 
     panel.destroy();
   });
