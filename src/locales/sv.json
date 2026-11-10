@@ -1145,7 +1145,9 @@
       "estimateWithin": "Cirka {{count}} personer inom en radie på {{km}} km",
       "method": "Uppskattningarna bygger på landets genomsnittliga befolkningstäthet.",
       "empty": "Inga händelseplatser uppfyller kraven",
-      "infoTooltip": "Endast händelser med en exakt plats i länder med uppgifter om befolkningstäthet visas. De uppskattade områdena kan överlappa."
+      "infoTooltip": "Endast händelser med en exakt plats i länder med uppgifter om befolkningstäthet visas. De uppskattade områdena kan överlappa.",
+      "eventCount_one": "{{count}} händelse",
+      "eventCount_other": "{{count}} händelser"
     },
     "countryTimeline": {
       "now": "nu",
@@ -2341,7 +2343,7 @@
         "countries": "Sanktionerade länder",
         "entries": "Senaste beteckningar",
         "programs": "Program",
-        "countryAttribution": "Länder och flaggregister"
+        "flagRegistries": "Flagg- och luftfartygsregister"
       },
       "empty": {
         "countries": "Ingen landsattribution tillgänglig.",

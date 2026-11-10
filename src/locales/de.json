@@ -1679,7 +1679,9 @@
       "estimateWithin": "Etwa {{count}} Menschen im Umkreis von {{km}} km",
       "method": "Die Schätzungen verwenden die durchschnittliche Bevölkerungsdichte des Landes.",
       "empty": "Keine geeigneten Ereignisorte",
-      "infoTooltip": "Angezeigt werden nur Ereignisse mit genauem Ort und verfügbaren Daten zur Bevölkerungsdichte des Landes. Die geschätzten Gebiete können sich überschneiden."
+      "infoTooltip": "Angezeigt werden nur Ereignisse mit genauem Ort und verfügbaren Daten zur Bevölkerungsdichte des Landes. Die geschätzten Gebiete können sich überschneiden.",
+      "eventCount_one": "{{count}} Ereignis",
+      "eventCount_other": "{{count}} Ereignisse"
     },
     "countryTimeline": {
       "now": "Jetzt",
@@ -2725,7 +2727,7 @@
         "countries": "Sanktionierte Länder",
         "entries": "Aktuelle Listungen",
         "programs": "Programme",
-        "countryAttribution": "Länder und Flaggenregister"
+        "flagRegistries": "Flaggen- und Luftfahrzeugregister"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",

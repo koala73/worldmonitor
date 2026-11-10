@@ -104,15 +104,72 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
   vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
-  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [
-    ['RU'], [], [], ['KP'], ['KP'], [], [],
-    ['GM'], ['CK'], ['AG'], [],
-    ['IR'], ['VE'], [], [],
+  assert.deepEqual(normalize(entries.map(entry => entry._flagCode ?? null)), [
+    'RU', null, null, 'KP', 'KP', null, null,
+    'GM', 'CK', 'AG', null,
+    'IR', 'VE', null, null,
   ]);
-  assert.deepEqual(normalize(entries[0].countryNames), ['Russia']);
-  assert.deepEqual(normalize(entries[3].countryNames), ['Korea, North']);
-  assert.deepEqual(normalize(entries[8].countryNames), ['Cook Islands'], 'a flag missing from OFAC\'s list still gets a name');
+  assert.equal(entries[0]._flagName, 'Russia');
+  assert.equal(entries[3]._flagName, 'Korea, North');
+  assert.equal(entries[8]._flagName, 'Cook Islands', 'a flag missing from OFAC\'s list still gets a name');
   assert.equal(entries[11].entityType, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT');
+  assert.ok(entries.every(entry => entry.countryCodes.length === 0), 'a flag or registry is not a country association');
+});
+
+it('keeps vessel flags out of the country counts that drive risk scores and briefs', async () => {
+  const xml = `<Sanctions>
+    <AreaCodeValues><AreaCode ID="1" Description="Russia">RU</AreaCode></AreaCodeValues>
+    <CountryValues>
+      <Country ID="11171" ISO2="RU">Russia</Country>
+      <Country ID="11160" ISO2="PA">Panama</Country>
+    </CountryValues>
+    <FeatureTypeValues>
+      <FeatureType ID="3">Vessel Flag</FeatureType>
+      <FeatureType ID="25">Location</FeatureType>
+      <FeatureType ID="64">Aircraft Tail Number</FeatureType>
+    </FeatureTypeValues>
+    <Locations><Location ID="900"><LocationAreaCode AreaCodeID="1"/></Location></Locations>
+    <DistinctParties>
+      <DistinctParty><Profile ID="1" PartySubTypeID="4">
+        <Feature FeatureTypeID="25"><FeatureVersion><VersionLocation LocationID="900"/></FeatureVersion></Feature>
+      </Profile></DistinctParty>
+      <DistinctParty><Profile ID="2" PartySubTypeID="1">
+        <Feature FeatureTypeID="3"><FeatureVersion><VersionDetail DetailTypeID="1432">Panama</VersionDetail></FeatureVersion></Feature>
+      </Profile></DistinctParty>
+      <DistinctParty><Profile ID="3" PartySubTypeID="1">
+        <Feature FeatureTypeID="3"><FeatureVersion><VersionDetail DetailTypeID="1432">Panama</VersionDetail></FeatureVersion></Feature>
+      </Profile></DistinctParty>
+      <DistinctParty><Profile ID="4" PartySubTypeID="2">
+        <Feature FeatureTypeID="64"><FeatureVersion><VersionDetail DetailTypeID="1432">EP-MMH</VersionDetail></FeatureVersion></Feature>
+      </Profile></DistinctParty>
+    </DistinctParties>
+    <SanctionsEntries>
+      <SanctionsEntry ID="1" ProfileID="1"/>
+      <SanctionsEntry ID="2" ProfileID="2"/>
+      <SanctionsEntry ID="3" ProfileID="3"/>
+      <SanctionsEntry ID="4" ProfileID="4"/>
+    </SanctionsEntries>
+  </Sanctions>`;
+  const context = vm.createContext({
+    console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
+    aircraftRegistrationCountry, countryNameToIso2, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    fetchOfacSourceResponse: async () => new Response(xml),
+  });
+  const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
+  vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
+  const { entries } = await context.fetchSource({ label: 'SDN' });
+  entries[1].isNew = true;
+
+  assert.deepEqual(normalize(context.buildCountryCounts(entries)), { RU: 1 },
+    'sanctions:country-counts:v1 feeds sanctionsBoost, so a Panama flag must not count as Panama');
+  assert.deepEqual(normalize(context.buildCountryPressure(entries).map(row => row.countryCode)), ['RU'],
+    'the top-12 rows feed the new-entry boost, forecasts and country signals');
+  assert.deepEqual(normalize(context.buildFlagRegistries(entries)), [
+    { countryCode: 'PA', countryName: 'Panama', vesselCount: 2, newVesselCount: 1, aircraftCount: 0, newAircraftCount: 0 },
+    { countryCode: 'IR', countryName: 'Iran', vesselCount: 0, newVesselCount: 0, aircraftCount: 1, newAircraftCount: 0 },
+  ]);
+  assert.deepEqual(normalize(context.countUnattributed(entries)), { entryCount: 0, vesselCount: 0, aircraftCount: 0 },
+    'a flagged vessel or registered aircraft is attributed to its registry');
 });
 
 async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {

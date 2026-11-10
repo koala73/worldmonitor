@@ -25,6 +25,7 @@ function emptyResponse(): ListSanctionsPressureResponse {
   return {
     entries: [],
     countries: [],
+    flagRegistries: [],
     programs: [],
     fetchedAt: '0',
     datasetDate: '0',
@@ -50,6 +51,7 @@ export const listSanctionsPressure: SanctionsServiceHandler['listSanctionsPressu
     return {
       ...rest,
       ...splitSanctionsAttribution(data.countries ?? [], data.unattributed),
+      flagRegistries: data.flagRegistries ?? [],
       entries: (data.entries ?? []).slice(0, maxItems),
       semaCount: data.semaCount ?? 0,
       ...(typeof semaError === 'string' && semaError ? { semaError } : {}),

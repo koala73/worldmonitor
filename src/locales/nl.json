@@ -1145,7 +1145,9 @@
       "estimateWithin": "Ongeveer {{count}} mensen binnen een straal van {{km}} km",
       "method": "De schattingen zijn gebaseerd op de gemiddelde bevolkingsdichtheid van het land.",
       "empty": "Geen geschikte gebeurtenislocaties",
-      "infoTooltip": "Alleen gebeurtenissen met een precieze locatie en beschikbare bevolkingsdichtheid voor het land worden getoond. De geschatte gebieden kunnen elkaar overlappen."
+      "infoTooltip": "Alleen gebeurtenissen met een precieze locatie en beschikbare bevolkingsdichtheid voor het land worden getoond. De geschatte gebieden kunnen elkaar overlappen.",
+      "eventCount_one": "{{count}} gebeurtenis",
+      "eventCount_other": "{{count}} gebeurtenissen"
     },
     "countryTimeline": {
       "now": "nu",
@@ -2341,7 +2343,7 @@
         "countries": "Gesanctioneerde landen",
         "entries": "Recente aanwijzingen",
         "programs": "Programma's",
-        "countryAttribution": "Landen en vlagregisters"
+        "flagRegistries": "Vlaggen- en luchtvaartuigregisters"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",

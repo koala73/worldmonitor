@@ -14,8 +14,8 @@
  *   3. map   — draws every event, but the `ucdpEvents` layer is OFF by default in
  *             all 12 variant configs. Clients that switch it on re-fetch the full
  *             set from the RPC; they do not need it in everyone's boot payload.
- *   4. exposure — the first ten eligible events from the full set, independent
- *             of the conflict panel's per-tab cap.
+ *   4. exposure — the first ten eligible locations from the full set, each with
+ *             its event count, independent of the conflict panel's per-tab cap.
  *
  * So the projection ships: the rows we render + the aggregates we compute +
  * the classifications we derive. ~662 KB -> ~55 KB, with every number on screen
@@ -155,8 +155,10 @@ export function selectUcdpPanelRows(events, rowsPerTab = UCDP_PANEL_ROWS_PER_TAB
   return kept;
 }
 
+// One row per location, carrying how many events the full feed reports there.
+// The rounding matches the dashboard's grouping in src/services/population-exposure.ts.
 export function selectUcdpExposureRows(events) {
-  const rows = [];
+  const rows = new Map();
   for (const event of events) {
     if (event.hasPreciseLocation !== true) continue;
     const { latitude, longitude } = event.location ?? {};
@@ -167,10 +169,16 @@ export function selectUcdpExposureRows(events) {
     const country = countryNames.countryNameToIso2(event.country)
       ?? iso3ToIso2[event.country.trim().toUpperCase()];
     if (!EXPOSURE_COUNTRIES.has(country)) continue;
-    rows.push(event);
-    if (rows.length === UCDP_EXPOSURE_ROWS) break;
+    const key = `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+    const row = rows.get(key);
+    if (row) {
+      row.exposureEventCount += 1;
+      continue;
+    }
+    if (rows.size === UCDP_EXPOSURE_ROWS) continue;
+    rows.set(key, { ...event, exposureEventCount: 1 });
   }
-  return rows;
+  return [...rows.values()];
 }
 
 export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPerTab = UCDP_PANEL_ROWS_PER_TAB) {

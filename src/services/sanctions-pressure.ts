@@ -4,9 +4,11 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { toApiUrl } from '@/services/runtime';
-import type { SanctionsEntry as ProtoSanctionsEntry, SanctionsEntityType as ProtoSanctionsEntityType, CountrySanctionsPressure as ProtoCountryPressure, ProgramSanctionsPressure as ProtoProgramPressure, ListSanctionsPressureResponse, UnattributedSanctionsPressure } from '@/generated/client/worldmonitor/sanctions/v1/service_client';
+import type { SanctionsEntry as ProtoSanctionsEntry, SanctionsEntityType as ProtoSanctionsEntityType, CountrySanctionsPressure as ProtoCountryPressure, ProgramSanctionsPressure as ProtoProgramPressure, ListSanctionsPressureResponse, UnattributedSanctionsPressure, FlagRegistrySanctionsPressure } from '@/generated/client/worldmonitor/sanctions/v1/service_client';
 import { SanctionsServiceClient } from '@/services/generated-rpc-clients';
 import { splitSanctionsAttribution } from '../../shared/sanctions-attribution';
+
+export type { FlagRegistrySanctionsPressure };
 
 export type SanctionsEntityType = 'entity' | 'individual' | 'vessel' | 'aircraft';
 
@@ -51,6 +53,7 @@ export interface SanctionsPressureResult {
   aircraftCount: number;
   countries: CountrySanctionsPressure[];
   unattributed?: UnattributedSanctionsPressure;
+  flagRegistries: FlagRegistrySanctionsPressure[];
   programs: ProgramSanctionsPressure[];
   entries: SanctionsEntry[];
 }
@@ -80,6 +83,7 @@ const emptyResult: SanctionsPressureResult = {
   vesselCount: 0,
   aircraftCount: 0,
   countries: [],
+  flagRegistries: [],
   programs: [],
   entries: [],
 };
@@ -98,6 +102,7 @@ function reviveSanctionsPressureResult(result: SanctionsPressureResult): Sanctio
   return {
     ...result,
     ...splitSanctionsAttribution(result.countries ?? [], result.unattributed),
+    flagRegistries: (result.flagRegistries ?? []).map(toFlagRegistry),
     fetchedAt: reviveDate(result.fetchedAt),
     datasetDate: reviveNullableDate(result.datasetDate),
     entries: result.entries.map((entry) => ({
@@ -162,6 +167,18 @@ function toProgram(raw: ProtoProgramPressure): ProgramSanctionsPressure {
 }
 
 
+// Snapshots and hydrated caches written before aircraft registries carry no aircraft counts.
+function toFlagRegistry(registry: FlagRegistrySanctionsPressure): FlagRegistrySanctionsPressure {
+  return {
+    countryCode: registry.countryCode,
+    countryName: registry.countryName,
+    vesselCount: registry.vesselCount ?? 0,
+    newVesselCount: registry.newVesselCount ?? 0,
+    aircraftCount: registry.aircraftCount ?? 0,
+    newAircraftCount: registry.newAircraftCount ?? 0,
+  };
+}
+
 function toResult(response: ListSanctionsPressureResponse): SanctionsPressureResult {
   return {
     fetchedAt: parseEpoch(response.fetchedAt as string | number | undefined) || new Date(),
@@ -175,6 +192,7 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
     vesselCount: response.vesselCount ?? 0,
     aircraftCount: response.aircraftCount ?? 0,
     ...splitSanctionsAttribution((response.countries ?? []).map(toCountry), response.unattributed),
+    flagRegistries: (response.flagRegistries ?? []).map(toFlagRegistry),
     programs: (response.programs ?? []).map(toProgram),
     entries: (response.entries ?? []).map(toEntry),
   };
