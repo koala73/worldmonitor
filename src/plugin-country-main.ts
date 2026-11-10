@@ -1,5 +1,6 @@
 import './bootstrap/zod-csp';
 import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
 import { loadHostCountryMilitaryActivity, type CountryMilitarySignalCounts } from '@/services/country-military-activity';
 import { loadQualifiedCountrySignals } from '@/services/country-signal-projection';
 import { countrySignalsFromMilitary, recoverCountrySignals, recoverRawSignals, composeCountrySignals, type CountryRawSignalSlot } from '@/services/country-signals';
