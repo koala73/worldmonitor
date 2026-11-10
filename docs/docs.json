@@ -99,6 +99,7 @@
                 "group": "Platform & Features",
                 "pages": [
                   "overview",
+                  "platform-evaluation",
                   "features",
                   "pro-intelligence-suite",
                   "data-sources",
@@ -106,6 +107,43 @@
                   "hotspots"
                 ]
               },
+              {
+                "group": "Workflows",
+                "pages": [
+                  "embed-live-map",
+                  "morning-world-risk-brief",
+                  "route-explorer",
+                  "scenario-engine"
+                ]
+              },
+              {
+                "group": "Desktop Application",
+                "pages": [
+                  "desktop-app"
+                ]
+              },
+              {
+                "group": "Company",
+                "pages": [
+                  "about"
+                ]
+              },
+              {
+                "group": "Legal",
+                "pages": [
+                  "eula",
+                  "terms",
+                  "dpa",
+                  "license",
+                  "trademark-policy",
+                  "privacy"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Intelligence",
+            "groups": [
               {
                 "group": "Intelligence & Analysis",
                 "pages": [
@@ -149,15 +187,6 @@
                 ]
               },
               {
-                "group": "Workflows",
-                "pages": [
-                  "embed-live-map",
-                  "morning-world-risk-brief",
-                  "route-explorer",
-                  "scenario-engine"
-                ]
-              },
-              {
                 "group": "Map Layers",
                 "pages": [
                   "map-engine",
@@ -177,7 +206,12 @@
                   "premium-finance",
                   "premium-finance-search"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Panels",
+            "groups": [
               {
                 "group": "Panels — AI & PRO",
                 "pages": [
@@ -224,13 +258,12 @@
                   "panels/news-feeds",
                   "panels/indicators-and-signals"
                 ]
-              },
-              {
-                "group": "Desktop Application",
-                "pages": [
-                  "desktop-app"
-                ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "MCP & Agents",
+            "groups": [
               {
                 "group": "MCP & Integrations",
                 "pages": [
@@ -244,13 +277,41 @@
                   "webmcp",
                   "mcp-apps",
                   "gemini-antigravity",
-                  "mcp-tools-reference",
+                  {
+                    "group": "MCP Tools Reference",
+                    "pages": [
+                      "mcp-tools-reference",
+                      "mcp-tools/discovery",
+                      "mcp-tools/markets",
+                      "mcp-tools/macro",
+                      "mcp-tools/trade",
+                      "mcp-tools/country-indicators",
+                      "mcp-tools/energy",
+                      "mcp-tools/chokepoints-supply-chain",
+                      "mcp-tools/conflict-security",
+                      "mcp-tools/military-escalation",
+                      "mcp-tools/countries",
+                      "mcp-tools/news",
+                      "mcp-tools/signals",
+                      "mcp-tools/historical-intelligence",
+                      "mcp-tools/movement-infrastructure",
+                      "mcp-tools/environment-health",
+                      "mcp-tools/humanitarian-displacement",
+                      "mcp-tools/ai-intelligence",
+                      "mcp-tools/meta"
+                    ]
+                  },
                   "mcp-jmespath",
                   "mcp-error-catalog",
                   "api-oauth",
                   "api-notifications"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Developers",
+            "groups": [
               {
                 "group": "HTTP API",
                 "pages": [
@@ -279,23 +340,6 @@
                   "decision-signal-provenance",
                   "china-decision-signals",
                   "source-attribution"
-                ]
-              },
-              {
-                "group": "Company",
-                "pages": [
-                  "about"
-                ]
-              },
-              {
-                "group": "Legal",
-                "pages": [
-                  "eula",
-                  "terms",
-                  "dpa",
-                  "license",
-                  "trademark-policy",
-                  "privacy"
                 ]
               }
             ]
@@ -588,6 +632,7 @@
                 "group": "平台与功能",
                 "pages": [
                   "zh/overview",
+                  "zh/platform-evaluation",
                   "zh/features",
                   "zh/pro-intelligence-suite",
                   "zh/data-sources",
@@ -595,6 +640,43 @@
                   "zh/hotspots"
                 ]
               },
+              {
+                "group": "工作流",
+                "pages": [
+                  "zh/embed-live-map",
+                  "zh/morning-world-risk-brief",
+                  "zh/route-explorer",
+                  "zh/scenario-engine"
+                ]
+              },
+              {
+                "group": "桌面应用",
+                "pages": [
+                  "zh/desktop-app"
+                ]
+              },
+              {
+                "group": "公司",
+                "pages": [
+                  "zh/about"
+                ]
+              },
+              {
+                "group": "法律",
+                "pages": [
+                  "zh/eula",
+                  "zh/terms",
+                  "zh/dpa",
+                  "zh/license",
+                  "zh/trademark-policy",
+                  "zh/privacy"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "情报",
+            "groups": [
               {
                 "group": "情报与分析",
                 "pages": [
@@ -635,15 +717,6 @@
                 ]
               },
               {
-                "group": "工作流",
-                "pages": [
-                  "zh/embed-live-map",
-                  "zh/morning-world-risk-brief",
-                  "zh/route-explorer",
-                  "zh/scenario-engine"
-                ]
-              },
-              {
                 "group": "地图图层",
                 "pages": [
                   "zh/map-engine",
@@ -663,7 +736,12 @@
                   "zh/premium-finance",
                   "zh/premium-finance-search"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "面板",
+            "groups": [
               {
                 "group": "面板 — AI 与 PRO",
                 "pages": [
@@ -710,13 +788,12 @@
                   "zh/panels/news-feeds",
                   "zh/panels/indicators-and-signals"
                 ]
-              },
-              {
-                "group": "桌面应用",
-                "pages": [
-                  "zh/desktop-app"
-                ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "MCP 与智能体",
+            "groups": [
               {
                 "group": "MCP 与集成",
                 "pages": [
@@ -730,13 +807,41 @@
                   "zh/webmcp",
                   "zh/mcp-apps",
                   "zh/gemini-antigravity",
-                  "zh/mcp-tools-reference",
+                  {
+                    "group": "MCP 工具参考",
+                    "pages": [
+                      "zh/mcp-tools-reference",
+                      "zh/mcp-tools/discovery",
+                      "zh/mcp-tools/markets",
+                      "zh/mcp-tools/macro",
+                      "zh/mcp-tools/trade",
+                      "zh/mcp-tools/country-indicators",
+                      "zh/mcp-tools/energy",
+                      "zh/mcp-tools/chokepoints-supply-chain",
+                      "zh/mcp-tools/conflict-security",
+                      "zh/mcp-tools/military-escalation",
+                      "zh/mcp-tools/countries",
+                      "zh/mcp-tools/news",
+                      "zh/mcp-tools/signals",
+                      "zh/mcp-tools/historical-intelligence",
+                      "zh/mcp-tools/movement-infrastructure",
+                      "zh/mcp-tools/environment-health",
+                      "zh/mcp-tools/humanitarian-displacement",
+                      "zh/mcp-tools/ai-intelligence",
+                      "zh/mcp-tools/meta"
+                    ]
+                  },
                   "zh/mcp-jmespath",
                   "zh/mcp-error-catalog",
                   "zh/api-oauth",
                   "zh/api-notifications"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "开发者",
+            "groups": [
               {
                 "group": "HTTP API",
                 "pages": [
@@ -765,23 +870,6 @@
                   "zh/decision-signal-provenance",
                   "zh/china-decision-signals",
                   "zh/source-attribution"
-                ]
-              },
-              {
-                "group": "公司",
-                "pages": [
-                  "zh/about"
-                ]
-              },
-              {
-                "group": "法律",
-                "pages": [
-                  "zh/eula",
-                  "zh/terms",
-                  "zh/dpa",
-                  "zh/license",
-                  "zh/trademark-policy",
-                  "zh/privacy"
                 ]
               }
             ]

@@ -1,0 +1,256 @@
+---
+title: "MCP tools: Conflict & security"
+description: "World Monitor MCP tool reference for conflict events, crime data, cyber threats, sanctions, test-site seismicity and defense industry: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_conflict_events`
+
+Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive). |
+| `min_fatalities` | number | Drop events below this fatality count (UCDP deathsBest / unrest fatalities). |
+| `limit` | number | Cap each event list to at most this many items (default 30, pass 0 for no cap). |
+| `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
+| `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
+| `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
+| `bbox` | object | Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km. |
+| `lat` | number | Centre latitude for radius_km; requires lon and radius_km. |
+| `lon` | number | Centre longitude for radius_km; requires lat and radius_km. |
+| `radius_km` | number | Keep events within this great-circle distance of lat/lon (max 2000). |
+| `since_days` | integer | Keep events dated within the last N days. |
+
+- **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **Area and age filters:** `bbox` takes `sw_lat`, `sw_lon`, `ne_lat` and `ne_lon` (all required). Pass either `bbox` or all three of `lat`, `lon` and `radius_km`; mixing them or passing part of the radius returns Invalid params before any allowance is spent. The filters apply to UCDP, Iran and unrest events after `country` and `min_fatalities` and before `limit`; country risk scores are not geolocated and are returned unfiltered. An event without valid coordinates (or, with `since_days`, without a date) is dropped, and `data.geo_filter.excluded` counts those rows per list so an empty result is not mistaken for no nearby events. When `since_days` reaches further back than a list's oldest dated row, `data.geo_filter.oldest_held` gives that row's time in epoch milliseconds, so a wide window is not mistaken for full coverage. Without these arguments the response has no `geo_filter` key.
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Paid panel accounting:** Pro and Pro Business spend one allocation for an opening. Canonical filters and repeated opens share the Conflict Events admission within five minutes. Each admission permits up to 64 uncached tool executions, with separate 64-per-minute uncached and successful cached-replay limits. Each execution reads five fixed Redis keys, or six with Iran enabled; these reads do not each spend an allocation.
+- **Reuse and refresh:** Successful filtered originals replay before summary or JMESPath presentation. Explicit refresh with a new UUID spends one new allocation; the same UUID retries it. An authorized receipt read queries current usage without reserving another unit. Unknown counters preserve data and omit the numeric notice. Paid calls reject unknown arguments and non-finite numeric filters before reservation. Ordinary API and free calls retain existing filter coercion and reject paid receipts or refresh controls.
+- **Source observation and recovery:** Optional `conflict_source.ucdp` preserves only correctly typed `fetchedAt`, `candidateVersion`, `candidateComplete` and `annualFailedPages` from already-read metadata. Missing fields stay absent. Known partial, missing, malformed, stale or incompatible observations remain retryable. Usable collections still honor their filters. Data and metadata are not an atomic snapshot; the observation does not prove complete unrest-provider coverage or independent CII/Iran freshness.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** per slice — UCDP conflict events **30 min**, unrest events **2 h**. The single `stale` flag ORs both checks, so it flips as soon as either slice exceeds its own budget.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_conflict_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_toronto_reported_occurrences`
+
+Toronto Police Service Major Crime Indicators records. These are retrospective reported occurrences, not live dispatch. TPS deliberately offsets the coordinates, so do not treat them as precise addresses. Contains information licensed under the Open Government Licence - Ontario.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `division` | `string` | Case-insensitive TPS division filter. |
+| `neighbourhood` | `string` | Case-insensitive neighbourhood filter. |
+| `offence` | `string` | Case-insensitive offence filter. |
+| `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
+
+- **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** bounded cache read from the on-demand TPS Major Crime Indicators snapshot.
+- **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_toronto_reported_occurrences","arguments":{"division":"52","limit":25}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_toronto_calls_attended`
+
+Toronto Police Service Calls for Service Attended annual aggregates, via [City of Toronto Open Data](https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/). These are neighbourhood and division counts, not incident points or live dispatch.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `year` | `number` | Exact event year. |
+| `division` | `string` | Case-insensitive original or final TPS division filter. |
+| `neighbourhood` | `string` | Case-insensitive neighbourhood filter. |
+| `limit` | `number` | Maximum rows to return, from 1 to 100 (default 50). |
+
+- **API endpoints:** `GET /api/safety/v1/get-toronto-safety`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** bounded cache read from the on-demand TPS Calls for Service Attended snapshot.
+- **Freshness budget:** up to **14 days** before `stale: true` is flagged; source-content freshness is also validated before the canonical snapshot is published.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_toronto_calls_attended","arguments":{"year":2025,"limit":25}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_cyber_threats`
+
+Return the seeded cyber-threat snapshot: malware indicators of compromise (URLhaus, Feodo Tracker), CISA Known Exploited Vulnerabilities and active command-and-control infrastructure, each with type, severity, country when known, and first-seen time. Flagged stale after 4 hours. Indicator feeds only; no incident narratives or attribution analysis. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. threat_type is a case-insensitive substring (malware, vulnerability, c2); min_severity keeps known severities at or above a level; country drops threats without a country; limit caps the list (default 30, 0 for no cap).
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `threat_type` | string | Filter to one threat type (case-insensitive substring, e.g. "malware", "vulnerability", "c2"). |
+| `min_severity` | string: low / medium / high / critical | Keep only threats with a known severity at or above this level; exclude missing or unrecognized severities. |
+| `country` | string | Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter). Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `limit` | number | Cap the threat list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **4 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_cyber_threats","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_sanctions_data`
+
+Screen OFAC SDN, OFAC Consolidated, Canada SEMA and six US Consolidated Screening List export-control lists (BIS Entity, Denied Persons, Unverified, Military End User; State ITAR debarred, nonproliferation), or read country pressure and designation changes. Pressure counts OFAC and SEMA only; CSL rows have et unspecified, and their events carry notice (Federal Register citation) and url. screen matches names, up to 10 aliases and exact IMO IDs, returning score/matched_on/matched_text; query filters primary names. changes_since_days (1-90) selects history only, paged by changes_cursor, max 100 events/page. Gaps include held diffs above 5% removals; history keeps 90 days/10,000 events (truncatedBefore marks cap loss). Seeded every 6 hours, stale after 12 hours; no live fetch. Subscription required, weight 1. Matches are leads to confirm with the issuing agency, not legal advice.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `entity_type` | string | Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "individual", "entity"; CSL rows are "unspecified"). |
+| `query` | string | Keep only sanctioned entities whose name contains this text (case-insensitive). |
+| `screen` | string | Screen a name, alias or IMO identifier against the seeded lists (2-200 characters). Omit changes_since_days for entity screening. |
+| `min_score` | number | Minimum screening score from 0 to 100 (default 70); applies only with screen. |
+| `changes_since_days` | integer | Select history only for the last 1-90 days. Country, entity_type and query filter events; gaps remain visible on every page. |
+| `changes_cursor` | string | Continue from changes.nextCursor with the same filters. Restart if the seeded history changed. |
+| `limit` | number | List cap, default 30; 0 removes the cap except in history mode, where pages contain at most 100 events and may be smaller to fit the response budget. |
+
+- **API endpoints:** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **Access:** `subscription` — Pro/API subscription required. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **12 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_sanctions_data","arguments":{"screen":"Northern Star","min_score":70}}
+  }'
+```
+
+</CodeGroup>
+
+Changes retain up to 90 days and 10,000 events, returned newest observation first. `at` is the observation time in milliseconds; `effectiveAt` is the source effective-time string, or `"0"` when unknown. Program-set changes emit `amended` with `prevPr`. `gaps` marks retained or unavailable sources, missing valid baselines and diffs held because more than 5% of prior rows disappeared. A gap is not proof of no changes. `truncatedBefore` marks history lost to the event cap, including that boundary timestamp. Without `changes_since_days`, the `changes` slot is omitted.
+
+History requests return only `changes`, using its own cache read and freshness check. The time window is anchored to `changes.fetchedAt`. Continue with `changes_cursor: changes.nextCursor` until the cursor is empty, keeping the same filters; `matchingEvents` is the full filtered count. If a new seed replaces the history, restart without a cursor. Every page preserves the window’s coverage gaps. Missing or invalid history stays unavailable while current screening and pressure can continue to refresh.
+
+### `get_test_site_seismicity`
+
+Nuclear test-site seismic monitor: USGS earthquakes near known test sites scored for proliferation concern. Watches seismic events within 100 km of the monitored nuclear test sites (Punggye-ri, Lop Nur, Novaya Zemlya, the Nevada National Security Site, Semipalatinsk, and other historical sites) and scores each event 0–100 from magnitude, proximity, and depth. Concern bands: low, moderate, elevated, critical. Includes a per-site rollup with event count, max concern, and max magnitude.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `site` | string | Filter to one test site by name substring (e.g. "Punggye", "Lop Nur", case-insensitive). |
+| `min_concern` | string: low / moderate / elevated / critical | Drop events below this concern band. |
+| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** none (MCP-only; the underlying earthquake list is covered by `get_natural_disasters`).
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_test_site_seismicity","arguments":{"min_concern":"moderate"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_defense_industrial_base`
+
+Returns a country's latest World Bank military expenditure, armed-forces
+personnel, and arms import/export TIV observations together with SIPRI-derived
+supplier shares and a five-year supplier HHI. Use it to answer questions such
+as “who supplies Ukraine's major weapons, and how concentrated is that
+dependency?” TIV is a transfer-volume indicator, not a financial value.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, for example `UA`, `DE`, or `IN`. |
+
+- **API endpoint:** `GET /api/military/v1/get-defense-industrial-base`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** live RPC backed by two annual Redis snapshots.
+- **Freshness:** `industrialFetchedAt` and `supplierFetchedAt` report the two source clocks separately. `supplierRetained` identifies an importer row that was previously published and not refreshed in this tick (chunk carry-forward, or a failed importer request); `fetchedAt` is the older clock among the values served. Seeder liveness alarms after 28 days, and source observation years are checked separately against the annual content-age budget.
+- **Mapping:** `supplierMappingCoverage` reports the share of positive supplier TIV mapped to ISO2 suppliers. Supplier shares and HHI keep unmapped positive TIV in the denominator.
+- **Licensing:** the response contains derived SIPRI aggregates only and identifies SIPRI as the source. It does not reproduce the full database.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_defense_industrial_base","arguments":{"country_code":"UA"}}
+  }'
+```
