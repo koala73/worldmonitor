@@ -174,10 +174,6 @@ export const CHOKEPOINT_CONTENT = {
         question: 'Is there a sea route that avoids the Strait of Hormuz?',
         answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
       },
-      {
-        question: 'Does World Monitor model an energy shock for Hormuz?',
-        answer: 'Yes. Hormuz is shock-model supported. The committed EIA 2023 baseline is 21.0 million barrels a day, the largest row in that seven-waterway series.',
-      },
     ],
   },
   bab_el_mandeb: {
