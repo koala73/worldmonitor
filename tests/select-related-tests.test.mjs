@@ -176,7 +176,13 @@ describe('changedFiles', () => {
   });
 
   it('reports both paths of a committed rename, so importers of the old path are selected', () => {
-    const root = fixture({ 'src/old-name.ts': 'export const value = 1;\n' });
+    const root = fixture({
+      'package.json': FILES['package.json'],
+      'src/old-name.ts': 'export const value = 1;\n',
+      'tests/helpers/old-dep.mjs': "export { value } from '../../src/old-name.ts';\n",
+      'tests/old-name.test.mjs': "import { value } from './helpers/old-dep.mjs';\n",
+      'tests/unrelated.test.mjs': "import assert from 'node:assert';\n",
+    });
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
     const git = (...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd: root, env, encoding: 'utf8' });
     git('init', '-q', '-b', 'main');
@@ -185,7 +191,9 @@ describe('changedFiles', () => {
     git('branch', 'base');
     git('mv', 'src/old-name.ts', 'src/new-name.ts');
     git('commit', '-qm', 'rename');
-    assert.deepEqual(changedFiles(root, 'base'), ['src/new-name.ts', 'src/old-name.ts']);
+    const changed = changedFiles(root, 'base');
+    assert.deepEqual(changed, ['src/new-name.ts', 'src/old-name.ts']);
+    assert.deepEqual(selectRelatedTests({ root, changed, inventory: listInventory(root) }), ['tests/old-name.test.mjs']);
   });
 
   it('names the base and the --base flag when there is no merge base', () => {
