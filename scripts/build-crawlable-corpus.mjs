@@ -2669,6 +2669,7 @@ ${mainHtml}${searchLinks ? `\n${searchLinks}` : ''}
     <footer>${renderedByline}${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
     ${inlineScript ? `<script nonce="wm-static-bootstrap">${inlineScript}</script>` : ''}
+    ${UMAMI_SCRIPT_TAG}
   </body>
 </html>
 `;
@@ -4269,8 +4270,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals. Neither score on this page is a forecast; where World Monitor does forecast, the graded record is on the <a href="/accuracy/">forecast accuracy scorecard</a>.</p>`}
-      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>
-      ${UMAMI_SCRIPT_TAG}`;
+      <p class="source" data-snapshot-source="${escapeHtml(snapshotPath)}">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: World Monitor Country Resilience Index snapshot, ${escapeHtml(prettyDate(capturedAt))}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
     : `${country.name} Country Risk and Resilience`;
