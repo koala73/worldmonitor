@@ -27,6 +27,15 @@ export function createTimeoutSignal(ms: number): AbortSignal {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
     return AbortSignal.timeout(ms);
   }
+  return fallbackTimeoutSignal(ms);
+}
+
+/**
+ * The `AbortSignal.timeout` fallback alone, with no native check. The
+ * dashboard installs it as `AbortSignal.timeout` on engines that lack one
+ * (bootstrap/abort-signal-fallbacks.ts), so it must not call back into it.
+ */
+export function fallbackTimeoutSignal(ms: number): AbortSignal {
   const controller = new AbortController();
   setTimeout(() => {
     try {
@@ -75,6 +84,11 @@ export function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
     return AbortSignal.any(signals);
   }
+  return fallbackAnySignal(signals);
+}
+
+/** The `AbortSignal.any` fallback alone, with no native check; see `fallbackTimeoutSignal`. */
+export function fallbackAnySignal(signals: Iterable<AbortSignal>): AbortSignal {
   const controller = new AbortController();
   const listeners = new Map<AbortSignal, () => void>();
   const cleanup = (): void => {

@@ -6,6 +6,7 @@
  * tool returns, in the browser. It works signed out. The claim lives in
  * `?claim=` so a result can be shared as a link.
  */
+import './bootstrap/abort-signal-fallbacks';
 import { renderClaimCardHtml, renderFactChecksHtml } from '@/components/claim-card';
 import {
   CLAIM_MAX_CHARS,
