@@ -1087,7 +1087,7 @@ export const CACHE_TOOLS: ToolDef[] = [
             symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior observation.' },
             priceSource: { type: 'string', description: 'Price provider for Brent and WTI, when known.' },
             priceBasis: { type: 'string', enum: ['futures', 'spot'], description: 'Futures quote or daily spot observation for Brent and WTI.' },
-            priceAt: { type: 'number', description: 'Provider observation time in epoch milliseconds, independent of cache time.' },
+            priceAt: { type: 'number', description: 'Provider observation time in epoch milliseconds. Daily spot dates use midnight UTC.' },
             stale: { type: 'boolean', description: 'Brent or WTI quote is undated or exceeds its observation age budget.' },
           } } },
         },

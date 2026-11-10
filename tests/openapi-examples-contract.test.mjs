@@ -1125,7 +1125,7 @@ describe('OpenAPI curated example values', () => {
       JSON.parse(readFileSync(resolve(root, 'shared/commodities.json'), 'utf8'))
         .commodities.map((c) => c.symbol),
     );
-    assert.ok(supported.has('GC=F'), 'expected gold futures GC=F in the configured commodity set');
+    assert.ok(supported.has('BZ=F'), 'expected Brent futures BZ=F in the configured commodity set');
 
     const specs = [
       ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
@@ -1146,12 +1146,16 @@ describe('OpenAPI curated example values', () => {
         if (op.operationId !== 'ListCommodityQuotes') continue;
         const example = op.responses?.['200']?.content?.['application/json']?.example;
         const quotes = example?.quotes;
-        if (!Array.isArray(quotes)) continue;
+        assert.ok(Array.isArray(quotes) && quotes.length > 0, `${label}: expected a commodity quote example`);
         for (const [i, q] of quotes.entries()) {
           const where = `${label} ${method.toUpperCase()} ${path} response.quotes[${i}].symbol`;
           assert.ok(q && typeof q.symbol === 'string', `${where}: missing symbol`);
           assert.ok(supported.has(q.symbol), `${where}: commodity symbol '${q.symbol}' is not in the supported seed set`);
         }
+        const brent = quotes.find(quote => quote.symbol === 'BZ=F');
+        assert.equal(brent?.priceBasis, 'futures', `${label}: expected a Brent futures example`);
+        assert.equal(brent.priceSource, 'Yahoo Finance', `${label}: expected a Brent provider`);
+        assert.ok(Number.isInteger(brent.priceAt) && brent.priceAt > 0, `${label}: expected an observation timestamp`);
       }
     }
   });

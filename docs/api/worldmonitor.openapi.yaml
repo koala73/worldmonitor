@@ -21532,7 +21532,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "GC=F"
+                      - "BZ=F"
                   schema:
                     type: array
                     items:
@@ -21552,12 +21552,18 @@ paths:
                         application/json:
                             example:
                                 "quotes":
-                                    - "change": 1.5
-                                      "display": "example"
-                                      "name": "WorldMonitor Analyst"
-                                      "price": 75.25
-                                      "priceAt": 1717200000000
-                                      "symbol": "GC=F"
+                                    - "change": -1.05
+                                      "display": "Brent"
+                                      "name": "Brent Crude Oil"
+                                      "price": 91.6
+                                      "priceAt": 1794291360000
+                                      "priceBasis": "futures"
+                                      "priceSource": "Yahoo Finance"
+                                      "sparkline":
+                                          - 93
+                                          - 92
+                                          - 91.6
+                                      "symbol": "BZ=F"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_ListCommodityQuotesResponse'
                 "400":
@@ -53828,10 +53834,10 @@ components:
                 priceAt:
                     type: integer
                     format: int64
-                    description: 'Provider observation time as Unix epoch milliseconds, independent of cache time.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Provider observation time in Unix epoch milliseconds, with daily spot dates represented at midnight UTC. Warning: Values > 2^53 may lose precision in JavaScript'
             required:
                 - symbol
-            description: CommodityQuote represents a commodity price quote from Yahoo Finance.
+            description: CommodityQuote represents a commodity price observation.
         worldmonitor_market_v1_GetPhysicalPremiumsRequest:
             type: object
             properties:

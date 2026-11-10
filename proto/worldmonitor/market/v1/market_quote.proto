@@ -81,7 +81,7 @@ message CryptoQuote {
   double change7d = 6;
 }
 
-// CommodityQuote represents a commodity price quote from Yahoo Finance.
+// CommodityQuote represents a commodity price observation.
 message CommodityQuote {
   // Commodity symbol (e.g., "CL=F" for crude oil).
   string symbol = 1 [
@@ -102,7 +102,7 @@ message CommodityQuote {
   optional string price_source = 7;
   // "futures" for a futures quote, "spot" for a daily spot observation.
   optional string price_basis = 8;
-  // Provider observation time as Unix epoch milliseconds, independent of cache time.
+  // Provider observation time in Unix epoch milliseconds, with daily spot dates represented at midnight UTC
   optional int64 price_at = 9 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 

@@ -255,7 +255,7 @@ The response replaces the documented payload with:
 
 Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver premiums, physical-premium divergence regimes, crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only. `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
 
-Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage can supply daily spot prices as a fallback. Undated quotes are marked `stale`; dated futures quotes go stale after 30 minutes and daily spot prices after four days.
+Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage supplies daily spot prices on the scheduled seed path when available. For daily spot, midnight UTC represents the provider's observation date. Undated quotes are marked `stale`. Dated futures quotes go stale after 30 minutes and daily spot prices after four days.
 
 **Parameters (tool-specific):**
 

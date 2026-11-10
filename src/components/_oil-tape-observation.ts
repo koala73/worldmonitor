@@ -13,10 +13,11 @@ export function oilTapeObservationLabel(quote: OilTapeObservation): string {
     : iso.slice(0, 10);
   const basis = priceBasis === 'futures' ? t('components.energyComplex.futures')
     : priceBasis === 'spot' ? t('components.energyComplex.dailySpot')
-    : t('components.energyComplex.unknownQuoteSource');
+    : '';
   const stale = isStaleOilPrice(priceAt, oilTapeMaxAgeMs(priceBasis));
   return [
-    basis, priceSource, time || t('components.energyComplex.unknownPriceDate'),
-    stale && time ? t('components.energyComplex.stalePrice') : '',
+    basis, priceSource || t('components.energyComplex.unknownQuoteSource'),
+    time || t('components.energyComplex.unknownPriceDate'),
+    stale ? t('components.energyComplex.stalePrice') : '',
   ].filter(Boolean).join(' · ');
 }
