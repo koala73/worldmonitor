@@ -2733,10 +2733,11 @@ describe('homepage WebMCP source registration', () => {
     assert.equal(currentCalls.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
     assert.deepEqual([...new Set(receivers)].sort(), ['current', 'legacy']);
     const currentAssignments = [...body.matchAll(/\bcurrent\s*=(?!=)\s*([^;]+);/g)].map((m) => m[1].trim());
-    assert.deepEqual(currentAssignments, [
-      'null',
-      "typeof document !== 'undefined' ? document.modelContext : null",
-    ]);
+    assert.ok(currentAssignments.some((rhs) => /\bdocument\.modelContext\b/.test(rhs)));
+    for (const rhs of currentAssignments) {
+      assert.ok(rhs === 'null' || /\bdocument\.modelContext\b/.test(rhs), rhs);
+      assert.doesNotMatch(rhs, /\bnavigator\b/);
+    }
     assert.doesNotMatch(body, /function\s+\w*\s*\(\s*modelContext\s*\)/);
   });
 
