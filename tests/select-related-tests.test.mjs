@@ -110,6 +110,22 @@ describe('selectRelatedTests', () => {
     assert.deepEqual(selectRelatedTests({ root: near, inventory: listInventory(near), changed: ['src/feature.ts'] }), ['tests/exact-name.test.mjs']);
   });
 
+  it('follows tsconfig path aliases, through an aliased module into a relative import', () => {
+    const aliased = fixture({
+      'package.json': FILES['package.json'],
+      // tsconfig allows comments, as the repository's own root config does.
+      'tsconfig.json': '{\n  // aliases\n  "compilerOptions": { "paths": { "@/*": ["./src/*"] } }\n}\n',
+      'src/services/auth-state.ts': "import { initClerk } from './clerk';\n",
+      'src/services/clerk.ts': 'export const initClerk = () => {};\n',
+      'tests/auth-state.test.mts': "import { getAuthState } from '@/services/auth-state';\n",
+      'tests/unrelated.test.mjs': "import assert from 'node:assert';\n",
+    });
+    assert.deepEqual(
+      selectRelatedTests({ root: aliased, inventory: listInventory(aliased), changed: ['src/services/clerk.ts'] }),
+      ['tests/auth-state.test.mts'],
+    );
+  });
+
   it('terminates on import cycles', () => {
     const cyclic = fixture({
       'package.json': FILES['package.json'],

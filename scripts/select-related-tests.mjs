@@ -8,7 +8,8 @@
 //   npm run test:related -- --base <ref>    # compare against another base
 //
 // A test is selected when it changed, when its source names a changed path, or
-// when its static, dynamic or template-literal imports reach a changed file.
+// when its static, dynamic, template-literal or tsconfig-aliased (`@/…`) imports
+// reach a changed file.
 // Changes to the install, TypeScript config or the runner select every file.
 // The 2026-11-09 audit checked this against two sets of reverted fixes: both
 // times the selection failed exactly the files the full suite failed, in 22-60 s
@@ -23,7 +24,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SELECT_ALL = /^(package(-lock)?\.json|tsconfig[^/]*\.json|scripts\/run-data-tests\.mjs|scripts\/select-related-tests\.mjs|scripts\/shared\/data-test-durations\.json)$/;
 const TEST_FILE = /\.test\.m?[jt]s$/;
 const SOURCE_FILE = /\.(m?[jt]sx?|cjs)$/;
-const IMPORT_SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"`](\.{1,2}\/[^'"`?$]+)/gm;
+const IMPORT_SPEC = /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*|^\s*import\s+)['"`]([^'"`?$\s]+)/gm;
 const RESOLVE_SUFFIXES = ['', '.ts', '.mts', '.mjs', '.js', '.cjs', '.tsx', '.json', '/index.ts', '/index.mjs', '/index.js'];
 // A bare name shorter than this (index, types, utils) matches too many files.
 const MIN_BASENAME = 8;
@@ -39,10 +40,31 @@ export function listInventory(root = ROOT) {
   return [...new Set(files.map((file) => file.split('\\').join('/')))].sort();
 }
 
-// Resolves a relative import the way Node and tsx do. A changed path counts even
-// when it no longer exists, so a test that imports a deleted file is selected.
-function resolveImport(root, fromFile, spec, changedSet) {
-  const base = posix.join(posix.dirname(fromFile), spec);
+// tsconfig.json `paths` with a trailing `/*`, as tsx applies them: `@/*` -> `./src/*`.
+export function readPathAliases(root = ROOT) {
+  let config;
+  try {
+    // tsconfig allows comments; drop line comments that are not inside a string.
+    config = JSON.parse(readFileSync(join(root, 'tsconfig.json'), 'utf8').replace(/^\s*\/\/.*$/gm, ''));
+  } catch {
+    return [];
+  }
+  return Object.entries(config.compilerOptions?.paths ?? {})
+    .filter(([pattern, targets]) => pattern.endsWith('/*') && targets[0]?.endsWith('/*'))
+    .map(([pattern, targets]) => [pattern.slice(0, -1), posix.normalize(targets[0].slice(0, -1))]);
+}
+
+// Resolves a relative or tsconfig-aliased import the way Node and tsx do. A
+// changed path counts even when it no longer exists, so a test that imports a
+// deleted file is selected.
+function resolveImport(root, fromFile, spec, changedSet, aliases) {
+  let base;
+  if (spec.startsWith('./') || spec.startsWith('../')) base = posix.join(posix.dirname(fromFile), spec);
+  else {
+    const alias = aliases.find(([prefix]) => spec.startsWith(prefix));
+    if (!alias) return null;
+    base = posix.join(alias[1], spec.slice(alias[0].length));
+  }
   const candidates = RESOLVE_SUFFIXES.map((suffix) => base + suffix);
   // tsx resolves `./x.js` to `./x.ts`.
   if (base.endsWith('.js')) candidates.push(base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'));
@@ -71,6 +93,7 @@ export function selectRelatedTests({ root = ROOT, changed, inventory, readSource
     needles.add(stem);
     if (basename(stem).length >= MIN_BASENAME) needles.add(basename(stem));
   }
+  const aliases = readPathAliases(root);
   const read = (file) => {
     try { return readSource(file); } catch { return ''; }
   };
@@ -86,7 +109,7 @@ export function selectRelatedTests({ root = ROOT, changed, inventory, readSource
     seen.add(file);
     if (!SOURCE_FILE.test(file) || changedSet.has(file) && !existsSync(join(root, file))) continue;
     for (const match of read(file).matchAll(IMPORT_SPEC)) {
-      const target = resolveImport(root, file, match[1], changedSet);
+      const target = resolveImport(root, file, match[1], changedSet, aliases);
       if (!target) continue;
       if (!importers.has(target)) importers.set(target, new Set());
       importers.get(target).add(file);
