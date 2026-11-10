@@ -191,6 +191,14 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
     }
     assert.equal(url, 'https://api.exa.ai/search');
     const itemId = itemQueries[Object.keys(itemQueries).find(query => request.query.startsWith(query))];
+    if (request.userLocation === 'IN') {
+      const pack = itemId === 'salt' ? offer('Table salt, 100 g', 10, 100, 'g')
+        : itemId === 'rice' ? offer('Plain white rice, 5 kg', 50, 5, 'kg') : null;
+      return Response.json({ results: pack ? [{
+        url: `https://www.bigbasket.com/pd/${itemId}`,
+        summary: JSON.stringify({ ...pack, currency: 'INR' }),
+      }] : [] });
+    }
     return Response.json({ results: [
       { url: product('no-offer'), summary: 'USD 0.99' },
       ...(itemId ? [{ url: product(itemId), summary: JSON.stringify(entries[itemId]) }] : []),
@@ -219,4 +227,10 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   assert.equal(prices.oil, 5);
   assert.equal(prices.milk, 3);
   for (const itemId of ['salt', 'potatoes', 'sugar', 'pasta', 'bread']) assert.equal(prices[itemId], null);
+
+  const india = await fetchCountryItems(COUNTRIES.find(({ code }) => code === 'IN'), {
+    fxRate: 0.012, learnedRoutes: new Map(), routeUpdates: new Map(), routeDeletes: new Set(),
+  });
+  assert.equal(india.find(item => item.itemId === 'salt').localPrice, 100);
+  assert.equal(india.find(item => item.itemId === 'rice').localPrice, null);
 });

@@ -70,15 +70,14 @@ Only use units in the schema. Never guess a quantity or combine details from dif
 function normalizeOffer(offer, item, currency, fxRate) {
   if (offer?.matchesStaple !== true || typeof offer.productName !== 'string' || !offer.productName.trim()) return null;
   if (typeof offer.offerEvidence !== 'string' || !offer.offerEvidence.trim()) return null;
-  if (offer.currency !== currency || !Number.isFinite(offer.price) ||
-      offer.price <= (CURRENCY_MIN[currency] ?? 0) || offer.price >= 100000) return null;
+  if (offer.currency !== currency || !Number.isFinite(offer.price) || offer.price <= 0 || offer.price >= 100000) return null;
   if (!Number.isFinite(offer.quantity) || offer.quantity <= 0) return null;
   const source = Object.hasOwn(UNIT_FACTORS, offer.unit) ? UNIT_FACTORS[offer.unit] : null;
   const [, quantity, unit] = /^(\d+)([a-z]+)$/i.exec(item.unit);
   const [dimension, factor] = UNIT_FACTORS[unit.toLowerCase()];
   if (source?.[0] !== dimension || (dimension === 'count' && !Number.isInteger(offer.quantity))) return null;
   const price = offer.price * Number(quantity) * factor / (offer.quantity * source[1]);
-  if (!Number.isFinite(price) || price <= 0 || price * fxRate > ITEM_USD_MAX[item.id]) return null;
+  if (!Number.isFinite(price) || price <= (CURRENCY_MIN[currency] ?? 0) || price * fxRate > ITEM_USD_MAX[item.id]) return null;
   return price;
 }
 
