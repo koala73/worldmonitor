@@ -211,7 +211,7 @@ export function createSparklineHistoryCache(command, keyPrefix) {
       const { result } = await command(['GET', key(symbol)]);
       const cached = result ? JSON.parse(result) : null;
       if (cached?.unavailable) return { unavailable: true };
-      return Number.isFinite(sessionStart) && cached?.sessionStart === sessionStart ? { chart: cached.chart } : null;
+      return cached?.sessionStart === sessionStart ? { chart: cached.chart } : null;
     },
     async markUnavailable(symbol) {
       await command(['SET', key(symbol), JSON.stringify({ unavailable: true }), 'EX', SPARKLINE_HISTORY_RETRY_SECONDS]);

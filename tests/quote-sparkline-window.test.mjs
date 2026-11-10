@@ -44,6 +44,7 @@ describe('buildQuoteSparkline', () => {
     assert.ok(sparkline.length > 0, 'series built');
     assert.ok(!sparkline.includes(98.32), `spike removed: ${sparkline.join(',')}`);
     assert.ok(Math.max(...sparkline) < 95, 'no point near the spike survives');
+    assert.equal(sparkline.length, Math.ceil(closes.length / 5), 'the spike\'s bucket keeps a clean close instead of being dropped');
   });
 
   it('keeps a level shift that persists', () => {
