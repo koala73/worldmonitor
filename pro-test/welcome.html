@@ -12,11 +12,12 @@
          WITHOUT executing the dashboard SPA — the SPA registers its own richer
          WebMCP tools separately (src/services/webmcp.ts), but the apex serves
          this static welcome page, not the SPA. Spec:
-         https://webmachinelearning.github.io/webmcp/. Each tool is an object
-         literal passed straight to registerTool, so static readers (ora.ai)
-         see every tool. document.modelContext comes first; navigator.modelContext
-         is the trailing fallback for older builds, and its batch provideContext
-         API receives the same literals. Registers synchronously at parse time
+         https://webmachinelearning.github.io/webmcp/. Each tool is a named object
+         literal that register() passes to current.registerTool(...), where
+         current is read only from document.modelContext, so static readers
+         (ora.ai) can trace every call to the document entry point. A separate
+         legacy variable holds navigator.modelContext as the trailing fallback
+         for older builds; its batch provideContext API receives the same literals. Registers synchronously at parse time
          when the provider is already present (native WebMCP), and retries once
          on DOMContentLoaded/load for a provider installed later (e.g. a scanner
          polyfill); the registration guard keeps it idempotent, and it is a
@@ -50,185 +51,184 @@
             return res.json();
           });
         }
-        // Every tool is an object literal passed straight to registerTool.
-        function registerTools(modelContext) {
-          return [
-            modelContext.registerTool({
-              name: 'openDashboard',
-              title: 'Open World Monitor Dashboard',
-              description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  monitor: {
-                    type: 'string',
-                    enum: ['world', 'tech', 'finance', 'commodity', 'energy', 'happy'],
-                    description: 'Which monitor to open. Defaults to "world".'
-                  }
-                },
-                additionalProperties: false
-              },
-              annotations: { readOnlyHint: false },
-              execute: function (args) {
-                var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
-                // Own-property lookup only — self-validate here rather than trust the
-                // host to enforce inputSchema, so an off-enum key (incl. prototype
-                // keys like "constructor"/"__proto__") can never resolve into
-                // window.location. Unknown keys fall back to the world map.
-                var url = Object.prototype.hasOwnProperty.call(MONITORS, key) ? MONITORS[key] : MONITORS.world;
-                if (url === MONITORS.world) key = 'world';
-                try {
-                  window.location.assign(url);
-                } catch (e) {
-                  throw new Error('World Monitor could not open the dashboard.');
-                }
-                return 'Opening the ' + key + ' monitor: ' + url;
+        // Each tool is a named object literal. register() passes them to
+        // registerTool on a provider read straight from document.modelContext
+        // (navigator.modelContext only as the trailing fallback), which is the
+        // shape static WebMCP readers such as ora.ai can trace.
+        var OPEN_DASHBOARD_TOOL = {
+          name: 'openDashboard',
+          title: 'Open World Monitor Dashboard',
+          description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              monitor: {
+                type: 'string',
+                enum: ['world', 'tech', 'finance', 'commodity', 'energy', 'happy'],
+                description: 'Which monitor to open. Defaults to "world".'
               }
-            }),
-            modelContext.registerTool({
-              name: 'getWorldMonitorMcpEndpoint',
-              title: 'Get World Monitor MCP Endpoint',
-              description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
-              inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-              annotations: { readOnlyHint: true },
-              execute: function () {
-                // No tool count here — the live server card is the source of truth
-                // (a hardcoded number would drift). Agents read the catalog from it.
-                return {
-                  endpoint: 'https://worldmonitor.app/mcp',
-                  transport: 'streamableHttp',
-                  serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
-                  auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
-                  publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
-                };
-              }
-            }),
-            modelContext.registerTool({
-              name: 'listCountryScorecards',
-              title: 'List Country Scorecards',
-              description: 'Browse five-factor capability scorecards (food, energy, demographics, technology, defense) for ranked countries, 1-5 per pillar, in pages of up to 15 countries. A null score means too little data. No account needed. Use getCountryScorecard for one country in detail.',
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  countryCodes: {
-                    type: 'array',
-                    items: { type: 'string', pattern: '^[A-Za-z]{2}$' },
-                    maxItems: 15,
-                    description: 'ISO 3166-1 alpha-2 codes to return, such as ["DE", "JP"]. Omit to page through every country.'
-                  },
-                  offset: {
-                    type: 'integer',
-                    minimum: 0,
-                    description: 'Number of countries to skip, for paging. Defaults to 0.'
-                  },
-                  limit: {
-                    type: 'integer',
-                    minimum: 1,
-                    maximum: 15,
-                    description: 'Countries per page, 1 to 15. Defaults to 15.'
-                  }
-                },
-                additionalProperties: false
+            },
+            additionalProperties: false
+          },
+          annotations: { readOnlyHint: false },
+          execute: function (args) {
+            var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
+            // Own-property lookup only — self-validate here rather than trust the
+            // host to enforce inputSchema, so an off-enum key (incl. prototype
+            // keys like "constructor"/"__proto__") can never resolve into
+            // window.location. Unknown keys fall back to the world map.
+            var url = Object.prototype.hasOwnProperty.call(MONITORS, key) ? MONITORS[key] : MONITORS.world;
+            if (url === MONITORS.world) key = 'world';
+            try {
+              window.location.assign(url);
+            } catch (e) {
+              throw new Error('World Monitor could not open the dashboard.');
+            }
+            return 'Opening the ' + key + ' monitor: ' + url;
+          }
+        };
+        var MCP_ENDPOINT_TOOL = {
+          name: 'getWorldMonitorMcpEndpoint',
+          title: 'Get World Monitor MCP Endpoint',
+          description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
+          inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+          annotations: { readOnlyHint: true },
+          execute: function () {
+            // No tool count here — the live server card is the source of truth
+            // (a hardcoded number would drift). Agents read the catalog from it.
+            return {
+              endpoint: 'https://worldmonitor.app/mcp',
+              transport: 'streamableHttp',
+              serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
+              auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
+              publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
+            };
+          }
+        };
+        var LIST_SCORECARDS_TOOL = {
+          name: 'listCountryScorecards',
+          title: 'List Country Scorecards',
+          description: 'Browse five-factor capability scorecards (food, energy, demographics, technology, defense) for ranked countries, 1-5 per pillar, in pages of up to 15 countries. A null score means too little data. No account needed. Use getCountryScorecard for one country in detail.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              countryCodes: {
+                type: 'array',
+                items: { type: 'string', pattern: '^[A-Za-z]{2}$' },
+                maxItems: 15,
+                description: 'ISO 3166-1 alpha-2 codes to return, such as ["DE", "JP"]. Omit to page through every country.'
               },
-              annotations: { readOnlyHint: true },
-              execute: function (args) {
-                var input = args || {};
-                var wanted = null;
-                if (Array.isArray(input.countryCodes) && input.countryCodes.length > 0) {
-                  if (input.countryCodes.length > 15) throw new Error('countryCodes holds at most 15 codes.');
-                  wanted = {};
-                  for (var i = 0; i < input.countryCodes.length; i++) {
-                    var code = input.countryCodes[i];
-                    if (typeof code !== 'string' || !COUNTRY_CODE_RE.test(code)) {
-                      throw new Error('countryCodes must hold two-letter ISO country codes.');
-                    }
-                    wanted[code.toUpperCase()] = true;
-                  }
+              offset: {
+                type: 'integer',
+                minimum: 0,
+                description: 'Number of countries to skip, for paging. Defaults to 0.'
+              },
+              limit: {
+                type: 'integer',
+                minimum: 1,
+                maximum: 15,
+                description: 'Countries per page, 1 to 15. Defaults to 15.'
+              }
+            },
+            additionalProperties: false
+          },
+          annotations: { readOnlyHint: true },
+          execute: function (args) {
+            var input = args || {};
+            var wanted = null;
+            if (Array.isArray(input.countryCodes) && input.countryCodes.length > 0) {
+              if (input.countryCodes.length > 15) throw new Error('countryCodes holds at most 15 codes.');
+              wanted = {};
+              for (var i = 0; i < input.countryCodes.length; i++) {
+                var code = input.countryCodes[i];
+                if (typeof code !== 'string' || !COUNTRY_CODE_RE.test(code)) {
+                  throw new Error('countryCodes must hold two-letter ISO country codes.');
                 }
-                var offset = typeof input.offset === 'number' && input.offset >= 0 ? Math.floor(input.offset) : 0;
-                var limit = typeof input.limit === 'number' && input.limit >= 1 ? Math.min(15, Math.floor(input.limit)) : 15;
-                return readScorecards('list-five-factor-scorecards').then(function (body) {
-                  var matches = [];
-                  var cards = Array.isArray(body.scorecards) ? body.scorecards : [];
-                  for (var c = 0; c < cards.length; c++) {
-                    if (!wanted || Object.prototype.hasOwnProperty.call(wanted, cards[c].countryCode)) matches.push(cards[c]);
-                  }
-                  var rows = [];
-                  var page = matches.slice(offset, offset + limit);
-                  for (var r = 0; r < page.length; r++) {
-                    var scores = {};
-                    var pillars = Array.isArray(page[r].pillars) ? page[r].pillars : [];
-                    for (var p = 0; p < pillars.length; p++) {
-                      scores[pillars[p].pillar] = pillars[p].hasScore ? pillars[p].score : null;
-                    }
-                    rows.push({ countryCode: page[r].countryCode, scores: scores });
-                  }
-                  return {
-                    total: matches.length,
-                    offset: offset,
-                    nextOffset: offset + rows.length < matches.length ? offset + rows.length : null,
-                    computedAt: body.computedAt || null,
-                    unavailable: Boolean(body.unavailable),
-                    scorecards: rows
-                  };
+                wanted[code.toUpperCase()] = true;
+              }
+            }
+            var offset = typeof input.offset === 'number' && input.offset >= 0 ? Math.floor(input.offset) : 0;
+            var limit = typeof input.limit === 'number' && input.limit >= 1 ? Math.min(15, Math.floor(input.limit)) : 15;
+            return readScorecards('list-five-factor-scorecards').then(function (body) {
+              var matches = [];
+              var cards = Array.isArray(body.scorecards) ? body.scorecards : [];
+              for (var c = 0; c < cards.length; c++) {
+                if (!wanted || Object.prototype.hasOwnProperty.call(wanted, cards[c].countryCode)) matches.push(cards[c]);
+              }
+              var rows = [];
+              var page = matches.slice(offset, offset + limit);
+              for (var r = 0; r < page.length; r++) {
+                var scores = {};
+                var pillars = Array.isArray(page[r].pillars) ? page[r].pillars : [];
+                for (var p = 0; p < pillars.length; p++) {
+                  scores[pillars[p].pillar] = pillars[p].hasScore ? pillars[p].score : null;
+                }
+                rows.push({ countryCode: page[r].countryCode, scores: scores });
+              }
+              return {
+                total: matches.length,
+                offset: offset,
+                nextOffset: offset + rows.length < matches.length ? offset + rows.length : null,
+                computedAt: body.computedAt || null,
+                unavailable: Boolean(body.unavailable),
+                scorecards: rows
+              };
+            });
+          }
+        };
+        var GET_SCORECARD_TOOL = {
+          name: 'getCountryScorecard',
+          title: 'Get Country Scorecard',
+          description: "Read one country's five-factor capability scorecard: each pillar's 1-5 score, band, input coverage and data sources, plus a link to the full evidence JSON. No account needed.",
+          inputSchema: {
+            type: 'object',
+            properties: {
+              countryCode: {
+                type: 'string',
+                pattern: '^[A-Za-z]{2}$',
+                description: 'ISO 3166-1 alpha-2 country code, such as "DE".'
+              }
+            },
+            required: ['countryCode'],
+            additionalProperties: false
+          },
+          annotations: { readOnlyHint: true },
+          execute: function (args) {
+            var code = args && typeof args.countryCode === 'string' ? args.countryCode : '';
+            if (!COUNTRY_CODE_RE.test(code)) {
+              throw new Error('countryCode must be a two-letter ISO country code.');
+            }
+            var path = 'get-five-factor-scorecard?countryCode=' + code.toUpperCase();
+            return readScorecards(path).then(function (body) {
+              var card = body.scorecard || {};
+              var pillars = Array.isArray(card.pillars) ? card.pillars : [];
+              var summary = [];
+              for (var p = 0; p < pillars.length; p++) {
+                var sources = [];
+                var inputs = Array.isArray(pillars[p].inputs) ? pillars[p].inputs : [];
+                for (var i = 0; i < inputs.length && sources.length < 3; i++) {
+                  var source = inputs[i] && typeof inputs[i].source === 'string' ? inputs[i].source.slice(0, 60) : '';
+                  if (source && sources.indexOf(source) === -1) sources.push(source);
+                }
+                summary.push({
+                  pillar: pillars[p].pillar,
+                  score: pillars[p].hasScore ? pillars[p].score : null,
+                  band: pillars[p].band || null,
+                  inputCoverage: pillars[p].inputCoverage,
+                  sources: sources
                 });
               }
-            }),
-            modelContext.registerTool({
-              name: 'getCountryScorecard',
-              title: 'Get Country Scorecard',
-              description: "Read one country's five-factor capability scorecard: each pillar's 1-5 score, band, input coverage and data sources, plus a link to the full evidence JSON. No account needed.",
-              inputSchema: {
-                type: 'object',
-                properties: {
-                  countryCode: {
-                    type: 'string',
-                    pattern: '^[A-Za-z]{2}$',
-                    description: 'ISO 3166-1 alpha-2 country code, such as "DE".'
-                  }
-                },
-                required: ['countryCode'],
-                additionalProperties: false
-              },
-              annotations: { readOnlyHint: true },
-              execute: function (args) {
-                var code = args && typeof args.countryCode === 'string' ? args.countryCode : '';
-                if (!COUNTRY_CODE_RE.test(code)) {
-                  throw new Error('countryCode must be a two-letter ISO country code.');
-                }
-                var path = 'get-five-factor-scorecard?countryCode=' + code.toUpperCase();
-                return readScorecards(path).then(function (body) {
-                  var card = body.scorecard || {};
-                  var pillars = Array.isArray(card.pillars) ? card.pillars : [];
-                  var summary = [];
-                  for (var p = 0; p < pillars.length; p++) {
-                    var sources = [];
-                    var inputs = Array.isArray(pillars[p].inputs) ? pillars[p].inputs : [];
-                    for (var i = 0; i < inputs.length && sources.length < 3; i++) {
-                      var source = inputs[i] && typeof inputs[i].source === 'string' ? inputs[i].source.slice(0, 60) : '';
-                      if (source && sources.indexOf(source) === -1) sources.push(source);
-                    }
-                    summary.push({
-                      pillar: pillars[p].pillar,
-                      score: pillars[p].hasScore ? pillars[p].score : null,
-                      band: pillars[p].band || null,
-                      inputCoverage: pillars[p].inputCoverage,
-                      sources: sources
-                    });
-                  }
-                  return {
-                    countryCode: card.countryCode || code.toUpperCase(),
-                    unavailable: Boolean(body.unavailable),
-                    computedAt: card.computedAt || null,
-                    methodologyVersion: card.methodologyVersion || null,
-                    pillars: summary,
-                    evidenceUrl: SCORECARD_API + path
-                  };
-                });
-              }
-            })
-          ];
-        }
+              return {
+                countryCode: card.countryCode || code.toUpperCase(),
+                unavailable: Boolean(body.unavailable),
+                computedAt: card.computedAt || null,
+                methodologyVersion: card.methodologyVersion || null,
+                pillars: summary,
+                evidenceUrl: SCORECARD_API + path
+              };
+            });
+          }
+        };
         var registrationStarted = false;
         var registered = false;
         function settle(results) {
@@ -243,18 +243,6 @@
             registered = values.some(function (value) { return value; });
           });
         }
-        // Wraps each registerTool so one throwing call cannot stop the rest.
-        function guarded(modelContext) {
-          return {
-            registerTool: function (tool) {
-              try {
-                return modelContext.registerTool(tool);
-              } catch (e) {
-                return Promise.reject(e);
-              }
-            }
-          };
-        }
         function register() {
           if (registrationStarted || registered) return;
           var current = null;
@@ -263,9 +251,14 @@
           } catch (e) {
             return;
           }
+          var results = [];
           if (current && typeof current.registerTool === 'function') {
             registrationStarted = true;
-            settle(registerTools(guarded(current)));
+            try { results.push(current.registerTool(OPEN_DASHBOARD_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(current.registerTool(MCP_ENDPOINT_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(current.registerTool(LIST_SCORECARDS_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(current.registerTool(GET_SCORECARD_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            settle(results);
             return;
           }
           // Trailing compatibility fallback for builds that only expose the
@@ -279,15 +272,17 @@
           if (!legacy) return;
           if (typeof legacy.registerTool === 'function') {
             registrationStarted = true;
-            settle(registerTools(guarded(legacy)));
+            try { results.push(legacy.registerTool(OPEN_DASHBOARD_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(legacy.registerTool(MCP_ENDPOINT_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(legacy.registerTool(LIST_SCORECARDS_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            try { results.push(legacy.registerTool(GET_SCORECARD_TOOL)); } catch (e) { results.push(Promise.reject(e)); }
+            settle(results);
             return;
           }
           if (typeof legacy.provideContext !== 'function') return;
           registrationStarted = true;
-          var batch = [];
-          registerTools({ registerTool: function (tool) { batch.push(tool); } });
           try {
-            Promise.resolve(legacy.provideContext({ tools: batch })).then(
+            Promise.resolve(legacy.provideContext({ tools: [OPEN_DASHBOARD_TOOL, MCP_ENDPOINT_TOOL, LIST_SCORECARDS_TOOL, GET_SCORECARD_TOOL] })).then(
               function () { registered = true; },
               function () { registered = false; }
             );

@@ -2722,6 +2722,28 @@ describe('homepage WebMCP source registration', () => {
     assert.match(homepageSourceScript.body, /function \(\) \{ return false; \}/);
   });
 
+  // ora.ai's static WebMCP reader credits only registerTool() calls whose
+  // receiver it can trace to document.modelContext. A helper that takes the
+  // provider as a parameter, or one variable that may hold either provider,
+  // dropped the homepage from 4.8/8 to 1.6/8.
+  it('keeps every registerTool call statically traceable to its provider', () => {
+    const body = homepageSourceScript.body;
+    const receivers = [...body.matchAll(/(\w+)\.registerTool\(/g)].map((m) => m[1]);
+    const currentCalls = receivers.filter((name) => name === 'current');
+    assert.equal(currentCalls.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
+    assert.deepEqual([...new Set(receivers)].sort(), ['current', 'legacy']);
+    const currentAssignments = [...body.matchAll(/\bcurrent\s*=(?!=)\s*([^;]+);/g)].map((m) => m[1].trim());
+    // Every value an assignment can produce must be document.modelContext or
+    // null; an optional `typeof document` guard may select between them.
+    const value = String.raw`(?:document\.modelContext|null)`;
+    const allowedRhs = new RegExp(
+      String.raw`^(?:typeof\s+document\s*!==?\s*['"]undefined['"]\s*\?\s*${value}\s*:\s*${value}|${value})$`,
+    );
+    assert.ok(currentAssignments.some((rhs) => /\bdocument\.modelContext\b/.test(rhs)));
+    for (const rhs of currentAssignments) assert.match(rhs, allowedRhs);
+    assert.doesNotMatch(body, /function\s+\w*\s*\(\s*modelContext\s*\)/);
+  });
+
   it('registers titled, annotated tools synchronously', () => {
     const result = runHomepage(collectingHomepageProvider);
     assert.deepEqual(result.registered.map((tool) => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
