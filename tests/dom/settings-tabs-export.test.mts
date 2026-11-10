@@ -220,4 +220,25 @@ describe('new tabs from saved panels', () => {
     expect(newestStoredTab().panelSettings['live-news']!.enabled).toBe(true);
     expect(newestStoredTab().panelSettings['positive-feed']!.enabled).toBe(false);
   });
+
+  it('round-trips the saved panels through a settings backup', async () => {
+    useThisTab();
+    const data = await backup();
+    expect(data[newTabPanelsKey]).toBe(localStorage.getItem(newTabPanelsKey));
+
+    localStorage.clear();
+    await importSettings(file({ [newTabPanelsKey]: data[newTabPanelsKey]! }));
+    addTab();
+
+    expect(newestStoredTab().panelSettings['live-news']!.enabled).toBe(false);
+    expect(newestStoredTab().panelSettings['positive-feed']!.enabled).toBe(true);
+  });
+
+  it('skips a malformed saved-panels value on import and keeps the rest', async () => {
+    await expect(importSettings(file({ [newTabPanelsKey]: '{"key":"live-news"}', 'worldmonitor-theme': 'light' })))
+      .resolves.toEqual({ success: true, keysImported: 1 });
+
+    expect(localStorage.getItem(newTabPanelsKey)).toBeNull();
+    expect(localStorage.getItem('worldmonitor-theme')).toBe('light');
+  });
 });
