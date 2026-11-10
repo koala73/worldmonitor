@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -358,6 +358,30 @@ describe('search-links CLI', () => {
       assert.deepEqual(runCli(['--write'], { rootDir: root, log: () => {} }).written, [], 'a rerun is a no-op');
       const links = loadSearchLinks({ rootDir: root, resolves: () => true });
       assert.deepEqual([...links.keys()].sort(), ['/countries/yemen/', '/use-cases/monitor-maritime-security/']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('writes no ledger for a family with nothing to hold, and removes one the proposal empties', () => {
+    const root = fixtureRepo();
+    try {
+      for (const family of SEARCH_LINK_FAMILIES) {
+        if (family !== 'chokepoints') rmSync(join(root, searchLinksPath(family)));
+      }
+      writeFileSync(join(root, searchLinksPath('crises')), JSON.stringify({
+        snapshot: 'docs/research/seo-ai-visibility/gsc/2026-11-09.json',
+        pages: { '/crises/red-sea/': [{ href: '/countries/yemen/', anchor: 'Red sea crisis' }] },
+        exclusions: [],
+      }));
+      const result = runCli(['--write'], { rootDir: root, log: () => {} });
+      assert.deepEqual(result.written, [searchLinksPath('countries'), searchLinksPath('crises'), searchLinksPath('use-cases')]);
+      assert.deepEqual(
+        SEARCH_LINK_FAMILIES.filter((family) => existsSync(join(root, searchLinksPath(family)))),
+        ['countries', 'chokepoints', 'use-cases'],
+        'only ledgers holding links or exclusions exist',
+      );
+      assert.deepEqual(runCli(['--write'], { rootDir: root, log: () => {} }).written, [], 'a rerun is a no-op');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
