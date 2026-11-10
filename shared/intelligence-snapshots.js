@@ -67,12 +67,15 @@ export function normalizeAdvisorySnapshot(value) {
 }
 
 const REGISTER_LEVELS = new Set(['normal', 'caution', 'reconsider', 'do-not-travel']);
+// The UK FCDO's warnings ('none' or e.g. 'all-parts+essential-parts') and the
+// CDC's travel health notice levels have their own scales.
+const OTHER_REGISTER_LEVEL = /^(none|(all|essential)-(whole|parts)(\+(all|essential)-(whole|parts)){0,3}|cdc-[1-4])$/;
 
 /** A register row has the advisory item shape; its `pubDate` is '' when the feed gave no date. */
 export function isAdvisoryRegisterLevel(item) {
   return record(item)
     && typeof item.country === 'string' && /^[A-Z]{2}$/.test(item.country)
-    && text(item.title) && text(item.source) && text(item.sourceCountry) && REGISTER_LEVELS.has(item.level)
+    && text(item.title) && text(item.source) && text(item.sourceCountry) && (REGISTER_LEVELS.has(item.level) || OTHER_REGISTER_LEVEL.test(item.level))
     && typeof item.pubDate === 'string' && (item.pubDate === '' || Number.isFinite(Date.parse(item.pubDate)))
     && text(item.link) && /^https:\/\//.test(item.link);
 }

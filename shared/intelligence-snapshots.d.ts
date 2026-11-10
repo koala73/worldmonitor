@@ -48,9 +48,14 @@ export interface AdvisoryRegisterLevelRecord {
   pubDate: string;
   /** Register name, e.g. "US State Dept". */
   source: string;
-  /** Issuing government: "US" or "AU". */
+  /** Issuing government: "US", "AU" or "UK". */
   sourceCountry: string;
-  level: 'normal' | 'caution' | 'reconsider' | 'do-not-travel';
+  /**
+   * US and Australian advisory levels; for the UK FCDO, 'none' or its warnings
+   * joined by '+' (e.g. 'all-parts+essential-parts'); for CDC Travel Notices,
+   * 'cdc-1'..'cdc-4', one row per notice and country.
+   */
+  level: string;
   /** ISO 3166-1 alpha-2 destination. */
   country: string;
 }
