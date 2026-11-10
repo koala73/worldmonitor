@@ -60,7 +60,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | BIS exchange rates | `GET /api/economic/v1/get-bis-exchange-rates` | BIS real effective exchange-rate table; bootstrap-first via `bisExchange`. |
 | BIS credit | `GET /api/economic/v1/get-bis-credit` | BIS credit-to-GDP rankings; bootstrap-first via `bisCredit`. |
 | FRED batch | `POST /api/economic/v1/get-fred-series-batch` | Macro tiles and FRED dashboard series in one call. |
-| Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel via `groceryBasket`. Verified retail offers are priced at standard quantities. Only baskets with all ten staples qualify for rankings. Weekly change requires complete baskets in the current and prior UTC weeks. |
+| Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel via `groceryBasket`. Verified retail offers are priced at standard quantities. Only baskets with all ten staples qualify for rankings. Weekly change compares each complete basket with the same country's complete basket from 7 days earlier, within 12 hours. |
 | Big Mac prices | `GET /api/economic/v1/list-bigmac-prices` | Big Mac Index panel; bootstrap-first via `bigmac`. |
 | National debt | `GET /api/economic/v1/get-national-debt` | Global Debt Clock panel; bootstrap-first via `nationalDebt`. Free. |
 | Fuel prices | `GET /api/economic/v1/list-fuel-prices` | Fuel Prices panel; bootstrap-first via `fuelPrices`. |
