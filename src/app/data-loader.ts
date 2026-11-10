@@ -3957,7 +3957,7 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const { protests, ucdpEvents = [] } = this.ctx.intelligenceCache;
+      const { protests, ucdpEvents } = this.ctx.intelligenceCache;
       const perSourceLimit = 10;
       const exposures = [
         ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
@@ -3965,14 +3965,19 @@ export class DataLoaderManager implements AppModule {
           name: e.city ? `${e.city}, ${e.country}` : e.title,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })), perSourceLimit),
-        ...enrichEventsWithExposure(ucdpEvents.map(e => ({
+        ...enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
           id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
           name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })), perSourceLimit),
       ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
-      this.callPanel('population-exposure', 'setExposures', exposures);
-      if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
+      if (exposures.length === 0 && (!protests || !ucdpEvents)) {
+        this.callPanel('population-exposure', 'showError');
+        dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
+      } else {
+        this.callPanel('population-exposure', 'setExposures', exposures);
+        dataFreshness.recordUpdate('worldpop', exposures.length);
+      }
     } catch (error) {
       console.error('[Intelligence] Population exposure fetch failed:', error);
       this.callPanel('population-exposure', 'showError');

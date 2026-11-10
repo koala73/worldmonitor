@@ -349,6 +349,36 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     }
   });
 
+  it.each(['unrest', 'ucdp', 'neither'] as const)(
+    'distinguishes a cold source failure from a successful empty exposure result: %s',
+    async (failedSource) => {
+      if (failedSource !== 'unrest') {
+        mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+      }
+      mocks.fetchUcdpEvents.mockResolvedValue({
+        success: failedSource !== 'ucdp',
+        data: failedSource === 'ucdp' ? [] : [{
+          id: 'legacy-row', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+          side_a: 'Side A', side_b: 'Side B', type_of_violence: 'state-based',
+        }],
+      });
+      const { loader, ctx } = await makeLoader();
+      const setExposures = vi.fn();
+      const showError = vi.fn();
+      ctx.panels['population-exposure'] = { setExposures, showError } as unknown as AppContext['panels'][string];
+
+      await loader.loadIntelligenceSignals();
+
+      if (failedSource === 'neither') {
+        expect(showError).not.toHaveBeenCalled();
+        expect(setExposures).toHaveBeenCalledExactlyOnceWith([]);
+      } else {
+        expect(showError).toHaveBeenCalledOnce();
+        expect(setExposures).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   it('invokes refreshOpenCountryTimeline after loadMilitary assigns tracks', async () => {
     mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [],dataState:{mode:'cached',timestamp:1000,offline:false} });
     vesselsModule.fetchMilitaryVessels.mockResolvedValueOnce({vessels:[],clusters:[],dataState:{mode:'live',timestamp:2000,offline:false},negativeEvidenceConfirmed:false,coverageNotes:['partial roster']} as never);
