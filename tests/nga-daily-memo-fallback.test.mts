@@ -65,6 +65,33 @@ describe('NGA daily memo fallback', () => {
     assert.equal(parseNgaDailyMemo(MAINTENANCE_PAGE, 'P', 'HYDROPAC', NOW), null);
   });
 
+  it('skips the area\'s own in-force summary notice, which carries no warning number', () => {
+    // NAVAREA IV began listing its in-force summary as a block of its own on
+    // 2026-11-09 (Sentry WORLDMONITOR-1C4): a date-time group, the bare
+    // authority, then the list of warning numbers. It is an index of the
+    // warnings already in the memo, not a hazard.
+    const iv = MEMO_FIXTURES[NGA_DAILY_MEMO_URLS[0]!]!;
+    const summary = [
+      '061615Z NOV 26',
+      'NAVAREA IV',
+      '1. NAVAREA IV WARNINGS IN FORCE AS OF 061615Z NOV. ',
+      '   ALL THE INFORCE WARNINGS ARE LISTED HERE.',
+      '   1070/2026, 227/2025.',
+      '2. CANCEL NAVAREA IV 1060/26.',
+    ].join('\n');
+    const withSummary = iv.replace('052129Z NOV 26\n', `${summary}\n\n052129Z NOV 26\n`);
+    assert.notEqual(withSummary, iv);
+    const parsed = parseNgaDailyMemo(withSummary, '4', 'NAVAREA IV', NOW);
+    assert.deepEqual(parsed?.map((w) => [w.msgNumber, w.subregion]), [[1070, ''], [227, '25']]);
+
+    // Only that exact notice is skipped: a bare-authority block saying anything
+    // else is still a format change, and another area's summary is not ours.
+    const unknownBare = withSummary.replace('WARNINGS IN FORCE AS OF 061615Z NOV.', 'NEW FORMAT NOTICE.');
+    assert.equal(parseNgaDailyMemo(unknownBare, '4', 'NAVAREA IV', NOW), null);
+    const otherArea = withSummary.replace('1. NAVAREA IV WARNINGS IN FORCE', '1. HYDROLANT WARNINGS IN FORCE');
+    assert.equal(parseNgaDailyMemo(otherArea, '4', 'NAVAREA IV', NOW), null);
+  });
+
   it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {
     const pac = MEMO_FIXTURES[NGA_DAILY_MEMO_URLS[3]!]!;
     const reformatted = pac.replace('HYDROPAC 3229/26', 'HYDROPAC WARNING 3229-26');

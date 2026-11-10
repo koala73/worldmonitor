@@ -94,6 +94,7 @@ export function parseNgaDailyMemo(
   if (asOf.ms > nowMs + 60 * 60 * 1000 || nowMs - asOf.ms > NGA_DAILY_MEMO_MAX_AGE_MS) return null;
 
   const idRe = new RegExp(`^${authority} (\\d+)/(\\d{2})(?:\\((\\w+)\\))?\\.?$`);
+  const inForceSummaryRe = new RegExp(`^1\\. ${authority} WARNINGS IN FORCE AS OF \\d{6}Z [A-Z]{3}\\.?$`);
   const warnings: NgaBroadcastWarning[] = [];
   const blocks = lines.slice(headerIndex + 1).join('\n').split(/\n[ \t]*\n/);
   for (const block of blocks) {
@@ -101,6 +102,12 @@ export function parseNgaDailyMemo(
     if (blockLines.length === 0 || /^To receive Broadcast Warning messages/.test(blockLines[0]!)) continue;
     // A warning names itself within its first three lines: after a date-time
     // group, or after the MSGID/RMKS preamble on undated legacy notices.
+    // The area's own in-force summary (Sentry WORLDMONITOR-1C4): a dated
+    // block whose id line is the bare authority and whose body indexes the
+    // warning numbers already listed. It names no hazard, so skip it; any
+    // other bare-authority block still fails the memo below.
+    const bareIndex = blockLines.slice(0, 2).findIndex((line) => line.trim() === authority);
+    if (bareIndex >= 0 && inForceSummaryRe.test(blockLines[bareIndex + 1]?.trim() ?? '')) continue;
     const idIndex = blockLines.slice(0, 3).findIndex((line) => idRe.test(line.trim()));
     // An unrecognized block means the format changed or the file is
     // truncated; a partial list would read as fewer hazards.
