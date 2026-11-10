@@ -131,7 +131,7 @@ jobs:
           git add shared/product-facts.generated.json scripts/shared/product-facts.generated.json \
             shared/product-catalog.generated.json scripts/shared/product-catalog.generated.json \
             api/_product-catalog.generated.js pro-test/src/generated/depth-stats.json \
-            index.html src/config/variant-meta.ts docs/about.mdx docs/overview.mdx \
+            index.html src/config/variant-meta.ts docs/about.mdx docs/platform-evaluation.mdx \
             docs/methodology/country-resilience-index.mdx docs/zh/methodology/country-resilience-index.mdx \
             blog-site/src/content/blog/country-instability-index-methodology-explained.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"

@@ -134,7 +134,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
   // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
   // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
-  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // only (see docs/mcp-tools/signals.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
   // === fetch-on-miss (29) ===

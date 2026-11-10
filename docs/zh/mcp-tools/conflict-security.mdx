@@ -1,0 +1,158 @@
+---
+title: "MCP 工具：冲突与安全"
+sidebarTitle: "冲突与安全"
+description: "World Monitor MCP 工具参考：冲突事件、犯罪数据、网络威胁、制裁、试验场地震与国防工业。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`get_toronto_reported_occurrences`](/mcp-tools/conflict-security#get_toronto_reported_occurrences)、[`get_toronto_calls_attended`](/mcp-tools/conflict-security#get_toronto_calls_attended)、[`get_defense_industrial_base`](/mcp-tools/conflict-security#get_defense_industrial_base)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_conflict_events`
+
+活跃武装冲突事件（UCDP、伊朗）、带地理坐标的动荡事件和国家风险评分。涵盖全球正在进行的冲突、抗议和不稳定指数。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country` | string | 筛选为一个国家 — 在冲突/动荡事件上匹配国家名称，在风险评分上匹配 ISO 3166-1 alpha-2 地区代码（不区分大小写）。 |
+| `min_fatalities` | number | 丢弃低于此死亡数的事件（UCDP deathsBest / 动荡死亡数）。 |
+| `limit` | number | 将每个事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+| `panel_request` | string | 付费冲突事件凭据，在到期前复用受限内部筛选读取。API 和免费账户不接受。 |
+| `refresh` | boolean | 仅限付费面板。true 需附带 UUID request_id，并省略 panel_request，以开始一次新分配。 |
+| `request_id` | string | 显式付费刷新的 UUID。同一 UUID 的重试复用分配及原始到期时间，字母大小写不改变身份。 |
+| `bbox` | object | 仅保留此范围内的事件。sw_lon > ne_lon 表示跨越 180° 经线。不能与 lat/lon/radius_km 同时使用。 |
+| `lat` | number | radius_km 的中心纬度；需同时提供 lon 和 radius_km。 |
+| `lon` | number | radius_km 的中心经度；需同时提供 lat 和 radius_km。 |
+| `radius_km` | number | 仅保留距 lat/lon 大圆距离在此范围内的事件（最大 2000）。 |
+| `since_days` | integer | 仅保留最近 N 天内的事件。 |
+
+- **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **区域与时间筛选：** `bbox` 需提供 `sw_lat`、`sw_lon`、`ne_lat` 和 `ne_lon`（均为必填）。请只传 `bbox`，或同时传 `lat`、`lon` 和 `radius_km` 三者；混用或只传部分半径参数会在扣除任何额度前返回 Invalid params。筛选作用于 UCDP、伊朗和动荡事件，在 `country` 与 `min_fatalities` 之后、`limit` 之前执行；国家风险评分没有坐标，不受筛选。缺少有效坐标（或在使用 `since_days` 时缺少日期）的事件会被丢弃，`data.geo_filter.excluded` 按列表统计这些行，避免把空结果误读为附近没有事件。当 `since_days` 早于某列表最早的带日期行时，`data.geo_filter.oldest_held` 给出该行的时间（epoch 毫秒），避免把宽时间窗误读为完整覆盖。不传这些参数时响应不含 `geo_filter`。
+- **访问与计量：** `free-account`。免费账户使用免费额度，API 套餐保留按工具权重计费。Pro 与 Pro Business 首次打开扣一次额度，规范化筛选与重复打开在五分钟内复用冲突事件分配。每份分配最多允许 64 次未缓存工具执行，未缓存执行与成功缓存回放分别限制为每分钟 64 次。每次执行读取五个固定 Redis 键，启用伊朗事件时为六个，不分别扣额度。
+- **复用与刷新：** 相同筛选的成功原始结果在摘要或 JMESPath 呈现之前回放。显式刷新使用新的 UUID 扣一次新额度；同一 UUID 的重试复用该分配。授权凭据读取查询当前额度，不另行预留；计数器未知时保留数据并省略数字通知。付费参数在预留前拒绝未知字段及非有限数值。普通 API 和免费调用保留既有筛选转换，不接受付费凭据或刷新控制。
+- **来源观察与恢复：** 可选 `conflict_source.ucdp` 仅保留已读取元数据中类型正确的 `fetchedAt`、`candidateVersion`、`candidateComplete` 和 `annualFailedPages`，缺失字段保持缺失。已知不完整、缺失、格式错误、过期或不兼容的数据保持可重试；可用列表仍按请求筛选。元数据与数据不是原子快照，该观察不能证明所有动荡提供方的完整覆盖或 CII/伊朗的独立新鲜度。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** UCDP 冲突事件为 **30 分钟**，动荡事件为 **2 小时**。任一来源超过预算都会设置 `stale: true`。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_conflict_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_cyber_threats`
+
+活跃网络威胁情报：恶意软件 IOC（URLhaus、Feodotracker）、CISA 已知被利用漏洞和活跃的命令与控制基础设施。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `threat_type` | string | 筛选为一种威胁类型（不区分大小写的子串，例如 "malware"、"vulnerability"、"c2"）。 |
+| `min_severity` | string: low / medium / high / critical | 仅保留严重级别已知且达到或高于此级别的威胁；排除严重级别缺失或无法识别的威胁。 |
+| `country` | string | 筛选为一个 ISO 3166-1 alpha-2 国家代码（许多威胁没有国家，会被此筛选丢弃）。 |
+| `limit` | number | 将威胁列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **4 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_cyber_threats","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_sanctions_data`
+
+读取 OFAC SDN、OFAC Consolidated、加拿大 SEMA 制裁和国家压力评分，并可筛查美国综合筛查清单（CSL）中的六个出口管制清单：BIS 实体清单、拒绝人员清单、未核实清单、军事最终用户清单，以及国务院 ITAR 禁止清单和防扩散制裁清单。压力评分只统计 OFAC 和 SEMA；CSL 条目的 `et` 为 `unspecified`，其变更事件带有 `notice`（《联邦公报》引用）和 `url`。`screen` 支持名称、每个实体最多 10 个保留别名和精确 IMO 编号，返回 `score`、`matched_on`、`matched_text`；不要同时提供 `screen` 和 `changes_since_days`。`changes_since_days` 选择仅变更历史模式，返回指定天数内观测到的新增、移除和制裁项目变更。匹配结果仅供进一步向发布机构核实，不构成法律意见。每次调用权重为 1，不在请求时获取外部来源。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country` | string | 将制裁实体和压力评分筛选为一个 ISO 3166-1 alpha-2 国家代码。 |
+| `entity_type` | string | 筛选为一种实体类型（不区分大小写的子串，例如 "vessel"、"aircraft"、"individual"、"entity"；CSL 行为 "unspecified"）。 |
+| `query` | string | 仅保留名称包含此文本的制裁实体（不区分大小写）。 |
+| `screen` | string | 按名称、别名或 IMO 编号筛选，长度 2-200 字符；实体筛选时不要提供 `changes_since_days`。 |
+| `min_score` | number | 最低匹配分数 0-100，默认 70，仅与 `screen` 一起使用。 |
+| `changes_since_days` | integer | 仅返回过去 1–90 天的历史。国家、实体类型和名称查询筛选事件；每页均保留覆盖缺口。 |
+| `changes_cursor` | string | 使用上一页的 `changes.nextCursor` 继续，并保持相同筛选条件。种子历史变化后须重新开始。 |
+| `limit` | number | 默认 30。历史模式中，传 0 或大于 100 的值每页最多返回 100 个事件，并可能因响应预算而减少；其他模式中传 0 表示不限。 |
+
+- **API 端点：** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **访问权限：** 仅限订阅用户（Pro/API）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **12 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_sanctions_data","arguments":{"screen":"Northern Star","min_score":70}}
+  }'
+```
+
+</CodeGroup>
+
+变更记录最多保留 90 天或 10,000 个事件，按观测时间从新到旧返回。`at` 是观测时间（毫秒）；`effectiveAt` 是来源的生效时间字符串，未知时为 `"0"`。制裁项目集合变更产生 `amended` 和 `prevPr`。`gaps` 记录来源保留、不可用、缺少有效基线或单次移除超过 5% 的情况；这些区间不能证明没有变更。`truncatedBefore` 表示事件数量上限导致的历史截断边界。未提供 `changes_since_days` 时省略 `changes`。
+
+历史请求仅返回 `changes`，独立读取缓存并检查新鲜度。时间窗口以 `changes.fetchedAt` 为准。将 `changes.nextCursor` 作为 `changes_cursor` 继续，保持相同筛选条件，直至游标为空；`matchingEvents` 是筛选后的总数。新种子替换历史后，移除游标重新开始。每页均保留窗口内的覆盖缺口。历史缺失或无效时不会重置；当前实体和压力数据仍可继续更新。
+
+### `get_test_site_seismicity`
+
+核试验场地震监测：对已知核试验场附近的 USGS 地震按扩散风险关注度评分。监测已知核试验场（丰溪里、罗布泊、新地岛、内华达国家安全区、塞米巴拉金斯克及其他历史试验场）100 公里范围内的地震事件，并根据震级、距离和深度给出 0–100 评分。关注度等级：low、moderate、elevated、critical。包含每个试验场的汇总（事件数、最高关注度、最大震级）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `site` | string | 按名称子串筛选为一个试验场（例如 "Punggye"、"Lop Nur"，不区分大小写）。 |
+| `min_concern` | string: low / moderate / elevated / critical | 丢弃低于此关注度等级的事件。 |
+| `limit` | number | 将事件列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无（仅 MCP；底层地震列表已由 `get_natural_disasters` 覆盖）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_test_site_seismicity","arguments":{"min_concern":"moderate"}}
+  }'
+```
+
+</CodeGroup>

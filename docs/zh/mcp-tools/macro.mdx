@@ -1,0 +1,249 @@
+---
+title: "MCP 工具：宏观与经济数据"
+sidebarTitle: "宏观与经济数据"
+description: "World Monitor MCP 工具参考：宏观指标、FRED、Eurostat、债务与资本流动。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_economic_data`
+
+宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、俄罗斯央行官方卢布汇率与关键政策利率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `dataset` | `array<string: fedfunds / econ-calendar / china-macro / china-release-calendar / fuel-prices / ecb-fx-rates / cbr-rates / yield-curve-eu / spending / earnings-calendar / cot / dsr / property-residential / property-commercial>` | 将响应限制为一个或多个子数据集。省略则返回完整经济捆绑包。 |
+| `country` | string | 将按国家键控的数据集（燃料价格、BIS DSR/地产、经济日历）筛选为一个 ISO 3166-1 alpha-2 代码。 |
+| `limit` | number | 将每个列表数据集（日历、支出、财报）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1 天**（由 seeder cron 的预期间隔设定）。
+- **分数据集提示：** 单一的 `stale` 标记仅由部分子数据集推导得出，并非逐数据集的保证。`cbr-rates` 不在其中——它每日发布，采用 3 天陈旧度预算与 14 天内容时效契约，二者均由 `/api/health` 监控，而非通过此标记。若特别关心该数据集的时效，请读取 `cbr-rates.effectiveDate`。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_economic_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+
+### `get_fred_series`
+
+**Access:** `subscription`.
+
+通过规范的 `POST /api/economic/v1/get-fred-series-batch` RPC 查询仪表盘共用的预写入宏观序列缓存和允许列表，不会在请求时调用 FRED。`series_ids` 的实时说明列出所有支持的 ID，包括 `UNRATE`、`CPIAUCSL` 和 `FEDFUNDS`。
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `series_ids` | `array<string>` | 必填，FRED 序列 ID，统一为大写，最多转发 20 个；规范读取器忽略允许列表外的 ID。 |
+| `limit` | integer | 每个序列的观测数，最新值在末尾。默认 24，有效范围 1–1000。 |
+
+返回以序列 ID 为键的 `results`，含标题、单位、频率与观测值。`requested` 是实际查询的唯一允许 ID 数，`fetched` 是缓存中存在的序列数；缓存缺失时不会触发刷新。大响应可能受 MCP 输出预算压缩。
+
+示例：`get_fred_series({"series_ids":["UNRATE","CPIAUCSL"],"limit":24})`。
+
+### `get_country_macro`
+
+来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `countries` | `array<string>` | 在所有四个 IMF 数据集中要保留的 ISO 3166-1 alpha-2 国家代码（例如 ["US","DE","CN"]）。省略则返回全部约 210 个国家。 |
+| `limit` | integer | 在未提供 countries 筛选时，将每个 IMF 数据集国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **70 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_macro","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_housing_cycle`
+
+Eurostat 年度房价指数（prc_hpi_a，基准 2015=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、日期、单位和 10 年迷你图序列。以更广泛的 EU 覆盖补充 BIS WS_SPP，用于 Housing 周期磁贴。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
+| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **50 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_housing_cycle","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_quarterly_gov_debt`
+
+Eurostat 季度一般政府总债务（gov_10q_ggdebt，%GDP），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、季度标签和 8 季度迷你图序列。为 EU 面板提供比年度 IMF GGXWDG_NGDP 更新的债务轨迹信号。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
+| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **14 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_industrial_production`
+
+Eurostat 月度工业生产指数（sts_inpr_m，NACE B-D 工业，不含建筑业，SCA，基准 2021=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、月份标签和 12 个月迷你图序列。作为实体经济活动的领先指标，被 "Real economy pulse" 迷你图使用。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `countries` | `array<string>` | 要保留的 Eurostat 地理代码 — ISO 3166-1 alpha-2，但希腊用 "EL"，外加汇总 "EA20" 和 "EU27_2020"。省略则返回全部。 |
+| `limit` | integer | 在未提供 countries 筛选时，将国家映射限制为最多这么多条目（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **5 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_industrial_production","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_price_and_debt_indicators`
+
+价格和债务指标：巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+
+原名 `get_tariff_trends`。旧名上仅含 tariffs 的调用会运行 `get_tariff_averages` 并返回美国 MFN 序列。旧名上的其他数据集仍返回本捆绑包。自 #9301 起本捆绑包不含关税序列。美国 MFN 序列属于 Pro 数据。请调用 `get_tariff_averages`，报告国设为 `840`，不传伙伴和产品组。在本工具上使用 `dataset: ["tariffs"]` 会返回 Invalid params。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `dataset` | `array<string: bigmac / fao-ffpi / national-debt>` | 将响应限制为一个或多个子数据集。省略则返回完整捆绑包。 |
+| `country` | string | 将按国家数据集筛选为一个 ISO 3166-1 alpha-2 国家代码（例如 "US"）。内部会为 national-debt 数据集转换为 alpha-3；直接传 alpha-3 代码也可。 |
+| `limit` | number | 将每个列表数据集（BigMac 国家、债务条目）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 按子数据集计算 — BigMac **7 天**，FAO FFPI 和国家债务各 **60 天**。任一子数据集超出自身预算时，`stale` 即为 true。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_price_and_debt_indicators","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_capital_flows`
+
+返回约 230 个经济体资金的流入与流出,以及任意两个经济体之间的资金往来,数据来自官方统计。IMF 国际收支:总流入与总流出,按 FDI、证券投资和其他投资拆分,按国家为季度或年度数据,并附推导的 Forbes-Warnock 状态(流入为 surge 或 stop,流出为 flight 或 retrenchment)及 z 分数。按国家和按国家对:BIS 跨境银行存款与贷款、IMF 证券投资持有和 IMF 直接投资头寸。居民身份变更不是国际收支流量。来源滞后 1–3 个季度(FDI 约 2 年);10 天未更新或最新国际收支季度超过一年时标记为过期。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。country(最多 10 个)返回完整视图;counterpart 增加每个国家对的双向数据,每个分项标注 reported、not_itemized 或 not_published。不指定 country 时,对具备排序指标的国家排名(默认 outflow_z;仅有年度数据的序列没有该指标),按 limit 截断(默认 30,传 0 不限)。
+
+适用于任意经济体和任意国家对:传入多个 `country` 进行比较,加上 `counterpart` 获取双边明细,或省略 `country`,对具备所选 `sort` 指标的经济体排名(默认 `outflow_z` 不含仅有年度数据、没有 z 分数的序列)。阶段标签按 Forbes 与 Warnock(2012)方法由已报告的流量推导。各视图、分项和状态的说明见[资本流动方法论](/zh/methodology/capital-flows)。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | `array<string>` | 返回完整视图的国家:ISO 3166-1 alpha-2、alpha-3 或英文名称。省略则返回跨国排名。 |
+| `include_series` | boolean | 与 country 一起使用时,同时返回逐期国际收支流量(12 个季度或 6 年)。默认 false。 |
+| `counterpart` | string | 与 country 一起使用的对手国(alpha-2、alpha-3 或名称)。返回 pairs[]:双方非银行在对方银行的存款和双向银行贷款(存量、四季度流量、八个季度历史),双方对彼此证券的持有,以及带双方数字的双向直接投资,另加对手国自身的视图。 |
+| `sort` | `string: outflow_z / inflow_z / outflows_pct_gdp / inflows_pct_gdp / net_usd_bn / bank_deposits_abroad_flow_4q / foreign_portfolio_change_pct` | 省略 country 时的排名字段。默认 outflow_z。 |
+| `ascending` | boolean | 升序排列。默认 false。 |
+| `limit` | number | 排名最多返回的国家数(默认 30,传 0 表示不限)。传入 country 时忽略。 |
+
+- **API 端点:** `GET /api/economic/v1/get-capital-flows`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 从 Redis 亚秒级响应。
+- **新鲜度预算:** 距上次每周种子 **10 天**,另有内容时效检查:最新 IMF 国际收支季度超过 12 个月时 `stale` 变为 true。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_capital_flows","arguments":{"country":["DE"],"counterpart":"JP"}}
+  }'
+```
+
+</CodeGroup>

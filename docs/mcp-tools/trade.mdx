@@ -1,0 +1,274 @@
+---
+title: "MCP tools: Trade, tariffs & prices"
+sidebarTitle: "Trade, tariffs & prices"
+description: "World Monitor MCP tool reference for trade flows, tariffs, import duties, consumer prices, food stocks and procurement: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_wto_trade_flows`
+
+WTO merchandise trade flows for one reporting country versus the World, over a configurable year window. Data comes from the WTO `ITS_MTV_AX` (exports) and `ITS_MTV_AM` (imports) indicators, seeded on a 6-hour cadence; the tool reads the same seeded snapshot the dashboard serves — it never calls WTO per request.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Reporting country as an ISO 3166-1 alpha-2 code ("US") or a 3-digit UN M49 code ("840"); ISO2 is mapped to M49. Defaults to "840" (United States). The only partner served is the World ("000"); any other partner answers `not_covered`. |
+| `years` | integer | Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window. |
+
+**Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
+
+- **API endpoint:** `GET /api/trade/v1/get-trade-flows`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical trade-flows route (the handler owns window slicing and miss classification).
+- **Freshness budget:** up to **7 h** before `stale` (6 h seeder cadence plus one hour of grace).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_averages`
+
+Average tariff a country applies by year: schedule rates through 2023, no Section 301/232 duties. With no partner and no product group it returns the WTO MFN average over all products (`TP_A_0010`) for any reporter, the United States (`840`) included. With a partner other than World, or a product group, it returns the effectively applied average from UNCTAD TRAINS via World Bank WITS:
+
+- `tariffRate` is the simple average (`AHS-SMPL-AVRG`), counting preferences the partner qualifies for.
+- `weightedRate` is the import-weighted average (`AHS-WGHTD-AVRG`).
+
+Series run from about 1990 to 2023 for most reporters. US preferences are reported only through 2021. These are schedule rates: Section 301, 232 and other unilateral duties are not included. For the US, use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
+| `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
+| `product_group` | string (enum) | A WITS product group: an HS section range such as `84-85_MachElec` or `50-63_TextCloth`, or an aggregate such as `Textiles`, `Food`, `Fuels`, `manuf`. `all` or omitted means every product. |
+| `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
+
+**Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `WTO_MFN` with no partner other than World and no product group, else `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is `coverageEndYear`, else the newest datapoint year, and is absent when no year answered. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
+
+- **API endpoint:** `GET /api/trade/v1/get-tariff-trends`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route. Partner and product-group series are read from WITS on a cache miss and cached for 7 days.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_averages","arguments":{"reporter":"US","partner":"China","product_group":"Textiles","years":5}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_bilateral_tariff`
+
+Tariff on one HS6 product between two countries: schedule rate through 2023, no Section 301/232 duties. The rate one country applies to one 6-digit HS product from one partner, for one year, from UNCTAD TRAINS via World Bank WITS. `appliedRate` is what the partner pays: the best preferential rate it qualifies for, else MFN. `basis` says which. `mfnRate`, `preferentialRate` and the per-agreement `groupPreferences` are reported separately. `mfnAveRate` is an ad valorem equivalent where the MFN duty is specific. EU members answer from the EU schedule (`filingReporter` `918`).
+
+Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties are not included. TRAINS has no US preferences after 2021 and no US data after 2023, so for the US use `get_us_import_duty`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `reporter` | string | Importing country (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+| `partner` | string | Exporting country (required). Same forms. |
+| `hs_code` | string | 6-digit HS code (required), e.g. `870380`. Dots are ignored. |
+| `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
+
+**Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is always `WITS_TRAINS`. `rateBasis` is `SCHEDULE`, `includesUnilateralDuties` is `false`, and `excludedDutyTypes` lists `SECTION_301`, `SECTION_232`, `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. `latestYear` is the year that answered, and is absent on a `NOT_COVERED` answer. When the reporter is the United States, `seeAlso` names `get_us_import_duty` and says why.
+
+- **API endpoint:** `GET /api/trade/v1/get-bilateral-tariff`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route, which reads WITS on a cache miss. A cold read can take several seconds.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_bilateral_tariff","arguments":{"reporter":"India","partner":"US","hs_code":"870380"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_us_import_duty`
+
+Current US duty on one product from one country: live HTS rates plus any Section 301 and 232 duties in force. For each 8-digit line under `hs_code` it returns the live USITC Harmonized Tariff Schedule rates and a `basis` (`MFN`, `PREFERENTIAL` with `preferenceProgram`, or `COLUMN_2`). It also returns the chapter 99 Section 301 and 232 duties in force, each with a `status`:
+
+- `APPLIES`
+- `CONDITIONAL`, with a `condition` saying what decides it
+- `EXEMPT`
+- `SCHEDULED`
+
+`estimatedRate` adds only `APPLIES` duties to the base rate. `estimateComplete` is false when a specific duty, a condition or an unresolved preference program leaves it open. IEEPA duties are not collected and not reported. Anti-dumping and countervailing duties are not included. `additionalDutiesLoaded: false` means only the base rates were available.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
+| `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
+
+**Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `USITC_HTS` and `rateBasis` is `CURRENT_DUTY`. `includesUnilateralDuties` is `true` only when `additionalDutiesLoaded` is `true`, and `excludedDutyTypes` then lists `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. Otherwise the answer is base rates only: `includesUnilateralDuties` is `false` and `excludedDutyTypes` also lists `SECTION_301` and `SECTION_232`. `asOf` is the HTS release that answered.
+
+- **API endpoint:** `GET /api/trade/v1/get-us-import-duty`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical route: a live HTS line read joined with the seeded chapter 99 catalog (`trade:us-hts:catalog:v1`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_us_import_duty","arguments":{"hs_code":"870380","partner":"CN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_consumer_prices`
+
+Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). Currently supported: AE (United Arab Emirates). |
+
+- **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC tool that reads Upstash directly (sub-second) — requires an input parameter to select the slice. Despite the cache-speed reads, it is an `_execute` tool, which is why its access class is `subscription` and it takes no `summary` argument.
+- **Freshness budget:** up to **25 h** per slice (24 h cron + 1 h grace) before `stale: true` is flagged.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_consumer_prices","arguments":{"country_code":"AE"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_food_stocks`
+
+USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional commodity (`wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`), or `country_code=WORLD` for the global balance. Marketing years are stored verbatim and must not be treated as calendar years.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`), or `WORLD` for the global balance. |
+| `commodity` | string | no | `wheat`, `corn`, `rice`, `soybeans`, `barley`, or `palmOil` (note the camelCase). Empty = all six. |
+
+- **API endpoints:** `GET /api/resilience/v1/get-food-stocks`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy — the MCP layer resolves the country to ISO-2; the handler owns WORLD vs ISO-2 and commodity filtering.
+- **Freshness budget:** oldest world marketing year present (WASDE monthly cycle; 60-day fetch-age / 120-day content-age).
+
+**Reading a zero.** Check `hasStocksToUse` before reporting `stocksToUse`, and
+`hasEndingStocks` before reporting `endingStocksTmt`. Proto3 has no presence for a
+bare number, so an unmeasured value arrives as `0` — and USDA estimates ending
+stocks for selected countries only, so a real producer routinely reports
+production and consumption with no stocks series at all. When the flag is `false`
+the zero is a placeholder; treat it as "not measured", never as 0%.
+
+For PSD country rows, `totalUseTmt` is consumption plus exports. For `WORLD`, it
+is consumption only because world exports are internal transfers. A row with
+`source: "faostat"` carries a same-year Food Balances production and domestic-
+supply pair. The row has no stock measurement, so both stock flags are `false`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_food_stocks","arguments":{"country_code":"EG","commodity":"wheat"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_procurement_opportunities`
+
+Search active global public-procurement opportunities through the canonical Pro-gated tender API. The tool never reads Upstash directly. It returns a compact projection of the canonical records: official notice URL, source, title, buyer, timing, money, categories, sectors, `participationMode`, and compact `automationFit`; it deliberately omits descriptions, eligibility requirements, and submission URLs.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | One ISO 3166-1 alpha-2 country code. |
+| `countries` | `array<string>` | Additional country codes; combines with `country`. |
+| `source` | string | Official source adapter, such as `sam`, `ted`, `contracts-finder`, `canada-buys`, `gets`, or `world-bank`. |
+| `query` | string | Case-insensitive text search across titles and descriptions. |
+| `buyer` | string | Case-insensitive buyer or contracting-authority text. |
+| `deadline_from` / `deadline_to` | string | ISO-8601 inclusive deadline range. |
+| `sort` | `string: newest / closing_soon / estimated_value / relevance` | Result ordering; defaults to `newest`. |
+| `min_automation_score` | integer | Optional keyword-relevance score threshold. Positive integers are passed to the canonical route (which clamps values above 100); non-integer and non-positive values are ignored. It is opt-in and is **not** bidding-eligibility evidence. |
+| `page_size` | integer | Default **10**, maximum **25** records. This is the MCP output budget; the REST route itself permits up to 100. |
+| `cursor` | string | Opaque `nextCursor` from the preceding result; keep the same filters and sort while paging. |
+
+- **API endpoint:** `GET /api/economic/v1/list-global-tenders`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** bounded canonical-route proxy — Pro entitlement remains enforced by the downstream route; no bootstrap or direct-cache exposure.
+- **Output budget:** 10 compact records by default, at most 25. The result retains `nextCursor`, `total`, `appliedFilters`, `countryCoverage`, `availability`, snapshot time, and per-source health summaries. An empty `nextCursor` means there are no further pages.
+
+Unfiltered calls preserve the standard all-open-opportunities behavior; `min_automation_score` is never implied. `automationFit` is keyword relevance evidence only, never a legal determination of whether an agent or vendor may bid. `participationMode: "unknown"` means exactly that — no participation mode was established upstream.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_procurement_opportunities","arguments":{"country":"US","min_automation_score":70,"page_size":10,"sort":"relevance"}}
+  }'
+```
+
+</CodeGroup>

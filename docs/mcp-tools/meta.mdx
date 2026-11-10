@@ -1,0 +1,188 @@
+---
+title: "MCP tools: Meta & apps"
+sidebarTitle: "Meta & apps"
+description: "World Monitor MCP tool reference for sources, allowance, upgrades, tool discovery, issue reports and MCP app views: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_sources`
+
+WorldMonitor's live source inventory — what the data is drawn from and how far to trust it. Reads the committed attribution manifest and source-tier registry, so it is always current with the deployed build; no network call, no cache.
+
+Two **separate** populations, deliberately not merged:
+
+- **`providers`** — upstream hosts data is fetched from, keyed by host (`acleddata.com`), carrying `kind` (feed / structured / feed+structured / operational-status), attribution-review `status`, and `license`.
+- **`outlets`** — named public source identities (`Reuters`, `IDF Official`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation). Platform channels also carry `platformIdentities` with their stable platform and handle.
+
+A provider is a host; an outlet is a public editorial source identity. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `view` | string (enum) | `summary` (default) returns counts only and is small. `providers` and `outlets` enumerate. |
+| `kind` | string | `providers` view only — restrict to one kind. |
+| `country` | string | `providers` view only — restrict by publisher origin using a two-letter country code or `intl` for international sources. Case-insensitive. |
+| `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
+| `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
+| `platform` | string (enum) | `outlets` view only — restrict to sources configured on a platform such as `telegram`. |
+| `query` | string | Case-insensitive substring: host and provider in the providers view, outlet name in the outlets view. Applied before `limit`. |
+| `limit` | integer | Rows in an enumerated view. Defaults to 50, capped at 200. Ignored by `summary`. |
+
+- **`tier: null` means undeclared, never "tier 4."** WorldMonitor's internal tier helper defaults unknown names to 4; this tool does not, so a caller can distinguish a declared low-tier outlet from one that was never rated.
+- **Excluded manifest rows are reported, not dropped.** `summary.excludedProviderCount` counts local transports and development-only URLs kept out of the provider count.
+- **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
+- **API endpoints:** none — committed-registry read, no upstream call.
+- **Kind:** deterministic local compute. No LLM, no freshness budget.
+- **Access: free.** This is the one data tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. The only other credential-free tool is [`report_issue`](#report_issue), which stores a report and reads no data. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` (direct cache reads, callable by any signed-in account within the allowance) or `"subscription"` (Pro-only — every tool with server-side execute logic, including a few that never fetch upstream). Each tool section on this page states its class on its **Access** line.
+
+---
+
+### `get_mcp_allowance`
+
+Reads the existing allowance snapshot for the current verified account. Use this tool when your host cannot read `worldmonitor://account/mcp-allowance`.
+
+**Parameters (tool-specific):** none. Only the universal optional `jmespath` projection is accepted. Account selectors, `summary`, and `panel_request` are rejected before admission.
+
+**Response:** `{ access, used, limit, remaining, resetsAt, requestWindows, sharedWithRestApi }`. Free accounts receive request-window usage, limit, remaining windows, idle gap, active state and expiry. Unlimited limits and remaining values are `null`. Unreadable or malformed counters return an error rather than a successful zero snapshot. Text and `structuredContent` follow the normal tool projection contract.
+
+- **Access:** `free-account`. Requires verified user-bound OAuth or `wm_…` credentials and existing entitlement checks. Anonymous and operator credentials cannot read an account snapshot.
+- **Quota:** no daily allowance, free-account call/window, panel admission or internal reader reservation. Status stays available at the daily cap and uses the shared 192/minute protocol bucket across both credential doors.
+- **API sharing:** `sharedWithRestApi` reports whether the counter includes REST requests. Shadow-mode API counters retain the sold API ceiling. Account totals do not identify individual callers.
+- **API endpoints:** none. The tool and account resource use one shared enforcement-counter reader. Responses are `no-store`.
+
+### `start_upgrade`
+
+Creates a personal checkout link for a paid plan, bound to the signed-in account. Call it after a denial whose `error.data` carries `checkoutTool: "start_upgrade"`, passing that denial's `recommendedPlan`. Only free accounts get `checkoutTool`; a paid caller's denial names `recommendedPlan` alone, because moving up within the same plan family goes through the billing portal. The user opens the link and pays in a browser; the tool never charges and the agent never handles payment details.
+
+Not offered to ChatGPT: its app guidelines do not allow starting a checkout, so a ChatGPT request does not see this tool in `tools/list` or `describe_tool`, and a call returns `Unknown tool`. Codex and every other client keep it.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `plan` | string | yes | One of `pro_monthly`, `pro_annual`, `pro_business_monthly`, `pro_business_annual`, `api_starter`, `api_starter_annual`, `api_business`, `api_business_annual`. Any other value returns `-32602` with the accepted list in `error.data.plans`. |
+
+**Response:** `{ checkoutUrl, plan, nextStep }`. Each call creates a new checkout session. The tool takes no `jmespath` projection (`-32602`): the session exists before a projection would run, so a projection could drop the only copy of `checkoutUrl`.
+
+- **Access:** `free-account`. Requires user-bound OAuth or `wm_…` credentials. Anonymous callers get the usual `-32001` `no-account` denial; operator keys get `-32002`.
+- **Quota:** spends no daily allowance and no free-account call, so it works after the allowance is exhausted. The per-minute limit still applies.
+- **Checkout path:** the same one the pricing page uses, so the per-account checkout limit and the existing-subscription and pending-payment guards apply. An account that already holds a plan in the same family gets `-32002` with `error.data.reason: "already-subscribed"`; Pro to Pro Business is a prorated in-place upgrade the user confirms on worldmonitor.app/pro, and API Starter to API Business is a prorated change in the billing portal. A payment pending for under 15 minutes returns `reason: "payment-in-progress"`. The checkout limit, 5 sessions per account per 10 minutes and shared with the pricing page, returns `-32029` at HTTP 429 with `Retry-After`.
+- **Terms of Service:** creating a session records the account's acceptance of the Terms, as the pricing page does. The [Terms](/terms) count an MCP request as acceptance.
+- **After payment:** once the payment webhook lands, the next `get_mcp_allowance` call reports the paid plan's limit. No re-authorization is needed.
+- **API endpoints:** none. Responses are `no-store`.
+
+### `describe_tool`
+
+Returns the complete definition of any other tool by name — the same `description`, `inputSchema` (every property's description), `outputSchema`, `annotations` and `_meta` that its `tools/list` entry carries. Since v1.34.0 `tools/list` ships every description whole under a 1,024-byte per-tool budget, so this is a single-tool re-read rather than the only route to the full text (from v1.5.0 to v1.33.0 the listing was truncated to the first sentence, ≤120 bytes).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
+
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, outputSchema, annotations, _meta }` — with the same `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool). `_meta` always carries the `worldmonitor/access` tier marker and the `worldmonitor/weight` per-call cost, plus `ui.resourceUri` on UI-bearing tools.
+
+**Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
+
+- **API endpoints:** none — server-local lookup, no upstream call.
+- **Access:** `free-account` — callable by any signed-in account; exempt from both the free-account allowance and the Pro daily quota (the per-minute rate limit still applies).
+- **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.
+- **Quota:** **EXEMPT** from the Pro daily quota (50/day). Per-minute rate limit (60/min) still applies.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"describe_tool","arguments":{"tool_name":"get_market_data"}}
+  }'
+```
+
+</CodeGroup>
+
+### `report_issue`
+
+Stores one report for the WorldMonitor maintainers: a bug, a missing capability, wrong or stale data, or a security concern. It is the MCP twin of [`POST /api/feedback/v1/submit-report`](/api-platform) and runs the same validation, redaction and limits. A person reads every report. Nothing is published, nothing is acted on automatically, and no reply is sent.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `kind` | string | yes | `bug`, `missing_capability`, `data_quality`, or `security`. |
+| `summary` | string | yes | One sentence, up to 300 characters. This is the report text, not the universal cache-tool `summary` flag. |
+| `surface` | string | no | What the report is about: a tool name, a REST path, or a short label for something that does not exist yet. Up to 200 characters. |
+| `expected` | string | no | What you expected. Up to 2,000 characters. |
+| `actual` | string | no | What happened instead. Up to 2,000 characters. |
+| `requestId` | string | no | The failing call's request id: `error.data.requestId` from an MCP error, or the `x-vercel-id` header of a REST response. Letters, digits, `:`, `_` and `-`, up to 128 characters. |
+| `clientName` | string | no | Your client or agent name. Up to 80 characters. |
+
+**Response:** `{ reportId, status }`. `status` is `received`, or `private` for a security report. A security report also carries `advisoryUrl` and `notice`. Resending the same report within 10 minutes returns the first `reportId` instead of storing a duplicate.
+
+- **Access: free.** No credentials are needed. A Pro or API account whose entitlement check passes reports under its own budget; every other caller, including a free account or a key whose check fails, reports anonymously. Identity always comes from the request's credentials, never from the arguments.
+- **Limits:** 5 reports per hour per IP for anonymous callers and 30 per day per account, plus service-wide ceilings. Arguments over 24 KB are rejected before any feedback limit or storage call. The tool spends no daily allowance.
+- **Redaction:** credentials and email addresses are replaced before storage. Secrets and personal data do not belong in a report.
+- **Security reports:** a `security` report only flags that a vulnerability exists. Send the details through the private [advisory form](https://github.com/koala73/worldmonitor/security/advisories/new).
+- **Errors:** `-32602` names the invalid field. `-32029` at HTTP 429 with `Retry-After: 3600` means a limit is spent. `-32603` at HTTP 503 with `Retry-After: 60` means the limiter or the store is unavailable, and the report was not stored. `-32002` at HTTP 403 means the account is being deleted. A refused security report keeps `advisoryUrl` in `error.data`.
+- **Annotations:** not read-only (it writes a row), not destructive (it only inserts), not idempotent (the same report outside the 10-minute window is stored again), closed world.
+- **API endpoints:** none. The report goes straight to storage.
+
+### `open_news_dashboard`
+
+**Access:** `subscription`
+
+Opens WorldMonitor's existing news panels and map as an MCP App. Global and thread entrypoints accept empty arguments. The initial tool result supplies the full-variant English feed digest; the app does not fetch it again on startup.
+
+**API endpoints:** `GET /api/news/v1/list-feed-digest`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `query` | `string` | Open the existing news search with this query (maximum 200 characters). |
+| `source` | `string` | Filter by source name (maximum 200 characters). |
+| `category` | `string` | Select a news category (maximum 80 characters). |
+| `country` | `string` | Two-letter uppercase country code for news filtering and map focus. |
+| `time_range` | `string` | `1h`, `6h`, `24h`, `48h`, `7d`, or `all`. |
+| `renderer` | `string` | `flat` or `globe`; the app reports the available renderer. |
+| `map_latitude` | `number` | Map center latitude, from -90 to 90; requires longitude. |
+| `map_longitude` | `number` | Map center longitude, from -180 to 180; requires latitude. |
+| `map_zoom` | `number` | Requested zoom, from 1 to 8. |
+| `map_layers` | `array<string>` | Selected hazard and reference layers: `natural`, `fires`, `cables`, `pipelines`, `waterways`, `bases`. |
+| `refresh` | `boolean` | Reload news and selected map data with one new paid request. Defaults to reuse. |
+| `request_id` | `string` | Stable UUID for refresh retries. |
+
+Returns categories, feed status, generation time, coverage, and `requestedView`. Coverage and freshness follow the existing feed-digest endpoint. The server reports requested state; the mounted app reports applied state after the map settles. App-local `apply_news_view` and `focus_news_article` actions operate on the mounted view when the host supports app tools.
+
+Dedicated paid MCP plans spend one request for the dashboard, including its bounded hazard loads. Default opens reuse the full loaded digest for at least five minutes; display filters and layer toggles reuse loaded data. Refresh starts one new request. The `panelRequest` receipt and the view show remaining usage and reset time. News summaries and translations are separate user requests. API plans retain weighted per-tool billing.
+
+```json
+{ "name": "open_news_dashboard", "arguments": { "country": "DE", "time_range": "24h" } }
+```
+
+### `analyze_news_headlines`
+
+**Access:** `subscription`
+
+Runs the existing news summary or translation service through authenticated MCP. Uses the server OpenRouter provider and full variant; credentials are not passed to the app. Provider availability and cache behavior follow the summary endpoint. Denials remain errors rather than empty results.
+
+**API endpoints:** `POST /api/news/v1/summarize-article`
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `headlines` | `array<string>` | Required: 1–8 headlines, each at most 4,000 characters. |
+| `bodies` | `array<string>` | Optional matching snippets, up to 8 entries of 400 characters each. |
+| `mode` | `string` | `brief` (default) or `translate`. |
+| `lang` | `string` | Output language, default `en`, maximum 16 characters. |
+| `geoContext` | `string` | Optional geographic context, maximum 100 characters. |
+
+Returns the summary endpoint's response, including summary, model, provider, and status/error fields. A successful MCP transport response does not guarantee that the provider generated a summary; inspect the returned status and error.
+
+```json
+{ "name": "analyze_news_headlines", "arguments": { "headlines": ["Energy ministers discuss winter supply"], "mode": "brief", "lang": "en" } }
+```
