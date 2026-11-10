@@ -5903,6 +5903,27 @@ function nextAlertedIncidents(alertedRaw, sigKeys, delivered) {
   return [...new Set([...kept, ...delivered])].sort();
 }
 
+// Fields that say why a non-freshness status fired. COVERAGE_PARTIAL has
+// several causes and CHINA_DEGRADED names its failing entries only in
+// `problems`; without these an incident carries no cause (WORLDMONITOR-1D6).
+const SOURCE_INCIDENT_DIAGNOSTIC_FIELDS = [
+  'minRecordCount', 'rankableRecordCount', 'minRankableRecordCount',
+  'poolCounts', 'minPoolCounts', 'coverage', 'decisionGroups', 'failedDatasets',
+  'dominantFailureMode', 'lastSourceFailureCode', 'consecutiveSourceFailures',
+  'chinaStatus', 'seedStatus', 'counts', 'problems', 'degradedStreak', 'degradedProblemKey', 'reason',
+];
+// Per-field cap on the serialized value: a coverage block can list every
+// country, and Sentry rejects oversized events whole.
+const SOURCE_INCIDENT_FIELD_MAX_CHARS = 4_000;
+
+function boundedIncidentValue(value) {
+  if (value === null || typeof value !== 'object') return value;
+  const json = JSON.stringify(value);
+  return json.length <= SOURCE_INCIDENT_FIELD_MAX_CHARS
+    ? value
+    : `${json.slice(0, SOURCE_INCIDENT_FIELD_MAX_CHARS)}…[truncated]`;
+}
+
 async function reportSourceIncident(key, checks, ctx, capture = captureSilentError) {
   const separator = key.lastIndexOf(':');
   const name = key.slice(0, separator);
@@ -5911,6 +5932,9 @@ async function reportSourceIncident(key, checks, ctx, capture = captureSilentErr
   const extra = {};
   for (const field of ['records', 'seedAgeMin', 'maxStaleMin', 'contentAgeMin', 'maxContentAgeMin', 'errorCode']) {
     if (check[field] !== undefined) extra[field] = check[field];
+  }
+  for (const field of SOURCE_INCIDENT_DIAGNOSTIC_FIELDS) {
+    if (check[field] !== undefined && check[field] !== null) extra[field] = boundedIncidentValue(check[field]);
   }
   return await capture(new Error(`Health source incident: ${name} ${status}`), {
     level: 'warning',
@@ -6781,6 +6805,7 @@ export default async function handler(req, ctx) {
 // the classifier without standing up the full bootstrap-keys + Redis pipeline.
 // 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
 export const __testing__ = {
+  reportSourceIncident,
   composeContractsFinderHealth,
   composeChokepointTransitsCoverage,
   composeRiskScoresInputHealth,
