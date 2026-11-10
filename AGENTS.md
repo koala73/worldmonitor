@@ -64,12 +64,14 @@ Test path, command, and owning CI job. Read this instead of `.github/workflows/t
 
 | Test path | Command | CI job |
 |---|---|---|
-| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:data` | `unit-shards` |
+| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:related` locally; `npm run test:data` is the full suite | `unit-shards` |
 | `tests/dom/` | `npm run test:dom` | `dom-tests` |
 | `convex/__tests__/`, `server/__tests__/`, `src/services/correlation-engine/` | `npm run test:convex` | `convex-tests` |
 | `api/` node suites except `api/security/report.test.mjs`, and `src-tauri/` | `npm run test:sidecar` | `sidecar` |
 
 Find a suite by subject with `ls tests/ | grep <subject>` before searching the tree.
+
+Before pushing, run `npm run test:related`. It runs the data tests that a branch's changes can reach, usually in under a minute. The full `test:data` suite takes about six minutes locally, and CI runs it on every push.
 
 ## Critical boundaries
 
