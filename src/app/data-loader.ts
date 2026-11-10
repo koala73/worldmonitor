@@ -3975,7 +3975,7 @@ export class DataLoaderManager implements AppModule {
         })), perSourceLimit),
       ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       if (exposures.length === 0 && (!protests || !ucdpEvents)) {
-        this.callPanel('population-exposure', 'showError');
+        this.callPanel('population-exposure', 'showError', t('common.unavailable'));
         dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
       } else {
         this.callPanel('population-exposure', 'setExposures', exposures);
