@@ -68,6 +68,8 @@ function runAsync([cmd, ...args], flag) {
   return new Promise((done) => {
     let output = '';
     const child = spawn(cmd, flag ? [...args, flag] : args, { cwd: ROOT });
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => { output += chunk; });
     child.stderr.on('data', (chunk) => { output += chunk; });
     // A command that cannot start emits 'error' and may never emit 'close'.

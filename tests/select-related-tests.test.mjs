@@ -77,6 +77,39 @@ describe('selectRelatedTests', () => {
     assert.deepEqual(selectRelatedTests({ root, inventory, changed: ['docs/notes.md'] }), []);
   });
 
+  it('selects every entry point into a cycle that reaches a change, whichever test is checked first', () => {
+    const cyclic = fixture({
+      'package.json': FILES['package.json'],
+      'src/a.ts': "import './b.ts';\n",
+      'src/b.ts': "import './a.ts';\nimport './changed.ts';\n",
+      'src/changed.ts': 'export {};\n',
+      'tests/1-enters-at-b.test.mjs': "import '../src/b.ts';\n",
+      'tests/2-enters-at-a.test.mjs': "import '../src/a.ts';\n",
+    });
+    assert.deepEqual(
+      selectRelatedTests({ root: cyclic, inventory: listInventory(cyclic), changed: ['src/changed.ts'] }),
+      ['tests/1-enters-at-b.test.mjs', 'tests/2-enters-at-a.test.mjs'],
+    );
+  });
+
+  it('selects tests that import a deleted file, directly or through a helper', () => {
+    const deleted = fixture(Object.fromEntries(Object.entries(FILES).filter(([file]) => file !== 'src/feature.ts')));
+    assert.deepEqual(
+      selectRelatedTests({ root: deleted, inventory: listInventory(deleted), changed: ['src/feature.ts'] }),
+      ['tests/static.test.mjs', 'tests/via-helper.test.mjs'],
+    );
+  });
+
+  it('matches a changed path only at a name boundary', () => {
+    const near = fixture({
+      'package.json': FILES['package.json'],
+      'src/feature.ts': 'export {};\n',
+      'tests/longer-name.test.mjs': "readFileSync('src/feature-flags.json');\n",
+      'tests/exact-name.test.mjs': "readFileSync('src/feature.ts');\n",
+    });
+    assert.deepEqual(selectRelatedTests({ root: near, inventory: listInventory(near), changed: ['src/feature.ts'] }), ['tests/exact-name.test.mjs']);
+  });
+
   it('terminates on import cycles', () => {
     const cyclic = fixture({
       'package.json': FILES['package.json'],
@@ -102,11 +135,36 @@ describe('changedFiles', () => {
     git('commit', '-qam', 'change a');
     writeFileSync(join(root, 'b.txt'), 'unstaged\n');
     writeFileSync(join(root, 'new.txt'), 'untracked\n');
-    assert.deepEqual(changedFiles(root, 'base'), ['a.txt', 'b.txt', 'new.txt']);
+    writeFileSync(join(root, 'staged.txt'), 'staged\n');
+    git('add', 'staged.txt');
+    assert.deepEqual(changedFiles(root, 'base'), ['a.txt', 'b.txt', 'new.txt', 'staged.txt']);
+  });
+
+  it('names the base and the --base flag when there is no merge base', () => {
+    const root = fixture({ 'a.txt': 'a\n' });
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+    execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'init', '-q', '-b', 'main'], { cwd: root, env });
+    execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'only'], { cwd: root, env });
+    assert.throws(() => changedFiles(root, 'origin/missing'), /merge base with "origin\/missing".*--base <ref>/);
+  });
+});
+
+describe('the repository inventory', () => {
+  it('includes every pattern test:data runs, not only tests/', () => {
+    assert.deepEqual(testDataPatterns(), ['tests/*.test.mjs', 'tests/*.test.mts', 'cli/test/*.test.mjs', 'api/security/report.test.mjs', 'workers/api-cors-preflight/*.test.mjs']);
+    const inventory = listInventory();
+    for (const prefix of ['tests/', 'cli/test/', 'api/security/', 'workers/api-cors-preflight/']) {
+      assert.ok(inventory.some((file) => file.startsWith(prefix)), prefix);
+    }
   });
 });
 
 describe('parseCli', () => {
+  it('rejects --base without a value', () => {
+    assert.throws(() => parseCli(['--base']), /--base requires a ref/);
+    assert.throws(() => parseCli(['--base=']), /--base requires a ref/);
+  });
+
   it('keeps --base and --list and passes every other argument to the runner', () => {
     assert.deepEqual(parseCli(['--base', 'origin/release', '--concurrency=2', '--list']), { base: 'origin/release', list: true, runnerArgs: ['--concurrency=2'] });
     assert.deepEqual(parseCli(['--base=HEAD~1', '--test-name-pattern', 'x']), { base: 'HEAD~1', list: false, runnerArgs: ['--test-name-pattern', 'x'] });

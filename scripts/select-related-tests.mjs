@@ -39,7 +39,9 @@ export function listInventory(root = ROOT) {
   return [...new Set(files.map((file) => file.split('\\').join('/')))].sort();
 }
 
-function resolveImport(root, fromFile, spec) {
+// Resolves a relative import the way Node and tsx do. A changed path counts even
+// when it no longer exists, so a test that imports a deleted file is selected.
+function resolveImport(root, fromFile, spec, changedSet) {
   const base = posix.join(posix.dirname(fromFile), spec);
   const candidates = RESOLVE_SUFFIXES.map((suffix) => base + suffix);
   // tsx resolves `./x.js` to `./x.ts`.
@@ -47,7 +49,16 @@ function resolveImport(root, fromFile, spec) {
   return candidates.find((file) => {
     const path = join(root, file);
     return existsSync(path) && statSync(path).isFile();
-  }) ?? null;
+  }) ?? candidates.find((file) => changedSet.has(file)) ?? null;
+}
+
+// True when `needle` occurs in `text` and is not the start of a longer name
+// (`src/feature` must not match `src/feature-flags`).
+function namesPath(text, needle) {
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) {
+    if (!/[\w-]/.test(text[at + needle.length] ?? '')) return true;
+  }
+  return false;
 }
 
 export function selectRelatedTests({ root = ROOT, changed, inventory, readSource = (file) => readFileSync(join(root, file), 'utf8') }) {
@@ -60,35 +71,43 @@ export function selectRelatedTests({ root = ROOT, changed, inventory, readSource
     needles.add(stem);
     if (basename(stem).length >= MIN_BASENAME) needles.add(basename(stem));
   }
-  const sources = new Map();
-  const source = (file) => {
-    if (!sources.has(file)) {
-      try { sources.set(file, readSource(file)); } catch { sources.set(file, null); }
-    }
-    return sources.get(file);
+  const read = (file) => {
+    try { return readSource(file); } catch { return ''; }
   };
-  const reaches = new Map();
-  // True when `file` or anything it imports, transitively, changed.
-  const reachesChange = (file, visiting = new Set()) => {
-    if (reaches.has(file)) return reaches.get(file);
-    if (changedSet.has(file)) return true;
-    if (visiting.has(file) || !SOURCE_FILE.test(file)) return false;
-    visiting.add(file);
-    const text = source(file) ?? '';
-    let hit = false;
-    for (const match of text.matchAll(IMPORT_SPEC)) {
-      const target = resolveImport(root, file, match[1]);
-      if (target && reachesChange(target, visiting)) { hit = true; break; }
+  // Import graph of everything the tests load, then a backward walk from the
+  // changed files. Walking backward needs no per-file cache, so an import cycle
+  // cannot record a partial answer for one of its members.
+  const importers = new Map();
+  const seen = new Set();
+  const pending = [...inventory];
+  while (pending.length) {
+    const file = pending.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (!SOURCE_FILE.test(file) || changedSet.has(file) && !existsSync(join(root, file))) continue;
+    for (const match of read(file).matchAll(IMPORT_SPEC)) {
+      const target = resolveImport(root, file, match[1], changedSet);
+      if (!target) continue;
+      if (!importers.has(target)) importers.set(target, new Set());
+      importers.get(target).add(file);
+      pending.push(target);
     }
-    visiting.delete(file);
-    reaches.set(file, hit);
-    return hit;
-  };
+  }
+  const affected = new Set(changed);
+  const frontier = [...changed];
+  while (frontier.length) {
+    for (const importer of importers.get(frontier.pop()) ?? []) {
+      if (!affected.has(importer)) {
+        affected.add(importer);
+        frontier.push(importer);
+      }
+    }
+  }
   return inventory.filter((test) => {
-    if (changedSet.has(test)) return true;
-    const text = source(test) ?? '';
-    for (const needle of needles) if (text.includes(needle)) return true;
-    return reachesChange(test);
+    if (affected.has(test)) return true;
+    const text = read(test);
+    for (const needle of needles) if (namesPath(text, needle)) return true;
+    return false;
   });
 }
 
@@ -100,7 +119,12 @@ function git(root, args) {
 
 // Committed, staged, unstaged and untracked changes since the merge base with `base`.
 export function changedFiles(root = ROOT, base = 'origin/main') {
-  const mergeBase = git(root, ['merge-base', base, 'HEAD']).trim();
+  let mergeBase;
+  try {
+    mergeBase = git(root, ['merge-base', base, 'HEAD']).trim();
+  } catch {
+    throw new Error(`Cannot find a merge base with "${base}". Fetch it or pass --base <ref>.`);
+  }
   const tracked = git(root, ['diff', '--name-only', '-z', mergeBase]).split('\0');
   const untracked = git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0');
   return [...new Set([...tracked, ...untracked].filter(Boolean))].sort();
@@ -115,9 +139,11 @@ export function parseCli(args) {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (arg === '--list') list = true;
-    else if (arg === '--base') base = args[++index] ?? base;
-    else if (arg.startsWith('--base=')) base = arg.slice('--base='.length);
-    else runnerArgs.push(arg);
+    else if (arg === '--base' || arg.startsWith('--base=')) {
+      const value = arg === '--base' ? args[++index] : arg.slice('--base='.length);
+      if (!value) throw new Error('--base requires a ref');
+      base = value;
+    } else runnerArgs.push(arg);
   }
   return { base, list, runnerArgs };
 }
@@ -133,6 +159,9 @@ function main(args) {
   }
   console.log(`Related tests: ${selected.length}/${inventory.length} files for ${changed.length} changed path(s) since ${base}`);
   if (!selected.length) return 0;
+  // The preparation `npm run test:data` gets from pretest:data. --list stays read-only.
+  const dates = spawnSync(process.execPath, [join(ROOT, 'scripts/generate-docs-page-dates.mjs')], { cwd: ROOT, stdio: 'inherit' });
+  if (dates.status !== 0) return dates.status ?? 1;
   const result = spawnSync(process.execPath, [join(ROOT, 'scripts/run-data-tests.mjs'), ...runnerArgs, ...selected], { cwd: ROOT, stdio: 'inherit' });
   return result.status ?? 1;
 }
