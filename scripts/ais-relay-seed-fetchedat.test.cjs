@@ -93,6 +93,7 @@ test('seedCommodityQuotes: envelope fetchedAt matches seed-meta fetchedAt for on
   ]);
   const lastTradeAt = 1_699_999_880;
   globalThis.fetchYahooChartDirect = async () => ({ price: 100, change: 1, sparkline: [1, 2, 3], lastTradeAt });
+  globalThis._commoditySparkline = async (_symbol, quote) => ({ sparkline: quote.sparkline });
   globalThis.sleep = async () => {};
   globalThis.upstashExpire = async () => true;
   globalThis.MARKET_SEED_TTL = 7200;

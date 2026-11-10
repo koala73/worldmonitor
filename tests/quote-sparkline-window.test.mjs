@@ -177,3 +177,28 @@ describe('commodity seeders publish the 24-hour sparkline', () => {
     assert.equal(calls.length, 2, 'a new session refetches history');
   });
 });
+
+describe('bad ticks on thin and boundary bars', () => {
+  it('drops a bad tick on a contract that skips minutes', () => {
+    const ts = [];
+    const closes = [];
+    for (let i = 0; i < 40; i += 1) {
+      if (i > 16 && i < 24 && i !== 19) continue;
+      ts.push(T0 + i * MINUTE);
+      closes.push(i === 19 ? 98.32 : 94.9);
+    }
+    const { sparkline } = buildQuoteSparkline(chart(ts, closes), null);
+    assert.ok(!sparkline.includes(98.32), 'spike between sparse prints removed');
+  });
+
+  it('drops a bad tick on the first bar of today\'s chart', () => {
+    const historyTs = Array.from({ length: 12 * 30 }, (_, i) => T0 - 30 * 3600 + i * 300);
+    const history = chart(historyTs, historyTs.map(() => 94.9), '5m');
+    const todayCloses = [98.32, ...wobble(40, 94.9)];
+    const today = minuteChart(T0, todayCloses);
+    today.chart.result[0].timestamp[0] = T0 + 4 * MINUTE;
+    for (let i = 1; i < todayCloses.length; i += 1) today.chart.result[0].timestamp[i] = T0 + (i + 4) * MINUTE;
+    const { sparkline } = buildQuoteSparkline(today, history);
+    assert.ok(!sparkline.includes(98.32), 'spike at the history boundary removed');
+  });
+});
