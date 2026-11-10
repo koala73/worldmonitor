@@ -19,7 +19,10 @@ export const REPORT = {
   slug: 'strait-of-hormuz-transit-report-2026-07',
   series: 'chokepoint-transit',
   edition: '2026-07',
-  version: '1.0.0',
+  // Revisions (editions are append-only; see shared/research-reports/index.mjs):
+  // 1.0.1 (2026-11-10): Reworded the summary so it describes the July window,
+  //   not current status.
+  version: '1.0.1',
   title: 'Strait of Hormuz Transit Report — July 2026',
   metaTitle: 'Strait of Hormuz Transit Report: July 2026 Traffic Data',
   // {{m:...}} tokens resolve to computed values here too (plain text, no
@@ -33,7 +36,7 @@ export const REPORT = {
     url: 'https://www.worldmonitor.app/',
   },
   datePublished: '2026-07-27',
-  dateModified: '2026-07-27',
+  dateModified: '2026-11-10',
   snapshotPath: 'docs/snapshots/chokepoint-transit-2026-07.json',
   focusChokepointId: 'hormuz_strait',
   contextChokepointIds: ['bab_el_mandeb', 'suez', 'cape_of_good_hope'],
@@ -93,11 +96,11 @@ export const REPORT = {
   sections: [
     {
       id: 'summary',
-      heading: 'Direct answer',
+      heading: 'How far did Hormuz traffic fall through July 2026?',
       layer: 'derived',
       block: 'current-pointer',
       paragraphs: [
-        'Is the Strait of Hormuz open? Commercial transit has partially resumed but remains far below normal. Between 2026-03-01 and {{m:observationEnd}}, IMF PortWatch recorded {{m:disruptionTransits}} vessel transits — a daily average of {{m:disruptionDailyAvg}} against {{m:sameWindow2025DailyAvg}} in the same 2025 window, a {{m:declinePct}} decline. July traffic to date averages {{m:julToDateAvgTotal}} transits per day, about {{m:julVsFebShare}} of the February 2026 pre-disruption baseline.',
+        'Through July 2026, commercial transit had partially resumed but remained far below normal. For today’s status, see the live Strait of Hormuz page. Between 2026-03-01 and {{m:observationEnd}}, IMF PortWatch recorded {{m:disruptionTransits}} vessel transits — a daily average of {{m:disruptionDailyAvg}} against {{m:sameWindow2025DailyAvg}} in the same 2025 window, a {{m:declinePct}} decline. July traffic to date averages {{m:julToDateAvgTotal}} transits per day, about {{m:julVsFebShare}} of the February 2026 pre-disruption baseline.',
         'This report quantifies the collapse and partial recovery using daily AIS-derived transit counts, keeps observed data separate from third-party event reporting, and documents exactly what this data cannot show — including vessels transiting with AIS transmitters off.',
       ],
     },

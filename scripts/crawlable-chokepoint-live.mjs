@@ -10,6 +10,7 @@ import {
   chokepointCoverageMetrics,
   chokepointEvidenceNarrative,
   chokepointOfficialMetrics,
+  portwatchLagDays,
 } from './crawlable-live-tools.mjs';
 
 export const CHOKEPOINT_LIVE_START = '<!--wm-live:chokepoint-->';
@@ -191,6 +192,7 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
       bandLabel: pulse.status,
       description: pulse.description,
       asOfText: formatStaticDateTime(pulse.asOf),
+      asOf: pulse.asOf,
       partial: pulsePartial,
       warningsLabel: coverageMetrics.navigationalWarnings,
       congestionLabel: coverageMetrics.congestion,
@@ -206,8 +208,10 @@ export function renderChokepointLiveSection({ chokepoint, pulse, live = false })
   const openStatusHtml = narrative !== null
     ? escapeHtml(narrative.passage)
     : `World Monitor has not published current passage evidence for ${escapeHtml(chokepoint.displayName)} yet.`;
+  // The answer sits outside the tool, directly under the page's H1, but inside
+  // the marked region so the middleware's per-request render replaces it.
+  const answerParagraph = `      <p class="lede answer" data-chokepoint-open-status>${openStatusHtml}</p>`;
   const openStatusSection = `        <h2>Is the ${escapeHtml(chokepoint.displayName)} open right now?</h2>
-        <p data-chokepoint-open-status>${openStatusHtml}</p>
 ${narrative !== null
     ? `        <p data-chokepoint-score-driver>${escapeHtml(narrative.scoreDriver)}</p>`
     : '        <p data-chokepoint-score-driver hidden></p>'}`;
@@ -233,7 +237,13 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
         </div>
         <p data-chokepoint-description hidden></p>`;
 
+  const lagDays = hasPulse ? portwatchLagDays(pulse.officialLatestDate, pulse.asOf) : null;
+  const lagNote = lagDays === null
+    ? 'published with a lag of several days'
+    : `published with a lag; the latest published day is ${lagDays === 0 ? 'the day of this snapshot' : `${lagDays} ${lagDays === 1 ? 'day' : 'days'} before this snapshot`}`;
+
   return `${CHOKEPOINT_LIVE_START}
+${answerParagraph}
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}${live && hasPulse ? ' data-live-at-request' : ''}>
 ${openStatusSection}
         <div class="tool-head">
@@ -243,7 +253,7 @@ ${openStatusSection}
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">Daily transit counts are official IMF PortWatch figures, published about four days after the day they cover. A missing count does not mean zero traffic.</p>
+        <p class="tool-note">Daily transit counts are official IMF PortWatch figures, ${lagNote}. A missing count does not mean zero traffic.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({
