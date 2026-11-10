@@ -2751,7 +2751,8 @@
         "countries": "Страны под санкциями",
         "entries": "Последние обозначения",
         "programs": "Программы",
-        "flagRegistries": "Реестры флагов судов и воздушных судов"
+        "flagRegistries": "Реестры флагов судов и воздушных судов",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Атрибуция страны недоступна.",
@@ -2776,7 +2777,8 @@
         "undated": "без даты"
       },
       "designations_few": "{{count}} обозначения",
-      "designations_many": "{{count}} обозначений"
+      "designations_many": "{{count}} обозначений",
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Мониторинг радиации",

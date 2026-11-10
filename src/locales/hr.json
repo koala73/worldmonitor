@@ -2816,7 +2816,8 @@
         "countries": "Zemlje pod sankcijama",
         "entries": "Nedavne designacije",
         "programs": "Programi",
-        "flagRegistries": "Registri zastava plovila i zrakoplova"
+        "flagRegistries": "Registri zastava plovila i zrakoplova",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Nema dostupne atribucije zemlje.",
@@ -2840,7 +2841,8 @@
         "program": "Program",
         "undated": "bez datuma"
       },
-      "designations_few": "{{count}} designacije"
+      "designations_few": "{{count}} designacije",
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Nadzor zračenja",

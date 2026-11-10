@@ -2839,7 +2839,8 @@
         "countries": "Санкціоновані країни",
         "entries": "Недавні занесення до списку",
         "programs": "Програми",
-        "flagRegistries": "Реєстри прапорів суден і повітряних суден"
+        "flagRegistries": "Реєстри прапорів суден і повітряних суден",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Атрибуція країни недоступна.",
@@ -2864,7 +2865,8 @@
         "undated": "без дати"
       },
       "designations_few": "{{count}} санкції",
-      "designations_many": "{{count}} санкцій"
+      "designations_many": "{{count}} санкцій",
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Моніторинг радіації",

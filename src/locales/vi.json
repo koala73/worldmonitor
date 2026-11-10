@@ -2718,7 +2718,8 @@
         "countries": "Quốc gia bị trừng phạt",
         "entries": "Chỉ định gần đây",
         "programs": "Chương trình",
-        "flagRegistries": "Sổ đăng ký cờ tàu và tàu bay"
+        "flagRegistries": "Sổ đăng ký cờ tàu và tàu bay",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Không có quy trách nhiệm quốc gia nào.",
@@ -2740,7 +2741,8 @@
         "unattributed": "Không xác định",
         "program": "Chương trình",
         "undated": "không có ngày tháng"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Theo dõi Bức xạ",

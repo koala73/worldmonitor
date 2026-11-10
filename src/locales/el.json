@@ -2729,7 +2729,8 @@
         "countries": "Χώρες υπό κυρώσεις",
         "entries": "Πρόσφατοι χαρακτηρισμοί",
         "programs": "Προγράμματα",
-        "flagRegistries": "Μητρώα σημαίας πλοίων και νηολόγια αεροσκαφών"
+        "flagRegistries": "Μητρώα σημαίας πλοίων και νηολόγια αεροσκαφών",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Δεν υπάρχει διαθέσιμη αποδοχή χώρας.",
@@ -2752,7 +2753,8 @@
         "unattributed": "Μη αποδιδόμενο",
         "program": "Πρόγραμμα",
         "undated": "χωρίς ημερομηνία"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Παρακολούθηση ακτινοβολίας",

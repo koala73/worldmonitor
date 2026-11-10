@@ -2718,7 +2718,8 @@
         "countries": "ประเทศที่ถูกคว่ำบาตร",
         "entries": "การระบุตัวตนเมื่อเร็ว ๆ นี้",
         "programs": "โปรแกรม",
-        "flagRegistries": "ทะเบียนธงเรือและทะเบียนอากาศยาน"
+        "flagRegistries": "ทะเบียนธงเรือและทะเบียนอากาศยาน",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "ไม่มีข้อมูลการระบุประเทศ",
@@ -2740,7 +2741,8 @@
         "unattributed": "ไม่ได้ระบุแหล่งที่มา",
         "program": "โปรแกรม",
         "undated": "ไม่มีวันที่"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "ระบบเฝ้าระวังการแผ่รังสี",

@@ -2580,6 +2580,10 @@ export const CACHE_TOOLS: ToolDef[] = [
             countryCode: { type: 'string' }, countryName: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
             aircraftCount: { type: 'integer' }, newAircraftCount: { type: 'integer' },
           } } },
+          regulationTargets: { type: 'array', description: 'Top SEMA regulation target states for people and entities; excluded from country risk and brief counts.', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, countryName: { type: 'string' }, entryCount: { type: 'integer' }, newEntryCount: { type: 'integer' },
+            vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
+          } } },
         },
       },
       changes: {

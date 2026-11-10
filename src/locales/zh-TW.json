@@ -2718,7 +2718,8 @@
         "countries": "受制裁國家",
         "entries": "最近指定",
         "programs": "計劃",
-        "flagRegistries": "船舶旗籍與航空器登記"
+        "flagRegistries": "船舶旗籍與航空器登記",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "無國家歸屬資訊。",
@@ -2740,7 +2741,8 @@
         "unattributed": "未歸屬",
         "program": "計劃",
         "undated": "無日期"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "輻射監測",

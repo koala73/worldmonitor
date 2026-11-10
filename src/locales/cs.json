@@ -2751,7 +2751,8 @@
         "countries": "Země s sankcemi",
         "entries": "Nedávné designace",
         "programs": "Programy",
-        "flagRegistries": "Registry vlajek plavidel a letadel"
+        "flagRegistries": "Registry vlajek plavidel a letadel",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Žádná přiřazení zemí není dostupná.",
@@ -2776,7 +2777,8 @@
         "undated": "bez data"
       },
       "designations_few": "{{count}} označení",
-      "designations_many": "{{count}} označení"
+      "designations_many": "{{count}} označení",
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Sledování radiace",

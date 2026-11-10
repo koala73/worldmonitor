@@ -2801,7 +2801,8 @@
         "countries": "کشورهای تحریم‌شده",
         "entries": "موارد تحریمی اخیر",
         "programs": "برنامه‌ها",
-        "flagRegistries": "دفاتر ثبت پرچم کشتی و ثبت هواپیما"
+        "flagRegistries": "دفاتر ثبت پرچم کشتی و ثبت هواپیما",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "انتساب کشوری در دسترس نیست.",
@@ -2824,7 +2825,8 @@
         "unattributed": "بدون انتساب",
         "program": "برنامه",
         "undated": "بدون تاریخ"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "پایش تابش",

@@ -16,10 +16,8 @@ message ListSanctionsPressureRequest {
 // ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
 message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
-  // Top 12 countries by address or nationality, or for a Canadian SEMA person or entity
-  // the state its regulation targets when the matching OFAC record gives no country. SEMA
-  // vessels, the Ukraine and Moldova regulations and the thematic JVCFOR, Hamas and Settler
-  // regimes give no country. A designation can be associated with more than one
+  // Top 12 countries by address or nationality. SEMA regulation targets are
+  // counted separately in regulation_targets. A designation can be associated with more than one
   // country. Vessel flags and aircraft registries are counted in flag_registries instead.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;
@@ -44,6 +42,11 @@ message ListSanctionsPressureResponse {
   // are not sanctions pressure on the registering state.
   // Empty for snapshots written before this field existed.
   repeated FlagRegistrySanctionsPressure flag_registries = 15;
+  // Top 12 SEMA regulation target states for people and entities, ordered by new
+  // then total designations. These are not nationality or address counts and
+  // never feed country risk scores or briefs. Excludes vessels, protected-state
+  // Ukraine/Moldova regulations and thematic regimes. Empty in older snapshots.
+  repeated CountrySanctionsPressure regulation_targets = 16;
 }
 
 // FlagRegistrySanctionsPressure counts sanctioned vessels by flag and sanctioned aircraft

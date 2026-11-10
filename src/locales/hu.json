@@ -2798,7 +2798,8 @@
         "countries": "Szankcionált országok",
         "entries": "Legutóbbi bejelentések",
         "programs": "Programok",
-        "flagRegistries": "Hajólobogó- és légijármű-nyilvántartások"
+        "flagRegistries": "Hajólobogó- és légijármű-nyilvántartások",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",
@@ -2821,7 +2822,8 @@
         "unattributed": "Nem tulajdonított",
         "program": "Program",
         "undated": "Dátum nélkül"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Sugárzásfigyelés",

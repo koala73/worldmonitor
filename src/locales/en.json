@@ -2952,9 +2952,11 @@
       "sections": {
         "countries": "Sanctioned countries",
         "flagRegistries": "Flag and aircraft registries",
+        "regulationTargets": "SEMA regulation targets",
         "entries": "Recent designations",
         "programs": "Programs"
       },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs.",
       "empty": {
         "countries": "No country attribution available.",
         "entries": "No recent designations.",

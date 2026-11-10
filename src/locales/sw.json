@@ -2694,7 +2694,8 @@
         "countries": "Nchi zilizoidhinishwa",
         "entries": "Majina ya hivi majuzi",
         "programs": "Mipango",
-        "flagRegistries": "Rejista za bendera za vyombo na za ndege"
+        "flagRegistries": "Rejista za bendera za vyombo na za ndege",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Hakuna sifa ya nchi inayopatikana.",
@@ -2717,7 +2718,8 @@
         "unattributed": "Haijahusishwa",
         "program": "Mpango",
         "undated": "isiyo na tarehe"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Saa ya Mionzi",

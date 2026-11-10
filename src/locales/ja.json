@@ -2718,7 +2718,8 @@
         "countries": "制裁国",
         "entries": "最近の指定",
         "programs": "プログラム",
-        "flagRegistries": "船籍・航空機登録国"
+        "flagRegistries": "船籍・航空機登録国",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "国の帰属情報がありません。",
@@ -2740,7 +2741,8 @@
         "unattributed": "未帰属",
         "program": "プログラム",
         "undated": "日付なし"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "放射能監視",

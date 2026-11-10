@@ -187,7 +187,8 @@ describe('SEMA fixture parse', () => {
     assert.ok(person);
     assert.equal(person.entityType, 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL');
     assert.deepEqual(person._aliases, ['Aliaksei Aleksin']);
-    assert.deepEqual(person.countryCodes, ['BY']);
+    assert.deepEqual(person.countryCodes, []);
+    assert.deepEqual(person._targetCountryCodes, ['BY']);
     assert.equal(person.programs[0], 'SEMA');
     assert.match(person.note, /Belarus/);
     assert.equal(person._regime, 'Belarus');
@@ -675,11 +676,13 @@ describe('SEMA does not self-merge', () => {
 });
 
 describe('SEMA Country is the target state of its regulation, not nationality', () => {
-  it('attributes people and entities to the target state and keeps the regime on the note', () => {
+  it('stores regulation targets separately from country evidence and keeps the regime on the note', () => {
     const { records } = parseSemaXml(fixtureXml);
     const russia = records.find((row) => row.name === 'STREIT Group');
-    assert.deepEqual(russia.countryCodes, ['RU']);
-    assert.deepEqual(russia.countryNames, ['Russia']);
+    assert.deepEqual(russia.countryCodes, []);
+    assert.deepEqual(russia.countryNames, []);
+    assert.deepEqual(russia._targetCountryCodes, ['RU']);
+    assert.deepEqual(russia._targetCountryNames, ['Russia']);
     assert.equal(russia._regime, 'Russia');
     assert.match(russia.note, /^Russia/);
     assert.equal(russia.programs[0], 'SEMA');
@@ -694,7 +697,8 @@ describe('SEMA Country is the target state of its regulation, not nationality', 
       ${record('Moldova / Moldova', 'Chisinau Front')}
       ${record('Myanmar (Burma) / Myanmar (Birmanie)', 'Burma Gems Ltd')}
     </data-set>`);
-    assert.deepEqual(records.map((row) => row.countryCodes), [[], [], [], [], ['MM']]);
+    assert.deepEqual(records.map((row) => row.countryCodes), [[], [], [], [], []]);
+    assert.deepEqual(records.map((row) => row._targetCountryCodes), [[], [], [], [], ['MM']]);
     assert.deepEqual(records.slice(0, 2).map((row) => row.entityType), ['SANCTIONS_ENTITY_TYPE_VESSEL', 'SANCTIONS_ENTITY_TYPE_VESSEL'],
       'a ship type marks a vessel without an IMO number');
     assert.equal(records[4].entityType, 'SANCTIONS_ENTITY_TYPE_ENTITY');
@@ -708,6 +712,18 @@ describe('SEMA Country is the target state of its regulation, not nationality', 
     const merged = mergeSanctionEntries({ ofac: [ofac], sema: [semaRow] });
     assert.equal(merged.length, 1);
     assert.deepEqual(merged[0].countryCodes, ['AE']);
+    assert.deepEqual(merged[0]._targetCountryCodes, ['RU']);
+    const noAddress = mergeSanctionEntries({ ofac: [{ ...ofac, countryCodes: [], countryNames: [] }], sema: [semaRow] });
+    assert.deepEqual(noAddress[0].countryCodes, [], 'a target must never fill a missing OFAC address');
+  });
+
+  it('separates target-state attribution in retained pre-fix SEMA snapshots without mutating them', () => {
+    const legacy = { ...parseSemaXml(fixtureXml).records.find(row => row.name === 'STREIT Group'),
+      countryCodes: ['RU'], countryNames: ['Russia'] };
+    const [merged] = mergeSanctionEntries({ sema: [legacy] });
+    assert.deepEqual(merged.countryCodes, []);
+    assert.deepEqual(merged._targetCountryCodes, ['RU']);
+    assert.deepEqual(legacy.countryCodes, ['RU']);
   });
 
   it('tags JVCFOR, Hamas, and Settler as their own programs, not SEMA', () => {

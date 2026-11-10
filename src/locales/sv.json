@@ -2345,7 +2345,8 @@
         "countries": "Sanktionerade länder",
         "entries": "Senaste beteckningar",
         "programs": "Program",
-        "flagRegistries": "Flagg- och luftfartygsregister"
+        "flagRegistries": "Flagg- och luftfartygsregister",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Ingen landsattribution tillgänglig.",
@@ -2368,7 +2369,8 @@
         "unattributed": "Ej tillskrivet",
         "program": "Program",
         "undated": "utan datum"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Strålningsbevakning",

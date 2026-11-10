@@ -4845,6 +4845,13 @@ describe('get_sanctions_data screening contract', () => {
       { countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1, aircraftCount: 0, newAircraftCount: 0 },
     ]);
   });
+  it('exposes regulation targets separately without treating a country filter as target attribution', () => {
+    const regulationTargets = [{ countryCode: 'IR', countryName: 'Iran', entryCount: 500, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }];
+    const result = tool._postFilter({ pressure: { entries: [], countries: [], regulationTargets } }, { country: 'IR' });
+    assert.deepEqual(result.pressure.regulationTargets, regulationTargets);
+    assert.deepEqual(result.pressure.countries, []);
+    assert.ok(tool.outputSchema.properties.data.properties.pressure.properties.regulationTargets);
+  });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };
     const result = tool._postFilter(structuredClone(data), { screen: 'Northern Star', min_score: 100, country: 'RU', entity_type: 'vessel', limit: 1 });

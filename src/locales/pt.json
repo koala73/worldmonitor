@@ -2354,7 +2354,8 @@
         "countries": "Países sancionados",
         "entries": "Designações recentes",
         "programs": "Programas",
-        "flagRegistries": "Registos de bandeira de navios e de aeronaves"
+        "flagRegistries": "Registos de bandeira de navios e de aeronaves",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Nenhuma atribuição de país disponível.",
@@ -2378,7 +2379,8 @@
         "program": "Programa",
         "undated": "sem data"
       },
-      "designations_many": "{{count}} designações"
+      "designations_many": "{{count}} designações",
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Monitoramento de Radiação",

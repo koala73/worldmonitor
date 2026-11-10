@@ -2729,7 +2729,8 @@
         "countries": "Yaptırım altındaki ülkeler",
         "entries": "Son tanımlamalar",
         "programs": "Programlar",
-        "flagRegistries": "Gemi bayrağı ve hava aracı sicilleri"
+        "flagRegistries": "Gemi bayrağı ve hava aracı sicilleri",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Ülke atılması mevcut değildir.",
@@ -2752,7 +2753,8 @@
         "unattributed": "Atlanmamış",
         "program": "Program",
         "undated": "tarihsiz"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Radyasyon İzlemesi",

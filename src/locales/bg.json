@@ -2729,7 +2729,8 @@
         "countries": "Санкционирани страни",
         "entries": "Скорошни определения",
         "programs": "Програми",
-        "flagRegistries": "Регистри на корабни флагове и въздухоплавателни средства"
+        "flagRegistries": "Регистри на корабни флагове и въздухоплавателни средства",
+        "regulationTargets": "SEMA regulation targets"
       },
       "empty": {
         "countries": "Няма налична информация за принадлежност към страна.",
@@ -2752,7 +2753,8 @@
         "unattributed": "Неприписано",
         "program": "Програма",
         "undated": "без дата"
-      }
+      },
+      "targetExplanation": "Regulation targets are not nationality or address evidence. Excluded from country risk scores and briefs."
     },
     "radiationWatch": {
       "title": "Радиационен мониторинг",
