@@ -565,6 +565,52 @@ describe('digest coverage follows the selected browser response', () => {
       expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'http-5xx', 'digest.fallback': 'none' });
     });
 
+    // Sentry WORLDMONITOR-1DE: a 4xx that left no gateway telemetry. The kind
+    // alone could not say which status it was or whether Vercel answered at all.
+    describe('names the status and who answered an HTTP failure', () => {
+      async function reportFor(response: Response): Promise<Record<string, string>> {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        vi.mocked(globalThis.fetch).mockResolvedValueOnce(response);
+        await internal.tryFetchDigest();
+        return captured()[0]!.ctx.tags;
+      }
+
+      it('a response Vercel served', async () => {
+        const tags = await reportFor(new Response('', { status: 401, headers: { 'x-vercel-id': 'fra1::abc' } }));
+        expect(tags).toMatchObject({ 'digest.failure': 'http-4xx', 'digest.status': '401', 'digest.responder': 'vercel' });
+      });
+
+      it('a Cloudflare challenge', async () => {
+        const tags = await reportFor(new Response('', { status: 403, headers: { 'cf-mitigated': 'challenge' } }));
+        expect(tags).toMatchObject({ 'digest.status': '403', 'digest.responder': 'cloudflare-challenge' });
+      });
+
+      it('a readable response Vercel never saw', async () => {
+        const tags = await reportFor(new Response('', { status: 429 }));
+        expect(tags).toMatchObject({ 'digest.status': '429', 'digest.responder': 'not-vercel' });
+      });
+
+      it('a cross-origin response, whose Vercel header the browser hides', async () => {
+        const response = new Response('', { status: 403 });
+        Object.defineProperty(response, 'type', { value: 'cors' });
+        const tags = await reportFor(response);
+        expect(tags).toMatchObject({ 'digest.status': '403', 'digest.responder': 'cross-origin' });
+      });
+
+      it('leaves both tags off a failure that had no response', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        await internal.tryFetchDigest();
+        const tags = captured()[0]!.ctx.tags;
+        expect(tags['digest.failure']).toBe('network');
+        expect(tags).not.toHaveProperty('digest.status');
+        expect(tags).not.toHaveProperty('digest.responder');
+      });
+    });
+
     it('reports each failure kind once per page, not on every refresh', async () => {
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';
