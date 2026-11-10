@@ -127,7 +127,11 @@ describe('middleware docs locale SEO proxy', () => {
         });
         mock.method(globalThis, 'fetch', async () => upstream);
         const response = await middleware(new Request('https://copy.example/docs/zh/about', { headers: { accept: 'text/html' } }));
-        assert.equal(response, upstream);
+        assert.ok(response instanceof Response);
+        assert.equal(response.status, status);
+        assert.equal(response.headers.get('location'), '/docs/about');
+        assert.equal(response.headers.get('content-type'), contentType);
+        assert.equal(await response.text(), '<html><head></head><body>unchanged</body></html>');
       }
     } finally {
       globalThis.fetch = originalFetch;
