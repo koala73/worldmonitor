@@ -363,10 +363,10 @@ paths:
                                 "prices":
                                     - "change": 1.5
                                       "commodity": "example"
+                                      "frequency": "example"
                                       "name": "WorldMonitor Analyst"
                                       "price": 75.25
                                       "priceAt": 1717200000000
-                                      "unit": "example"
                             schema:
                                 $ref: '#/components/schemas/GetEnergyPricesResponse'
                 "400":
@@ -5453,7 +5453,7 @@ components:
                 price:
                     type: number
                     format: double
-                    description: Current price in USD.
+                    description: Observed price in USD. Check stale before treating it as current.
                 unit:
                     type: string
                     description: Unit of measurement (e.g., "$/barrel", "$/MMBtu").
@@ -5464,7 +5464,16 @@ components:
                 priceAt:
                     type: integer
                     format: int64
-                    description: 'Price date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Observation date as Unix epoch milliseconds. For weekly prices, the week ending date.. Warning: Values > 2^53 may lose precision in JavaScript'
+                priceSource:
+                    type: string
+                priceBasis:
+                    type: string
+                frequency:
+                    type: string
+                stale:
+                    type: boolean
+                    description: True when the observation is undated, future-dated, or older than the freshness budget.
             required:
                 - commodity
             description: EnergyPrice represents a current energy commodity price from EIA.

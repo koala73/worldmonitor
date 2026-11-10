@@ -2397,7 +2397,15 @@
       "noData": "Dane energetyczne czasowo niedostępne - ponowienie próby",
       "liveTape": "Notowania na żywo",
       "liveTapeSource": "Notowania rynkowe",
-      "infoTooltip": "<strong>Kompleks energetyczny</strong> Fizyczne i zbywalne sygnały energetyczne w jednym miejscu:<ul><li><strong>Metryki US Energy Information Administration</strong>: WTI, Brent, produkcja USA i zapasy</li><li><strong>Livetape</strong>: Zbywalne ceny energii takie jak ropa i gaz ziemny</li><li><strong>Cel</strong>: Oddzielenie fizycznego stresu energetycznego od szerszych paneli makro i towarowych</li></ul>"
+      "infoTooltip": "<strong>Kompleks energetyczny</strong> Fizyczne i zbywalne sygnały energetyczne w jednym miejscu:<ul><li><strong>Metryki US Energy Information Administration</strong>: WTI, Brent, produkcja USA i zapasy</li><li><strong>Livetape</strong>: Zbywalne ceny energii takie jak ropa i gaz ziemny</li><li><strong>Cel</strong>: Oddzielenie fizycznego stresu energetycznego od szerszych paneli makro i towarowych</li></ul>",
+      "marketTape": "Notowania rynkowe",
+      "futures": "Kontrakty terminowe",
+      "dailySpot": "Dzienna cena spot",
+      "eiaWeeklySpot": "Cena spot EIA · średnia tygodniowa",
+      "weekEnding": "Tydzień kończący się {{date}}",
+      "unknownPriceDate": "Czas obserwacji niedostępny",
+      "unknownQuoteSource": "Źródło notowania niedostępne",
+      "stalePrice": "Nieaktualne"
     },
     "consumerPrices": {
       "tabs": {

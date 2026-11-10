@@ -2397,7 +2397,15 @@
       "noData": "Údaje o energii jsou dočasně nedostupné - bude se opakovat",
       "liveTape": "Live páska",
       "liveTapeSource": "Tržní nabídky",
-      "infoTooltip": "<strong>Energetický komplex</strong> Fyzikální a obchodovatelné energetické signály na jednom místě:<ul><li><strong>Metriky US Energy Information Administration</strong>: WTI, Brent, americká produkce a zásoby</li><li><strong>Živá páska</strong>: Obchodovatelné energetické ceny jako surová ropa a zemní plyn</li><li><strong>Účel</strong>: Oddělení fyzického energetického stresu od širších maker a komoditních panelů</li></ul>"
+      "infoTooltip": "<strong>Energetický komplex</strong> Fyzikální a obchodovatelné energetické signály na jednom místě:<ul><li><strong>Metriky US Energy Information Administration</strong>: WTI, Brent, americká produkce a zásoby</li><li><strong>Živá páska</strong>: Obchodovatelné energetické ceny jako surová ropa a zemní plyn</li><li><strong>Účel</strong>: Oddělení fyzického energetického stresu od širších maker a komoditních panelů</li></ul>",
+      "marketTape": "Tržní kotace",
+      "futures": "Termínové kontrakty",
+      "dailySpot": "Denní spotová cena",
+      "eiaWeeklySpot": "Spotová cena EIA · týdenní průměr",
+      "weekEnding": "Týden končící {{date}}",
+      "unknownPriceDate": "Čas pozorování není k dispozici",
+      "unknownQuoteSource": "Zdroj kotace není k dispozici",
+      "stalePrice": "Zastaralé"
     },
     "consumerPrices": {
       "tabs": {

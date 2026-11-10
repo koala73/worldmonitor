@@ -1064,7 +1064,15 @@
       "noData": "Energiaadatok átmenetileg nem érhetők el – újra próbálkozunk",
       "liveTape": "Élő adatcsatorna",
       "liveTapeSource": "Piaci árajánlatok",
-      "infoTooltip": "<strong>Energiakomplex</strong> Fizikai és kereskedhető energiaszignálok egy helyen:<ul><li><strong>US Energy Information Administration mutatók</strong>: WTI, Brent, amerikai termelés és készletek</li><li><strong>Élő adatok</strong>: Kereskedhető energiaárak, mint krudolaj és földgáz</li><li><strong>Cél</strong>: Fizikai energiastressz elkülönítése a szélesebb makro- és árupanelektől</li></ul>"
+      "infoTooltip": "<strong>Energiakomplex</strong> Fizikai és kereskedhető energiaszignálok egy helyen:<ul><li><strong>US Energy Information Administration mutatók</strong>: WTI, Brent, amerikai termelés és készletek</li><li><strong>Élő adatok</strong>: Kereskedhető energiaárak, mint krudolaj és földgáz</li><li><strong>Cél</strong>: Fizikai energiastressz elkülönítése a szélesebb makro- és árupanelektől</li></ul>",
+      "marketTape": "Piaci jegyzések",
+      "futures": "Határidős ügyletek",
+      "dailySpot": "Napi azonnali ár",
+      "eiaWeeklySpot": "EIA azonnali ár · heti átlag",
+      "weekEnding": "A hét vége {{date}}",
+      "unknownPriceDate": "A megfigyelés ideje nem érhető el",
+      "unknownQuoteSource": "A jegyzés forrása nem érhető el",
+      "stalePrice": "Elavult"
     },
     "supplyChain": {
       "chokepoints": "Szűk keresztmetszetek",

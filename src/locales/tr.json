@@ -2379,7 +2379,15 @@
       "noData": "Enerji verileri geçici olarak kullanılamıyor - yeniden denecek",
       "liveTape": "Canlı Bant",
       "liveTapeSource": "Pazar teklifleri",
-      "infoTooltip": "<strong>Enerji Kompleksi</strong> Fiziksel ve işlem gören enerji sinyalleri tek yerde:<ul><li><strong>ABD Enerji Bilgi İdaresi metrikleri</strong>: WTI, Brent, ABD üretimi ve stokları</li><li><strong>Canlı veriler</strong>: Ham petrol ve doğal gaz gibi işlem gören enerji fiyatları</li><li><strong>Amaç</strong>: Fiziksel enerji stresini daha geniş makro ve emtia panellerinden ayırmak</li></ul>"
+      "infoTooltip": "<strong>Enerji Kompleksi</strong> Fiziksel ve işlem gören enerji sinyalleri tek yerde:<ul><li><strong>ABD Enerji Bilgi İdaresi metrikleri</strong>: WTI, Brent, ABD üretimi ve stokları</li><li><strong>Canlı veriler</strong>: Ham petrol ve doğal gaz gibi işlem gören enerji fiyatları</li><li><strong>Amaç</strong>: Fiziksel enerji stresini daha geniş makro ve emtia panellerinden ayırmak</li></ul>",
+      "marketTape": "Piyasa fiyatları",
+      "futures": "Vadeli işlemler",
+      "dailySpot": "Günlük spot fiyat",
+      "eiaWeeklySpot": "EIA spot fiyatı · haftalık ortalama",
+      "weekEnding": "{{date}} tarihinde sona eren hafta",
+      "unknownPriceDate": "Gözlem zamanı bilinmiyor",
+      "unknownQuoteSource": "Fiyat kaynağı bilinmiyor",
+      "stalePrice": "Güncel değil"
     },
     "consumerPrices": {
       "tabs": {
