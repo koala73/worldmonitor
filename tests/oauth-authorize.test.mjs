@@ -45,6 +45,10 @@ describe('consentPage — Pro CTA structure (U4)', () => {
     const html = await renderHtml(BASE_PARAMS, NONCE);
     // CTA element exists with stable id and class for U3+settings UI to depend on.
     assert.match(html, /<a id="pc" class="pro-cta"[^>]*>Sign in to World Monitor<\/a>/);
+    // The free-account note sits under the CTA in its own readable style
+    // (#8a8a8a on the #111 card is about 5.5:1), not the dim .hint (#333).
+    assert.match(html, /<\/a>\n<p class="cta-note">A free account works\. Pro raises the daily allowance\.<\/p>/);
+    assert.match(html, /\.cta-note\{[^}]*color:#8a8a8a/);
     // Brand green at the CSS layer (matches existing #2d8a6e for the Authorize
     // button family — keeps visual identity consistent with htmlError + logo).
     assert.match(html, /\.pro-cta\{[^}]*background:#2d8a6e/);

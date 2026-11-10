@@ -4,7 +4,7 @@ import { createRequestTimeoutSignal } from '@/services/timeout-signal';
  *
  * Clerk-protected consent screen for the cross-subdomain Pro MCP flow.
  * The user lands here from the api-subdomain consent page (U4 will add
- * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
+ * a "Sign in to World Monitor" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
  *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
