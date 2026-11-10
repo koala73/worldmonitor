@@ -264,7 +264,8 @@ function fieldsToCanonical(fields) {
   if (!countryRaw || !item) throw new Error('SEMA_INVALID_RECORD');
 
   let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
-  if (imo) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
+  // Every listed ship carries a ship type in TitleOrShip; entities never do.
+  if (imo || (entityOrShip && title && !lastName && !givenName)) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
   else if (lastName || givenName) entityType = 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL';
 
   const identifiers = [];

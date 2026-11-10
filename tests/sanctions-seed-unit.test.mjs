@@ -380,6 +380,14 @@ describe('ofacAttributionHealth', () => {
     assert.equal(health.degraded, true);
   });
 
+  it('degrades on a breach that rounds to the threshold', () => {
+    const health = normalize(ofacAttributionHealth([
+      ...rows(18_503, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']), ...rows(2_056, 'SANCTIONS_ENTITY_TYPE_ENTITY', []),
+    ]));
+    assert.equal(health.unattributedShare, 0.1);
+    assert.equal(health.degraded, true);
+  });
+
   it('stays healthy at the threshold and without OFAC records', () => {
     assert.equal(ofacAttributionHealth([
       ...rows(90, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['RU']), ...rows(10, 'SANCTIONS_ENTITY_TYPE_VESSEL', []),

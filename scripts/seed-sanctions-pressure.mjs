@@ -231,7 +231,8 @@ function ofacAttributionHealth(entries) {
     unattributedVesselCount: unattributed.vesselCount,
     unattributedVesselShare: vesselShare,
     maxShare: OFAC_UNATTRIBUTED_MAX_SHARE,
-    degraded: [entryShare, vesselShare].some(value => value !== null && value > OFAC_UNATTRIBUTED_MAX_SHARE),
+    degraded: unattributed.entryCount > entries.length * OFAC_UNATTRIBUTED_MAX_SHARE
+      || unattributed.vesselCount > vesselCount * OFAC_UNATTRIBUTED_MAX_SHARE,
   };
 }
 

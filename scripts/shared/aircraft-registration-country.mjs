@@ -61,5 +61,6 @@ export function aircraftRegistrationCountry(raw) {
   const suffix = tail.slice(hyphen + 1);
   if (!suffix) return null;
   if (mark === 'B') return chinaRegistry(suffix);
+  if (mark === 'SU' && suffix.startsWith('Y')) return null;
   return NATIONALITY_MARKS[`${mark}-${suffix[0]}`] ?? NATIONALITY_MARKS[mark] ?? null;
 }

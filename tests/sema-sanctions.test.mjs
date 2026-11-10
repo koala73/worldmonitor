@@ -686,15 +686,18 @@ describe('SEMA Country is the target state of its regulation, not nationality', 
   });
 
   it('leaves vessels and the regimes that protect the named state unattributed', () => {
-    const record = (country, name, imo = '') => `<record><Country>${country}</Country><EntityOrShip>${name}</EntityOrShip><ShipIMONumber>${imo}</ShipIMONumber><Schedule>1</Schedule><Item>${name.length}</Item><DateOfListing>2024-01-01</DateOfListing></record>`;
+    const record = (country, name, imo = '', shipType = '') => `<record><Country>${country}</Country><EntityOrShip>${name}</EntityOrShip><TitleOrShip>${shipType}</TitleOrShip><ShipIMONumber>${imo}</ShipIMONumber><Schedule>1</Schedule><Item>${name.length}</Item><DateOfListing>2024-01-01</DateOfListing></record>`;
     const { records } = parseSemaXml(`<data-set>
-      ${record('Russia / Russie', 'Shadow Tanker', '9118355')}
+      ${record('Russia / Russie', 'Shadow Tanker', '9118355', 'Oil Tanker')}
+      ${record('Russia / Russie', 'Unnumbered Carrier', '', 'Bulk Carrier')}
       ${record('Ukraine / Ukraine', 'Donbas Militia')}
       ${record('Moldova / Moldova', 'Chisinau Front')}
       ${record('Myanmar (Burma) / Myanmar (Birmanie)', 'Burma Gems Ltd')}
     </data-set>`);
-    assert.deepEqual(records.map((row) => row.countryCodes), [[], [], [], ['MM']]);
-    assert.equal(records[0].entityType, 'SANCTIONS_ENTITY_TYPE_VESSEL');
+    assert.deepEqual(records.map((row) => row.countryCodes), [[], [], [], [], ['MM']]);
+    assert.deepEqual(records.slice(0, 2).map((row) => row.entityType), ['SANCTIONS_ENTITY_TYPE_VESSEL', 'SANCTIONS_ENTITY_TYPE_VESSEL'],
+      'a ship type marks a vessel without an IMO number');
+    assert.equal(records[4].entityType, 'SANCTIONS_ENTITY_TYPE_ENTITY');
   });
 
   it('keeps an OFAC address over the SEMA target state when the records merge', () => {

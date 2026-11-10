@@ -21,6 +21,7 @@ describe('aircraftRegistrationCountry', () => {
     for (const [tail, code] of [
       ['VP-BKA', 'BM'], ['VP-CAB', 'KY'], ['VQ-BOS', 'BM'], ['B-1234', 'CN'], ['B-18101', 'TW'], ['B-HNR', 'HK'], ['B-MAX', 'MO'],
     ]) assert.equal(aircraftRegistrationCountry(tail), code, tail);
-    for (const tail of ['VP-XYZ', 'PJ-ABC', '', 'EP-', 'Unknown']) assert.equal(aircraftRegistrationCountry(tail), null, tail);
+    assert.equal(aircraftRegistrationCountry('SU-AOA'), 'EG');
+    for (const tail of ['VP-XYZ', 'PJ-ABC', 'SU-YAA', '', 'EP-', 'Unknown']) assert.equal(aircraftRegistrationCountry(tail), null, tail);
   });
 });
