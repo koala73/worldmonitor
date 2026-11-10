@@ -1843,6 +1843,10 @@
       "soon": "SOON"
     },
     "techReadiness": {
+      "ranked": "Ranked",
+      "unranked": "Unranked",
+      "coverageRequirement": "Minimum coverage to rank",
+      "coverageLabel": "Available indicators",
       "internetUsers": "Internet Users",
       "mobileSubscriptions": "Mobile Subscriptions",
       "rdSpending": "Research and development spending",

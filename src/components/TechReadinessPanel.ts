@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { getTechReadinessRankings, type TechReadinessScore } from '@/services/economic';
+import { getTechReadinessRankings, TECH_READINESS_MIN_COMPONENTS, type TechReadinessScore } from '@/services/economic';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -242,25 +242,36 @@ export class TechReadinessPanel extends Panel {
     // showError() flipped the panel into red error styling and gave the
     // user no recovery path on a benign empty payload.
     const top = this.rankings.slice(0, 25);
-    this.showCountBadge(this.rankings.length);
+    const ranked = this.rankings.filter(country => country.rank !== null).length;
+    const rankedLabel = escapeHtml(t('components.techReadiness.ranked', { defaultValue: 'Ranked' }));
+    const unrankedLabel = escapeHtml(t('components.techReadiness.unranked', { defaultValue: 'Unranked' }));
+    const coverageRequirement = escapeHtml(t('components.techReadiness.coverageRequirement', { defaultValue: 'Minimum coverage to rank' }));
+    const coverageLabel = escapeHtml(t('components.techReadiness.coverageLabel', { defaultValue: 'Available indicators' }));
+    this.showCountBadge(ranked);
 
     const html = `
+      <div class="readiness-coverage-summary">
+        <div>${rankedLabel} ${ranked} · ${unrankedLabel} ${this.rankings.length - ranked}</div>
+        <div>${coverageRequirement} · ${TECH_READINESS_MIN_COMPONENTS}/4</div>
+      </div>
       <div class="tech-readiness-list">
         ${top.map(country => {
-      const scoreClass = this.getScoreClass(country.score);
+      const scoreClass = country.score === null ? 'low' : this.getScoreClass(country.score);
       return `
             <div class="readiness-item ${scoreClass}" data-country="${escapeHtml(country.country)}">
-              <div class="readiness-rank">#${country.rank}</div>
+              <div class="readiness-rank">${country.rank === null ? '—' : `#${country.rank}`}</div>
               <div class="readiness-flag">${this.getFlag(country.country)}</div>
               <div class="readiness-info">
                 <div class="readiness-name">${escapeHtml(country.countryName)}</div>
                 <div class="readiness-components">
+                  <span class="readiness-coverage" title="${coverageLabel}">${country.componentCount}/4</span>
                   <span title="${t('components.techReadiness.internetUsers')}">🌐${this.formatComponent(country.components.internet)}</span>
                   <span title="${t('components.techReadiness.mobileSubscriptions')}">📱${this.formatComponent(country.components.mobile)}</span>
+                  <span title="${escapeHtml(t('components.techReadiness.broadbandAccess', { defaultValue: 'Broadband Access' }))}">📡${this.formatComponent(country.components.broadband)}</span>
                   <span title="${t('components.techReadiness.rdSpending')}">🔬${this.formatComponent(country.components.rdSpend)}</span>
                 </div>
               </div>
-              <div class="readiness-score ${scoreClass}">${country.score}</div>
+              <div class="readiness-score ${scoreClass}"${country.score === null ? ` aria-label="${unrankedLabel}" title="${unrankedLabel}"` : ''}>${country.score ?? '—'}</div>
             </div>
           `;
     }).join('')}

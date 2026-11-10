@@ -7397,10 +7397,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
-const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
-
-const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+const { computeWorldBankTechRankings: wbComputeRankings } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_INDICATORS = [
   { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
@@ -7471,43 +7468,6 @@ async function wbFetchIndicator(indicatorId, dateRange) {
     }
   }
   return latestByCountry;
-}
-
-function wbNormalize(val, max) {
-  if (val === undefined || val === null) return null;
-  return Math.min(100, (val / max) * 100);
-}
-
-function wbComputeRankings(indicatorData) {
-  const allCountries = new Set();
-  for (const data of Object.values(indicatorData)) {
-    Object.keys(data).forEach(c => allCountries.add(c));
-  }
-  const scores = [];
-  for (const cc of allCountries) {
-    const components = {
-      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
-      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
-      broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
-      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
-    };
-    let totalWeight = 0, weightedSum = 0;
-    for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
-      if (components[key] !== null) { weightedSum += components[key] * weight; totalWeight += weight; }
-    }
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    const observations = buildWorldBankTechObservations({
-      internet: indicatorData.internet[cc],
-      mobile: indicatorData.mobile[cc],
-      broadband: indicatorData.broadband[cc],
-      rdSpend: indicatorData.rdSpend[cc],
-    });
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
-  }
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-  return scores;
 }
 
 async function wbFetchProgress() {
@@ -7583,7 +7543,7 @@ async function seedWorldBank() {
       console.log(`[WB]   ${id}: ${Object.keys(indicatorData[key]).length} countries`);
     }
     const rankings = wbComputeRankings(indicatorData);
-    console.log(`[WB] Rankings: ${rankings.length} countries`);
+    console.log(`[WB] Rankings: ${rankings.filter(entry => entry.rank !== null).length}/${rankings.length} countries ranked`);
 
     console.log('[WB] Fetching progress indicators...');
     const progressData = await wbFetchProgress();

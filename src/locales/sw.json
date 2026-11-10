@@ -1797,6 +1797,10 @@
       "soon": "HIVI KARIBUNI"
     },
     "techReadiness": {
+      "ranked": "Zenye nafasi",
+      "unranked": "Bila nafasi",
+      "coverageRequirement": "Kiwango cha chini cha viashiria ili kupata nafasi",
+      "coverageLabel": "Viashiria vinavyopatikana",
       "internetUsers": "Watumiaji wa Mtandao",
       "mobileSubscriptions": "Usajili wa Simu",
       "rdSpending": "Matangazo ya utafiti na maendeleo",

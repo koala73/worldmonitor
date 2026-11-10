@@ -1643,6 +1643,10 @@
       "infoTooltip": "<strong>테크 이벤트</strong> 예정 및 최근 기술 이벤트: 컨퍼런스, 제품 출시, 규제 청문회, 실적 콜. 공식 이벤트 캘린더 및 업계 소스에서 집계."
     },
     "techReadiness": {
+      "ranked": "순위 포함",
+      "unranked": "순위 제외",
+      "coverageRequirement": "순위 산정에 필요한 최소 지표 수",
+      "coverageLabel": "사용 가능한 지표",
       "internetUsers": "인터넷 사용자",
       "mobileSubscriptions": "모바일 가입",
       "rdSpending": "연구개발 지출",

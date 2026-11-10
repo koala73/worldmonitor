@@ -1797,6 +1797,10 @@
       "soon": "जल्द ही"
     },
     "techReadiness": {
+      "ranked": "रैंक वाले",
+      "unranked": "बिना रैंक के",
+      "coverageRequirement": "रैंक के लिए न्यूनतम कवरेज",
+      "coverageLabel": "उपलब्ध संकेतक",
       "internetUsers": "इंटरनेट उपयोगकर्ता",
       "mobileSubscriptions": "मोबाइल सदस्यता",
       "rdSpending": "अनुसंधान और विकास व्यय",

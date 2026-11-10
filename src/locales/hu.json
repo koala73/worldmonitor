@@ -1797,6 +1797,10 @@
       "soon": "HAMAROSAN"
     },
     "techReadiness": {
+      "ranked": "Rangsorolt",
+      "unranked": "Rangsorolatlan",
+      "coverageRequirement": "A rangsoroláshoz szükséges lefedettség",
+      "coverageLabel": "Elérhető mutatók",
       "internetUsers": "Internethasználók",
       "mobileSubscriptions": "Mobil előfizetések",
       "rdSpending": "Kutatás és fejlesztés kiadások",

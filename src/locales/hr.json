@@ -1806,6 +1806,10 @@
       "soon": "USKORO"
     },
     "techReadiness": {
+      "ranked": "Rangirane",
+      "unranked": "Nerangirane",
+      "coverageRequirement": "Minimalna pokrivenost za rangiranje",
+      "coverageLabel": "Dostupni pokazatelji",
       "internetUsers": "Korisnici interneta",
       "mobileSubscriptions": "Mobilne pretplate",
       "rdSpending": "Troškovi istraživanja i razvoja",
