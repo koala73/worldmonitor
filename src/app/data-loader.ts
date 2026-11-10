@@ -12,7 +12,7 @@ import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
-import type { MarketData, InternetOutage, UcdpGeoEvent } from '@/types';
+import type { MarketData, InternetOutage, PopulationExposure, UcdpGeoEvent } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
@@ -469,7 +469,7 @@ export class DataLoaderManager implements AppModule {
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
   // The scheduled refresh replaces intelligenceCache before fetching new data.
-  private ucdpExposureEvents?: UcdpGeoEvent[];
+  private ucdpExposures?: PopulationExposure[];
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -3674,6 +3674,7 @@ export class DataLoaderManager implements AppModule {
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
+    let protestsUpdated = false;
 
     tasks.push((async () => {
       try {
@@ -3696,6 +3697,7 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const protestData = await fetchProtestEvents();
+        protestsUpdated = true;
         this.ctx.intelligenceCache.protests = protestData;
         this.callbacks.refreshOpenCountryTimeline?.();
         ingestProtests(protestData.events);
@@ -3792,7 +3794,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    tasks.push((async () => {
+    const ucdpTask = (async () => {
       try {
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
@@ -3810,7 +3812,6 @@ export class DataLoaderManager implements AppModule {
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
-        this.ucdpExposureEvents = events;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
@@ -3820,11 +3821,15 @@ export class DataLoaderManager implements AppModule {
           this.ctx.map?.setUcdpEvents(events);
         }
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
+        const truncated = !wantsFullUcdpSet && !!hydratedUcdp?.events?.length
+          && (hydratedUcdp.totalEvents ?? Infinity) > events.length;
+        return { events, truncated, fromCache: result.fromCache };
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
         dataFreshness.recordError('ucdp_events', String(error));
       }
-    })());
+    })();
+    tasks.push(ucdpTask.then(() => undefined));
 
     tasks.push((async () => {
       try {
@@ -3960,25 +3965,42 @@ export class DataLoaderManager implements AppModule {
 
     try {
       const { protests } = this.ctx.intelligenceCache;
-      const ucdpEvents = this.ucdpExposureEvents;
       const perSourceLimit = 10;
+      const enrichUcdp = (events: UcdpGeoEvent[]) => enrichEventsWithExposure(events.map(e => ({
+        id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
+        name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+      })), perSourceLimit);
+
+      const ucdp = await ucdpTask;
+      let refreshedUcdp = ucdp ? enrichUcdp(ucdp.events) : undefined;
+      let ucdpFromCache = ucdp?.fromCache;
+      if (ucdp?.truncated && refreshedUcdp && refreshedUcdp.length < perSourceLimit) {
+        // Read the full feed only when the compact payload cannot fill the panel.
+        const full = this.ctx.panelSettings['population-exposure']?.enabled
+          ? await fetchUcdpEvents().catch(() => undefined)
+          : undefined;
+        refreshedUcdp = full?.success ? enrichUcdp(full.data) : undefined;
+        ucdpFromCache = full?.fromCache;
+      }
+      if (refreshedUcdp) this.ucdpExposures = refreshedUcdp;
+
       const exposures = [
         ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
           id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
           name: e.city ? `${e.city}, ${e.country}` : e.title,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
         })), perSourceLimit),
-        ...enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
-          name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
-          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-        })), perSourceLimit),
+        ...(this.ucdpExposures ?? []),
       ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
-      if (exposures.length === 0 && (!protests || !ucdpEvents)) {
+      if (exposures.length === 0 && (!protests || !this.ucdpExposures)) {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
-        dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
       } else {
         this.callPanel('population-exposure', 'setExposures', exposures);
+      }
+      if (!protestsUpdated || !refreshedUcdp) {
+        dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
+      } else if (!ucdpFromCache) {
         dataFreshness.recordUpdate('worldpop', exposures.length);
       }
     } catch (error) {

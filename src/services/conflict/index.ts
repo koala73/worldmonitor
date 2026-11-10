@@ -157,12 +157,13 @@ interface UcdpEventsResponse {
   count: number;
   data: UcdpGeoEvent[];
   cached_at: string;
+  fromCache: boolean;
 }
 
 export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
-    return { success: true, count: events.length, data: events, cached_at: '' };
+    return { success: true, count: events.length, data: events, cached_at: '', fromCache: false };
   }
 
   const resp = await ucdpBreaker.execute(async () => {
@@ -176,6 +177,7 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
     count: events.length,
     data: events,
     cached_at: '',
+    fromCache: ucdpBreaker.getDataState().mode === 'cached',
   };
 }
 

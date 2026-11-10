@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import type { ConflictEvent } from '@/services/conflict';
+import { dataFreshness } from '@/services/data-freshness';
 import type { Earthquake } from '@/services/earthquakes';
 import type { PopulationExposure, SocialUnrestEvent } from '@/types';
 
@@ -262,6 +263,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -335,8 +337,11 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [...unsupportedAcled, acled] });
     mocks.fetchUcdpEvents
       .mockResolvedValueOnce({ success: true, data: [...unsupportedUcdp, ucdp] })
-      .mockResolvedValueOnce({ success: false, data: [] });
+      .mockResolvedValueOnce({ success: false, data: [] })
+      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: true });
     const { loader, ctx } = await makeLoader();
+    const recordUpdate = vi.spyOn(dataFreshness, 'recordUpdate');
+    const recordError = vi.spyOn(dataFreshness, 'recordError');
     const setExposures = vi.fn<(exposures: PopulationExposure[]) => void>();
     ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
 
@@ -344,11 +349,44 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     // App replaces this cache before each scheduled intelligence refresh.
     ctx.intelligenceCache = {};
     await loader.loadIntelligenceSignals();
+    ctx.intelligenceCache = {};
+    await loader.loadIntelligenceSignals();
 
-    expect(setExposures).toHaveBeenCalledTimes(2);
+    expect(setExposures).toHaveBeenCalledTimes(3);
     for (const [exposures] of setExposures.mock.calls) {
       expect(exposures.map(exposure => exposure.eventId)).toEqual(['aden', 'taiz']);
     }
+    expect(recordUpdate.mock.calls.filter(([source]) => source === 'worldpop')).toEqual([['worldpop', 2]]);
+    expect(recordError).toHaveBeenCalledWith('worldpop', 'Exposure source data unavailable');
+  });
+
+  it('reads beyond the UCDP projection for exposure while preserving the UCDP panel projection', async () => {
+    const point = {
+      id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+      type_of_violence: 'state-based', hasPreciseLocation: true,
+    };
+    const projected = Array.from({ length: 50 }, (_, i) => ({
+      ...point, id: `projected-${i}`, hasPreciseLocation: false,
+    }));
+    const aggregates = { UCDP_VIOLENCE_TYPE_STATE_BASED: { count: 51, totalDeaths: 0 } };
+    const hydrated = { events: projected, totalEvents: 51, aggregates };
+    mocks.getHydratedData.mockImplementation(key => key === 'ucdpEvents' ? hydrated : undefined);
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+    mocks.fetchUcdpEvents
+      .mockResolvedValueOnce({ success: true, data: projected })
+      .mockResolvedValueOnce({ success: true, data: [...projected, point] });
+    const { loader, ctx } = await makeLoader();
+    ctx.panelSettings['population-exposure'] = { enabled: true, name: 'Population Exposure', priority: 0 };
+    const setExposures = vi.fn();
+    const setEvents = vi.fn();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+    ctx.panels['ucdp-events'] = { setEvents } as unknown as AppContext['panels'][string];
+
+    await loader.loadIntelligenceSignals();
+
+    expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated], []]);
+    expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })]);
   });
 
   it.each(['unrest', 'ucdp', 'neither'] as const)(
