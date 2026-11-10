@@ -211,3 +211,56 @@ describe('stale-quote dips', () => {
     assert.ok(Math.min(...sparkline) > 50.2, `stale prints removed: ${Math.min(...sparkline)}`);
   });
 });
+
+describe('the cron seeder caches the history chart per session', () => {
+  const historyTs = Array.from({ length: 30 * 12 }, (_, i) => T0 - 30 * 3600 + i * 300);
+  const history = chart(historyTs, historyTs.map((_, i) => 90 + (i % 5) * 0.01), '5m');
+
+  function todayFrom(start) {
+    const today = minuteChart(start, wobble(53, 91));
+    today.chart.result[0].meta.regularMarketTime = start + 52 * MINUTE;
+    today.chart.result[0].meta.chartPreviousClose = 90;
+    return today;
+  }
+
+  function fakeRedis() {
+    const store = new Map();
+    return async ([verb, key, value]) => {
+      if (verb === 'GET') return { result: store.get(key) ?? null };
+      store.set(key, value);
+      return { result: 'OK' };
+    };
+  }
+
+  it('makes the history request once per symbol per session across runs', async () => {
+    const { fetchYahooQuoteChart, createSparklineHistoryCache } = await import('../scripts/_yahoo-fetch.mjs');
+    const historyCache = createSparklineHistoryCache(fakeRedis(), 'test:history:');
+    let today = todayFrom(T0);
+    const urls = [];
+    const fetchJson = async (url) => {
+      urls.push(url);
+      return structuredClone(url.endsWith(SPARKLINE_HISTORY_QUERY) ? history : today);
+    };
+    const run = () => fetchYahooQuoteChart('BZ=F', { fetchJson, delayMs: 0, sparklineWindow: true, historyCache });
+    const historyRequests = () => urls.filter((u) => u.endsWith(SPARKLINE_HISTORY_QUERY)).length;
+
+    const first = await run();
+    const second = await run();
+    assert.equal(historyRequests(), 1, 'second run reads the cached history');
+    assert.deepEqual(second.sparkline, first.sparkline, 'cached history builds the same series');
+    assert.equal(second.sparklineStartAt, first.sparklineStartAt);
+
+    today = todayFrom(T0 + 86400);
+    await run();
+    assert.equal(historyRequests(), 2, 'a new session refetches history');
+  });
+
+  it('still publishes the quote when Redis is down', async () => {
+    const { fetchYahooQuoteChart, createSparklineHistoryCache } = await import('../scripts/_yahoo-fetch.mjs');
+    const historyCache = createSparklineHistoryCache(async () => { throw new Error('ECONNRESET'); }, 'test:history:');
+    const today = todayFrom(T0);
+    const fetchJson = async (url) => structuredClone(url.endsWith(SPARKLINE_HISTORY_QUERY) ? history : today);
+    const quote = await fetchYahooQuoteChart('BZ=F', { fetchJson, delayMs: 0, sparklineWindow: true, historyCache });
+    assert.equal(quote.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+  });
+});
