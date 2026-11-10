@@ -1,19 +1,39 @@
+import { CME_ENERGY_CLOSES, EIA_RELEASE_SHIFTS } from './oil-release-calendar';
+
 const DAY_MS = 86_400_000;
-const HOUR_MS = 3_600_000;
 const FUTURES_MAX_AGE_MS = 30 * 60_000;
-// Weekly observations arrive the following week; allow the next release and holiday delays.
-export const EIA_WEEKLY_SPOT_MAX_AGE_MS = 14 * DAY_MS;
+// The petroleum bundle refreshes daily. Allow one refresh after the next release.
+const EIA_RELEASE_GRACE_MS = DAY_MS;
 
 const futuresSession = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23',
+  timeZone: 'America/New_York', weekday: 'short', year: 'numeric', month: '2-digit',
+  day: '2-digit', hour: 'numeric', minute: '2-digit', hourCycle: 'h23',
 });
 
 function isFuturesTradingTime(time: number): boolean {
-  const parts = futuresSession.formatToParts(time);
-  const day = parts.find(part => part.type === 'weekday')?.value;
-  const hour = Number(parts.find(part => part.type === 'hour')?.value);
+  const parts = Object.fromEntries(futuresSession.formatToParts(time).map(part => [part.type, part.value]));
+  const day = parts.weekday;
+  const hour = Number(parts.hour);
   if (day === 'Sat' || (day === 'Fri' && hour >= 17) || (day === 'Sun' && hour < 18)) return false;
-  return hour !== 17;
+  if (hour === 17) return false;
+  const localDate = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+  // An evening open belongs to the following trade date. A full holiday has no
+  // preceding evening session, while an early halt can reopen at 18:00 ET.
+  const tradeDate = new Date(localDate + (hour >= 18 ? DAY_MS : 0)).toISOString().slice(0, 10);
+  const close = CME_ENERGY_CLOSES[tradeDate] ?? 17 * 60;
+  return close !== 0 && (hour >= 18 || hour * 60 + Number(parts.minute) < close);
+}
+
+function nextEiaRelease(priceAt: number): number {
+  const nextWeek = new Date(Math.floor(priceAt / DAY_MS) * DAY_MS + 7 * DAY_MS);
+  const shift = EIA_RELEASE_SHIFTS[nextWeek.toISOString().slice(0, 10)];
+  if (shift) return Date.parse(shift);
+  // Regular release: Wednesday after the next week ends, at 10:30 ET.
+  const releaseDay = nextWeek.getTime() + ((3 - nextWeek.getUTCDay() + 7) % 7) * DAY_MS;
+  const candidate = releaseDay + (10 * 60 + 30) * 60_000;
+  const parts = Object.fromEntries(futuresSession.formatToParts(candidate).map(part => [part.type, part.value]));
+  const localTime = Number(parts.hour) * 60 + Number(parts.minute);
+  return candidate + (10 * 60 + 30 - localTime) * 60_000;
 }
 
 export function isStaleOilPrice(priceAt: number | undefined, maxAgeMs: number, now = Date.now()): boolean {
@@ -26,7 +46,8 @@ export function eiaWeeklySpotProvenance(priceAt: number | undefined, now = Date.
     priceSource: 'EIA',
     priceBasis: 'spot',
     frequency: 'weekly',
-    stale: isStaleOilPrice(priceAt, EIA_WEEKLY_SPOT_MAX_AGE_MS, now),
+    stale: isStaleOilPrice(priceAt, Infinity, now)
+      || now > nextEiaRelease(priceAt!) + EIA_RELEASE_GRACE_MS,
   };
 }
 
@@ -38,10 +59,10 @@ export function oilTapeMaxAgeMs(priceBasis: string | undefined, now = Date.now()
   if (trading && isFuturesTradingTime(cutoff)) return FUTURES_MAX_AGE_MS;
   if (!trading) cutoff = now;
 
-  // NYMEX crude pauses at 17:00 ET and reopens at 18:00 ET, Sunday through Thursday.
-  // Preserve the closing quote through the break and a 30-minute restart grace.
+  // Preserve the closing quote through scheduled breaks/holidays and a restart
+  // grace. All calendar boundaries are on a quarter hour, including early halts.
   while (!isFuturesTradingTime(cutoff - 1)) {
-    cutoff = Math.floor((cutoff - 1) / HOUR_MS) * HOUR_MS;
+    cutoff = Math.floor((cutoff - 1) / (15 * 60_000)) * (15 * 60_000);
   }
   return now - cutoff + FUTURES_MAX_AGE_MS;
 }
