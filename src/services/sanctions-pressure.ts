@@ -97,7 +97,7 @@ function reviveNullableDate(value: Date | null): Date | null {
 function reviveSanctionsPressureResult(result: SanctionsPressureResult): SanctionsPressureResult {
   return {
     ...result,
-    ...splitSanctionsAttribution(result.countries, result.unattributed),
+    ...splitSanctionsAttribution(result.countries ?? [], result.unattributed),
     fetchedAt: reviveDate(result.fetchedAt),
     datasetDate: reviveNullableDate(result.datasetDate),
     entries: result.entries.map((entry) => ({
