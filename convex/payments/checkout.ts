@@ -515,6 +515,7 @@ const acquisitionValidator = v.object({
   campaign: v.optional(v.string()),
   referrer: v.optional(v.string()),
   landing: v.optional(v.string()),
+  path: v.optional(v.string()),
   firstSeen: v.optional(v.string()),
 });
 
