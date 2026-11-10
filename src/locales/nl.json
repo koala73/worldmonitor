@@ -4497,9 +4497,9 @@
     "tabNameAria": "Tabbladnaam",
     "addTabTitleSaved": "Nieuw tabblad (begint met de panelen die je hebt opgeslagen)",
     "newTabOptions": "Opties voor nieuw tabblad",
-    "newTabStartsDefault": "Nieuwe tabbaden beginnen met de standaardpanelen.",
-    "newTabStartsSaved": "Nieuwe tabbaden beginnen met de panelen die je hebt opgeslagen.",
-    "newTabOptionsHint": "Tabbaden die je al hebt, veranderen niet.",
+    "newTabStartsDefault": "Nieuwe tabbladen beginnen met de standaardpanelen.",
+    "newTabStartsSaved": "Nieuwe tabbladen beginnen met de panelen die je hebt opgeslagen.",
+    "newTabOptionsHint": "Tabbladen die je al hebt, veranderen niet.",
     "useThisTabPanels": "Gebruik de panelen van dit tabblad",
     "useDefaultPanels": "Gebruik de standaardpanelen",
     "newTabPanelsNotSaved": "Kon niet opslaan. Deze browser blokkeert sitegegevens."
