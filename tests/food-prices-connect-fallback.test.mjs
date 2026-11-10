@@ -12,6 +12,7 @@ import { foodSourceConnectOptions } from '../scripts/lib/food-prices-fetch.mjs';
 const DEAD = '127.0.0.2';
 const LIVE = '127.0.0.1';
 
+/** Fake DNS that records each query and puts the dead address first. */
 function rotatingDns(queries) {
   return (hostname, options, callback) => {
     queries.push({ family: options.family, all: options.all === true });
@@ -26,9 +27,9 @@ describe('food source connect options', () => {
     await new Promise(resolve => server.listen(0, LIVE, resolve));
     const { port } = server.address();
     const queries = [];
-    const connect = foodSourceConnectOptions(undefined, { dnsLookup: rotatingDns(queries) });
-    // Shorter than production so the dead address is abandoned quickly here.
-    const agent = new Agent({ connect: { ...connect, timeout: 3_000, autoSelectFamilyAttemptTimeout: 250 } });
+    // The shipped options, unchanged: a refused address fails at once, so the
+    // production timeouts cost nothing here.
+    const agent = new Agent({ connect: foodSourceConnectOptions(undefined, { dnsLookup: rotatingDns(queries) }) });
     try {
       const response = await fetch(`http://publisher.test:${port}/`, { dispatcher: agent, signal: AbortSignal.timeout(10_000) });
       assert.equal(response.status, 200);
@@ -40,5 +41,18 @@ describe('food source connect options', () => {
     // Only IPv4 addresses are ever asked for.
     assert.ok(queries.length > 0);
     assert.ok(queries.every(query => query.family === 4), JSON.stringify(queries));
+  });
+
+  it('leaves a stalled address time to fall through before the connect deadline', () => {
+    // www.da.gov.ph's dead address never answers, so only the per-address
+    // attempt window moves past it. Node ignores autoSelectFamily when
+    // `family` is set, which is the bug this replaced.
+    const connect = foodSourceConnectOptions(undefined);
+    assert.equal('family' in connect, false);
+    assert.equal(connect.autoSelectFamily, true);
+    const attempt = connect.autoSelectFamilyAttemptTimeout;
+    assert.ok(Number.isFinite(attempt) && attempt >= 250, `attempt window ${attempt}`);
+    // A stalled first address plus a slow second handshake still fits.
+    assert.ok(attempt * 2 <= connect.timeout, `attempt ${attempt} x2 > connect ${connect.timeout}`);
   });
 });
