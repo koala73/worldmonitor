@@ -8,6 +8,7 @@ import {
   acquisitionCookieStorage,
   acquisitionFromCheckoutMetadata,
   captureFirstTouchAcquisition,
+  firstTouchSetCookie,
   loadFirstTouchAcquisition,
   normalizeAcquisitionSource,
   parseAcquisitionSource,
@@ -69,8 +70,25 @@ describe('parseAcquisitionSource', () => {
     assert.equal(landing('/api/docs'), 'developer_mcp');
     assert.equal(landing('/docs/privacy'), 'documentation');
     assert.equal(landing('/use-cases/osint'), 'use-cases');
-    assert.equal(landing('/blog/hormuz'), undefined);
+    assert.equal(landing('/chokepoints/strait-of-hormuz/'), 'chokepoints');
+    assert.equal(landing('/countries/iran/'), 'countries');
+    assert.equal(landing('/crises/iran-israel/'), 'crises');
+    assert.equal(landing('/compare/worldmonitor-vs-liveuamap/'), 'compare');
+    assert.equal(landing('/tools/fear-and-greed-index/'), 'tools');
+    assert.equal(landing('/research'), 'research');
+    assert.equal(landing('/agent/'), 'agent');
+    assert.equal(landing('/blog/hormuz'), 'blog');
     assert.equal(landing('/product'), undefined);
+    assert.equal(landing('/blogroll'), undefined);
+    assert.equal(landing('/toolshed/x'), undefined);
+  });
+
+  it('keeps every landing family it assigns through validation', () => {
+    for (const pathname of ['/chokepoints/a/', '/countries/a/', '/crises/a/', '/compare/a/', '/tools/a/', '/research/a/', '/agent/', '/blog/a/']) {
+      const source = parseAcquisitionSource({ search: '', pathname, referrer: '', now: NOW });
+      assert.equal(normalizeAcquisitionSource(source)?.landing, source.landing, pathname);
+      assert.ok(source.landing, pathname);
+    }
   });
 
   it('treats a non-http referrer as direct', () => {
@@ -224,5 +242,78 @@ describe('acquisitionFromCheckoutMetadata', () => {
     assert.equal(acquisitionFromCheckoutMetadata({ wm_user_id: 'user_1' }), null);
     assert.equal(acquisitionFromCheckoutMetadata(undefined), null);
     assert.equal(acquisitionFromCheckoutMetadata(['wm_acq_source']), null);
+  });
+});
+
+describe('firstTouchSetCookie', () => {
+  const HORMUZ_FROM_CHATGPT = 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/?utm_source=chatgpt.com';
+
+  function cookieRecord(setCookie: string | null): Record<string, unknown> {
+    assert.ok(setCookie, 'expected a Set-Cookie value');
+    const pair = setCookie.split(';')[0]!;
+    assert.ok(pair.startsWith(`${ACQUISITION_COOKIE_NAME}=`), pair);
+    return JSON.parse(decodeURIComponent(pair.slice(ACQUISITION_COOKIE_NAME.length + 1)));
+  }
+
+  function storedCookie(record: Record<string, unknown>): string {
+    return `theme=dark; ${ACQUISITION_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(record))}`;
+  }
+
+  it('records an AI-assistant landing on a content page that sent no referrer', () => {
+    const setCookie = firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader: null, referrer: null, now: NOW });
+    assert.deepEqual(cookieRecord(setCookie), {
+      source: 'chatgpt-com',
+      referrer: 'direct',
+      landing: 'chokepoints',
+      firstSeen: '2026-10-24',
+      capturedAt: NOW,
+    });
+  });
+
+  it('writes the cookie a later checkout reads back', () => {
+    const setCookie = firstTouchSetCookie({
+      url: HORMUZ_FROM_CHATGPT, cookieHeader: 'theme=dark', referrer: 'https://chatgpt.com/', now: NOW,
+    });
+    const doc = { cookie: setCookie!.split(';')[0]! };
+    const storage = acquisitionCookieStorage(doc, { hostname: 'www.worldmonitor.app', protocol: 'https:' });
+    assert.deepEqual(loadFirstTouchAcquisition(storage, NOW + 1_000), {
+      source: 'chatgpt-com',
+      referrer: 'chatgpt.com',
+      landing: 'chokepoints',
+      firstSeen: '2026-10-24',
+    });
+  });
+
+  it('carries the browser path\'s cookie attributes, readable by page script', () => {
+    const setCookie = firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader: '', referrer: '', now: NOW })!;
+    const attributes = setCookie.split(';').slice(1).map((part) => part.trim());
+    assert.deepEqual(attributes.sort(), ['SameSite=Lax', 'Secure', 'domain=.worldmonitor.app', 'max-age=7776000', 'path=/']);
+    assert.doesNotMatch(setCookie, /httponly/i);
+  });
+
+  it('stays host-only on a preview host', () => {
+    const setCookie = firstTouchSetCookie({
+      url: 'https://worldmonitor-git-x.vercel.app/blog/x/', cookieHeader: null, referrer: null, now: NOW,
+    })!;
+    assert.doesNotMatch(setCookie, /domain=/);
+    assert.equal(cookieRecord(setCookie).landing, 'blog');
+  });
+
+  it('writes nothing when an unexpired first touch is already stored', () => {
+    const cookieHeader = storedCookie({ source: 'reddit', referrer: 'reddit.com', landing: 'homepage', capturedAt: NOW - 1_000 });
+    assert.equal(firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader, referrer: null, now: NOW }), null);
+  });
+
+  it('replaces an expired record with this visit', () => {
+    const cookieHeader = storedCookie({ source: 'reddit', referrer: 'reddit.com', capturedAt: NOW - ACQUISITION_TTL_MS - 1 });
+    const record = cookieRecord(firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader, referrer: null, now: NOW }));
+    assert.equal(record.source, 'chatgpt-com');
+    assert.equal(record.capturedAt, NOW);
+  });
+
+  it('replaces a malformed record with this visit', () => {
+    const cookieHeader = `${ACQUISITION_COOKIE_NAME}=%7Bnot-json`;
+    const record = cookieRecord(firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader, referrer: null, now: NOW }));
+    assert.equal(record.landing, 'chokepoints');
   });
 });
