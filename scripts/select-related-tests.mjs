@@ -49,8 +49,9 @@ export function readPathAliases(root = ROOT) {
   let text;
   try {
     text = readFileSync(join(root, 'tsconfig.json'), 'utf8');
-  } catch {
-    return [];
+  } catch (error) {
+    // No config means no aliases; a config that exists but cannot be read is unknown.
+    return error.code === 'ENOENT' ? [] : null;
   }
   let config;
   try {

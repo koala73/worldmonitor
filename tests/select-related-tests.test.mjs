@@ -136,6 +136,13 @@ describe('selectRelatedTests', () => {
       const inventory = listInventory(root);
       assert.deepEqual(selectRelatedTests({ root, inventory, changed: ['docs/notes.md'] }), inventory, label);
     }
+    // A config that exists but cannot be read (here a directory: EISDIR).
+    const unreadable = fixture(FILES);
+    mkdirSync(join(unreadable, 'tsconfig.json'));
+    const inventory = listInventory(unreadable);
+    assert.deepEqual(selectRelatedTests({ root: unreadable, inventory, changed: ['docs/notes.md'] }), inventory, 'an unreadable config');
+    // No config at all still means no aliases, not select-all.
+    assert.deepEqual(selectRelatedTests({ root: fixture(FILES), inventory, changed: ['docs/notes.md'] }), []);
   });
 
   it('terminates on import cycles', () => {
