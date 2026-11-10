@@ -206,7 +206,10 @@ describe('ListCommodityQuotes async handler paths (mocked Redis)', () => {
     assert.deepEqual(body.quotes.map((q: { symbol: string }) => q.symbol), ['GC=F', 'CL=F', 'SI=F', 'BZ=F']);
   });
 
-  it('serves the sparkline bar width and start the seeder wrote', async () => {
+  // The generated server has no proto encode step: the handler serves the seed
+  // JSON as written. This guards that pass-through, so a handler that rebuilds
+  // quotes field by field cannot drop the labels.
+  it('passes the seeder\'s sparkline bar width and start through unchanged', async () => {
     const labeled = { ...seedQuote('BZ=F'), sparkline: [94.93, 94.8], sparklineIntervalSeconds: 300, sparklineStartAt: 1794287700000 };
     installRedisMock({ kind: 'seed', payload: { quotes: [labeled] } });
     const response = await routeHandler()(requestFor('/api/market/v1/list-commodity-quotes?symbols=BZ%3DF'));

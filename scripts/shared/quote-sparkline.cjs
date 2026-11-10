@@ -9,6 +9,10 @@
 const SPARKLINE_INTERVAL_SECONDS = 300;
 const SPARKLINE_WINDOW_SECONDS = 24 * 60 * 60;
 const SPARKLINE_HISTORY_QUERY = '?range=2d&interval=5m';
+// After a failed history request, both writers wait this long before asking
+// again, so a Yahoo 429 episode does not cost one extra request per symbol
+// every cycle.
+const SPARKLINE_HISTORY_RETRY_SECONDS = 15 * 60;
 
 const SPIKE_MAD_MULTIPLE = 10;
 const SPIKE_MIN_MOVE = 0.002;
@@ -45,7 +49,10 @@ function median(values) {
 
 // A bad tick jumps away from both neighbours in the same direction, and the
 // next print returns to where the previous one was. A move that holds is kept,
-// and so is any print next to a trading gap.
+// and so is a print with a trading gap on one side only, such as a session
+// open. A print with a gap on both sides is a thin contract's lone print, and
+// it is tested against the prints across the gaps: CT=F printed 82.37 with no
+// volume between 78.76 and 78.39, three hours either side.
 function dropSingleTickSpikes(bars) {
   if (bars.length < 3) return bars;
   const diffs = bars.slice(1).map((bar, i) => bar.v - bars[i].v);
@@ -54,7 +61,9 @@ function dropSingleTickSpikes(bars) {
     const prev = bars[i - 1];
     const cur = bars[i];
     const next = bars[i + 1];
-    if (cur.t - prev.t > TRADING_GAP_SECONDS || next.t - cur.t > TRADING_GAP_SECONDS) {
+    const gapBefore = cur.t - prev.t > TRADING_GAP_SECONDS;
+    const gapAfter = next.t - cur.t > TRADING_GAP_SECONDS;
+    if (gapBefore !== gapAfter) {
       kept.push(cur);
       continue;
     }
@@ -88,15 +97,17 @@ function buildQuoteSparkline(chart, history) {
   const lastBucket = Math.floor(bars[bars.length - 1].t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS;
   const firstBucket = lastBucket - SPARKLINE_WINDOW_SECONDS + SPARKLINE_INTERVAL_SECONDS;
   const closes = new Map();
-  for (const bar of bars) {
-    const bucket = Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS;
-    if (bucket >= firstBucket) closes.set(bucket, bar.v);
-  }
-  const buckets = [...closes.keys()].sort((a, b) => a - b);
+  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar.v);
+  // A bad print that follows a smaller bad print passes the first pass, then
+  // becomes its bucket's close: USDTRY read 50.207, 50.113, 50.207 on a 50.229
+  // tape. The filter runs again on the closes, before the window is cut, so
+  // the window's first close is tested against the close before it.
+  const points = dropSingleTickSpikes([...closes].map(([t, v]) => ({ t, v })).sort((a, b) => a.t - b.t))
+    .filter((point) => point.t >= firstBucket);
   return {
-    sparkline: buckets.map((bucket) => closes.get(bucket)),
+    sparkline: points.map((point) => point.v),
     sparklineIntervalSeconds: SPARKLINE_INTERVAL_SECONDS,
-    sparklineStartAt: buckets[0] * 1000,
+    sparklineStartAt: points[0].t * 1000,
   };
 }
 
@@ -104,5 +115,6 @@ module.exports = {
   SPARKLINE_INTERVAL_SECONDS,
   SPARKLINE_WINDOW_SECONDS,
   SPARKLINE_HISTORY_QUERY,
+  SPARKLINE_HISTORY_RETRY_SECONDS,
   buildQuoteSparkline,
 };

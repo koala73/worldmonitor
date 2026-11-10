@@ -14,7 +14,8 @@ export function oilTapeObservationLabel(quote: OilTapeObservation): string {
   const basis = priceBasis === 'futures' ? t('components.energyComplex.futures')
     : priceBasis === 'spot' ? t('components.energyComplex.dailySpot')
     : '';
-  const stale = isStaleOilPrice(priceAt, oilTapeMaxAgeMs(priceBasis));
+  const now = Date.now();
+  const stale = isStaleOilPrice(priceAt, oilTapeMaxAgeMs(priceBasis, now), now);
   return [
     basis, priceSource || t('components.energyComplex.unknownQuoteSource'),
     time || t('components.energyComplex.unknownPriceDate'),
