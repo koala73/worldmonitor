@@ -2733,11 +2733,14 @@ describe('homepage WebMCP source registration', () => {
     assert.equal(currentCalls.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
     assert.deepEqual([...new Set(receivers)].sort(), ['current', 'legacy']);
     const currentAssignments = [...body.matchAll(/\bcurrent\s*=(?!=)\s*([^;]+);/g)].map((m) => m[1].trim());
+    // Every value an assignment can produce must be document.modelContext or
+    // null; an optional `typeof document` guard may select between them.
+    const value = String.raw`(?:document\.modelContext|null)`;
+    const allowedRhs = new RegExp(
+      String.raw`^(?:typeof\s+document\s*!==?\s*['"]undefined['"]\s*\?\s*${value}\s*:\s*${value}|${value})$`,
+    );
     assert.ok(currentAssignments.some((rhs) => /\bdocument\.modelContext\b/.test(rhs)));
-    for (const rhs of currentAssignments) {
-      assert.ok(rhs === 'null' || /\bdocument\.modelContext\b/.test(rhs), rhs);
-      assert.doesNotMatch(rhs, /\bnavigator\b/);
-    }
+    for (const rhs of currentAssignments) assert.match(rhs, allowedRhs);
     assert.doesNotMatch(body, /function\s+\w*\s*\(\s*modelContext\s*\)/);
   });
 
