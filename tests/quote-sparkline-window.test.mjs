@@ -95,6 +95,58 @@ describe('buildQuoteSparkline', () => {
     assert.equal(early.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
   });
 
+  it('keeps the previous session 30 minutes after a Monday 23:00 UTC open', () => {
+    // Brent-like day: the session opens 23:00 UTC and trades 23 hours with a
+    // one-hour break, so the previous session is Sun 23:00 to Mon 22:00 UTC.
+    const prevOpen = Date.UTC(2026, 10, 8, 23, 0, 0) / 1000;
+    const prevTs = Array.from({ length: 23 * 12 }, (_, i) => prevOpen + i * 300);
+    const history = chart(prevTs, prevTs.map((_, i) => 64 + (i % 5) * 0.01), '5m');
+    const open = Date.UTC(2026, 10, 9, 23, 0, 0) / 1000;
+    const todayCloses = wobble(30, 64.2);
+    const today = minuteChart(open, todayCloses); // Mon 23:00 to 23:29 UTC
+
+    const out = buildQuoteSparkline(today, history);
+    // History holding only the previous session: 276 bars plus 6 from the new
+    // one, all of them, not the 276 that fit in 24 wall-clock hours.
+    assert.equal(out.sparkline.length, 23 * 12 + 6);
+    assert.equal(out.sparklineStartAt / 1000, prevOpen, 'starts at the previous session open');
+    assert.equal(out.sparkline.at(-1), todayCloses.at(-1), 'ends at the last print of the new session');
+
+    // Yahoo's 3-day chart at Mon 23:30 UTC also holds Friday (Thu 23:00 to
+    // Fri 22:00 UTC). The last 6 Friday bars complete the 288.
+    const fridayOpen = Date.UTC(2026, 10, 5, 23, 0, 0) / 1000;
+    const fridayTs = Array.from({ length: 23 * 12 }, (_, i) => fridayOpen + i * 300);
+    const fullHistory = chart([...fridayTs, ...prevTs], [...fridayTs.map(() => 63.9), ...prevTs.map(() => 64)], '5m');
+    const real = buildQuoteSparkline(today, fullHistory);
+    assert.equal(real.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+    assert.equal(real.sparklineStartAt, Date.UTC(2026, 10, 6, 21, 30), 'starts at Fri 21:30 UTC');
+
+    // A full 24-hour previous session (FX) caps the series at 288 bars.
+    const fxTs = Array.from({ length: 24 * 12 }, (_, i) => prevOpen + i * 300);
+    const fx = buildQuoteSparkline(today, chart(fxTs, fxTs.map(() => 64), '5m'));
+    assert.equal(fx.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+    assert.equal(fx.sparklineStartAt / 1000, prevOpen + 6 * 300, '24 traded hours back from the last bar');
+  });
+
+  it('reaches back to Friday when the market reopens on Sunday evening', () => {
+    const fridayOpen = Date.UTC(2026, 10, 5, 23, 0, 0) / 1000; // Thu 23:00 to Fri 22:00 UTC
+    const fridayTs = Array.from({ length: 23 * 12 }, (_, i) => fridayOpen + i * 300);
+    const history = chart(fridayTs, fridayTs.map(() => 63), '5m');
+    const sundayOpen = Date.UTC(2026, 10, 8, 23, 0, 0) / 1000;
+    const out = buildQuoteSparkline(minuteChart(sundayOpen, wobble(30, 63.5)), history);
+    assert.equal(out.sparkline.length, 23 * 12 + 6, 'not the 6 bars since the reopen');
+    assert.equal(out.sparklineStartAt / 1000, fridayOpen);
+  });
+
+  it('keeps every bar of a thin contract that trades less than 24 hours in the history window', () => {
+    const prevTs = Array.from({ length: 36 }, (_, i) => Date.UTC(2026, 10, 9, 8, 0, 0) / 1000 + i * 300);
+    const history = chart(prevTs, prevTs.map(() => 30), '5m');
+    const today = minuteChart(Date.UTC(2026, 10, 10, 8, 0, 0) / 1000, wobble(10, 31));
+    const out = buildQuoteSparkline(today, history);
+    assert.equal(out.sparkline.length, 36 + 2);
+    assert.equal(out.sparklineStartAt / 1000, prevTs[0], 'start label names the real first bar');
+  });
+
   it('leaves closed-market bars out instead of drawing a flat line', () => {
     const session1 = Array.from({ length: 60 }, (_, i) => T0 + i * MINUTE);
     const session2 = Array.from({ length: 60 }, (_, i) => T0 + 10 * 3600 + i * MINUTE);
@@ -109,6 +161,13 @@ describe('buildQuoteSparkline', () => {
     const out = buildQuoteSparkline(chart([], []), history);
     assert.equal(out.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
     assert.equal(out.sparklineStartAt / 1000, historyTs.at(-1) - SPARKLINE_WINDOW_SECONDS + SPARKLINE_INTERVAL_SECONDS);
+  });
+
+  it('asks Yahoo for 3 trading days so a Sunday reopen still reaches Thursday evening', () => {
+    // Yahoo cuts the chart at New York midnight and counts Sunday's evening
+    // session as a day. At Sun 23:30 UTC, range=2d is Friday from 05:00 UTC
+    // plus Sunday; range=3d adds Thursday, whose evening opens Friday's session.
+    assert.equal(SPARKLINE_HISTORY_QUERY, '?range=3d&interval=5m');
   });
 
   it('returns an unlabeled empty series when there are no bars', () => {
@@ -220,8 +279,10 @@ describe('island prints on thin contracts', () => {
   it('drops a print with a trading gap on both sides that jumps and reverts', () => {
     const today = chart([at(10, 10, 16), at(10, 13, 20), at(10, 16, 20), at(10, 16, 30)], [82.37, 78.39, 78.27, 78.28]);
     const out = buildQuoteSparkline(today, history);
-    assert.deepEqual(out.sparkline, [78.39, 78.27, 78.28], 'island print removed, the window keeps the rest');
-    assert.equal(out.sparklineStartAt, at(10, 13, 20) * 1000, 'the series starts at the first kept close');
+    // Fewer than 288 traded bars in the history window, so Monday's bars stay
+    // (#10424); the island print is still removed.
+    assert.deepEqual(out.sparkline, [79.27, 79.19, 79.14, 78.76, 78.39, 78.27, 78.28], 'island print removed, the window keeps the rest');
+    assert.equal(out.sparklineStartAt, at(9, 8, 20) * 1000, 'the series starts at the first kept close');
   });
 
   it('keeps an island print when the next print holds the move', () => {

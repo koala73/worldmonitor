@@ -29,6 +29,8 @@ interface RawQuote {
   price: number | null;
   change: number | null;
   sparkline?: number[];
+  sparklineIntervalSeconds?: number;
+  sparklineStartAt?: number;
 }
 
 interface RawCotCategory {
@@ -284,6 +286,8 @@ export async function getGoldIntelligence(
       goldPrice,
       goldChangePct: gold?.change ?? 0,
       goldSparkline: gold?.sparkline ?? [],
+      goldSparklineIntervalSeconds: gold?.sparklineIntervalSeconds,
+      goldSparklineStartAt: gold?.sparklineStartAt,
       silverPrice,
       platinumPrice,
       palladiumPrice,

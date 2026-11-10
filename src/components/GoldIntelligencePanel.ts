@@ -4,6 +4,7 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { miniSparkline } from '@/utils/sparkline';
+import { sparklineSpanText } from './_sparkline-span';
 
 interface CrossCurrencyPrice { currency: string; flag: string; price: number }
 interface CotCategory { longPositions: string; shortPositions: string; netPct: number; oiSharePct: number; wowNetDelta: string }
@@ -47,6 +48,8 @@ interface GoldIntelligenceData {
   goldPrice: number;
   goldChangePct: number;
   goldSparkline: number[];
+  goldSparklineIntervalSeconds?: number;
+  goldSparklineStartAt?: number;
   silverPrice: number;
   platinumPrice: number;
   palladiumPrice: number;
@@ -193,6 +196,11 @@ export class GoldIntelligencePanel extends Panel {
     const changeColor = changePct >= 0 ? '#2ecc71' : '#e74c3c';
     const spark = miniSparkline(d.goldSparkline, changePct, 80, 20);
     const fresh = freshnessLabel(d.updatedAt);
+    const span = sparklineSpanText({
+      sparkline: d.goldSparkline,
+      sparklineIntervalSeconds: d.goldSparklineIntervalSeconds,
+      sparklineStartAt: d.goldSparklineStartAt,
+    });
 
     const sessionLine = d.session && d.session.dayHigh > 0
       ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">
@@ -210,7 +218,7 @@ export class GoldIntelligencePanel extends Panel {
         </div>
         <div style="display:flex;align-items:center;gap:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span style="width:6px;height:6px;border-radius:50%;background:${fresh.dot};display:inline-block"></span>
-          <span>${escapeHtml(fresh.text)} • GC=F front-month</span>
+          <span>${escapeHtml(fresh.text)} • GC=F front-month${span ? ` • ${escapeHtml(span)}` : ''}</span>
         </div>
         ${sessionLine}
       </div>`;

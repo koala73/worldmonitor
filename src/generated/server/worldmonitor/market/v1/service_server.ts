@@ -705,6 +705,8 @@ export interface GetGoldIntelligenceResponse {
   drivers: GoldDriver[];
   etfFlows?: GoldEtfFlows;
   cbReserves?: GoldCbReserves;
+  goldSparklineIntervalSeconds?: number;
+  goldSparklineStartAt?: number;
 }
 
 export interface GoldCrossCurrencyPrice {

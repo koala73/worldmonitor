@@ -1,14 +1,21 @@
 'use strict';
 
-// A quote sparkline covers the 24 hours ending at the last trade, in 5-minute
-// bar closes. Yahoo's default chart starts at midnight New York time, so on its
-// own it spans 53 minutes at one hour and 19 hours at another. The history
-// chart supplies the bars before that. Bars with no trades are left out: a
-// closed market is a gap, not a flat line nobody traded.
+// A quote sparkline covers the last 24 trading hours: the latest 288 5-minute
+// bars that had trades. Across a daily close or a weekend it reaches back into
+// the previous session, so it does not shrink to a few bars after every open.
+// Yahoo's default chart starts at midnight New York time, so on its own it
+// spans 53 minutes at one hour and 19 hours at another. The 3-day history chart
+// supplies the bars before that. Yahoo cuts it at New York midnight and counts
+// Sunday's evening session as a day, so on Sunday evening it still holds
+// Thursday evening and all of Friday. Bars with no trades are left out: a closed
+// market is a gap, not a flat line nobody traded. A thin contract that trades
+// fewer than 24 hours in those three days keeps all its bars, and
+// sparklineStartAt names the first one.
 
 const SPARKLINE_INTERVAL_SECONDS = 300;
 const SPARKLINE_WINDOW_SECONDS = 24 * 60 * 60;
-const SPARKLINE_HISTORY_QUERY = '?range=2d&interval=5m';
+const SPARKLINE_POINTS = SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS;
+const SPARKLINE_HISTORY_QUERY = '?range=3d&interval=5m';
 // After a failed history request, both writers wait this long before asking
 // again, so a Yahoo 429 episode does not cost one extra request per symbol
 // every cycle.
@@ -83,7 +90,7 @@ function dropSingleTickSpikes(bars) {
 }
 
 /**
- * Build the 24-hour sparkline from the quote's default chart and, when
+ * Build the 24-trading-hour sparkline from the quote's default chart and, when
  * available, a SPARKLINE_HISTORY_QUERY chart of the same symbol. Returns the
  * values with the bar width in seconds and the first bar's start in epoch ms,
  * or an empty series with no labels.
@@ -94,8 +101,6 @@ function buildQuoteSparkline(chart, history) {
   const bars = dropSingleTickSpikes([...chartBars(history).filter((bar) => bar.t < recentStart), ...recent]);
   if (bars.length === 0) return { sparkline: [] };
 
-  const lastBucket = Math.floor(bars[bars.length - 1].t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS;
-  const firstBucket = lastBucket - SPARKLINE_WINDOW_SECONDS + SPARKLINE_INTERVAL_SECONDS;
   const closes = new Map();
   for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar.v);
   // A bad print that follows a smaller bad print passes the first pass, then
@@ -103,7 +108,7 @@ function buildQuoteSparkline(chart, history) {
   // tape. The filter runs again on the closes, before the window is cut, so
   // the window's first close is tested against the close before it.
   const points = dropSingleTickSpikes([...closes].map(([t, v]) => ({ t, v })).sort((a, b) => a.t - b.t))
-    .filter((point) => point.t >= firstBucket);
+    .slice(-SPARKLINE_POINTS);
   return {
     sparkline: points.map((point) => point.v),
     sparklineIntervalSeconds: SPARKLINE_INTERVAL_SECONDS,
