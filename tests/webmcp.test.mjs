@@ -2732,7 +2732,10 @@ describe('homepage WebMCP source registration', () => {
     const currentCalls = receivers.filter((name) => name === 'current');
     assert.equal(currentCalls.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
     assert.deepEqual([...new Set(receivers)].sort(), ['current', 'legacy']);
-    const currentAssignments = [...body.matchAll(/\bcurrent\s*=(?!=)\s*([^;]+);/g)].map((m) => m[1].trim());
+    const currentWrites = [...body.matchAll(/\bcurrent\s*([^\s\w=!<>]*)=(?!=)\s*([^;]+);/g)];
+    // Compound writes (||=, ??=, &&=) could fold the legacy provider into current.
+    assert.deepEqual(currentWrites.map((m) => m[1]).filter(Boolean), []);
+    const currentAssignments = currentWrites.map((m) => m[2].trim());
     // Every value an assignment can produce must be document.modelContext or
     // null; an optional `typeof document` guard may select between them.
     const value = String.raw`(?:document\.modelContext|null)`;
