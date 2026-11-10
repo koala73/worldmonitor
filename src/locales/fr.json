@@ -1618,10 +1618,10 @@
       "dataPreparing": "Actualisation des données de préparation tech — celles-ci apparaîtront bientôt."
     },
     "populationExposure": {
-      "totalAffected": "Total concerné",
-      "affectedCount": "{{count}} concerné",
-      "radiusKm": "Rayon de {{km}}km",
-      "infoTooltip": "<strong>Estimations de l'exposition de la population</strong> Population estimée dans le rayon d'impact de l'événement. Basé sur les données de densité des pays WorldPop.<ul><li>Conflit : rayon de 50 km</li><li>Tremblement de terre : rayon de 100 km</li><li>Inondation : rayon de 100 km</li><li>Incendies de forêt : rayon de 30 km</li></ul>"
+      "estimateWithin": "Environ {{count}} personnes dans un rayon de {{km}} km",
+      "method": "Les estimations reposent sur la densité moyenne de population du pays.",
+      "empty": "Aucun lieu d’événement ne répond aux critères",
+      "infoTooltip": "Seuls les événements précisément localisés dans des pays disposant de données de densité de population sont affichés. Les zones estimées peuvent se chevaucher."
     },
     "satelliteFires": {
       "region": "Région",

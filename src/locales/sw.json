@@ -1816,10 +1816,10 @@
       "infoTooltip": "<strong>Uandaaji wa teknolojia</strong> Alama ya jumla ya Bank Duniani, 0–100. Uzani ni utafiti na maendeleo 35%, mtandao 30%, mtandao wa broadband 20%, na simu 15%. Watumiaji wa mtandao ni asilimia ya idadi ya watu; uondoaji wa simu ni kwa watu 100; matumizi ya utafiti ni sehemu ya matokeo ya kiuchumi. Thamani zisizojulikana zinaonyesha mstari. Data inatoka 2019–2024."
     },
     "populationExposure": {
-      "totalAffected": "Jumla ya Walioathirika",
-      "affectedCount": "{{count}} walioathirika",
-      "radiusKm": "Radi ya kilomita {{km}}",
-      "infoTooltip": "<strong>Makadirio ya Mfichuo wa Idadi ya Watu</strong> Idadi ya watu inayokadiriwa ndani ya eneo la athari. Kulingana na data ya msongamano wa nchi za WorldPop.<ul><li>Migogoro: 50km radius</li><li>Tetemeko la ardhi: 100km radius</li><li>Mafuriko: 100km radius</li><li>Moto wa nyika: 30km radius</li></ul>"
+      "estimateWithin": "Takriban watu {{count}} ndani ya eneo la kilomita {{km}}",
+      "method": "Makadirio yanatumia wastani wa msongamano wa watu nchini.",
+      "empty": "Hakuna maeneo ya matukio yanayokidhi vigezo",
+      "infoTooltip": "Matukio yanaonyeshwa ikiwa eneo lake linajulikana kwa usahihi na nchi ina data ya msongamano wa watu. Maeneo yaliyokadiriwa yanaweza kuingiliana."
     },
     "securityAdvisories": {
       "loading": "Inaleta mashauri ya usafiri...",

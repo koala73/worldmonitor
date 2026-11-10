@@ -1142,10 +1142,10 @@
       "recentMissing": "Ingen data denna gång från {{countries}}; deras filer misslyckades att läsas in, vilket inte betyder noll förskjutning."
     },
     "populationExposure": {
-      "totalAffected": "Totalt påverkad",
-      "affectedCount": "{{count}} påverkas",
-      "radiusKm": "{{km}}km radie",
-      "infoTooltip": "<strong>Befolkningsexponeringsuppskattningar</strong> Uppskattad population inom händelsens påverkansradie. Baserat på WorldPop-landstäthetsdata.<ul><li>Konflikt: 50 km radie</li><li>Jordbävning: 100 km radie</li><li>Översvämning: 100 km radie</li><li>Voldbrand: 5__4 km radie"
+      "estimateWithin": "Cirka {{count}} personer inom en radie på {{km}} km",
+      "method": "Uppskattningarna bygger på landets genomsnittliga befolkningstäthet.",
+      "empty": "Inga händelseplatser uppfyller kraven",
+      "infoTooltip": "Endast händelser med en exakt plats i länder med uppgifter om befolkningstäthet visas. De uppskattade områdena kan överlappa."
     },
     "countryTimeline": {
       "now": "nu",

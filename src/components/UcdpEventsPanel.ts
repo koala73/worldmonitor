@@ -76,10 +76,6 @@ export class UcdpEventsPanel extends Panel {
     return this.hasLoadedEvents;
   }
 
-  public getEvents(): UcdpGeoEvent[] {
-    return this.events;
-  }
-
   private renderContent(): void {
     const filtered = this.events.filter(e => e.type_of_violence === this.activeTab);
     const tabs: { key: UcdpEventType; label: string }[] = [

@@ -90,6 +90,8 @@ function toUcdpGeoEvent(proto: ProtoUcdpEvent): UcdpGeoEvent {
     date_end: proto.dateEnd ? new Date(proto.dateEnd).toISOString().substring(0, 10) : '',
     latitude: proto.location?.latitude ?? 0,
     longitude: proto.location?.longitude ?? 0,
+    hasPreciseLocation: proto.hasPreciseLocation === true,
+    locationName: proto.locationName,
     country: proto.country,
     side_a: proto.sideA,
     side_b: proto.sideB,
@@ -112,6 +114,7 @@ export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   classifications?: Record<string, UcdpConflictStatus>;
   aggregates?: Record<string, UcdpTabAggregate>;
   totalEvents?: number;
+  exposureEvents?: ProtoUcdpEvent[];
 };
 
 import type { UcdpConflictStatus } from './ucdp-classify';
@@ -155,12 +158,21 @@ interface UcdpEventsResponse {
   count: number;
   data: UcdpGeoEvent[];
   cached_at: string;
+  fromCache: boolean;
+  exposureData?: UcdpGeoEvent[];
 }
 
 export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
-    return { success: true, count: events.length, data: events, cached_at: '' };
+    return {
+      success: true,
+      count: events.length,
+      data: events,
+      cached_at: '',
+      fromCache: false,
+      exposureData: hydrated.exposureEvents?.map(toUcdpGeoEvent),
+    };
   }
 
   const resp = await ucdpBreaker.execute(async () => {
@@ -174,6 +186,7 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
     count: events.length,
     data: events,
     cached_at: '',
+    fromCache: ucdpBreaker.getDataState().mode === 'cached',
   };
 }
 

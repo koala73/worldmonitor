@@ -11,8 +11,8 @@ import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
-import type { MarketData, InternetOutage } from '@/types';
+import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
+import type { MarketData, InternetOutage, UcdpGeoEvent } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
@@ -468,6 +468,8 @@ export class DataLoaderManager implements AppModule {
   private orefUnsubscribe: (() => void) | null = null;
   private orefDisposed = false;
   private cachedSatRecs: SatRecEntry[] | null = null;
+  // The scheduled refresh replaces intelligenceCache before fetching new data.
+  private ucdpExposureEvents?: UcdpGeoEvent[];
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -3675,6 +3677,7 @@ export class DataLoaderManager implements AppModule {
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
+    let protestsUpdated = false;
 
     tasks.push((async () => {
       try {
@@ -3694,9 +3697,10 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const protestsTask = (async (): Promise<SocialUnrestEvent[]> => {
+    tasks.push((async () => {
       try {
         const protestData = await fetchProtestEvents();
+        protestsUpdated = true;
         this.ctx.intelligenceCache.protests = protestData;
         this.callbacks.refreshOpenCountryTimeline?.();
         ingestProtests(protestData.events);
@@ -3715,14 +3719,11 @@ export class DataLoaderManager implements AppModule {
             errorMessage: status.acledConfigured === false ? 'ACLED not configured - using GDELT only' : undefined,
           });
         }
-        return protestData.events;
       } catch (error) {
         console.error('[Intelligence] Protests fetch failed:', error);
         dataFreshness.recordError('acled', String(error));
-        return [];
       }
-    })();
-    tasks.push(protestsTask.then(() => undefined));
+    })());
 
     const conflictsTask = (async () => {
       try {
@@ -3741,6 +3742,8 @@ export class DataLoaderManager implements AppModule {
     tasks.push(conflictsTask.then(() => undefined));
 
     const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
+    let ucdpReceived = false;
+    let ucdpFromCache = false;
 
     tasks.push((async () => {
       try {
@@ -3814,6 +3817,9 @@ export class DataLoaderManager implements AppModule {
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
+        this.ucdpExposureEvents = result.exposureData ?? events;
+        ucdpReceived = true;
+        ucdpFromCache = result.fromCache;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
@@ -3962,21 +3968,32 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const ucdpEvts = (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.getEvents?.() || [];
-      const events = [
-        ...(this.ctx.intelligenceCache.protests?.events || []).slice(0, 10).map(e => ({
-          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict' as const, name: e.title || 'Protest',
-        })),
-        ...ucdpEvts.slice(0, 10).map(e => ({
-          id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence as string, name: `${e.side_a} vs ${e.side_b}`,
-        })),
-      ];
-      if (events.length > 0) {
-        const exposures = await enrichEventsWithExposure(events);
-        this.callPanel('population-exposure', 'setExposures', exposures);
-        if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
+      const { protests } = this.ctx.intelligenceCache;
+      const ucdpEvents = this.ucdpExposureEvents;
+      const perSourceLimit = 10;
+      const ucdpExposures = enrichEventsWithExposure((ucdpEvents ?? []).map(e => ({
+        id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
+        name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
+        country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+      })), perSourceLimit);
+      const exposures = [
+        ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
+          id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
+          name: e.city ? `${e.city}, ${e.country}` : e.title,
+          country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+        })), perSourceLimit),
+        ...ucdpExposures,
+      ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
+      if (exposures.length === 0 && (!protests || !ucdpEvents)) {
+        this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
-        this.callPanel('population-exposure', 'setExposures', []);
+        const hasCachedUcdp = ucdpExposures.length > 0 && (!ucdpReceived || ucdpFromCache);
+        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp);
+      }
+      if (!protestsUpdated || !ucdpReceived) {
+        dataFreshness.recordError('worldpop', 'Exposure source data unavailable');
+      } else if (!ucdpFromCache) {
+        dataFreshness.recordUpdate('worldpop', exposures.length);
       }
     } catch (error) {
       console.error('[Intelligence] Population exposure fetch failed:', error);

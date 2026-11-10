@@ -5,8 +5,6 @@ import { formatPopulation } from '@/services/population-exposure';
 import { t } from '@/services/i18n';
 
 export class PopulationExposurePanel extends Panel {
-  private exposures: PopulationExposure[] = [];
-
   constructor() {
     super({
       id: 'population-exposure',
@@ -18,38 +16,31 @@ export class PopulationExposurePanel extends Panel {
     this.showLoading(t('common.calculatingExposure'));
   }
 
-  public setExposures(exposures: PopulationExposure[]): void {
-    this.exposures = exposures;
+  public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false): void {
+    if (hasCachedUcdp) {
+      this.setDataBadge('cached', 'UCDP');
+    } else {
+      this.clearDataBadge();
+    }
     this.setCount(exposures.length);
-    this.renderContent();
-  }
-
-  private renderContent(): void {
-    if (this.exposures.length === 0) {
-      this.setSafeContent(safeHtml`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+    if (exposures.length === 0) {
+      this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.populationExposure.empty')}</div>`);
       return;
     }
 
-    const totalAffected = this.exposures.reduce((sum, e) => sum + e.exposedPopulation, 0);
-
-    const cards = joinSafeHtml(this.exposures.slice(0, 30).map(e => {
+    const cards = joinSafeHtml(exposures.slice(0, 30).map(e => {
       const typeIcon = this.getTypeIcon(e.eventType);
-      const popClass = e.exposedPopulation >= 1_000_000 ? ' popexp-pop-large' : '';
       return safeHtml`<div class="popexp-card">
         <div class="popexp-card-name">${typeIcon} ${e.eventName}</div>
-        <div class="popexp-card-meta">
-          <span class="popexp-card-pop${popClass}">${t('components.populationExposure.affectedCount', { count: formatPopulation(e.exposedPopulation) })}</span>
-          <span class="popexp-card-radius">${t('components.populationExposure.radiusKm', { km: String(e.exposureRadiusKm) })}</span>
+        <div class="popexp-card-pop">
+          ${t('components.populationExposure.estimateWithin', { count: formatPopulation(e.exposedPopulation), km: e.exposureRadiusKm })}
         </div>
       </div>`;
     }));
 
     this.setSafeContent(safeHtml`
       <div class="popexp-panel-content">
-        <div class="popexp-summary">
-          <span class="popexp-label">${t('components.populationExposure.totalAffected')}</span>
-          <span class="popexp-total">${formatPopulation(totalAffected)}</span>
-        </div>
+        <div class="popexp-method">${t('components.populationExposure.method')}</div>
         <div class="popexp-list">${cards}</div>
       </div>
     `);

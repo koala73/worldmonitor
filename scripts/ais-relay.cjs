@@ -3028,6 +3028,7 @@ const {
   fetchCandidatePages: ucdpFetchCandidatePages,
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
+  hasPreciseUcdpLocation,
 } = require('./shared/ucdp-candidate.cjs');
 const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
 // CII accepts two years, but these newest annual pages and the candidate release
@@ -3214,6 +3215,8 @@ async function seedUcdpEvents() {
       dateEnd: Date.parse(e.date_end) || 0,
       location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
       country: e.country || '',
+      hasPreciseLocation: hasPreciseUcdpLocation(e),
+      locationName: (e.where_coordinates || '').substring(0, 200),
       sideA: (e.side_a || '').substring(0, 200),
       sideB: (e.side_b || '').substring(0, 200),
       deathsBest: Number(e.best) || 0,

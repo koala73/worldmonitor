@@ -1676,10 +1676,10 @@
       "recentMissing": "Diesmal keine Daten für {{countries}}: Ihre Dateien konnten nicht geladen werden. Das heißt nicht, dass niemand vertrieben wurde."
     },
     "populationExposure": {
-      "totalAffected": "Insgesamt betroffen",
-      "affectedCount": "{{count}} betroffen",
-      "radiusKm": "{{km}}km Radius",
-      "infoTooltip": "<strong>Bevölkerungsexpositionsschätzungen</strong> Geschätzte Bevölkerung innerhalb des Ereignisauswirkungsradius. Basierend auf WorldPop-Länderdichtedaten.<ul><li>Konflikt: 50 km-Radius</li><li>Erdbeben: 100 km-Radius</li><li>Überschwemmung: 100 km-Radius</li><li>Wildbrand: 30 km-Radius</li></ul>"
+      "estimateWithin": "Etwa {{count}} Menschen im Umkreis von {{km}} km",
+      "method": "Die Schätzungen verwenden die durchschnittliche Bevölkerungsdichte des Landes.",
+      "empty": "Keine geeigneten Ereignisorte",
+      "infoTooltip": "Angezeigt werden nur Ereignisse mit genauem Ort und verfügbaren Daten zur Bevölkerungsdichte des Landes. Die geschätzten Gebiete können sich überschneiden."
     },
     "countryTimeline": {
       "now": "Jetzt",

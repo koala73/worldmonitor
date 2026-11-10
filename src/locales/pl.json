@@ -1588,10 +1588,10 @@
       "recentMissing": "Brak danych tym razem z {{countries}}; ich pliki nie załadowały się, co nie oznacza zerowego przemieszczenia."
     },
     "populationExposure": {
-      "totalAffected": "Całkowita liczba dotkniętych",
-      "affectedCount": "Dotyczy {{count}}",
-      "radiusKm": "Promień {{km}}km",
-      "infoTooltip": "<strong>Szacowane narażenie populacji</strong> Szacunkowa populacja w promieniu wpływu zdarzenia. Na podstawie danych o gęstości krajów WorldPop.<ul><li>Konflikt: w promieniu 50 km</li><li>Trzęsienie ziemi: w promieniu 100 km</li><li>Powódź: w promieniu 100 km</li><li>Pożar: w promieniu 30 km</li></ul>"
+      "estimateWithin": "Około {{count}} osób w promieniu {{km}} km",
+      "method": "Szacunki opierają się na średniej gęstości zaludnienia kraju.",
+      "empty": "Brak lokalizacji zdarzeń spełniających kryteria",
+      "infoTooltip": "Wyświetlane są tylko zdarzenia o dokładnej lokalizacji w krajach z dostępnymi danymi o gęstości zaludnienia. Szacowane obszary mogą się nakładać."
     },
     "countryTimeline": {
       "now": "Teraz",

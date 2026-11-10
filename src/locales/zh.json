@@ -1662,10 +1662,10 @@
       "dataPreparing": "刷新技术就绪数据中——即将显示。"
     },
     "populationExposure": {
-      "totalAffected": "受影响总数",
-      "affectedCount": "{{count}}人受影响",
-      "radiusKm": "{{km}}km半径",
-      "infoTooltip": "<strong>人口暴露估计</strong>事件影响半径内的估计人口。基于WorldPop国家人口密度数据。<ul><li>冲突：50km半径</li><li>地震：100km半径</li><li>洪水：100km半径</li><li>野火：30km半径</li></ul>"
+      "estimateWithin": "半径 {{km}} 公里内约有 {{count}} 人",
+      "method": "估算使用该国的平均人口密度。",
+      "empty": "没有符合条件的事件地点",
+      "infoTooltip": "仅显示位置明确且所在国家有人口密度数据的事件。估算区域可能重叠。"
     },
     "securityAdvisories": {
       "loading": "正在加载旅行警告...",

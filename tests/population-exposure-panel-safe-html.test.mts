@@ -15,8 +15,7 @@ const outfile = join(tempDir, 'PopulationExposurePanel.bundle.mjs');
 async function loadPopulationExposurePanel() {
   const stubModules = new Map<string, string>([
     ['i18n-stub', `export function t(key, params) {
-      if (key === 'components.populationExposure.affectedCount') return params.count + ' affected';
-      if (key === 'components.populationExposure.radiusKm') return params.km + ' km radius';
+      if (key === 'components.populationExposure.estimateWithin') return '~' + params.count + ' people within ' + params.km + ' km';
       return key;
     }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
@@ -220,7 +219,7 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
   it('escapes event names when rendering safeHtml template content', async () => {
     const panel = new PopulationExposurePanel();
 
-    panel.setExposures([{
+    const event = {
       eventId: 'evt-1',
       eventName: 'R&D <alert>',
       eventType: 'conflict',
@@ -228,7 +227,8 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
       lon: 0,
       exposedPopulation: 125_000,
       exposureRadiusKm: 25,
-    }]);
+    };
+    panel.setExposures([event, { ...event, eventId: 'evt-2', eventName: 'Nearby event', lat: 0.1 }]);
 
     await new Promise((resolve) => setTimeout(resolve, 180));
 
@@ -236,6 +236,8 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
     assert.ok(content, 'panel content node should exist');
     assert.match(content.innerHTML, /R&amp;D &lt;alert&gt;/);
     assert.doesNotMatch(content.innerHTML, /R&D <alert>/);
+    assert.equal(content.innerHTML.match(/~125K people within 25 km/g)?.length, 2);
+    assert.doesNotMatch(content.innerHTML, /250K|affected/i);
 
     panel.destroy();
   });

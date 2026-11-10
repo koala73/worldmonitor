@@ -859,7 +859,7 @@ describe('ensureInlineTypedInput (fixture)', () => {
     // API contract states on every operation.
     assert.equal(
       restored.description,
-      'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
+      '1024 UTF-8 bytes, 256 KB output cap.',
     );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,

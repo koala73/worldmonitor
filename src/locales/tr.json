@@ -1666,10 +1666,10 @@
       "dataPreparing": "Teknoloji hazırlık verileri yenileniyor — kısa süre içinde görüntülenecek."
     },
     "populationExposure": {
-      "totalAffected": "Toplam Etkilenen",
-      "affectedCount": "{{count}} etkilenen",
-      "radiusKm": "{{km}}km yaricap",
-      "infoTooltip": "<strong>Nufus Maruziyet Tahminleri</strong> Olay etki yaricapi icindeki tahmini nufus. WorldPop ulke yogunluk verilerine dayanmaktadir.<ul><li>Catisma: 50km yaricap</li><li>Deprem: 100km yaricap</li><li>Sel: 100km yaricap</li><li>Orman yangini: 30km yaricap</li></ul>"
+      "estimateWithin": "{{km}} km yarıçap içinde yaklaşık {{count}} kişi",
+      "method": "Tahminler ülkenin ortalama nüfus yoğunluğuna dayanır.",
+      "empty": "Ölçütleri karşılayan olay konumu yok",
+      "infoTooltip": "Yalnızca konumu kesin olarak bilinen ve ülkesine ait nüfus yoğunluğu verisi bulunan olaylar gösterilir. Tahmin alanları çakışabilir."
     },
     "securityAdvisories": {
       "loading": "Seyahat uyarıları yükleniyor...",

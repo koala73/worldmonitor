@@ -1679,10 +1679,10 @@
       "recentMissing": "Nessun dato in questo momento da {{countries}}; i loro file non si sono caricati, il che non significa zero sfollati."
     },
     "populationExposure": {
-      "totalAffected": "Totale esposto",
-      "affectedCount": "{{count}} interessati",
-      "radiusKm": "raggio {{km}} km",
-      "infoTooltip": "<strong>Stime di esposizione della popolazione</strong> Popolazione stimata nel raggio di impatto dell'evento. In base ai dati sulla densità dei paesi WorldPop.<ul><li>Conflitto: raggio di 50 km</li><li>Terremoto: raggio di 100 km</li><li>Alluvione: raggio di 100 km</li><li>Incendio: raggio di 30 km</li></ul>"
+      "estimateWithin": "Circa {{count}} persone entro {{km}} km",
+      "method": "Le stime si basano sulla densità media di popolazione del paese.",
+      "empty": "Nessun luogo di evento soddisfa i criteri",
+      "infoTooltip": "Sono mostrati solo gli eventi con una posizione precisa in paesi per cui sono disponibili dati sulla densità di popolazione. Le aree stimate possono sovrapporsi."
     },
     "countryTimeline": {
       "now": "ora",

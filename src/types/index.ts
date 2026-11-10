@@ -427,6 +427,8 @@ export interface UcdpGeoEvent {
   date_end: string;
   latitude: number;
   longitude: number;
+  hasPreciseLocation?: boolean;
+  locationName?: string;
   country: string;
   side_a: string;
   side_b: string;
@@ -437,7 +439,7 @@ export interface UcdpGeoEvent {
   source_original: string;
 }
 
-// WorldPop Population Exposure
+// Population Exposure
 export interface CountryPopulation {
   code: string;
   name: string;
@@ -872,6 +874,7 @@ export interface SocialUnrestEvent {
   summary?: string;
   eventType: ProtestEventType;
   city?: string;
+  hasPreciseLocation?: boolean;
   country: string;
   region?: string;
   lat: number;

@@ -1679,10 +1679,10 @@
       "recentMissing": "Sin datos en esta ocasión de {{countries}}; sus archivos no se cargaron, lo que no significa desplazamiento cero."
     },
     "populationExposure": {
-      "totalAffected": "Total de afectados",
-      "affectedCount": "{{count}} afectado",
-      "radiusKm": "{{km}}km de radio",
-      "infoTooltip": "<strong>Estimaciones de exposición de la población</strong> Población estimada dentro del radio de impacto del evento. Basado en datos de densidad de países de WorldPop.<ul><li>Conflicto: 50 km de radio</li><li>Terremoto: 100 km de radio</li><li>Inundación: 100 km de radio</li><li>Incendio forestal: 30 km de radio</li></ul>"
+      "estimateWithin": "Unas {{count}} personas en un radio de {{km}} km",
+      "method": "Las estimaciones se basan en la densidad media de población del país.",
+      "empty": "No hay ubicaciones de eventos que cumplan los criterios",
+      "infoTooltip": "Solo se muestran eventos con ubicación precisa en países con datos de densidad de población. Las áreas estimadas pueden superponerse."
     },
     "countryTimeline": {
       "now": "ahora",

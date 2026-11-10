@@ -1662,10 +1662,10 @@
       "dataPreparing": "技術準備状況データを更新中 — すぐに表示されます。"
     },
     "populationExposure": {
-      "totalAffected": "影響を受ける総人口",
-      "affectedCount": "{{count}}人が影響",
-      "radiusKm": "半径{{km}}km",
-      "infoTooltip": "<strong>人口露出推定</strong> イベント影響半径内の推定人口。WorldPopの国別人口密度データに基づく。<ul><li>紛争: 半径50km</li><li>地震: 半径100km</li><li>洪水: 半径100km</li><li>山火事: 半径30km</li></ul>"
+      "estimateWithin": "半径{{km}} km圏内に約{{count}}人",
+      "method": "推計には各国の平均人口密度を使用します。",
+      "empty": "条件を満たすイベント地点がありません",
+      "infoTooltip": "正確な位置と国の人口密度データが得られるイベントのみを表示します。推計対象の範囲は重なる場合があります。"
     },
     "securityAdvisories": {
       "loading": "渡航情報を取得中...",

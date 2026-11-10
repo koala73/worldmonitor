@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AppContext } from '@/app/app-context';
 import type { ConflictEvent } from '@/services/conflict';
+import { dataFreshness } from '@/services/data-freshness';
 import type { Earthquake } from '@/services/earthquakes';
-import type { SocialUnrestEvent } from '@/types';
+import type { PopulationExposure, SocialUnrestEvent } from '@/types';
 
 const mocks = vi.hoisted(() => ({
   fetchEarthquakes: vi.fn(),
@@ -26,7 +27,6 @@ const mocks = vi.hoisted(() => ({
   isInLearningMode: vi.fn(() => true),
   getCachedScores: vi.fn(() => null),
   getSignalAggregator: vi.fn(),
-  enrichEventsWithExposure: vi.fn(),
 }));
 
 vi.mock('@/services/earthquakes', async (importOriginal) => ({
@@ -121,11 +121,6 @@ vi.mock('@/services/cached-risk-scores', async (importOriginal) => ({
 vi.mock('@/app/lazy-services', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/app/lazy-services')>(),
   getSignalAggregator: mocks.getSignalAggregator,
-}));
-
-vi.mock('@/services/population-exposure', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/population-exposure')>(),
-  enrichEventsWithExposure: mocks.enrichEventsWithExposure,
 }));
 
 // #6677: move the data-loader graph transform into the file import phase.
@@ -264,11 +259,11 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
       ingestFlights: vi.fn(),
       ingestVessels: vi.fn(),
     });
-    mocks.enrichEventsWithExposure.mockReset().mockResolvedValue([]);
     vesselsModule.fetchMilitaryVessels.mockReset().mockResolvedValue({ vessels: [], clusters: [] });
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -323,6 +318,106 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     expect(refreshOpenCountryTimeline).toHaveBeenCalledOnce();
     expect(ctx.intelligenceCache.conflicts).toEqual(conflictData.events);
   });
+
+  it('limits only eligible locations and keeps UCDP estimates after a failed refresh', async () => {
+    const acled = {
+      ...protestEvent, id: 'aden', city: 'Aden', country: 'Yemen', lat: 12.8, lon: 45,
+      hasPreciseLocation: true,
+    };
+    const ucdp = {
+      id: 'taiz', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+      type_of_violence: 'state-based', hasPreciseLocation: true,
+    };
+    const unsupportedAcled = Array.from({ length: 10 }, (_, i) => ({
+      ...acled, id: `unsupported-acled-${i}`, country: 'Chile', lat: -33.45, lon: -70.67,
+    }));
+    const unsupportedUcdp = Array.from({ length: 10 }, (_, i) => ({
+      ...ucdp, id: `unsupported-ucdp-${i}`, latitude: 91,
+    }));
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [...unsupportedAcled, acled] });
+    mocks.fetchUcdpEvents
+      .mockResolvedValueOnce({ success: true, data: [...unsupportedUcdp, ucdp], fromCache: false })
+      .mockResolvedValueOnce({ success: false, data: [] })
+      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: true })
+      .mockResolvedValueOnce({ success: true, data: [ucdp], fromCache: false });
+    const { loader, ctx } = await makeLoader();
+    const recordUpdate = vi.spyOn(dataFreshness, 'recordUpdate');
+    const recordError = vi.spyOn(dataFreshness, 'recordError');
+    const setExposures = vi.fn<(exposures: PopulationExposure[], hasCachedUcdp: boolean) => void>();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+
+    await loader.loadIntelligenceSignals();
+    // App replaces this cache before each scheduled intelligence refresh.
+    ctx.intelligenceCache = {};
+    await loader.loadIntelligenceSignals();
+    ctx.intelligenceCache = {};
+    await loader.loadIntelligenceSignals();
+    ctx.intelligenceCache = {};
+    await loader.loadIntelligenceSignals();
+
+    expect(setExposures.mock.calls.map(([, hasCachedUcdp]) => hasCachedUcdp)).toEqual([false, true, true, false]);
+    for (const [exposures] of setExposures.mock.calls) {
+      expect(exposures.map(exposure => exposure.eventId)).toEqual(['aden', 'taiz']);
+    }
+    expect(recordUpdate.mock.calls.filter(([source]) => source === 'worldpop')).toEqual([['worldpop', 2], ['worldpop', 2]]);
+    expect(recordError).toHaveBeenCalledWith('worldpop', 'Exposure source data unavailable');
+  });
+
+  it('uses separate UCDP exposure rows while preserving the UCDP panel projection', async () => {
+    const point = {
+      id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+      type_of_violence: 'state-based', hasPreciseLocation: true,
+    };
+    const projected = Array.from({ length: 50 }, (_, i) => ({
+      ...point, id: `projected-${i}`, hasPreciseLocation: false,
+    }));
+    const aggregates = { UCDP_VIOLENCE_TYPE_STATE_BASED: { count: 51, totalDeaths: 0 } };
+    const hydrated = { events: projected, totalEvents: 51, aggregates, exposureEvents: [point] };
+    mocks.getHydratedData.mockImplementation(key => key === 'ucdpEvents' ? hydrated : undefined);
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({ success: true, data: projected, exposureData: [point], fromCache: false });
+    const { loader, ctx } = await makeLoader();
+    const setExposures = vi.fn();
+    const setEvents = vi.fn();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+    ctx.panels['ucdp-events'] = { setEvents } as unknown as AppContext['panels'][string];
+
+    await loader.loadIntelligenceSignals();
+
+    expect(mocks.fetchUcdpEvents.mock.calls).toEqual([[hydrated]]);
+    expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith([expect.objectContaining({ eventId: 'eligible' })], false);
+  });
+
+  it.each(['unrest', 'ucdp', 'neither'] as const)(
+    'distinguishes a cold source failure from a successful empty exposure result: %s',
+    async (failedSource) => {
+      if (failedSource !== 'unrest') {
+        mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+      }
+      mocks.fetchUcdpEvents.mockResolvedValue({
+        success: failedSource !== 'ucdp',
+        data: failedSource === 'ucdp' ? [] : [{
+          id: 'legacy-row', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+          side_a: 'Side A', side_b: 'Side B', type_of_violence: 'state-based',
+        }],
+      });
+      const { loader, ctx } = await makeLoader();
+      const setExposures = vi.fn();
+      const showError = vi.fn();
+      ctx.panels['population-exposure'] = { setExposures, showError } as unknown as AppContext['panels'][string];
+
+      await loader.loadIntelligenceSignals();
+
+      if (failedSource === 'neither') {
+        expect(showError).not.toHaveBeenCalled();
+        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false);
+      } else {
+        expect(showError).toHaveBeenCalledOnce();
+        expect(setExposures).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('invokes refreshOpenCountryTimeline after loadMilitary assigns tracks', async () => {
     mocks.fetchMilitaryFlights.mockResolvedValueOnce({ flights: [flight], clusters: [],dataState:{mode:'cached',timestamp:1000,offline:false} });
