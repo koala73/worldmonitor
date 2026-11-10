@@ -96,65 +96,139 @@
                 ]
               },
               {
-                "group": "Platform & Features",
+                "group": "Guides",
                 "pages": [
-                  "overview",
-                  "features",
-                  "pro-intelligence-suite",
-                  "data-sources",
-                  "global-procurement-intelligence",
-                  "hotspots"
+                  {
+                    "group": "Platform & Features",
+                    "pages": [
+                      "overview",
+                      "platform-evaluation",
+                      "features",
+                      "pro-intelligence-suite",
+                      "data-sources",
+                      "global-procurement-intelligence",
+                      "hotspots"
+                    ]
+                  },
+                  {
+                    "group": "Workflows",
+                    "pages": [
+                      "embed-live-map",
+                      "morning-world-risk-brief",
+                      "route-explorer",
+                      "scenario-engine"
+                    ]
+                  },
+                  {
+                    "group": "Desktop Application",
+                    "pages": [
+                      "desktop-app"
+                    ]
+                  }
                 ]
               },
+              {
+                "group": "Company & Legal",
+                "pages": [
+                  {
+                    "group": "Company",
+                    "pages": [
+                      "about"
+                    ]
+                  },
+                  {
+                    "group": "Legal",
+                    "pages": [
+                      "eula",
+                      "terms",
+                      "dpa",
+                      "license",
+                      "trademark-policy",
+                      "privacy"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Intelligence",
+            "groups": [
               {
                 "group": "Intelligence & Analysis",
                 "pages": [
-                  "signal-intelligence",
-                  "ai-intelligence",
-                  "china-data-coverage",
-                  "china-official-macro-policy",
-                  "china-corporate-disclosures",
-                  "china-logistics-corridors",
-                  "methodology/china-activity-nowcast",
-                  "methodology/news-digest-and-briefing",
-                  "methodology/news-credibility",
-                  "country-instability-index",
-                  "methodology/country-resilience-index",
-                  "methodology/resilience-indicators",
-                  "methodology/resilience-indicator-licensing",
-                  "methodology/known-limitations",
-                  "methodology/financial-system-exposure",
-                  "methodology/swf-classification-rubric",
-                  "methodology/five-factor-scorecard",
-                  "methodology/demographics-capability",
-                  "methodology/food-stocks",
-                  "methodology/capital-flows",
-                  "methodology/defense-industrial-base",
-                  "methodology/mineral-production",
-                  "methodology/supply-vulnerability",
-                  "methodology/chokepoints",
-                  "methodology/pipelines",
-                  "methodology/storage",
-                  "methodology/shortages",
-                  "methodology/disruptions",
-                  "methodology/cii-risk-scores",
-                  "methodology/country-history",
-                  "methodology/disease-alert-level",
-                  "methodology/thermal-escalation",
-                  "methodology/physical-divergence-index",
-                  "corrections",
-                  "geographic-convergence",
-                  "strategic-risk",
-                  "algorithms"
-                ]
-              },
-              {
-                "group": "Workflows",
-                "pages": [
-                  "embed-live-map",
-                  "morning-world-risk-brief",
-                  "route-explorer",
-                  "scenario-engine"
+                  {
+                    "group": "Signals & analysis",
+                    "pages": [
+                      "signal-intelligence",
+                      "ai-intelligence",
+                      "geographic-convergence",
+                      "strategic-risk",
+                      "algorithms",
+                      "corrections"
+                    ]
+                  },
+                  {
+                    "group": "China",
+                    "pages": [
+                      "china-data-coverage",
+                      "china-official-macro-policy",
+                      "china-corporate-disclosures",
+                      "china-logistics-corridors",
+                      "methodology/china-activity-nowcast"
+                    ]
+                  },
+                  {
+                    "group": "News methodology",
+                    "pages": [
+                      "methodology/news-digest-and-briefing",
+                      "methodology/news-credibility"
+                    ]
+                  },
+                  {
+                    "group": "Country risk & resilience",
+                    "pages": [
+                      "country-instability-index",
+                      "methodology/cii-risk-scores",
+                      "methodology/country-history",
+                      "methodology/country-resilience-index",
+                      "methodology/resilience-indicators",
+                      "methodology/resilience-indicator-licensing",
+                      "methodology/known-limitations",
+                      "methodology/financial-system-exposure",
+                      "methodology/swf-classification-rubric",
+                      "methodology/five-factor-scorecard"
+                    ]
+                  },
+                  {
+                    "group": "Economy & supply",
+                    "pages": [
+                      "methodology/demographics-capability",
+                      "methodology/food-stocks",
+                      "methodology/capital-flows",
+                      "methodology/defense-industrial-base",
+                      "methodology/mineral-production",
+                      "methodology/supply-vulnerability",
+                      "methodology/physical-divergence-index"
+                    ]
+                  },
+                  {
+                    "group": "Energy",
+                    "pages": [
+                      "methodology/chokepoints",
+                      "methodology/pipelines",
+                      "methodology/storage",
+                      "methodology/shortages",
+                      "methodology/disruptions"
+                    ]
+                  },
+                  {
+                    "group": "Hazards & health",
+                    "pages": [
+                      "methodology/disease-alert-level",
+                      "methodology/thermal-escalation"
+                    ]
+                  }
                 ]
               },
               {
@@ -177,60 +251,69 @@
                   "premium-finance",
                   "premium-finance-search"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Panels",
+            "groups": [
               {
-                "group": "Panels — AI & PRO",
+                "group": "Panels",
                 "pages": [
-                  "panels/latest-brief",
-                  "panels/forecast",
-                  "panels/chat-analyst",
-                  "panels/market-implications",
-                  "panels/deduction",
-                  "panels/daily-market-brief",
-                  "panels/regional-intelligence",
-                  "panels/strategic-posture",
-                  "panels/threat-timeline",
-                  "panels/stock-analysis",
-                  "panels/stock-backtest",
-                  "panels/wsb-ticker-scanner"
+                  {
+                    "group": "Panels — AI & PRO",
+                    "pages": [
+                      "panels/latest-brief",
+                      "panels/forecast",
+                      "panels/chat-analyst",
+                      "panels/market-implications",
+                      "panels/deduction",
+                      "panels/daily-market-brief",
+                      "panels/regional-intelligence",
+                      "panels/strategic-posture",
+                      "panels/threat-timeline",
+                      "panels/stock-analysis",
+                      "panels/stock-backtest",
+                      "panels/wsb-ticker-scanner"
+                    ]
+                  },
+                  {
+                    "group": "Panels — Data & Tracking",
+                    "pages": [
+                      "panels/consumer-prices",
+                      "panels/disease-outbreaks",
+                      "panels/radiation-watch",
+                      "panels/thermal-escalation",
+                      "panels/airline-intel",
+                      "panels/tech-readiness",
+                      "panels/trade-policy",
+                      "panels/supply-chain",
+                      "panels/sanctions-pressure",
+                      "panels/hormuz-tracker",
+                      "panels/energy-crisis",
+                      "panels/world-clock",
+                      "panels/monitors",
+                      "panels/oref-sirens",
+                      "panels/telegram-intel",
+                      "panels/x-intel",
+                      "panels/fsi",
+                      "panels/news-market-correlation"
+                    ]
+                  },
+                  {
+                    "group": "Panels — Catalogues",
+                    "pages": [
+                      "panels/news-feeds",
+                      "panels/indicators-and-signals"
+                    ]
+                  }
                 ]
-              },
-              {
-                "group": "Panels — Data & Tracking",
-                "pages": [
-                  "panels/consumer-prices",
-                  "panels/disease-outbreaks",
-                  "panels/radiation-watch",
-                  "panels/thermal-escalation",
-                  "panels/airline-intel",
-                  "panels/tech-readiness",
-                  "panels/trade-policy",
-                  "panels/supply-chain",
-                  "panels/sanctions-pressure",
-                  "panels/hormuz-tracker",
-                  "panels/energy-crisis",
-                  "panels/world-clock",
-                  "panels/monitors",
-                  "panels/oref-sirens",
-                  "panels/telegram-intel",
-                  "panels/x-intel",
-                  "panels/fsi",
-                  "panels/news-market-correlation"
-                ]
-              },
-              {
-                "group": "Panels — Catalogues",
-                "pages": [
-                  "panels/news-feeds",
-                  "panels/indicators-and-signals"
-                ]
-              },
-              {
-                "group": "Desktop Application",
-                "pages": [
-                  "desktop-app"
-                ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "MCP & Agents",
+            "groups": [
               {
                 "group": "MCP & Integrations",
                 "pages": [
@@ -244,13 +327,41 @@
                   "webmcp",
                   "mcp-apps",
                   "gemini-antigravity",
-                  "mcp-tools-reference",
+                  {
+                    "group": "MCP Tools Reference",
+                    "pages": [
+                      "mcp-tools-reference",
+                      "mcp-tools/discovery",
+                      "mcp-tools/markets",
+                      "mcp-tools/macro",
+                      "mcp-tools/trade",
+                      "mcp-tools/country-indicators",
+                      "mcp-tools/energy",
+                      "mcp-tools/chokepoints-supply-chain",
+                      "mcp-tools/conflict-security",
+                      "mcp-tools/military-escalation",
+                      "mcp-tools/countries",
+                      "mcp-tools/news",
+                      "mcp-tools/signals",
+                      "mcp-tools/historical-intelligence",
+                      "mcp-tools/movement-infrastructure",
+                      "mcp-tools/environment-health",
+                      "mcp-tools/humanitarian-displacement",
+                      "mcp-tools/ai-intelligence",
+                      "mcp-tools/meta"
+                    ]
+                  },
                   "mcp-jmespath",
                   "mcp-error-catalog",
                   "api-oauth",
                   "api-notifications"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "Developers",
+            "groups": [
               {
                 "group": "HTTP API",
                 "pages": [
@@ -279,23 +390,6 @@
                   "decision-signal-provenance",
                   "china-decision-signals",
                   "source-attribution"
-                ]
-              },
-              {
-                "group": "Company",
-                "pages": [
-                  "about"
-                ]
-              },
-              {
-                "group": "Legal",
-                "pages": [
-                  "eula",
-                  "terms",
-                  "dpa",
-                  "license",
-                  "trademark-policy",
-                  "privacy"
                 ]
               }
             ]
@@ -585,62 +679,136 @@
                 ]
               },
               {
-                "group": "平台与功能",
+                "group": "指南",
                 "pages": [
-                  "zh/overview",
-                  "zh/features",
-                  "zh/pro-intelligence-suite",
-                  "zh/data-sources",
-                  "zh/global-procurement-intelligence",
-                  "zh/hotspots"
+                  {
+                    "group": "平台与功能",
+                    "pages": [
+                      "zh/overview",
+                      "zh/platform-evaluation",
+                      "zh/features",
+                      "zh/pro-intelligence-suite",
+                      "zh/data-sources",
+                      "zh/global-procurement-intelligence",
+                      "zh/hotspots"
+                    ]
+                  },
+                  {
+                    "group": "工作流",
+                    "pages": [
+                      "zh/embed-live-map",
+                      "zh/morning-world-risk-brief",
+                      "zh/route-explorer",
+                      "zh/scenario-engine"
+                    ]
+                  },
+                  {
+                    "group": "桌面应用",
+                    "pages": [
+                      "zh/desktop-app"
+                    ]
+                  }
                 ]
               },
+              {
+                "group": "公司与法律",
+                "pages": [
+                  {
+                    "group": "公司",
+                    "pages": [
+                      "zh/about"
+                    ]
+                  },
+                  {
+                    "group": "法律",
+                    "pages": [
+                      "zh/eula",
+                      "zh/terms",
+                      "zh/dpa",
+                      "zh/license",
+                      "zh/trademark-policy",
+                      "zh/privacy"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "情报",
+            "groups": [
               {
                 "group": "情报与分析",
                 "pages": [
-                  "zh/signal-intelligence",
-                  "zh/ai-intelligence",
-                  "zh/china-data-coverage",
-                  "zh/china-official-macro-policy",
-                  "zh/china-corporate-disclosures",
-                  "zh/china-logistics-corridors",
-                  "zh/methodology/china-activity-nowcast",
-                  "zh/methodology/news-digest-and-briefing",
-                  "zh/methodology/news-credibility",
-                  "zh/country-instability-index",
-                  "zh/methodology/country-resilience-index",
-                  "zh/methodology/resilience-indicators",
-                  "zh/methodology/resilience-indicator-licensing",
-                  "zh/methodology/five-factor-scorecard",
-                  "zh/methodology/demographics-capability",
-                  "zh/methodology/food-stocks",
-                  "zh/methodology/capital-flows",
-                  "zh/methodology/defense-industrial-base",
-                  "zh/methodology/mineral-production",
-                  "zh/methodology/supply-vulnerability",
-                  "zh/methodology/chokepoints",
-                  "zh/methodology/pipelines",
-                  "zh/methodology/storage",
-                  "zh/methodology/shortages",
-                  "zh/methodology/disruptions",
-                  "zh/methodology/cii-risk-scores",
-                  "zh/methodology/country-history",
-                  "zh/methodology/disease-alert-level",
-                  "zh/methodology/thermal-escalation",
-                  "zh/methodology/physical-divergence-index",
-                  "zh/corrections",
-                  "zh/geographic-convergence",
-                  "zh/strategic-risk",
-                  "zh/algorithms"
-                ]
-              },
-              {
-                "group": "工作流",
-                "pages": [
-                  "zh/embed-live-map",
-                  "zh/morning-world-risk-brief",
-                  "zh/route-explorer",
-                  "zh/scenario-engine"
+                  {
+                    "group": "信号与分析",
+                    "pages": [
+                      "zh/signal-intelligence",
+                      "zh/ai-intelligence",
+                      "zh/geographic-convergence",
+                      "zh/strategic-risk",
+                      "zh/algorithms",
+                      "zh/corrections"
+                    ]
+                  },
+                  {
+                    "group": "中国",
+                    "pages": [
+                      "zh/china-data-coverage",
+                      "zh/china-official-macro-policy",
+                      "zh/china-corporate-disclosures",
+                      "zh/china-logistics-corridors",
+                      "zh/methodology/china-activity-nowcast"
+                    ]
+                  },
+                  {
+                    "group": "新闻方法论",
+                    "pages": [
+                      "zh/methodology/news-digest-and-briefing",
+                      "zh/methodology/news-credibility"
+                    ]
+                  },
+                  {
+                    "group": "国家风险与韧性",
+                    "pages": [
+                      "zh/country-instability-index",
+                      "zh/methodology/cii-risk-scores",
+                      "zh/methodology/country-history",
+                      "zh/methodology/country-resilience-index",
+                      "zh/methodology/resilience-indicators",
+                      "zh/methodology/resilience-indicator-licensing",
+                      "zh/methodology/five-factor-scorecard"
+                    ]
+                  },
+                  {
+                    "group": "经济与供应",
+                    "pages": [
+                      "zh/methodology/demographics-capability",
+                      "zh/methodology/food-stocks",
+                      "zh/methodology/capital-flows",
+                      "zh/methodology/defense-industrial-base",
+                      "zh/methodology/mineral-production",
+                      "zh/methodology/supply-vulnerability",
+                      "zh/methodology/physical-divergence-index"
+                    ]
+                  },
+                  {
+                    "group": "能源",
+                    "pages": [
+                      "zh/methodology/chokepoints",
+                      "zh/methodology/pipelines",
+                      "zh/methodology/storage",
+                      "zh/methodology/shortages",
+                      "zh/methodology/disruptions"
+                    ]
+                  },
+                  {
+                    "group": "灾害与健康",
+                    "pages": [
+                      "zh/methodology/disease-alert-level",
+                      "zh/methodology/thermal-escalation"
+                    ]
+                  }
                 ]
               },
               {
@@ -663,60 +831,69 @@
                   "zh/premium-finance",
                   "zh/premium-finance-search"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "面板",
+            "groups": [
               {
-                "group": "面板 — AI 与 PRO",
+                "group": "面板",
                 "pages": [
-                  "zh/panels/latest-brief",
-                  "zh/panels/forecast",
-                  "zh/panels/chat-analyst",
-                  "zh/panels/market-implications",
-                  "zh/panels/deduction",
-                  "zh/panels/daily-market-brief",
-                  "zh/panels/regional-intelligence",
-                  "zh/panels/strategic-posture",
-                  "zh/panels/threat-timeline",
-                  "zh/panels/stock-analysis",
-                  "zh/panels/stock-backtest",
-                  "zh/panels/wsb-ticker-scanner"
+                  {
+                    "group": "面板 — AI 与 PRO",
+                    "pages": [
+                      "zh/panels/latest-brief",
+                      "zh/panels/forecast",
+                      "zh/panels/chat-analyst",
+                      "zh/panels/market-implications",
+                      "zh/panels/deduction",
+                      "zh/panels/daily-market-brief",
+                      "zh/panels/regional-intelligence",
+                      "zh/panels/strategic-posture",
+                      "zh/panels/threat-timeline",
+                      "zh/panels/stock-analysis",
+                      "zh/panels/stock-backtest",
+                      "zh/panels/wsb-ticker-scanner"
+                    ]
+                  },
+                  {
+                    "group": "面板 — 数据与追踪",
+                    "pages": [
+                      "zh/panels/consumer-prices",
+                      "zh/panels/disease-outbreaks",
+                      "zh/panels/radiation-watch",
+                      "zh/panels/thermal-escalation",
+                      "zh/panels/airline-intel",
+                      "zh/panels/tech-readiness",
+                      "zh/panels/trade-policy",
+                      "zh/panels/supply-chain",
+                      "zh/panels/sanctions-pressure",
+                      "zh/panels/hormuz-tracker",
+                      "zh/panels/energy-crisis",
+                      "zh/panels/world-clock",
+                      "zh/panels/monitors",
+                      "zh/panels/oref-sirens",
+                      "zh/panels/telegram-intel",
+                      "zh/panels/x-intel",
+                      "zh/panels/fsi",
+                      "zh/panels/news-market-correlation"
+                    ]
+                  },
+                  {
+                    "group": "面板 — 目录",
+                    "pages": [
+                      "zh/panels/news-feeds",
+                      "zh/panels/indicators-and-signals"
+                    ]
+                  }
                 ]
-              },
-              {
-                "group": "面板 — 数据与追踪",
-                "pages": [
-                  "zh/panels/consumer-prices",
-                  "zh/panels/disease-outbreaks",
-                  "zh/panels/radiation-watch",
-                  "zh/panels/thermal-escalation",
-                  "zh/panels/airline-intel",
-                  "zh/panels/tech-readiness",
-                  "zh/panels/trade-policy",
-                  "zh/panels/supply-chain",
-                  "zh/panels/sanctions-pressure",
-                  "zh/panels/hormuz-tracker",
-                  "zh/panels/energy-crisis",
-                  "zh/panels/world-clock",
-                  "zh/panels/monitors",
-                  "zh/panels/oref-sirens",
-                  "zh/panels/telegram-intel",
-                  "zh/panels/x-intel",
-                  "zh/panels/fsi",
-                  "zh/panels/news-market-correlation"
-                ]
-              },
-              {
-                "group": "面板 — 目录",
-                "pages": [
-                  "zh/panels/news-feeds",
-                  "zh/panels/indicators-and-signals"
-                ]
-              },
-              {
-                "group": "桌面应用",
-                "pages": [
-                  "zh/desktop-app"
-                ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "MCP 与智能体",
+            "groups": [
               {
                 "group": "MCP 与集成",
                 "pages": [
@@ -730,13 +907,41 @@
                   "zh/webmcp",
                   "zh/mcp-apps",
                   "zh/gemini-antigravity",
-                  "zh/mcp-tools-reference",
+                  {
+                    "group": "MCP 工具参考",
+                    "pages": [
+                      "zh/mcp-tools-reference",
+                      "zh/mcp-tools/discovery",
+                      "zh/mcp-tools/markets",
+                      "zh/mcp-tools/macro",
+                      "zh/mcp-tools/trade",
+                      "zh/mcp-tools/country-indicators",
+                      "zh/mcp-tools/energy",
+                      "zh/mcp-tools/chokepoints-supply-chain",
+                      "zh/mcp-tools/conflict-security",
+                      "zh/mcp-tools/military-escalation",
+                      "zh/mcp-tools/countries",
+                      "zh/mcp-tools/news",
+                      "zh/mcp-tools/signals",
+                      "zh/mcp-tools/historical-intelligence",
+                      "zh/mcp-tools/movement-infrastructure",
+                      "zh/mcp-tools/environment-health",
+                      "zh/mcp-tools/humanitarian-displacement",
+                      "zh/mcp-tools/ai-intelligence",
+                      "zh/mcp-tools/meta"
+                    ]
+                  },
                   "zh/mcp-jmespath",
                   "zh/mcp-error-catalog",
                   "zh/api-oauth",
                   "zh/api-notifications"
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "tab": "开发者",
+            "groups": [
               {
                 "group": "HTTP API",
                 "pages": [
@@ -765,23 +970,6 @@
                   "zh/decision-signal-provenance",
                   "zh/china-decision-signals",
                   "zh/source-attribution"
-                ]
-              },
-              {
-                "group": "公司",
-                "pages": [
-                  "zh/about"
-                ]
-              },
-              {
-                "group": "法律",
-                "pages": [
-                  "zh/eula",
-                  "zh/terms",
-                  "zh/dpa",
-                  "zh/license",
-                  "zh/trademark-policy",
-                  "zh/privacy"
                 ]
               }
             ]

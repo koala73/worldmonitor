@@ -1,0 +1,198 @@
+---
+title: "MCP 工具：发现与类型化解析"
+sidebarTitle: "发现与类型化解析"
+description: "如何低成本发现 World Monitor MCP 工具：describe_tool、outputSchema 类型化解析与面向语音智能体的 spoken 模式。适合需要节省上下文的智能体：先用 describe_tool 按需读取单个工具定义，再依据 outputSchema 直接解析结构化结果，无需先发起示例调用。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。如果您从 REST 路由而非工具名称开始，请使用 [API 覆盖表](/zh/mcp-overview#api-覆盖)；逐工具的 **API 端点** 行表示确切的 `_apiPaths` 声明，而 `none directly` 表示该工具返回数据但不声明等价的 REST 路由。
+
+MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-覆盖) 列出了强制类别并链接了当前的跟进追踪。
+
+### `describe_tool` — 按需获取单个工具的定义
+
+自 v1.34.0 起，`tools/list` 返回每个工具的完整 `description`（每条已注册描述都在 1,024 字节的逐工具预算内，由 CI 强制执行），并附带其 `inputSchema` 与 `outputSchema`（v1.6.0），使模型仅凭列表即可选择工具并编写 JMESPath 投影。`describe_tool` 返回同一工具的相同定义，用于在不重新列出整个目录的情况下重读单个条目：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "describe_tool", "arguments": { "tool_name": "get_chokepoint_status" } }
+}
+```
+
+响应 — 与该工具的 `tools/list` 条目完全相同：同样的 `description` 和同样的 `inputSchema.properties` 文本：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, a port-country coverage index, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false},\"_meta\":{ /* … */ }}"
+      }
+    ],
+    "structuredContent": { "name": "get_chokepoint_status", "description": "…", "inputSchema": {}, "outputSchema": {}, "annotations": {}, "_meta": {} }
+  }
+}
+```
+
+`describe_tool` **豁免 Pro 每日配额**（每分钟速率限制仍然适用）。此豁免是有意为之 — 将元数据查询计入 50/天 的上限会阻碍探索。两种常见工作流：
+
+- **会话中途重读单个工具。** 调用 `describe_tool` 把单个工具的定义重新放回上下文，而无需再次为整个 `tools/list` 目录付出代价。
+- **针对不熟悉的响应首次编写 JMESPath。** 调用 `describe_tool` 读取 `outputSchema`（见下一节），无需为真正的 `tools/call` 消耗配额槽位。
+
+`describe_tool` 在正常的 `content[0].text` 内返回两种软错误信封：
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` 被省略、为空或非字符串。
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` 不匹配。`available` 数组让 LLM 能在额外一次调用中自我纠正。
+
+`describe_tool` 的完整逐工具参考（参数、响应形状、配额策略）位于 Meta 部分的 [`describe_tool`](/zh/mcp-tools/meta#describe_tool)。
+
+### `outputSchema` — 无需示例调用的类型化解析
+
+自 v1.6.0 起，每个工具的 `tools/list` 条目都声明了规范定义的 [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema)。该 schema 描述 `result.structuredContent`；其第一个 `anyOf` 分支是工具的文档化负载形状，也就是普通调用时 `result.content[0].text` 所序列化的文档（投影或 `summary: true` 会重塑文本，并在 `structuredContent` 中被包装；见下表） — 让客户端无需发起真正的 `tools/call` 即可编写投影、验证响应或生成类型。
+
+Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protocolVersion` 如何。处于较早 `2025-03-26` 基线的客户端仍会收到它们，并且（根据规范）应忽略未知字段而不是报错。
+
+**`structuredContent` 与所发布 schema 的形状（v1.21.0）。** 每次成功的 `tools/call` 都会把载荷返回两次：`result.content[0].text` 中的 JSON 文本，以及 `result.structuredContent` 中的对象。严格的 MCP 客户端要求如此：一旦工具发布了 `outputSchema`，官方 SDK 会拒绝不带 `structuredContent` 的结果（`-32600`），并用该 schema 校验收到的内容（`-32602`）。有四类响应不是工具的文档化形状，因此所发布的 schema 把它们一并列出：
+
+```json
+{
+  "type": "object",
+  "anyOf": [
+    { "…": "工具的文档化形状 —— 即下方展示的 schema" },
+    { "required": ["projection"] },
+    { "required": ["data", "_attribution"] },
+    { "required": ["_budget_exceeded"] },
+    { "required": ["_jmespath_error"] }
+  ]
+}
+```
+
+| 响应 | `content[0].text` | `structuredContent` |
+|---|---|---|
+| 普通调用 | 载荷 | 同一载荷 |
+| `jmespath` 投影，或缓存工具的 `summary: true` | 重塑后的值（任意 JSON 值） | `{ "projection": <该值> }`，因为该字段必须是对象 |
+| 带许可要求的工具上的投影 | `{ "data": …, "_attribution": … }` | 同一对象 |
+| `_budget_exceeded` 或 `_jmespath_error` | 信封 | 同一信封 |
+
+文本与早期版本返回的内容逐字节一致，因此只读取 `content[0].text` 的客户端不会看到任何变化。要以编程方式读取工具的文档化形状，请取 `outputSchema.anyOf[0]`。
+
+示例 — `get_country_risk` 的 `outputSchema` 文档化形状（即其 `anyOf[0]`）：
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
+      "properties": {
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
+      }
+    },
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
+  }
+}
+```
+
+缓存工具将其声明的 `data` 形状包装在标准的新鲜度信封中：
+
+```json
+{
+  "type": "object",
+  "required": ["cached_at", "stale", "data"],
+  "properties": {
+    "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
+    "data":      { "type": "object", "properties": { /* per-tool fields */ } }
+  }
+}
+```
+
+使用 schema 作为编译时提示的 TypeScript 类型化解析草图：
+
+```ts
+// Synthesise types from the schema once (e.g. with json-schema-to-typescript).
+type CountryRisk = {
+  countryCode: string;
+  countryName: string;
+  ciiHistory?: {
+    methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
+    points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;
+    change: { fromDate: string; fromScore: number; toDate: string; toScore: number; delta: number } | null;
+    versionBreaks: Array<{ date: string; from: string; to: string }>;
+  };
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
+};
+
+const reply = await callTool('get_country_risk', { country_code: 'IR' });
+const text = reply.result?.content?.[0]?.text;
+if (typeof text !== 'string') throw new Error('no text payload');
+
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
+if ('_budget_exceeded' in parsed) {
+  // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
+} else {
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
+}
+```
+
+须知事项：
+
+- 每个 schema 的 `additionalProperties` 都隐式保留（= true），因此生产者侧的前向兼容新增不会突然导致验证失败。
+- 每个数组的 `items.properties` 列出已知字段，但不会枚举每个观察到的键 — schema 是 JMESPath 编写的**提示界面**，而非字节码级别的契约。
+- 文档化形状（`anyOf[0]`）仅描述成功路径的负载。两种目录级软错误信封（`_budget_exceeded`、`_jmespath_error`）会完全替换负载；自 v1.21.0 起，它们与投影一样，在所发布的 `anyOf` 中各有自己的分支，因此严格的客户端会接受它们。两种信封请参见 [MCP 错误目录](/zh/mcp-error-catalog)。
+
+通用参数：
+
+- 每个工具都接受 `jmespath`（string），一个在逐工具筛选和 `summary` 之后应用的可选服务端投影。
+- 每个缓存工具还接受 `summary`（boolean），它返回计数加 3 项样本，而非完整列表。
+- 下方的逐工具表仅列出注册表声明的工具特定参数；通用注入参数有意在此仅记录一次。

@@ -1,0 +1,150 @@
+---
+title: "MCP tools: News intelligence"
+sidebarTitle: "News intelligence"
+description: "World Monitor MCP tool reference for news intelligence, clusters, media perspective and positive events: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_news_intelligence`
+
+AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including transition-only gold and silver physical-premium regime changes, and security advisories from WorldMonitor's intelligence layer. Cross-source signal objects expose their type, theater, summary, severity, score, detection time, contributing types, and signal count; physical transitions use `CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION`.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `panel_request` | string | Server-issued closed News Intelligence panel token. Omit for a paid opening; repeat and filters reuse its original source snapshot. |
+| `refresh` | boolean | Paid panel only. Explicitly open a new allocation without panel_request and with a UUID request_id. |
+| `request_id` | string | Refresh identity. Retrying the same UUID reuses that allocation. |
+| `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | Filter GDELT intelligence to a single topic. |
+| `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
+| `country` | string | Filter stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Matches any country named in a story headline, across every scored story of the latest run, not only the top 8. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `alerts_only` | boolean | Keep only top stories flagged as alerts. |
+| `query` | string | Keep only stories whose headline, primary source, or one of the first six clustered member headlines contains this text (case-insensitive substring), across every scored story of the latest run. This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that. |
+| `min_importance` | number | Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero. |
+| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches. |
+| `stories_cursor` | string | Continue a story-filtered search from insights.storyScope.nextCursor, keeping the same filters. A page of matches is also bounded in size, so follow nextCursor until it is empty. |
+
+- **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, `effectiveImportanceScore`, and `credibilityScore` (0-100 source reliability, distinct from importance; state-controlled media is capped at 40).
+- **Story pool:** with no story filter, `topStories` is the 8 stories the dashboard selects worldwide. `country`, `category`, `query`, `alerts_only` and `min_importance` instead search every scored cluster of the latest insights run (`news:insights:v1:pool`, capped at 256 KB: the pool is a ranked prefix, so the first cluster that does not fit is dropped together with every lower-ranked one, even smaller ones that would fit), in the same story shape and ranked by `effectiveImportanceScore`. `insights.storyScope` reports which list was searched: `source: "story-pool"` with `poolStories`, `poolClusters`, `droppedForSize`, `generatedAt`, `matchingStories` and `nextCursor`, or `source: "top-stories"` with `reason` (`story-pool-unavailable`, or `story-pool-stale` past 60 minutes) when the filters fell back to the top stories. A pool search returns its matches in pages bounded by `limit` (0 for no cap) and by 64 KB of stories, so a broad search stays inside the output budget. A page always holds at least one story, so a single story larger than 64 KB is returned alone on a page that exceeds that bound; pass `nextCursor` back as `stories_cursor` with the same filters until it is empty. The pool keeps the first six member headlines of each cluster, so `query` matches those. A story's countries come from the countries named in its headline, so a story that names none is not returned for any `country`.
+- **Freshness budget:** per slice — news insights **30 min**, GDELT intel **45 min**, cross-source signals **60 min**. The single `stale` flag ORs every check, so it flips as soon as any one slice exceeds its own budget.
+
+On Pro and Pro Business, `get_news_intelligence` opens one News Intelligence allocation. Repeated opens, filters, `summary` and JMESPath views reuse the same complete original within the admission window. The returned `panelRequest.token` is a closed `panel_request` for this tool only; news and country receipts cannot authorize it. Explicit refresh uses `refresh: true`, a UUID `request_id`, and no reader token. The same UUID retries that allocation. Authorized receipt reads query current usage without a new allocation; unknown usage omits the numeric notice. API and free-account calls retain ordinary per-tool charging and reject these paid controls.
+
+Reuse uses the existing four dataset GETs and three metadata GETs. It expires at the earliest of the 30/45/60-minute metadata deadlines, the shared 60-minute Insights generation limit, the assessed GDELT content-age deadline, and admission expiry. Advisory publication time is validated, but this source graph has no independent advisory freshness assessment. Missing, degraded, malformed, old, future or unassessed sources remain retryable. Paid reads expose proven stale generation through `stale` and unassessed clocks through `freshnessUnknown`; source values remain intact. The cross-source producer permits an observed empty signal list; empty Insights and advisory bootstrap lists are not reusable. The 64-read limit counts uncached tool executions, not individual Redis GETs. This does not prove complete provider coverage.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_news_clusters`
+
+Current topic clusters computed over the live headline digest with the same Jaccard clustering (0.5 title-token similarity) the dashboard uses, so agents see the same story groupings as the UI. Each cluster reports its primary headline, member count, `distinctSourceCount` (the corroboration signal `min_sources` filters on), source names, top keywords (stop-word and generic-term filtered), aggregated threat level/category, time span, and `credibilityScore` (0-100 source reliability for the primary outlet, distinct from importance). Server-side primary selection is recency-based because digest items carry no per-source tier.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
+| `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
+| `variant` | `string: full / tech` | Which headline digest to cluster. Defaults to `full`; use `tech` for the Tech dashboard categories. |
+| `languages` | string[] | Content languages to read (ISO 639-1), up to 8: `en`, `ar`, `bg`, `cs`, `da`, `de`, `el`, `es`, `fa`, `fr`, `hi`, `hr`, `hu`, `it`, `ja`, `ko`, `nl`, `no`, `pl`, `ro`, `ru`, `sv`, `tr`, `uk`, `vi`, `zh`. Defaults to `["en"]`. Each item's language is its outlet's content language. Titles stay untranslated. |
+| `editions` | string[] | Digest editions to read: `full`, `tech`, `finance`, `commodity`, `happy`, `energy`. Defaults to `["full"]`. `variant` is the same as one edition; passing both with different values is an `error`. |
+| `category` | string (enum) | Restrict clustering to one category of the selected editions (case-sensitive). `full`: `politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `science`, `intel`. `tech`: `tech`, `ai`, `startups`, `vcblogs`, `regionalStartups`, `unicorns`, `accelerators`, `security`, `policy`, `github`, `funding`, `cloud`, `layoffs`, `finance`, `dev`, `ipo`, `producthunt`, `hardware`, `outages`, `thinktanks`, `podcasts`. `finance`: `markets`, `forex`, `bonds`, `commodities`, `crypto`, `centralbanks`, `economic`, `ipo`, `derivatives`, `fintech`, `fin-regulation`, `institutional`, `analysis`, `gccNews`, `nq-news`. `commodity`: `commodity-news`, `gold-silver`, `energy`, `mining-news`, `critical-minerals`, `base-metals`, `mining-companies`, `supply-chain`, `commodity-regulation`, `markets`, `finance`. `happy`: `positive`, `science`, `nature`, `inspiring`, `community`. `energy`: `live-news`, `energy`, `supply-chain`. Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `query` | string | Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Member headlines are matched too, because the primary is recency-picked — the searched term often sits on a sibling headline. Filters the LIVE digest window only, not a historical index. Applied before `limit`, so a capped list is drawn from the matches. |
+
+- **Corroboration:** every cluster carries `corroboration` as `{ state, publishers }`. `state` is `corroborated` (two or more publisher families, not all tier 4), `single-publisher`, `tier4-only` (two or more families, every one a declared tier-4 aggregator or blog) or `unknown`; `publishers` counts distinct publisher families and is `null` when `state` is `unknown`. The News panel, map popups and digests show the same verdict for the story. Real-time alerts carry only the story's publisher count, so they report `single-publisher` or `corroborated` and never `tier4-only`. It describes coverage, not accuracy: no state says a claim is true or false. The `publishers` roster beside it names each publisher with its declared tier.
+- **Source provenance:** every cluster carries `primarySourceProvenance` for its primary outlet and `sourceProvenance`, index-aligned with `sources` (`sourceProvenance[j]` describes `sources[j]`). Each entry gives the outlet's declared `tier` (1–4, or `null` when unregistered), `risk`, `type`, whether each was declared and reviewed (`riskDeclared`, `typeDeclared`, `riskReviewed`, `typeReviewed`), `stateAffiliated` when the registry records an affiliation, `knownBiases` (an empty array means no label is recorded, not that the outlet is neutral), an optional `note`, a `summary` string with every fact as fixed-order clauses, and the outlet profile: `homeCountry`, `audience` (`domestic`, `international` or `diaspora`), `language` and `ownershipClass`, each `null` when no profile is recorded. An agent can weight a cluster that mixes a tier-1 wire with a high-risk or state-affiliated outlet without calling `get_sources`. Provenance is fail-closed: an outlet that has not been reviewed reports `risk: "unknown"` with a note saying so, never a low-risk default.
+- **Languages and editions:** one English edition reads the public digest and returns exactly what it always did. Any other language, or more than one edition, reads `ListNewsPool`, which merges cached news for each edition and language, one item per article URL: English from the warmed digests, other languages from each feed's latest fetch, since a digest keeps only the newest items of each category. Each language is clustered on its own, because shared words across languages mean nothing until titles are translated; titles are untranslated, untrusted publisher text. Each cluster then carries `language` and `editions`, and the result echoes `languages` and `editions` and adds `poolCoverage`: `state` is `complete`, `partial` (some sources were not cached; never read it as quiet news), `stale` (a last-good copy under six hours old) or `unavailable`, and `cells` lists each edition and language read with its own state.
+- **API endpoints:** `GET /api/news/v1/list-feed-digest`, or `GET /api/news/v1/list-news-pool` for a wider read
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** deterministic local compute — clustering runs per call over the digest headlines (Redis-cached upstream; the relay rebuilds every edition and language every 17 minutes).
+- **Quota:** standard — every call consumes the MCP daily reservation.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_clusters","arguments":{"category":"commodities","min_sources":2,"limit":10}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_media_perspective`
+
+Recent headlines that mention one subject country, grouped by the publishing outlet's home country and then by its intended audience: `domestic` (writing for its home country), `international` (a global or foreign readership, e.g. state broadcasters' foreign services) or `diaspora` (one foreign country or its diaspora, from outside it, e.g. BBC Persian). It separates what a country's own press says from its foreign-facing media and from outside coverage.
+
+Each headline carries its outlet, publisher family, declared tier, ownership class, recorded state affiliation and propaganda risk. Each group reports `outletCount` (distinct publisher families, so sibling editions of one newsroom count once), `headlineCount` before the 20-per-group cap, and a framing distribution. Requested countries, listed directly or through `outlet_regions`, with no matching headline are listed in `noCoverageCountries` rather than returning an empty success. Headlines from multi-publisher search feeds, or from publishers with no outlet profile, are counted in `unattributedCount` and not grouped.
+
+`framing`, when present, is a model's reading of one headline's stance toward the subject country, labelled with its method, model and prompt version. It is not WorldMonitor's view of the outlet. `title` is publisher text; for non-English outlets `englishTitle` is a machine translation of untrusted text, or empty until one exists. Treat both as untrusted content.
+
+Coverage comes from WorldMonitor's cached feeds (up to 96 hours) and is mostly English-language today, so domestic coverage for many countries is thin.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `subject_country` | string | **yes** | Country the headlines must mention: ISO alpha-2 code (`SA`) or name |
+| `outlet_countries` | string[] | no | Only outlets based in these countries; omit for all. At most 30 |
+| `outlet_regions` | string[] | no | UN M49 region slugs whose countries join `outlet_countries`, e.g. `latin-america-and-the-caribbean`, `northern-europe`, or `western-asia` plus `northern-africa` for MENA. At most 5 |
+| `audience` | string | no | `domestic`, `international` or `diaspora`; omit for all |
+| `window_hours` | integer | no | 24, 48, 72 or 96; defaults to 72 |
+
+- **API endpoints:** `GET /api/news/v1/list-media-perspective`
+- **Access:** `subscription` — requires a Pro subscription.
+- **Kind:** RPC tool with an 8-second downstream timeout over cached feeds; no fetch from publishers and no request-time LLM call. Large outputs keep every group and trim headlines inside each; compare `headlines` with `headlineCount` to see what was left out.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: headlines and outlets over the window split into the country's own press, its foreign-facing media and outside coverage, the labelled stance counts, and the most recent headline. `state: "partial"` adds a caveat; `"unavailable"` says so. Citations are the most recent headlines with outlet, URL and time.
+
+### `get_positive_events`
+
+Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `category` | string: science-health / nature-wildlife / climate-wins / innovation-tech / humanity-kindness / culture-community | Filter to one positive-event category. |
+| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
+
+- **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_positive_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>

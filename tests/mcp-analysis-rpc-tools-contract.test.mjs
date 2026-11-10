@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { readToolsReference } from './helpers/mcp-tools-reference-docs.mjs';
 
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import { TOOL_LIST_RESPONSE, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -90,8 +90,8 @@ describe('wave-2a analysis tools registry contract', () => {
   });
 
   it('documents the focal-point response field with its actual wire name', () => {
-    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
-    const chinese = readFileSync(new URL('../docs/zh/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+    const english = readToolsReference('en');
+    const chinese = readToolsReference('zh');
     for (const docs of [english, chinese]) {
       const section = docs.match(/### `get_focal_points`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
       assert.match(section, /`ai_context`/);
@@ -100,7 +100,7 @@ describe('wave-2a analysis tools registry contract', () => {
   });
 
   it('publishes a valid cascade source id in the English example', () => {
-    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+    const english = readToolsReference('en');
     const section = english.match(/### `simulate_infrastructure_cascade`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
     assert.match(section, /"source_id":"chokepoint:hormuz_strait"/);
     assert.doesNotMatch(section, /"source_id":"hormuz"/);

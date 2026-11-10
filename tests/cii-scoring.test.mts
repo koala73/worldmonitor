@@ -2677,6 +2677,7 @@ describe('CII scoring', () => {
       'docs/strategic-risk.mdx',
       'docs/algorithms.mdx',
       'docs/overview.mdx',
+      'docs/platform-evaluation.mdx',
       'docs/features.mdx',
       'docs/methodology/cii-risk-scores.mdx',
       'docs/Docs_To_Review/DOCUMENTATION.md',
