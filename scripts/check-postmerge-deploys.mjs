@@ -901,19 +901,29 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
           paths: workflow.triggerPaths,
         });
       }
-      const abortProofReadable = run.verdict === 'RUN_FOUND'
-        && run.conclusion === 'failure'
-        && Boolean(workflow.skipProofPaths);
-      if (abortProofReadable || (run.found && run.conclusion === 'success' && deploymentRequired !== true && (
+      if (run.found && run.conclusion === 'success' && deploymentRequired !== true && (
         run.verdict === 'RUN_FOUND'
         || (run.verdict === 'NO_RUN_IN_WINDOW' && deploymentRequired === false)
-      ))) {
+      )) {
         jobs = readRunJobs({
           gh,
           repository,
           runId: run.runId,
           runAttempt: run.runAttempt,
         });
+      } else if (run.verdict === 'RUN_FOUND' && run.conclusion === 'failure' && workflow.skipProofPaths) {
+        // This listing can only clear a failed run, so an unreadable listing
+        // leaves jobs unset and the run stays RUN_FAILED.
+        try {
+          jobs = readRunJobs({
+            gh,
+            repository,
+            runId: run.runId,
+            runAttempt: run.runAttempt,
+          });
+        } catch {
+          jobs = null;
+        }
       }
       const skipProof = workflow.skipProofPaths
         ? () => {
