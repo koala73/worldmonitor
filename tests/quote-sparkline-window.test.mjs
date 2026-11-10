@@ -8,6 +8,7 @@ const {
   SPARKLINE_INTERVAL_SECONDS,
   SPARKLINE_WINDOW_SECONDS,
   SPARKLINE_HISTORY_QUERY,
+  SPARKLINE_HISTORY_RETRY_SECONDS,
   buildQuoteSparkline,
 } = require('../scripts/shared/quote-sparkline.cjs');
 
@@ -35,8 +36,10 @@ function wobble(n, base, step = 0.01) {
 }
 
 describe('buildQuoteSparkline', () => {
-  it('drops the 94.93 / 98.32 / 94.80 Brent bad tick', () => {
-    const closes = [...wobble(20, 94.9), 94.93, 98.32, 94.80, ...wobble(20, 94.8)];
+  it('drops the 94.93 / 98.32 / 94.80 Brent bad tick when it is a 5-minute close', () => {
+    // 98.32 is bar 24, the last minute of its 5-minute bucket, so bucketing alone keeps it.
+    const closes = [...wobble(23, 94.9), 94.93, 98.32, 94.80, ...wobble(20, 94.8)];
+    assert.equal((T0 + closes.indexOf(98.32) * MINUTE) % SPARKLINE_INTERVAL_SECONDS, 4 * MINUTE);
     const { sparkline } = buildQuoteSparkline(minuteChart(T0, closes), null);
     assert.ok(sparkline.length > 0, 'series built');
     assert.ok(!sparkline.includes(98.32), `spike removed: ${sparkline.join(',')}`);
@@ -162,9 +165,9 @@ describe('commodity seeders publish the 24-hour sparkline', () => {
     const calls = [];
     const fetchOnce = async (symbol, query) => { calls.push(query); return { chart: structuredClone(history) }; };
     const commoditySparkline = Function(
-      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'buildQuoteSparkline', 'logThrottled',
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'SPARKLINE_HISTORY_RETRY_SECONDS', 'buildQuoteSparkline', 'logThrottled',
       `${source.slice(start, end)}\nreturn _commoditySparkline;`,
-    )(fetchOnce, async () => {}, SPARKLINE_HISTORY_QUERY, buildQuoteSparkline, () => {});
+    )(fetchOnce, async () => {}, SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, () => {});
 
     const first = await commoditySparkline('BZ=F', { chart: today, lastTradeAt: T0 + 52 * MINUTE });
     await commoditySparkline('BZ=F', { chart: today, lastTradeAt: T0 + 57 * MINUTE });
@@ -203,7 +206,41 @@ describe('bad ticks on thin and boundary bars', () => {
   });
 });
 
+describe('island prints on thin contracts', () => {
+  // CT=F on 2026-11-10, as Yahoo served it: a zero-volume 82.37 print three
+  // hours from 78.76 (the day before) and 78.39. Yahoo's daily high was 79.90.
+  const at = (day, hh, mm) => Date.UTC(2026, 10, day, hh, mm) / 1000;
+  const history = chart(
+    [at(9, 8, 20), at(9, 13, 15), at(9, 13, 20), at(9, 16, 20), at(10, 10, 15), at(10, 13, 20), at(10, 16, 20)],
+    [79.27, 79.19, 79.14, 78.76, 82.37, 78.39, 78.27],
+    '5m',
+  );
+
+  it('drops a print with a trading gap on both sides that jumps and reverts', () => {
+    const today = chart([at(10, 10, 16), at(10, 13, 20), at(10, 16, 20), at(10, 16, 30)], [82.37, 78.39, 78.27, 78.28]);
+    const out = buildQuoteSparkline(today, history);
+    assert.deepEqual(out.sparkline, [78.39, 78.27, 78.28], 'island print removed, the window keeps the rest');
+    assert.equal(out.sparklineStartAt, at(10, 13, 20) * 1000, 'the series starts at the first kept close');
+  });
+
+  it('keeps an island print when the next print holds the move', () => {
+    const today = chart([at(10, 10, 16), at(10, 13, 20), at(10, 16, 20)], [82.37, 82.1, 82.2]);
+    const { sparkline } = buildQuoteSparkline(today, history);
+    assert.ok(sparkline.includes(82.37), 'move that holds kept');
+  });
+});
+
 describe('stale-quote dips', () => {
+  it('drops the two-bar USDTRY dips that land on 5-minute closes (live tape, 2026-11-10)', () => {
+    // 50.207 then 50.113: each bar is under the 0.2% floor against its neighbour,
+    // but the 50.113 bar closes its 5-minute bucket, 0.23% under the tape.
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/usdtry-1m-2026-11-10.json', import.meta.url), 'utf8'));
+    const { sparkline } = buildQuoteSparkline(chart(fixture.timestamp, fixture.close), null);
+    assert.equal(sparkline.length, 40, '42 five-minute closes, two of them dips');
+    assert.ok(Math.min(...sparkline) > 50.2, `dips removed: ${Math.min(...sparkline)}`);
+    assert.equal(sparkline.at(-1), fixture.close.at(-1), 'last point is the last print');
+  });
+
   it('drops the recurring one-minute USDTRY print 0.23% under the tape', () => {
     const closes = [];
     for (let i = 0; i < 120; i += 1) closes.push(i % 20 === 9 ? 50.1119 : +(50.225 + ((i % 3) - 1) * 0.003).toFixed(4));
@@ -296,11 +333,81 @@ describe('history caches need a session to key on', () => {
     const end = source.indexOf('function fetchYahooChartDirect(');
     const calls = [];
     const commoditySparkline = Function(
-      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'buildQuoteSparkline', 'logThrottled',
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'SPARKLINE_HISTORY_RETRY_SECONDS', 'buildQuoteSparkline', 'logThrottled',
       `${source.slice(start, end)}\nreturn _commoditySparkline;`,
-    )(async (_s, q) => { calls.push(q); return { chart: structuredClone(history) }; }, async () => {}, SPARKLINE_HISTORY_QUERY, buildQuoteSparkline, () => {});
+    )(async (_s, q) => { calls.push(q); return { chart: structuredClone(history) }; }, async () => {}, SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, () => {});
     await commoditySparkline('BZ=F', { chart: undated(), lastTradeAt: undefined });
     await commoditySparkline('BZ=F', { chart: undated(), lastTradeAt: undefined });
     assert.equal(calls.length, 2);
+  });
+});
+
+describe('a failed history request backs off instead of retrying every cycle', () => {
+  const historyTs = Array.from({ length: 30 * 12 }, (_, i) => T0 - 30 * 3600 + i * 300);
+  const history = chart(historyTs, historyTs.map(() => 90.5), '5m');
+  const today = minuteChart(T0, wobble(53, 91));
+  today.chart.result[0].meta.regularMarketTime = T0 + 52 * MINUTE;
+  today.chart.result[0].meta.chartPreviousClose = 90;
+
+  it('the cron path skips the history request for a while after Yahoo refuses it', async () => {
+    const { fetchYahooQuoteChart, createSparklineHistoryCache } = await import('../scripts/_yahoo-fetch.mjs');
+    const store = new Map();
+    const ttls = new Map();
+    const historyCache = createSparklineHistoryCache(async ([verb, key, value, ex, seconds]) => {
+      if (verb === 'GET') return { result: store.get(key) ?? null };
+      store.set(key, value);
+      if (ex === 'EX') ttls.set(key, seconds);
+      return { result: 'OK' };
+    }, 'test:history:');
+    let refuse = true;
+    const urls = [];
+    const fetchJson = async (url) => {
+      urls.push(url);
+      if (url.endsWith(SPARKLINE_HISTORY_QUERY)) {
+        if (refuse) throw new Error('HTTP 429');
+        return structuredClone(history);
+      }
+      return structuredClone(today);
+    };
+    const run = () => fetchYahooQuoteChart('BZ=F', { fetchJson, delayMs: 0, sparklineWindow: true, historyCache });
+    const historyRequests = () => urls.filter((u) => u.endsWith(SPARKLINE_HISTORY_QUERY)).length;
+
+    await run();
+    const backedOff = await run();
+    assert.equal(historyRequests(), 1, 'the second run does not ask again');
+    assert.equal(backedOff.sparklineStartAt, T0 * 1000, 'today\'s bars still publish');
+    assert.equal(ttls.get('test:history:BZ=F'), SPARKLINE_HISTORY_RETRY_SECONDS);
+
+    store.clear();
+    refuse = false;
+    const recovered = await run();
+    assert.equal(historyRequests(), 2, 'after the back-off the request is made again');
+    assert.equal(recovered.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+  });
+
+  it('the relay skips the history request for a while after it fails', async (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: T0 * 1000 });
+    const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+    const start = source.indexOf('const _sparklineHistories');
+    const end = source.indexOf('function fetchYahooChartDirect(');
+    let refuse = true;
+    const calls = [];
+    const commoditySparkline = Function(
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'SPARKLINE_HISTORY_RETRY_SECONDS', 'buildQuoteSparkline', 'logThrottled',
+      `${source.slice(start, end)}\nreturn _commoditySparkline;`,
+    )(async (_s, q) => { calls.push(q); return refuse ? null : { chart: structuredClone(history) }; }, async () => {}, SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, () => {});
+    const quote = { chart: today, lastTradeAt: T0 + 52 * MINUTE };
+
+    await commoditySparkline('BZ=F', quote);
+    t.mock.timers.tick(5 * MINUTE * 1000);
+    const backedOff = await commoditySparkline('BZ=F', quote);
+    assert.equal(calls.length, 1, 'the next cycle does not ask again');
+    assert.equal(backedOff.sparklineStartAt, T0 * 1000, 'today\'s bars still publish');
+
+    refuse = false;
+    t.mock.timers.tick(SPARKLINE_HISTORY_RETRY_SECONDS * 1000);
+    const recovered = await commoditySparkline('BZ=F', quote);
+    assert.equal(calls.length, 2, 'after the back-off the request is made again');
+    assert.equal(recovered.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
   });
 });
