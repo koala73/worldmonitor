@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 470918
+    "raw": 473485
   },
   "chunks": {
     "analytics": {
-      "raw": 48409,
+      "raw": 50976,
       "files": 1
     },
     "auth-state": {
