@@ -2318,6 +2318,7 @@
       "scripts/package.json",
       "scripts/railpack.json",
       "scripts/seed-sanctions-pressure.mjs",
+      "scripts/shared/aircraft-registration-country.mjs",
       "scripts/shared/compare-and-delete-script.cjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",

@@ -20,9 +20,9 @@ const now = Date.UTC(2026, 8, 25);
 // OFAC's lists change slowly; a Railway container that loses egress for two 6h
 // runs must not drop ~20k OFAC entities (2026-09-27: 12h retention published 0 SDN).
 const RETAIN_MS = 48 * 3600000;
-const row = (source, i) => ({
+const row = (source, i, countryCodes = []) => ({
   id: source === SEMA_SOURCE ? `sema-ca:iran:1-part-2:${i}` : `${source}:${i}`,
-  name: `${source} Person ${i}`, sourceLists: [source], countryCodes: [], countryNames: [],
+  name: `${source} Person ${i}`, sourceLists: [source], countryCodes, countryNames: countryCodes,
   programs: ['TEST'], entityType: 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL', effectiveAt: '0',
   isNew: false, _aliases: [`Alias ${source} ${i}`], _identifiers: [],
 });
@@ -34,7 +34,7 @@ const cslRow = (source, i) => ({
 });
 const cslLists = Object.fromEntries(CSL_SOURCES.map(source => [source, Array.from({ length: 40 }, (_, i) => cslRow(source, i + 1))]));
 
-async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
+async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
@@ -51,7 +51,7 @@ async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL']
     verifySeedKey: async key => key === 'sanctions:pressure:v1' ? { entries: preview } : previousState,
     fetchSource: async ({ label }) => {
       if (!successes.includes(label)) throw new Error('synthetic source timeout');
-      return { entries: [row(label, 1)], datasetDate: now - 86400000 };
+      return { entries: [row(label, 1, ofacCountryCodes)], datasetDate: now - 86400000 };
     },
     ingestSemaEntries: async () => successes.includes(SEMA_SOURCE)
       ? { records: semaRecords, quarantined: semaQuarantined, publishedAtMs: now - 2 * 86400000, error: null }
@@ -202,6 +202,25 @@ describe('sanctions source lifecycle', () => {
       assert.equal(verdict.status, 'SEED_ERROR');
       assert.equal(verdict.errorCode, 'OFAC_INGEST_FAILED');
     }
+  });
+
+  it('reports degraded OFAC country attribution as a seed error while every source succeeds', async () => {
+    const { data, options } = await publish({ ofacCountryCodes: [] });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.sourceState, 'degraded');
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.freshnessMetaPatch.failedSources.length, 0);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 1);
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._ofacAttribution, undefined, 'the diagnostics stay out of the public payload');
+    const key = health.BOOTSTRAP_KEYS.sanctionsPressure;
+    const meta = { fetchedAt: now, recordCount: data.totalCount, ...result.freshnessMetaPatch };
+    const verdict = health.classifyKey('sanctionsPressure', key, { allowOnDemand: false }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[health.SEED_META.sanctionsPressure.key, JSON.stringify(meta)]]), keyMetaErrors: new Map(),
+    });
+    assert.equal(verdict.status, 'SEED_ERROR');
+    assert.equal(verdict.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
   });
 
   it('keeps health OK and names the quarantined Canadian rows in source health', async () => {
@@ -378,7 +397,7 @@ describe('sanctions source lifecycle', () => {
       assert.equal(index[7].sourceState, 'error', 'every source outage degrades the screening index health');
       assert.equal(index[7].errorCode, 'SEMA_INGEST_FAILED');
       assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES].sort());
-      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], {});
+      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], count ? { RU: 2 } : {});
     }
   });
 });

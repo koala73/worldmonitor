@@ -7,6 +7,8 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import sax from 'sax';
 import { ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
+import { aircraftRegistrationCountry } from '../scripts/shared/aircraft-registration-country.mjs';
+import { countryNameToIso2 } from '../scripts/shared/country-name-to-iso2.cjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -46,13 +48,15 @@ const fetchPressureSrc = seedSrc.slice(
   seedSrc.indexOf('\nfunction validate('),
 );
 
-it('attributes an OFAC vessel by its explicit flag, leaving unknown and former flags unattributed', async () => {
-  const profile = (id, type, ...flags) => `
-    <DistinctParty><Profile ID="${id}" PartySubTypeID="1">
+it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, false and former ones unattributed', async () => {
+  const party = (subType) => (id, type, ...details) => `
+    <DistinctParty><Profile ID="${id}" PartySubTypeID="${subType}">
       <Feature FeatureTypeID="${type}">
-        ${flags.map(flag => `<FeatureVersion><VersionDetail DetailTypeID="1432">${flag}</VersionDetail></FeatureVersion>`).join('')}
+        ${details.map(detail => `<FeatureVersion><VersionDetail DetailTypeID="1432">${detail}</VersionDetail></FeatureVersion>`).join('')}
       </Feature>
     </Profile></DistinctParty>`;
+  const profile = party(1);
+  const aircraft = party(2);
   const xml = `<Sanctions>
     <CountryValues>
       <Country ID="11171" ISO2="RU">Russia</Country>
@@ -61,6 +65,8 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
     <FeatureTypeValues>
       <FeatureType ID="3">Vessel Flag</FeatureType>
       <FeatureType ID="24">Former Vessel Flag</FeatureType>
+      <FeatureType ID="49">Previous Aircraft Tail Number</FeatureType>
+      <FeatureType ID="64">Aircraft Tail Number</FeatureType>
     </FeatureTypeValues>
     <DistinctParties>
       ${profile('1', '3', 'Russia')}
@@ -70,6 +76,14 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
       ${profile('5', '3', "Democratic People's Republic of Korea", 'Korea, North')}
       ${profile('6', '3', "Democratic People's Republic of Korea", 'Russia')}
       ${profile('7', '3', "Democratic People's Republic of Korea", 'Unknown')}
+      ${profile('8', '3', 'Gambia')}
+      ${profile('9', '3', 'Cook Islands')}
+      ${profile('10', '3', 'Antigua &amp; Barbuda')}
+      ${profile('11', '3', 'Mozambique (False)')}
+      ${aircraft('12', '64', 'EP-MMH')}
+      ${aircraft('13', '64', 'YV2040')}
+      ${aircraft('14', '64', 'RA-89049', 'EP-MMH')}
+      ${aircraft('15', '49', 'EP-MMH')}
     </DistinctParties>
     <SanctionsEntries>
       <SanctionsEntry ID="1" ProfileID="1"/>
@@ -79,19 +93,26 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
       <SanctionsEntry ID="5" ProfileID="5"/>
       <SanctionsEntry ID="6" ProfileID="6"/>
       <SanctionsEntry ID="7" ProfileID="7"/>
+      ${Array.from({ length: 8 }, (_, i) => `<SanctionsEntry ID="${i + 8}" ProfileID="${i + 8}"/>`).join('')}
     </SanctionsEntries>
   </Sanctions>`;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
-    SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    aircraftRegistrationCountry, countryNameToIso2, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml),
   });
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
   vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
-  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], [], ['KP'], ['KP'], [], []]);
+  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [
+    ['RU'], [], [], ['KP'], ['KP'], [], [],
+    ['GM'], ['CK'], ['AG'], [],
+    ['IR'], ['VE'], [], [],
+  ]);
   assert.deepEqual(normalize(entries[0].countryNames), ['Russia']);
   assert.deepEqual(normalize(entries[3].countryNames), ['Korea, North']);
+  assert.deepEqual(normalize(entries[8].countryNames), ['Cook Islands'], 'a flag missing from OFAC\'s list still gets a name');
+  assert.equal(entries[11].entityType, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT');
 });
 
 async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {
@@ -334,6 +355,39 @@ describe('buildCountryPressure', () => {
     ];
     const result = buildCountryPressure(entries);
     assert.equal(result[0].countryCode, 'IR');
+  });
+});
+
+describe('ofacAttributionHealth', () => {
+  const rows = (count, entityType, countryCodes) => Array.from({ length: count }, () => ({ entityType, countryCodes }));
+  const { ofacAttributionHealth } = ctx;
+
+  it('degrades when more than 10% of OFAC records are unattributed', () => {
+    const health = normalize(ofacAttributionHealth([
+      ...rows(89, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']), ...rows(11, 'SANCTIONS_ENTITY_TYPE_ENTITY', []),
+    ]));
+    assert.equal(health.unattributedShare, 0.11);
+    assert.equal(health.degraded, true);
+  });
+
+  it('degrades on unattributed vessels even when the whole-list share is low', () => {
+    const health = normalize(ofacAttributionHealth([
+      ...rows(950, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']),
+      ...rows(30, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['PA']), ...rows(20, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['XX']),
+    ]));
+    assert.equal(health.unattributedShare, 0.02);
+    assert.equal(health.unattributedVesselShare, 0.4);
+    assert.equal(health.degraded, true);
+  });
+
+  it('stays healthy at the threshold and without OFAC records', () => {
+    assert.equal(ofacAttributionHealth([
+      ...rows(90, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['RU']), ...rows(10, 'SANCTIONS_ENTITY_TYPE_VESSEL', []),
+    ]).degraded, false);
+    assert.deepEqual(normalize(ofacAttributionHealth([])), {
+      entryCount: 0, unattributedCount: 0, unattributedShare: null,
+      vesselCount: 0, unattributedVesselCount: 0, unattributedVesselShare: null, maxShare: 0.1, degraded: false,
+    });
   });
 });
 
