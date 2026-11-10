@@ -36,7 +36,9 @@ before(async () => {
       builder.onResolve({ filter: /^(\.\/clerk|@sentry\/react)$/ }, args => ({ path: args.path, namespace: 'fixture' }));
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({
         contents: args.path === './clerk'
-          ? 'export const ensureClerk = () => globalThis.__checkoutFixture.clerk();'
+          ? `export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
+             export const SITE_DATA_BLOCKED_MESSAGE = 'site data blocked';
+             export const ensureClerk = () => globalThis.__checkoutFixture.clerk();`
           : 'export const captureException = () => {}; export const captureMessage = () => {};',
       }));
     } }],
