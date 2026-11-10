@@ -67,17 +67,19 @@ describe('exposure event adapters', () => {
     assert.match(events[0].name, /Sahel/);
   });
 
-  it('maps UCDP events to conflict exposure events, newest first', () => {
+  it('maps precise UCDP events to conflict exposure events, newest first', () => {
     const events = ucdpEventsToExposureEvents({
       events: [
-        { id: 7, country: 'Sudan', location: { latitude: 15.5, longitude: 32.5 }, dateStart: '2026-07-20' },
-        { id: 8, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-25' },
-        { id: 9, country: 'Nowhere' },
+        { id: 7, country: 'Sudan', location: { latitude: 15.5, longitude: 32.5 }, dateStart: '2026-07-20', hasPreciseLocation: true },
+        { id: 8, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-25', hasPreciseLocation: true },
+        { id: 10, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-26', hasPreciseLocation: false },
+        { id: 11, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-27' },
+        { id: 9, country: 'Nowhere', hasPreciseLocation: true },
       ],
     }, 5);
-    assert.equal(events.length, 2);
-    assert.equal(events[0].id, '8', 'newest first');
+    assert.deepEqual(events.map((e) => e.id), ['8', '7'], 'newest precise events only');
     assert.equal(events[0].type, 'conflict');
+    assert.equal(events[0].reportedCountry, 'Mali');
     assert.match(events[0].name, /Mali/);
   });
 

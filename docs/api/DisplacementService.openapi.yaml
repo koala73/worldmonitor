@@ -465,7 +465,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point as the average density of the country containing it times the circle area. A point outside those 20 countries gets no exposure.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -1218,9 +1218,9 @@ components:
                     description: Radius used for the estimate in km.
                 nearestCountry:
                     type: string
-                    description: ISO3 code of nearest priority country.
+                    description: ISO3 code of the priority country containing the point, whose density was used.
                 densityPerKm2:
                     type: integer
                     format: int32
                     description: Population density used for the estimate.
-            description: ExposureResult contains the population exposure estimate.
+            description: ExposureResult contains the population exposure estimate. It is absent for a point outside every priority country.

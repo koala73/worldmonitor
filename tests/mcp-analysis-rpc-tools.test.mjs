@@ -128,7 +128,7 @@ function analysisPayloads() {
     id: `fire-${i}`,
     frp: i + 1,
     region: 'Sahel',
-    location: { latitude: 14 + i / 100, longitude: 1 },
+    location: { latitude: 12 + i / 100, longitude: -1.5 },
   }));
   return {
     'unrest:events:v1': {
@@ -243,7 +243,7 @@ function analysisPayloads() {
     },
     'wildfire:fires:v1': { fireDetections: fires },
     'conflict:ucdp-events:v1': {
-      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 } }],
+      events: [{ id: 1, country: 'Sudan', dateStart: '2026-07-28', location: { latitude: 15.5, longitude: 32.5 }, hasPreciseLocation: true }],
     },
     'cable-health-v1': structuredClone(PRODUCER_PAYLOADS.cableHealth),
     'infra:outages:v1': structuredClone(PRODUCER_PAYLOADS.internetOutages),
@@ -1237,6 +1237,36 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
 
     assert.equal(result.data.events.length, 1);
     assert.equal(result.data.events[0].id, 'palestine-quake');
+    assert.equal(result.data.events[0].country, 'PSE');
+  });
+
+  it('estimates each event from its own country and drops what the density table cannot cover', async () => {
+    const payloads = analysisPayloads();
+    const at = (latitude, longitude) => ({ location: { latitude, longitude } });
+    payloads['seismology:earthquakes:v1'].earthquakes = [
+      { id: 'santiago', place: 'Santiago', magnitude: 6, ...at(-33.45, -70.67), occurredAt: Date.now() },
+      { id: 'kyiv', place: 'Kyiv', magnitude: 4, ...at(50.45, 30.52), occurredAt: Date.now() },
+    ];
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 'precise', country: 'Sudan', dateStart: '2026-07-28', ...at(15.5, 32.5), hasPreciseLocation: true },
+      { id: 'country-level', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: false },
+      { id: 'unknown-precision', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5) },
+      { id: 'reported-elsewhere', country: 'Chile', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: true },
+    ];
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'all', limit: 0 },
+      '',
+      {},
+      {},
+    );
+    const byId = Object.fromEntries(result.data.events.map((event) => [event.id, event.country]));
+    assert.equal(byId.kyiv, 'UKR');
+    assert.equal(byId.precise, 'SDN');
+    for (const id of ['santiago', 'country-level', 'unknown-precision', 'reported-elsewhere']) {
+      assert.equal(id in byId, false, `${id} must not get an estimate`);
+    }
   });
 
   for (const view of ['today', 'weekly']) {

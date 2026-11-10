@@ -1,13 +1,8 @@
 import type { PopulationExposure } from '@/types';
 import {
+  estimateExposure,
   getRadiusForEventType,
-  PRIORITY_COUNTRIES,
 } from '../../shared/analysis-population-exposure';
-import { resolveCountryCode } from '../../shared/country-code-resolve';
-
-const densityByCountry = new Map(Object.entries(PRIORITY_COUNTRIES).map(([iso3, { pop, area }]) =>
-  [resolveCountryCode(iso3), pop / area] as const,
-));
 
 interface EventForExposure {
   id: string;
@@ -32,11 +27,9 @@ export function enrichEventsWithExposure(
 ): PopulationExposure[] {
   const byLocation = new Map<string, PopulationExposure>();
   for (const event of events) {
-    if (event.hasPreciseLocation !== true || !Number.isFinite(event.lat) || !Number.isFinite(event.lon)
-      || Math.abs(event.lat) > 90 || Math.abs(event.lon) > 180 || (event.lat === 0 && event.lon === 0)) continue;
-    const country = resolveCountryCode(event.country);
-    const density = country ? densityByCountry.get(country) : undefined;
-    if (density === undefined) continue;
+    if (event.hasPreciseLocation !== true) continue;
+    const exposure = estimateExposure(event.lat, event.lon, event.country, getRadiusForEventType(event.type));
+    if (!exposure) continue;
 
     const eventCount = event.eventCount ?? 1;
     const key = locationKey(event.lat, event.lon);
@@ -47,15 +40,14 @@ export function enrichEventsWithExposure(
     }
     if (byLocation.size >= limit) continue;
 
-    const radius = getRadiusForEventType(event.type);
     byLocation.set(key, {
       eventId: event.id,
       eventName: event.name,
       eventType: event.type,
       lat: event.lat,
       lon: event.lon,
-      exposedPopulation: Math.round(density * Math.PI * radius ** 2),
-      exposureRadiusKm: radius,
+      exposedPopulation: exposure.exposedPopulation,
+      exposureRadiusKm: exposure.exposureRadiusKm,
       eventCount,
     });
   }

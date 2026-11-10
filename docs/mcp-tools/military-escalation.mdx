@@ -119,7 +119,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_population_exposure`
 
-Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events, using the dashboard's country-density approximation (nearest priority-country centroid × event-type radius disc). Coarse screening numbers — there is no city-level population dataset behind them.
+Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events, using the dashboard's method (average density of the country the event is in × event-type circle area). Points outside the 20 countries in the population table, and conflict events located only to a district or country, get no estimate. Coarse screening numbers — there is no city-level population dataset behind them.
 
 **Parameters (tool-specific):**
 

@@ -80,8 +80,9 @@ describe('scripts/shared/ stays in sync with shared/', () => {
   ]);
   // The attribution manifest is canonical at shared/ and is consumed by
   // repository-rooted build tooling. It is not a scripts-runtime input, so a
-  // second committed copy would recreate the shared-file merge hotspot.
-  const canonicalOnlyFiles = new Set(['source-attribution-manifest.json']);
+  // second committed copy would recreate the shared-file merge hotspot. The
+  // population-density outlines are read only by the Edge API and MCP.
+  const canonicalOnlyFiles = new Set(['source-attribution-manifest.json', 'population-density-boundaries.json']);
   const sharedFiles = readdirSync(sharedDir).filter(
     (f) => !canonicalOnlyFiles.has(f)
       && (f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f)),

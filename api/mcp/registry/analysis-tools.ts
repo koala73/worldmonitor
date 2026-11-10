@@ -56,11 +56,11 @@ import {
   recalcPostureWithVessels,
 } from '../../../shared/analysis-military-surge';
 import {
-  computeBoundedExposure,
-  computeExposure,
   getRadiusForEventType,
   listCountryPopulations,
+  MAX_EXPOSURE_RADIUS_KM,
 } from '../../../shared/analysis-population-exposure';
+import { estimatePointExposure } from '../../../shared/population-density-country-at';
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
 import { applyRedisKeyPrefix, readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
@@ -950,16 +950,16 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     _outputBudgetBytes: 65536,
     description:
       'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
-      'Uses the same country-density approximation the dashboard ships — the nearest priority-country centroid supplies a ' +
-      'population density that is multiplied over the event-type radius disc (50 km for conflict, 100 km for earthquakes and ' +
-      'floods, 30 km for fires). Three modes: events (the default) enriches the current seeded event feeds and ranks them by ' +
-      'exposed population; point estimates exposure around an arbitrary lat/lon; countries returns the priority-country ' +
-      'population table itself. Estimates are deliberately coarse screening numbers — there is no city-level population ' +
-      'dataset behind them — so treat them as ranking signals, not casualty projections.',
+      'Same method as the dashboard: the average density (population / area) of the country the point is in, times the ' +
+      'event-type circle area (50 km for conflict, 100 km for earthquakes and floods, 30 km for fires). Only the 20 countries ' +
+      'in the countries table have a density; anywhere else gets no estimate (point mode returns exposure null, events mode ' +
+      'leaves the event out). Conflict events located only to a district or country are left out. Modes: events (default) ' +
+      'ranks the current seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. ' +
+      'Coarse screening numbers with no city-level data behind them: ranking signals, not casualty projections.',
     inputSchema: {
       type: 'object',
       properties: {
-        mode: { type: 'string', enum: ['events', 'point', 'countries'], description: 'events enriches live feeds (default); point takes lat/lon; countries lists the population table.' },
+        mode: { type: 'string', enum: ['events', 'point', 'countries'], description: 'events enriches live feeds (default); point takes lat/lon; countries lists the population table and so the countries that can get an estimate.' },
         event_source: { type: 'string', enum: ['earthquakes', 'wildfires', 'conflicts', 'all'], description: 'Which event feeds to enrich in events mode (default all).' },
         lat: { type: 'number', description: 'Latitude for point mode.' },
         lon: { type: 'number', description: 'Longitude for point mode.' },
@@ -978,7 +978,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           type: 'object',
           properties: {
             events: { type: ['array', 'null'], items: { type: 'object' } },
-            exposure: { type: ['object', 'null'] },
+            exposure: { type: ['object', 'null'], description: 'Point mode: the estimate, with country as the ISO3 code whose density was used. Null in other modes and for a point outside the countries table.' },
             countries: { type: ['array', 'null'], items: { type: 'object' } },
           },
           required: [],
@@ -1006,9 +1006,6 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             error: 'point mode requires numeric lat and lon.',
           };
         }
-        // Out-of-range coordinates would still resolve to a nearest centroid
-        // by Euclidean distance and return a real-looking estimate for a place
-        // that does not exist (lat 999 attributes to Mali).
         if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
           return {
             cached_at: null,
@@ -1017,11 +1014,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
             error: `lat must be within [-90, 90] and lon within [-180, 180] (received lat=${lat}, lon=${lon}).`,
           };
         }
-        const radiusKm = Math.max(1, Number(params.radius_km ?? 50) || 50);
+        const radiusKm = Math.min(MAX_EXPOSURE_RADIUS_KM, Math.max(1, Number(params.radius_km ?? 50) || 50));
         return {
           cached_at: null,
           stale: false,
-          data: { events: null, exposure: computeBoundedExposure(lat, lon, radiusKm), countries: null },
+          data: { events: null, exposure: estimatePointExposure(lat, lon, radiusKm), countries: null },
         };
       }
 
@@ -1067,10 +1064,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
 
       const enriched = reads
         .flatMap((read, i) => read.adapt(payloads[i], Number.POSITIVE_INFINITY))
-        .map((event) => {
-          const radius = getRadiusForEventType(event.type);
-          const exposure = computeExposure(event.lat, event.lon, radius);
-          return { ...event, ...exposure };
+        .flatMap((event) => {
+          const exposure = estimatePointExposure(event.lat, event.lon, getRadiusForEventType(event.type), event.reportedCountry);
+          return exposure ? [{ ...event, ...exposure }] : [];
         })
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation)
         .slice(0, limit);
