@@ -564,7 +564,7 @@ import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyDeviceTierClass } from '@/utils/device-tier';
 import { applyFont } from '@/services/font-settings';
 import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
-import { initAnalytics, trackContentHandoff } from '@/services/analytics';
+import { initAnalytics, rememberLandingUtm, trackContentHandoff } from '@/services/analytics';
 import { installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
@@ -590,6 +590,7 @@ const acquisitionVisit = {
   referrer: document.referrer,
   now: Date.now(),
 };
+rememberLandingUtm(window.location.search);
 void import('../shared/acquisition-source')
   .then((m) => { m.captureFirstTouchAcquisition(m.browserAcquisitionStorage(), acquisitionVisit); })
   .catch(() => { /* no attribution */ });
