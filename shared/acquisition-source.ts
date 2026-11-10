@@ -1,7 +1,7 @@
 /**
  * First-touch acquisition source: where a browser first came from (UTM tags,
- * referrer host, landing page family), kept so a later checkout can stamp it
- * onto the payment-provider subscription as `wm_acq_*` metadata. With billing
+ * referrer host, landing page family and path), kept so a later checkout can
+ * stamp it onto the payment-provider subscription as `wm_acq_*` metadata. With billing
  * country already on every Dodo subscription, that is enough to read
  * conversion and revenue by channel and country from the payment records
  * alone, without the client-side analytics that drop events.
@@ -21,6 +21,8 @@ export const ACQUISITION_COOKIE_NAME = 'wm-acq';
 export const ACQUISITION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 export const ACQUISITION_COOKIE_DOMAIN = 'worldmonitor.app';
 const MAX_TOKEN_LENGTH = 64;
+const MAX_PATH_LENGTH = 120;
+const PATH_PATTERN = /^\/[A-Za-z0-9/._~%-]*$/;
 const DIRECT = 'direct';
 const HOST_PATTERN = /^(?=.{1,253}$)[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -49,6 +51,8 @@ export interface AcquisitionSource {
   /** Referrer hostname without `www.`, or `direct`. */
   referrer?: string;
   landing?: string;
+  /** Exact landing pathname, only for a page in a listed family. Never the query or hash. */
+  path?: string;
   /** UTC day of the first visit, YYYY-MM-DD. */
   firstSeen?: string;
 }
@@ -92,6 +96,13 @@ function normalizeReferrer(value: unknown): string | undefined {
   return host === DIRECT || HOST_PATTERN.test(host) ? host : undefined;
 }
 
+/** A path kept only when its family is listed and agrees with the recorded landing, if any. */
+function normalizePath(value: unknown, landing: string | undefined): string | undefined {
+  if (typeof value !== 'string' || value.length > MAX_PATH_LENGTH || !PATH_PATTERN.test(value)) return undefined;
+  const family = landingFamily(value);
+  return family && (!landing || family === landing) ? value : undefined;
+}
+
 function normalizeDay(value: unknown): string | undefined {
   if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return undefined;
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -112,6 +123,7 @@ export function normalizeAcquisitionSource(input: unknown): AcquisitionSource | 
     campaign: normalizeToken(raw.campaign),
     referrer: normalizeReferrer(raw.referrer),
     landing,
+    path: normalizePath(raw.path, landing),
     firstSeen: normalizeDay(raw.firstSeen),
   };
   const result: AcquisitionSource = {};
@@ -145,6 +157,7 @@ export function parseAcquisitionSource(visit: AcquisitionVisit): AcquisitionSour
     campaign: params.get('utm_campaign'),
     referrer: referrerHost(visit.referrer),
     landing: landingFamily(visit.pathname),
+    path: visit.pathname,
     firstSeen: new Date(visit.now).toISOString().slice(0, 10),
   }) ?? { referrer: DIRECT };
 }
@@ -320,6 +333,7 @@ const METADATA_KEYS: Record<keyof AcquisitionSource, string> = {
   campaign: 'wm_acq_campaign',
   referrer: 'wm_acq_referrer',
   landing: 'wm_acq_landing',
+  path: 'wm_acq_path',
   firstSeen: 'wm_acq_first_seen',
 };
 

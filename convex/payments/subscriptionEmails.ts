@@ -416,6 +416,7 @@ export const conversionContextValidator = v.object({
     campaign: v.optional(v.string()),
     referrer: v.optional(v.string()),
     landing: v.optional(v.string()),
+    path: v.optional(v.string()),
     firstSeen: v.optional(v.string()),
   })),
   mcpAttribution: v.optional(v.string()),
@@ -485,7 +486,10 @@ function conversionRowsHtml(conversion: ConversionContext): string {
     const taggedWithoutReferrer = acquisition.referrer === "direct" && Boolean(acquisition.source);
     rows.push(adminRow("Referrer", taggedWithoutReferrer ? "none recorded (source from utm tag)" : acquisition.referrer));
   }
-  if (acquisition?.landing) rows.push(adminRow("Landing Page", acquisition.landing));
+  const landingPage = acquisition?.path && acquisition.landing
+    ? `${acquisition.path} (${acquisition.landing})`
+    : acquisition?.path ?? acquisition?.landing;
+  if (landingPage) rows.push(adminRow("Landing Page", landingPage));
   if (acquisition?.firstSeen) rows.push(adminRow("First Visit", dayBeforePurchase(acquisition.firstSeen, purchasedAt)));
   if (conversion.mcpAttribution) rows.push(adminRow("MCP Funnel", conversion.mcpAttribution));
   if (conversion.referralCode) {

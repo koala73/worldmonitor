@@ -47,7 +47,9 @@ describe('first-touch acquisition at the edge', () => {
     assert.equal(record?.source, 'chatgpt-com');
     assert.equal(record?.referrer, 'direct');
     assert.equal(record?.landing, 'countries');
+    assert.equal(record?.path, '/countries/iran/');
     assert.match(response.headers.get('set-cookie')!, /domain=\.worldmonitor\.app/);
+    assert.doesNotMatch(response.headers.get('set-cookie')!, /utm_source/);
   });
 
   it('records the external referrer the navigation carried', async () => {
@@ -58,6 +60,7 @@ describe('first-touch acquisition at the edge', () => {
     const record = acquisitionCookie(response);
     assert.equal(record?.referrer, 'perplexity.ai');
     assert.equal(record?.landing, 'blog');
+    assert.equal(record?.path, '/blog/posts/x/');
   });
 
   it('falls back to Accept when the browser sends no fetch metadata', async () => {
