@@ -133,7 +133,8 @@ npm run dev:energy
 npm run typecheck
 
 # Run tests
-npm run test:data          # Data integrity tests
+npm run test:related       # Data tests the branch's changes can reach
+npm run test:data          # All data integrity tests (CI runs these on every push)
 npm run test:e2e:full      # Playwright end-to-end tests (full variant)
 
 # Production build (per variant)
