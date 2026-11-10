@@ -13,7 +13,8 @@ const SPARKLINE_HISTORY_QUERY = '?range=2d&interval=5m';
 const SPIKE_MAD_MULTIPLE = 10;
 const SPIKE_MIN_MOVE = 0.005;
 const SPIKE_MAD_RADIUS = 30;
-const ADJACENT_STEP_MULTIPLE = 3;
+// Thin contracts skip minutes all the time; a trading gap is a closed market.
+const TRADING_GAP_SECONDS = 15 * 60;
 
 function finiteNumber(value) {
   if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
@@ -47,15 +48,13 @@ function median(values) {
 // and so is any print next to a trading gap.
 function dropSingleTickSpikes(bars) {
   if (bars.length < 3) return bars;
-  const steps = bars.slice(1).map((bar, i) => bar.t - bars[i].t);
-  const maxAdjacentStep = median(steps) * ADJACENT_STEP_MULTIPLE;
   const diffs = bars.slice(1).map((bar, i) => bar.v - bars[i].v);
   const kept = [bars[0]];
   for (let i = 1; i < bars.length - 1; i += 1) {
     const prev = bars[i - 1];
     const cur = bars[i];
     const next = bars[i + 1];
-    if (cur.t - prev.t > maxAdjacentStep || next.t - cur.t > maxAdjacentStep) {
+    if (cur.t - prev.t > TRADING_GAP_SECONDS || next.t - cur.t > TRADING_GAP_SECONDS) {
       kept.push(cur);
       continue;
     }
@@ -81,10 +80,9 @@ function dropSingleTickSpikes(bars) {
  * or an empty series with no labels.
  */
 function buildQuoteSparkline(chart, history) {
-  const recent = dropSingleTickSpikes(chartBars(chart));
+  const recent = chartBars(chart);
   const recentStart = recent.length > 0 ? recent[0].t : Infinity;
-  const earlier = dropSingleTickSpikes(chartBars(history).filter((bar) => bar.t < recentStart));
-  const bars = [...earlier, ...recent];
+  const bars = dropSingleTickSpikes([...chartBars(history).filter((bar) => bar.t < recentStart), ...recent]);
   if (bars.length === 0) return { sparkline: [] };
 
   const lastBucket = Math.floor(bars[bars.length - 1].t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS;

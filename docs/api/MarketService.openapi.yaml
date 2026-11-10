@@ -3776,7 +3776,9 @@ components:
                 sparklineStartAt:
                     type: integer
                     format: int64
-                    description: 'Start of the first sparkline bar in Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of the first sparkline bar in Unix epoch milliseconds. Later bars follow in trading order with
+                         closed periods left out, so only the first point's time is defined.. Warning: Values > 2^53 may lose precision in JavaScript
             required:
                 - symbol
             description: CommodityQuote represents a commodity price observation.
