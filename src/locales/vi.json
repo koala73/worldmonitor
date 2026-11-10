@@ -1665,8 +1665,11 @@
       "estimateWithin": "Khoảng {{count}} người trong bán kính {{km}} km",
       "method": "Ước tính dựa trên mật độ dân số trung bình của quốc gia.",
       "empty": "Không có địa điểm sự kiện đủ điều kiện",
-      "infoTooltip": "Chỉ hiển thị các sự kiện có vị trí chính xác tại quốc gia có dữ liệu mật độ dân số. Các khu vực ước tính có thể chồng lấn.",
+      "infoTooltip": "Hiển thị các sự kiện có dữ liệu mật độ dân số quốc gia. Các vị trí từ dữ liệu cũ không có thông tin độ chính xác được đánh dấu đang chờ cập nhật. Các khu vực ước tính có thể chồng lấn.",
       "eventCount_other": "{{count}} sự kiện",
+      "locationPending": "Độ chính xác vị trí đang chờ cập nhật",
+      "unrestCoverage": "Phạm vi dữ liệu bất ổn",
+      "ucdpPending": "Phạm vi dữ liệu UCDP đang chờ cập nhật",
       "coverageShown": "Sự kiện được hiển thị: {{shown}} trên {{total}}",
       "coverageLeftOut": "Không hiển thị: {{imprecise}} không có vị trí chính xác, {{noEstimate}} ở các quốc gia không có dữ liệu mật độ, {{otherPlaces}} sau 10 địa điểm đầu tiên của mỗi nguồn"
     },

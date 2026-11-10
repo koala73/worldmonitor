@@ -265,4 +265,25 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
 
     panel.destroy();
   });
+
+  it('labels legacy locations and partial coverage as pending, including an empty unrest feed', async () => {
+    const panel = new PopulationExposurePanel();
+    const event = {
+      eventId: 'legacy', eventName: 'Taiz, Yemen', eventType: 'state-based', lat: 13.58, lon: 44.02,
+      exposedPopulation: 125_000, exposureRadiusKm: 50, eventCount: 1, locationPending: true,
+    };
+    for (const totalEvents of [0, 3]) {
+      panel.setExposures([event], false, {
+        totalEvents, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const html = panel.getElement().querySelector('.panel-content')!.innerHTML;
+      assert.match(html, /Taiz, Yemen/);
+      assert.match(html, /components.populationExposure.locationPending/);
+      assert.match(html, /components.populationExposure.unrestCoverage/);
+      assert.match(html, /components.populationExposure.ucdpPending/);
+      assert.match(html, new RegExp('Shown: ' + totalEvents + ' of ' + totalEvents));
+    }
+    panel.destroy();
+  });
 });

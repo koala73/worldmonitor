@@ -715,7 +715,7 @@
       "title": "Pentagon Pizza Index"
     },
     "populationExposure": {
-      "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap."
+      "infoTooltip": "Events with country density data are shown. Locations from older data without precision information are marked pending update. The estimated areas can overlap."
     },
     "positioning247": {
       "infoTooltip": "<strong>24/7 Positioning</strong> Perpetual contract positioning stress from Hyperliquid. Trades around the clock, showing what's building when traditional markets are closed. Composite score (0-100) from funding rate, volume, open interest, and spot-perp basis. Green = longs crowded (bullish lean), red = shorts crowded (bearish lean).",

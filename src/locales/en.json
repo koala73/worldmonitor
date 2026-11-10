@@ -1867,7 +1867,10 @@
       "eventCount_other": "{{count}} events",
       "method": "Estimates use country-average population density.",
       "empty": "No eligible event locations",
-      "infoTooltip": "Only precisely located events with country density data are shown. The estimated areas can overlap.",
+      "infoTooltip": "Events with country density data are shown. Locations from older data without precision information are marked pending update. The estimated areas can overlap.",
+      "locationPending": "Location precision pending update",
+      "unrestCoverage": "Unrest coverage",
+      "ucdpPending": "UCDP coverage pending update",
       "coverageShown": "Events shown: {{shown}} of {{total}}",
       "coverageLeftOut": "Not shown: {{imprecise}} with no precise location, {{noEstimate}} in countries without density data, {{otherPlaces}} past the first 10 places per source"
     },

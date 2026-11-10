@@ -1819,9 +1819,12 @@
       "estimateWithin": "Körülbelül {{count}} ember {{km}} km-es körzetben",
       "method": "A becslések az ország átlagos népsűrűségén alapulnak.",
       "empty": "Nincs megfelelő eseményhelyszín",
-      "infoTooltip": "Csak pontos helyszínnel rendelkező események jelennek meg azokban az országokban, amelyekről van népsűrűségi adat. A becsült területek átfedhetik egymást.",
+      "infoTooltip": "Az ország népsűrűségi adataival rendelkező események jelennek meg. A régebbi adatokból származó, pontossági információ nélküli helyek frissítésre váró jelölést kapnak. A becsült területek átfedhetik egymást.",
       "eventCount_one": "{{count}} esemény",
       "eventCount_other": "{{count}} esemény",
+      "locationPending": "A hely pontossága frissítésre vár",
+      "unrestCoverage": "Zavargások lefedettsége",
+      "ucdpPending": "Az UCDP lefedettsége frissítésre vár",
       "coverageShown": "Megjelenített események: {{shown}} / {{total}}",
       "coverageLeftOut": "Nem látható: {{imprecise}} pontos hely nélkül, {{noEstimate}} sűrűségadat nélküli országokban, {{otherPlaces}} a forrásonkénti első 10 helyen túl"
     },

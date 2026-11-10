@@ -69,6 +69,23 @@ describe('dashboard population exposure', () => {
     ]);
   });
 
+  it('marks unknown precision pending only when allowed and still rejects unusable points', () => {
+    const point = { id: 'known', name: 'Taiz', type: 'state-based', country: 'Yemen', lat: 13.58, lon: 44.02, hasPreciseLocation: true };
+    const events = [
+      point,
+      { ...point, id: 'legacy', hasPreciseLocation: undefined },
+      { ...point, id: 'broad', hasPreciseLocation: false },
+      { ...point, id: 'invalid', lat: 91, hasPreciseLocation: undefined },
+      { ...point, id: 'unsupported', country: 'Chile', hasPreciseLocation: undefined },
+    ];
+    assert.equal(enrichEventsWithExposure(events).exposures[0].locationPending, undefined);
+    const { exposures, coverage } = enrichEventsWithExposure(events, 10, true);
+    assert.equal(exposures.length, 1);
+    assert.equal(exposures[0].eventCount, 2);
+    assert.equal(exposures[0].locationPending, true);
+    assert.deepEqual(coverage, { totalEvents: 5, withoutPreciseLocation: 1, withoutEstimate: 2, atOtherPlaces: 0 });
+  });
+
   it('spends the row limit on distinct locations and still counts later repeats', () => {
     const point = { name: 'p', type: 'conflict', country: 'Ukraine', hasPreciseLocation: true };
     const events = [

@@ -1669,9 +1669,12 @@
       "estimateWithin": "{{km}} km yarıçap içinde yaklaşık {{count}} kişi",
       "method": "Tahminler ülkenin ortalama nüfus yoğunluğuna dayanır.",
       "empty": "Ölçütleri karşılayan olay konumu yok",
-      "infoTooltip": "Yalnızca konumu kesin olarak bilinen ve ülkesine ait nüfus yoğunluğu verisi bulunan olaylar gösterilir. Tahmin alanları çakışabilir.",
+      "infoTooltip": "Ülkenin nüfus yoğunluğu verileri bulunan olaylar gösterilir. Doğruluk bilgisi olmayan eski verilerdeki konumlar, güncelleme bekliyor olarak işaretlenir. Tahmini alanlar örtüşebilir.",
       "eventCount_one": "{{count}} olay",
       "eventCount_other": "{{count}} olay",
+      "locationPending": "Konum doğruluğu güncelleme bekliyor",
+      "unrestCoverage": "Huzursuzluk verilerinin kapsamı",
+      "ucdpPending": "UCDP kapsamı güncelleme bekliyor",
       "coverageShown": "Gösterilen olaylar: {{total}} olaydan {{shown}}",
       "coverageLeftOut": "Gösterilmeyen: kesin konumu olmayan {{imprecise}}, yoğunluk verisi olmayan ülkelerde {{noEstimate}}, kaynak başına ilk 10 yerden sonra {{otherPlaces}}"
     },
