@@ -478,6 +478,10 @@ Deep dives: [Finance data](/finance-data) · [Premium finance](/premium-finance)
 
 Physical-economy fundamentals for the Energy and Commodity variants: storage, inventories, flows, and prices.
 
+Brent and WTI weekly EIA spot averages use the week-ending date. A 14-day freshness bound allows publication lag and holiday delays. Futures quotes use a 30-minute bound during trading. The normal NYMEX daily break and weekend closure extend that bound through 30 minutes after trading resumes. Exchange holidays and exceptional closures are not modeled.
+
+The dashboard recalculates oil-price freshness from the observation time. The REST `get-energy-prices` response can retain a previous `stale` flag for four hours in the CDN, plus one hour of stale-while-revalidate. During upstream errors, stale-if-error can extend this further. MCP recalculates oil-price freshness at each tool call, separately from cache transport freshness.
+
 - EU natural gas storage levels (GIE AGSI+) with country-level fill rates
 - US crude oil inventories, fuel prices, and energy statistics (EIA)
 - IEA oil stock coverage and OECD inventory context

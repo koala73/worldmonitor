@@ -1485,8 +1485,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
   });
 
-  it('get_market_data: crude quotes keep the provider observation and flag undated quotes', async () => {
-    const priceAt = Date.now() - 120_000;
+  it('get_market_data: Friday crude closes stay fresh on Saturday and undated quotes stay stale', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-11-07T15:00:00Z'));
+    const priceAt = Date.parse('2026-11-06T21:59:00Z');
     const brent = { symbol: 'BZ=F', price: 91.60, priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt };
     const wti = { symbol: 'CL=F', price: 85 };
     mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [brent, wti] } });
@@ -3183,7 +3184,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // Label-walk slice names per NON_LABEL=/^(v\d+|\d+|stale|sebuf)$/:
     assert.deepEqual(payload.data['eia-petroleum'], {
       ...eiaPayload,
-      brent: { ...eiaPayload.brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: true },
+      brent: { ...eiaPayload.brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: false },
     });
     assert.deepEqual(payload.data['index'], electricityPayload, 'energy:electricity:v1:index → "index"');
     assert.deepEqual(payload.data['_all'], emberPayload, 'energy:ember:v1:_all → "_all"');
