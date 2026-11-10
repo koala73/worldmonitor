@@ -54,7 +54,18 @@ const NGA_DAILY_MEMOS = [
   { file: 'DailyMemPAC.txt', navArea: 'P', authority: 'HYDROPAC' },
   { file: 'DailyMemARC.txt', navArea: 'C', authority: 'HYDROARC' },
 ] as const;
-export const NGA_DAILY_MEMO_URLS = NGA_DAILY_MEMOS.map(({ file }) => `https://msi.nga.mil/apology_objects/${file}`);
+// A line that opens a memo notice in any configured area: its bare authority,
+// a warning id, a date-time group, or a legacy MSGID preamble.
+const MEMO_NOTICE_START_RE = new RegExp(
+  `^(?:(?:${NGA_DAILY_MEMOS.map(({ authority }) => authority).join('|')})(?: \\d+/\\d{2}(?:\\(\\w+\\))?\\.?)?|MSGID/.*)$`,
+);
+
+function startsMemoNotice(line: string): boolean {
+  const trimmed = line.trim();
+  return MEMO_NOTICE_START_RE.test(trimmed) || parseDtg(trimmed) !== null;
+}
+
+export const NGA_DAILY_MEMO_URLS =NGA_DAILY_MEMOS.map(({ file }) => `https://msi.nga.mil/apology_objects/${file}`);
 
 // NGA republishes the memoranda on weekdays; four days spans a weekend without
 // presenting a frozen outage snapshot as the current in-force list.
@@ -106,16 +117,13 @@ export function parseNgaDailyMemo(
     // block whose id line is the bare authority and whose body indexes the
     // warning numbers already listed. It names no hazard, so skip it; any
     // other bare-authority block still fails the memo below. A line that
-    // starts another notice (a date-time group, the bare authority, or a
-    // warning id) inside the summary means its blank separator is missing;
-    // skipping the block would drop that notice, so the memo fails instead.
+    // starts another notice inside the summary (a date-time group, a legacy
+    // MSGID preamble, or any area's bare authority or warning id) means its
+    // blank separator is missing; skipping the block would drop that notice,
+    // so the memo fails instead.
     const bareIndex = blockLines.slice(0, 2).findIndex((line) => line.trim() === authority);
     if (bareIndex >= 0 && inForceSummaryRe.test(blockLines[bareIndex + 1]?.trim() ?? '')) {
-      const startsNotice = (line: string) => {
-        const trimmed = line.trim();
-        return trimmed === authority || idRe.test(trimmed) || parseDtg(trimmed) !== null;
-      };
-      if (blockLines.slice(bareIndex + 1).some(startsNotice)) return null;
+      if (blockLines.slice(bareIndex + 1).some(startsMemoNotice)) return null;
       continue;
     }
     const idIndex = blockLines.slice(0, 3).findIndex((line) => idRe.test(line.trim()));

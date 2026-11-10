@@ -97,6 +97,16 @@ describe('NGA daily memo fallback', () => {
     // The same holds for a following notice with no warning id of its own.
     const unseparatedBare = iv.replace('052129Z NOV 26\n', `${summary}\n061700Z NOV 26\nNAVAREA IV\n1. NOTICE.\n\n052129Z NOV 26\n`);
     assert.equal(parseNgaDailyMemo(unseparatedBare, '4', 'NAVAREA IV', NOW), null);
+    // Undated notices with no date-time group: another area's warning id,
+    // another area's bare authority, and a legacy MSGID preamble.
+    for (const joined of [
+      'HYDROLANT 123/26.\nNORTH ATLANTIC.',
+      'HYDROLANT\n1. NOTICE.',
+      'MSGID/GENADMIN/NGA NAVSAFETY WASHINGTON DC//\nRMKS/\nNAVAREA IV 228/22(25).',
+    ]) {
+      const memo = iv.replace('052129Z NOV 26\n', `${summary}\n${joined}\n\n052129Z NOV 26\n`);
+      assert.equal(parseNgaDailyMemo(memo, '4', 'NAVAREA IV', NOW), null, joined);
+    }
   });
 
   it('rejects a memo with an unrecognized block or no warnings instead of reading it as quiet', () => {
