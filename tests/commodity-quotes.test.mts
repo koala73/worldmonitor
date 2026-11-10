@@ -206,6 +206,16 @@ describe('ListCommodityQuotes async handler paths (mocked Redis)', () => {
     assert.deepEqual(body.quotes.map((q: { symbol: string }) => q.symbol), ['GC=F', 'CL=F', 'SI=F', 'BZ=F']);
   });
 
+  it('serves the sparkline bar width and start the seeder wrote', async () => {
+    const labeled = { ...seedQuote('BZ=F'), sparkline: [94.93, 94.8], sparklineIntervalSeconds: 300, sparklineStartAt: 1794287700000 };
+    installRedisMock({ kind: 'seed', payload: { quotes: [labeled] } });
+    const response = await routeHandler()(requestFor('/api/market/v1/list-commodity-quotes?symbols=BZ%3DF'));
+    assert.equal(response.status, 200);
+    const [quote] = (await response.json()).quotes;
+    assert.equal(quote.sparklineIntervalSeconds, 300);
+    assert.equal(quote.sparklineStartAt, 1794287700000);
+  });
+
   it('supported symbols filter the seed in seed order', async () => {
     installRedisMock({ kind: 'seed', payload: { quotes: DEFAULT_SEED } });
     const response = await routeHandler()(requestFor('/api/market/v1/list-commodity-quotes?symbols=CL%3DF&symbols=GC%3DF'));
