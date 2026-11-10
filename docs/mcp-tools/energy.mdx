@@ -27,7 +27,7 @@ Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, e
 
 The storage histories keep their own units. EU gas is in TWh (`gasTwh`), US gas is in billion cubic feet (`storBcf`), and US commercial crude is in million barrels (`stocksMb`). Each history is newest first and carries its observation date. A null dataset or weekly change means the value is unavailable.
 
-Within `eia-petroleum`, Brent and WTI are weekly EIA spot averages in USD per barrel. They carry a week-ending `date`, `priceSource: "EIA"`, `priceBasis: "spot"`, `frequency: "weekly"`, and an observation-level `stale` flag. It turns on after 14 days, or when the date is missing, invalid, or in the future. The 14-day bound allows weekly publication lag and holiday delays.
+Within `eia-petroleum`, Brent and WTI are weekly EIA spot averages in USD per barrel. They carry a week-ending `date`, `priceSource: "EIA"`, `priceBasis: "spot"`, `frequency: "weekly"`, and an observation-level `stale` flag. It turns on after the next week's scheduled EIA release plus a 24-hour grace for the daily cache refresh, or when the date is missing, invalid, or in the future. The regular release is Wednesday at 10:30 ET. A checked-in calendar applies EIA's published 2025–2026 holiday shifts, including December 29, 2025 at 17:00 ET. Unlisted weeks use the regular schedule; the table needs updates when EIA revises it.
 
 <CodeGroup>
 
