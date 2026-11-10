@@ -5059,7 +5059,9 @@ describe('crawlable corpus generator', () => {
           official.baselineShare !== null,
           `${meta.name} must lead with a traffic status exactly when a baseline share is published`,
         );
-        if (expectedNarrative.passage.includes('source coverage')) {
+        // The coverage clause can open its own sentence ("Source coverage …")
+        // after the dated signals sentence, so match it case-insensitively.
+        if (/source coverage/i.test(expectedNarrative.passage)) {
           assert.match(
             passageText,
             official.baselineShare !== null
