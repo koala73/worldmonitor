@@ -396,6 +396,12 @@ describe('docs-mcp handler', () => {
     }
     assert.match(result.tools[1].description, /\/openapi\/api\//);
     for (const tool of result.tools.slice(0, 3)) {
+      // ora.ai caps the docs-MCP description grade when a description does not
+      // say when to use the tool (#10399 dropped Mintlify's "Use when" lines).
+      assert.match(tool.description, /\bUse when\b/, `${tool.name} says when to use it`);
+      assert.ok(tool.description.length >= 80, `${tool.name} description runs at least 80 characters`);
+    }
+    for (const tool of result.tools.slice(0, 3)) {
       // ~4 characters per token: 400 tokens is about 1,600 characters per tool.
       assert.ok(JSON.stringify(tool).length < 1_600, `${tool.name} stays under ~400 tokens`);
     }
