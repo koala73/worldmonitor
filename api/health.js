@@ -1783,7 +1783,7 @@ const SEED_META = {
   radiationWatch:      { key: 'seed-meta:radiation:observations',             maxStaleMin: 30 },
   groceryBasket:       { key: 'seed-meta:economic:grocery-basket',            maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
   bigmac:              { key: 'seed-meta:economic:bigmac',                    maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
-  fuelPrices:          { key: 'seed-meta:economic:fuel-prices',               maxStaleMin: 10080 }, // weekly seed; 10080 = 7 days
+  fuelPrices:          { key: 'seed-meta:economic:fuel-prices',               maxStaleMin: 11520 }, // weekly cron (Tue 06:00 UTC); 8d = one run plus a day of grace, still under the 10d CACHE_TTL. Exactly 7d expired as each run started (WORLDMONITOR-1DG)
   faoFoodPriceIndex:   { key: 'seed-meta:economic:fao-ffpi',                  maxStaleMin: 86400 }, // monthly seed; 86400 = 60 days (2x interval)
   thermalEscalation:   { key: 'seed-meta:thermal:escalation',                 maxStaleMin: 360 }, // cron every 2h; 360 = 3x interval (was 240 = 2x)
   thermalEscalationBootstrap: { key: 'seed-meta:thermal:escalation-bootstrap', maxStaleMin: 360 }, // Same cron as above. Monitored separately because the bootstrap tier now hydrates from the compact projection, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
