@@ -85,7 +85,7 @@ import {
   loadTabsState,
   saveTabsState,
   generateTabId,
-  buildDefaultTabPanels,
+  buildNewTabPanels,
 } from '@/services/tab-store';
 import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
@@ -1942,7 +1942,7 @@ export class PanelLayoutManager implements AppModule {
       throw new Error('Dashboard tabs are not available.');
     }
     this.snapshotActiveTab();
-    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    const defaults = buildNewTabPanels(this.ctx.panelSettings);
     const tab: PanelTab = {
       id: generateTabId(),
       name,
