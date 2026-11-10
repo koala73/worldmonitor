@@ -11,7 +11,7 @@ import { ViewportHydrationLedger, type LoadAllDataTrigger } from '@/app/viewport
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { ClusteredEvent, Feed, NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { ClusteredEvent, Feed, NewsItem, MapLayers, MilitaryFlight } from '@/types';
 import type { MarketData, InternetOutage } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -3691,7 +3691,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const protestsTask = (async (): Promise<SocialUnrestEvent[]> => {
+    tasks.push((async () => {
       try {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
@@ -3712,14 +3712,11 @@ export class DataLoaderManager implements AppModule {
             errorMessage: status.acledConfigured === false ? 'ACLED not configured - using GDELT only' : undefined,
           });
         }
-        return protestData.events;
       } catch (error) {
         console.error('[Intelligence] Protests fetch failed:', error);
         dataFreshness.recordError('acled', String(error));
-        return [];
       }
-    })();
-    tasks.push(protestsTask.then(() => undefined));
+    })());
 
     const conflictsTask = (async () => {
       try {
@@ -3793,7 +3790,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const ucdpTask = (async () => {
+    tasks.push((async () => {
       try {
         // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
@@ -3807,10 +3804,11 @@ export class DataLoaderManager implements AppModule {
           // the same empty result until the Railway seed refreshes the key.
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
           this.showColdLoadError('ucdp-events');
-          return [];
+          return;
         }
         // Keep each source's claims intact, even when ACLED reports an overlapping event.
         const events = result.data;
+        this.ctx.intelligenceCache.ucdpEvents = events;
         const aggregates = !wantsFullUcdpSet ? hydratedUcdp?.aggregates : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
@@ -3820,14 +3818,11 @@ export class DataLoaderManager implements AppModule {
           this.ctx.map?.setUcdpEvents(events);
         }
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
-        return events;
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
         dataFreshness.recordError('ucdp_events', String(error));
-        return [];
       }
-    })();
-    tasks.push(ucdpTask.then(() => undefined));
+    })());
 
     tasks.push((async () => {
       try {
@@ -3962,20 +3957,20 @@ export class DataLoaderManager implements AppModule {
     await Promise.allSettled(tasks);
 
     try {
-      const ucdpEvts = await ucdpTask;
-      const events = [
-        ...(await protestsTask).filter(e => e.hasPreciseLocation === true).slice(0, 10).map(e => ({
+      const { protests, ucdpEvents = [] } = this.ctx.intelligenceCache;
+      const perSourceLimit = 10;
+      const exposures = [
+        ...enrichEventsWithExposure((protests?.events ?? []).map(e => ({
           id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
           name: e.city ? `${e.city}, ${e.country}` : e.title,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-        })),
-        ...ucdpEvts.filter(e => e.hasPreciseLocation === true).slice(0, 10).map(e => ({
+        })), perSourceLimit),
+        ...enrichEventsWithExposure(ucdpEvents.map(e => ({
           id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
           name: e.locationName ? `${e.locationName}, ${e.country}` : `${e.side_a} vs ${e.side_b}`,
           country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-        })),
-      ];
-      const exposures = enrichEventsWithExposure(events);
+        })), perSourceLimit),
+      ].sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       this.callPanel('population-exposure', 'setExposures', exposures);
       if (exposures.length > 0) dataFreshness.recordUpdate('worldpop', exposures.length);
     } catch (error) {

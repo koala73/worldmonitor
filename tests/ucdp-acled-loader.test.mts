@@ -3,9 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../src/app/data-loader.ts', import.meta.url), 'utf8');
-const start = source.indexOf('const ucdpTask = (async () => {');
-const ucdpTaskRegistration = 'tasks.push(ucdpTask.then(() => undefined));';
-const end = source.indexOf(ucdpTaskRegistration, start) + ucdpTaskRegistration.length;
+const start = source.lastIndexOf('tasks.push((async () => {', source.indexOf('const wantsFullUcdpSet'));
+const end = source.indexOf('})());', start) + '})());'.length;
 const closure = source.slice(start, end)
   .replace('(this.ctx.panels[\'ucdp-events\'] as UcdpEventsPanel)', "this.ctx.panels['ucdp-events']");
 const conflictStart = source.indexOf('const conflictsTask = (async () => {');

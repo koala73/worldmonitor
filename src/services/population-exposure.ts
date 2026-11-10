@@ -21,27 +21,29 @@ interface EventForExposure {
 
 export function enrichEventsWithExposure(
   events: EventForExposure[],
+  limit = events.length,
 ): PopulationExposure[] {
-  return events
-    .flatMap((event): PopulationExposure[] => {
-      if (event.hasPreciseLocation !== true || !Number.isFinite(event.lat) || !Number.isFinite(event.lon)
-        || Math.abs(event.lat) > 90 || Math.abs(event.lon) > 180 || (event.lat === 0 && event.lon === 0)) return [];
-      const country = resolveCountryCode(event.country);
-      const density = country ? densityByCountry.get(country) : undefined;
-      if (density === undefined) return [];
+  const exposures: PopulationExposure[] = [];
+  for (const event of events) {
+    if (exposures.length >= limit) break;
+    if (event.hasPreciseLocation !== true || !Number.isFinite(event.lat) || !Number.isFinite(event.lon)
+      || Math.abs(event.lat) > 90 || Math.abs(event.lon) > 180 || (event.lat === 0 && event.lon === 0)) continue;
+    const country = resolveCountryCode(event.country);
+    const density = country ? densityByCountry.get(country) : undefined;
+    if (density === undefined) continue;
 
-      const radius = getRadiusForEventType(event.type);
-      return [{
-        eventId: event.id,
-        eventName: event.name,
-        eventType: event.type,
-        lat: event.lat,
-        lon: event.lon,
-        exposedPopulation: Math.round(density * Math.PI * radius ** 2),
-        exposureRadiusKm: radius,
-      }];
-    })
-    .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
+    const radius = getRadiusForEventType(event.type);
+    exposures.push({
+      eventId: event.id,
+      eventName: event.name,
+      eventType: event.type,
+      lat: event.lat,
+      lon: event.lon,
+      exposedPopulation: Math.round(density * Math.PI * radius ** 2),
+      exposureRadiusKm: radius,
+    });
+  }
+  return exposures;
 }
 
 export function formatPopulation(n: number): string {
