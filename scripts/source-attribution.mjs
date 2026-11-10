@@ -961,6 +961,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'api.keenable.ai': {
+    provider: 'Keenable Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -1090,7 +1096,7 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'e9e1c1e84ccaad353d2e316eb3fd845a84bab4def9aa02387d171cc0a86a6fd3',
+  sha256: 'c438b992a1334a4595b655db9e0aa71fc0b36bb8df184c88835589759935a1f3',
   // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
   // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
   // remains in terms review.
@@ -1103,12 +1109,12 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add the Keenable Search MCP identity for api.keenable.ai as an excluded user-configured MCP connector, matching the Parallel Search MCP row.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the vendor-disclosed Keenable Search MCP Quick Connect preset PR.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
