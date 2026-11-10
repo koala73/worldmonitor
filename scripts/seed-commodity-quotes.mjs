@@ -161,7 +161,8 @@ async function fetchCommodityQuotes() {
   const { url: redisUrl, token: redisToken } = getRedisCredentials();
   const historyCache = createSparklineHistoryCache(
     (command) => redisCommand(redisUrl, redisToken, command),
-    'market:commodity-sparkline-history:v1:',
+    // v2: the history chart moved from 2 to 3 days (#10424).
+    'market:commodity-sparkline-history:v2:',
   );
   const quotes = [];
   let misses = 0;

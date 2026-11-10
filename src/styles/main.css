@@ -8445,9 +8445,7 @@ body.playback-mode .status-dot {
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
   line-height: 1.2;
   color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 /* 24/7 Positioning Panel */

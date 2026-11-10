@@ -12,9 +12,10 @@ export interface SparklineSpanOptions {
 }
 
 const DAY_MS = 86_400_000;
-// 288 traded bars of a 23-hour contract cover 25 wall-clock hours; the rest is
-// slack for a quote a few minutes old.
-const FULL_DAY_SLACK_MS = 2 * 3_600_000;
+// 288 traded bars of a 23-hour contract cover 25 wall-clock hours, and 26 in
+// the first hour after a reopen, when they reach back past two daily breaks.
+// The rest is slack for a quote a few minutes old. A weekend is far longer.
+const FULL_DAY_SLACK_MS = 3 * 3_600_000;
 
 /**
  * Describe the time a sparkline covers. Every sparkline is drawn at the same

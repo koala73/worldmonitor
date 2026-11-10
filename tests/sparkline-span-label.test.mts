@@ -9,7 +9,7 @@ const opts = (now: number) => ({ now, locale: 'en-US', since });
 const points = (n: number) => Array.from({ length: n }, (_, i) => 64 + (i % 3) * 0.01);
 
 describe('sparklineSpanLabel (#10424)', () => {
-  it('names the real start 30 minutes after a Monday 23:00 UTC open', () => {
+  it('names the start of a series that holds fewer than 24 trading hours', () => {
     // 276 bars of the 23-hour previous session plus 6 from the new one.
     const startAt = Date.UTC(2026, 10, 8, 23, 0);
     const now = Date.UTC(2026, 10, 9, 23, 31);
@@ -27,6 +27,18 @@ describe('sparklineSpanLabel (#10424)', () => {
     // A 23-hour contract needs 25 wall-clock hours for 288 traded bars.
     const brent = { ...fx, sparklineStartAt: now - 25 * HOUR - 10 * 60_000 };
     assert.equal(sparklineSpanLabel(brent, opts(now)), '24h');
+  });
+
+  it('keeps saying 24h in the first hour after a weekday reopen, when 288 bars span two daily breaks', () => {
+    // Sessions Mon 23:00-Tue 22:00 and Tue 23:00 onward. One new bar after the
+    // reopen: the other 287 reach back past Monday's and Tuesday's breaks.
+    const now = Date.UTC(2026, 10, 10, 23, 6);
+    const startAt = Date.UTC(2026, 10, 9, 21, 5);
+    const label = sparklineSpanLabel(
+      { sparkline: points(288), sparklineIntervalSeconds: 300, sparklineStartAt: startAt },
+      opts(now),
+    );
+    assert.equal(label, '24h');
   });
 
   it('names the start when 24 trading hours stretch across a weekend', () => {

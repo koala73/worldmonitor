@@ -106,11 +106,20 @@ describe('buildQuoteSparkline', () => {
     const today = minuteChart(open, todayCloses); // Mon 23:00 to 23:29 UTC
 
     const out = buildQuoteSparkline(today, history);
-    // 276 bars from the 23-hour previous session plus 6 from the new one: 23.5
-    // trading hours, all of them, not the 276 that fit in 24 wall-clock hours.
+    // History holding only the previous session: 276 bars plus 6 from the new
+    // one, all of them, not the 276 that fit in 24 wall-clock hours.
     assert.equal(out.sparkline.length, 23 * 12 + 6);
     assert.equal(out.sparklineStartAt / 1000, prevOpen, 'starts at the previous session open');
     assert.equal(out.sparkline.at(-1), todayCloses.at(-1), 'ends at the last print of the new session');
+
+    // Yahoo's 3-day chart at Mon 23:30 UTC also holds Friday (Thu 23:00 to
+    // Fri 22:00 UTC). The last 6 Friday bars complete the 288.
+    const fridayOpen = Date.UTC(2026, 10, 5, 23, 0, 0) / 1000;
+    const fridayTs = Array.from({ length: 23 * 12 }, (_, i) => fridayOpen + i * 300);
+    const fullHistory = chart([...fridayTs, ...prevTs], [...fridayTs.map(() => 63.9), ...prevTs.map(() => 64)], '5m');
+    const real = buildQuoteSparkline(today, fullHistory);
+    assert.equal(real.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+    assert.equal(real.sparklineStartAt, Date.UTC(2026, 10, 6, 21, 30), 'starts at Fri 21:30 UTC');
 
     // A full 24-hour previous session (FX) caps the series at 288 bars.
     const fxTs = Array.from({ length: 24 * 12 }, (_, i) => prevOpen + i * 300);
@@ -152,6 +161,13 @@ describe('buildQuoteSparkline', () => {
     const out = buildQuoteSparkline(chart([], []), history);
     assert.equal(out.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
     assert.equal(out.sparklineStartAt / 1000, historyTs.at(-1) - SPARKLINE_WINDOW_SECONDS + SPARKLINE_INTERVAL_SECONDS);
+  });
+
+  it('asks Yahoo for 3 trading days so a Sunday reopen still reaches Thursday evening', () => {
+    // Yahoo cuts the chart at New York midnight and counts Sunday's evening
+    // session as a day. At Sun 23:30 UTC, range=2d is Friday from 05:00 UTC
+    // plus Sunday; range=3d adds Thursday, whose evening opens Friday's session.
+    assert.equal(SPARKLINE_HISTORY_QUERY, '?range=3d&interval=5m');
   });
 
   it('returns an unlabeled empty series when there are no bars', () => {
