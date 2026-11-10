@@ -154,7 +154,9 @@ test('selects eligible exposure rows before the independent panel cap', () => {
   const panelRows = Array.from({ length: UCDP_PANEL_ROWS_PER_TAB }, (_, i) => ({
     ...point, id: `panel-${i}`, hasPreciseLocation: false,
   }));
-  const eligible = Array.from({ length: 12 }, (_, i) => ({ ...point, id: `exposure-${i}` }));
+  const eligible = Array.from({ length: 12 }, (_, i) => ({
+    ...point, id: `exposure-${i}`, location: { latitude: 13 + i, longitude: 44 },
+  }));
   const events = [
     ...panelRows,
     { ...point, country: 'Chile' },
@@ -164,7 +166,7 @@ test('selects eligible exposure rows before the independent panel cap', () => {
   ];
   const compact = compactUcdpDashboardPayload({ events }, NOW);
   assert.deepEqual(compact.events, panelRows);
-  assert.deepEqual(compact.exposureEvents, eligible.slice(0, 10));
+  assert.deepEqual(compact.exposureEvents, eligible.slice(0, 10).map(e => ({ ...e, exposureEventCount: 1 })));
   assert.deepEqual(compact.aggregates, summarizeUcdpEvents(events));
 });
 

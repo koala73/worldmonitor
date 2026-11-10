@@ -1621,7 +1621,10 @@
       "estimateWithin": "Environ {{count}} personnes dans un rayon de {{km}} km",
       "method": "Les estimations reposent sur la densité moyenne de population du pays.",
       "empty": "Aucun lieu d’événement ne répond aux critères",
-      "infoTooltip": "Seuls les événements précisément localisés dans des pays disposant de données de densité de population sont affichés. Les zones estimées peuvent se chevaucher."
+      "infoTooltip": "Seuls les événements précisément localisés dans des pays disposant de données de densité de population sont affichés. Les zones estimées peuvent se chevaucher.",
+      "eventCount_one": "{{count}} événement",
+      "eventCount_many": "{{count}} événements",
+      "eventCount_other": "{{count}} événements"
     },
     "satelliteFires": {
       "region": "Région",

@@ -455,6 +455,7 @@ export interface PopulationExposure {
   lon: number;
   exposedPopulation: number;
   exposureRadiusKm: number;
+  eventCount: number;
 }
 
 // Military base operator types
