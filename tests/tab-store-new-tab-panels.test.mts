@@ -169,6 +169,24 @@ describe('saveNewTabPanels then buildNewTabPanels', () => {
     assert.equal(built.panelSettings['retired-panel']?.enabled ?? false, false);
   });
 
+  it('ignores saved keys that name inherited object members', () => {
+    storage.setItem(NEW_TAB_PANELS_KEY, JSON.stringify([
+      { key: '__proto__', on: true },
+      { key: 'constructor', on: true },
+      { key: 'toString', on: false },
+      { key: 'live-news', on: false },
+    ]));
+
+    const built = buildNewTabPanels(liveSettings());
+
+    assert.equal(Object.getPrototypeOf(built.panelSettings), Object.prototype);
+    for (const key of ['__proto__', 'constructor', 'toString']) {
+      assert.equal(Object.prototype.hasOwnProperty.call(built.panelSettings, key), false, key);
+      assert.equal(built.panelOrder.includes(key), false, key);
+    }
+    assert.equal(built.panelSettings['live-news']!.enabled, false);
+  });
+
   it('gives a built-in panel missing from the saved list its variant default', () => {
     const live = liveSettings();
     const saved = clone(defaultTab(live));

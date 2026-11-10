@@ -95,6 +95,8 @@ export function saveTabsState(state: TabsState): TabsPersistReceipt {
 
 type TabPanels = Pick<PanelTab, 'panelSettings' | 'panelOrder'>;
 
+const hasOwn = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+
 // Its own key rather than a TabsState field: every tab switch in every open
 // window rewrites the whole tabs blob from that window's memory, so a field
 // there would be reverted by any other window and dropped by an older bundle.
@@ -188,8 +190,10 @@ export function buildNewTabPanels(currentPanelSettings: Record<string, PanelConf
   const base = resetMissionPresetState(currentPanelSettings);
   const order: string[] = [];
   for (const { key, on } of loadNewTabPanels() ?? []) {
-    const config = base.panelSettings[key];
-    if (!config || !(ALL_PANELS[key] || isDynamicPanel(key))) continue;
+    // Own-property checks: a stored or imported key such as `__proto__` or
+    // `constructor` reads an inherited member through a plain lookup.
+    if (!hasOwn(base.panelSettings, key) || !(hasOwn(ALL_PANELS, key) || isDynamicPanel(key))) continue;
+    const config = base.panelSettings[key]!;
     const next: PanelConfig = { ...config, enabled: on };
     delete next.proGated;
     base.panelSettings[key] = next;
