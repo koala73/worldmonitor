@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — double-cliquer pour renommer",
     "deleteTab": "Supprimer l'onglet",
     "deleteTabAria": "Supprimer l'onglet {{name}}",
-    "tabNameAria": "Nom de l'onglet"
+    "tabNameAria": "Nom de l'onglet",
+    "addTabTitleSaved": "New tab (starts with the panels you saved)",
+    "newTabOptions": "New tab options",
+    "newTabStartsDefault": "New tabs start with the default panels.",
+    "newTabStartsSaved": "New tabs start with the panels you saved.",
+    "newTabOptionsHint": "Tabs you already have don't change.",
+    "useThisTabPanels": "Use this tab's panels",
+    "useDefaultPanels": "Use the default panels",
+    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
   },
   "theaterPresets": {
     "label": "Packs de couverture",

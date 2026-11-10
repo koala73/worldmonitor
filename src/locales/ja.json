@@ -4473,7 +4473,15 @@
     "renameHint": "{{name}} — ダブルクリックして名前を変更",
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
-    "tabNameAria": "タブ名"
+    "tabNameAria": "タブ名",
+    "addTabTitleSaved": "New tab (starts with the panels you saved)",
+    "newTabOptions": "New tab options",
+    "newTabStartsDefault": "New tabs start with the default panels.",
+    "newTabStartsSaved": "New tabs start with the panels you saved.",
+    "newTabOptionsHint": "Tabs you already have don't change.",
+    "useThisTabPanels": "Use this tab's panels",
+    "useDefaultPanels": "Use the default panels",
+    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
   },
   "theaterPresets": {
     "label": "カバレッジプリセット",

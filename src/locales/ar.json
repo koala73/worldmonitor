@@ -4578,7 +4578,15 @@
     "renameHint": "{{name}} — انقر نقراً مزدوجاً لإعادة التسمية",
     "deleteTab": "حذف علامة التبويب",
     "deleteTabAria": "حذف علامة التبويب {{name}}",
-    "tabNameAria": "اسم علامة التبويب"
+    "tabNameAria": "اسم علامة التبويب",
+    "addTabTitleSaved": "New tab (starts with the panels you saved)",
+    "newTabOptions": "New tab options",
+    "newTabStartsDefault": "New tabs start with the default panels.",
+    "newTabStartsSaved": "New tabs start with the panels you saved.",
+    "newTabOptionsHint": "Tabs you already have don't change.",
+    "useThisTabPanels": "Use this tab's panels",
+    "useDefaultPanels": "Use the default panels",
+    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
   },
   "theaterPresets": {
     "label": "مجموعات التغطية",
