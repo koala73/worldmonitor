@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 475470
+    "raw": 475511
   },
   "chunks": {
     "analytics": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71787,
+      "raw": 71828,
       "files": 1
     },
     "theme-manager": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1540463
+      "raw": 1540848
     },
     "chunks": {
       "App": {
-        "raw": 979773,
+        "raw": 980158,
         "files": 1
       },
       "ai-flow-settings": {

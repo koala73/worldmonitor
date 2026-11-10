@@ -3,6 +3,7 @@ import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStora
 import { formatOilValue, getTrendColor, getTrendIndicator } from '@/services/economic';
 import type { MarketData } from '@/types';
 import { t } from '@/services/i18n';
+import { sparklineSpanHtml } from './_sparkline-span';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
@@ -261,6 +262,7 @@ export class EnergyComplexPanel extends Panel {
                 <div class="commodity-item energy-tape-card">
                   <div class="commodity-name">${escapeHtml(item.display)}</div>
                   ${miniSparkline(item.sparkline, item.change, 60, 18)}
+                  ${sparklineSpanHtml(item)}
                   <div class="commodity-price">${escapeHtml(formatPrice(item.price!))}</div>
                   <div class="commodity-change ${getChangeClass(item.change ?? 0)}">${formatChange(item.change ?? 0)}</div>
                   ${isCrudeOilTicker(item.symbol) ? `<div class="indicator-date">${escapeHtml(oilTapeObservationLabel(item))}</div>` : ''}

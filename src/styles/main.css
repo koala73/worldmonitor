@@ -8440,6 +8440,14 @@ body.playback-mode .status-dot {
   opacity: 0.8;
 }
 
+.commodity-span {
+  margin: -1px 0 2px;
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.2;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
 /* 24/7 Positioning Panel */
 .pos-panel {
   padding: 10px 14px;

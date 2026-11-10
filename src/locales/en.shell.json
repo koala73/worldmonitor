@@ -472,6 +472,9 @@
       "viewPanel": "View related panel"
     },
     "deckgl": {
+      "tooltip": {
+        "sinceDate": "since {{date}}"
+      },
       "views": {
         "global": "Global",
         "americas": "Americas",

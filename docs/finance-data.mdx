@@ -269,6 +269,14 @@ The Oil & Energy panel tracks four key indicators from the U.S. Energy Informati
 
 Trend detection flags week-over-week changes exceeding ±0.5% as rising or falling, with flat readings within the threshold shown as stable. Results are cached client-side for 30 minutes. The panel provides energy market context for geopolitical analysis — price spikes often correlate with supply disruptions in monitored conflict zones and chokepoint closures.
 
+### Commodity quote sparklines
+
+Every Yahoo-sourced commodity quote uses the same window rule: the last 24 trading hours, meaning the latest 288 five-minute bars that had trades. Bars with no trades are left out, so a daily close or a weekend is a gap, not a flat line. After a close the series reaches back into the previous session instead of restarting. At 23:30 UTC on a Monday, Brent's 288 bars are the last 30 minutes of Friday, all of Monday's 23-hour session and the 30 minutes since the reopen, so the card reads "since Fri 21:30 UTC". The old rule showed 6 bars after a Sunday reopen.
+
+The bars come from the quote's default chart plus a 3-day 5-minute history chart. Yahoo cuts that chart at New York midnight and counts Sunday's evening session as a day, so on Sunday evening it still holds Thursday evening and Friday. A thin contract that trades fewer than 24 hours in those 3 days keeps every bar it has.
+
+Each quote carries `sparklineIntervalSeconds` (300 for these bars, 86400 for Alpha Vantage daily closes) and `sparklineStartAt`, the first bar's start in epoch milliseconds. The Commodities and Energy Complex panels print the span under each sparkline, and the Gold Intelligence panel adds it to the GC=F price line (`get-gold-intelligence` returns it as `goldSparklineIntervalSeconds` and `goldSparklineStartAt`). A full 24 trading hours that end at the current time read "24h", allowing for up to 3 hours of daily breaks. Otherwise the label gives the first bar in UTC, such as "since Sun 23:00 UTC", or the first day for daily closes. Both writers build the series with `scripts/shared/quote-sparkline.cjs`: the commodity seeder cron and the relay's 5-minute commodity loop.
+
 ---
 
 ## Central Bank & Trade
