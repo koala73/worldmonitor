@@ -6,6 +6,7 @@ keywords: "Hormuz tanker reports, maritime intelligence, World Monitor, OSINT mo
 audience: "Maritime analysts, energy analysts, supply-chain teams, OSINT researchers"
 heroImage: "/blog/images/blog/hormuz-tanker-reports-awareness-gap.jpg"
 pubDate: "2026-10-29"
+modifiedDate: "2026-11-10"
 ---
 
 *Information can be public and still be easy to miss. World Monitor exists to close that gap.*
@@ -55,9 +56,9 @@ It also follows reviewed Telegram channels where events break before they reach 
 - **Finds convergence**: one-degree map cells where unrest, military flights, naval movements and earthquakes overlap within 24 hours.
 - **Scores escalation**: curated intelligence hotspots rated 1–5 from news pressure, [country instability](/blog/posts/country-instability-index-methodology-explained/), convergence and nearby military activity.
 - **Watches military surges**: fighters, tankers, AWACS, reconnaissance aircraft, bombers and drones counted per theater against their own history.
-- **Monitors chokepoints**: transit counts for the world’s strategic straits, Hormuz included, updated every 10 minutes against baselines, plus dark-ship and congestion events.
+- **Monitors chokepoints**: IMF PortWatch daily transit counts (published with a lag) plus live navigational warnings and AIS disruption events for the world’s strategic straits, Hormuz included.
 
-**What that means for Hormuz.** A news claim like Friday’s doesn’t arrive alone. In World Monitor it sits beside the strait’s live transit counts, nearby navigation warnings, GPS-interference readings, military flights in the theater, IRGC and Iranian state-media channels, and oil-market odds. An RSS reader gives you a headline. World Monitor gives you the headline and the context to judge it.
+**What that means for Hormuz.** A news claim like Friday’s doesn’t arrive alone. In World Monitor it sits beside the [live Strait of Hormuz status](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/), nearby navigation warnings, GPS-interference readings, military flights in the theater, IRGC and Iranian state-media channels, and oil-market odds. An RSS reader gives you a headline. World Monitor gives you the headline and the context to judge it.
 
 Every provider is listed in World Monitor’s [public source catalog](/sources/). For coverage by domain, cadence and methodology, see the [data sources guide](/docs/data-sources).
 

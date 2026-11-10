@@ -106,7 +106,7 @@ message FlowEstimate {
   // Name of the nearest active GDACS hazard event within the configured
   // radius, or empty string when no nearby alert applies.
   string hazard_alert_name = 7;
-  // PortWatch publishes about four days behind and not every day, so
+  // PortWatch publishes with a lag of several days and not every day, so
   // flow_ratio can stay unchanged across several requests; latest_date says
   // how current it is. It is empty when the cached estimate predates the
   // field. (Detached: public/openapi.json is within 200 bytes of its hard
@@ -205,7 +205,7 @@ message TransitSummary {
   // False when the relay's 24h AIS window held no crossings; today_* are then
   // unsupplied, not a measured zero.
   bool today_counts_available = 13;
-  // IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+  // IMF PortWatch latest published day, YYYY-MM-DD (lag of several days); empty means
   // withhold official_latest_total and official_avg_7d (absent below 7 days).
   string official_latest_date = 14;
   int32 official_latest_total = 15;

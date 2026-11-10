@@ -843,7 +843,7 @@ ${provenanceRows}
       case 'current-pointer':
         // AI answers quote the direct answer on its own, so its age and the
         // live page sit beside it rather than at the foot of the report.
-        parts.push(`        <p>This answer covers IMF PortWatch data through ${escapeHtml(focus.observationEnd)}. For today's transit count and disruption score, see the ${trackedLink(`/chokepoints/${chokepointSlug}/`, `live ${escapeHtml(focus.portwatchName)} status page`, 'chokepoint-page', escapeHtml)}.</p>`);
+        parts.push(`        <p>This answer covers IMF PortWatch data through ${escapeHtml(focus.observationEnd)}. For the latest IMF PortWatch daily count, which is published with a lag, and today's disruption score, see the ${trackedLink(`/chokepoints/${chokepointSlug}/`, `live ${escapeHtml(focus.portwatchName)} status page`, 'chokepoint-page', escapeHtml)}.</p>`);
         break;
       case 'live-handoff': {
         const dashboardUrl = absoluteUrl(baseUrl, `/dashboard?chokepoint=${report.focusChokepointId}`);

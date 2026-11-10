@@ -282,9 +282,12 @@ describe('crawlable live intelligence view models', () => {
     assert.equal('todayTransits' in pulse, false);
     assert.equal('todayCountsAvailable' in pulse, false);
 
+    // The pinned reading time (Jul 24) precedes the PortWatch day, so the age
+    // cannot be computed and the attribution carries none.
     const expectedPassage = 'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published'
       + ' days to Oct 18, 2026 (IMF PortWatch).'
-      + ' As of Jul 24, 2026, 11:59 AM UTC, IMF PortWatch counted 4 transits through the Strait of Hormuz'
+      + ' As of Jul 24, 2026, 11:59 AM UTC, no navigational warnings and no AIS disruption events are reported for the Strait of Hormuz.'
+      + ' IMF PortWatch counted 4 transits through the Strait of Hormuz'
       + ' on Oct 18, 2026 (latest published day). The 7-day average is 3.7 a day, 4% of the 87.4-a-day average'
       + ' for Oct 2024–Oct 2025. The Red disruption score is a risk signal; it does not verify unrestricted'
       + ' passage or operational closure.';
@@ -330,8 +333,11 @@ describe('crawlable live intelligence view models', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+    // The answer sits just above the tool (under the H1), and the hydrate
+    // still refreshes it.
+    assert.equal(tool.querySelector('[data-chokepoint-open-status]'), null);
     assert.match(
-      tool.querySelector('[data-chokepoint-open-status]').textContent,
+      document.querySelector('[data-chokepoint-open-status]').textContent,
       /IMF PortWatch counted 4 transits through the Strait of Hormuz on Oct 18, 2026 \(latest published day\)\. The 7-day average is 3\.7 a day, 4% of the 87\.4-a-day average for Oct 2024–Oct 2025\./,
     );
     assert.equal(tool.querySelector('[data-chokepoint-official-transits]').textContent, '4');
@@ -340,6 +346,34 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '-10.3% vs prior week');
     assert.doesNotMatch(tool.outerHTML, /\b38\b/);
     assert.equal(tool.dataset.state, 'ready');
+  });
+
+  it('refreshes the tool note PortWatch age with each live reading', async (t) => {
+    // Pinned after the Oct 18 PortWatch day, so the age is defined.
+    const readingAt = Date.parse('2026-11-02T12:00:00Z');
+    t.mock.timers.enable({ apis: ['Date'], now: readingAt });
+    const { document } = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    document.body.innerHTML = renderChokepointLiveSection({
+      chokepoint: { id: 'hormuz_strait', displayName: 'Strait of Hormuz' },
+      pulse: null,
+    });
+    const tool = document.querySelector('[data-live-chokepoint]');
+    assert.equal(tool.querySelector('[data-chokepoint-lag-note]')?.textContent, 'published with a lag of several days');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => (String(url).includes('get-chokepoint-status')
+      ? { ok: true, status: 200, json: async () => ({ ...HORMUZ_PORTWATCH_PAYLOAD, fetchedAt: new Date(readingAt - 60_000).toISOString() }) }
+      : anonymousSessionResponse());
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    // Nov 2 reading, Oct 18 PortWatch day: the note and the answer agree.
+    assert.equal(
+      tool.querySelector('[data-chokepoint-lag-note]')?.textContent,
+      'published with a lag; the latest published day is 15 days before this snapshot',
+    );
+    assert.match(document.querySelector('[data-chokepoint-open-status]').textContent, /\(IMF PortWatch, latest day 15 days old\)/);
   });
 
   it('omits the year-earlier comparison when the PortWatch baseline is missing', () => {
@@ -381,7 +415,7 @@ describe('crawlable live intelligence view models', () => {
     const { document } = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
     document.body.innerHTML = html;
     const passage = document.querySelector('[data-chokepoint-open-status]').textContent;
-    assert.match(passage, /source coverage for the Strait of Hormuz is partial\. No IMF PortWatch daily transit count is published for this snapshot\. World Monitor cannot verify operational passage status from this snapshot\./);
+    assert.match(passage, /Source coverage for the Strait of Hormuz is partial\. No IMF PortWatch daily transit count is published for this snapshot\. World Monitor cannot verify operational passage status from this snapshot\./);
     assert.equal(document.querySelector('[data-chokepoint-official-transits]').textContent, '—');
     assert.equal(document.querySelector('[data-chokepoint-official-date]').textContent, '');
     assert.equal(document.querySelector('[data-chokepoint-official-average]').textContent, '—');
@@ -412,7 +446,7 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(document.querySelector('[data-chokepoint-movement]').textContent, '-14.3% vs prior week');
     assert.match(
       document.querySelector('[data-chokepoint-open-status]').textContent,
-      /^As of Oct 12, 2026, 5:02 AM UTC, source coverage for the Strait of Hormuz is partial\. No IMF PortWatch daily transit count is published for this snapshot\./,
+      /^As of Oct 12, 2026, 5:02 AM UTC, no navigational warnings and no AIS disruption events are reported for the Strait of Hormuz\. Source coverage for the Strait of Hormuz is partial\. No IMF PortWatch daily transit count is published for this snapshot\./,
     );
     assert.equal(document.querySelector('[data-live-chokepoint]').dataset.state, 'partial');
     assert.equal(document.querySelector('[data-chokepoint-score]').textContent, '70');
@@ -905,7 +939,7 @@ describe('crawlable live intelligence view models', () => {
     }
 
     const passage = tool.querySelector('[data-chokepoint-open-status]').textContent;
-    assert.match(passage, /source coverage for the Taiwan Strait is partial/);
+    assert.match(passage, /, 1 AIS disruption event is reported for the Taiwan Strait\. Source coverage for the Taiwan Strait is partial/);
     assert.match(passage, /IMF PortWatch counted 12 transits on Aug 26, 2026 \(latest published day\)\. The 7-day average is 12 a day\./);
     assert.match(passage, /cannot verify operational passage status/);
     assert.doesNotMatch(passage, / is (?:open|restricted|effectively closed) /);
@@ -1032,6 +1066,7 @@ describe('crawlable live intelligence view models', () => {
       bandLabel: 'Yellow',
       description: 'JWC Listed Area',
       asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+      asOf: '2026-09-03T06:25:00.000Z',
       partial: false,
       warningsLabel: '1 warning',
       congestionLabel: 'High',
@@ -1044,8 +1079,9 @@ describe('crawlable live intelligence view models', () => {
       baselineTo: '2025-09-02',
     });
     assert.deepEqual(narrative, {
-      passage: 'Steady: traffic through the Suez Canal was 98% of its year-earlier level in the seven published days to Aug 30, 2026 (IMF PortWatch).'
-        + ' As of Sep 3, 2026, 6:25 AM UTC, IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
+      passage: 'Steady: traffic through the Suez Canal was 98% of its year-earlier level in the seven published days to Aug 30, 2026 (IMF PortWatch, latest day 4 days old).'
+        + ' As of Sep 3, 2026, 6:25 AM UTC, 1 navigational warning and 7 AIS disruption events are reported for the Suez Canal.'
+        + ' IMF PortWatch counted 1 transit through the Suez Canal on Aug 30, 2026 (latest published day).'
         + ' The 7-day average is 36.9 a day, 98% of the 37.5-a-day average for Sep 2024–Sep 2025.'
         + ' The Yellow disruption score is a risk signal; it does not verify unrestricted passage or operational closure.',
       scoreDriver: 'The score of 35 (Yellow) has this evidence basis.'
@@ -1067,6 +1103,7 @@ describe('crawlable live intelligence view models', () => {
       bandLabel: 'Red',
       description: 'Active conflict',
       asOfText: 'Nov 5, 2026, 3:07 AM UTC',
+      asOf: '2026-11-05T03:07:00.000Z',
       partial: true,
       warningsLabel: null,
       congestionLabel: 'Normal',
@@ -1081,8 +1118,9 @@ describe('crawlable live intelligence view models', () => {
     const partial = chokepointEvidenceNarrative(hormuz).passage;
     assert.equal(
       partial,
-      'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 (IMF PortWatch).'
-        + ' As of Nov 5, 2026, 3:07 AM UTC, source coverage for the Strait of Hormuz is partial.'
+      'Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 (IMF PortWatch, latest day 11 days old).'
+        + ' As of Nov 5, 2026, 3:07 AM UTC, no AIS disruption events are reported for the Strait of Hormuz.'
+        + ' Source coverage for the Strait of Hormuz is partial.'
         + ' IMF PortWatch counted 2 transits on Oct 25, 2026 (latest published day).'
         + ' The 7-day average is 3.3 a day, 4% of the 87.9-a-day average for Nov 2024–Nov 2025.'
         + ' The status compares traffic with its year-earlier level; it is not an official open or closed declaration.',
@@ -1091,7 +1129,22 @@ describe('crawlable live intelligence view models', () => {
     assert.doesNotMatch(partial, /\b(?:is|remains|was)\s+(?:open|closed|reopened)\b/i);
 
     const full = chokepointEvidenceNarrative({ ...hormuz, partial: false }).passage;
-    assert.match(full, /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 \(IMF PortWatch\)\. As of Nov 5, 2026, 3:07 AM UTC, IMF PortWatch counted 2 transits through/);
+    assert.match(full, /^Severely restricted: traffic through the Strait of Hormuz was 4% of its year-earlier level in the seven published days to Oct 25, 2026 \(IMF PortWatch, latest day 11 days old\)\. As of Nov 5, 2026, 3:07 AM UTC, no AIS disruption events are reported for the Strait of Hormuz\. IMF PortWatch counted 2 transits through/);
+    assert.equal(full.match(/As of /g).length, 1, 'the reading time is stated once');
+
+    // The age needs both the PortWatch day and the reading time; without
+    // either, or with a day after the reading, the attribution carries none.
+    for (const asOf of [null, undefined, 'not a time', '2026-10-24T23:59:00.000Z']) {
+      assert.match(
+        chokepointEvidenceNarrative({ ...hormuz, asOf }).passage,
+        /to Oct 25, 2026 \(IMF PortWatch\)\. As of /,
+        String(asOf),
+      );
+    }
+    const ageAt = (asOf) => chokepointEvidenceNarrative({ ...hormuz, asOf }).passage.match(/^[^(]+\(([^)]+)\)/)[1];
+    assert.equal(ageAt('2026-10-25T18:00:00.000Z'), 'IMF PortWatch', 'a same-day figure needs no age');
+    assert.equal(ageAt('2026-10-26T00:30:00.000Z'), 'IMF PortWatch, latest day 1 day old');
+    assert.equal(ageAt(Date.parse('2026-11-03T23:59:00.000Z')), 'IMF PortWatch, latest day 9 days old', 'epoch milliseconds from the live view');
     assert.match(full, /The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\.$/);
 
     // The band is read from the share the sentence prints, so rounding can
@@ -1141,7 +1194,7 @@ describe('crawlable live intelligence view models', () => {
       officialLatestDate: '2026-08-30',
       officialLatestTotal: 12,
     });
-    assert.match(narrative.passage, /source coverage for the Taiwan Strait is partial/);
+    assert.match(narrative.passage, /Source coverage for the Taiwan Strait is partial/);
     assert.match(narrative.passage, /IMF PortWatch counted 12 transits on Aug 30, 2026 \(latest published day\)\. World Monitor cannot verify/);
     assert.match(narrative.passage, /cannot verify operational passage status/);
     assert.doesNotMatch(narrative.passage, / is (?:open|restricted|effectively closed) /);
@@ -1171,6 +1224,65 @@ describe('crawlable live intelligence view models', () => {
     assert.match(narrative.scoreDriver, /AIS event count unavailable; IMF PortWatch latest daily count unavailable/);
   });
 
+  it('follows the traffic status with the live warnings and AIS disruption events, never called transits', () => {
+    const base = {
+      displayName: 'Strait of Hormuz',
+      score: 90,
+      bandLabel: 'Red',
+      description: 'Active conflict',
+      asOfText: 'Nov 9, 2026, 4:43 AM UTC',
+      asOf: '2026-11-09T04:43:24.118Z',
+      partial: false,
+      warningsLabel: '5 warnings',
+      congestionLabel: 'Low',
+      aisEventCountLabel: '1',
+      officialLatestDate: '2026-11-01',
+      officialLatestTotal: 1,
+      officialAvg7d: 4.4,
+      baselineAvgDaily: 87.5,
+      baselineFrom: '2024-11-09',
+      baselineTo: '2025-11-08',
+    };
+    const { passage, scoreDriver } = chokepointEvidenceNarrative(base);
+    const sentences = passage.split(/(?<=\.) (?=[A-Z])/);
+    assert.equal(
+      sentences[0],
+      'Severely restricted: traffic through the Strait of Hormuz was 5% of its year-earlier level in the seven published days to Nov 1, 2026 (IMF PortWatch, latest day 8 days old).',
+    );
+    assert.equal(
+      sentences[1],
+      'As of Nov 9, 2026, 4:43 AM UTC, 5 navigational warnings and 1 AIS disruption event are reported for the Strait of Hormuz.',
+    );
+    assert.equal(passage.match(/As of /g).length, 1, 'the reading time is stated once');
+    // "transit" appears only in the IMF PortWatch sentences.
+    for (const sentence of sentences) {
+      if (/transit/i.test(sentence)) assert.match(sentence, /IMF PortWatch/, sentence);
+    }
+    assert.doesNotMatch(sentences[1], /transit/i);
+    assert.match(scoreDriver, /Observed score inputs: 5 warnings; maximum AIS congestion severity Low\./);
+
+    const signals = (fields) => chokepointEvidenceNarrative({ ...base, ...fields }).passage
+      .split(/(?<=\.) (?=[A-Z])/)[1];
+    assert.equal(signals({ warningsLabel: '1 warning', aisEventCountLabel: null, partial: true }),
+      'As of Nov 9, 2026, 4:43 AM UTC, 1 navigational warning is reported for the Strait of Hormuz.');
+    assert.equal(signals({ warningsLabel: null, aisEventCountLabel: '3 AIS disruptions', partial: true }),
+      'As of Nov 9, 2026, 4:43 AM UTC, 3 AIS disruption events are reported for the Strait of Hormuz.');
+    assert.equal(signals({ warningsLabel: '0 warnings', aisEventCountLabel: '0 AIS disruptions' }),
+      'As of Nov 9, 2026, 4:43 AM UTC, no navigational warnings and no AIS disruption events are reported for the Strait of Hormuz.');
+    assert.equal(signals({ displayName: 'Suez Canal' }),
+      'As of Nov 9, 2026, 4:43 AM UTC, 5 navigational warnings and 1 AIS disruption event are reported for the Suez Canal.');
+    // Neither signal (or a label without a count): the sentence is dropped and
+    // the reading time leads the PortWatch sentence as before.
+    for (const fields of [
+      { warningsLabel: null, aisEventCountLabel: null, partial: true },
+      { warningsLabel: 'reported', aisEventCountLabel: '', partial: true },
+    ]) {
+      const passageWithout = chokepointEvidenceNarrative({ ...base, ...fields }).passage;
+      assert.doesNotMatch(passageWithout, /navigational warning|AIS disruption/, JSON.stringify(fields));
+      assert.match(passageWithout, /\. As of Nov 9, 2026, 4:43 AM UTC, source coverage for the Strait of Hormuz is partial\./);
+    }
+  });
+
   it('keeps the traffic anomaly as a score input and filters coverage notes from the baseline', () => {
     for (const description of [
       'No active disruptions',
@@ -1189,7 +1301,7 @@ describe('crawlable live intelligence view models', () => {
       });
       assert.match(narrative.scoreDriver, /Configured geopolitical baseline: no additional threat weight\./);
       assert.doesNotMatch(narrative.scoreDriver, new RegExp(`baseline: ${description}`));
-      assert.match(narrative.passage, /no IMF PortWatch daily transit count is published for the Panama Canal\. The Green disruption score/);
+      assert.match(narrative.passage, /^In the latest published snapshot, no navigational warnings and no AIS disruption events are reported for the Panama Canal\. No IMF PortWatch daily transit count is published for the Panama Canal\. The Green disruption score/);
     }
     const anomaly = chokepointEvidenceNarrative({
       displayName: 'Strait of Hormuz',
