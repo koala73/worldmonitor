@@ -316,7 +316,7 @@
          Replaces dropping the whole query string so utm_* survive while the sensitive keys
          from shared/sensitive-url-params.ts (SENSITIVE_URL_PARAM_RE) are
          removed. The regex below is a copy; tests/funnel-analytics-policy.test.mjs
-         asserts it stays identical. The hash is dropped (Clerk can carry material there). -->
+         asserts it stays identical (here and in welcome.html). The hash is dropped (Clerk can carry material there). -->
     <script nonce="wm-static-bootstrap">
     (function () {
       var SENSITIVE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;

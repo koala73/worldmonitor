@@ -153,21 +153,23 @@ test('tracker tags are async', () => {
   }
 });
 
-test('the pro SPA redacts sensitive params per payload and keeps utm_*', async () => {
-  const html = read('pro-test/index.html');
+// Both marketing pages carry a tracker: /pro (index.html) and the homepage,
+// which vercel.json rewrites to /pro/welcome.html.
+for (const page of ['pro-test/index.html', 'pro-test/welcome.html']) test(`${page} redacts sensitive params per payload and keeps utm_*`, async () => {
+  const html = read(page);
   const proTag = html.match(/<script[^>]+abacus[^>]*>/)[0];
   assert.ok(!proTag.includes('data-exclude-search'),
-    'pro-test/index.html: data-exclude-search would drop utm_* attribution on /pro');
+    `${page}: data-exclude-search would drop utm_* attribution`);
   assert.ok(proTag.includes('data-before-send="__wmUmamiBeforeSend"'),
-    'pro-test/index.html: tracker has no before-send redaction hook');
+    `${page}: tracker has no before-send redaction hook, so the whole query string reaches the analytics vendor`);
   // The hook is an async-safe inline script: it must precede the tracker tag.
   const hookScript = html.match(/<script nonce="wm-static-bootstrap">\s*(\(function \(\) \{[\s\S]*?\}\)\(\);)\s*<\/script>/);
-  assert.ok(hookScript, 'pro-test/index.html: inline before-send hook script missing');
+  assert.ok(hookScript, `${page}: inline before-send hook script missing`);
   assert.ok(html.indexOf(hookScript[0]) < html.indexOf(proTag), 'hook must be defined before the async tracker tag');
   // Same list as the shared one.
   const { SENSITIVE_URL_PARAM_RE } = await import('../shared/sensitive-url-params.ts');
   const inlineRe = hookScript[1].match(/var SENSITIVE = \/(.+)\/i;/)[1];
-  assert.equal(inlineRe, SENSITIVE_URL_PARAM_RE.source, 'inline /pro regex drifted from shared/sensitive-url-params.ts');
+  assert.equal(inlineRe, SENSITIVE_URL_PARAM_RE.source, `${page}: inline regex drifted from shared/sensitive-url-params.ts`);
   // Behaviour: run the real script.
   const vm = await import('node:vm');
   const win = {};
@@ -177,7 +179,7 @@ test('the pro SPA redacts sensitive params per payload and keeps utm_*', async (
   const url = `/pro?utm_source=mcp&utm_medium=tool&wm_checkout_product=pdt_1&${sensitive.map((k) => `${k}=x`).join('&')}#frag`;
   const out = hook('event', { url, referrer: `https://x.test/?token=t&utm_source=chatgpt.com` });
   const params = new URL(out.url, 'https://www.worldmonitor.app').searchParams;
-  for (const k of sensitive) assert.equal(params.has(k), false, `${k} must be removed on /pro`);
+  for (const k of sensitive) assert.equal(params.has(k), false, `${page}: ${k} must be removed`);
   assert.equal(params.get('utm_source'), 'mcp');
   assert.equal(params.get('utm_medium'), 'tool');
   assert.equal(params.get('wm_checkout_product'), 'pdt_1', 'non-secret funnel params survive');
