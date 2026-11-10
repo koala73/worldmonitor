@@ -1,6 +1,6 @@
 /**
  * Composite-tool adapters: raw seeded cache payloads → shared-core inputs
- * (#5696 U3). Pure shape mapping only — no IO — so the MCP `_execute`
+ * (#5696 U3). Pure mapping and exposure eligibility — no IO — so the MCP `_execute`
  * handlers stay thin and every mapping is unit-testable against
  * seed-shaped fixtures.
  *
@@ -34,6 +34,8 @@ import type {
 } from './analysis-alert-digest';
 import { finiteNumber, nonEmptyString } from './analysis-adapter-guards';
 import { currentUcdpCountryName } from './ucdp-display';
+import { estimatePointExposure } from './population-density-country-at';
+import { getRadiusForEventType } from './analysis-population-exposure';
 
 const OUTAGE_SEVERITY_LEVELS: Readonly<Record<string, AlertSeverity>> = {
   OUTAGE_SEVERITY_TOTAL: 'critical',
@@ -115,6 +117,10 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
     .sort((a, b) => Date.parse(nonEmptyString(b.e.dateStart)) - Date.parse(nonEmptyString(a.e.dateStart)));
   const byLocation = new Map<string, ExposureEvent & { eventCount: number }>();
   for (const { e, c } of dated) {
+    const country = currentUcdpCountryName(nonEmptyString(e.country));
+    // Reject unestimable rows before they can hide or inflate a supported
+    // location, matching the dashboard's estimate-before-group ordering.
+    if (!estimatePointExposure(c.lat, c.lon, getRadiusForEventType('conflict'), country)) continue;
     // Match selectUcdpExposureRows and the dashboard's locationKey (~100 m).
     const key = `${c.lat.toFixed(3)},${c.lon.toFixed(3)}`;
     const existing = byLocation.get(key);
@@ -123,7 +129,6 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
       continue;
     }
     if (byLocation.size >= limit) continue;
-    const country = currentUcdpCountryName(nonEmptyString(e.country));
     const place = nonEmptyString(e.locationName);
     byLocation.set(key, {
       id: e.id != null ? String(e.id) : `conflict-${byLocation.size}`,

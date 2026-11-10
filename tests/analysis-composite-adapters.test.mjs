@@ -113,13 +113,25 @@ describe('exposure event adapters', () => {
       { country: 'DR Congo (Zaire)', locationName: 'Goma' },
       { country: ' ', locationName: 'Unnamed village' },
       {},
-    ].map((event, i) => ({ ...event, location: { latitude: 10 + i, longitude: 20 }, hasPreciseLocation: true })) });
+    ].map((event, i) => ({ ...event, location: { latitude: 50.45 + i / 100, longitude: 30.52 }, hasPreciseLocation: true })) });
     assert.deepEqual(events.map(({ name, reportedCountry, eventCount }) => [name, reportedCountry, eventCount]), [
       ['Conflict event — Yemen', 'Yemen', 1],
       ['Goma, DR Congo', 'DR Congo', 1],
       ['Unnamed village', undefined, 1],
       ['Conflict event', undefined, 1],
     ]);
+  });
+
+  it('checks estimate eligibility before grouping locations and applying the cap', () => {
+    const point = { location: { latitude: 50.45, longitude: 30.52 }, hasPreciseLocation: true };
+    const events = ucdpEventsToExposureEvents({ events: [
+      { ...point, id: 'unsupported', country: 'Chile', dateStart: '2026-07-30' },
+      { ...point, id: 'invalid-point', country: 'Ukraine', location: { latitude: 91, longitude: 30.52 }, dateStart: '2026-07-29' },
+      { ...point, id: 'supported', country: 'Ukraine', dateStart: '2026-07-28' },
+      { ...point, id: 'older-unsupported', country: 'Chile', dateStart: '2026-07-27' },
+      { ...point, id: 'older-supported', country: 'Ukraine', dateStart: '2026-07-26' },
+    ] }, 1);
+    assert.deepEqual(events.map(({ id, eventCount }) => [id, eventCount]), [['supported', 2]]);
   });
 
   it('preserves the finite default cap but allows callers to request the complete feed', () => {
