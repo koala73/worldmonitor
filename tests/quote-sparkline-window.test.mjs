@@ -202,3 +202,12 @@ describe('bad ticks on thin and boundary bars', () => {
     assert.ok(!sparkline.includes(98.32), 'spike at the history boundary removed');
   });
 });
+
+describe('stale-quote dips', () => {
+  it('drops the recurring one-minute USDTRY print 0.23% under the tape', () => {
+    const closes = [];
+    for (let i = 0; i < 120; i += 1) closes.push(i % 20 === 9 ? 50.1119 : +(50.225 + ((i % 3) - 1) * 0.003).toFixed(4));
+    const { sparkline } = buildQuoteSparkline(minuteChart(T0, closes), null);
+    assert.ok(Math.min(...sparkline) > 50.2, `stale prints removed: ${Math.min(...sparkline)}`);
+  });
+});
