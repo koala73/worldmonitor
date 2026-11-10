@@ -274,16 +274,33 @@ function unavailableItem(item, country) {
   };
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+// The six-hourly cron runs at fixed clock times, so a basket from exactly a week ago normally exists.
+// The slack keeps a comparison when a run near that time failed.
+const BASELINE_TOLERANCE_MS = DAY_MS / 2;
+const HISTORY_RETENTION_MS = WEEK_MS + 2 * DAY_MS;
 
-function selectPriorWeek(now, ...snapshots) {
-  const weekStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - (now.getUTCDay() + 6) % 7);
-  return snapshots
-    .filter(snapshot => {
-      const timestamp = Date.parse(snapshot?.fetchedAt);
-      return timestamp >= weekStart - WEEK_MS && timestamp < weekStart;
-    })
-    .sort((a, b) => Date.parse(b.fetchedAt) - Date.parse(a.fetchedAt))[0];
+export function recordBaseline(entries, snapshot) {
+  const fetchedAt = Date.parse(snapshot.fetchedAt);
+  const totals = Object.fromEntries(snapshot.countries
+    .filter(country => hasFullBasket(country.items))
+    .map(country => [country.code, basketTotal(country.items)]));
+  return [
+    ...entries.filter(entry => {
+      const at = Date.parse(entry.fetchedAt);
+      return at !== fetchedAt && fetchedAt - at <= HISTORY_RETENTION_MS;
+    }),
+    { fetchedAt: snapshot.fetchedAt, basketVersion: snapshot.basketVersion, totals },
+  ].sort((a, b) => Date.parse(a.fetchedAt) - Date.parse(b.fetchedAt));
+}
+
+export function selectWeekAgo(entries, now) {
+  const target = now.getTime() - WEEK_MS;
+  const distance = entry => Math.abs(Date.parse(entry.fetchedAt) - target);
+  return entries
+    .filter(entry => entry.basketVersion === BASKET_VERSION && distance(entry) <= BASELINE_TOLERANCE_MS)
+    .sort((a, b) => distance(a) - distance(b))[0];
 }
 
 function hasFullBasket(items) {
@@ -300,8 +317,7 @@ function basketTotal(items) {
   ) / 100;
 }
 
-export async function fetchGroceryBasketPrices(prevSnapshot, {
-  priorSnapshot,
+export async function fetchGroceryBasketPrices(baseline, {
   now = new Date(),
   fetchCountryItemsFn = fetchCountryItems,
   getFxRatesFn = getSharedFxRates,
@@ -428,19 +444,12 @@ export async function fetchGroceryBasketPrices(prevSnapshot, {
       console.warn(`  [routes] outlier eviction write failed (non-fatal): ${err.message}`)
     );
   }
-  // Compare complete baskets against the same quantities from the prior UTC week.
-  const baseline = selectPriorWeek(now, prevSnapshot, priorSnapshot);
-  const priorCountries = new Map(baseline?.basketVersion === BASKET_VERSION
-    ? baseline.countries?.map(country => [country.code, country.items])
-    : undefined);
   const rankable = [];
   for (const country of countriesResult) {
     country.totalUsd = basketTotal(country.items);
     if (!hasFullBasket(country.items)) continue;
     rankable.push(country);
-    const priorItems = priorCountries.get(country.code);
-    if (!hasFullBasket(priorItems)) continue;
-    const priorTotal = basketTotal(priorItems);
+    const priorTotal = baseline?.totals[country.code];
     if (priorTotal > 0) {
       country.wowPct = +((country.totalUsd - priorTotal) / priorTotal * 100).toFixed(2);
     }
@@ -473,18 +482,14 @@ export function declareRecords(data) {
 const isMain = process.argv[1]?.endsWith('seed-grocery-basket.mjs');
 if (isMain) {
   loadEnvFile(import.meta.url);
-  const previousKey = `${CANONICAL_KEY}:prev`;
-  let baselineToSave;
+  const historyKey = `${CANONICAL_KEY}:history`;
+  let history;
 
   await runSeed('economic', 'grocery-basket', CANONICAL_KEY, async () => {
-    const [current, prior] = await Promise.all([
-      readSeedSnapshot(CANONICAL_KEY, { strict: true }),
-      readSeedSnapshot(previousKey, { strict: true }),
-    ]);
+    const stored = await readSeedSnapshot(historyKey, { strict: true });
+    history = Array.isArray(stored?.entries) ? stored.entries : [];
     const now = new Date();
-    const baseline = selectPriorWeek(now, current, prior);
-    baselineToSave = baseline !== prior ? baseline : undefined;
-    return fetchGroceryBasketPrices(baseline, { now });
+    return fetchGroceryBasketPrices(selectWeekAgo(history, now), { now });
   }, {
     ttlSeconds: CACHE_TTL,
     // Countries run COUNTRY_CONCURRENCY at a time (items within a country run
@@ -503,11 +508,8 @@ if (isMain) {
       return true;
     },
     recordCount: (data) => data?.countries?.length || 0,
-    // Save the baseline before replacing its only copy in the canonical key.
-    beforePublish: async (_data, { lockFence }) => {
-      if (baselineToSave) {
-        await writeExtraKey(previousKey, baselineToSave, CACHE_TTL * 2, undefined, { lockFence });
-      }
+    beforePublish: async (data, { lockFence }) => {
+      await writeExtraKey(historyKey, { entries: recordBaseline(history, data) }, CACHE_TTL, undefined, { lockFence });
     },
 
     declareRecords,

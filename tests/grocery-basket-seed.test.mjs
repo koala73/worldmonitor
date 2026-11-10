@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchGroceryBasketPrices, fetchCountryItems, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
+import { fetchGroceryBasketPrices, fetchCountryItems, recordBaseline, selectWeekAgo, COUNTRY_CONCURRENCY, COUNTRIES } from '../scripts/seed-grocery-basket.mjs';
 
 // The seeder logs one line per country and item. Silence it so the flood can't
 // corrupt node:test's child-process message parser under --test-concurrency.
@@ -134,9 +134,8 @@ describe('grocery basket comparability', () => {
       : code === complete.code ? items(10, 2.1451) : code === gained.code ? items(10, 2.5) : [],
   };
 
-  it('ranks complete baskets and compares only complete baskets in the prior week', async () => {
-    const sameWeek = { ...previousWeek, fetchedAt: '2026-11-10T00:05:00Z' };
-    const data = await fetchGroceryBasketPrices(sameWeek, { ...options, priorSnapshot: previousWeek });
+  it('ranks complete baskets and compares only baskets complete a week earlier', async () => {
+    const data = await fetchGroceryBasketPrices(selectWeekAgo(recordBaseline([], previousWeek), now), options);
     assert.equal(data.cheapestCountry, complete.code);
     assert.equal(data.mostExpensiveCountry, gained.code);
     assert.equal(data.countries[0].wowPct, null);
@@ -146,17 +145,69 @@ describe('grocery basket comparability', () => {
     assert.equal(data.wowAvgPct, 7.5);
     assert.equal(data.prevFetchedAt, previousWeek.fetchedAt);
   });
+});
 
-  it('suppresses the average when no compatible prior-week observation is available', async () => {
-    for (const snapshot of [
-      { ...previousWeek, basketVersion: 2 },
-      { ...previousWeek, fetchedAt: '2026-11-10T00:05:00Z' },
-      { ...previousWeek, countries: [{ code: gained.code, items: items(9, 2) }] },
+describe('grocery basket week-over-week baseline', () => {
+  const units = {
+    sugar: '1kg', salt: '1kg', rice: '1kg', pasta: '500g', potatoes: '1kg',
+    oil: '1L', flour: '1kg', eggs: '12pc', milk: '1L', bread: '400g',
+  };
+  const [tracked] = COUNTRIES;
+  const start = Date.parse('2026-11-09T00:00:00Z');
+  const HOUR_MS = 3_600_000;
+  // Prices rise 1% of the starting price per day, so a true weekly change is about 7%.
+  const priceAt = (ms) => 1 + (ms - start) / (24 * HOUR_MS) / 100;
+  const runAt = (ms, baseline) => fetchGroceryBasketPrices(baseline, {
+    now: new Date(ms),
+    getFxRatesFn: fakeFx,
+    routes: noRoutes,
+    fetchCountryItemsFn: async ({ code }) => code === tracked.code
+      ? Object.entries(units).map(([itemId, unit]) => ({ itemId, unit, usdPrice: priceAt(ms), localPrice: priceAt(ms), available: true }))
+      : [],
+  });
+
+  it('compares a six-hourly run against the basket from seven days earlier', async () => {
+    let history = [];
+    const reported = [];
+    for (let ms = start; ms <= Date.parse('2026-11-17T12:00:00Z'); ms += 6 * HOUR_MS) {
+      const data = await runAt(ms, selectWeekAgo(history, new Date(ms)));
+      history = recordBaseline(history, data);
+      if (data.wowAvailable) reported.push({ ms, data });
+    }
+    assert.equal(new Date(reported[0].ms).toISOString(), '2026-11-15T12:00:00.000Z',
+      'the first comparison waits for a basket at least six and a half days old');
+    for (const { ms, data } of reported) {
+      const baselineAt = Date.parse(data.prevFetchedAt);
+      const gapHours = (ms - baselineAt) / HOUR_MS;
+      if (ms >= Date.parse('2026-11-16T00:00:00Z')) assert.equal(gapHours, 168, `${new Date(ms).toISOString()} baseline`);
+      else assert.ok(gapHours >= 156 && gapHours <= 180, `${new Date(ms).toISOString()} baseline is ${gapHours} h old`);
+      const total = (at) => Number(priceAt(at).toFixed(2)) * 10;
+      const expected = +((total(ms) - total(baselineAt)) / total(baselineAt) * 100).toFixed(2);
+      assert.equal(data.countries[0].wowPct, expected);
+    }
+  });
+
+  it('reports no change when no basket of the current version is about a week old', async () => {
+    const now = Date.parse('2026-11-17T00:00:00Z');
+    const weekOld = await runAt(now - 7 * 24 * HOUR_MS);
+    for (const history of [
+      recordBaseline([], await runAt(now - 8 * 24 * HOUR_MS)),
+      recordBaseline([], await runAt(now - 6 * 24 * HOUR_MS)),
+      recordBaseline([], { ...weekOld, basketVersion: 2 }),
     ]) {
-      const data = await fetchGroceryBasketPrices(snapshot, options);
+      const data = await runAt(now, selectWeekAgo(history, new Date(now)));
       assert.equal(data.wowAvailable, false);
+      assert.equal(data.prevFetchedAt, '');
       assert.ok(data.countries.every(({ wowPct }) => wowPct === null));
     }
+  });
+
+  it('keeps one entry per run and drops entries older than the comparison needs', async () => {
+    const now = Date.parse('2026-11-20T00:00:00Z');
+    const old = await runAt(now - 12 * 24 * HOUR_MS);
+    const current = await runAt(now);
+    const history = recordBaseline(recordBaseline(recordBaseline([], old), current), current);
+    assert.deepEqual(history.map(({ fetchedAt }) => fetchedAt), [current.fetchedAt]);
   });
 });
 
