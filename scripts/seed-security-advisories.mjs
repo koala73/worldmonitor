@@ -357,7 +357,7 @@ function normalizeName(name) {
 /** The register level for one destination's alert_status, or null for a value this parser does not know. */
 export function ukLevel(alertStatus) {
   if (!Array.isArray(alertStatus)) return null;
-  if (alertStatus.some((alert) => !UK_ALERTS[alert])) return null;
+  if (alertStatus.some((alert) => !Object.hasOwn(UK_ALERTS, alert))) return null;
   const present = Object.keys(UK_ALERTS).filter((alert) => alertStatus.includes(alert)).map((alert) => UK_ALERTS[alert]);
   return present.length ? present.join('+') : 'none';
 }

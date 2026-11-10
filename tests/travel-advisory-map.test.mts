@@ -121,6 +121,7 @@ describe('the UK and CDC registers in the seed', () => {
     assert.equal(ukLevel(['avoid_all_but_essential_travel_to_parts', 'avoid_all_travel_to_parts']), 'all-parts+essential-parts');
     assert.equal(ukLevel(['avoid_all_travel_to_whole_country']), 'all-whole');
     assert.equal(ukLevel(['avoid_travel_to_moon']), null, 'a new FCDO value is a format change, not "no warning"');
+    assert.equal(ukLevel(['constructor']), null, 'an inherited object member is not a known FCDO value');
   });
 
   it('codes FCDO destination names exactly, so South Georgia is not Georgia', () => {
