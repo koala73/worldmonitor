@@ -130,12 +130,17 @@ describe('the UK and CDC registers in the seed', () => {
     assert.equal(ukCountryCode("Côte d'Ivoire"), 'CI');
     assert.equal(ukCountryCode('The Gambia'), 'GM');
     assert.equal(ukCountryCode('St Maarten'), '', 'a territory with no registry code is skipped, not folded into a country');
+    assert.equal(ukCountryCode('Constructor'), '', 'an inherited object member is not a country code');
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Measles in Constructor, Ghana and toString').countries, ['GH']);
   });
 
   it('ties a CDC notice to every country it names, including a region of one, and to none for a global notice', () => {
     assert.deepEqual(cdcNoticeCountries('Level 2 - Yellow Fever in Burkina Faso, Côte d’Ivoire, and Ghana'), { level: 'cdc-2', countries: ['BF', 'CI', 'GH'] });
     assert.deepEqual(cdcNoticeCountries('Level 4 - Ebola Bundibugyo Virus Disease in Ituri and Nord-Kivu Provinces of the Democratic Republic of the Congo'), { level: 'cdc-4', countries: ['CD'] });
     assert.deepEqual(cdcNoticeCountries('Level 2 - Ebola Bundibugyo Virus Disease in the Democratic Republic of the Congo and Uganda'), { level: 'cdc-2', countries: ['CD', 'UG'] });
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Yellow Fever in Trinidad and Tobago').countries, ['TT'], 'a name with "and" in it is one country');
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Measles in Bosnia and Herzegovina, Serbia, and Antigua and Barbuda').countries, ['BA', 'RS', 'AG']);
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Dengue in Saint Vincent and the Grenadines and Barbados').countries, ['VC', 'BB']);
     assert.deepEqual(cdcNoticeCountries('Level 1 - Global Dengue').countries, []);
     assert.deepEqual(cdcNoticeCountries('Level 1 - Diphtheria in Sub-Saharan Africa').countries, []);
   });
@@ -171,6 +176,27 @@ describe('the UK and CDC registers in the seed', () => {
     assert.deepEqual(await fetchUkRegister(doFetch as never), [], 'a missing page would read as "no UK advice"');
     const report = await fetchAll({ feeds: [{ name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' }], doFetch: doFetch as never });
     assert.ok(!report.registerLevels.some((row: Row) => row.sourceCountry === 'UK'));
+    assert.deepEqual(report._sourceHealth.missingRegisters, ['UK']);
+  });
+
+  it('gives up on a slow UK read at its deadline and still publishes the other registers', async () => {
+    const STATE = { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' };
+    const rss = `<?xml version="1.0"?><rss><channel><item><title>Mexico - Level 2: Exercise Increased Caution</title><link>https://travel.state.gov/mexico.html</link><pubDate>Sat, 01 Nov 2026 12:00:00 GMT</pubDate></item></channel></rss>`;
+    const { calls, doFetch: govUkFetch } = govUk();
+    const slow = (async (url: string) => {
+      if (url.includes('TAsTWs')) return { ok: true, status: 200, text: async () => rss };
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return govUkFetch(url);
+    }) as never;
+    const started = Date.now();
+    const report = await fetchAll({
+      feeds: [STATE, { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' }],
+      doFetch: slow,
+      fetchDeadlineAtMs: Date.now() + 30_000 + 300,
+    });
+    assert.ok(Date.now() - started < 2_000, 'the UK read stopped at its deadline, 30 s before the seed’s');
+    assert.ok(calls.length < MIN_UK_DESTINATIONS, `stopped fetching pages (${calls.length} requests)`);
+    assert.deepEqual(report.registerLevels.map((row: Row) => row.country), ['MX']);
     assert.deepEqual(report._sourceHealth.missingRegisters, ['UK']);
   });
 

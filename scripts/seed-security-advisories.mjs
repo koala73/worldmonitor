@@ -362,17 +362,28 @@ export function ukLevel(alertStatus) {
   return present.length ? present.join('+') : 'none';
 }
 
-export function ukCountryCode(name) {
-  const normalized = normalizeName(name);
-  return UK_NAME_CODES[normalized] || COUNTRY_NAMES[normalized] || COUNTRY_NAMES[normalized.replace(/^the /, '')] || '';
+function codeFor(table, name) {
+  const code = Object.hasOwn(table, name) ? table[name] : '';
+  return /^[A-Z]{2}$/.test(code) ? code : '';
 }
 
-async function getJson(url, doFetch) {
+function countryNameCode(normalized) {
+  return codeFor(COUNTRY_NAMES, normalized) || codeFor(COUNTRY_NAMES, normalized.replace(/^the /, ''));
+}
+
+export function ukCountryCode(name) {
+  const normalized = normalizeName(name);
+  return codeFor(UK_NAME_CODES, normalized) || countryNameCode(normalized);
+}
+
+async function getJson(url, doFetch, deadlineAtMs) {
   for (let attempt = 0; ; attempt += 1) {
+    const remainingMs = deadlineAtMs - Date.now();
+    if (remainingMs <= 0) throw new Error('ran out of time');
     try {
       const resp = await doFetch(url, {
         headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(Math.min(15_000, remainingMs)),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return JSON.parse(await readBoundedFeedText(resp));
@@ -382,23 +393,32 @@ async function getJson(url, doFetch) {
   }
 }
 
+const UK_BUDGET_MS = 120_000;
+// Leaves the seed time to publish the other registers after the UK read gives up.
+const UK_DEADLINE_MARGIN_MS = 30_000;
+
 /**
  * The FCDO's warning for every destination it lists, as register rows. All or
  * nothing: a destination that failed to load would read as "no UK advice", so
- * any failure returns [] and source health reports the UK register missing.
+ * any failure, or running past deadlineAtMs, returns [] and source health
+ * reports the UK register missing.
  */
-export async function fetchUkRegister(doFetch = fetch) {
+export async function fetchUkRegister(doFetch = fetch, deadlineAtMs = Date.now() + UK_BUDGET_MS) {
   try {
-    const index = await getJson(UK_INDEX_URL, doFetch);
+    const index = await getJson(UK_INDEX_URL, doFetch, deadlineAtMs);
     const pages = (index?.links?.children || []).filter((child) => typeof child?.base_path === 'string' && child.base_path.startsWith('/foreign-travel-advice/'));
     if (pages.length < MIN_UK_DESTINATIONS) throw new Error(`index lists ${pages.length} destinations`);
     const rows = new Array(pages.length);
     let next = 0;
+    let failed = false;
     const worker = async () => {
-      while (next < pages.length) {
+      while (next < pages.length && !failed) {
         const i = next++;
         const page = pages[i];
-        const doc = await getJson(`https://www.gov.uk/api/content${page.base_path}`, doFetch);
+        const doc = await getJson(`https://www.gov.uk/api/content${page.base_path}`, doFetch, deadlineAtMs).catch((error) => {
+          failed = true;
+          throw error;
+        });
         const name = doc?.details?.country?.name || page.details?.country?.name || doc?.title || '';
         const level = ukLevel(doc?.details?.alert_status ?? []);
         if (!level) throw new Error(`${page.base_path}: unknown alert_status ${JSON.stringify(doc?.details?.alert_status)}`);
@@ -440,18 +460,33 @@ function ukSeverity(level) {
 // Africa") name no country and are not tied to one.
 const CDC_TITLE = /^Level ([1-4]) - .+? in (.+)$/;
 
+function regionOfCountryCode(normalized) {
+  const entry = SORTED_COUNTRY_ENTRIES.find(([name]) => normalized.endsWith(` of the ${name}`) || normalized.endsWith(` of ${name}`));
+  return entry && /^[A-Z]{2}$/.test(entry[1]) ? entry[1] : '';
+}
+
 export function cdcNoticeCountries(title) {
   const match = String(title).trim().match(CDC_TITLE);
   if (!match) return { level: '', countries: [] };
   const codes = [];
-  for (const piece of match[2].split(/,\s*(?:and\s+)?|\s+and\s+/)) {
-    const normalized = normalizeName(piece).replace(/^the /, '');
-    let code = COUNTRY_NAMES[normalized];
-    if (!code) {
-      const suffix = SORTED_COUNTRY_ENTRIES.find(([name]) => normalized.endsWith(` of the ${name}`) || normalized.endsWith(` of ${name}`));
-      code = suffix?.[1];
-    }
+  const add = (code) => {
     if (code && !codes.includes(code)) codes.push(code);
+  };
+  // "and" both joins list items and belongs to names ("Trinidad and Tobago"),
+  // so each comma piece takes the longest run of parts that is a country name.
+  for (const piece of match[2].split(/,\s*(?:and\s+)?/)) {
+    const parts = normalizeName(piece).split(' and ');
+    let i = 0;
+    while (i < parts.length) {
+      const runs = [];
+      for (let j = parts.length; j > i; j -= 1) runs.push([j, parts.slice(i, j).join(' and ')]);
+      const exact = runs.find(([, name]) => countryNameCode(name));
+      const found = exact
+        ? [exact[0], countryNameCode(exact[1])]
+        : runs.map(([j, name]) => [j, regionOfCountryCode(name)]).find(([, code]) => code);
+      if (found) add(found[1]);
+      i = found ? found[0] : i + 1;
+    }
   }
   return { level: `cdc-${match[1]}`, countries: codes };
 }
@@ -557,8 +592,9 @@ export async function advisoryAfterPublish(data) {
   };
 }
 
-export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {}) {
-  const ukRegister = feeds.some((feed) => feed.register === 'uk') ? fetchUkRegister(doFetch) : Promise.resolve([]);
+export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch, fetchDeadlineAtMs } = {}) {
+  const ukDeadline = Math.min(Date.now() + UK_BUDGET_MS, (fetchDeadlineAtMs ?? Infinity) - UK_DEADLINE_MARGIN_MS);
+  const ukRegister = feeds.some((feed) => feed.register === 'uk') ? fetchUkRegister(doFetch, ukDeadline) : Promise.resolve([]);
   const results = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed, doFetch)));
   const ukRows = await ukRegister;
   const all = [];
