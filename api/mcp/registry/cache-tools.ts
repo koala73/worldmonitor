@@ -1044,7 +1044,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_market_data',
     title: 'Market quotes and commodity prices',
     _outputBudgetBytes: 131072,
-    description: 'Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index; subscriptions also get SGE physical-vs-COMEX premiums and physical-divergence regimes, which a free account receives as `locked` with an upgradeUrl. Quotes are flagged stale after 30 minutes. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.',
+    description: 'Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index; subscriptions also get SGE physical-vs-COMEX premiums and physical-divergence regimes, which a free account receives as `locked` with an upgradeUrl. Quotes stale after 30m. Brent/WTI: spot 4d; futures normal NYMEX breaks plus 30m restart grace. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3070,7 +3070,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           date: { type: 'string', description: 'EIA observation date. For spot prices, the week ending date.' },
           unit: { type: 'string', description: 'Source unit. Stocks and production use thousand barrels and thousand barrels per day; prices use USD per barrel.' },
           priceSource: { const: 'EIA' }, priceBasis: { const: 'spot' }, frequency: { const: 'weekly' },
-          stale: { type: 'boolean', description: 'Spot observation is undated or older than 10 days.' },
+          stale: { type: 'boolean', description: 'Weekly spot observation is missing, invalid, future-dated, or older than 14 days.' },
         },
       } },
       index: { type: ['object', 'null'], properties: { regions: { type: 'array', items: { type: 'object' } } } },

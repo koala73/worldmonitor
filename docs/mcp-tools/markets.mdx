@@ -12,7 +12,11 @@ The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replac
 
 Real-time equity quotes, commodity prices, SGE physical-vs-COMEX gold and silver premiums, physical-premium divergence regimes, crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache. Covers the curated symbol universe only. `symbols` filters that snapshot rather than looking up arbitrary tickers, so an unseeded ticker returns nothing instead of triggering a fetch.
 
-Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage supplies daily spot prices on the scheduled seed path when available. For daily spot, midnight UTC represents the provider's observation date. Undated quotes are marked `stale`. Dated futures quotes go stale after 30 minutes and daily spot prices after four days.
+Brent and WTI quote rows identify the provider in `priceSource`, futures or spot in `priceBasis`, and the observation time in `priceAt` (epoch milliseconds). Yahoo Finance supplies futures quotes. Alpha Vantage supplies daily spot prices on the scheduled seed path when available. For daily spot, midnight UTC represents the provider's observation date. Undated quotes are marked `stale`.
+
+Daily spot prices go stale after four days.
+
+Futures quotes use a 30-minute bound during normal NYMEX trading. The daily break runs from 17:00 to 18:00 New York time. The weekend closure runs from Friday at 17:00 to Sunday at 18:00. These closures extend the bound through 30 minutes after trading resumes. This schedule accounts for daylight saving time. Exchange holidays and exceptional closures are not modeled. Invalid or future observation times remain stale.
 
 **Parameters (tool-specific):**
 
