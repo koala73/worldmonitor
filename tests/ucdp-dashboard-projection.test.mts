@@ -217,10 +217,31 @@ test('counts the feed events the exposure rows leave out, as the dashboard does'
   assert.deepEqual(enrichEventsWithExposure(asInput, 10).coverage, exposureCoverage);
 });
 
+// Every country label in UCDP GED 25.1 (fetched per Gleditsch-Ward code on 2026-11-10).
+// The projection cannot import the dashboard's resolver, so the two must agree on these.
+const UCDP_COUNTRY_LABELS = [
+  'Afghanistan', 'Albania', 'Algeria', 'Angola', 'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan',
+  'Bahrain', 'Bangladesh', 'Belgium', 'Benin', 'Bhutan', 'Bolivia', 'Bosnia-Herzegovina', 'Botswana', 'Brazil',
+  'Burkina Faso', 'Burundi', 'Cambodia (Kampuchea)', 'Cameroon', 'Canada', 'Central African Republic', 'Chad',
+  'China', 'Colombia', 'Comoros', 'Congo', 'Croatia', 'DR Congo (Zaire)', 'Djibouti', 'Ecuador', 'Egypt',
+  'El Salvador', 'Eritrea', 'Ethiopia', 'France', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Guatemala', 'Guinea',
+  'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras', 'India', 'Indonesia', 'Iran', 'Iraq', 'Israel', 'Italy',
+  'Ivory Coast', 'Jamaica', 'Jordan', 'Kenya', 'Kingdom of eSwatini (Swaziland)', 'Kuwait', 'Kyrgyzstan', 'Laos',
+  'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Madagascar (Malagasy)', 'Malaysia', 'Mali', 'Malta', 'Mauritania',
+  'Mexico', 'Moldova', 'Morocco', 'Mozambique', 'Myanmar (Burma)', 'Namibia', 'Nepal', 'Netherlands', 'Nicaragua',
+  'Niger', 'Nigeria', 'North Macedonia', 'Pakistan', 'Panama', 'Papua New Guinea', 'Paraguay', 'Peru',
+  'Philippines', 'Poland', 'Qatar', 'Romania', 'Russia (Soviet Union)', 'Rwanda', 'Saudi Arabia', 'Senegal',
+  'Serbia (Yugoslavia)', 'Sierra Leone', 'Solomon Islands', 'Somalia', 'South Africa', 'South Sudan', 'Spain',
+  'Sri Lanka', 'Sudan', 'Sweden', 'Syria', 'Tajikistan', 'Tanzania', 'Thailand', 'Togo', 'Trinidad and Tobago',
+  'Tunisia', 'Turkey', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States of America',
+  'Uzbekistan', 'Venezuela', 'Yemen (North Yemen)', 'Zambia', 'Zimbabwe (Rhodesia)',
+];
+
 test('seeded exposure eligibility agrees with the dashboard for UCDP country labels', () => {
   const countries = [
     ...Object.entries(PRIORITY_COUNTRIES).flatMap(([code, { name }]) => [code, name]),
-    'Yemen (North Yemen)', 'Russia (Soviet Union)', 'DR Congo (Zaire)', 'Myanmar (Burma)', 'Chile', 'Unknown',
+    ...UCDP_COUNTRY_LABELS,
+    'Chile', 'Unknown',
   ];
   for (const country of countries) {
     const point = { id: 'point', country, location: { latitude: 1, longitude: 2 }, hasPreciseLocation: true };

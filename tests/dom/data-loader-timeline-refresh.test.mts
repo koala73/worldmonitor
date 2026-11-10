@@ -421,6 +421,27 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     );
   });
 
+  it('counts UCDP coverage alone when the unrest feed is unavailable', async () => {
+    const point = {
+      id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+      type_of_violence: 'state-based', hasPreciseLocation: true, eventCount: 2,
+    };
+    const coverage = { totalEvents: 9, withoutPreciseLocation: 4, withoutEstimate: 3, atOtherPlaces: 0 };
+    mocks.fetchUcdpEvents.mockResolvedValueOnce({
+      success: true, data: [point], fromCache: false, exposure: { source: 'projection', events: [point], coverage },
+    });
+    const { loader, ctx } = await makeLoader();
+    const setExposures = vi.fn();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+
+    await loader.loadIntelligenceSignals();
+
+    expect(ctx.intelligenceCache.protests).toBeUndefined();
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith(
+      [expect.objectContaining({ eventId: 'eligible' })], false, coverage,
+    );
+  });
+
   it.each(['unrest', 'ucdp', 'neither'] as const)(
     'distinguishes a cold source failure from a successful empty exposure result: %s',
     async (failedSource) => {

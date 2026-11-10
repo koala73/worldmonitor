@@ -3984,7 +3984,7 @@ export class DataLoaderManager implements AppModule {
       const exposures = [...unrest.exposures, ...ucdp.exposures]
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       const ucdpCoverage = ucdpInput?.source === 'full-feed' ? ucdp.coverage : ucdpInput?.coverage;
-      const coverage = protests && ucdpCoverage ? addExposureCoverage(unrest.coverage, ucdpCoverage) : undefined;
+      const coverage = ucdpCoverage && (protests ? addExposureCoverage(unrest.coverage, ucdpCoverage) : ucdpCoverage);
       if (exposures.length === 0 && (!protests || !ucdpInput)) {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
