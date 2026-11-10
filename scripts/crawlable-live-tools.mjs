@@ -287,6 +287,19 @@ export function portwatchLagDays(officialLatestDate, asOf) {
   return Number.isInteger(days) && days >= 0 ? days : null;
 }
 
+/**
+ * The tool note's clause on PortWatch's publication lag, e.g. "published with
+ * a lag; the latest published day is 8 days before this snapshot". The built
+ * page and the client refresh both use it, so the note cannot disagree with
+ * the age stated in the answer.
+ */
+export function portwatchLagNote(officialLatestDate, asOf) {
+  const lagDays = portwatchLagDays(officialLatestDate, asOf);
+  if (lagDays === null) return 'published with a lag of several days';
+  if (lagDays === 0) return 'published with a lag; the latest published day is the day of this snapshot';
+  return `published with a lag; the latest published day is ${lagDays} ${lagDays === 1 ? 'day' : 'days'} before this snapshot`;
+}
+
 // "5 warnings" / "1 AIS disruption" → 5 / 1. The labels come from
 // chokepointCoverageMetrics; an upstream label that does not lead with a
 // count is left out of the prose rather than guessed at.
@@ -1645,6 +1658,7 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-official-transits]', official.latestTransits ?? '—');
     setText(tool, '[data-chokepoint-official-date]', official.latestDate ?? '');
     setText(tool, '[data-chokepoint-official-average]', official.average ?? '—');
+    setText(tool, '[data-chokepoint-lag-note]', portwatchLagNote(official.latestDate === null ? null : view.officialLatestDate, view.fetchedAt));
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (official.latestTransits === null ? '—' : 'Unavailable'));
     setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');

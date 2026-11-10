@@ -348,6 +348,34 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.dataset.state, 'ready');
   });
 
+  it('refreshes the tool note PortWatch age with each live reading', async (t) => {
+    // Pinned after the Oct 18 PortWatch day, so the age is defined.
+    const readingAt = Date.parse('2026-11-02T12:00:00Z');
+    t.mock.timers.enable({ apis: ['Date'], now: readingAt });
+    const { document } = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    document.body.innerHTML = renderChokepointLiveSection({
+      chokepoint: { id: 'hormuz_strait', displayName: 'Strait of Hormuz' },
+      pulse: null,
+    });
+    const tool = document.querySelector('[data-live-chokepoint]');
+    assert.equal(tool.querySelector('[data-chokepoint-lag-note]')?.textContent, 'published with a lag of several days');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => (String(url).includes('get-chokepoint-status')
+      ? { ok: true, status: 200, json: async () => ({ ...HORMUZ_PORTWATCH_PAYLOAD, fetchedAt: new Date(readingAt - 60_000).toISOString() }) }
+      : anonymousSessionResponse());
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    // Nov 2 reading, Oct 18 PortWatch day: the note and the answer agree.
+    assert.equal(
+      tool.querySelector('[data-chokepoint-lag-note]')?.textContent,
+      'published with a lag; the latest published day is 15 days before this snapshot',
+    );
+    assert.match(document.querySelector('[data-chokepoint-open-status]').textContent, /\(IMF PortWatch, latest day 15 days old\)/);
+  });
+
   it('omits the year-earlier comparison when the PortWatch baseline is missing', () => {
     const payload = structuredClone(HORMUZ_PORTWATCH_PAYLOAD);
     Object.assign(payload.chokepoints[0].transitSummary, { baselineAvgDaily: 0, baselineFrom: '', baselineTo: '' });

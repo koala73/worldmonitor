@@ -10,7 +10,7 @@ import {
   chokepointCoverageMetrics,
   chokepointEvidenceNarrative,
   chokepointOfficialMetrics,
-  portwatchLagDays,
+  portwatchLagNote,
 } from './crawlable-live-tools.mjs';
 
 export const CHOKEPOINT_LIVE_START = '<!--wm-live:chokepoint-->';
@@ -237,10 +237,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
         </div>
         <p data-chokepoint-description hidden></p>`;
 
-  const lagDays = hasPulse ? portwatchLagDays(pulse.officialLatestDate, pulse.asOf) : null;
-  const lagNote = lagDays === null
-    ? 'published with a lag of several days'
-    : `published with a lag; the latest published day is ${lagDays === 0 ? 'the day of this snapshot' : `${lagDays} ${lagDays === 1 ? 'day' : 'days'} before this snapshot`}`;
+  const lagNote = portwatchLagNote(hasPulse ? pulse.officialLatestDate : null, hasPulse ? pulse.asOf : null);
 
   return `${CHOKEPOINT_LIVE_START}
 ${answerParagraph}
@@ -253,7 +250,7 @@ ${openStatusSection}
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">Daily transit counts are official IMF PortWatch figures, ${lagNote}. A missing count does not mean zero traffic.</p>
+        <p class="tool-note">Daily transit counts are official IMF PortWatch figures, <span data-chokepoint-lag-note>${escapeHtml(lagNote)}</span>. A missing count does not mean zero traffic.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({
