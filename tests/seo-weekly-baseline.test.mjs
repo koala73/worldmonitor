@@ -357,7 +357,8 @@ describe('weekly baseline: Umami referrals', () => {
     for (const count of visitorDayCounts) assert.equal(metricNumbers.includes(count), false, `visitor-days ${count}`);
     assert.match(referrals.reason, /Umami visitors are visitor-days and are not reported as sessions/);
     // The families are named against the classification, in visitor-days.
-    assert.match(referrals.reason, /chatgpt 45;/);
+    // 170 is the utm_source count (referrer rows alone give 45): the larger of the two signals.
+    assert.match(referrals.reason, /chatgpt 170;/);
     assert.match(referrals.reason, /google_search_ai unavailable \(Google AI Overviews/);
     assert.match(referrals.reason, /bing\.com counts as search/);
   });
@@ -378,7 +379,7 @@ describe('weekly baseline: Umami referrals', () => {
     const { reason } = baseline.referrals;
     assert.ok(Buffer.byteLength(reason) <= 4096, `reason is ${Buffer.byteLength(reason)} bytes`);
     assert.equal(reason.split('HTTP 524').length - 1 <= 10, true, 'the shared failure is stated once');
-    assert.match(reason, /chatgpt 45 \(partial\)/);
+    assert.match(reason, /chatgpt 170 \(partial\)/);
   });
 
   it('leaves sessions null when a day of totals is missing', async () => {

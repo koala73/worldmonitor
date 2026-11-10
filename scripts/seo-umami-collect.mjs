@@ -26,7 +26,12 @@
  * measured from a referrer: AI Overviews and AI Mode send the same google.com
  * referrer as web search, so that family is always unavailable rather than zero.
  *
- * Channels and referrers are asked for one UTC day at a time and summed. A
+ * AI families also count visits tagged `utm_source=<assistant>`: ChatGPT
+ * appends `?utm_source=chatgpt.com` to the links it cites and often sends no
+ * Referer, so referrer rows alone miss most of its visits. The family figure is
+ * the larger of the two counts (see `combineAiFamily`).
+ *
+ * Channels, referrers and utm sources are asked for one UTC day at a time and summed. A
  * 28-day metrics query takes one to two minutes on the self-hosted instance,
  * and on 2026-11-02 the channel query hit Cloudflare's 100-second origin limit
  * (HTTP 524); a one-day query takes one to six seconds. The sums are visitor-days:
@@ -64,10 +69,15 @@ export const ENDPOINTS = Object.freeze({
   totals: 'stats',
   channels: 'metrics?type=channel',
   referrers: 'metrics?type=referrer',
+  // ChatGPT appends ?utm_source=chatgpt.com to cited links and often sends no
+  // Referer, so the referrer list misses most of its visits.
+  utmSources: 'metrics?type=utmSource',
 });
 const WINDOW_DAYS = 28;
 /** Far above the ~90 referrer domains of a day, so a full list never reaches it. */
 const REFERRER_ROW_LIMIT = 1_000;
+/** Endpoints asked for with `limit=REFERRER_ROW_LIMIT`. */
+const ROW_LIMITED_ENDPOINTS = Object.freeze([ENDPOINTS.referrers, ENDPOINTS.utmSources]);
 const MAX_TOP_REFERRERS = 25;
 /** Days of the window and the endpoints asked for per day. */
 const DAILY_ENDPOINTS = Object.freeze(Object.values(ENDPOINTS));
@@ -107,6 +117,18 @@ const FAMILY_RULES = Object.freeze([
     'org.telegram.messenger', 'discord.com', 'tiktok.com',
   ]],
 ]);
+/**
+ * `utm_source` values that name an AI assistant, matched case-insensitively on
+ * the whole value. A source that is not listed (`welcome`, `embed`, a directory
+ * site) is `other` and never reaches an AI family.
+ */
+const UTM_FAMILY_RULES = Object.freeze([
+  ['chatgpt', ['chatgpt.com', 'openai']],
+  ['perplexity', ['perplexity', 'perplexity.ai']],
+  ['claude', ['claude', 'claude.ai', 'anthropic']],
+  ['copilot_bing', ['copilot.com', 'copilot', 'bing']],
+  ['other_ai_search', ['gemini', 'grok', 'deepseek', 'meta.ai', 'poe']],
+]);
 const OTHER_FAMILY = 'other';
 const AI_FAMILIES = Object.freeze(['chatgpt', 'perplexity', 'claude', 'copilot_bing', 'other_ai_search']);
 export const FAMILY_ORDER = Object.freeze([...AI_FAMILIES, 'search', 'social', 'internal', OTHER_FAMILY]);
@@ -145,6 +167,14 @@ export function referrerFamily(domain) {
         : pattern.test(host);
       if (matches) return family;
     }
+  }
+  return OTHER_FAMILY;
+}
+
+export function utmSourceFamily(value) {
+  const source = String(value).trim().toLowerCase();
+  for (const [family, values] of UTM_FAMILY_RULES) {
+    if (values.includes(source)) return family;
   }
   return OTHER_FAMILY;
 }
@@ -247,7 +277,7 @@ export function createLiveTransport({
       });
       const token = await login;
       const separator = endpoint.includes('?') ? '&' : '?';
-      const limit = endpoint === ENDPOINTS.referrers ? `&limit=${REFERRER_ROW_LIMIT}` : '';
+      const limit = ROW_LIMITED_ENDPOINTS.includes(endpoint) ? `&limit=${REFERRER_ROW_LIMIT}` : '';
       const url = `${UMAMI_ORIGIN}/api/websites/${UMAMI_WEBSITE_ID}/${endpoint}${separator}startAt=${range.startAt}&endAt=${range.endAt}${limit}`;
       return request(url, {
         headers: { accept: 'application/json', authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
@@ -319,7 +349,7 @@ async function fetchDaily(transport, endpoint, window) {
       lastReason = dayReason;
       continue;
     }
-    if (endpoint === ENDPOINTS.referrers && rows.length >= REFERRER_ROW_LIMIT) capped = true;
+    if (ROW_LIMITED_ENDPOINTS.includes(endpoint) && rows.length >= REFERRER_ROW_LIMIT) capped = true;
     for (const [key, visitors] of rows) totals.set(key, (totals.get(key) ?? 0) + visitors);
   }
   if (missing.length === days.length) return { payload: null, reason: lastReason, daysReported: 0 };
@@ -374,7 +404,74 @@ function buildChannels(fetched) {
   return { endpoint: ENDPOINTS.channels, ...dailyStatus(fetched), rows };
 }
 
-function buildReferrers(fetched, channels) {
+const MAX_TOP_UTM_SOURCES = 10;
+const COMBINED_BASIS = 'max-of-referrer-and-utm-lower-bound';
+const REFERRER_ONLY_BASIS = 'referrer-only';
+
+/**
+ * The `utm_source` rows, classified. Unavailable when no day answered; a
+ * failed day or a row-limit cut makes it partial through `dailyStatus`.
+ */
+function buildUtmSources(fetched) {
+  if (fetched.payload === null) return unavailable(ENDPOINTS.utmSources, fetched.reason);
+  const rows = pickRows(fetched.payload, ENDPOINTS.utmSources)
+    .filter((row) => row.key !== '')
+    .map(({ key, visitorDays }) => ({ source: key.toLowerCase(), family: utmSourceFamily(key), visitorDays }))
+    .sort((left, right) => right.visitorDays - left.visitorDays || left.source.localeCompare(right.source));
+  const byFamily = Object.fromEntries(AI_FAMILIES.map((family) => {
+    const group = rows.filter((row) => row.family === family);
+    return [family, {
+      visitorDays: group.reduce((total, row) => total + row.visitorDays, 0),
+      sources: group.slice(0, 5).map(({ source, visitorDays }) => ({ source, visitorDays })),
+    }];
+  }));
+  return {
+    endpoint: ENDPOINTS.utmSources,
+    ...dailyStatus(fetched, fetched.capped
+      ? `Umami returned the ${REFERRER_ROW_LIMIT}-row limit on at least one day, so that day's long tail is cut and utm_source sums are lower bounds`
+      : null),
+    byFamily,
+    top: rows.slice(0, MAX_TOP_UTM_SOURCES),
+  };
+}
+
+/**
+ * One AI family from both signals. ChatGPT tags the links it cites with
+ * `utm_source=chatgpt.com` and often sends no Referer, so the referrer rows
+ * alone miss most of its visits; a visit can also carry both signals.
+ *
+ * The two numbers come from separate aggregate endpoints that cannot be joined
+ * per visit, so there is no way to tell which visits appear in both. A sum
+ * would count those twice. The maximum never double-counts: every visit in the
+ * larger signal is a real visit, so `max` is a lower bound on the family's true
+ * visitor-days. It is not an estimate; the overlap is unknown.
+ */
+function combineAiFamily({ family, referrerVisitorDays, referrerStatus, utm }) {
+  if (utm.availability === 'unavailable') {
+    return {
+      availability: 'partial',
+      reason: [
+        referrerStatus.reason,
+        `utm_source counts are unavailable (${utm.reason}), so this is the referrer count alone and misses visits that carry only utm_source`,
+      ].filter(Boolean).join('. '),
+      visitorDays: referrerVisitorDays,
+      referrerVisitorDays,
+      utmVisitorDays: null,
+      basis: REFERRER_ONLY_BASIS,
+    };
+  }
+  const utmVisitorDays = utm.byFamily[family].visitorDays;
+  return {
+    availability: referrerStatus.availability === 'available' && utm.availability === 'available' ? 'available' : 'partial',
+    reason: [referrerStatus.reason, utm.reason].filter(Boolean).join('. ') || null,
+    visitorDays: Math.max(referrerVisitorDays, utmVisitorDays),
+    referrerVisitorDays,
+    utmVisitorDays,
+    basis: COMBINED_BASIS,
+  };
+}
+
+function buildReferrers(fetched, channels, utmFetched) {
   const { payload, reason } = fetched;
   // Derived families carry their source section's status: a sum missing days is partial, not available.
   const unknownDirect = channels.availability === 'unavailable'
@@ -406,17 +503,26 @@ function buildReferrers(fetched, channels) {
   const status = dailyStatus(fetched, fetched.capped
     ? `Umami returned the ${REFERRER_ROW_LIMIT}-row limit on at least one day, so that day's long tail is cut and family sums are lower bounds`
     : null);
+  // A malformed utm_source payload degrades to "unavailable" like a failed request.
+  let utm;
+  try {
+    utm = buildUtmSources(utmFetched);
+  } catch (error) {
+    utm = unavailable(ENDPOINTS.utmSources, failureReason(error));
+  }
   return {
     endpoint: ENDPOINTS.referrers,
     ...status,
     domains: rows.length,
     byFamily,
+    utmSources: utm,
     referrerFamilies: {
-      ...Object.fromEntries(AI_FAMILIES.map((family) => [family, {
-        availability: status.availability,
-        reason: status.reason,
-        visitorDays: byFamily[family].visitorDays,
-      }])),
+      ...Object.fromEntries(AI_FAMILIES.map((family) => [family, combineAiFamily({
+        family,
+        referrerVisitorDays: byFamily[family].visitorDays,
+        referrerStatus: status,
+        utm,
+      })])),
       google_search_ai: googleSearchAi,
       unknown_direct: unknownDirect,
     },
@@ -431,9 +537,11 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
     channels: await fetchDaily(transport, ENDPOINTS.channels, window),
     referrers: await fetchDaily(transport, ENDPOINTS.referrers, window),
   };
+  // utm_source only refines the AI families, so it alone cannot make a snapshot.
+  const utmFetched = await fetchDaily(transport, ENDPOINTS.utmSources, window);
   const failures = Object.values(raw).filter((entry) => entry.payload === null);
   invariant(
-    failures.length < Object.keys(ENDPOINTS).length,
+    failures.length < Object.keys(raw).length,
     `every Umami endpoint failed, so there is no snapshot to write: ${failures.map((entry) => entry.reason).join('; ')}`,
   );
   // A payload that fails its shape check degrades its own section, like a failed request.
@@ -445,7 +553,7 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
     }
   };
   const channels = guarded(ENDPOINTS.channels, () => buildChannels(raw.channels));
-  const referrers = guarded(ENDPOINTS.referrers, () => buildReferrers(raw.referrers, channels));
+  const referrers = guarded(ENDPOINTS.referrers, () => buildReferrers(raw.referrers, channels, utmFetched));
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     snapshotId: `umami-${observedAt.slice(0, 10)}`,
@@ -456,10 +564,11 @@ export async function collectUmamiSnapshot({ transport, observedAt }) {
     channels,
     referrers: referrers.referrerFamilies
       ? referrers
-      : buildReferrers({ payload: null, reason: referrers.reason }, channels),
+      : buildReferrers({ payload: null, reason: referrers.reason }, channels, utmFetched),
     guardrails: [
       'Every count is a sum of 28 daily values. Visitors are visitor-days: a returning visitor counts once per day, and channel and referrer rows overlap.',
       'No previous window: Umami keeps 30 days of raw events, so week-over-week change comes from comparing weekly snapshots.',
+      'AI family visitor-days are the larger of the referrer count and the utm_source count, never their sum: the two aggregates cannot be joined per visit and one visit can carry both, so the figure is a lower bound.',
       'google_search_ai is unavailable, never zero: a referrer cannot separate AI Overviews and AI Mode from web search.',
       'The credentials and session token stay in operator configuration and never reach this file.',
     ],
@@ -630,7 +739,10 @@ function renderReferrers(referrers, lines) {
   lines.push('| Family | Visitor-days | Note |');
   lines.push('|---|---:|---|');
   for (const [family, row] of Object.entries(referrers.referrerFamilies)) {
-    const note = [row.source, row.availability === 'available' ? null : `${row.availability}: ${row.reason}`].filter(Boolean).join('; ');
+    const signals = row.basis === undefined
+      ? null
+      : `referrer ${row.referrerVisitorDays}, utm_source ${row.utmVisitorDays ?? 'n/a'}, basis ${row.basis}`;
+    const note = [row.source, signals, row.availability === 'available' ? null : `${row.availability}: ${row.reason}`].filter(Boolean).join('; ');
     lines.push(`| ${family} | ${row.visitorDays ?? 'n/a'} | ${markdownCell(note)} |`);
   }
   lines.push('');
