@@ -2811,7 +2811,7 @@
         "countries": "Zemlje pod sankcijama",
         "entries": "Nedavne designacije",
         "programs": "Programi",
-        "countryAttribution": "Države i registri zastave"
+        "flagRegistries": "Registri zastava plovila"
       },
       "empty": {
         "countries": "Nema dostupne atribucije zemlje.",

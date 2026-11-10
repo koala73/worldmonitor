@@ -16,7 +16,8 @@ message ListSanctionsPressureRequest {
 // ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
 message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
-  // Top 12 countries. A designation can be associated with more than one country.
+  // Top 12 countries by address or nationality. A designation can be associated with
+  // more than one country. Vessel flags are counted in flag_registries instead.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;
   int64 fetched_at = 4;
@@ -31,9 +32,19 @@ message ListSanctionsPressureResponse {
   int32 sema_count = 12;
   // Present when the SEMA source failed while other sanctions data remained available.
   optional string sema_error = 13;
-  // Distinct designations without a country association, across the full snapshot.
-  // Older snapshots may omit this summary.
+  // Distinct designations with neither a country association nor a vessel flag,
+  // across the full snapshot. Older snapshots may omit this summary.
   UnattributedSanctionsPressure unattributed = 14;
+  // Top 12 vessel flag registries. A flag is often one of convenience, so these
+  // counts are not sanctions pressure on the flag state. Older snapshots omit them.
+  repeated FlagRegistrySanctionsPressure flag_registries = 15;
+}
+
+message FlagRegistrySanctionsPressure {
+  string country_code = 1;
+  string country_name = 2;
+  int32 vessel_count = 3;
+  int32 new_vessel_count = 4;
 }
 
 message UnattributedSanctionsPressure {

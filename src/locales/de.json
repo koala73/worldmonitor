@@ -2725,7 +2725,7 @@
         "countries": "Sanktionierte Länder",
         "entries": "Aktuelle Listungen",
         "programs": "Programme",
-        "countryAttribution": "Länder und Flaggenregister"
+        "flagRegistries": "Flaggenregister von Schiffen"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",

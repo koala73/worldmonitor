@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import type { CountrySanctionsPressure, ProgramSanctionsPressure, SanctionsEntry, SanctionsPressureResult } from '@/services/sanctions-pressure';
+import type { CountrySanctionsPressure, FlagRegistrySanctionsPressure, ProgramSanctionsPressure, SanctionsEntry, SanctionsPressureResult } from '@/services/sanctions-pressure';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 export class SanctionsPressurePanel extends Panel {
@@ -49,6 +49,13 @@ export class SanctionsPressurePanel extends Panel {
       ? data.countries.slice(0, 8).map((country) => this.renderCountryRow(country)).join('')
       : `<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.empty.countries'))}</div>`;
 
+    const flagRegistriesHtml = data.flagRegistries.length > 0
+      ? `<div class="sanctions-section">
+          <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.flagRegistries'))}</div>
+          <div class="sanctions-list">${data.flagRegistries.slice(0, 6).map((registry) => this.renderFlagRegistryRow(registry)).join('')}</div>
+        </div>`
+      : '';
+
     const unattributed = data.unattributed;
     const unattributedHtml = unattributed && unattributed.entryCount > 0
       ? `<div class="sanctions-row">
@@ -80,9 +87,10 @@ export class SanctionsPressurePanel extends Panel {
         ${unattributedHtml}
         <div class="sanctions-sections">
           <div class="sanctions-section">
-            <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.countryAttribution'))}</div>
+            <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.countries'))}</div>
             <div class="sanctions-list">${countriesHtml}</div>
           </div>
+          ${flagRegistriesHtml}
           <div class="sanctions-section">
             <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.entries'))}</div>
             <div class="sanctions-list">${entriesHtml}</div>
@@ -118,6 +126,21 @@ export class SanctionsPressurePanel extends Panel {
           <div class="sanctions-row-meta">${escapeHtml(country.countryCode)} · ${escapeHtml(t('components.sanctionsPressure.designations', { count: country.entryCount }))}</div>
         </div>
         <div class="sanctions-row-flags">${newFlag}${this.renderAssetCounts(country)}</div>
+      </div>
+    `;
+  }
+
+  private renderFlagRegistryRow(registry: FlagRegistrySanctionsPressure): string {
+    const newFlag = registry.newVesselCount > 0
+      ? `<span class="sanctions-pill sanctions-pill-new">${escapeHtml(t('components.sanctionsPressure.pills.newCount', { count: registry.newVesselCount }))}</span>`
+      : '';
+    return `
+      <div class="sanctions-row">
+        <div class="sanctions-row-main">
+          <div class="sanctions-row-title">${escapeHtml(registry.countryName)}</div>
+          <div class="sanctions-row-meta">${escapeHtml(registry.countryCode)}</div>
+        </div>
+        <div class="sanctions-row-flags">${newFlag}<span class="sanctions-pill">🚢 ${registry.vesselCount}</span></div>
       </div>
     `;
   }

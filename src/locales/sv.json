@@ -2341,7 +2341,7 @@
         "countries": "Sanktionerade länder",
         "entries": "Senaste beteckningar",
         "programs": "Program",
-        "countryAttribution": "Länder och flaggregister"
+        "flagRegistries": "Flaggregister för fartyg"
       },
       "empty": {
         "countries": "Ingen landsattribution tillgänglig.",

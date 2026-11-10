@@ -2576,6 +2576,9 @@ export const CACHE_TOOLS: ToolDef[] = [
           unattributed: { type: 'object', description: 'Counts across the full pressure snapshot before country or entity filters.', properties: {
             entryCount: { type: 'integer' }, vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
           } },
+          flagRegistries: { type: 'array', description: 'Top vessel flag registries. A flag is often one of convenience and is not counted in countries.', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
+          } } },
         },
       },
       changes: {

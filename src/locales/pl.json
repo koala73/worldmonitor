@@ -2745,7 +2745,7 @@
         "countries": "Kraje objęte sankcjami",
         "entries": "Niedawne desygnacje",
         "programs": "Programy",
-        "countryAttribution": "Kraje i rejestry bander"
+        "flagRegistries": "Rejestry flag statków"
       },
       "empty": {
         "countries": "Brak przypisania kraju.",

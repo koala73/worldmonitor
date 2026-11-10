@@ -2735,7 +2735,7 @@
         "countries": "Țări sancționate",
         "entries": "Desemnări recente",
         "programs": "Programe",
-        "countryAttribution": "Țări și registre de pavilion"
+        "flagRegistries": "Registre de pavilion ale navelor"
       },
       "empty": {
         "countries": "Nicio atribuire de țară disponibilă.",

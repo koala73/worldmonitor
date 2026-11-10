@@ -2794,7 +2794,7 @@
         "countries": "Szankcionált országok",
         "entries": "Legutóbbi bejelentések",
         "programs": "Programok",
-        "countryAttribution": "Országok és lobogó szerinti nyilvántartások"
+        "flagRegistries": "Hajólobogó-nyilvántartások"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",

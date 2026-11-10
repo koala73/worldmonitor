@@ -2735,7 +2735,7 @@
         "countries": "Pays sanctionnés",
         "entries": "Désignations récentes",
         "programs": "Programmes",
-        "countryAttribution": "Pays et registres de pavillon"
+        "flagRegistries": "Registres des pavillons des navires"
       },
       "empty": {
         "countries": "Aucune attribution de pays disponible.",
