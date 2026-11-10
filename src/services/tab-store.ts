@@ -101,10 +101,11 @@ type TabPanels = Pick<PanelTab, 'panelSettings' | 'panelOrder'>;
 const NEW_TAB_PANELS_STORAGE_KEY = `worldmonitor-new-tab-panels-v1:${SITE_VARIANT}`;
 
 /**
- * One panel as the user left it on the tab they saved. Deliberately not a
- * PanelConfig: a choice has no room for `proGated`, so the saved list can never
- * hold a free-tier clamp. `on` is the user's choice, which for a panel the gate
- * turned off is `true`.
+ * One panel as the saved tab showed it. Deliberately not a PanelConfig: no
+ * `proGated` marker survives, so the clamp at creation re-derives the gate from
+ * the current tier. A panel the free-tier gate had hidden is saved hidden: on a
+ * free account the gate hides dozens of default panels the user never chose,
+ * and new tabs must not surface panels the saved tab never showed.
  */
 export interface NewTabPanelChoice {
   key: string;
@@ -149,7 +150,7 @@ function captureNewTabPanels(from: TabPanels): NewTabPanels {
   for (const key of keys) {
     const config = from.panelSettings[key];
     if (!config) continue;
-    out.push({ key, on: config.enabled || config.proGated === true });
+    out.push({ key, on: config.enabled });
   }
   return out;
 }

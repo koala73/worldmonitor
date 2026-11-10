@@ -100,7 +100,7 @@ describe('saveNewTabPanels then buildNewTabPanels', () => {
     assert.equal(built.panelOrder.includes('map'), false);
   });
 
-  it('records a panel the free-tier gate hid as shown, and the clamp still applies at creation', () => {
+  it('saves what the tab shows, so a panel the free-tier gate hid stays hidden in new tabs', () => {
     const live = liveSettings({ 'cw-pro': { ...widget('Pro widget', false), proGated: true } });
     const saved = clone(defaultTab(live));
     for (const key of Object.keys(saved.panelSettings)) saved.panelSettings[key]!.enabled = true;
@@ -109,10 +109,20 @@ describe('saveNewTabPanels then buildNewTabPanels', () => {
     saveNewTabPanels(saved);
 
     const built = buildNewTabPanels(live);
-    assert.equal(built.panelSettings.insights!.enabled, true);
+    assert.equal(built.panelSettings.insights!.enabled, false);
     assert.equal('proGated' in built.panelSettings.insights!, false);
-    assert.equal(built.panelSettings['cw-pro']!.enabled, true);
-    assert.equal('proGated' in built.panelSettings['cw-pro']!, false);
+    assert.equal(built.panelSettings['cw-pro']!.enabled, false);
+    assert.equal(built.panelSettings['live-news']!.enabled, true);
+  });
+
+  it('leaves the free-tier clamp to creation when the saved panels exceed the cap', () => {
+    const live = liveSettings({ 'cw-pro': widget('Pro widget', true) });
+    const saved = clone(defaultTab(live));
+    for (const key of Object.keys(saved.panelSettings)) saved.panelSettings[key]!.enabled = true;
+    saved.panelSettings['cw-pro'] = widget('Pro widget', true);
+    saveNewTabPanels(saved);
+
+    const built = buildNewTabPanels(live);
     assert.ok(countFreePanelCapUsage(built.panelSettings) > FREE_MAX_PANELS);
 
     const free = enforceFreePanelLimit(built.panelSettings, false);
@@ -120,8 +130,8 @@ describe('saveNewTabPanels then buildNewTabPanels', () => {
     assert.equal(free['cw-pro']!.enabled, false);
 
     const pro = enforceFreePanelLimit(built.panelSettings, true);
-    assert.equal(pro.insights!.enabled, true);
     assert.equal(pro['cw-pro']!.enabled, true);
+    assert.equal(countFreePanelCapUsage(pro), countFreePanelCapUsage(built.panelSettings));
   });
 
   it('never writes a clamp back into the saved list', () => {
