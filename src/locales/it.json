@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — doppio clic per rinominare",
     "deleteTab": "Elimina scheda",
     "deleteTabAria": "Elimina scheda {{name}}",
-    "tabNameAria": "Nome scheda"
+    "tabNameAria": "Nome scheda",
+    "addTabTitleSaved": "Nuova scheda (inizia con i pannelli che hai salvato)",
+    "newTabOptions": "Opzioni nuova scheda",
+    "newTabStartsDefault": "Le nuove schede iniziano con i pannelli predefiniti.",
+    "newTabStartsSaved": "Le nuove schede iniziano con i pannelli che hai salvato.",
+    "newTabOptionsHint": "Le schede che hai già non cambiano.",
+    "useThisTabPanels": "Usa i pannelli di questa scheda",
+    "useDefaultPanels": "Usa i pannelli predefiniti",
+    "newTabPanelsNotSaved": "Impossibile salvare. Questo browser blocca l'archiviazione del sito."
   },
   "theaterPresets": {
     "label": "Preset di copertura",

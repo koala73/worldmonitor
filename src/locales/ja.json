@@ -4473,7 +4473,15 @@
     "renameHint": "{{name}} — ダブルクリックして名前を変更",
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
-    "tabNameAria": "タブ名"
+    "tabNameAria": "タブ名",
+    "addTabTitleSaved": "新しいタブ（保存したパネルから開始）",
+    "newTabOptions": "新しいタブのオプション",
+    "newTabStartsDefault": "新しいタブはデフォルトパネルから開始します。",
+    "newTabStartsSaved": "新しいタブは保存したパネルから開始します。",
+    "newTabOptionsHint": "既に作成したタブは変わりません。",
+    "useThisTabPanels": "このタブのパネルを使用",
+    "useDefaultPanels": "デフォルトパネルを使用",
+    "newTabPanelsNotSaved": "保存できませんでした。このブラウザはサイトストレージをブロックしています。"
   },
   "theaterPresets": {
     "label": "カバレッジプリセット",

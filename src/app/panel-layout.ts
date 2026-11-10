@@ -85,7 +85,10 @@ import {
   loadTabsState,
   saveTabsState,
   generateTabId,
-  buildDefaultTabPanels,
+  buildNewTabPanels,
+  clearNewTabPanels,
+  hasNewTabPanels,
+  saveNewTabPanels,
 } from '@/services/tab-store';
 import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
@@ -1490,9 +1493,25 @@ export class PanelLayoutManager implements AppModule {
       onAdd: () => this.addTab(),
       onRename: (id, name) => this.renameTab(id, name),
       onDelete: (id) => this.deleteTab(id),
+      hasNewTabPanels,
+      onSaveNewTabPanels: () => this.saveActiveTabAsNewTabPanels(),
+      onClearNewTabPanels: () => this.useDefaultNewTabPanels(),
     });
     mount.appendChild(this.panelTabBar.getElement());
     this.updateTabCapLock();
+  }
+
+  private saveActiveTabAsNewTabPanels(): void {
+    // The same capture a tab snapshot uses, so unsaved drags and toggles count.
+    const { persisted } = saveNewTabPanels(this.captureCurrentTabState().snapshot);
+    this.panelTabBar?.refresh();
+    showToast(t(persisted ? 'dashboardTabs.newTabStartsSaved' : 'dashboardTabs.newTabPanelsNotSaved'));
+  }
+
+  private useDefaultNewTabPanels(): void {
+    clearNewTabPanels();
+    this.panelTabBar?.refresh();
+    showToast(t('dashboardTabs.newTabStartsDefault'));
   }
 
   /**
@@ -1942,7 +1961,7 @@ export class PanelLayoutManager implements AppModule {
       throw new Error('Dashboard tabs are not available.');
     }
     this.snapshotActiveTab();
-    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    const defaults = buildNewTabPanels(this.ctx.panelSettings);
     const tab: PanelTab = {
       id: generateTabId(),
       name,

@@ -1,6 +1,8 @@
 import type { PanelConfig } from '@/types';
 import { SITE_VARIANT } from '@/config/variant';
-import { resetMissionPresetState } from '@/services/mission-presets';
+import { ALL_PANELS } from '@/config/panels';
+import { isDynamicPanel, resetMissionPresetState } from '@/services/mission-presets';
+import { safeStorageGet, safeStorageRemove, safeStorageSet } from '@/utils/safe-storage';
 
 /**
  * Dashboard tabs — named, persistent panel workspaces.
@@ -91,14 +93,111 @@ export function saveTabsState(state: TabsState): TabsPersistReceipt {
   }
 }
 
+type TabPanels = Pick<PanelTab, 'panelSettings' | 'panelOrder'>;
+
+const hasOwn = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+
+// Its own key rather than a TabsState field: every tab switch in every open
+// window rewrites the whole tabs blob from that window's memory, so a field
+// there would be reverted by any other window and dropped by an older bundle.
+const NEW_TAB_PANELS_STORAGE_KEY = `worldmonitor-new-tab-panels-v1:${SITE_VARIANT}`;
+
 /**
- * Panel selection for a fresh tab: the variant's default panels.
- * Reuses the mission-preset reset path so dynamic panels (custom widgets,
- * MCP panels, desktop runtime-config) survive with their current config.
+ * One panel as the saved tab showed it. Deliberately not a PanelConfig: no
+ * `proGated` marker survives, so the clamp at creation re-derives the gate from
+ * the current tier. A panel the free-tier gate had hidden is saved hidden: on a
+ * free account the gate hides dozens of default panels the user never chose,
+ * and new tabs must not surface panels the saved tab never showed.
  */
-export function buildDefaultTabPanels(
-  currentPanelSettings: Record<string, PanelConfig>,
-): { panelSettings: Record<string, PanelConfig>; panelOrder: string[] } {
-  const reset = resetMissionPresetState(currentPanelSettings);
-  return { panelSettings: reset.panelSettings, panelOrder: reset.panelOrder };
+export interface NewTabPanelChoice {
+  key: string;
+  on: boolean;
+}
+
+/** What new tabs start with. Array order is grid order. */
+export type NewTabPanels = NewTabPanelChoice[];
+
+/**
+ * Parse a stored or imported value. Keeps `{ key, on }` entries, first
+ * occurrence of a key wins, extra fields are dropped. Null when nothing usable
+ * remains, so an empty list and no list mean the same thing.
+ */
+export function normalizeNewTabPanels(parsed: unknown): NewTabPanels | null {
+  if (!Array.isArray(parsed)) return null;
+  const seen = new Set<string>();
+  const out: NewTabPanels = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') continue;
+    const { key, on } = entry as Partial<NewTabPanelChoice>;
+    if (typeof key !== 'string' || key === '' || typeof on !== 'boolean' || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, on });
+  }
+  return out.length > 0 ? out : null;
+}
+
+function loadNewTabPanels(): NewTabPanels | null {
+  const raw = safeStorageGet(NEW_TAB_PANELS_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return normalizeNewTabPanels(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+function captureNewTabPanels(from: TabPanels): NewTabPanels {
+  const keys = new Set([...from.panelOrder, ...Object.keys(from.panelSettings)]);
+  const out: NewTabPanels = [];
+  for (const key of keys) {
+    const config = from.panelSettings[key];
+    if (!config) continue;
+    out.push({ key, on: config.enabled });
+  }
+  return out;
+}
+
+export function hasNewTabPanels(): boolean {
+  return loadNewTabPanels() !== null;
+}
+
+/**
+ * Remember a tab's panels as what new tabs start with, replacing any earlier
+ * save. `persisted` reads the value back, so it is false for a null store, a
+ * throwing getter and a full quota alike.
+ */
+export function saveNewTabPanels(from: TabPanels): TabsPersistReceipt {
+  const json = JSON.stringify(captureNewTabPanels(from));
+  safeStorageSet(NEW_TAB_PANELS_STORAGE_KEY, json);
+  return { persisted: safeStorageGet(NEW_TAB_PANELS_STORAGE_KEY) === json };
+}
+
+export function clearNewTabPanels(): void {
+  safeStorageRemove(NEW_TAB_PANELS_STORAGE_KEY);
+}
+
+/**
+ * Panels for a fresh tab: the variant's default panels (dynamic panels keep
+ * their live config) with the saved choices laid over them.
+ *
+ * Returns the raw selection. The caller applies the free-tier clamp once the
+ * tier is known; nothing here reads the entitlement or rewrites the saved list.
+ * A saved key the live settings no longer hold (a deleted widget) is skipped,
+ * and so is one that is neither a known panel nor a dynamic one, so a stale
+ * key cannot take a free-cap slot.
+ */
+export function buildNewTabPanels(currentPanelSettings: Record<string, PanelConfig>): TabPanels {
+  const base = resetMissionPresetState(currentPanelSettings);
+  const order: string[] = [];
+  for (const { key, on } of loadNewTabPanels() ?? []) {
+    // Own-property checks: a stored or imported key such as `__proto__` or
+    // `constructor` reads an inherited member through a plain lookup.
+    if (!hasOwn(base.panelSettings, key) || !(hasOwn(ALL_PANELS, key) || isDynamicPanel(key))) continue;
+    const config = base.panelSettings[key]!;
+    const next: PanelConfig = { ...config, enabled: on };
+    delete next.proGated;
+    base.panelSettings[key] = next;
+    if (key !== 'map') order.push(key);
+  }
+  return { panelSettings: base.panelSettings, panelOrder: order.length > 0 ? order : base.panelOrder };
 }

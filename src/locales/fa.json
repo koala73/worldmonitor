@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — دوبار کلیک برای تغییر نام",
     "deleteTab": "حذف برگه",
     "deleteTabAria": "حذف برگه {{name}}",
-    "tabNameAria": "نام برگه"
+    "tabNameAria": "نام برگه",
+    "addTabTitleSaved": "برگه جدید (با پنل‌هایی که ذخیره کردید شروع می‌شود)",
+    "newTabOptions": "گزینه‌های برگه جدید",
+    "newTabStartsDefault": "برگه‌های جدید با پنل‌های پیش‌فرض شروع می‌شوند.",
+    "newTabStartsSaved": "برگه‌های جدید با پنل‌هایی که ذخیره کردید شروع می‌شوند.",
+    "newTabOptionsHint": "برگه‌هایی که قبلاً دارید تغییر نمی‌کنند.",
+    "useThisTabPanels": "استفاده از پنل‌های این برگه",
+    "useDefaultPanels": "استفاده از پنل‌های پیش‌فرض",
+    "newTabPanelsNotSaved": "نتوانستیم ذخیره کنیم. این مرورگر ذخیره‌سازی سایت را مسدود کرده است."
   },
   "theaterPresets": {
     "label": "پیش‌تنظیم‌های پوشش",

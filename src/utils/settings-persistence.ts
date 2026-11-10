@@ -11,7 +11,6 @@ export interface ImportResult {
   error?: string;
 }
 
-import type { TabsState } from '@/services/tab-store';
 import { CLOUD_SYNC_KEYS } from './sync-keys';
 import { invalidatePanelStorageCacheForKeys } from './panel-storage';
 import { safeStorageSnapshot } from './safe-storage';
@@ -38,19 +37,23 @@ const SETTINGS_KEYS: readonly string[] = [
   'positive-threshold',
 ];
 
-// Dashboard tabs are stored per variant (`worldmonitor-tabs-v1:<variant>`,
-// src/services/tab-store.ts). Without this pattern an export/import cycle
-// restored the active layout and silently dropped every other workspace (#9372).
-const DASHBOARD_TABS_KEY_RE = /^worldmonitor-tabs-v1:(?:full|tech|finance|commodity|energy|happy)$/;
+// src/services/tab-store.ts keeps two per-variant keys: the dashboard tabs
+// (`worldmonitor-tabs-v1:<variant>`) and the panels new tabs start with
+// (`worldmonitor-new-tab-panels-v1:<variant>`). Without this pattern an
+// export/import cycle restored the active layout and silently dropped every
+// other workspace (#9372).
+type TabStoreKeyFamily = 'worldmonitor-tabs-v1' | 'worldmonitor-new-tab-panels-v1';
+const TAB_STORE_KEY_RE =
+  /^(worldmonitor-tabs-v1|worldmonitor-new-tab-panels-v1):(?:full|tech|finance|commodity|energy|happy)$/;
 
-function isDashboardTabsKey(key: string): boolean {
-  return DASHBOARD_TABS_KEY_RE.test(key);
+function tabStoreKeyFamily(key: string): TabStoreKeyFamily | null {
+  return (TAB_STORE_KEY_RE.exec(key)?.[1] as TabStoreKeyFamily | undefined) ?? null;
 }
 
 function isSettingsKey(key: string): boolean {
   return SETTINGS_KEYS.includes(key)
     || /^(?:worldmonitor-panels|worldmonitor-layers|worldmonitor-disabled-feeds)-(?:full|tech|finance|commodity|energy|happy)$/.test(key)
-    || isDashboardTabsKey(key);
+    || tabStoreKeyFamily(key) !== null;
 }
 
 // Live state that is only written back to storage lazily must be flushed
@@ -131,7 +134,7 @@ function validateSetting(key: string, raw: string, policies: {
   }
 }
 
-function normalizeTabsStateJson(raw: string, normalize: (parsed: unknown) => TabsState | null): string | null {
+function normalizeStoredJson(raw: string, normalize: (parsed: unknown) => unknown): string | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -155,6 +158,11 @@ async function parseImportedEntries(parsed: unknown): Promise<Array<[string, str
     import('@/services/tab-store'),
   ]);
   const policies = { ...frameworks, ...maps, ...streams };
+  // A Record so a new tab-store key family cannot be admitted without a parser.
+  const tabStoreNormalizers: Record<TabStoreKeyFamily, (parsed: unknown) => unknown> = {
+    'worldmonitor-tabs-v1': tabStore.normalizeTabsState,
+    'worldmonitor-new-tab-panels-v1': tabStore.normalizeNewTabPanels,
+  };
   const entries: Array<[string, string]> = [];
   let decodedBytes = 0;
   const encoder = new TextEncoder();
@@ -170,11 +178,12 @@ async function parseImportedEntries(parsed: unknown): Promise<Array<[string, str
     const size = encoder.encode(stored).length;
     decodedBytes += size;
     if (size > 256 * 1024 || decodedBytes > 1024 * 1024) throw new Error('Settings payload is too large.');
-    // Tab state is admitted under the same shape rules the app reads storage
-    // with. Unusable tab state is skipped, not fatal: the rest of the backup
-    // (panels, layers, monitors, ...) is still worth restoring on its own.
-    if (isDashboardTabsKey(key)) {
-      const normalized = normalizeTabsStateJson(stored, tabStore.normalizeTabsState);
+    // Tab-store values are admitted under the same shape rules the app reads
+    // storage with. Unusable ones are skipped, not fatal: the rest of the
+    // backup (panels, layers, monitors, ...) is still worth restoring alone.
+    const family = tabStoreKeyFamily(key);
+    if (family !== null) {
+      const normalized = normalizeStoredJson(stored, tabStoreNormalizers[family]);
       if (normalized !== null) entries.push([key, normalized]);
       continue;
     }

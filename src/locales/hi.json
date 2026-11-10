@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — नाम बदलने के लिए डबल-क्लिक करें",
     "deleteTab": "टैब हटाएं",
     "deleteTabAria": "{{name}} टैब हटाएं",
-    "tabNameAria": "टैब नाम"
+    "tabNameAria": "टैब नाम",
+    "addTabTitleSaved": "नया टैब (आपके सहेजे गए पैनल के साथ शुरू होता है)",
+    "newTabOptions": "नए टैब विकल्प",
+    "newTabStartsDefault": "नए टैब डिफ़ॉल्ट पैनल के साथ शुरू होते हैं।",
+    "newTabStartsSaved": "नए टैब आपके सहेजे गए पैनल के साथ शुरू होते हैं।",
+    "newTabOptionsHint": "आपके पास जो टैब पहले से हैं वे नहीं बदलते हैं।",
+    "useThisTabPanels": "इस टैब के पैनल का उपयोग करें",
+    "useDefaultPanels": "डिफ़ॉल्ट पैनल का उपयोग करें",
+    "newTabPanelsNotSaved": "सहेज नहीं सके। यह ब्राउज़र साइट स्टोरेज को ब्लॉक कर रहा है।"
   },
   "theaterPresets": {
     "label": "कवरेज प्रीसेट",

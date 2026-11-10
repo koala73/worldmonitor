@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — double-cliquer pour renommer",
     "deleteTab": "Supprimer l'onglet",
     "deleteTabAria": "Supprimer l'onglet {{name}}",
-    "tabNameAria": "Nom de l'onglet"
+    "tabNameAria": "Nom de l'onglet",
+    "addTabTitleSaved": "Nouvel onglet (commence avec les panneaux que vous avez enregistrés)",
+    "newTabOptions": "Options des nouveaux onglets",
+    "newTabStartsDefault": "Les nouveaux onglets commencent avec les panneaux par défaut.",
+    "newTabStartsSaved": "Les nouveaux onglets commencent avec les panneaux que vous avez enregistrés.",
+    "newTabOptionsHint": "Les onglets que vous avez déjà ne changent pas.",
+    "useThisTabPanels": "Utiliser les panneaux de cet onglet",
+    "useDefaultPanels": "Utiliser les panneaux par défaut",
+    "newTabPanelsNotSaved": "Impossible d'enregistrer. Ce navigateur bloque le stockage des données du site."
   },
   "theaterPresets": {
     "label": "Packs de couverture",

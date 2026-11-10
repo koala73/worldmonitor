@@ -8,8 +8,9 @@ const APP_SOURCE = 'src/App.ts';
 const EN_LOCALE = 'src/locales/en.json';
 const EN_SHELL_LOCALE = 'src/locales/en.shell.json';
 const COMPONENTS_DIR = 'src/components';
-// First-paint energy labels add 379 bytes to the formatted shell file.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379;
+// First-paint energy labels add 379 bytes to the formatted shell file, and
+// the dashboard tab bar's new-tab options add 413.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

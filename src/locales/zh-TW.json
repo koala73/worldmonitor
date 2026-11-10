@@ -4473,7 +4473,15 @@
     "renameHint": "{{name}} — 雙擊重新命名",
     "deleteTab": "刪除標籤頁",
     "deleteTabAria": "刪除標籤頁 {{name}}",
-    "tabNameAria": "標籤頁名稱"
+    "tabNameAria": "標籤頁名稱",
+    "addTabTitleSaved": "新標籤頁（使用已儲存的面板）",
+    "newTabOptions": "新標籤頁選項",
+    "newTabStartsDefault": "新標籤頁將從預設面板開始。",
+    "newTabStartsSaved": "新標籤頁將從已儲存的面板開始。",
+    "newTabOptionsHint": "已有的標籤頁不會改變。",
+    "useThisTabPanels": "使用此標籤頁的面板",
+    "useDefaultPanels": "使用預設面板",
+    "newTabPanelsNotSaved": "無法儲存。瀏覽器阻止了網站儲存。"
   },
   "theaterPresets": {
     "label": "覆蓋預設",

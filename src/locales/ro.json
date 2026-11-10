@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — dublu clic pentru redenumire",
     "deleteTab": "Șterge fila",
     "deleteTabAria": "Șterge fila {{name}}",
-    "tabNameAria": "Numele filei"
+    "tabNameAria": "Numele filei",
+    "addTabTitleSaved": "Filă nouă (începe cu panourile pe care le-ai salvat)",
+    "newTabOptions": "Opțiuni pentru fila nouă",
+    "newTabStartsDefault": "Filele noi încep cu panourile implicite.",
+    "newTabStartsSaved": "Filele noi încep cu panourile pe care le-ai salvat.",
+    "newTabOptionsHint": "Filele pe care le ai deja nu se schimbă.",
+    "useThisTabPanels": "Folosiți panourile acestei file",
+    "useDefaultPanels": "Folosiți panourile implicite",
+    "newTabPanelsNotSaved": "Nu s-a putut salva. Acest browser blochează stocarea pentru site."
   },
   "theaterPresets": {
     "label": "Preseturi de acoperire",

@@ -4526,7 +4526,15 @@
     "renameHint": "{{name}} — dvaput kliknite za preimenovanje",
     "deleteTab": "Obriši karticu",
     "deleteTabAria": "Obriši karticu {{name}}",
-    "tabNameAria": "Naziv kartice"
+    "tabNameAria": "Naziv kartice",
+    "addTabTitleSaved": "Nova kartica (počinje s panelima koje ste spremili)",
+    "newTabOptions": "Opcije nove kartice",
+    "newTabStartsDefault": "Nove kartice počinju s zadanim panelima.",
+    "newTabStartsSaved": "Nove kartice počinju s panelima koje ste spremili.",
+    "newTabOptionsHint": "Kartice koje već imate se ne mijenjaju.",
+    "useThisTabPanels": "Koristi panele ove kartice",
+    "useDefaultPanels": "Koristi zadane panele",
+    "newTabPanelsNotSaved": "Nije moguće spremiti. Ovaj preglednik blokira spremanje podataka na web-mjestu."
   },
   "theaterPresets": {
     "label": "Paketi pokrivenosti",

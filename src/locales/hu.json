@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — dupla kattintás az átnevezéshez",
     "deleteTab": "Fül törlése",
     "deleteTabAria": "{{name}} fül törlése",
-    "tabNameAria": "Fül neve"
+    "tabNameAria": "Fül neve",
+    "addTabTitleSaved": "Új fül (az elmentett panelek alapján indít)",
+    "newTabOptions": "Új fül beállításai",
+    "newTabStartsDefault": "Az új fülek az alapértelmezett panelek alapján indulnak.",
+    "newTabStartsSaved": "Az új fülek az elmentett panelek alapján indulnak.",
+    "newTabOptionsHint": "A meglévő fülek nem változnak.",
+    "useThisTabPanels": "E fül paneljeit használja",
+    "useDefaultPanels": "Az alapértelmezett panelek használata",
+    "newTabPanelsNotSaved": "Nem sikerült menteni. A böngésző letiltotta a webhelytárolást."
   },
   "theaterPresets": {
     "label": "Lefedettségi csomagok",

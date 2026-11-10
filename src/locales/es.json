@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — doble clic para renombrar",
     "deleteTab": "Eliminar pestaña",
     "deleteTabAria": "Eliminar pestaña {{name}}",
-    "tabNameAria": "Nombre de pestaña"
+    "tabNameAria": "Nombre de pestaña",
+    "addTabTitleSaved": "Pestaña nueva (comienza con los paneles que guardaste)",
+    "newTabOptions": "Opciones de pestaña nueva",
+    "newTabStartsDefault": "Las pestañas nuevas comienzan con los paneles predeterminados.",
+    "newTabStartsSaved": "Las pestañas nuevas comienzan con los paneles que guardaste.",
+    "newTabOptionsHint": "Las pestañas que ya tienes no cambian.",
+    "useThisTabPanels": "Usa los paneles de esta pestaña",
+    "useDefaultPanels": "Usa los paneles predeterminados",
+    "newTabPanelsNotSaved": "No se pudo guardar. Este navegador está bloqueando el almacenamiento del sitio."
   },
   "theaterPresets": {
     "label": "Paquetes de cobertura",

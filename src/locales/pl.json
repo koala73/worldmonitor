@@ -4536,7 +4536,15 @@
     "renameHint": "{{name}} — dwukrotnie kliknij, aby zmienić nazwę",
     "deleteTab": "Usuń kartę",
     "deleteTabAria": "Usuń kartę {{name}}",
-    "tabNameAria": "Nazwa karty"
+    "tabNameAria": "Nazwa karty",
+    "addTabTitleSaved": "Nowa karta (rozpoczyna się z panelami, które zapisałeś)",
+    "newTabOptions": "Opcje nowej karty",
+    "newTabStartsDefault": "Nowe karty rozpoczynają się z panelami domyślnymi.",
+    "newTabStartsSaved": "Nowe karty rozpoczynają się z panelami, które zapisałeś.",
+    "newTabOptionsHint": "Karty, które już masz, się nie zmieniają.",
+    "useThisTabPanels": "Użyj paneli z tej karty",
+    "useDefaultPanels": "Użyj paneli domyślnych",
+    "newTabPanelsNotSaved": "Nie udało się zapisać. Przeglądarka blokuje przechowywanie danych witryny."
   },
   "theaterPresets": {
     "label": "Presety zasięgu",

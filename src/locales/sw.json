@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} - bofya mara mbili ili kubadilisha jina",
     "deleteTab": "Futa kichupo",
     "deleteTabAria": "Futa kichupo cha {{name}}",
-    "tabNameAria": "Jina la kichupo"
+    "tabNameAria": "Jina la kichupo",
+    "addTabTitleSaved": "Kichupo kipya (kinaanza na paneli ulizohifadhi)",
+    "newTabOptions": "Chaguzi za kichupo kipya",
+    "newTabStartsDefault": "Vichupo vipya huanza na paneli chaguo-msingi.",
+    "newTabStartsSaved": "Vichupo vipya huanza na paneli ulizohifadhi.",
+    "newTabOptionsHint": "Vichupo ulivyonavyo tayari havibadiliki.",
+    "useThisTabPanels": "Tumia paneli za kichupo hiki",
+    "useDefaultPanels": "Tumia paneli chaguo-msingi",
+    "newTabPanelsNotSaved": "Haikuweza kuhifadhi. Kivinjari hiki kinazuia uhifadhi wa tovuti."
   },
   "theaterPresets": {
     "label": "Mipangilio ya ufuatiliaji",

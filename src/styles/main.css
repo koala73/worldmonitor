@@ -29138,7 +29138,8 @@ body.map-width-resizing {
   outline: none;
 }
 
-.dashboard-tab-add {
+.dashboard-tab-add,
+.dashboard-tab-options {
   background: transparent;
   border: 1px dashed var(--border);
   border-radius: 5px;
@@ -29152,9 +29153,15 @@ body.map-width-resizing {
   transition: color 0.15s, border-color 0.15s;
 }
 
-.dashboard-tab-add:hover {
+.dashboard-tab-add:hover,
+.dashboard-tab-options:hover,
+.dashboard-tab-options[aria-expanded="true"] {
   color: var(--green-text, var(--green));
   border-color: var(--green);
+}
+
+.dashboard-tab-options {
+  margin-left: 2px;
 }
 
 /* Tab-cap locked notice. Body-anchored and fixed-positioned from the add
@@ -29180,6 +29187,28 @@ body.map-width-resizing {
    grouped .export-locked-* / .tab-cap-notice-* rules near .export-locked-state. */
 .tab-cap-notice-desc {
   margin: 0;
+}
+
+/* Plain choice buttons for the new tab options popover. The gold CTA stays
+   reserved for the upgrade path. */
+.tab-cap-notice-action {
+  width: 100%;
+  padding: 6px 12px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-cap-notice-action:hover,
+.tab-cap-notice-action:focus-visible {
+  color: var(--green-text, var(--green));
+  border-color: var(--green);
 }
 
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──

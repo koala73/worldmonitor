@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — Doppelklick zum Umbenennen",
     "deleteTab": "Tab löschen",
     "deleteTabAria": "Tab {{name}} löschen",
-    "tabNameAria": "Tab-Name"
+    "tabNameAria": "Tab-Name",
+    "addTabTitleSaved": "Neuer Tab (startet mit den gespeicherten Panels)",
+    "newTabOptions": "Optionen für neue Tabs",
+    "newTabStartsDefault": "Neue Tabs starten mit den Standard-Panels.",
+    "newTabStartsSaved": "Neue Tabs starten mit den gespeicherten Panels.",
+    "newTabOptionsHint": "Bereits vorhandene Tabs ändern sich nicht.",
+    "useThisTabPanels": "Panels dieses Tabs verwenden",
+    "useDefaultPanels": "Standard-Panels verwenden",
+    "newTabPanelsNotSaved": "Speichern fehlgeschlagen. Dieser Browser blockiert Website-Speicherung."
   },
   "theaterPresets": {
     "label": "Abdeckungs-Voreinstellungen",

@@ -4473,7 +4473,15 @@
     "renameHint": "{{name}} — nhấp đúp để đổi tên",
     "deleteTab": "Xóa tab",
     "deleteTabAria": "Xóa tab {{name}}",
-    "tabNameAria": "Tên tab"
+    "tabNameAria": "Tên tab",
+    "addTabTitleSaved": "Tab mới (bắt đầu với các bảng điều khiển bạn đã lưu)",
+    "newTabOptions": "Tùy chọn tab mới",
+    "newTabStartsDefault": "Tab mới bắt đầu với các bảng điều khiển mặc định.",
+    "newTabStartsSaved": "Tab mới bắt đầu với các bảng điều khiển bạn đã lưu.",
+    "newTabOptionsHint": "Các tab bạn đã có sẵn sẽ không thay đổi.",
+    "useThisTabPanels": "Sử dụng các bảng điều khiển của tab này",
+    "useDefaultPanels": "Sử dụng các bảng điều khiển mặc định",
+    "newTabPanelsNotSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web."
   },
   "theaterPresets": {
     "label": "Gói phủ khu vực",

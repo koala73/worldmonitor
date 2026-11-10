@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — yeniden adlandırmak için çift tıklayın",
     "deleteTab": "Sekmeyi sil",
     "deleteTabAria": "{{name}} sekmesini sil",
-    "tabNameAria": "Sekme adı"
+    "tabNameAria": "Sekme adı",
+    "addTabTitleSaved": "Yeni sekme (kaydettiğiniz panellerle başlar)",
+    "newTabOptions": "Yeni sekme seçenekleri",
+    "newTabStartsDefault": "Yeni sekmeler varsayılan panellerle başlar.",
+    "newTabStartsSaved": "Yeni sekmeler kaydettiğiniz panellerle başlar.",
+    "newTabOptionsHint": "Zaten sahip olduğunuz sekmeler değişmez.",
+    "useThisTabPanels": "Bu sekmenin panellerini kullan",
+    "useDefaultPanels": "Varsayılan panelleri kullan",
+    "newTabPanelsNotSaved": "Kaydedilemedi. Bu tarayıcı site depolamayı engelliyor."
   },
   "theaterPresets": {
     "label": "Kapsama ön ayarları",

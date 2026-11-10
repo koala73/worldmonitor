@@ -10,7 +10,14 @@ export interface PanelTabBarCallbacks {
   onAdd(): void;
   onRename(tabId: string, name: string): void;
   onDelete(tabId: string): void;
+  /** Asked on every render and each time the options open. The bar never reads storage itself. */
+  hasNewTabPanels(): boolean;
+  onSaveNewTabPanels(): void;
+  onClearNewTabPanels(): void;
 }
+
+/** The bar holds one popover at a time; this says which button it belongs to. */
+type NoticeKind = 'cap' | 'options';
 
 /** Locked state of the "+" control while the dashboard tab cap applies (KTD8). */
 export interface TabAddLock {
@@ -51,7 +58,8 @@ export function tabCapGateCopy(reason: PanelGateReason, cap: number): GateCopy {
  *
  * Interactions: click switches tabs, double-click renames inline,
  * the per-tab close button deletes (hidden when only one tab remains),
- * and the trailing "+" creates a new tab with the default panels.
+ * the trailing "+" creates a new tab, and the "▾" beside it chooses whether
+ * new tabs start with the default panels or with panels the user saved.
  *
  * The "+" can be CAP-LOCKED (KTD8). It stays visually unchanged at rest — a
  * one-glyph button has no room for a lock badge with copy — and only its
@@ -66,6 +74,10 @@ export class PanelTabBar {
   private addBtn: HTMLButtonElement | null = null;
   private addLock: TabAddLock | null = null;
   private notice: HTMLElement | null = null;
+  private noticeKind: NoticeKind | null = null;
+  // Built once, unlike "+", so an open popover keeps its anchor and a truthful
+  // aria-expanded across re-renders.
+  private readonly optionsBtn: HTMLButtonElement;
   private readonly liveRegion: HTMLElement;
   private readonly onNoticeOutsideClick: (event: MouseEvent) => void;
   private readonly onNoticeKeyDown: (event: KeyboardEvent) => void;
@@ -85,12 +97,21 @@ export class PanelTabBar {
 
     this.onNoticeOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (this.notice?.contains(target) || target === this.addBtn) return;
-      this.closeAddLockNotice();
+      if (this.notice?.contains(target) || this.noticeAnchor()?.contains(target)) return;
+      this.closeNotice();
     };
     this.onNoticeKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') this.closeAddLockNotice(true);
+      if (event.key === 'Escape') this.closeNotice(true);
     };
+
+    this.optionsBtn = document.createElement('button');
+    this.optionsBtn.type = 'button';
+    this.optionsBtn.className = 'dashboard-tab-options';
+    this.optionsBtn.textContent = '▾';
+    this.optionsBtn.title = t('dashboardTabs.newTabOptions');
+    this.optionsBtn.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
+    this.optionsBtn.setAttribute('aria-expanded', 'false');
+    this.optionsBtn.addEventListener('click', () => this.toggleNewTabOptions());
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
     // The trailing "+" button is an action, not a tab, so the tablist is an
@@ -132,7 +153,7 @@ export class PanelTabBar {
   }
 
   destroy(): void {
-    this.closeAddLockNotice();
+    this.closeNotice();
     this.element.remove();
   }
 
@@ -157,13 +178,13 @@ export class PanelTabBar {
     this.addLock = lock;
     this.applyAddLock();
     if (wasLocked && lock === null) {
-      this.closeAddLockNotice();
+      if (this.noticeKind === 'cap') this.closeNotice();
       this.liveRegion.textContent = t('components.tabCap.unlockedAnnouncement');
-    } else if (this.notice) {
+    } else if (this.noticeKind === 'cap') {
       // Locked → locked with different copy (e.g. anonymous → signed-in
       // free): the open notice carries the OLD reason and the OLD onAction
       // closure. Close it; the next "+" click rebuilds from the new lock.
-      this.closeAddLockNotice();
+      this.closeNotice();
     }
   }
 
@@ -174,7 +195,6 @@ export class PanelTabBar {
   showAddLockNotice(): void {
     const lock = this.addLock;
     if (!lock || !this.addBtn) return;
-    this.closeAddLockNotice();
 
     const icon = document.createElement('div');
     icon.className = 'tab-cap-notice-icon';
@@ -193,7 +213,7 @@ export class PanelTabBar {
     // clicks a locked "+" hears why before the CTA name.
     cta.setAttribute('aria-describedby', desc.id);
     cta.addEventListener('click', () => {
-      this.closeAddLockNotice();
+      this.closeNotice();
       lock.onAction();
     });
 
@@ -201,27 +221,94 @@ export class PanelTabBar {
     notice.className = 'tab-cap-notice';
     notice.append(icon, desc, cta);
 
+    this.openNotice('cap', notice, cta);
+  }
+
+  private toggleNewTabOptions(): void {
+    if (this.noticeKind === 'options') {
+      this.closeNotice();
+      return;
+    }
+    const saved = this.callbacks.hasNewTabPanels();
+
+    const desc = document.createElement('p');
+    desc.className = 'tab-cap-notice-desc';
+    desc.id = 'dashboard-tab-options-desc';
+    desc.textContent = t(saved ? 'dashboardTabs.newTabStartsSaved' : 'dashboardTabs.newTabStartsDefault');
+
+    const hint = document.createElement('p');
+    hint.className = 'tab-cap-notice-desc';
+    hint.textContent = t('dashboardTabs.newTabOptionsHint');
+
+    const action = (label: string, run: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-cap-notice-action';
+      btn.textContent = label;
+      btn.setAttribute('aria-describedby', desc.id);
+      btn.addEventListener('click', () => {
+        run();
+        // After the callback: it re-renders the bar, which detaches and
+        // re-attaches the options button and would drop focus restored earlier.
+        this.closeNotice(true);
+      });
+      return btn;
+    };
+    const useTab = action(t('dashboardTabs.useThisTabPanels'), () => this.callbacks.onSaveNewTabPanels());
+
+    const popover = document.createElement('div');
+    popover.id = 'dashboard-tab-options';
+    popover.className = 'tab-cap-notice';
+    popover.setAttribute('role', 'group');
+    popover.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
+    popover.append(desc, hint, useTab);
+    if (saved) {
+      popover.append(action(t('dashboardTabs.useDefaultPanels'), () => this.callbacks.onClearNewTabPanels()));
+    }
+
+    this.openNotice('options', popover, useTab);
+  }
+
+  private noticeAnchor(): HTMLButtonElement | null {
+    if (!this.noticeKind) return null;
+    return this.noticeKind === 'options' ? this.optionsBtn : this.addBtn;
+  }
+
+  private openNotice(kind: NoticeKind, notice: HTMLElement, focus: HTMLElement): void {
+    this.closeNotice();
+    const anchor = kind === 'options' ? this.optionsBtn : this.addBtn;
+    if (!anchor) return;
+
     // The bar scrolls horizontally (overflow-x: auto), so an in-flow popover
     // would be clipped by it. The notice is body-anchored and positioned from
     // the button's viewport rect instead.
     document.body.appendChild(notice);
-    const rect = this.addBtn.getBoundingClientRect();
+    const rect = anchor.getBoundingClientRect();
     notice.style.top = `${rect.bottom + 6}px`;
     notice.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - notice.offsetWidth - 8))}px`;
 
     this.notice = notice;
+    this.noticeKind = kind;
+    if (kind === 'options') {
+      this.optionsBtn.setAttribute('aria-expanded', 'true');
+      this.optionsBtn.setAttribute('aria-controls', notice.id);
+    }
     document.addEventListener('mousedown', this.onNoticeOutsideClick);
     document.addEventListener('keydown', this.onNoticeKeyDown);
-    cta.focus();
+    focus.focus();
   }
 
-  private closeAddLockNotice(restoreFocus = false): void {
+  private closeNotice(restoreFocus = false): void {
     if (!this.notice) return;
+    const anchor = this.noticeAnchor();
     document.removeEventListener('mousedown', this.onNoticeOutsideClick);
     document.removeEventListener('keydown', this.onNoticeKeyDown);
     this.notice.remove();
     this.notice = null;
-    if (restoreFocus) this.addBtn?.focus();
+    this.noticeKind = null;
+    this.optionsBtn.setAttribute('aria-expanded', 'false');
+    this.optionsBtn.removeAttribute('aria-controls');
+    if (restoreFocus) anchor?.focus();
   }
 
   private applyAddLock(): void {
@@ -243,15 +330,15 @@ export class PanelTabBar {
     this.updateControlledPanel(activeTabId);
     const addBtn = document.createElement('button');
     addBtn.className = 'dashboard-tab-add';
-    addBtn.title = t('dashboardTabs.addTabTitle');
+    addBtn.title = t(this.callbacks.hasNewTabPanels() ? 'dashboardTabs.addTabTitleSaved' : 'dashboardTabs.addTabTitle');
     addBtn.textContent = '+';
     // The click always reaches the manager: `addTab` is the single enforcement
     // point for the cap, so the button never decides on its own.
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
     this.addBtn = addBtn;
     this.applyAddLock();
-    // The tablist owns only tabs; the add button is a sibling in the bar.
-    this.element.replaceChildren(this.tablistEl, addBtn, this.liveRegion);
+    // The tablist owns only tabs; the add and options buttons are siblings in the bar.
+    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, this.liveRegion);
   }
 
   private renderTab(tab: PanelTab, isActive: boolean, canDelete: boolean): HTMLElement {

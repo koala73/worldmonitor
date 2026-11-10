@@ -4515,7 +4515,15 @@
     "renameHint": "{{name}} — duplo clique para renomear",
     "deleteTab": "Eliminar separador",
     "deleteTabAria": "Eliminar separador {{name}}",
-    "tabNameAria": "Nome do separador"
+    "tabNameAria": "Nome do separador",
+    "addTabTitleSaved": "Novo separador (começa com os painéis que guardou)",
+    "newTabOptions": "Opções de novo separador",
+    "newTabStartsDefault": "Os novos separadores começam com os painéis predefinidos.",
+    "newTabStartsSaved": "Os novos separadores começam com os painéis que guardou.",
+    "newTabOptionsHint": "Os separadores que já tem não mudam.",
+    "useThisTabPanels": "Usar os painéis deste separador",
+    "useDefaultPanels": "Usar os painéis predefinidos",
+    "newTabPanelsNotSaved": "Não foi possível guardar. Este navegador está a bloquear o armazenamento do site."
   },
   "theaterPresets": {
     "label": "Predefinições de cobertura",

@@ -4536,7 +4536,15 @@
     "renameHint": "{{name}} — dvojitým kliknutím přejmenujete",
     "deleteTab": "Smazat kartu",
     "deleteTabAria": "Smazat kartu {{name}}",
-    "tabNameAria": "Název karty"
+    "tabNameAria": "Název karty",
+    "addTabTitleSaved": "Nová karta (obsahuje panely, které jste uložili)",
+    "newTabOptions": "Možnosti nové karty",
+    "newTabStartsDefault": "Nové karty začínají s výchozími panely.",
+    "newTabStartsSaved": "Nové karty začínají s panely, které jste uložili.",
+    "newTabOptionsHint": "Karty, které již máte, se nemění.",
+    "useThisTabPanels": "Použít panely této karty",
+    "useDefaultPanels": "Použít výchozí panely",
+    "newTabPanelsNotSaved": "Nepodařilo se uložit. Tento prohlížeč blokuje ukládání dat na webu."
   },
   "theaterPresets": {
     "label": "Balíčky pokrytí",

@@ -4494,7 +4494,15 @@
     "renameHint": "{{name}} — dubbelklicka för att byta namn",
     "deleteTab": "Ta bort flik",
     "deleteTabAria": "Ta bort flik {{name}}",
-    "tabNameAria": "Fliknamn"
+    "tabNameAria": "Fliknamn",
+    "addTabTitleSaved": "Ny flik (startar med de paneler du sparade)",
+    "newTabOptions": "Alternativ för ny flik",
+    "newTabStartsDefault": "Nya flikar startar med standardpanelerna.",
+    "newTabStartsSaved": "Nya flikar startar med de paneler du sparade.",
+    "newTabOptionsHint": "Flikar du redan har ändras inte.",
+    "useThisTabPanels": "Använd denna fliks paneler",
+    "useDefaultPanels": "Använd standardpanelerna",
+    "newTabPanelsNotSaved": "Kunde inte spara. Den här webbläsaren blockerar webbplatslagring."
   },
   "theaterPresets": {
     "label": "Täckningspaket",
