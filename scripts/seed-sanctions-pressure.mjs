@@ -89,7 +89,7 @@ function validSourceRecords(source, records) {
       || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
       || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
       || !['_aliases', '_identifiers'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
-      || !['_notice', '_url'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
+      || !['_notice', '_url', '_flagCode', '_flagName'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
       || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
     ids.add(entry.id);
     return true;
@@ -200,10 +200,29 @@ function hasCountryCode(code) {
   return Boolean(code) && code !== 'XX';
 }
 
+function buildFlagRegistries(entries) {
+  const map = new Map();
+  for (const entry of entries) {
+    if (!entry._flagCode) continue;
+    const current = map.get(entry._flagCode) || {
+      countryCode: entry._flagCode,
+      countryName: entry._flagName || entry._flagCode,
+      vesselCount: 0,
+      newVesselCount: 0,
+    };
+    current.vesselCount += 1;
+    if (entry.isNew) current.newVesselCount += 1;
+    map.set(entry._flagCode, current);
+  }
+  return [...map.values()]
+    .sort((a, b) => b.newVesselCount - a.newVesselCount || b.vesselCount - a.vesselCount || a.countryName.localeCompare(b.countryName))
+    .slice(0, 12);
+}
+
 function countUnattributed(entries) {
   const summary = { entryCount: 0, vesselCount: 0, aircraftCount: 0 };
   for (const entry of entries) {
-    if (entry.countryCodes.some(hasCountryCode)) continue;
+    if (entry._flagCode || entry.countryCodes.some(hasCountryCode)) continue;
     summary.entryCount += 1;
     if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') summary.vesselCount += 1;
     if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT') summary.aircraftCount += 1;
@@ -357,17 +376,17 @@ async function fetchSource(source, { deadlineAt } = {}) {
           loc.codes.forEach((code, i) => { if (hasCountryCode(code) && !seen.has(code)) seen.set(code, loc.names[i] ?? ''); });
         }
       }
-      if (seen.size === 0 && entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') {
-        // OFAC stores the vessel's stated flag in VersionDetail. Program and
-        // linked-party country describe the designation, not its flag registry.
+      let flag = null;
+      if (entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') {
+        // OFAC stores the vessel's stated flag in VersionDetail. A flag names a
+        // registry, often of convenience, so it never joins countryCodes, which
+        // feed risk scores and country briefs as sanctions pressure.
         const flags = (profileFeatures ?? [])
           .filter(feat => featureTypes.get(feat.featureTypeId) === 'Vessel Flag')
           .flatMap(feat => feat.flagDetails)
-          .map(flag => countriesByName.get(flag.toLowerCase()));
+          .map(name => countriesByName.get(name.toLowerCase()));
         const [country] = flags;
-        if (country && flags.every(flag => flag?.code === country.code)) {
-          seen.set(country.code, country.name);
-        }
+        if (country && flags.every(candidate => candidate?.code === country.code)) flag = country;
       }
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
 
@@ -385,6 +404,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
         entityType,
         countryCodes: sorted.map(([c]) => c),
         countryNames: sorted.map(([, n]) => n),
+        flag,
         aliases: aliasNames,
         identifiers,
       });
@@ -412,6 +432,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
         effectiveAt,
         isNew: false,
         note,
+        ...(party?.flag ? { _flagCode: party.flag.code, _flagName: party.flag.name } : {}),
         _aliases: party?.aliases ?? [],
         _identifiers: party?.identifiers ?? [],
       });
@@ -849,6 +870,7 @@ async function fetchSanctionsPressure() {
     aircraftCount,
     unattributed,
     countries: buildCountryPressure(entries),
+    flagRegistries: buildFlagRegistries(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
     pressureMetadata,
@@ -894,7 +916,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, _changes, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
-        const { _aliases, _identifiers, _publishedAt, _regime, ...publicEntry } = entry;
+        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, ...publicEntry } = entry;
         return publicEntry;
       });
     }

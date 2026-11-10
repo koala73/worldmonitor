@@ -2738,7 +2738,7 @@
         "countries": "Paesi sanzionati",
         "entries": "Designazioni recenti",
         "programs": "Programmi",
-        "countryAttribution": "Paesi e registri di bandiera"
+        "flagRegistries": "Registri di bandiera delle navi"
       },
       "empty": {
         "countries": "Nessuna attribuzione di paese disponibile.",

@@ -2949,7 +2949,7 @@
       },
       "sections": {
         "countries": "Sanctioned countries",
-        "countryAttribution": "Countries and flag registries",
+        "flagRegistries": "Vessel flag registries",
         "entries": "Recent designations",
         "programs": "Programs"
       },

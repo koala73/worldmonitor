@@ -2749,7 +2749,7 @@
         "countries": "Země s sankcemi",
         "entries": "Nedávné designace",
         "programs": "Programy",
-        "countryAttribution": "Země a vlajkové registry"
+        "flagRegistries": "Registry vlajek plavidel"
       },
       "empty": {
         "countries": "Žádná přiřazení zemí není dostupná.",

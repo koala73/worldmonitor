@@ -2343,7 +2343,7 @@
         "countries": "Gesanctioneerde landen",
         "entries": "Recente aanwijzingen",
         "programs": "Programma's",
-        "countryAttribution": "Landen en vlagregisters"
+        "flagRegistries": "Vlaggenregisters van schepen"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",
