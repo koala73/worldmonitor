@@ -1240,6 +1240,25 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.equal(result.data.events[0].country, 'PSE');
   });
 
+  it('returns folded conflict locations with current country names in events mode', async () => {
+    const payloads = analysisPayloads();
+    payloads['conflict:ucdp-events:v1'].events = [
+      { id: 643820, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 643824, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 'yemen', country: 'Yemen (North Yemen)', location: { latitude: 15.35, longitude: 44.2 } },
+    ].map(event => ({ ...event, dateStart: '2026-07-28', hasPreciseLocation: true }));
+    installUpstashStub(payloads);
+
+    const result = await findTool('get_population_exposure')._execute(
+      { mode: 'events', event_source: 'conflicts', limit: 0 }, '', {}, {},
+    );
+    assert.deepEqual(result.data.events.map(({ name, eventCount, reportedCountry, country }) =>
+      [name, eventCount, reportedCountry, country]).sort(), [
+      ['Conflict event — Yemen', 1, 'Yemen', 'YEM'],
+      ['Kyiv city, Ukraine', 2, 'Ukraine', 'UKR'],
+    ]);
+  });
+
   it('estimates each event from its own country and drops what the density table cannot cover', async () => {
     const payloads = analysisPayloads();
     const at = (latitude, longitude) => ({ location: { latitude, longitude } });
@@ -1251,7 +1270,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
       { id: 'precise', country: 'Sudan', dateStart: '2026-07-28', ...at(15.5, 32.5), hasPreciseLocation: true },
       { id: 'country-level', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: false },
       { id: 'unknown-precision', country: 'Sudan', dateStart: '2026-07-29', ...at(15.5, 32.5) },
-      { id: 'reported-elsewhere', country: 'Chile', dateStart: '2026-07-29', ...at(15.5, 32.5), hasPreciseLocation: true },
+      { id: 'reported-elsewhere', country: 'Chile', dateStart: '2026-07-29', ...at(15.6, 32.5), hasPreciseLocation: true },
     ];
     installUpstashStub(payloads);
 
