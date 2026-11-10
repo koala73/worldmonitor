@@ -360,12 +360,14 @@ async function fetchSource(source, { deadlineAt } = {}) {
       if (seen.size === 0 && entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') {
         // OFAC stores the vessel's stated flag in VersionDetail. Program and
         // linked-party country describe the designation, not its flag registry.
-        const flags = uniqueSorted((profileFeatures ?? [])
+        const flags = (profileFeatures ?? [])
           .filter(feat => featureTypes.get(feat.featureTypeId) === 'Vessel Flag')
           .flatMap(feat => feat.flagDetails)
-          .map(flag => flag.toLowerCase()));
-        const country = flags.length === 1 ? countriesByName.get(flags[0]) : undefined;
-        if (country) seen.set(country.code, country.name);
+          .map(flag => countriesByName.get(flag.toLowerCase()));
+        const [country] = flags;
+        if (country && flags.every(flag => flag?.code === country.code)) {
+          seen.set(country.code, country.name);
+        }
       }
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
 

@@ -1,6 +1,8 @@
 import { spokenChokepointStatus, spokenForecastPredictions, spokenPredictionMarkets } from '../spoken-narrators';
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
+import { splitSanctionsAttribution } from '../../../src/shared/sanctions-attribution';
+import type { ListSanctionsPressureResponse } from '../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
 import { projectSupplyChainData } from './_shipping-freight';
 import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
@@ -2552,6 +2554,9 @@ export const CACHE_TOOLS: ToolDef[] = [
           countries: { type: 'array', items: { type: 'object', properties: {
             countryCode: { type: 'string' }, pressureScore: { type: 'number' },
           } } },
+          unattributed: { type: 'object', description: 'Counts across the full pressure snapshot before country or entity filters.', properties: {
+            entryCount: { type: 'integer' }, vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
+          } },
         },
       },
       changes: {
@@ -2578,6 +2583,10 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const { countries, days, cursor } = sanctionsArguments(params);
+      const pressure = data.pressure as ListSanctionsPressureResponse | null | undefined;
+      if (Array.isArray(pressure?.countries)) {
+        data.pressure = { ...pressure, ...splitSanctionsAttribution(pressure.countries, pressure.unattributed) };
+      }
       const etype = argStr(params.entity_type);
       const query = argStr(params.query);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);

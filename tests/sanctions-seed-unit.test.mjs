@@ -47,11 +47,11 @@ const fetchPressureSrc = seedSrc.slice(
 );
 
 it('attributes an OFAC vessel by its explicit flag, leaving unknown and former flags unattributed', async () => {
-  const profile = (id, type, flag) => `
+  const profile = (id, type, ...flags) => `
     <DistinctParty><Profile ID="${id}" PartySubTypeID="1">
-      <Feature FeatureTypeID="${type}"><FeatureVersion>
-        <VersionDetail DetailTypeID="1432">${flag}</VersionDetail>
-      </FeatureVersion></Feature>
+      <Feature FeatureTypeID="${type}">
+        ${flags.map(flag => `<FeatureVersion><VersionDetail DetailTypeID="1432">${flag}</VersionDetail></FeatureVersion>`).join('')}
+      </Feature>
     </Profile></DistinctParty>`;
   const xml = `<Sanctions>
     <CountryValues>
@@ -67,12 +67,18 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
       ${profile('2', '3', 'Unknown')}
       ${profile('3', '24', 'Russia')}
       ${profile('4', '3', "Democratic People's Republic of Korea")}
+      ${profile('5', '3', "Democratic People's Republic of Korea", 'Korea, North')}
+      ${profile('6', '3', "Democratic People's Republic of Korea", 'Russia')}
+      ${profile('7', '3', "Democratic People's Republic of Korea", 'Unknown')}
     </DistinctParties>
     <SanctionsEntries>
       <SanctionsEntry ID="1" ProfileID="1"/>
       <SanctionsEntry ID="2" ProfileID="2"><Comment>RUSSIA-EO14024</Comment></SanctionsEntry>
       <SanctionsEntry ID="3" ProfileID="3"/>
       <SanctionsEntry ID="4" ProfileID="4"/>
+      <SanctionsEntry ID="5" ProfileID="5"/>
+      <SanctionsEntry ID="6" ProfileID="6"/>
+      <SanctionsEntry ID="7" ProfileID="7"/>
     </SanctionsEntries>
   </Sanctions>`;
   const context = vm.createContext({
@@ -83,7 +89,7 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
   vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
-  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], [], ['KP']]);
+  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], [], ['KP'], ['KP'], [], []]);
   assert.deepEqual(normalize(entries[0].countryNames), ['Russia']);
   assert.deepEqual(normalize(entries[3].countryNames), ['Korea, North']);
 });

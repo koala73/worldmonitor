@@ -4809,6 +4809,16 @@ describe('get_sanctions_data screening contract', () => {
       assert.ok(tool._freshnessChecks.some(check => check.key === key));
     }
   });
+  it('separates legacy unattributed counts before applying country filters', () => {
+    const unattributed = { entryCount: 8, vesselCount: 3, aircraftCount: 1 };
+    const countries = [{ countryCode: 'RU', entryCount: 4 }];
+    const legacy = { entries: [], countries: [{ countryCode: 'XX', ...unattributed }, ...countries] };
+    const current = { entries: [], countries, unattributed };
+    for (const pressure of [legacy, current]) {
+      const result = tool._postFilter(structuredClone({ pressure }), { country: 'RU' });
+      assert.deepEqual(result.pressure, current);
+    }
+  });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };
     const result = tool._postFilter(structuredClone(data), { screen: 'Northern Star', min_score: 100, country: 'RU', entity_type: 'vessel', limit: 1 });
