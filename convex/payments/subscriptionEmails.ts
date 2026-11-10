@@ -450,7 +450,12 @@ function conversionRowsHtml(conversion: ConversionContext): string {
   else if (!acquisition && !conversion.mcpAttribution && !conversion.referralCode) {
     rows.push(adminRow("Source", "not captured"));
   }
-  if (acquisition?.referrer) rows.push(adminRow("Referrer", acquisition.referrer));
+  if (acquisition?.referrer) {
+    // ChatGPT tags cited links with utm_source but sends no Referer, so a
+    // tagged first touch records "direct" even though the link named its source.
+    const untaggedReferrer = acquisition.referrer === "direct" && sourceParts.length > 0;
+    rows.push(adminRow("Referrer", untaggedReferrer ? "none sent (source from utm tag)" : acquisition.referrer));
+  }
   if (acquisition?.landing) rows.push(adminRow("Landing Page", acquisition.landing));
   if (acquisition?.firstSeen) rows.push(adminRow("First Visit", dayBeforePurchase(acquisition.firstSeen, purchasedAt)));
   if (conversion.mcpAttribution) rows.push(adminRow("MCP Funnel", conversion.mcpAttribution));
