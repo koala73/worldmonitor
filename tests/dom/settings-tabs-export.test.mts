@@ -139,7 +139,10 @@ describe('new tabs from saved panels', () => {
     optionAction("Use this tab's panels").click();
   };
   const addTab = () => button('.dashboard-tab-add').click();
-  const newestStoredTab = () => (JSON.parse(localStorage.getItem(tabsKey)!) as TabsState).tabs.at(-1)!;
+  const newestStoredTab = (): PanelTab => {
+    const { tabs } = JSON.parse(localStorage.getItem(tabsKey)!) as TabsState;
+    return tabs[tabs.length - 1]!;
+  };
   const live = (overrides: Record<string, Partial<PanelConfig>>) => {
     const settings = resetMissionPresetState({}).panelSettings;
     for (const [key, change] of Object.entries(overrides)) settings[key] = { ...settings[key]!, ...change };
