@@ -2734,7 +2734,8 @@
       "sections": {
         "countries": "Países sancionados",
         "entries": "Designaciones recientes",
-        "programs": "Programas"
+        "programs": "Programas",
+        "countryAttribution": "Países y registros de pabellón"
       },
       "empty": {
         "countries": "Sin atribución de país disponible.",

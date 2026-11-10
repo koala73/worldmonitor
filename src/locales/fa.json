@@ -2796,7 +2796,8 @@
       "sections": {
         "countries": "کشورهای تحریم‌شده",
         "entries": "موارد تحریمی اخیر",
-        "programs": "برنامه‌ها"
+        "programs": "برنامه‌ها",
+        "countryAttribution": "کشورها و ثبت‌های پرچم"
       },
       "empty": {
         "countries": "انتساب کشوری در دسترس نیست.",

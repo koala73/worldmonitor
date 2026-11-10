@@ -55,6 +55,7 @@ const ET_CODE = {
   SANCTIONS_ENTITY_TYPE_UNSPECIFIED: 'unspecified',
 };
 const DEFAULT_RECENT_LIMIT = 60;
+const WARN_UNATTRIBUTED_SHARE = 0.35;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
 
 function validPressureClock(value) {
@@ -173,13 +174,11 @@ function sortEntries(a, b) {
 function buildCountryPressure(entries) {
   const map = new Map();
   for (const entry of entries) {
-    const codes = entry.countryCodes.length > 0 ? entry.countryCodes : ['XX'];
-    const names = entry.countryNames.length > 0 ? entry.countryNames : ['Unknown'];
-    codes.forEach((code, index) => {
-      const key = `${code}:${names[index] || names[0] || 'Unknown'}`;
-      const current = map.get(key) || {
+    entry.countryCodes.forEach((code, index) => {
+      if (!hasCountryCode(code)) return;
+      const current = map.get(code) || {
         countryCode: code,
-        countryName: names[index] || names[0] || 'Unknown',
+        countryName: entry.countryNames[index] || code,
         entryCount: 0,
         newEntryCount: 0,
         vesselCount: 0,
@@ -189,12 +188,27 @@ function buildCountryPressure(entries) {
       if (entry.isNew) current.newEntryCount += 1;
       if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') current.vesselCount += 1;
       if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT') current.aircraftCount += 1;
-      map.set(key, current);
+      map.set(code, current);
     });
   }
   return [...map.values()]
     .sort((a, b) => b.newEntryCount - a.newEntryCount || b.entryCount - a.entryCount || a.countryName.localeCompare(b.countryName))
     .slice(0, 12);
+}
+
+function hasCountryCode(code) {
+  return Boolean(code) && code !== 'XX';
+}
+
+function countUnattributed(entries) {
+  const summary = { entryCount: 0, vesselCount: 0, aircraftCount: 0 };
+  for (const entry of entries) {
+    if (entry.countryCodes.some(hasCountryCode)) continue;
+    summary.entryCount += 1;
+    if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') summary.vesselCount += 1;
+    if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT') summary.aircraftCount += 1;
+  }
+  return summary;
 }
 
 // Full ISO2 → entryCount map across ALL entries (not truncated like buildCountryPressure).
@@ -243,6 +257,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
     // ── Reference maps (built first, small, kept for cross-reference) ──────────
     const areaCodes   = new Map(); // ID → { code, name }
+    const countriesByName = new Map();
     const featureTypes = new Map(); // ID → label string
     const legalBasis  = new Map(); // ID → shortRef string
     const idRegDocTypes = new Map(); // ID → label string
@@ -260,6 +275,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
     // ── Section flags ──────────────────────────────────────────────────────────
     let inDateOfIssue       = false;
     let inAreaCodeValues    = false;
+    let inCountryValues     = false;
     let inFeatureTypeValues = false;
     let inLegalBasisValues  = false;
     let inIDRegDocTypeValues = false;
@@ -274,6 +290,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
     // AreaCode / FeatureType / LegalBasis (reference value section)
     let refId = '', refShortRef = '', refDescription = '';
+    let countryIso2 = '';
 
     // Location
     let locId = '';
@@ -337,7 +354,19 @@ async function fetchSource(source, { deadlineAt } = {}) {
         for (const lid of feat.locationIds) {
           const loc = locations.get(lid);
           if (!loc) continue;
-          loc.codes.forEach((code, i) => { if (code && !seen.has(code)) seen.set(code, loc.names[i] ?? ''); });
+          loc.codes.forEach((code, i) => { if (hasCountryCode(code) && !seen.has(code)) seen.set(code, loc.names[i] ?? ''); });
+        }
+      }
+      if (seen.size === 0 && entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') {
+        // OFAC stores the vessel's stated flag in VersionDetail. Program and
+        // linked-party country describe the designation, not its flag registry.
+        const flags = (profileFeatures ?? [])
+          .filter(feat => featureTypes.get(feat.featureTypeId) === 'Vessel Flag')
+          .flatMap(feat => feat.flagDetails)
+          .map(flag => countriesByName.get(flag.toLowerCase()));
+        const [country] = flags;
+        if (country && flags.every(flag => flag?.code === country.code)) {
+          seen.set(country.code, country.name);
         }
       }
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -399,6 +428,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
         // ── Section markers ──
         case 'DateOfIssue':       inDateOfIssue = true; break;
         case 'AreaCodeValues':    inAreaCodeValues = true; break;
+        case 'CountryValues':     inCountryValues = true; break;
         case 'FeatureTypeValues': inFeatureTypeValues = true; break;
         case 'LegalBasisValues':  inLegalBasisValues = true; break;
         case 'IDRegDocTypeValues': inIDRegDocTypeValues = true; break;
@@ -410,6 +440,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
         // ── Reference values ──
         case 'AreaCode':
           if (inAreaCodeValues) { refId = attrs.ID || ''; refDescription = attrs.Description || ''; }
+          break;
+        case 'Country':
+          if (inCountryValues) countryIso2 = attrs.ISO2 || '';
           break;
         case 'FeatureType':
           if (inFeatureTypeValues) refId = attrs.ID || '';
@@ -451,7 +484,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
           if (curAlias) { inDocumentedName = true; namePartsBuf = []; }
           break;
         case 'Feature':
-          if (inDistinctParties) curFeature = { featureTypeId: attrs.FeatureTypeID || '', locationIds: [], detail: '' };
+          if (inDistinctParties) curFeature = { featureTypeId: attrs.FeatureTypeID || '', locationIds: [], detail: '', flagDetails: [] };
           break;
         case 'VersionLocation':
           if (curFeature && attrs.LocationID) curFeature.locationIds.push(attrs.LocationID);
@@ -506,6 +539,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
 
         // ── Section close ──
         case 'AreaCodeValues':    inAreaCodeValues = false; break;
+        case 'CountryValues':     inCountryValues = false; break;
         case 'FeatureTypeValues': inFeatureTypeValues = false; break;
         case 'LegalBasisValues':  inLegalBasisValues = false; break;
         case 'IDRegDocTypeValues': inIDRegDocTypeValues = false; break;
@@ -517,6 +551,14 @@ async function fetchSource(source, { deadlineAt } = {}) {
         // ── Reference values ──
         case 'AreaCode':
           if (inAreaCodeValues && refId) areaCodes.set(refId, { code: t, name: refDescription });
+          break;
+        case 'Country':
+          if (inCountryValues && t && /^[A-Z]{2}$/.test(countryIso2) && hasCountryCode(countryIso2)) {
+            const country = { code: countryIso2, name: t };
+            countriesByName.set(t.toLowerCase(), country);
+            // OFAC vessel flags use the formal name while CountryValues lists Korea, North.
+            if (countryIso2 === 'KP') countriesByName.set("democratic people's republic of korea", country);
+          }
           break;
         case 'FeatureType':
           if (inFeatureTypeValues && refId) featureTypes.set(refId, t);
@@ -542,7 +584,10 @@ async function fetchSource(source, { deadlineAt } = {}) {
           curDoc = null;
           break;
         case 'VersionDetail':
-          if (curFeature && t) curFeature.detail = t;
+          if (curFeature && t) {
+            curFeature.detail = t;
+            if (featureTypes.get(curFeature.featureTypeId) === 'Vessel Flag') curFeature.flagDetails.push(t);
+          }
           break;
 
         // ── Locations ──
@@ -744,6 +789,10 @@ async function fetchSanctionsPressure() {
   const newEntryCount = hasPrevious ? entries.filter((entry) => entry.isNew).length : 0;
   const vesselCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
+  const unattributed = countUnattributed(entries);
+  if (unattributed.entryCount > totalCount * WARN_UNATTRIBUTED_SHARE) {
+    console.warn(`  Sanctions country attribution: ${unattributed.entryCount}/${totalCount} unattributed (threshold ${WARN_UNATTRIBUTED_SHARE * 100}%)`);
+  }
   const semaCount = semaEntries.length;
   const sdnCount = _sourceSnapshots.SDN?.records.length ?? 0;
   const consolidatedCount = _sourceSnapshots.CONSOLIDATED?.records.length ?? 0;
@@ -798,6 +847,7 @@ async function fetchSanctionsPressure() {
     newEntryCount,
     vesselCount,
     aircraftCount,
+    unattributed,
     countries: buildCountryPressure(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),

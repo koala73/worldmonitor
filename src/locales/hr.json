@@ -2810,7 +2810,8 @@
       "sections": {
         "countries": "Zemlje pod sankcijama",
         "entries": "Nedavne designacije",
-        "programs": "Programi"
+        "programs": "Programi",
+        "countryAttribution": "Države i registri zastave"
       },
       "empty": {
         "countries": "Nema dostupne atribucije zemlje.",

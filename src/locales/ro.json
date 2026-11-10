@@ -2734,7 +2734,8 @@
       "sections": {
         "countries": "Țări sancționate",
         "entries": "Desemnări recente",
-        "programs": "Programe"
+        "programs": "Programe",
+        "countryAttribution": "Țări și registre de pavilion"
       },
       "empty": {
         "countries": "Nicio atribuire de țară disponibilă.",

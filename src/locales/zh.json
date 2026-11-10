@@ -2714,7 +2714,8 @@
       "sections": {
         "countries": "受制裁国家",
         "entries": "最近指定",
-        "programs": "计划"
+        "programs": "计划",
+        "countryAttribution": "国家及船旗登记地"
       },
       "empty": {
         "countries": "无国家归属信息。",

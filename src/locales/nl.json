@@ -2340,7 +2340,8 @@
       "sections": {
         "countries": "Gesanctioneerde landen",
         "entries": "Recente aanwijzingen",
-        "programs": "Programma's"
+        "programs": "Programma's",
+        "countryAttribution": "Landen en vlagregisters"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",

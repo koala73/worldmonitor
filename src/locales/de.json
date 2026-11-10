@@ -2724,7 +2724,8 @@
       "sections": {
         "countries": "Sanktionierte Länder",
         "entries": "Aktuelle Listungen",
-        "programs": "Programme"
+        "programs": "Programme",
+        "countryAttribution": "Länder und Flaggenregister"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",
