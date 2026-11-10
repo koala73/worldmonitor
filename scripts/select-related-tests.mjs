@@ -153,6 +153,7 @@ function git(root, args) {
 }
 
 // Committed, staged, unstaged and untracked changes since the merge base with `base`.
+// --no-renames lists both paths of a rename, so tests that import the old path run.
 export function changedFiles(root = ROOT, base = 'origin/main') {
   let mergeBase;
   try {
@@ -160,7 +161,7 @@ export function changedFiles(root = ROOT, base = 'origin/main') {
   } catch {
     throw new Error(`Cannot find a merge base with "${base}". Fetch it or pass --base <ref>.`);
   }
-  const tracked = git(root, ['diff', '--name-only', '-z', mergeBase]).split('\0');
+  const tracked = git(root, ['diff', '--name-only', '--no-renames', '-z', mergeBase]).split('\0');
   const untracked = git(root, ['ls-files', '--others', '--exclude-standard', '-z']).split('\0');
   return [...new Set([...tracked, ...untracked].filter(Boolean))].sort();
 }

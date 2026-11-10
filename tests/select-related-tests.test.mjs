@@ -175,6 +175,19 @@ describe('changedFiles', () => {
     assert.deepEqual(changedFiles(root, 'base'), ['a.txt', 'b.txt', 'new.txt', 'staged.txt']);
   });
 
+  it('reports both paths of a committed rename, so importers of the old path are selected', () => {
+    const root = fixture({ 'src/old-name.ts': 'export const value = 1;\n' });
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
+    const git = (...args) => execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { cwd: root, env, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('add', '.');
+    git('commit', '-qm', 'base');
+    git('branch', 'base');
+    git('mv', 'src/old-name.ts', 'src/new-name.ts');
+    git('commit', '-qm', 'rename');
+    assert.deepEqual(changedFiles(root, 'base'), ['src/new-name.ts', 'src/old-name.ts']);
+  });
+
   it('names the base and the --base flag when there is no merge base', () => {
     const root = fixture({ 'a.txt': 'a\n' });
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
