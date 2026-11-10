@@ -458,6 +458,14 @@ export function buildBundle({ spec: provided } = {}) {
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
   const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
   const descriptionPrefixStats = dropOperationIdDescriptionPrefixes(spec);
+  // Component keys already include the proto message name. Keep the full
+  // description in the YAML and omit that repeated prefix in the served JSON.
+  for (const [key, schema] of Object.entries(spec.components?.schemas ?? {})) {
+    const prefix = `${key.split('_').at(-1)} `;
+    if (typeof schema?.description !== 'string' || !schema.description.startsWith(prefix)) continue;
+    const rest = schema.description.slice(prefix.length);
+    if (/^\S/.test(rest)) schema.description = rest[0].toUpperCase() + rest.slice(1);
+  }
   const entitlementNoteStats = compactEntitlementNotes(spec);
   const exampleListStats = trimResponseExampleLists(spec);
 

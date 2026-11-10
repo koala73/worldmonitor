@@ -362,8 +362,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
         // linked-party country describe the designation, not its flag registry.
         const flags = uniqueSorted((profileFeatures ?? [])
           .filter(feat => featureTypes.get(feat.featureTypeId) === 'Vessel Flag')
-          .flatMap(feat => feat.flagDetails));
-        const country = flags.length === 1 ? countriesByName.get(flags[0].toLowerCase()) : undefined;
+          .flatMap(feat => feat.flagDetails)
+          .map(flag => flag.toLowerCase()));
+        const country = flags.length === 1 ? countriesByName.get(flags[0]) : undefined;
         if (country) seen.set(country.code, country.name);
       }
       const sorted = [...seen.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -551,7 +552,10 @@ async function fetchSource(source, { deadlineAt } = {}) {
           break;
         case 'Country':
           if (inCountryValues && t && /^[A-Z]{2}$/.test(countryIso2) && hasCountryCode(countryIso2)) {
-            countriesByName.set(t.toLowerCase(), { code: countryIso2, name: t });
+            const country = { code: countryIso2, name: t };
+            countriesByName.set(t.toLowerCase(), country);
+            // OFAC vessel flags use the formal name while CountryValues lists Korea, North.
+            if (countryIso2 === 'KP') countriesByName.set("democratic people's republic of korea", country);
           }
           break;
         case 'FeatureType':

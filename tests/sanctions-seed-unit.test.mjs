@@ -54,7 +54,10 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
       </FeatureVersion></Feature>
     </Profile></DistinctParty>`;
   const xml = `<Sanctions>
-    <CountryValues><Country ID="11171" ISO2="RU">Russia</Country></CountryValues>
+    <CountryValues>
+      <Country ID="11171" ISO2="RU">Russia</Country>
+      <Country ID="11120" ISO2="KP">Korea, North</Country>
+    </CountryValues>
     <FeatureTypeValues>
       <FeatureType ID="3">Vessel Flag</FeatureType>
       <FeatureType ID="24">Former Vessel Flag</FeatureType>
@@ -63,11 +66,13 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
       ${profile('1', '3', 'Russia')}
       ${profile('2', '3', 'Unknown')}
       ${profile('3', '24', 'Russia')}
+      ${profile('4', '3', "Democratic People's Republic of Korea")}
     </DistinctParties>
     <SanctionsEntries>
       <SanctionsEntry ID="1" ProfileID="1"/>
       <SanctionsEntry ID="2" ProfileID="2"><Comment>RUSSIA-EO14024</Comment></SanctionsEntry>
       <SanctionsEntry ID="3" ProfileID="3"/>
+      <SanctionsEntry ID="4" ProfileID="4"/>
     </SanctionsEntries>
   </Sanctions>`;
   const context = vm.createContext({
@@ -78,8 +83,9 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
   vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
-  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], []]);
+  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], [], ['KP']]);
   assert.deepEqual(normalize(entries[0].countryNames), ['Russia']);
+  assert.deepEqual(normalize(entries[3].countryNames), ['Korea, North']);
 });
 
 async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {
