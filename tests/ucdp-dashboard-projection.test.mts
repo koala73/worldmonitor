@@ -168,6 +168,31 @@ test('selects eligible exposure rows before the independent panel cap', () => {
   assert.deepEqual(compact.aggregates, summarizeUcdpEvents(events));
 });
 
+test('spends the exposure slots on distinct locations and counts every event at each', () => {
+  const point = { ...fixture()[0], country: 'Ukraine', hasPreciseLocation: true };
+  const at = (id: string, latitude: number, longitude = 30.52333) => ({ ...point, id, location: { latitude, longitude } });
+  const events = [
+    at('643820', 50.45),
+    at('643824', 50.45),
+    ...Array.from({ length: 10 }, (_, i) => at(`other-${i}`, 40 + i)),
+    at('643899', 50.4500004),
+    { ...at('broad', 50.45), hasPreciseLocation: false },
+  ];
+  const { exposureEvents } = compactUcdpDashboardPayload({ events }, NOW);
+  assert.deepEqual(exposureEvents.map((e: any) => [e.id, e.exposureEventCount]), [
+    ['643820', 3],
+    ...Array.from({ length: 9 }, (_, i) => [`other-${i}`, 1]),
+  ]);
+
+  const toExposureInput = (e: any) => ({
+    id: e.id, name: e.id, type: 'conflict', country: e.country, hasPreciseLocation: e.hasPreciseLocation,
+    lat: e.location.latitude, lon: e.location.longitude, eventCount: e.exposureEventCount,
+  });
+  const fromFullFeed = enrichEventsWithExposure(events.map(e => toExposureInput({ ...e, exposureEventCount: undefined })), 10);
+  const fromProjection = enrichEventsWithExposure(exposureEvents.map(toExposureInput), 10);
+  assert.deepEqual(fromProjection, fromFullFeed);
+});
+
 test('seeded exposure eligibility agrees with the dashboard for UCDP country labels', () => {
   const countries = [
     ...Object.entries(PRIORITY_COUNTRIES).flatMap(([code, { name }]) => [code, name]),
