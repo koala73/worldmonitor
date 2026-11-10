@@ -89,7 +89,7 @@ it('attributes an OFAC vessel by its explicit flag, leaving unknown and former f
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
   vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
   const { entries } = await context.fetchSource({ label: 'SDN' });
-  assert.deepEqual(entries.map(entry => entry._flagCode ?? null), ['RU', null, null, 'KP', 'KP', null, null]);
+  assert.deepEqual(normalize(entries.map(entry => entry._flagCode ?? null)), ['RU', null, null, 'KP', 'KP', null, null]);
   assert.equal(entries[0]._flagName, 'Russia');
   assert.equal(entries[3]._flagName, 'Korea, North');
   assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [[], [], [], [], [], [], []],
