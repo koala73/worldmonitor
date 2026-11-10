@@ -123,7 +123,7 @@ const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
-const { SPARKLINE_HISTORY_QUERY, buildQuoteSparkline } = require('./shared/quote-sparkline.cjs');
+const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline } = require('./shared/quote-sparkline.cjs');
 const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
@@ -3551,16 +3551,24 @@ async function _withPreviousSessionChange(symbol, quote) {
 }
 
 // History bars before the default chart's first bar never change, so one
-// history request per symbol per session covers every 5-minute cycle.
+// history request per symbol per session covers every 5-minute cycle. After a
+// failed request the symbol waits SPARKLINE_HISTORY_RETRY_SECONDS.
 const _sparklineHistories = new Map();
+const _sparklineHistoryFailedAt = new Map();
 
 async function _commoditySparkline(symbol, quote) {
   const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
   const cacheable = Number.isFinite(firstBarAt);
   let cached = cacheable ? _sparklineHistories.get(symbol) : null;
   if (!cached || cached.firstBarAt !== firstBarAt) {
-    await sleep(150);
-    const history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+    const backingOff = Date.now() - (_sparklineHistoryFailedAt.get(symbol) ?? -Infinity) < SPARKLINE_HISTORY_RETRY_SECONDS * 1000;
+    let history = null;
+    if (!backingOff) {
+      await sleep(150);
+      history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+      if (history) _sparklineHistoryFailedAt.delete(symbol);
+      else _sparklineHistoryFailedAt.set(symbol, Date.now());
+    }
     cached = { firstBarAt, chart: history?.chart ?? null };
     if (history && cacheable) _sparklineHistories.set(symbol, cached);
     if (!history) logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);

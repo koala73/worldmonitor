@@ -1227,7 +1227,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         data['commodities-bootstrap'] = {
           ...commodities,
           quotes: commodities.quotes.map(quote => isCrudeOilTicker(quote.symbol) ? {
-            ...quote, stale: isStaleOilPrice(quote.priceAt, oilTapeMaxAgeMs(quote.priceBasis), now),
+            ...quote, stale: isStaleOilPrice(quote.priceAt, oilTapeMaxAgeMs(quote.priceBasis, now), now),
           } : quote),
         };
       }
@@ -3080,7 +3080,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           date: { type: 'string', description: 'EIA observation date. For spot prices, the week ending date.' },
           unit: { type: 'string', description: 'Source unit. Stocks and production use thousand barrels and thousand barrels per day; prices use USD per barrel.' },
           priceSource: { const: 'EIA' }, priceBasis: { const: 'spot' }, frequency: { const: 'weekly' },
-          stale: { type: 'boolean', description: 'Weekly spot observation is missing, invalid, future-dated, or older than 14 days.' },
+          stale: { type: 'boolean', description: 'Weekly spot observation is missing, invalid, future-dated, or past the next scheduled EIA release plus a 24-hour refresh grace.' },
         },
       } },
       index: { type: ['object', 'null'], properties: { regions: { type: 'array', items: { type: 'object' } } } },
