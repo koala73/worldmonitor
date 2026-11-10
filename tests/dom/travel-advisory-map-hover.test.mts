@@ -9,7 +9,7 @@ import { liveTopicPageForPath, liveTopicReading } from '../../scripts/live-pages
 
 // The real renderer reads its topology from disk, which happy-dom's URL global
 // prevents; this map keeps its markup contract (.land, data-iso2, <title>).
-const MAP_NAMES: Record<string, string> = { AU: 'Australia', CN: 'China', FR: 'France', RU: 'Russia', VE: 'Venezuela' };
+const MAP_NAMES: Record<string, string> = { AU: 'Australia', CN: 'China', FR: 'France', GB: 'United Kingdom', RU: 'Russia', VE: 'Venezuela' };
 const stubMap = ({ className }: { label: string; className?: string }) =>
   `<svg class="${className}">${Object.entries(MAP_NAMES).map(([code, name]) => `<path class="land" data-iso2="${code}" d="M0 0h1v1z"><title>${name}</title></path>`).join('')}</svg>`;
 import unToIso2 from '../../shared/un-to-iso2.json';
@@ -35,14 +35,29 @@ function register(source: 'US' | 'AU', levelFor: (code: string, i: number) => st
     }));
 }
 
-function mount(withReading = true) {
+// The UK FCDO register: no warning except Venezuela (parts) and Russia (whole country).
+const ukRegister = () => CODES.filter((code) => code !== 'GB').map((code) => ({
+  title: code,
+  link: `https://www.gov.uk/foreign-travel-advice/${code.toLowerCase()}`,
+  pubDate: '2026-10-27T16:06:13Z',
+  source: 'UK FCDO',
+  sourceCountry: 'UK',
+  level: code === 'VE' ? 'all-parts+essential-parts' : code === 'RU' ? 'all-whole' : 'none',
+  country: code,
+}));
+const cdcNotice = (level: number, title: string, pubDate: string) =>
+  ({ title, link: 'https://wwwnc.cdc.gov/travel/notices/x', pubDate, source: 'CDC Travel Notices', sourceCountry: 'US', level: `cdc-${level}`, country: 'VE' });
+const embassyAlert = { title: 'Security Alert: Caracas demonstrations', link: 'https://ve.usembassy.gov/alert/', pubDate: '2026-11-05T12:00:00Z', source: 'US Embassy Venezuela', sourceCountry: 'US', level: 'info', country: 'VE' };
+
+function mount(withReading = true, { rows = [] as object[], advisories = [] as object[] } = {}) {
   const record = withReading
     ? liveTopicReading(travelAdvisoriesPage, {
-      advisories: [],
+      advisories,
       byCountry: {},
       registerLevels: [
         ...register('US', (code, i) => (code === 'VE' ? 'reconsider' : code === 'RU' ? 'do-not-travel' : LEVELS[i % 2]!)),
         ...register('AU', (code, i) => (code === 'VE' ? 'do-not-travel' : code === 'RU' ? 'do-not-travel' : LEVELS[i % 2]!)),
+        ...rows,
       ],
       fetchedAt: NOW - 60_000,
     }, NOW)
@@ -71,10 +86,55 @@ describe('travel advisory map page script', () => {
     expect(text).toContain('Venezuela');
     expect(text).toContain('Level 3: Reconsider Travel');
     expect(text).toContain('Do not travel');
-    expect(text).toContain('Australia is stricter by 1 level.');
+    expect(text).toContain('Australia is stricter than the US by 1 level.');
+    expect(text).not.toContain('UK');
     expect(text).toContain('Click for the full row and links');
     expect(land('VE').classList.contains('is-hover')).toBe(true);
     expect(document.querySelectorAll('.advisory-map title')).toHaveLength(0);
+  });
+
+  it('adds the UK’s warning in its own words and offers the UK view when the UK register was read', () => {
+    mount(true, { rows: ukRegister() });
+    hover('VE');
+    const rows = [...tip().querySelectorAll('.tip-row')].map((row) => row.textContent);
+    expect(rows[2]).toBe('UKAgainst all travel to parts, and all but essential travel to other partsIssued Oct 27, 2026');
+    hover('FR');
+    expect(tip().textContent).toContain('No warning against travel');
+    const ukButton = document.querySelector<HTMLButtonElement>('[data-view-btn="UK"]')!;
+    expect(ukButton.hidden).toBe(false);
+    ukButton.click();
+    expect(document.querySelector<HTMLElement>('.advisory-figure')!.dataset.view).toBe('UK');
+    expect(document.querySelector('.advisory-figure-title')!.textContent).toBe('UK Foreign Office warnings');
+  });
+
+  it('shows the UK as the issuer of its own advice, not as unlisted', () => {
+    mount(true, { rows: ukRegister() });
+    hover('GB');
+    expect(tip().textContent).toContain('Issues the UK Foreign Office travel advice.');
+    expect([...tip().querySelectorAll('.tip-who')].map((el) => el.textContent)).toEqual(['US', 'Australia']);
+    hover('CN');
+    expect(tip().textContent).toContain('None of the three governments lists it separately.');
+  });
+
+  it('adds the latest embassy alert and the strongest CDC notices, and counts the rest', () => {
+    mount(true, {
+      rows: [
+        cdcNotice(1, 'Level 1 - Measles in Venezuela', '2026-10-01T00:00:00Z'),
+        cdcNotice(3, 'Level 3 - Cholera in Zulia State of Venezuela', '2026-09-01T00:00:00Z'),
+        cdcNotice(2, 'Level 2 - Dengue in Venezuela', '2026-10-15T00:00:00Z'),
+      ],
+      advisories: [embassyAlert],
+    });
+    hover('VE');
+    const rows = [...tip().querySelectorAll('.tip-row')].map((row) => row.textContent);
+    expect(rows.slice(2)).toEqual([
+      'EmbassySecurity Alert: Caracas demonstrationsPosted Nov 5, 2026',
+      'CDCLevel 3 - Cholera in Zulia State of VenezuelaIssued Sep 1, 2026',
+      'CDCLevel 2 - Dengue in VenezuelaIssued Oct 15, 2026',
+    ]);
+    expect(tip().textContent).toContain('1 more CDC health notice in the row.');
+    hover('FR');
+    expect(tip().textContent).not.toContain('CDC');
   });
 
   it('does not show the issuing government rating itself', () => {
@@ -99,7 +159,8 @@ describe('travel advisory map page script', () => {
     expect(document.querySelector<HTMLElement>('.view-toggle')!.hidden).toBe(false);
     document.querySelector<HTMLButtonElement>('[data-view-btn="gap"]')!.click();
     expect(figure.dataset.view).toBe('gap');
-    expect(document.querySelector('.advisory-figure-title')!.textContent).toBe('Where the two governments differ');
+    expect(document.querySelector('.advisory-figure-title')!.textContent).toBe('Where the US and Australia differ');
+    expect(document.querySelector<HTMLElement>('[data-view-btn="UK"]')!.hidden, 'no UK register, no UK view').toBe(true);
     expect(document.querySelector('[data-view-btn="gap"]')!.getAttribute('aria-pressed')).toBe('true');
     expect(document.querySelector('[data-view-btn="US"]')!.getAttribute('aria-pressed')).toBe('false');
   });

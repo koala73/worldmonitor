@@ -15,7 +15,7 @@ const LIVE = Object.freeze({
   yieldCurve: { href: '/tools/treasury-yield-curve/', label: 'US Treasury yield curve today' },
   oil: { href: '/tools/crude-oil-inventories/', label: 'US crude oil inventories this week' },
   fearGreed: { href: '/tools/fear-and-greed-index/', label: 'Fear & Greed Index today' },
-  travel: { href: '/tools/travel-advisory-map/', label: 'Travel advisory map: US and Australian warnings by country' },
+  travel: { href: '/tools/travel-advisory-map/', label: 'Travel advisory map: US, UK and Australian warnings by country' },
 });
 
 /**

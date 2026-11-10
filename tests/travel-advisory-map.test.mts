@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import middleware from '../middleware';
 import { liveTopicPageForPath, liveTopicReading, liveTopicRpcPath } from '../scripts/live-pages/index.mjs';
-import { MIN_REGISTER_COUNTRIES, travelAdvisoriesPage } from '../scripts/live-pages/travel-advisories.mjs';
+import { MIN_REGISTER_COUNTRIES, travelAdvisoriesAnswer, travelAdvisoriesPage } from '../scripts/live-pages/travel-advisories.mjs';
 import { renderWorldMapSvg, worldMapShapes } from '../scripts/live-pages-world-map.mjs';
 import { renderLiveTopicPage } from '../scripts/build-live-topic-pages.mjs';
 import { countryLiveLinks, crisisLiveLinks } from '../scripts/live-pages/related-links.mjs';
@@ -12,7 +12,12 @@ import {
   advisoryBootstrapTransform,
   advisoryPublishTransform,
   buildRegisterLevels,
+  cdcNoticeCountries,
   fetchAll,
+  fetchUkRegister,
+  MIN_UK_DESTINATIONS,
+  ukCountryCode,
+  ukLevel,
 } from '../scripts/seed-security-advisories.mjs';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
 import { normalizeAdvisoryRegisterLevels } from '../shared/intelligence-snapshots.js';
@@ -43,6 +48,19 @@ function register(source: 'US' | 'AU', levelFor: (code: string, i: number) => st
 
 const usLevel = (code: string, i: number) => (code === 'AF' || code === 'RU' ? 'do-not-travel' : LEVELS[i % 3]);
 const auLevel = (code: string, i: number) => (code === 'AF' ? 'do-not-travel' : code === 'FR' ? 'do-not-travel' : LEVELS[i % 3]);
+
+// The UK register: whole-country warnings for AF and RU, parts for FR.
+function ukRegister(count = CODES.length): Row[] {
+  return CODES.slice(0, count).map((code, i) => ({
+    title: code,
+    link: `https://www.gov.uk/foreign-travel-advice/${code.toLowerCase()}`,
+    pubDate: new Date(NOW - (i + 2) * 7 * DAY).toISOString(),
+    source: 'UK FCDO',
+    sourceCountry: 'UK',
+    level: code === 'AF' || code === 'RU' ? 'all-whole' : code === 'FR' ? 'all-parts+essential-parts' : code === 'KP' ? 'essential-whole' : 'none',
+    country: code,
+  }));
+}
 
 function payload(overrides: Record<string, unknown> = {}) {
   return {
@@ -97,6 +115,110 @@ describe('travel advisory register levels in the seed', () => {
   });
 });
 
+describe('the UK and CDC registers in the seed', () => {
+  it('turns the FCDO alert_status into one level, strongest warning first, and refuses an unknown one', () => {
+    assert.equal(ukLevel([]), 'none');
+    assert.equal(ukLevel(['avoid_all_but_essential_travel_to_parts', 'avoid_all_travel_to_parts']), 'all-parts+essential-parts');
+    assert.equal(ukLevel(['avoid_all_travel_to_whole_country']), 'all-whole');
+    assert.equal(ukLevel(['avoid_travel_to_moon']), null, 'a new FCDO value is a format change, not "no warning"');
+    assert.equal(ukLevel(['constructor']), null, 'an inherited object member is not a known FCDO value');
+  });
+
+  it('codes FCDO destination names exactly, so South Georgia is not Georgia', () => {
+    assert.equal(ukCountryCode('South Georgia and the South Sandwich Islands'), 'GS');
+    assert.equal(ukCountryCode('Georgia'), 'GE');
+    assert.equal(ukCountryCode('Myanmar (Burma)'), 'MM');
+    assert.equal(ukCountryCode("Côte d'Ivoire"), 'CI');
+    assert.equal(ukCountryCode('The Gambia'), 'GM');
+    assert.equal(ukCountryCode('St Maarten'), '', 'a territory with no registry code is skipped, not folded into a country');
+    assert.equal(ukCountryCode('Constructor'), '', 'an inherited object member is not a country code');
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Measles in Constructor, Ghana and toString').countries, ['GH']);
+  });
+
+  it('ties a CDC notice to every country it names, including a region of one, and to none for a global notice', () => {
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Yellow Fever in Burkina Faso, Côte d’Ivoire, and Ghana'), { level: 'cdc-2', countries: ['BF', 'CI', 'GH'] });
+    assert.deepEqual(cdcNoticeCountries('Level 4 - Ebola Bundibugyo Virus Disease in Ituri and Nord-Kivu Provinces of the Democratic Republic of the Congo'), { level: 'cdc-4', countries: ['CD'] });
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Ebola Bundibugyo Virus Disease in the Democratic Republic of the Congo and Uganda'), { level: 'cdc-2', countries: ['CD', 'UG'] });
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Yellow Fever in Trinidad and Tobago').countries, ['TT'], 'a name with "and" in it is one country');
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Measles in Bosnia and Herzegovina, Serbia, and Antigua and Barbuda').countries, ['BA', 'RS', 'AG']);
+    assert.deepEqual(cdcNoticeCountries('Level 2 - Dengue in Saint Vincent and the Grenadines and Barbados').countries, ['VC', 'BB']);
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Global Dengue').countries, []);
+    assert.deepEqual(cdcNoticeCountries('Level 1 - Diphtheria in Sub-Saharan Africa').countries, []);
+  });
+
+  const index = (count: number) => ({ links: { children: Array.from({ length: count }, (_, i) => ({ base_path: `/foreign-travel-advice/d${i}` })) } });
+  const NAMES = ['France', 'Russia', 'Germany', 'Japan', 'Kenya'];
+  function govUk({ failAt = -1, alerts = (i: number) => (i === 1 ? ['avoid_all_travel_to_whole_country'] : []) } = {}) {
+    const calls: string[] = [];
+    const doFetch = async (url: string) => {
+      calls.push(url);
+      const json = (body: unknown) => ({ ok: true, status: 200, text: async () => JSON.stringify(body) });
+      if (url.endsWith('/api/content/foreign-travel-advice')) return json(index(MIN_UK_DESTINATIONS));
+      const i = Number(url.match(/\/d(\d+)$/)?.[1]);
+      if (i === failAt) return { ok: false, status: 503, text: async () => '' };
+      return json({ public_updated_at: '2026-10-27T16:06:13+00:00', details: { country: { name: NAMES[i % NAMES.length] }, alert_status: alerts(i) } });
+    };
+    return { calls, doFetch };
+  }
+
+  it('reads every FCDO destination page into a UK register row', async () => {
+    const { calls, doFetch } = govUk();
+    const rows = await fetchUkRegister(doFetch as never);
+    assert.equal(calls.length, MIN_UK_DESTINATIONS + 1, 'the index and one page per destination');
+    assert.deepEqual(rows.map((row) => row.country), ['DE', 'FR', 'JP', 'KE', 'RU'], 'one row per country');
+    assert.deepEqual(rows.find((row) => row.country === 'RU'), {
+      title: 'Russia', link: 'https://www.gov.uk/foreign-travel-advice/d1', pubDate: '2026-10-27T16:06:13.000Z', source: 'UK FCDO', sourceCountry: 'UK', level: 'all-whole', country: 'RU',
+    });
+    assert.deepEqual(normalizeAdvisoryRegisterLevels({ registerLevels: rows }), rows, 'the RPC keeps every UK row');
+  });
+
+  it('publishes no UK register when one destination fails twice, and says the UK register is missing', async () => {
+    const { doFetch } = govUk({ failAt: 7 });
+    assert.deepEqual(await fetchUkRegister(doFetch as never), [], 'a missing page would read as "no UK advice"');
+    const report = await fetchAll({ feeds: [{ name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' }], doFetch: doFetch as never });
+    assert.ok(!report.registerLevels.some((row: Row) => row.sourceCountry === 'UK'));
+    assert.deepEqual(report._sourceHealth.missingRegisters, ['UK']);
+  });
+
+  it('gives up on a slow UK read at its deadline and still publishes the other registers', async () => {
+    const STATE = { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' };
+    const rss = `<?xml version="1.0"?><rss><channel><item><title>Mexico - Level 2: Exercise Increased Caution</title><link>https://travel.state.gov/mexico.html</link><pubDate>Sat, 01 Nov 2026 12:00:00 GMT</pubDate></item></channel></rss>`;
+    const { calls, doFetch: govUkFetch } = govUk();
+    const slow = (async (url: string) => {
+      if (url.includes('TAsTWs')) return { ok: true, status: 200, text: async () => rss };
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return govUkFetch(url);
+    }) as never;
+    const started = Date.now();
+    const report = await fetchAll({
+      feeds: [STATE, { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' }],
+      doFetch: slow,
+      fetchDeadlineAtMs: Date.now() + 30_000 + 300,
+    });
+    assert.ok(Date.now() - started < 2_000, 'the UK read stopped at its deadline, 30 s before the seed’s');
+    assert.ok(calls.length < MIN_UK_DESTINATIONS, `stopped fetching pages (${calls.length} requests)`);
+    assert.deepEqual(report.registerLevels.map((row: Row) => row.country), ['MX']);
+    assert.deepEqual(report._sourceHealth.missingRegisters, ['UK']);
+  });
+
+  it('keeps the UK and CDC rows out of the level index the risk scores read', async () => {
+    const cdcRss = `<?xml version="1.0"?><rss><channel><item><title>Level 2 - Yellow Fever in Ghana</title><link>https://wwwnc.cdc.gov/travel/notices/level2/yellow-fever-ghana</link><pubDate>Thu, 16 Oct 2026 12:00:00 GMT</pubDate></item></channel></rss>`;
+    const { doFetch: govUkFetch } = govUk();
+    const report = await fetchAll({
+      feeds: [
+        { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' },
+        { name: 'CDC Travel Notices', sourceCountry: 'US', sourceCategory: 'health', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml', register: 'cdc' },
+      ],
+      doFetch: (async (url: string) => (url.includes('notices.xml') ? { ok: true, status: 200, text: async () => cdcRss } : govUkFetch(url))) as never,
+    });
+    assert.deepEqual(report.byCountry, {});
+    assert.deepEqual(report.registerLevels.find((row: Row) => row.source === 'CDC Travel Notices'), {
+      title: 'Level 2 - Yellow Fever in Ghana', link: 'https://wwwnc.cdc.gov/travel/notices/level2/yellow-fever-ghana', pubDate: '2026-10-16T12:00:00.000Z', source: 'CDC Travel Notices', sourceCountry: 'US', level: 'cdc-2', country: 'GH',
+    });
+    assert.ok(report.advisories.every((advisory: Record<string, unknown>) => !('_registerUpdatedAt' in advisory)));
+  });
+});
+
 describe('travel advisory map reading', () => {
   it('puts both governments side by side for every destination and counts each level', () => {
     const record = read(payload());
@@ -142,12 +264,72 @@ describe('travel advisory map reading', () => {
   });
 });
 
+describe('travel advisory map reading with the UK, embassy alerts and CDC notices', () => {
+  const alert = (country: string, daysAgo: number, title = `Security Alert ${daysAgo}`) =>
+    ({ title, link: `https://${country.toLowerCase()}.usembassy.gov/a${daysAgo}`, pubDate: new Date(NOW - daysAgo * DAY).toISOString(), source: `US Embassy ${country}`, sourceCountry: 'US', level: 'info', country });
+
+  it('adds the UK register, counts its strongest warnings and lists its whole-country warnings', () => {
+    const record = read(payload({ registerLevels: [...payload().registerLevels as Row[], ...ukRegister()] }));
+    assert.equal(record.hasUK, true);
+    assert.equal(record.counts.UK[4], 2);
+    assert.equal(record.counts.UK[3], 1);
+    assert.equal(record.counts.UK[2], 1);
+    assert.deepEqual(record.ukWhole.map((country: any) => country.code), ['AF', 'RU', 'KP'], 'strongest warning first, then by name');
+    const section = travelAdvisoriesPage.renderSection(record, { live: true });
+    assert.match(section, /The UK Foreign Office advises against all travel to the whole of 2 countries\.<\/p>/);
+    assert.match(section, /\.advisory-figure\[data-view="UK"\] :is\(\[data-iso2="AF"\],\[data-iso2="RU"\]\)\{fill:var\(--uk-4\)\}/);
+    assert.match(section, /<a href="https:\/\/www\.gov\.uk\/foreign-travel-advice\/fr" rel="nofollow">Against all travel to parts, and all but essential travel to other parts<\/a>/);
+    assert.match(section, /<table class="advisory-table" data-uk-register>/);
+    assert.match(section, /Open Government Licence v3\.0/);
+  });
+
+  it('leaves the UK out entirely when its register was not read in full', () => {
+    const record = read(payload({ registerLevels: [...payload().registerLevels as Row[], ...ukRegister(MIN_REGISTER_COUNTRIES - 1)] }));
+    assert.equal(record.hasUK, false);
+    assert.ok(record.countries.every((country: any) => country.UK === null));
+    const section = travelAdvisoriesPage.renderSection(record, { live: true });
+    assert.ok(!section.includes('data-uk-register') && !section.includes('UK Foreign Office') && !section.includes('data-view="UK"'));
+    assert.doesNotMatch(travelAdvisoriesAnswer(record), /UK/);
+  });
+
+  it('attaches the latest embassy alert from the last 30 days and every CDC notice to its country', () => {
+    const cdc = (country: string, level: number, title: string) =>
+      ({ title, link: 'https://wwwnc.cdc.gov/travel/notices/x', pubDate: '2026-10-16T12:00:00.000Z', source: 'CDC Travel Notices', sourceCountry: 'US', level: `cdc-${level}`, country });
+    const record = read(payload({
+      registerLevels: [...payload().registerLevels as Row[], cdc('GH', 2, 'Level 2 - Yellow Fever in Ghana'), cdc('GH', 1, 'Level 1 - Measles in Ghana'), cdc('GH', 9, 'Level 9 - bad')],
+      advisories: [alert('MX', 3, 'Newest'), alert('MX', 10), alert('PL', 31), alert('IT', 2, 'Unsafe'), { ...alert('DE', 1), link: 'javascript:alert(1)' }],
+    }));
+    const country = (code: string) => record.countries.find((entry: any) => entry.code === code);
+    assert.equal(country('MX').alert.title, 'Newest');
+    assert.equal(country('PL').alert, null, 'a 31-day-old alert is history');
+    assert.equal(country('DE').alert, null, 'an unsafe link is dropped');
+    assert.deepEqual(country('GH').health.map((notice: any) => notice.level), [2, 1], 'strongest first; an invalid level is dropped');
+    assert.ok(!('alert' in record.counts) && record.counts.US['do-not-travel'] === 2, 'alerts and notices change no level count');
+    const section = travelAdvisoriesPage.renderSection(record, { live: true });
+    assert.match(section, /<small class="dest-note dest-alert" data-date="Nov 4, 2026">US Embassy alert, Nov 4, 2026: <a href="https:\/\/mx\.usembassy\.gov\/a3" rel="nofollow">Newest<\/a><\/small>/);
+    assert.match(section, /<small class="dest-note dest-health" data-date="Oct 16, 2026">CDC health notice, Oct 16, 2026: <a href="https:\/\/wwwnc\.cdc\.gov\/travel\/notices\/x" rel="nofollow">Level 2 - Yellow Fever in Ghana<\/a><\/small>/);
+  });
+
+  it('still renders a frozen record captured before the UK register and the notices existed', () => {
+    const record = read(payload());
+    const { hasUK: _hasUK, ukWhole: _ukWhole, ...frozen } = record;
+    for (const country of frozen.countries) {
+      delete country.UK;
+      delete country.health;
+      delete country.alert;
+    }
+    const section = travelAdvisoriesPage.renderSection(frozen, { live: false });
+    assert.match(section, /<tr id="advisory-af" data-us="4" data-au="4">/);
+    assert.ok(!section.includes('data-uk-register'));
+  });
+});
+
 describe('travel advisory map section', () => {
   it('states both counts with the date and gives each level its government’s wording and link', () => {
     const section = travelAdvisoriesPage.renderSection(read(payload()), { live: true });
     const answer = section.match(/<p data-live-answer>([^<]*)<\/p>/)?.[1] ?? '';
     assert.match(answer, /^As of Nov 7, 2026, 9:20 AM UTC, the US State Department rates 2 countries Level 4: Do Not Travel, and Australia’s Smartraveller tells travellers not to go to 2 countries\. The two governments give different advice for \d+ countries\.$/);
-    assert.match(section, /<tr id="advisory-af" data-us="4" data-au="4"><th scope="row">Afghanistan<\/th><td class="lvl lvl-4"><span class="lvl-pill l4" aria-hidden="true">4<\/span><a href="https:\/\/travel\.state\.gov\/af" rel="nofollow">Level 4: Do Not Travel<\/a>/);
+    assert.match(section, /<tr id="advisory-af" data-us="4" data-au="4"><th scope="row"><span class="dest-name">Afghanistan<\/span><\/th><td class="lvl lvl-4"><span class="lvl-pill l4" aria-hidden="true">4<\/span><a href="https:\/\/travel\.state\.gov\/af" rel="nofollow">Level 4: Do Not Travel<\/a>/);
     assert.match(section, /<a href="https:\/\/www\.smartraveller\.gov\.au\/af" rel="nofollow">Do not travel<\/a>/);
     const faq = JSON.parse(section.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] ?? '{}');
     assert.equal(faq.mainEntity[0].acceptedAnswer.text, answer);

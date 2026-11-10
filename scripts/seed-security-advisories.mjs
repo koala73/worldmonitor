@@ -27,7 +27,7 @@ const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
   { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/countries/documents/index.rss', levelParser: 'au' },
-  { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom' },
+  { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' },
   { name: 'US Embassy Thailand', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://th.usembassy.gov/category/alert/feed/', targetCountry: 'TH' },
   { name: 'US Embassy UAE', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://ae.usembassy.gov/category/alert/feed/', targetCountry: 'AE' },
   { name: 'US Embassy Germany', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://de.usembassy.gov/category/alert/feed/', targetCountry: 'DE' },
@@ -41,7 +41,7 @@ const ADVISORY_FEEDS = [
   { name: 'US Embassy Italy', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://it.usembassy.gov/category/alert/feed/', targetCountry: 'IT' },
   { name: 'US Embassy Dominican Republic', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://do.usembassy.gov/category/alert/feed/', targetCountry: 'DO' },
   { name: 'US Embassy Myanmar', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://mm.usembassy.gov/category/alert/feed/', targetCountry: 'MM' },
-  { name: 'CDC Travel Notices', sourceCountry: 'US', sourceCategory: 'health', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml' },
+  { name: 'CDC Travel Notices', sourceCountry: 'US', sourceCategory: 'health', url: 'https://wwwnc.cdc.gov/travel/rss/notices.xml', register: 'cdc' },
   { name: 'ECDC Epidemiological Updates', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1310/feed' },
   { name: 'ECDC Threats Report', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1505/feed' },
   { name: 'ECDC Risk Assessments', sourceCountry: 'EU', sourceCategory: 'health', url: 'https://www.ecdc.europa.eu/en/taxonomy/term/1295/feed' },
@@ -285,7 +285,7 @@ export function mapFeedItems(items, feed) {
       sourceCountry: feed.sourceCountry,
       level: parseLevel(item, feed.levelParser),
       country: extractCountry(item.title, feed) || '',
-      ...(feed.levelParser ? { [REGISTER_UPDATED_FIELD]: parseFeedDate(item.pubDate) ?? '' } : {}),
+      ...(feed.levelParser || feed.register === 'cdc' ? { [REGISTER_UPDATED_FIELD]: parseFeedDate(item.pubDate) ?? '' } : {}),
     }));
 }
 
@@ -323,6 +323,184 @@ export function buildRegisterLevels(feeds, itemsByFeed) {
   });
   return [...byKey.values()].sort((a, b) =>
     a.sourceCountry.localeCompare(b.sourceCountry) || a.country.localeCompare(b.country));
+}
+
+// The FCDO's Atom feed lists only recently edited pages and carries no
+// warning. Each destination's warning is `details.alert_status` on its GOV.UK
+// Content API page: zero or more of these four, strongest first. A register
+// row's level joins the ones present with '+', or is 'none'.
+export const UK_ALERTS = Object.freeze({
+  avoid_all_travel_to_whole_country: 'all-whole',
+  avoid_all_but_essential_travel_to_whole_country: 'essential-whole',
+  avoid_all_travel_to_parts: 'all-parts',
+  avoid_all_but_essential_travel_to_parts: 'essential-parts',
+});
+const UK_INDEX_URL = 'https://www.gov.uk/api/content/foreign-travel-advice';
+// The FCDO lists ~226 destinations. Fewer means the index was cut short.
+export const MIN_UK_DESTINATIONS = 150;
+// FCDO names that are not a country-names.json key. Overseas departments and
+// territories the registry has no code for (Réunion, St Maarten, ...) are
+// skipped rather than folded into France or the Netherlands.
+const UK_NAME_CODES = Object.freeze({
+  'myanmar burma': 'MM',
+  'antarctica british antarctic territory': 'AQ',
+  'cook islands tokelau and niue': 'CK',
+  'south georgia and the south sandwich islands': 'GS',
+  macao: 'MO',
+});
+
+function normalizeName(name) {
+  return String(name).normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['’]/g, '').replace(/[.(),/&-]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** The register level for one destination's alert_status, or null for a value this parser does not know. */
+export function ukLevel(alertStatus) {
+  if (!Array.isArray(alertStatus)) return null;
+  if (alertStatus.some((alert) => !Object.hasOwn(UK_ALERTS, alert))) return null;
+  const present = Object.keys(UK_ALERTS).filter((alert) => alertStatus.includes(alert)).map((alert) => UK_ALERTS[alert]);
+  return present.length ? present.join('+') : 'none';
+}
+
+function codeFor(table, name) {
+  const code = Object.hasOwn(table, name) ? table[name] : '';
+  return /^[A-Z]{2}$/.test(code) ? code : '';
+}
+
+function countryNameCode(normalized) {
+  return codeFor(COUNTRY_NAMES, normalized) || codeFor(COUNTRY_NAMES, normalized.replace(/^the /, ''));
+}
+
+export function ukCountryCode(name) {
+  const normalized = normalizeName(name);
+  return codeFor(UK_NAME_CODES, normalized) || countryNameCode(normalized);
+}
+
+async function getJson(url, doFetch, deadlineAtMs) {
+  for (let attempt = 0; ; attempt += 1) {
+    const remainingMs = deadlineAtMs - Date.now();
+    if (remainingMs <= 0) throw new Error('ran out of time');
+    try {
+      const resp = await doFetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(Math.min(15_000, remainingMs)),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return JSON.parse(await readBoundedFeedText(resp));
+    } catch (error) {
+      if (attempt >= 1) throw error;
+    }
+  }
+}
+
+const UK_BUDGET_MS = 120_000;
+// Leaves the seed time to publish the other registers after the UK read gives up.
+const UK_DEADLINE_MARGIN_MS = 30_000;
+
+/**
+ * The FCDO's warning for every destination it lists, as register rows. All or
+ * nothing: a destination that failed to load would read as "no UK advice", so
+ * any failure, or running past deadlineAtMs, returns [] and source health
+ * reports the UK register missing.
+ */
+export async function fetchUkRegister(doFetch = fetch, deadlineAtMs = Date.now() + UK_BUDGET_MS) {
+  try {
+    const index = await getJson(UK_INDEX_URL, doFetch, deadlineAtMs);
+    const pages = (index?.links?.children || []).filter((child) => typeof child?.base_path === 'string' && child.base_path.startsWith('/foreign-travel-advice/'));
+    if (pages.length < MIN_UK_DESTINATIONS) throw new Error(`index lists ${pages.length} destinations`);
+    const rows = new Array(pages.length);
+    let next = 0;
+    let failed = false;
+    const worker = async () => {
+      while (next < pages.length && !failed) {
+        const i = next++;
+        const page = pages[i];
+        const doc = await getJson(`https://www.gov.uk/api/content${page.base_path}`, doFetch, deadlineAtMs).catch((error) => {
+          failed = true;
+          throw error;
+        });
+        const name = doc?.details?.country?.name || page.details?.country?.name || doc?.title || '';
+        const level = ukLevel(doc?.details?.alert_status ?? []);
+        if (!level) throw new Error(`${page.base_path}: unknown alert_status ${JSON.stringify(doc?.details?.alert_status)}`);
+        rows[i] = {
+          title: name,
+          link: `https://www.gov.uk${page.base_path}`,
+          pubDate: parseFeedDate(doc?.public_updated_at) ?? '',
+          source: 'UK FCDO',
+          sourceCountry: 'UK',
+          level,
+          country: ukCountryCode(name),
+        };
+      }
+    };
+    await Promise.all(Array.from({ length: 4 }, worker));
+    const coded = rows.filter((row) => row.country);
+    // Two destinations can share a code (none do today); keep the stricter.
+    const byCode = new Map();
+    for (const row of coded) {
+      const existing = byCode.get(row.country);
+      if (!existing || ukSeverity(row.level) > ukSeverity(existing.level)) byCode.set(row.country, row);
+    }
+    return [...byCode.values()].sort((a, b) => a.country.localeCompare(b.country));
+  } catch (error) {
+    console.warn(`  UK FCDO register: ${error.message}`);
+    return [];
+  }
+}
+
+const UK_SEVERITY = { 'all-whole': 4, 'essential-whole': 3, 'all-parts': 2, 'essential-parts': 1 };
+function ukSeverity(level) {
+  return UK_SEVERITY[level.split('+')[0]] || 0;
+}
+
+// CDC titles read "Level N - <disease> in <places>", where places can list
+// several countries ("Burkina Faso, Côte d’Ivoire, and Ghana") or name a
+// region of one ("Ituri and Nord-Kivu Provinces of the Democratic Republic of
+// the Congo"). Global and regional notices ("Global Dengue", "Sub-Saharan
+// Africa") name no country and are not tied to one.
+const CDC_TITLE = /^Level ([1-4]) - .+? in (.+)$/;
+
+function regionOfCountryCode(normalized) {
+  const entry = SORTED_COUNTRY_ENTRIES.find(([name]) => normalized.endsWith(` of the ${name}`) || normalized.endsWith(` of ${name}`));
+  return entry && /^[A-Z]{2}$/.test(entry[1]) ? entry[1] : '';
+}
+
+export function cdcNoticeCountries(title) {
+  const match = String(title).trim().match(CDC_TITLE);
+  if (!match) return { level: '', countries: [] };
+  const codes = [];
+  const add = (code) => {
+    if (code && !codes.includes(code)) codes.push(code);
+  };
+  // "and" both joins list items and belongs to names ("Trinidad and Tobago"),
+  // so each comma piece takes the longest run of parts that is a country name.
+  for (const piece of match[2].split(/,\s*(?:and\s+)?/)) {
+    const parts = normalizeName(piece).split(' and ');
+    let i = 0;
+    while (i < parts.length) {
+      const runs = [];
+      for (let j = parts.length; j > i; j -= 1) runs.push([j, parts.slice(i, j).join(' and ')]);
+      const exact = runs.find(([, name]) => countryNameCode(name));
+      const found = exact
+        ? [exact[0], countryNameCode(exact[1])]
+        : runs.map(([j, name]) => [j, regionOfCountryCode(name)]).find(([, code]) => code);
+      if (found) add(found[1]);
+      i = found ? found[0] : i + 1;
+    }
+  }
+  return { level: `cdc-${match[1]}`, countries: codes };
+}
+
+/** One register row per country a CDC travel health notice names. */
+export function cdcRegisterRows(items) {
+  const rows = [];
+  for (const item of items) {
+    const { level, countries } = cdcNoticeCountries(item.title);
+    for (const country of countries) {
+      rows.push({ title: item.title, link: item.link, pubDate: item[REGISTER_UPDATED_FIELD] || '', source: item.source, sourceCountry: item.sourceCountry, level, country });
+    }
+  }
+  return rows.sort((a, b) => a.country.localeCompare(b.country) || b.pubDate.localeCompare(a.pubDate));
 }
 
 function withoutRegisterDate({ [REGISTER_UPDATED_FIELD]: _updatedAt, ...advisory }) {
@@ -370,7 +548,7 @@ export const ADVISORY_SOURCE_HEALTH_FIELD = '_sourceHealth';
 // leaves every item at 'info' all look the same to byCountry. The seed still
 // publishes while the other register clears MIN_ADVISORY_COUNTRY_COVERAGE, so
 // this is what keeps a one-register index from reading as healthy.
-function summarizeSourceHealth(feeds, itemsByFeed) {
+function summarizeSourceHealth(feeds, itemsByFeed, ukRows) {
   const missingRegisters = [];
   const emptyFeeds = [];
   feeds.forEach((feed, i) => {
@@ -379,6 +557,7 @@ function summarizeSourceHealth(feeds, itemsByFeed) {
     if (feed.levelParser && !items.some((a) => a.country && a.level && a.level !== 'info')) {
       missingRegisters.push(feed.sourceCountry);
     }
+    if (feed.register === 'uk' && ukRows.length === 0) missingRegisters.push(feed.sourceCountry);
   });
   return { missingRegisters: [...new Set(missingRegisters)].sort(), emptyFeeds };
 }
@@ -413,8 +592,11 @@ export async function advisoryAfterPublish(data) {
   };
 }
 
-export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {}) {
+export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch, fetchDeadlineAtMs } = {}) {
+  const ukDeadline = Math.min(Date.now() + UK_BUDGET_MS, (fetchDeadlineAtMs ?? Infinity) - UK_DEADLINE_MARGIN_MS);
+  const ukRegister = feeds.some((feed) => feed.register === 'uk') ? fetchUkRegister(doFetch, ukDeadline) : Promise.resolve([]);
   const results = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed, doFetch)));
+  const ukRows = await ukRegister;
   const all = [];
   const itemsByFeed = [];
   for (let i = 0; i < results.length; i++) {
@@ -423,7 +605,7 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
     if (r.status === 'fulfilled') all.push(...r.value);
     else console.warn(`  Feed ${feeds[i]?.name || i} failed: ${r.reason?.message || r.reason}`);
   }
-  const sourceHealth = summarizeSourceHealth(feeds, itemsByFeed);
+  const sourceHealth = summarizeSourceHealth(feeds, itemsByFeed, ukRows);
   if (sourceHealth.missingRegisters.length > 0) {
     console.warn(`  Travel registers with no levelled country: ${sourceHealth.missingRegisters.join(', ')}`);
   }
@@ -448,8 +630,13 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
     byCountry,
     byCountryName: BY_COUNTRY_NAME,
     // Built per feed, before the cross-feed title dedupe: each register's
-    // entry for a country stands on its own.
-    registerLevels: buildRegisterLevels(feeds, itemsByFeed),
+    // entry for a country stands on its own. The UK warnings and the CDC's
+    // health notices use their own scales and stay out of byCountry.
+    registerLevels: [
+      ...buildRegisterLevels(feeds, itemsByFeed),
+      ...ukRows,
+      ...cdcRegisterRows(feeds.flatMap((feed, i) => (feed.register === 'cdc' ? itemsByFeed[i] : []))),
+    ],
     advisories,
     fetchedAt: new Date().toISOString(),
     [ADVISORY_SOURCE_HEALTH_FIELD]: sourceHealth,
