@@ -183,6 +183,44 @@ describe("admin new-subscription email: conversion context", () => {
     expect(html).not.toContain("Referrer:");
     expect(html).not.toContain("Billing Country:");
   });
+
+  test("the exact landing path from the checkout metadata reaches the admin email", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedPlan(t);
+
+    await activate(t, {
+      metadata: {
+        wm_user_id: "user_buyer",
+        wm_acq_referrer: "chatgpt.com",
+        wm_acq_landing: "countries",
+        wm_acq_path: "/countries/iran/",
+      },
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const html = sends().find((send) => send.subject.startsWith("[WM] New User Subscribed"))?.html ?? "";
+    expect(html).toMatch(/Landing Page:<\/td><td[^>]*>\/countries\/iran\/ \(countries\)</);
+  });
+
+  test("a crafted landing path in the checkout metadata never reaches the admin email", async () => {
+    const sends = mockResend();
+    const t = convexTest(schema, modules);
+    await seedPlan(t);
+
+    await activate(t, {
+      metadata: {
+        wm_user_id: "user_buyer",
+        wm_acq_landing: "countries",
+        wm_acq_path: "/countries/<img src=x>/",
+      },
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const html = sends().find((send) => send.subject.startsWith("[WM] New User Subscribed"))?.html ?? "";
+    expect(html).toMatch(/Landing Page:<\/td><td[^>]*>countries</);
+    expect(html).not.toContain("img");
+  });
 });
 
 describe("adminNewSubscriptionHtml", () => {
@@ -234,6 +272,25 @@ describe("adminNewSubscriptionHtml", () => {
     expect(sourceRow("twitter", { medium: "social" })).toBe("twitter / social");
     expect(sourceRow("constructor")).toBe("constructor");
     expect(sourceRow("tostring")).toBe("tostring");
+  });
+
+  test("the landing page row names the exact path and its family", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: {
+        purchasedAt: PURCHASED_AT,
+        acquisition: { referrer: "direct", landing: "countries", path: "/countries/iran/" },
+      },
+    });
+    expect(html).toMatch(/Landing Page:<\/td><td[^>]*>\/countries\/iran\/ \(countries\)</);
+  });
+
+  test("a record written before the path existed shows the family alone", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: { purchasedAt: PURCHASED_AT, acquisition: { referrer: "direct", landing: "countries" } },
+    });
+    expect(html).toMatch(/Landing Page:<\/td><td[^>]*>countries</);
   });
 
   test("a referral alone counts as a captured source", () => {

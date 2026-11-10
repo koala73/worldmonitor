@@ -38,8 +38,27 @@ describe('parseAcquisitionSource', () => {
       campaign: 'hormuz-launch',
       referrer: 't.co',
       landing: 'pricing',
+      path: '/pro',
       firstSeen: '2026-10-24',
     });
+  });
+
+  it('records the exact landing path but never its query or hash', () => {
+    const source = parseAcquisitionSource({
+      search: '?utm_source=chatgpt.com&email=someone%40example.com#section',
+      pathname: '/countries/iran/',
+      referrer: '',
+      now: NOW,
+    });
+    assert.equal(source.path, '/countries/iran/');
+    assert.equal(source.landing, 'countries');
+    assert.doesNotMatch(JSON.stringify(source), /email|example|section/);
+  });
+
+  it('stores no path for a page outside the listed families', () => {
+    const source = parseAcquisitionSource({ search: '', pathname: '/product', referrer: '', now: NOW });
+    assert.equal(source.landing, undefined);
+    assert.equal(source.path, undefined);
   });
 
   it('keeps only the referrer hostname, never its path or query', () => {
@@ -51,6 +70,7 @@ describe('parseAcquisitionSource', () => {
     });
     assert.equal(source.referrer, 'google.com');
     assert.equal(source.landing, 'homepage');
+    assert.equal(source.path, '/');
     assert.equal(source.source, undefined);
   });
 
@@ -118,6 +138,34 @@ describe('normalizeAcquisitionSource', () => {
       medium: 'cpc',
       campaign: 'x'.repeat(64),
     });
+  });
+
+  it('keeps a safe landing path inside a listed family', () => {
+    for (const path of ['/', '/countries/iran/', '/blog/posts/hormuz-2026_v2.html', '/docs/a~b', '/tools/caf%C3%A9/']) {
+      assert.equal(normalizeAcquisitionSource({ path })?.path, path, path);
+    }
+  });
+
+  it('drops a landing path that is unsafe, too long or outside the listed families', () => {
+    const rejected: unknown[] = [
+      'countries/iran/',
+      '/countries/iran/?utm_source=x',
+      '/countries/iran/#top',
+      '/countries/<script>/',
+      '/countries/iran /',
+      '/countries/"x"/',
+      `/countries/${'a'.repeat(120)}`,
+      '/product',
+      '/blogroll',
+      '//evil.example/countries/',
+      42,
+      null,
+    ];
+    for (const path of rejected) {
+      assert.equal(normalizeAcquisitionSource({ medium: 'cpc', path })?.path, undefined, String(path));
+    }
+    const atLimit = `/countries/${'a'.repeat(120 - '/countries/'.length)}`;
+    assert.equal(normalizeAcquisitionSource({ path: atLimit })?.path, atLimit);
   });
 
   it('returns null for non-objects and for objects with no usable field', () => {
@@ -202,11 +250,12 @@ describe('acquisitionCookieStorage', () => {
 describe('acquisitionCheckoutMetadata', () => {
   it('maps each present field to a wm_acq_* key', () => {
     assert.deepEqual(
-      acquisitionCheckoutMetadata({ source: 'twitter', referrer: 't.co', landing: 'pricing', firstSeen: '2026-10-24' }),
+      acquisitionCheckoutMetadata({ source: 'twitter', referrer: 't.co', landing: 'pricing', path: '/pro/', firstSeen: '2026-10-24' }),
       {
         wm_acq_source: 'twitter',
         wm_acq_referrer: 't.co',
         wm_acq_landing: 'pricing',
+        wm_acq_path: '/pro/',
         wm_acq_first_seen: '2026-10-24',
       },
     );
@@ -214,14 +263,29 @@ describe('acquisitionCheckoutMetadata', () => {
 
   it('re-validates its input so a crafted value never reaches provider metadata', () => {
     assert.deepEqual(acquisitionCheckoutMetadata({ referrer: 'bad host', medium: 'cpc' }), { wm_acq_medium: 'cpc' });
+    assert.deepEqual(acquisitionCheckoutMetadata({ path: '/countries/iran/?q=1', medium: 'cpc' }), { wm_acq_medium: 'cpc' });
     assert.deepEqual(acquisitionCheckoutMetadata(undefined), {});
   });
 });
 
 describe('acquisitionFromCheckoutMetadata', () => {
   it('reads back exactly what acquisitionCheckoutMetadata wrote', () => {
-    const source = { source: 'twitter', medium: 'social', campaign: 'launch', referrer: 't.co', landing: 'pricing', firstSeen: '2026-10-24' };
+    const source = { source: 'twitter', medium: 'social', campaign: 'launch', referrer: 't.co', landing: 'countries', path: '/countries/iran/', firstSeen: '2026-10-24' };
     assert.deepEqual(acquisitionFromCheckoutMetadata(acquisitionCheckoutMetadata(source)), source);
+  });
+
+  it('reads a checkout stamped before the path existed', () => {
+    assert.deepEqual(
+      acquisitionFromCheckoutMetadata({ wm_acq_referrer: 't.co', wm_acq_landing: 'countries' }),
+      { referrer: 't.co', landing: 'countries' },
+    );
+  });
+
+  it('drops a crafted path from provider metadata', () => {
+    assert.deepEqual(
+      acquisitionFromCheckoutMetadata({ wm_acq_landing: 'countries', wm_acq_path: '/countries/<img>/' }),
+      { landing: 'countries' },
+    );
   });
 
   it('ignores unrelated metadata keys and re-validates values', () => {
@@ -265,9 +329,29 @@ describe('firstTouchSetCookie', () => {
       source: 'chatgpt-com',
       referrer: 'direct',
       landing: 'chokepoints',
+      path: '/chokepoints/strait-of-hormuz/',
       firstSeen: '2026-10-24',
       capturedAt: NOW,
     });
+  });
+
+  it('keeps the cookie well under the browser limit with the longest accepted path', () => {
+    const longest = `/countries/${'a'.repeat(120 - '/countries/'.length)}`;
+    const setCookie = firstTouchSetCookie({
+      url: `https://www.worldmonitor.app${longest}?utm_source=${'s'.repeat(80)}&utm_medium=${'m'.repeat(80)}&utm_campaign=${'c'.repeat(80)}`,
+      cookieHeader: null,
+      referrer: `https://${'r'.repeat(60)}.example.com/`,
+      now: NOW,
+    });
+    assert.equal(cookieRecord(setCookie).path, longest);
+    assert.ok(setCookie!.length < 1024, `Set-Cookie is ${setCookie!.length} bytes`);
+  });
+
+  it('keeps a stored record written before the path existed', () => {
+    const cookieHeader = storedCookie({ source: 'reddit', referrer: 'reddit.com', landing: 'countries', capturedAt: NOW - 1_000 });
+    assert.equal(firstTouchSetCookie({ url: HORMUZ_FROM_CHATGPT, cookieHeader, referrer: null, now: NOW }), null);
+    const storage = acquisitionCookieStorage({ cookie: cookieHeader }, { hostname: 'www.worldmonitor.app', protocol: 'https:' });
+    assert.deepEqual(loadFirstTouchAcquisition(storage, NOW), { source: 'reddit', referrer: 'reddit.com', landing: 'countries' });
   });
 
   it('writes the cookie a later checkout reads back', () => {
@@ -280,6 +364,7 @@ describe('firstTouchSetCookie', () => {
       source: 'chatgpt-com',
       referrer: 'chatgpt.com',
       landing: 'chokepoints',
+      path: '/chokepoints/strait-of-hormuz/',
       firstSeen: '2026-10-24',
     });
   });
