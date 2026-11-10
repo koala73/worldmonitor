@@ -211,8 +211,16 @@ describe("adminNewSubscriptionHtml", () => {
       },
     });
     expect(html).toMatch(/Source:<\/td><td[^>]*>chatgpt-com</);
-    expect(html).toMatch(/Referrer:<\/td><td[^>]*>none sent \(source from utm tag\)</);
+    expect(html).toMatch(/Referrer:<\/td><td[^>]*>none recorded \(source from utm tag\)</);
     expect(html).not.toMatch(/Referrer:<\/td><td[^>]*>direct</);
+  });
+
+  test("a medium or campaign tag without utm_source keeps the direct referrer", () => {
+    const html = adminNewSubscriptionHtml({
+      ...base,
+      conversion: { purchasedAt: PURCHASED_AT, acquisition: { medium: "email", referrer: "direct" } },
+    });
+    expect(html).toMatch(/Referrer:<\/td><td[^>]*>direct</);
   });
 
   test("a referral alone counts as a captured source", () => {
