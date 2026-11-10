@@ -2732,7 +2732,8 @@
       "sections": {
         "countries": "Země s sankcemi",
         "entries": "Nedávné designace",
-        "programs": "Programy"
+        "programs": "Programy",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Žádná přiřazení zemí není dostupná.",

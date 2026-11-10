@@ -2328,7 +2328,8 @@
       "sections": {
         "countries": "Gesanctioneerde landen",
         "entries": "Recente aanwijzingen",
-        "programs": "Programma's"
+        "programs": "Programma's",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",

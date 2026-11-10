@@ -2752,7 +2752,8 @@
       "sections": {
         "countries": "الدول المعاقَبة",
         "entries": "التسميات الأخيرة",
-        "programs": "البرامج"
+        "programs": "البرامج",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "لا توجد نسبة دول متاحة.",

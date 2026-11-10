@@ -2712,7 +2712,8 @@
       "sections": {
         "countries": "Санкционирани страни",
         "entries": "Скорошни определения",
-        "programs": "Програми"
+        "programs": "Програми",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Няма налична информация за принадлежност към страна.",

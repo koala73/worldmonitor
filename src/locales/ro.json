@@ -2722,7 +2722,8 @@
       "sections": {
         "countries": "Țări sancționate",
         "entries": "Desemnări recente",
-        "programs": "Programe"
+        "programs": "Programe",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Nicio atribuire de țară disponibilă.",

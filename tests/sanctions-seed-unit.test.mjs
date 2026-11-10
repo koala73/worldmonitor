@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { ingestSemaEntries, mergeSanctionEntries, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
+import sax from 'sax';
+import { ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
@@ -44,6 +45,42 @@ const fetchPressureSrc = seedSrc.slice(
   seedSrc.indexOf('async function fetchSanctionsPressure()'),
   seedSrc.indexOf('\nfunction validate('),
 );
+
+it('attributes an OFAC vessel by its explicit flag, leaving unknown and former flags unattributed', async () => {
+  const profile = (id, type, flag) => `
+    <DistinctParty><Profile ID="${id}" PartySubTypeID="1">
+      <Feature FeatureTypeID="${type}"><FeatureVersion>
+        <VersionDetail DetailTypeID="1432">${flag}</VersionDetail>
+      </FeatureVersion></Feature>
+    </Profile></DistinctParty>`;
+  const xml = `<Sanctions>
+    <CountryValues><Country ID="11171" ISO2="RU">Russia</Country></CountryValues>
+    <FeatureTypeValues>
+      <FeatureType ID="3">Vessel Flag</FeatureType>
+      <FeatureType ID="24">Former Vessel Flag</FeatureType>
+    </FeatureTypeValues>
+    <DistinctParties>
+      ${profile('1', '3', 'Russia')}
+      ${profile('2', '3', 'Unknown')}
+      ${profile('3', '24', 'Russia')}
+    </DistinctParties>
+    <SanctionsEntries>
+      <SanctionsEntry ID="1" ProfileID="1"/>
+      <SanctionsEntry ID="2" ProfileID="2"><Comment>RUSSIA-EO14024</Comment></SanctionsEntry>
+      <SanctionsEntry ID="3" ProfileID="3"/>
+    </SanctionsEntries>
+  </Sanctions>`;
+  const context = vm.createContext({
+    console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
+    SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    fetchOfacSourceResponse: async () => new Response(xml),
+  });
+  const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
+  vm.runInContext(`${pureSrc}\n${fetchSourceSrc}`, context);
+  const { entries } = await context.fetchSource({ label: 'SDN' });
+  assert.deepEqual(normalize(entries.map(entry => entry.countryCodes)), [['RU'], [], []]);
+  assert.deepEqual(normalize(entries[0].countryNames), ['Russia']);
+});
 
 async function partialPublication({ sources = ['CONSOLIDATED'], cached = [], snapshots = null, semaJson, deadlines = {} } = {}) {
   const context = vm.createContext({
@@ -255,13 +292,16 @@ describe('buildCountryPressure', () => {
     assert.equal(result[0].vesselCount, 1);
   });
 
-  it('assigns country code XX and name Unknown for entries with no country', () => {
+  it('counts unattributed designations outside the country ranking', () => {
     const entries = [
-      { countryCodes: [], countryNames: [], isNew: false, entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY' },
+      { countryCodes: [], countryNames: [], isNew: false, entityType: 'SANCTIONS_ENTITY_TYPE_VESSEL' },
+      { countryCodes: ['XX'], countryNames: ['Unknown'], isNew: true, entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' },
+      { countryCodes: ['RU', 'IR'], countryNames: ['Russia', 'Iran'], isNew: false, entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY' },
     ];
-    const result = buildCountryPressure(entries);
-    assert.equal(result[0].countryCode, 'XX');
-    assert.equal(result[0].countryName, 'Unknown');
+    assert.deepEqual(normalize(buildCountryPressure(entries).map(row => row.countryCode)), ['IR', 'RU']);
+    const unattributed = normalize(ctx.countUnattributed(entries));
+    assert.deepEqual(unattributed, { entryCount: 2, vesselCount: 1, aircraftCount: 1 });
+    assert.equal(entries.filter(entry => entry.countryCodes.some(code => code !== 'XX')).length + unattributed.entryCount, entries.length);
   });
 
   it('limits output to 12 countries', () => {

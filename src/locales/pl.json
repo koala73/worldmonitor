@@ -2732,7 +2732,8 @@
       "sections": {
         "countries": "Kraje objęte sankcjami",
         "entries": "Niedawne desygnacje",
-        "programs": "Programy"
+        "programs": "Programy",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Brak przypisania kraju.",

@@ -2336,7 +2336,8 @@
       "sections": {
         "countries": "Países sancionados",
         "entries": "Designações recentes",
-        "programs": "Programas"
+        "programs": "Programas",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Nenhuma atribuição de país disponível.",

@@ -2702,7 +2702,8 @@
       "sections": {
         "countries": "제재 대상국",
         "entries": "최근 지정",
-        "programs": "프로그램"
+        "programs": "프로그램",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "국가 귀속 정보가 없습니다.",

@@ -2732,7 +2732,8 @@
       "sections": {
         "countries": "Страны под санкциями",
         "entries": "Последние обозначения",
-        "programs": "Программы"
+        "programs": "Программы",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Атрибуция страны недоступна.",

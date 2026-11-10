@@ -59358,6 +59358,8 @@ components:
                 semaError:
                     type: string
                     description: Present when the SEMA source failed while other sanctions data remained available.
+                unattributed:
+                    $ref: '#/components/schemas/worldmonitor_sanctions_v1_UnattributedSanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         worldmonitor_sanctions_v1_SanctionsEntry:
             type: object
@@ -59431,6 +59433,18 @@ components:
                     type: integer
                     format: int32
             description: ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.
+        worldmonitor_sanctions_v1_UnattributedSanctionsPressure:
+            type: object
+            properties:
+                entryCount:
+                    type: integer
+                    format: int32
+                vesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
         worldmonitor_sanctions_v1_LookupSanctionEntityRequest:
             type: object
             properties:

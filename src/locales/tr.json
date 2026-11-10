@@ -2712,7 +2712,8 @@
       "sections": {
         "countries": "Yaptırım altındaki ülkeler",
         "entries": "Son tanımlamalar",
-        "programs": "Programlar"
+        "programs": "Programlar",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Ülke atılması mevcut değildir.",

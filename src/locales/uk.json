@@ -2820,7 +2820,8 @@
       "sections": {
         "countries": "Санкціоновані країни",
         "entries": "Недавні занесення до списку",
-        "programs": "Програми"
+        "programs": "Програми",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Атрибуція країни недоступна.",

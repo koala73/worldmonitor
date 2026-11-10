@@ -2781,7 +2781,8 @@
       "sections": {
         "countries": "Szankcionált országok",
         "entries": "Legutóbbi bejelentések",
-        "programs": "Programok"
+        "programs": "Programok",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Nincs országattribúció elérhető.",

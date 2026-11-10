@@ -2702,7 +2702,8 @@
       "sections": {
         "countries": "ประเทศที่ถูกคว่ำบาตร",
         "entries": "การระบุตัวตนเมื่อเร็ว ๆ นี้",
-        "programs": "โปรแกรม"
+        "programs": "โปรแกรม",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "ไม่มีข้อมูลการระบุประเทศ",

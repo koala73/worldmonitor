@@ -2702,7 +2702,8 @@
       "sections": {
         "countries": "受制裁国家",
         "entries": "最近指定",
-        "programs": "计划"
+        "programs": "计划",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "无国家归属信息。",

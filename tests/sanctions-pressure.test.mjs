@@ -340,6 +340,18 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
     assert.equal(empty.semaError, undefined);
   });
 
+  it('moves the legacy XX row outside the country list without changing totals', async () => {
+    const unknown = { countryCode: 'XX', countryName: 'Unknown', entryCount: 4, newEntryCount: 0, vesselCount: 3, aircraftCount: 1 };
+    const russia = { countryCode: 'RU', countryName: 'Russia', entryCount: 2, newEntryCount: 0, vesselCount: 1, aircraftCount: 0 };
+    cacheStore.set(REDIS_KEY, cachedPayload({ countries: [unknown, russia], totalCount: 6, vesselCount: 4, aircraftCount: 1 }));
+    const response = await listSanctionsPressure(premiumContext(), { maxItems: 25 });
+    assert.deepEqual(response.countries, [russia]);
+    assert.deepEqual(response.unattributed, { entryCount: 4, vesselCount: 3, aircraftCount: 1 });
+    assert.equal(response.totalCount, 6);
+    assert.equal(response.vesselCount, 4);
+    assert.equal(response.aircraftCount, 1);
+  });
+
   // The same seed is served anonymously by /api/bootstrap, so the RPC is free
   // too: a Pro gate here only hid the data from API callers.
   it('serves anonymous callers the same payload as credentialed callers', async () => {

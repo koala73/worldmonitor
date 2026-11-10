@@ -2798,7 +2798,8 @@
       "sections": {
         "countries": "Zemlje pod sankcijama",
         "entries": "Nedavne designacije",
-        "programs": "Programi"
+        "programs": "Programi",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "Nema dostupne atribucije zemlje.",

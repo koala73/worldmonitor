@@ -2781,7 +2781,8 @@
       "sections": {
         "countries": "प्रतिबंधित देश",
         "entries": "हाल के नामांकन",
-        "programs": "कार्यक्रम"
+        "programs": "कार्यक्रम",
+        "countryAttribution": "Countries and flag registries"
       },
       "empty": {
         "countries": "कोई देश नामांकन उपलब्ध नहीं।",
