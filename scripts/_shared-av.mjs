@@ -4,7 +4,7 @@
  * Single implementation used by seed-market-quotes, seed-commodity-quotes, seed-etf-flows.
  */
 
-import { CHROME_UA, sleep } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, roundSparkline } from './_seed-utils.mjs';
 import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 
 export const AV_PHYSICAL_MAP = {
@@ -75,7 +75,7 @@ export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
       .reverse();
     return {
       price: latest, change,
-      sparkline: days.map(d => d.value),
+      sparkline: roundSparkline(days.map(d => d.value)),
       ...(days.length > 0 && { sparklineIntervalSeconds: 86400, sparklineStartAt: days[0].at }),
       ...crudeOilQuoteProvenance(yahooSymbol, 'Alpha Vantage', 'spot', Date.parse(data[0].date)),
     };

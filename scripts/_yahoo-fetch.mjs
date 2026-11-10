@@ -258,6 +258,7 @@ export async function fetchYahooQuoteChart(symbol, {
       await sleep(delayMs);
       history = await fetchJson(`${url}${SPARKLINE_HISTORY_QUERY}`, { maxRetries: 0 }).catch(() => null);
       if (history && historyCache) await historyCache.save(symbol, sessionStart, history).catch(() => {});
+      if (!history) console.warn(`  [YAHOO] ${symbol} sparkline history unavailable; publishing today's bars only`);
     }
     const { sparkline: values, ...labels } = buildQuoteSparkline(chart, history);
     sparkline = { sparkline: roundSparkline(values), ...labels };

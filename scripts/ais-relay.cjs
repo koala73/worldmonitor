@@ -3562,6 +3562,7 @@ async function _commoditySparkline(symbol, quote) {
     const history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
     cached = { firstBarAt, chart: history?.chart ?? null };
     if (history) _sparklineHistories.set(symbol, cached);
+    else logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
   }
   const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
   return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };

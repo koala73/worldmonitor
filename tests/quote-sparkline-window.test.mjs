@@ -162,9 +162,9 @@ describe('commodity seeders publish the 24-hour sparkline', () => {
     const calls = [];
     const fetchOnce = async (symbol, query) => { calls.push(query); return { chart: structuredClone(history) }; };
     const commoditySparkline = Function(
-      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'buildQuoteSparkline',
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'buildQuoteSparkline', 'logThrottled',
       `${source.slice(start, end)}\nreturn _commoditySparkline;`,
-    )(fetchOnce, async () => {}, SPARKLINE_HISTORY_QUERY, buildQuoteSparkline);
+    )(fetchOnce, async () => {}, SPARKLINE_HISTORY_QUERY, buildQuoteSparkline, () => {});
 
     const first = await commoditySparkline('BZ=F', { chart: today, lastTradeAt: T0 + 52 * MINUTE });
     await commoditySparkline('BZ=F', { chart: today, lastTradeAt: T0 + 57 * MINUTE });
