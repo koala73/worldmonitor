@@ -16557,6 +16557,14 @@ button.popup-link {
 }
 
 /* Tech Readiness Panel */
+.readiness-coverage-summary {
+  color: var(--text-dim);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  margin-bottom: 6px;
+  padding-inline: 8px;
+}
+
 .tech-readiness-list {
   display: flex;
   flex-direction: column;
@@ -16603,10 +16611,16 @@ button.popup-link {
 
 .readiness-components {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   margin-top: 2px;
+}
+
+.readiness-coverage {
+  font-weight: 600;
+  color: var(--text);
 }
 
 .readiness-components span {

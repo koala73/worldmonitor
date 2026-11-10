@@ -1482,6 +1482,10 @@
       "infoTooltip": "<strong>Eventi tech</strong> Eventi tecnologici imminenti e recenti: conferenze, lanci di prodotti, audizioni regolatorie e chiamate sugli utili. Aggregati da calendari ufficiali e fonti del settore."
     },
     "techReadiness": {
+      "ranked": "In classifica",
+      "unranked": "Fuori classifica",
+      "coverageRequirement": "Copertura minima per la classifica",
+      "coverageLabel": "Indicatori disponibili",
       "internetUsers": "Utenti di Internet",
       "mobileSubscriptions": "Abbonamenti mobili",
       "rdSpending": "Spesa per ricerca e sviluppo",

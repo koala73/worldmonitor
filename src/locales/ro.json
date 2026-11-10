@@ -1651,6 +1651,10 @@
       "infoTooltip": "<strong>Evenimente tech</strong> Evenimente tehnologice viitoare și recente: conferințe, lansări de produse, audieri de reglementare și apeluri de rezultate. Agregate din calendare oficiale de evenimente și surse din industrie."
     },
     "techReadiness": {
+      "ranked": "Clasificate",
+      "unranked": "Neclasificate",
+      "coverageRequirement": "Acoperire minimă pentru clasificare",
+      "coverageLabel": "Indicatori disponibili",
       "internetUsers": "Utilizatori de Internet",
       "mobileSubscriptions": "Abonamente mobile",
       "rdSpending": "Cheltuieli de cercetare și dezvoltare",
