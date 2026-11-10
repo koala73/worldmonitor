@@ -4474,14 +4474,14 @@
     "deleteTab": "탭 삭제",
     "deleteTabAria": "탭 {{name}} 삭제",
     "tabNameAria": "탭 이름",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "새 탭 (저장한 패널로 시작)",
+    "newTabOptions": "새 탭 옵션",
+    "newTabStartsDefault": "새 탭은 기본 패널로 시작합니다.",
+    "newTabStartsSaved": "새 탭은 저장한 패널로 시작합니다.",
+    "newTabOptionsHint": "이미 있는 탭은 변경되지 않습니다.",
+    "useThisTabPanels": "이 탭의 패널 사용",
+    "useDefaultPanels": "기본 패널 사용",
+    "newTabPanelsNotSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다."
   },
   "theaterPresets": {
     "label": "커버리지 프리셋",

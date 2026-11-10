@@ -4495,14 +4495,14 @@
     "deleteTab": "Tabblad verwijderen",
     "deleteTabAria": "Tabblad {{name}} verwijderen",
     "tabNameAria": "Tabbladnaam",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Nieuw tabblad (begint met de panelen die je hebt opgeslagen)",
+    "newTabOptions": "Opties voor nieuw tabblad",
+    "newTabStartsDefault": "Nieuwe tabbaden beginnen met de standaardpanelen.",
+    "newTabStartsSaved": "Nieuwe tabbaden beginnen met de panelen die je hebt opgeslagen.",
+    "newTabOptionsHint": "Tabbaden die je al hebt, veranderen niet.",
+    "useThisTabPanels": "Gebruik de panelen van dit tabblad",
+    "useDefaultPanels": "Gebruik de standaardpanelen",
+    "newTabPanelsNotSaved": "Kon niet opslaan. Deze browser blokkeert sitegegevens."
   },
   "theaterPresets": {
     "label": "Dekkingspresets",

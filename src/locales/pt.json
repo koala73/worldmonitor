@@ -4516,14 +4516,14 @@
     "deleteTab": "Eliminar separador",
     "deleteTabAria": "Eliminar separador {{name}}",
     "tabNameAria": "Nome do separador",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Nova aba (inicia com os painéis que você salvou)",
+    "newTabOptions": "Opções de nova aba",
+    "newTabStartsDefault": "Novas abas iniciam com os painéis padrão.",
+    "newTabStartsSaved": "Novas abas iniciam com os painéis que você salvou.",
+    "newTabOptionsHint": "As abas que você já tem não mudam.",
+    "useThisTabPanels": "Usar os painéis desta aba",
+    "useDefaultPanels": "Usar os painéis padrão",
+    "newTabPanelsNotSaved": "Não foi possível salvar. Este navegador está bloqueando o armazenamento do site."
   },
   "theaterPresets": {
     "label": "Predefinições de cobertura",

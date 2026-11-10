@@ -4474,14 +4474,14 @@
     "deleteTab": "Xóa tab",
     "deleteTabAria": "Xóa tab {{name}}",
     "tabNameAria": "Tên tab",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Tab mới (bắt đầu với các bảng điều khiển bạn đã lưu)",
+    "newTabOptions": "Tùy chọn tab mới",
+    "newTabStartsDefault": "Tab mới bắt đầu với các bảng điều khiển mặc định.",
+    "newTabStartsSaved": "Tab mới bắt đầu với các bảng điều khiển bạn đã lưu.",
+    "newTabOptionsHint": "Các tab bạn đã có sẵn sẽ không thay đổi.",
+    "useThisTabPanels": "Sử dụng các bảng điều khiển của tab này",
+    "useDefaultPanels": "Sử dụng các bảng điều khiển mặc định",
+    "newTabPanelsNotSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web."
   },
   "theaterPresets": {
     "label": "Gói phủ khu vực",

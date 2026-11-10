@@ -4474,14 +4474,14 @@
     "deleteTab": "ลบแท็บ",
     "deleteTabAria": "ลบแท็บ {{name}}",
     "tabNameAria": "ชื่อแท็บ",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "แท็บใหม่ (เริ่มต้นด้วยแผงที่คุณบันทึกไว้)",
+    "newTabOptions": "ตัวเลือกแท็บใหม่",
+    "newTabStartsDefault": "แท็บใหม่เริ่มต้นด้วยแผงเริ่มต้น",
+    "newTabStartsSaved": "แท็บใหม่เริ่มต้นด้วยแผงที่คุณบันทึกไว้",
+    "newTabOptionsHint": "แท็บที่คุณมีอยู่แล้วจะไม่เปลี่ยนแปลง",
+    "useThisTabPanels": "ใช้แผงของแท็บนี้",
+    "useDefaultPanels": "ใช้แผงเริ่มต้น",
+    "newTabPanelsNotSaved": "ไม่สามารถบันทึกได้ เบราว์เซอร์นี้กำลังบล็อกการจัดเก็บข้อมูลของไซต์"
   },
   "theaterPresets": {
     "label": "พรีเซ็ตการครอบคลุม",

@@ -4474,14 +4474,14 @@
     "deleteTab": "删除标签页",
     "deleteTabAria": "删除标签页 {{name}}",
     "tabNameAria": "标签页名称",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "新标签页（使用已保存的面板）",
+    "newTabOptions": "新标签页选项",
+    "newTabStartsDefault": "新标签页将从默认面板开始。",
+    "newTabStartsSaved": "新标签页将从已保存的面板开始。",
+    "newTabOptionsHint": "已有的标签页不会改变。",
+    "useThisTabPanels": "使用此标签页的面板",
+    "useDefaultPanels": "使用默认面板",
+    "newTabPanelsNotSaved": "无法保存。浏览器阻止了网站存储。"
   },
   "theaterPresets": {
     "label": "覆盖预设",

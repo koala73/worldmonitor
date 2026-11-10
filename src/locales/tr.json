@@ -4495,14 +4495,14 @@
     "deleteTab": "Sekmeyi sil",
     "deleteTabAria": "{{name}} sekmesini sil",
     "tabNameAria": "Sekme adı",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Yeni sekme (kaydettiğiniz panellerle başlar)",
+    "newTabOptions": "Yeni sekme seçenekleri",
+    "newTabStartsDefault": "Yeni sekmeler varsayılan panellerle başlar.",
+    "newTabStartsSaved": "Yeni sekmeler kaydettiğiniz panellerle başlar.",
+    "newTabOptionsHint": "Zaten sahip olduğunuz sekmeler değişmez.",
+    "useThisTabPanels": "Bu sekmenin panellerini kullan",
+    "useDefaultPanels": "Varsayılan panelleri kullan",
+    "newTabPanelsNotSaved": "Kaydedilemedi. Bu tarayıcı site depolamayı engelliyor."
   },
   "theaterPresets": {
     "label": "Kapsama ön ayarları",

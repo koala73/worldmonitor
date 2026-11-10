@@ -4537,14 +4537,14 @@
     "deleteTab": "Видалити вкладку",
     "deleteTabAria": "Видалити вкладку {{name}}",
     "tabNameAria": "Назва вкладки",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Нова вкладка (починається з панелей, які ви зберегли)",
+    "newTabOptions": "Опції нової вкладки",
+    "newTabStartsDefault": "Нові вкладки починаються зі стандартних панелей.",
+    "newTabStartsSaved": "Нові вкладки починаються з панелей, які ви зберегли.",
+    "newTabOptionsHint": "Вкладки, які у вас уже є, не змінюються.",
+    "useThisTabPanels": "Використовувати панелі цієї вкладки",
+    "useDefaultPanels": "Використовувати стандартні панелі",
+    "newTabPanelsNotSaved": "Не вдалося зберегти. Цей браузер блокує збереження даних на сайті."
   },
   "theaterPresets": {
     "label": "Прапори охоплення",

@@ -4516,14 +4516,14 @@
     "deleteTab": "Eliminar pestaña",
     "deleteTabAria": "Eliminar pestaña {{name}}",
     "tabNameAria": "Nombre de pestaña",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Pestaña nueva (comienza con los paneles que guardaste)",
+    "newTabOptions": "Opciones de pestaña nueva",
+    "newTabStartsDefault": "Las pestañas nuevas comienzan con los paneles predeterminados.",
+    "newTabStartsSaved": "Las pestañas nuevas comienzan con los paneles que guardaste.",
+    "newTabOptionsHint": "Las pestañas que ya tienes no cambian.",
+    "useThisTabPanels": "Usa los paneles de esta pestaña",
+    "useDefaultPanels": "Usa los paneles predeterminados",
+    "newTabPanelsNotSaved": "No se pudo guardar. Este navegador está bloqueando el almacenamiento del sitio."
   },
   "theaterPresets": {
     "label": "Paquetes de cobertura",

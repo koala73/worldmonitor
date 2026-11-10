@@ -4579,14 +4579,14 @@
     "deleteTab": "حذف علامة التبويب",
     "deleteTabAria": "حذف علامة التبويب {{name}}",
     "tabNameAria": "اسم علامة التبويب",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "علامة تبويب جديدة (تبدأ بالألواح التي حفظتها)",
+    "newTabOptions": "خيارات العلامة التبويب الجديدة",
+    "newTabStartsDefault": "تبدأ العلامات التبويب الجديدة بالألواح الافتراضية.",
+    "newTabStartsSaved": "تبدأ العلامات التبويب الجديدة بالألواح التي حفظتها.",
+    "newTabOptionsHint": "العلامات التبويب التي لديك بالفعل لا تتغير.",
+    "useThisTabPanels": "استخدم ألواح هذه العلامة التبويب",
+    "useDefaultPanels": "استخدم الألواح الافتراضية",
+    "newTabPanelsNotSaved": "تعذر الحفظ. المتصفح يحظر تخزين البيانات على الموقع."
   },
   "theaterPresets": {
     "label": "مجموعات التغطية",

@@ -4516,14 +4516,14 @@
     "deleteTab": "Elimina scheda",
     "deleteTabAria": "Elimina scheda {{name}}",
     "tabNameAria": "Nome scheda",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Nuova scheda (inizia con i pannelli che hai salvato)",
+    "newTabOptions": "Opzioni nuova scheda",
+    "newTabStartsDefault": "Le nuove schede iniziano con i pannelli predefiniti.",
+    "newTabStartsSaved": "Le nuove schede iniziano con i pannelli che hai salvato.",
+    "newTabOptionsHint": "Le schede che hai già non cambiano.",
+    "useThisTabPanels": "Usa i pannelli di questa scheda",
+    "useDefaultPanels": "Usa i pannelli predefiniti",
+    "newTabPanelsNotSaved": "Impossibile salvare. Questo browser blocca l'archiviazione del sito."
   },
   "theaterPresets": {
     "label": "Preset di copertura",

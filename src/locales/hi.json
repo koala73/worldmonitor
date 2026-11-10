@@ -4495,14 +4495,14 @@
     "deleteTab": "टैब हटाएं",
     "deleteTabAria": "{{name}} टैब हटाएं",
     "tabNameAria": "टैब नाम",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "नया टैब (आपके सहेजे गए पैनल के साथ शुरू होता है)",
+    "newTabOptions": "नए टैब विकल्प",
+    "newTabStartsDefault": "नए टैब डिफ़ॉल्ट पैनल के साथ शुरू होते हैं।",
+    "newTabStartsSaved": "नए टैब आपके सहेजे गए पैनल के साथ शुरू होते हैं।",
+    "newTabOptionsHint": "आपके पास जो टैब पहले से हैं वे नहीं बदलते हैं।",
+    "useThisTabPanels": "इस टैब के पैनल का उपयोग करें",
+    "useDefaultPanels": "डिफ़ॉल्ट पैनल का उपयोग करें",
+    "newTabPanelsNotSaved": "सहेज नहीं सके। यह ब्राउज़र साइट स्टोरेज को ब्लॉक कर रहा है।"
   },
   "theaterPresets": {
     "label": "कवरेज प्रीसेट",

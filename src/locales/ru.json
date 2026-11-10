@@ -4537,14 +4537,14 @@
     "deleteTab": "Удалить вкладку",
     "deleteTabAria": "Удалить вкладку {{name}}",
     "tabNameAria": "Название вкладки",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Новая вкладка (со сбереженными панелями)",
+    "newTabOptions": "Параметры новой вкладки",
+    "newTabStartsDefault": "Новые вкладки начинаются с панелей по умолчанию.",
+    "newTabStartsSaved": "Новые вкладки начинаются со сбереженных панелей.",
+    "newTabOptionsHint": "Уже созданные вкладки не изменяются.",
+    "useThisTabPanels": "Использовать панели этой вкладки",
+    "useDefaultPanels": "Использовать панели по умолчанию",
+    "newTabPanelsNotSaved": "Не удалось сохранить. Браузер блокирует хранение данных сайта."
   },
   "theaterPresets": {
     "label": "Пакеты покрытия",

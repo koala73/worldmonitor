@@ -4495,14 +4495,14 @@
     "deleteTab": "Ta bort flik",
     "deleteTabAria": "Ta bort flik {{name}}",
     "tabNameAria": "Fliknamn",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Ny flik (startar med de paneler du sparade)",
+    "newTabOptions": "Alternativ för ny flik",
+    "newTabStartsDefault": "Nya flikar startar med standardpanelerna.",
+    "newTabStartsSaved": "Nya flikar startar med de paneler du sparade.",
+    "newTabOptionsHint": "Flikar du redan har ändras inte.",
+    "useThisTabPanels": "Använd denna fliks paneler",
+    "useDefaultPanels": "Använd standardpanelerna",
+    "newTabPanelsNotSaved": "Kunde inte spara. Den här webbläsaren blockerar webbplatslagring."
   },
   "theaterPresets": {
     "label": "Täckningspaket",

@@ -4474,14 +4474,14 @@
     "deleteTab": "タブを削除",
     "deleteTabAria": "タブ {{name}} を削除",
     "tabNameAria": "タブ名",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "新しいタブ（保存したパネルから開始）",
+    "newTabOptions": "新しいタブのオプション",
+    "newTabStartsDefault": "新しいタブはデフォルトパネルから開始します。",
+    "newTabStartsSaved": "新しいタブは保存したパネルから開始します。",
+    "newTabOptionsHint": "既に作成したタブは変わりません。",
+    "useThisTabPanels": "このタブのパネルを使用",
+    "useDefaultPanels": "デフォルトパネルを使用",
+    "newTabPanelsNotSaved": "保存できませんでした。このブラウザはサイトストレージをブロックしています。"
   },
   "theaterPresets": {
     "label": "カバレッジプリセット",

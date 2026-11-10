@@ -4495,14 +4495,14 @@
     "deleteTab": "Διαγραφή καρτέλας",
     "deleteTabAria": "Διαγραφή καρτέλας {{name}}",
     "tabNameAria": "Όνομα καρτέλας",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "Νέα καρτέλα (ξεκινά με τα πάνελ που αποθηκεύσατε)",
+    "newTabOptions": "Επιλογές νέας καρτέλας",
+    "newTabStartsDefault": "Οι νέες καρτέλες ξεκινούν με τα προεπιλεγμένα πάνελ.",
+    "newTabStartsSaved": "Οι νέες καρτέλες ξεκινούν με τα πάνελ που αποθηκεύσατε.",
+    "newTabOptionsHint": "Οι καρτέλες που έχετε ήδη δεν αλλάζουν.",
+    "useThisTabPanels": "Χρήση των πάνελ αυτής της καρτέλας",
+    "useDefaultPanels": "Χρήση των προεπιλεγμένων πάνελ",
+    "newTabPanelsNotSaved": "Δεν ήταν δυνατή η αποθήκευση. Αυτό το πρόγραμμα περιήγησης αποκλείει την αποθήκευση δεδομένων τοποχεσίας."
   },
   "theaterPresets": {
     "label": "Προρυθμίσεις κάλυψης",

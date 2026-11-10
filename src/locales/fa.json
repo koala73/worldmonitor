@@ -4495,14 +4495,14 @@
     "deleteTab": "حذف برگه",
     "deleteTabAria": "حذف برگه {{name}}",
     "tabNameAria": "نام برگه",
-    "addTabTitleSaved": "New tab (starts with the panels you saved)",
-    "newTabOptions": "New tab options",
-    "newTabStartsDefault": "New tabs start with the default panels.",
-    "newTabStartsSaved": "New tabs start with the panels you saved.",
-    "newTabOptionsHint": "Tabs you already have don't change.",
-    "useThisTabPanels": "Use this tab's panels",
-    "useDefaultPanels": "Use the default panels",
-    "newTabPanelsNotSaved": "Couldn't save. This browser is blocking site storage."
+    "addTabTitleSaved": "برگه جدید (با پنل‌هایی که ذخیره کردید شروع می‌شود)",
+    "newTabOptions": "گزینه‌های برگه جدید",
+    "newTabStartsDefault": "برگه‌های جدید با پنل‌های پیش‌فرض شروع می‌شوند.",
+    "newTabStartsSaved": "برگه‌های جدید با پنل‌هایی که ذخیره کردید شروع می‌شوند.",
+    "newTabOptionsHint": "برگه‌هایی که قبلاً دارید تغییر نمی‌کنند.",
+    "useThisTabPanels": "استفاده از پنل‌های این برگه",
+    "useDefaultPanels": "استفاده از پنل‌های پیش‌فرض",
+    "newTabPanelsNotSaved": "نتوانستیم ذخیره کنیم. این مرورگر ذخیره‌سازی سایت را مسدود کرده است."
   },
   "theaterPresets": {
     "label": "پیش‌تنظیم‌های پوشش",
