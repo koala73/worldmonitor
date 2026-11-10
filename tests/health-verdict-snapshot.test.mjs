@@ -1102,6 +1102,55 @@ test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-act
   assert.deepEqual(nextAlertedIncidents('[]', current, ['b:SEED_ERROR']), ['b:SEED_ERROR'], 'only accepted deliveries are recorded');
 });
 
+test('a source incident carries the diagnostics that say why it fired', async () => {
+  const { reportSourceIncident } = __testing__;
+  const report = async (key, checks) => {
+    let extra;
+    await reportSourceIncident(key, checks, undefined, async (_error, opts) => { extra = opts.extra; return true; });
+    return extra;
+  };
+  // WORLDMONITOR-1D6: CHINA_DEGRADED arrived with no extras at all, so the
+  // failing China entry and its reason codes were unrecoverable.
+  const problems = [{ id: 'cn-customs', status: 'degraded', reasonCodes: ['COVERAGE_BELOW_FLOOR'] }];
+  const china = await report('chinaCoverage:CHINA_DEGRADED', {
+    chinaCoverage: { status: 'CHINA_DEGRADED', chinaStatus: 'degraded', counts: { healthy: 11, degraded: 1 }, problems, degradedStreak: 3 },
+  });
+  assert.deepEqual(china.problems, problems);
+  assert.deepEqual(china.counts, { healthy: 11, degraded: 1 });
+  assert.equal(china.chinaStatus, 'degraded');
+  assert.equal(china.degradedStreak, 3);
+
+  // WORLDMONITOR-1DF: COVERAGE_PARTIAL has several causes; the floor and the
+  // count that missed it must both be on the event.
+  const partial = await report('demographicsCapability:COVERAGE_PARTIAL', {
+    demographicsCapability: { status: 'COVERAGE_PARTIAL', records: 229, minRecordCount: 230, seedAgeMin: 1, poolCounts: { a: 1 }, minPoolCounts: { a: 2 } },
+  });
+  assert.deepEqual(partial, { records: 229, seedAgeMin: 1, minRecordCount: 230, poolCounts: { a: 1 }, minPoolCounts: { a: 2 } });
+
+  // An oversized diagnostic is cut to a bounded string, not dropped or sent whole.
+  const huge = await report('x:COVERAGE_PARTIAL', { x: { status: 'COVERAGE_PARTIAL', coverage: { countries: 'Z'.repeat(20_000) } } });
+  assert.equal(typeof huge.coverage, 'string');
+  assert.ok(huge.coverage.length <= 4_100, `coverage ${huge.coverage.length}`);
+  assert.match(huge.coverage, /…\[truncated\]$/);
+  // Strings are capped too: degradedProblemKey serializes the China problems.
+  const hugeKey = await report('chinaCoverage:CHINA_DEGRADED', { chinaCoverage: { status: 'CHINA_DEGRADED', degradedProblemKey: 'k'.repeat(20_000) } });
+  assert.ok(hugeKey.degradedProblemKey.length <= 4_100, `key ${hugeKey.degradedProblemKey.length}`);
+  assert.match(hugeKey.degradedProblemKey, /…\[truncated\]$/);
+
+  // Causes set after classification by the composers.
+  const transits = await report('chokepointTransits:COVERAGE_PARTIAL', {
+    chokepointTransits: { status: 'COVERAGE_PARTIAL', records: 13, missingMeasurable: ['hormuz', 'bab-el-mandeb'] },
+  });
+  assert.deepEqual(transits.missingMeasurable, ['hormuz', 'bab-el-mandeb']);
+  const risk = await report('riskScores:COVERAGE_PARTIAL', {
+    riskScores: { status: 'COVERAGE_PARTIAL', ciiInputs: { valid: true, unfedFamilies: ['news'], dead: [] }, readModelReady: false },
+  });
+  assert.deepEqual(risk.ciiInputs, { valid: true, unfedFamilies: ['news'], dead: [] });
+  assert.equal(risk.readModelReady, false);
+  const vuln = await report('v:COVERAGE_PARTIAL', { v: { status: 'COVERAGE_PARTIAL', requiredVulnerabilityCoverage: { lng: 0.8 } } });
+  assert.deepEqual(vuln.requiredVulnerabilityCoverage, { lng: 0.8 });
+});
+
 test('handleHealth reports each incident until Sentry accepts it, then stays quiet', async () => {
   const sweep = async (incidentAlerts, accepted = () => true) => {
     const captures = [];
