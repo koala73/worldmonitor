@@ -1,3 +1,24 @@
+interface FlagRegistryCounts {
+  countryCode: string;
+  countryName: string;
+  vesselCount?: number;
+  newVesselCount?: number;
+  aircraftCount?: number;
+  newAircraftCount?: number;
+}
+
+// Snapshots written before aircraft registries were counted carry no aircraft fields.
+export function normalizeFlagRegistries(rows: FlagRegistryCounts[] | undefined) {
+  return (rows ?? []).map(row => ({
+    countryCode: row.countryCode,
+    countryName: row.countryName,
+    vesselCount: row.vesselCount ?? 0,
+    newVesselCount: row.newVesselCount ?? 0,
+    aircraftCount: row.aircraftCount ?? 0,
+    newAircraftCount: row.newAircraftCount ?? 0,
+  }));
+}
+
 interface AttributionCounts {
   entryCount: number;
   vesselCount: number;

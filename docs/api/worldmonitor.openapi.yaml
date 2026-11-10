@@ -59492,10 +59492,18 @@ components:
                 newVesselCount:
                     type: integer
                     format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+                    description: Zero in snapshots written before aircraft registries were counted.
+                newAircraftCount:
+                    type: integer
+                    format: int32
             description: |-
-                FlagRegistrySanctionsPressure counts sanctioned vessels by flag registry. The response
-                 lists at most 12 registries, ordered by new vessel count, then vessel count, so an
-                 omitted registry may still flag sanctioned vessels. Older snapshots return none.
+                FlagRegistrySanctionsPressure counts sanctioned vessels by flag and sanctioned aircraft
+                 by the state of registry in their tail number. The response lists at most 12 registries,
+                 ordered by new vessels and aircraft, then all vessels and aircraft, so an omitted
+                 registry may still register sanctioned assets. Older snapshots return none.
         worldmonitor_sanctions_v1_LookupSanctionEntityRequest:
             type: object
             properties:

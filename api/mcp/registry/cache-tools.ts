@@ -1,7 +1,7 @@
 import { spokenChokepointStatus, spokenForecastPredictions, spokenPredictionMarkets } from '../spoken-narrators';
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../../server/worldmonitor/displacement/v1/cross-border-data';
 import { screenSanctions } from '../../../server/_shared/sanctions-screen';
-import { splitSanctionsAttribution } from '../../../shared/sanctions-attribution';
+import { normalizeFlagRegistries, splitSanctionsAttribution } from '../../../shared/sanctions-attribution';
 import type { ListSanctionsPressureResponse } from '../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
 import { projectSupplyChainData } from './_shipping-freight';
@@ -2576,8 +2576,9 @@ export const CACHE_TOOLS: ToolDef[] = [
           unattributed: { type: 'object', description: 'Counts across the full pressure snapshot before country or entity filters.', properties: {
             entryCount: { type: 'integer' }, vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
           } },
-          flagRegistries: { type: 'array', description: 'Top vessel flag registries. A flag is often one of convenience and is not counted in countries.', items: { type: 'object', properties: {
+          flagRegistries: { type: 'array', description: 'Top vessel flag and aircraft registries. A flag or registry is often one of convenience and is not counted in countries.', items: { type: 'object', properties: {
             countryCode: { type: 'string' }, countryName: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
+            aircraftCount: { type: 'integer' }, newAircraftCount: { type: 'integer' },
           } } },
         },
       },
@@ -2607,7 +2608,11 @@ export const CACHE_TOOLS: ToolDef[] = [
       const { countries, days, cursor } = sanctionsArguments(params);
       const pressure = data.pressure as ListSanctionsPressureResponse | null | undefined;
       if (Array.isArray(pressure?.countries)) {
-        data.pressure = { ...pressure, ...splitSanctionsAttribution(pressure.countries, pressure.unattributed) };
+        data.pressure = {
+          ...pressure,
+          ...splitSanctionsAttribution(pressure.countries, pressure.unattributed),
+          ...(Array.isArray(pressure.flagRegistries) ? { flagRegistries: normalizeFlagRegistries(pressure.flagRegistries) } : {}),
+        };
       }
       const etype = argStr(params.entity_type);
       const query = argStr(params.query);

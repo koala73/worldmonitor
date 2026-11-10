@@ -355,7 +355,8 @@ describe('listSanctionsPressure typed SEMA behavior', () => {
   it('serves vessel flag registries apart from countries, and none for older snapshots', async () => {
     const panama = { countryCode: 'PA', countryName: 'Panama', vesselCount: 276, newVesselCount: 2 };
     cacheStore.set(REDIS_KEY, cachedPayload({ flagRegistries: [panama] }));
-    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries, [panama]);
+    assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries,
+      [{ ...panama, aircraftCount: 0, newAircraftCount: 0 }]);
     cacheStore.set(REDIS_KEY, cachedPayload());
     assert.deepEqual((await listSanctionsPressure(premiumContext(), { maxItems: 25 })).flagRegistries, []);
   });
@@ -551,13 +552,17 @@ it('lists vessel flag registries in their own section, not under countries', asy
     fetchedAt: new Date(0), datasetDate: null, entries: [], programs: [],
     countries: [{ countryCode: 'RU', countryName: 'Russia', entryCount: 1, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }],
   };
-  panel.setData({ ...base, flagRegistries: [{ countryCode: 'PA', countryName: 'Panama', vesselCount: 2, newVesselCount: 0 }] });
+  panel.setData({ ...base, flagRegistries: [
+    { countryCode: 'PA', countryName: 'Panama', vesselCount: 2, newVesselCount: 0, aircraftCount: 0, newAircraftCount: 0 },
+    { countryCode: 'AW', countryName: 'Aruba', vesselCount: 0, newVesselCount: 0, aircraftCount: 1, newAircraftCount: 1 },
+  ] });
   const html = String(panel.rendered);
   const countries = html.indexOf('components.sanctionsPressure.sections.countries');
   const registries = html.indexOf('components.sanctionsPressure.sections.flagRegistries');
   assert.ok(countries >= 0 && registries > countries, 'registries render as a section after countries');
   assert.doesNotMatch(html.slice(countries, registries), /Panama/);
   assert.match(html.slice(registries), /Panama[\s\S]*🚢 2/);
+  assert.match(html.slice(registries), /Aruba[\s\S]*pills\.newCount[\s\S]*✈ 1/, 'aircraft registries render beside vessel flags');
 
   panel.setData({ ...base, flagRegistries: [] });
   assert.doesNotMatch(String(panel.rendered), /sections\.flagRegistries/, 'older snapshots without registries hide the section');

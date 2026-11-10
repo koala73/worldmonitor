@@ -2740,7 +2740,7 @@
         "countries": "Países sancionados",
         "entries": "Designaciones recientes",
         "programs": "Programas",
-        "flagRegistries": "Registros de banderas de buques"
+        "flagRegistries": "Registros de banderas de buques y de aeronaves"
       },
       "empty": {
         "countries": "Sin atribución de país disponible.",

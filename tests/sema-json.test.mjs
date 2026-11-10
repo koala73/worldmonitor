@@ -30,7 +30,8 @@ describe('official SEMA table JSON', () => {
     assert.deepEqual(result.records[2]._identifiers, ['imo:9118355']);
     assert.equal(result.records[4].name, 'Toe Yi');
     assert.ok(result.records[3].id.includes(':unspecified:'));
-    assert.ok(result.records.every(r => r.countryCodes.length === 0));
+    assert.deepEqual(result.records[0].countryCodes, ['BY']);
+    assert.deepEqual(result.records[2].countryCodes, [], 'a SEMA vessel has no flag to attribute');
   });
 
   it('accepts only positive safe integers for the two numeric identifier fields', async () => {

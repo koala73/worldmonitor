@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
-import { splitSanctionsAttribution } from '../../../../shared/sanctions-attribution';
+import { normalizeFlagRegistries, splitSanctionsAttribution } from '../../../../shared/sanctions-attribution';
 
 const REDIS_CACHE_KEY = 'sanctions:pressure:v1';
 const DEFAULT_MAX_ITEMS = 25;
@@ -51,7 +51,7 @@ export const listSanctionsPressure: SanctionsServiceHandler['listSanctionsPressu
     return {
       ...rest,
       ...splitSanctionsAttribution(data.countries ?? [], data.unattributed),
-      flagRegistries: data.flagRegistries ?? [],
+      flagRegistries: normalizeFlagRegistries(data.flagRegistries),
       entries: (data.entries ?? []).slice(0, maxItems),
       semaCount: data.semaCount ?? 0,
       ...(typeof semaError === 'string' && semaError ? { semaError } : {}),

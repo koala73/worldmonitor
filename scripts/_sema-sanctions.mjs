@@ -81,11 +81,20 @@ export function englishCountryLabel(raw) {
   return String(raw || '').split(/\s*\/\s*/)[0].trim();
 }
 
-export function countryFromSemaLabel(raw) {
-  const english = englishCountryLabel(raw);
-  if (!english) return { code: '', name: '' };
-  const code = countryNameToIso2(english) || '';
-  return { code, name: english };
+// These regulations protect the named state; their designees are mostly
+// Russian and separatist actors, not that state's.
+const PROTECTED_STATE_REGIMES = new Set(['ukraine', 'moldova']);
+
+/**
+ * SEMA has no address or flag, so its regulation's target state is the only
+ * country evidence. Use it for people and entities only: a vessel's country
+ * is its flag, which SEMA does not publish. Thematic regimes (JVCFOR, Hamas,
+ * Settler) name no state. OFAC address or flag wins when the records merge.
+ */
+export function semaTargetCountry(regime, entityType) {
+  if (entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL' || PROTECTED_STATE_REGIMES.has(regime.toLowerCase())) return null;
+  const code = countryNameToIso2(regime);
+  return code ? { code, name: regime } : null;
 }
 
 /** SEMA <Country> is the regulating schedule, not a person's nationality. */
@@ -255,20 +264,22 @@ function fieldsToCanonical(fields) {
   if (!countryRaw || !item) throw new Error('SEMA_INVALID_RECORD');
 
   let entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY';
-  if (imo) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
+  // Every listed ship carries a ship type in TitleOrShip; entities never do.
+  if (imo || (entityOrShip && title && !lastName && !givenName)) entityType = 'SANCTIONS_ENTITY_TYPE_VESSEL';
   else if (lastName || givenName) entityType = 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL';
 
   const identifiers = [];
   if (imo) identifiers.push(`imo:${imo}`);
 
   const id = semaRecordId(countryRaw, schedule, item);
+  const country = semaTargetCountry(regime, entityType);
 
   return {
     id,
     name: legalName,
     entityType,
-    countryCodes: [],
-    countryNames: [],
+    countryCodes: country ? [country.code] : [],
+    countryNames: country ? [country.name] : [],
     programs: [program],
     sourceLists: [SEMA_SOURCE],
     effectiveAt: String(listingEpoch(listed)),

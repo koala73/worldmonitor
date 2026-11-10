@@ -187,7 +187,7 @@ describe('SEMA fixture parse', () => {
     assert.ok(person);
     assert.equal(person.entityType, 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL');
     assert.deepEqual(person._aliases, ['Aliaksei Aleksin']);
-    assert.deepEqual(person.countryCodes, []);
+    assert.deepEqual(person.countryCodes, ['BY']);
     assert.equal(person.programs[0], 'SEMA');
     assert.match(person.note, /Belarus/);
     assert.equal(person._regime, 'Belarus');
@@ -674,15 +674,40 @@ describe('SEMA does not self-merge', () => {
   });
 });
 
-describe('SEMA Country is regulation, not nationality', () => {
-  it('leaves countryCodes empty and stores the regime on the note/program', () => {
+describe('SEMA Country is the target state of its regulation, not nationality', () => {
+  it('attributes people and entities to the target state and keeps the regime on the note', () => {
     const { records } = parseSemaXml(fixtureXml);
-    assert.ok(records.every((row) => row.countryCodes.length === 0));
-    assert.ok(records.every((row) => row.countryNames.length === 0));
     const russia = records.find((row) => row.name === 'STREIT Group');
+    assert.deepEqual(russia.countryCodes, ['RU']);
+    assert.deepEqual(russia.countryNames, ['Russia']);
     assert.equal(russia._regime, 'Russia');
     assert.match(russia.note, /^Russia/);
     assert.equal(russia.programs[0], 'SEMA');
+  });
+
+  it('leaves vessels and the regimes that protect the named state unattributed', () => {
+    const record = (country, name, imo = '', shipType = '') => `<record><Country>${country}</Country><EntityOrShip>${name}</EntityOrShip><TitleOrShip>${shipType}</TitleOrShip><ShipIMONumber>${imo}</ShipIMONumber><Schedule>1</Schedule><Item>${name.length}</Item><DateOfListing>2024-01-01</DateOfListing></record>`;
+    const { records } = parseSemaXml(`<data-set>
+      ${record('Russia / Russie', 'Shadow Tanker', '9118355', 'Oil Tanker')}
+      ${record('Russia / Russie', 'Unnumbered Carrier', '', 'Bulk Carrier')}
+      ${record('Ukraine / Ukraine', 'Donbas Militia')}
+      ${record('Moldova / Moldova', 'Chisinau Front')}
+      ${record('Myanmar (Burma) / Myanmar (Birmanie)', 'Burma Gems Ltd')}
+    </data-set>`);
+    assert.deepEqual(records.map((row) => row.countryCodes), [[], [], [], [], ['MM']]);
+    assert.deepEqual(records.slice(0, 2).map((row) => row.entityType), ['SANCTIONS_ENTITY_TYPE_VESSEL', 'SANCTIONS_ENTITY_TYPE_VESSEL'],
+      'a ship type marks a vessel without an IMO number');
+    assert.equal(records[4].entityType, 'SANCTIONS_ENTITY_TYPE_ENTITY');
+  });
+
+  it('keeps an OFAC address over the SEMA target state when the records merge', () => {
+    const ofac = { id: 'SDN:1', name: 'Shared Trading LLC', entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+      countryCodes: ['AE'], countryNames: ['United Arab Emirates'], programs: ['RUSSIA-EO14024'], sourceLists: ['SDN'],
+      effectiveAt: '0', isNew: false, _aliases: [], _identifiers: [] };
+    const [semaRow] = parseSemaXml('<record><Country>Russia</Country><EntityOrShip>Shared Trading LLC</EntityOrShip><Schedule>1</Schedule><Item>9</Item></record>').records;
+    const merged = mergeSanctionEntries({ ofac: [ofac], sema: [semaRow] });
+    assert.equal(merged.length, 1);
+    assert.deepEqual(merged[0].countryCodes, ['AE']);
   });
 
   it('tags JVCFOR, Hamas, and Settler as their own programs, not SEMA', () => {
@@ -698,7 +723,7 @@ describe('SEMA Country is regulation, not nationality', () => {
 </data-set>`);
     assert.deepEqual(records.map((row) => row.programs[0]), ['JVCFOR', 'HAMAS', 'SETTLER']);
     assert.ok(records.every((row) => !row.programs.includes('SEMA')));
-    assert.ok(records.every((row) => row.countryCodes.length === 0));
+    assert.ok(records.every((row) => row.countryCodes.length === 0), 'thematic regimes name no state');
   });
 });
 
