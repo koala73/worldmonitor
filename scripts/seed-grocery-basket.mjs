@@ -67,17 +67,30 @@ product, or when only a member price, reference price or related product's price
 Only use units in the schema. Never guess a quantity or combine details from different offers.`;
 }
 
+function offerNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^(?:\d+\.?\d*|\.\d+)$/.test(value.trim())) return Number(value);
+  return NaN;
+}
+
 function normalizeOffer(offer, item, currency, fxRate) {
   if (offer?.matchesStaple !== true || typeof offer.productName !== 'string' || !offer.productName.trim()) return null;
   if (typeof offer.offerEvidence !== 'string' || !offer.offerEvidence.trim()) return null;
-  if (offer.currency !== currency || !Number.isFinite(offer.price) || offer.price <= 0 || offer.price >= 100000) return null;
-  if (!Number.isFinite(offer.quantity) || offer.quantity <= 0) return null;
-  const source = Object.hasOwn(UNIT_FACTORS, offer.unit) ? UNIT_FACTORS[offer.unit] : null;
+  if (typeof offer.currency !== 'string' || offer.currency.trim().toUpperCase() !== currency) return null;
+  const packPrice = offerNumber(offer.price);
+  const packQuantity = offerNumber(offer.quantity);
+  if (!Number.isFinite(packPrice) || packPrice <= 0 || !Number.isFinite(packQuantity) || packQuantity <= 0) return null;
+  const offerUnit = typeof offer.unit === 'string' ? offer.unit.trim().toLowerCase() : '';
+  const source = Object.hasOwn(UNIT_FACTORS, offerUnit) ? UNIT_FACTORS[offerUnit] : null;
   const [, quantity, unit] = /^(\d+)([a-z]+)$/i.exec(item.unit);
   const [dimension, factor] = UNIT_FACTORS[unit.toLowerCase()];
-  if (source?.[0] !== dimension || (dimension === 'count' && !Number.isInteger(offer.quantity))) return null;
-  const price = offer.price * Number(quantity) * factor / (offer.quantity * source[1]);
-  if (!Number.isFinite(price) || price <= (CURRENCY_MIN[currency] ?? 0) || price * fxRate > ITEM_USD_MAX[item.id]) return null;
+  if (source?.[0] !== dimension || (dimension === 'count' && !Number.isInteger(packQuantity))) return null;
+  const basketUnits = packQuantity * source[1] / (Number(quantity) * factor);
+  if (basketUnits > MAX_OFFER_BASKET_UNITS) return null;
+  const price = packPrice / basketUnits;
+  if (!Number.isFinite(price) || price <= (CURRENCY_MIN[currency] ?? 0)) return null;
+  const usdPrice = price * fxRate;
+  if (fxRate && (usdPrice < MIN_ITEM_USD_PRICE || usdPrice > ITEM_USD_MAX[item.id])) return null;
   return price;
 }
 
@@ -157,6 +170,10 @@ async function scrapeFirecrawl(url, item, currency, fxRate) {
 // EGP: Egyptian supermarket prices ≥ 5 EGP; under 5 = subsidised/fractional unit.
 // INR: Indian supermarket prices ≥ 12 INR; under 12 = product code or stale clearance.
 const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000, JPY: 50, TRY: 10, EGP: 5, INR: 12 };
+
+// Bound retail pack sizes in basket units across all supported source units.
+const MAX_OFFER_BASKET_UNITS = 100;
+const MIN_ITEM_USD_PRICE = 0.01;
 
 // Maximum plausible USD price per item — catches bulk/wholesale/specialty products.
 // Set to ~2× the most expensive legitimate retail price globally for each item.

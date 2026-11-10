@@ -172,15 +172,18 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
     rice: offer('Plain white rice, 1 lb', 0.89, 1, 'lb'),
     flour: offer('All purpose flour, 5 lb', 3.99, 5, 'lb'),
     eggs: offer('Large eggs, 18 pack', 6, 18, 'pc'),
-    oil: offer('Pure canola oil, 900 ml', 4.5, 900, 'ml'),
+    oil: { ...offer('Pure canola oil, 900 ml', '4.50', '900', 'ML'), currency: ' usd ' },
     salt: offer('Unavailable 10 kg salt, with a 1 kg recommendation', 2.75, 10, 'kg', false),
     potatoes: offer('Sweet potato', 1.5, 1, 'kg', false),
     milk: offer('Milk without a declared size', 3, 0, 'ml'),
     sugar: offer('Sugar', 3, 1, 'l'),
+    pasta: offer('Dry spaghetti, 1000 kg', 1000, 1000, 'kg'),
+    bread: offer('White bread, 500 g', 0.001, 500, 'g'),
   };
   const itemQueries = {
     'white rice': 'rice', 'all purpose': 'flour', 'fresh eggs': 'eggs', 'canola oil': 'oil',
     'table salt': 'salt', 'potatoes': 'potatoes', 'fresh whole milk': 'milk', 'white granulated': 'sugar',
+    'spaghetti pasta': 'pasta', 'white bread': 'bread',
   };
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     const request = JSON.parse(options.body);
@@ -191,6 +194,12 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
     }
     assert.equal(url, 'https://api.exa.ai/search');
     const itemId = itemQueries[Object.keys(itemQueries).find(query => request.query.startsWith(query))];
+    if (request.userLocation === 'ID') {
+      return Response.json({ results: itemId === 'rice' ? [{
+        url: 'https://www.tokopedia.com/store/rice',
+        summary: JSON.stringify({ ...offer('Plain white rice, 5 kg', 120000, 5, 'kg'), currency: 'IDR' }),
+      }] : [] });
+    }
     if (request.userLocation === 'IN') {
       const pack = itemId === 'salt' ? offer('Table salt, 100 g', 10, 100, 'g')
         : itemId === 'rice' ? offer('Plain white rice, 5 kg', 50, 5, 'kg') : null;
@@ -233,4 +242,9 @@ it('normalizes validated EXA and Firecrawl offers and drops unverifiable prices'
   });
   assert.equal(india.find(item => item.itemId === 'salt').localPrice, 100);
   assert.equal(india.find(item => item.itemId === 'rice').localPrice, null);
+
+  const indonesia = await fetchCountryItems(COUNTRIES.find(({ code }) => code === 'ID'), {
+    fxRate: 0.00006, learnedRoutes: new Map(), routeUpdates: new Map(), routeDeletes: new Set(),
+  });
+  assert.equal(indonesia.find(item => item.itemId === 'rice').usdPrice, 1.44);
 });
