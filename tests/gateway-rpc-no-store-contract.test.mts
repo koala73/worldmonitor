@@ -194,7 +194,7 @@ describe('gateway RPC no-store contract', () => {
     assertNoStore(res);
   });
 
-  it('labels cached Brent as a stale EIA weekly spot average using the observation clock', async () => {
+  it('keeps the latest cached EIA weekly spot average fresh before the next release', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
     const priceAt = Date.parse('2026-10-30');
@@ -206,7 +206,7 @@ describe('gateway RPC no-store contract', () => {
     try {
       const req = new Request('https://worldmonitor.app/api/economic/v1/get-energy-prices');
       const context = { request: req, pathParams: {}, headers: {} };
-      const prices = [{ ...brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: true }];
+      const prices = [{ ...brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: false }];
       assert.deepEqual(await getEnergyPrices(context, { commodities: ['brent'] }), { prices });
       assert.deepEqual(await getEnergyPrices(context, { commodities: [] }), { ...cached, prices });
     } finally {
