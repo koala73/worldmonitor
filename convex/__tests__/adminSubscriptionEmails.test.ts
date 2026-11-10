@@ -223,6 +223,17 @@ describe("adminNewSubscriptionHtml", () => {
     expect(html).toMatch(/Referrer:<\/td><td[^>]*>direct</);
   });
 
+  test("an AI assistant source reads by its product name, with the stored tag beside it", () => {
+    const sourceRow = (source: string, extra: Record<string, string> = {}) => adminNewSubscriptionHtml({
+      ...base,
+      conversion: { purchasedAt: PURCHASED_AT, acquisition: { source, ...extra } },
+    }).match(/Source:<\/td><td[^>]*>([^<]*)</)?.[1];
+    expect(sourceRow("chatgpt-com")).toBe("ChatGPT (chatgpt-com)");
+    expect(sourceRow("perplexity-ai")).toBe("Perplexity (perplexity-ai)");
+    expect(sourceRow("claude-ai", { medium: "referral" })).toBe("Claude (claude-ai) / referral");
+    expect(sourceRow("twitter", { medium: "social" })).toBe("twitter / social");
+  });
+
   test("a referral alone counts as a captured source", () => {
     const html = adminNewSubscriptionHtml({
       ...base,
