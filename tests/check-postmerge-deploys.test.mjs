@@ -1559,6 +1559,35 @@ describe('convex deploy drift against the deployed baseline (#7359)', () => {
     }
   });
 
+  it('keeps an aborted run with an unset baseline as RUN_FAILED', () => {
+    for (const [label, jobs] of abortedListings) {
+      const convex = convexResult(runMonitor({ git: () => '', runConclusion: 'failure', jobs }));
+      assert.equal(convex.state, 'ALARM', label);
+      assert.equal(convex.verdict, 'RUN_FAILED', label);
+    }
+  });
+
+  it('keeps RUN_FAILED when the failed run job listing is unreadable', () => {
+    for (const message of ['gh: Server Error (HTTP 503)', 'dial tcp: i/o timeout', 'gh: Not Found (HTTP 404)']) {
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: (args) => {
+          const joined = args.join(' ');
+          if (/actions\/runs\/810\/attempts/.test(joined)) throw new Error(message);
+          const answer = healthyOtherWorkflows(joined) ?? convexGh(joined, 'skipped', { runConclusion: 'failure' });
+          if (answer === null) throw new Error(`unexpected gh call: ${joined}`);
+          return answer;
+        },
+        git: currentGit,
+        now: Date.parse('2026-08-29T13:40:00Z'),
+      });
+      const convex = convexResult(results);
+      assert.equal(convex.state, 'ALARM', message);
+      assert.equal(convex.verdict, 'RUN_FAILED', message);
+      assert.equal(summarizeResults(results).exitCode, 1, message);
+    }
+  });
+
   it('still reports RUN_FAILED when any job of the failed run failed', () => {
     const failedJobs = [
       [{ name: 'convex-changes', conclusion: 'success', status: 'completed' }, { name: 'deploy', conclusion: 'failure', status: 'completed' }],
