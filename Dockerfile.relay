@@ -132,6 +132,8 @@ COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refre
 # yahoo-closed-session.cjs gives rolled futures quotes their last session's
 # change in the relay market loop. Missing it = startup crash.
 COPY scripts/shared/yahoo-closed-session.cjs ./scripts/shared/yahoo-closed-session.cjs
+# quote-sparkline.cjs builds the 24-hour commodity sparkline. Missing it = startup crash.
+COPY scripts/shared/quote-sparkline.cjs ./scripts/shared/quote-sparkline.cjs
 COPY scripts/shared/oil-quote-provenance.cjs ./scripts/shared/oil-quote-provenance.cjs
 # market-seed-universe.cjs is the catalog + auxiliary quote basket shared by
 # seed-market-quotes.mjs and the relay market loop. Missing it = startup crash.

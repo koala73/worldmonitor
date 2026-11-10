@@ -26,9 +26,10 @@
 // the CONNECT pool), add a second leg following the
 // scripts/_open-meteo-archive.mjs cascade pattern.
 
-import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, resolveProxy, curlFetch, parseYahooChart, roundSparkline } from './_seed-utils.mjs';
 import { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } from './shared/yahoo-closed-session.cjs';
 import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
+import { SPARKLINE_HISTORY_QUERY, buildQuoteSparkline } from './shared/quote-sparkline.cjs';
 
 const RETRYABLE_STATUSES = new Set([429, 503]);
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -193,13 +194,48 @@ export async function fetchYahooJson(url, opts = {}) {
   );
 }
 
+const SPARKLINE_HISTORY_TTL_SECONDS = 2 * 24 * 60 * 60;
+
+/**
+ * A cron seeder starts a fresh process every run. This keeps the sparkline
+ * history chart in Redis per symbol and session, so the history request is
+ * made once a day per symbol, not on every run. `command` is redisCommand
+ * bound to the seeder's credentials.
+ */
+export function createSparklineHistoryCache(command, keyPrefix) {
+  const key = (symbol) => `${keyPrefix}${symbol}`;
+  return {
+    async load(symbol, sessionStart) {
+      const { result } = await command(['GET', key(symbol)]);
+      const cached = result ? JSON.parse(result) : null;
+      return cached?.sessionStart === sessionStart ? cached.chart : null;
+    },
+    async save(symbol, sessionStart, chart) {
+      const result = chart?.chart?.result?.[0];
+      const compact = {
+        chart: {
+          result: [{
+            timestamp: result?.timestamp ?? [],
+            indicators: { quote: [{ close: result?.indicators?.quote?.[0]?.close ?? [] }] },
+          }],
+        },
+      };
+      await command(['SET', key(symbol), JSON.stringify({ sessionStart, chart: compact }), 'EX', SPARKLINE_HISTORY_TTL_SECONDS]);
+    },
+  };
+}
+
 /**
  * Fetch and parse one Yahoo quote. A chart rolled to a session that has not
  * traded costs a second, staggered request for the daily chart holding the
  * last completed session's previous close; without it the change reads 0.00%.
+ * `sparklineWindow` adds the 24-hour sparkline. Its history chart costs one
+ * more request unless `historyCache` already holds it for this session.
  */
 export async function fetchYahooQuoteChart(symbol, {
   delayMs = 150,
+  sparklineWindow = false,
+  historyCache = null,
   fetchJson = (url, options) => fetchYahooJson(url, { label: symbol, ...options }),
 } = {}) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
@@ -213,5 +249,20 @@ export async function fetchYahooQuoteChart(symbol, {
     previousClose = previousSessionClose(daily, lastTradeAt);
   }
   const quote = parseYahooChart(chart, symbol, { previousClose });
-  return quote && { ...quote, ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', lastTradeAt * 1000) };
+  if (!quote) return null;
+  let sparkline = null;
+  if (sparklineWindow) {
+    const sessionStart = chart?.chart?.result?.[0]?.timestamp?.[0] ?? lastTradeAt;
+    const cacheable = historyCache && Number.isFinite(sessionStart);
+    let history = cacheable ? await historyCache.load(symbol, sessionStart).catch(() => null) : null;
+    if (!history) {
+      await sleep(delayMs);
+      history = await fetchJson(`${url}${SPARKLINE_HISTORY_QUERY}`, { maxRetries: 0 }).catch(() => null);
+      if (history && cacheable) await historyCache.save(symbol, sessionStart, history).catch(() => {});
+      if (!history) console.warn(`  [YAHOO] ${symbol} sparkline history unavailable; publishing today's bars only`);
+    }
+    const { sparkline: values, ...labels } = buildQuoteSparkline(chart, history);
+    sparkline = { sparkline: roundSparkline(values), ...labels };
+  }
+  return { ...quote, ...sparkline, ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', lastTradeAt * 1000) };
 }

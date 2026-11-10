@@ -2445,7 +2445,8 @@ export function computeRecordCount({ opts = {}, data, payloadBytes = 0, topicArt
  * Precision is the ONLY safe lever here. Downsampling was measured and REJECTED: miniSparkline
  * autoscales each series to its own min/max, so dropping any extreme rescales the whole curve
  * — 96-point resampling moved the median series 3-4px and cost USDTRY=X 40% of its vertical
- * range. See tests/sparkline-precision.test.mjs.
+ * range. See tests/sparkline-precision.test.mjs. Commodity sparklines use 5-minute bars to
+ * fix their time window (scripts/shared/quote-sparkline.cjs), not to save bytes.
  */
 export const SPARKLINE_SIGNIFICANT_DIGITS = 7;
 
