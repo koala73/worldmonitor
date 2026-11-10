@@ -1,7 +1,7 @@
 ---
 title: "MCP 工具：历史情报"
 sidebarTitle: "历史情报"
-description: "World Monitor MCP 工具参考：180 天历史情报档案——参数、新鲜度、后端 API 端点与示例调用。"
+description: "World Monitor MCP 工具参考：180 天历史情报档案。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
 ---
 
 本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
@@ -35,7 +35,7 @@ description: "World Monitor MCP 工具参考：180 天历史情报档案——�
 | `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。省略则搜索全部国家 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
-| `limit` | integer | 否 | 最大匹配数。省略时路由返回 20 条，上限为 64 |
+| `limit` | integer | 否 | 最大匹配数。MCP 省略时返回 16 条，上限为 16，以控制输出预算 |
 
 - **API 端点：** `POST /api/intelligence/v1/search-intel-history`
 - **类型：** 实时 RPC — 先嵌入查询，再对历史存储排序。Edge 运行时超时：**12.0s**。
@@ -103,7 +103,7 @@ curl -s https://worldmonitor.app/mcp \
 | `situation` | string | **是** | 情境描述，10-1000 个字符，例如 "a naval blockade closes a major grain export corridor for weeks" |
 | `domain` | string | 否 | `conflict`、`military`、`energy` 之一。省略则搜索全部领域 |
 | `country` | string | 否 | ISO 3166-1 alpha-2 大写代码，例如 "EG"。省略则搜索全部国家 |
-| `limit` | integer | 否 | 最大先例数。省略时路由返回 10 条，上限为 32 |
+| `limit` | integer | 否 | 最大先例数。MCP 省略时返回 8 条，上限为 8，以控制输出预算 |
 
 - **API 端点：** `POST /api/intelligence/v1/get-similar-events`
 - **类型：** 实时 RPC — 先嵌入情境文本，再对历史存储排序。Edge 运行时超时：**12.0s**。
