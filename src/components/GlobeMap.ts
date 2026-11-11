@@ -564,6 +564,9 @@ export class GlobeMap {
   private clusterMarkers: ClusterMarker[] = [];
   private clusterData: Map<string, MilitaryVesselCluster> = new Map();
   private popup: MapPopup | null = null;
+  // Bumped by every reservoir reveal and every marker click, so a delayed reveal from a
+  // panel row cannot replace a popup the user opened after it.
+  private reservoirRevealSeq = 0;
   private weatherMarkers: WeatherMarker[] = [];
   private naturalMarkers: NaturalMarker[] = [];
   private iranMarkers: IranMarker[] = [];
@@ -1405,6 +1408,7 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    this.reservoirRevealSeq++;
     if (d._kind === 'datacenter' && this.popup) {
       const dc = AI_DATA_CENTERS.find(center => center.id === d.id);
       if (dc) {
@@ -3596,14 +3600,16 @@ export class GlobeMap {
 
   /** Rotate to a reservoir, then open its popup once it has settled at the container centre. */
   public openReservoir(reservoir: ReservoirLevel): void {
+    const seq = ++this.reservoirRevealSeq;
+    const current = () => seq === this.reservoirRevealSeq;
     const reveal = () => {
-      if (this.destroyed || !this.globe) return;
+      if (this.destroyed || !this.globe || !current()) return;
       this.setCenter(reservoir.lat, reservoir.lon, 5);
       const rect = this.container.getBoundingClientRect();
       const x = rect.width / 2;
       const y = rect.height / 2;
       window.setTimeout(() => {
-        if (this.destroyed || !this.popup) return;
+        if (this.destroyed || !this.popup || !current()) return;
         this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
       }, SET_CENTER_ROTATION_MS);
     };

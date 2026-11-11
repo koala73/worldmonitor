@@ -197,9 +197,39 @@ export function reservoirDetail(r: ReservoirLevel, ctx: ReservoirFormatContext):
   return parts.join(' · ');
 }
 
-/** 36-month sparkline through the shared helper; empty string under two points. */
+const SPARKLINE_SAMPLES = 48;
+
+/**
+ * Levels linearly interpolated onto `n` evenly spaced times between the first and last
+ * reading. Satellite passes are irregular (days to months apart), and the shared sparkline
+ * spaces values evenly, so plotting raw readings would stretch short gaps and squeeze long
+ * ones. Readings with an unparseable date are skipped.
+ */
+export function resampleByTime(points: ReadonlyArray<{ date: string; levelM: number }>, n = SPARKLINE_SAMPLES): number[] {
+  const pts = points
+    .map((p) => ({ t: Date.parse(p.date), v: p.levelM }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.v))
+    .sort((a, b) => a.t - b.t);
+  if (pts.length < 2 || n < 2) return pts.map((p) => p.v);
+  const t0 = pts[0]!.t;
+  const t1 = pts[pts.length - 1]!.t;
+  if (t1 === t0) return pts.map((p) => p.v);
+  const out: number[] = [];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const t = t0 + ((t1 - t0) * i) / (n - 1);
+    while (j < pts.length - 2 && pts[j + 1]!.t < t) j++;
+    const a = pts[j]!;
+    const b = pts[j + 1]!;
+    const f = b.t === a.t ? 1 : Math.min(1, Math.max(0, (t - a.t) / (b.t - a.t)));
+    out.push(a.v + (b.v - a.v) * f);
+  }
+  return out;
+}
+
+/** 36-month sparkline through the shared helper, on a time grid; empty string under two points. */
 export function reservoirSparkline(r: ReservoirLevel, width = 72, height = 22): string {
-  const values = r.series.map((p) => p.levelM);
+  const values = resampleByTime(r.series);
   if (values.length < 2) return '';
   const trend = r.change365dM ?? r.change90dM ?? (values[values.length - 1]! - values[0]!);
   return miniSparkline(values, trend, width, height);

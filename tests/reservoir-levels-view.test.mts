@@ -14,6 +14,7 @@ import {
   reservoirSparkline,
   reservoirTone,
   reservoirToneRgb,
+  resampleByTime,
   sortReservoirs,
   type ReservoirFormatContext,
 } from '../src/components/reservoir-levels-view.ts';
@@ -131,5 +132,25 @@ describe('reservoir wording', () => {
   it('draws a sparkline only with two or more points', () => {
     assert.match(reservoirSparkline(reservoir()), /^<svg[^>]*class="mini-sparkline"/);
     assert.equal(reservoirSparkline(reservoir({ series: [{ date: '2026-09-06', levelM: 318.4 }] })), '');
+  });
+
+  it('spaces sparkline readings by elapsed time, not by index', () => {
+    // A 5-day gap then a 120-day gap: by index the rise would fill half the chart.
+    const values = resampleByTime([
+      { date: '2026-01-01', levelM: 0 },
+      { date: '2026-01-06', levelM: 10 },
+      { date: '2026-05-06', levelM: 10 },
+    ], 5);
+    assert.equal(values.length, 5);
+    assert.equal(values[0], 0);
+    for (const v of values.slice(1)) assert.ok(Math.abs(v - 10) < 1e-9, `got ${values}`);
+  });
+
+  it('interpolates between readings on the time grid', () => {
+    const values = resampleByTime([
+      { date: '2026-01-01', levelM: 100 },
+      { date: '2026-01-11', levelM: 110 },
+    ], 3);
+    assert.deepEqual(values.map((v) => Math.round(v * 1000) / 1000), [100, 105, 110]);
   });
 });
