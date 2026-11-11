@@ -189,6 +189,11 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     for (const [label, count] of Object.entries(plannedByVariant)) {
       invariant(count <= expected.perVariant, `${label} has ${count} answers, more than the ${expected.perVariant} the design asks for`);
     }
+    // Scores cannot cover answers the run no longer has: that would read as a
+    // complete week while the search counts come from the missing rows.
+    for (const [label, count] of Object.entries(scoredByLabel)) {
+      invariant(count <= (plannedByVariant[label] ?? 0), `${label} has ${count} scored answers but only ${plannedByVariant[label] ?? 0} answer rows`);
+    }
     answerCounts = expectedAnswers(expected.labels, expected.perVariant, scoredByLabel);
   } else {
     const planned = answers.length;

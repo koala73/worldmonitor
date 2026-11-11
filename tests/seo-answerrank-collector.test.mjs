@@ -304,6 +304,16 @@ describe('runCli', () => {
     assert.equal(snapshot.status, 'partial');
   });
 
+  it('refuses a run whose scores cover answer rows it no longer has', async () => {
+    const runDir = writeRun({ variants: VARIANTS });
+    const rows = readFileSync(join(runDir, 'answers.jsonl'), 'utf8').split('\n');
+    writeFileSync(join(runDir, 'answers.jsonl'), rows.filter((row) => !row.includes('"gpt +web|3')).join('\n'));
+    await assert.rejects(
+      runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
+      /gpt \+web has 39 scored answers but only \d+ answer rows/,
+    );
+  });
+
   it('refuses a run whose scores have no mention rate, which would hide a decline', async () => {
     const runDir = writeRun({ variants: VARIANTS });
     const scores = JSON.parse(readFileSync(join(runDir, 'scores.json'), 'utf8'));
