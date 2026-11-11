@@ -18,7 +18,7 @@ const SEED = {
     {
       id: 'mead', name: 'Lake Mead', country: 'US', riparians: ['US', 'MX'], river: 'Colorado', lat: 36.13, lon: -114.45,
       tags: ['hydropower'], why: 'shortage tiers',
-      latest: { date: '2026-09-01', levelM: 321.4, madM: 0.03, n: 120, ageDays: 71 },
+      latest: { date: '2026-09-01', levelM: 321.4, madM: 0.03, segmentCount: 120, ageDays: 71 },
       prevDate: '2026-08-20', changePrevM: -0.2, change30dM: -0.5, change90dM: null, change365dM: 1.2,
       seasonalAnomalyM: 2.1, seasonalZ: 1.3, recordMinM: 315.1, recordMaxM: 330.2, recordStart: '2018-10-15',
       percentOfRange: 41.7, recordLow: false, recordHigh: false, status: 'normal',
@@ -26,7 +26,7 @@ const SEED = {
     },
     {
       id: 'kakhovka', name: 'Kakhovka reservoir (destroyed)', country: 'UA', riparians: ['UA'], river: 'Dnipro', lat: 47.4, lon: 34.2,
-      tags: ['conflict'], why: 'drained', latest: { date: '2023-09-01', levelM: 3, madM: 0.1, n: 30, ageDays: 1167 },
+      tags: ['conflict'], why: 'drained', latest: { date: '2023-09-01', levelM: 3, madM: 0.1, segmentCount: 30, ageDays: 1167 },
       prevDate: '2023-07-20', changePrevM: -0.2, change30dM: null, change90dM: null, change365dM: null,
       seasonalAnomalyM: null, seasonalZ: null, recordMinM: 3, recordMaxM: 16.8, recordStart: '2018-11-01', percentOfRange: 0,
       recordLow: true, recordHigh: false, status: 'no_recent_data', series: [], okPassCount: 90,
@@ -46,7 +46,7 @@ describe('list-reservoir-levels normalization', () => {
     assert.deepEqual(mead.series, [{ date: '2026-08-20', levelM: 321.6 }, { date: '2026-09-01', levelM: 321.4 }]);
     assert.equal(mead.change90dM, undefined, 'null metrics stay absent, not zero');
     assert.equal(mead.change365dM, 1.2);
-    assert.deepEqual(mead.latest, { date: '2026-09-01', levelM: 321.4, madM: 0.03, n: 120, ageDays: 71 });
+    assert.deepEqual(mead.latest, { date: '2026-09-01', levelM: 321.4, madM: 0.03, segmentCount: 120, ageDays: 71 });
     assert.equal(out.source?.name, SEED.source.name);
     const k = out.reservoirs[1];
     assert.equal(k.status, 'no_recent_data');

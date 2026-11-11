@@ -33,7 +33,7 @@ describe('latest and previous pass', () => {
 
   it('reports the latest ok pass with its age and the change from the previous ok pass', () => {
     const m = metrics([pass('2026-01-01', 100), pass('2026-01-11', 100.4), pass('2026-01-20', 99, { n: 3 })], '2026-03-02');
-    assert.deepEqual(m.latest, { date: '2026-01-11', levelM: 100.4, madM: 0.03, n: 50, ageDays: 49 });
+    assert.deepEqual(m.latest, { date: '2026-01-11', levelM: 100.4, madM: 0.03, segmentCount: 50, ageDays: 49 });
     assert.equal(m.prevDate, '2026-01-01');
     assert.equal(m.changePrevM, 0.4);
   });

@@ -12,12 +12,14 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const KEY = 'climate:reservoir-levels:v1';
 const STATE_KEY = 'climate:reservoir-levels:passes:v1';
 const META_KEY = 'seed-meta:climate:reservoir-levels';
+const COMPLETION_KEY = 'seed-completion:climate:reservoir-levels';
 
 const preload = `
 import { writeFileSync } from 'node:fs';
 const KEY = ${JSON.stringify(KEY)};
 const STATE_KEY = ${JSON.stringify(STATE_KEY)};
 const META_KEY = ${JSON.stringify(META_KEY)};
+const COMPLETION_KEY = ${JSON.stringify(COMPLETION_KEY)};
 const initialFetchedAt = Date.now() - 30 * 3600_000;
 const values = new Map();
 if (process.env.TEST_LAST_GOOD) {
@@ -84,7 +86,7 @@ globalThis.fetch = async (input, options = {}) => {
 process.on('exit', () => {
   const parse = (k) => { const v = values.get(k); return v == null ? null : JSON.parse(v); };
   // A file, not stdout: a pipe write at exit is cut at 64 KB.
-  writeFileSync(process.env.TEST_STATE_FILE, JSON.stringify({ writes, cmrCalls, slideCalls, initialFetchedAt, canonical: parse(KEY), state: parse(STATE_KEY), meta: parse(META_KEY) }));
+  writeFileSync(process.env.TEST_STATE_FILE, JSON.stringify({ writes, cmrCalls, slideCalls, initialFetchedAt, canonical: parse(KEY), state: parse(STATE_KEY), meta: parse(META_KEY), completion: parse(COMPLETION_KEY) }));
 });
 `;
 
@@ -120,9 +122,9 @@ function runSeeder(mode, extraEnv = {}) {
 }
 
 test('a day with no new granules publishes the baseline metrics and refreshes seed-meta', () => {
-  const r = runSeeder('quiet');
+  const r = runSeeder('quiet', { WM_BUNDLE_COMPLETION_META_KEY: COMPLETION_KEY });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  const { canonical, state, meta, slideCalls } = r.fixture;
+  const { canonical, state, meta, completion, slideCalls } = r.fixture;
   assert.ok(canonical?._seed, 'canonical key is enveloped');
   const reservoirs = canonical.data.reservoirs;
   assert.ok(reservoirs.length >= 30, `reservoirs ${reservoirs.length}`);
@@ -130,6 +132,8 @@ test('a day with no new granules publishes the baseline metrics and refreshes se
   assert.equal('_state' in canonical.data, false, 'state stays out of the canonical key');
   assert.ok(Object.keys(state.data?.byId ?? state.byId).length === reservoirs.length);
   assert.ok(meta.fetchedAt > Date.now() - 60_000, 'seed-meta refreshed');
+  // The bundle's completion marker is written after the state key and binds to this run.
+  assert.equal(completion?.fetchedAt, canonical._seed.fetchedAt);
   // CMR lists no new granules and the baseline has no failed granules, so SlideRule is never called.
   assert.equal(slideCalls, 0);
 });

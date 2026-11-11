@@ -67,7 +67,7 @@ export function toDisplayReservoirLevel(proto: ProtoReservoirLevel): ReservoirLe
       observedAt: new Date(`${proto.latest.date}T00:00:00Z`),
       levelM: proto.latest.levelM,
       madM: proto.latest.madM,
-      segments: proto.latest.n,
+      segments: proto.latest.segmentCount,
       ageDays: proto.latest.ageDays,
     }
     : null;

@@ -623,7 +623,7 @@ export function computeChange(passes, nowMs) {
   const tLatest = Date.parse(latest.time);
   const ageDays = Math.floor((nowMs - tLatest) / DAY_MS);
   const out = { ...empty, okPassCount: ok.length };
-  out.latest = { date: latest.date, levelM: latest.levelM, madM: latest.madM, n: latest.n, ageDays };
+  out.latest = { date: latest.date, levelM: latest.levelM, madM: latest.madM, segmentCount: latest.n, ageDays };
 
   if (ok.length >= 2) {
     const prev = ok[ok.length - 2];

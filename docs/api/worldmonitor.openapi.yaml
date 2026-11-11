@@ -2716,7 +2716,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListReservoirLevels
-            description: ListReservoirLevels returns ICESat-2 lidar water-surface levels and level changes for a watchlist of strategic reservoirs and lakes, 50 to 70 days behind real time.
+            description: ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes, 50 to 70 days behind real time.
             operationId: ListReservoirLevels
             parameters:
                 - name: jmespath
@@ -42335,12 +42335,9 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: |-
-                        Time the snapshot was built, Unix epoch milliseconds. 0 means the
-                         snapshot is unavailable, not that there are no reservoirs.. Warning: Values > 2^53 may lose precision in JavaScript
+                    description: 'Unix epoch ms; 0 when the snapshot is unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 dataAvailable:
                     type: boolean
-                    description: False when the snapshot is unavailable and the empty list is a fallback.
                 source:
                     $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevelsSource'
                 methodology:
@@ -42350,17 +42347,14 @@ components:
             properties:
                 id:
                     type: string
-                    description: Stable watchlist identifier, e.g. "gerd", "mead".
                 name:
                     type: string
                 country:
                     type: string
-                    description: ISO 3166-1 alpha-2 code of the dam or majority state.
                 riparians:
                     type: array
                     items:
                         type: string
-                        description: ISO 3166-1 alpha-2 codes of states with a stake in the water body.
                 river:
                     type: string
                 lat:
@@ -42373,27 +42367,19 @@ components:
                     type: array
                     items:
                         type: string
-                        description: |-
-                            Subset of hydropower, transboundary, irrigation, canal, conflict,
-                             new-impoundment, terminal-lake.
                 why:
                     type: string
-                    description: Why an analyst watches this water body.
                 latest:
                     $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLatestPass'
                 prevDate:
                     type: string
-                    description: Date (YYYY-MM-DD) of the usable overpass before the latest.
                 changePrevM:
                     type: number
                     format: double
-                    description: Latest level minus the previous usable overpass, metres.
                 change30dM:
                     type: number
                     format: double
-                    description: |-
-                        Latest level minus the level interpolated 30, 90 and 365 days earlier.
-                         Absent when no usable overpass lies close enough to that date.
+                    description: Changes are interpolated between overpasses, never extrapolated.
                 change90dM:
                     type: number
                     format: double
@@ -42403,9 +42389,7 @@ components:
                 seasonalAnomalyM:
                     type: number
                     format: double
-                    description: |-
-                        Latest level minus the median of prior years within 30 days of the same
-                         day of year. Needs three prior years.
+                    description: Against the same time of year in at least three prior years.
                 seasonalZ:
                     type: number
                     format: double
@@ -42417,13 +42401,9 @@ components:
                     format: double
                 recordStart:
                     type: string
-                    description: Date (YYYY-MM-DD) of the first usable overpass in the record.
                 percentOfRange:
                     type: number
                     format: double
-                    description: |-
-                        Latest level as a percentage of the recorded range. Needs three years
-                         of record and a range of at least 1 m.
                 recordLow:
                     type: boolean
                 recordHigh:
@@ -42431,8 +42411,8 @@ components:
                 status:
                     type: string
                     description: |-
-                        One of no_recent_data, record_low, record_high, falling_fast,
-                         rising_fast, low, high, normal, insufficient_history.
+                        no_recent_data, record_low, record_high, falling_fast, rising_fast,
+                         low, high, normal or insufficient_history.
                 series:
                     type: array
                     items:
@@ -42441,30 +42421,25 @@ components:
                     type: integer
                     format: int32
             description: |-
-                ReservoirLevel is the water-surface level of one strategic reservoir or lake,
-                 measured by ICESat-2 lidar. Levels are metres above the EGM2008 geoid.
-                 They are lake levels, not storage volumes.
+                ReservoirLevel is the ICESat-2 water-surface level of one reservoir or
+                 lake, metres above the EGM2008 geoid. Not a storage volume.
         worldmonitor_climate_v1_ReservoirLatestPass:
             type: object
             properties:
                 date:
                     type: string
-                    description: Overpass date, YYYY-MM-DD (UTC).
                 levelM:
                     type: number
                     format: double
                 madM:
                     type: number
                     format: double
-                    description: Median absolute deviation of the segments in this overpass, metres.
-                n:
+                segmentCount:
                     type: integer
                     format: int32
-                    description: Number of water segments in the overpass.
                 ageDays:
                     type: integer
                     format: int32
-                    description: Days between the overpass and the time the snapshot was built.
         worldmonitor_climate_v1_ReservoirLevelPoint:
             type: object
             properties:

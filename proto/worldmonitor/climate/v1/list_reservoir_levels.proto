@@ -9,10 +9,8 @@ message ListReservoirLevelsRequest {}
 
 message ListReservoirLevelsResponse {
   repeated ReservoirLevel reservoirs = 1;
-  // Time the snapshot was built, Unix epoch milliseconds. 0 means the
-  // snapshot is unavailable, not that there are no reservoirs.
+  // Unix epoch ms; 0 when the snapshot is unavailable.
   int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // False when the snapshot is unavailable and the empty list is a fallback.
   bool data_available = 3;
   ReservoirLevelsSource source = 4;
   string methodology = 5;

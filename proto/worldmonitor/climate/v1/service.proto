@@ -40,7 +40,7 @@ service ClimateService {
     option (sebuf.http.config) = {path: "/list-air-quality-data", method: HTTP_METHOD_GET};
   }
 
-  // ListReservoirLevels returns ICESat-2 lidar water-surface levels and level changes for a watchlist of strategic reservoirs and lakes, 50 to 70 days behind real time.
+  // ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes, 50 to 70 days behind real time.
   rpc ListReservoirLevels(ListReservoirLevelsRequest) returns (ListReservoirLevelsResponse) {
     option (sebuf.http.config) = {path: "/list-reservoir-levels", method: HTTP_METHOD_GET};
   }

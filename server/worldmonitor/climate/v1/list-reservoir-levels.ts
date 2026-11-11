@@ -39,7 +39,7 @@ function normalizeLatest(v: unknown): ReservoirLatestPass | undefined {
     date,
     levelM,
     madM: asNumber(r.madM) ?? 0,
-    n: Math.round(asNumber(r.n) ?? 0),
+    segmentCount: Math.round(asNumber(r.segmentCount) ?? 0),
     ageDays: Math.round(asNumber(r.ageDays) ?? 0),
   };
 }

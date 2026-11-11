@@ -174,7 +174,7 @@ export interface ReservoirLatestPass {
   date: string;
   levelM: number;
   madM: number;
-  n: number;
+  segmentCount: number;
   ageDays: number;
 }
 
