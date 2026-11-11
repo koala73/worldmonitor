@@ -8,8 +8,9 @@
 
 /** Viewport width (CSS px) at which the dashboard switches from the stacked
  * layout (map band above the panel grid) to the split layout (map column
- * beside the panels). Shared by web and the desktop app — issue #6417. */
-export const SPLIT_LAYOUT_MIN_WIDTH = 900;
+ * beside the panels). At 1440px the default 60% map leaves room for two
+ * 270px panel tracks plus gaps/padding. Shared by web and desktop (#10458). */
+export const SPLIT_LAYOUT_MIN_WIDTH = 1440;
 
 /** Former web-only split threshold. It remains only to bound migration of the
  * legacy shared map-height preference to users who could have set it while

@@ -562,7 +562,7 @@ describe('map split layout (#6417)', () => {
     });
 
     it('does not migrate a stacked legacy height for newly split web widths', () => {
-      stubInnerWidth(1200);
+      stubInnerWidth(SPLIT_LAYOUT_MIN_WIDTH);
       localStorage.setItem('map-height', '450px');
       const { container } = buildHeightDom();
       manager.setupMapResize();
@@ -582,7 +582,7 @@ describe('map split layout (#6417)', () => {
         mapLayers: {},
         map: { resize, setIsResizing: vi.fn() },
       } as never, {} as never);
-      stubInnerWidth(1200);
+      stubInnerWidth(SPLIT_LAYOUT_MIN_WIDTH);
       localStorage.setItem('map-height', '450px');
       const { container } = buildHeightDom();
       manager.setupMapResize();

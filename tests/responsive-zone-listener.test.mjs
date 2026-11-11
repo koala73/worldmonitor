@@ -127,6 +127,9 @@ describe('responsive zone listener', () => {
 });
 
 describe('panel layout responsive zone wiring', () => {
+  it('keeps small laptops stacked while preserving the 1440px split layout', () => {
+    assert.equal(SPLIT_LAYOUT_MIN_WIDTH, 1440);
+  });
   // Behavioral: the contract panel-layout relies on — a breakpoint cross runs
   // the zone-reconcile callback exactly once, synchronously, with no trailing
   // debounce. This replaces the former brittle source-text debounce regex with
@@ -218,7 +221,7 @@ describe('panel layout responsive zone wiring', () => {
     assert.doesNotMatch(
       mainCss,
       /desktop-grid/,
-      'the desktop-grid duplicate split block must stay deleted — the 900px media query covers the desktop app (Tauri min window width is above it)',
+      'the desktop-grid duplicate split block must stay deleted — web and desktop share the split threshold',
     );
   });
 
