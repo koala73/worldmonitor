@@ -9,7 +9,7 @@ for (const refreshed of [false, true]) {
     await page.route(/^https?:\/\/(?!(127\.0\.0\.1:\d+|localhost:\d+)(?:\/|$)).*/i, route => route.abort());
     await page.route('**/api/**', route => route.fulfill({ json: {} }));
     const point = {
-      id: 'taiz', country: 'Yemen', locationName: 'Taiz', location: { latitude: 13.58, longitude: 44.02 },
+      id: 'gaza', country: 'Israel', locationName: 'Gaza town', location: { latitude: 31.52, longitude: 34.45 },
       dateStart: Date.now(), dateEnd: Date.now(), sideA: 'A', sideB: 'B', deathsBest: 0, deathsLow: 0, deathsHigh: 0,
       violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', sourceOriginal: 'Test data',
       ...(refreshed ? { hasPreciseLocation: true } : {}),
@@ -33,7 +33,7 @@ for (const refreshed of [false, true]) {
     const panel = page.locator('#panelsGrid .panel[data-panel="population-exposure"]');
     await panel.scrollIntoViewIfNeeded();
     await expect(panel.locator('.popexp-card')).toHaveCount(2);
-    await expect(panel).toContainText('Taiz, Yemen');
+    await expect(panel).toContainText('Gaza town, Palestine');
     await expect(panel).toContainText('Aden, Yemen');
     await expect(panel).not.toContainText('Excluded broad location');
     if (refreshed) {

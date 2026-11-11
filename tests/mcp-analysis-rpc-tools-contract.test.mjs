@@ -10,6 +10,15 @@ const findTool = (name) => TOOL_REGISTRY.find((tool) => tool.name === name);
 // Registry contract
 // ---------------------------------------------------------------------------
 
+it('publishes population event fields including folded eventCount', () => {
+  const tool = findTool('get_population_exposure');
+  const fields = tool.outputSchema.properties.data.properties.events.items.properties;
+  for (const field of ['eventCount', 'name', 'country', 'nearestCountry', 'exposedPopulation', 'exposureRadiusKm', 'densityPerKm2']) {
+    assert.ok(fields?.[field]?.description, field);
+  }
+  assert.equal(fields.eventCount.type, 'integer');
+});
+
 describe('wave-2a analysis tools registry contract', () => {
   const expected = {
     get_signal_convergence: {
