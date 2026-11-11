@@ -15612,6 +15612,9 @@
           "path": "src/components/RuntimeConfigPanel.ts"
         },
         {
+          "path": "src/config/dashboard-reference-links.ts"
+        },
+        {
           "path": "src/config/docs-locale-seo.ts"
         },
         {
