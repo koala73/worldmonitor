@@ -415,6 +415,7 @@ canvas,
 
 .variant-option {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
@@ -435,16 +436,7 @@ canvas,
 }
 
 .variant-option .variant-label {
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-width 0.3s ease, opacity 0.2s ease;
-}
-
-.variant-option:hover .variant-label,
-.variant-option.active .variant-label {
-  max-width: 50px;
-  opacity: 1;
+  white-space: nowrap;
 }
 
 .variant-option:hover {
@@ -480,11 +472,6 @@ canvas,
   height: 12px;
   background: var(--border);
   margin: 0 2px;
-}
-
-.variant-switcher:hover .variant-option .variant-label {
-  max-width: 50px;
-  opacity: 1;
 }
 
 .mission-preset-mount {
@@ -1159,34 +1146,43 @@ canvas,
 /* Progressive header disclosure — keep the core right-side actions (Search,
    settings, and especially the Sign In cluster) fully on screen as usable
    width shrinks: small laptops, split-screen, OS scaling (1920px @ 150% =
-   ~1280px CSS), and browsers with a vertical tab strip. The single-row
-   header wants ~1520px; without these tiers it silently overflows and clips
-   the rightmost item (Sign In) anywhere below ~1520px. Items are dropped
+   ~1280px CSS), and browsers with a vertical tab strip. With dashboard
+   labels visible, the single-row header wants ~1820px; these tiers keep the
+   rightmost account actions on screen below that width. Items are dropped
    least-essential first; each is still reachable elsewhere (footer links,
    the mobile hamburger menu, or the map's own controls). The full mobile
    hamburger takes over at <=768px. !important mirrors the <=768 block below
    (needed to beat the #missionPresetMount id rule in header.css). */
-@media (max-width: 1530px) {
+@media (max-width: 1875px) {
   /* redundant with footer/menu: X credit + GitHub icon */
   .credit-link,
   .github-link { display: none !important; }
+  .header .region-select { width: 110px; }
 }
-@media (max-width: 1420px) {
+@media (max-width: 1730px) {
   .version,
   .fullscreen-btn { display: none !important; }
 }
-@media (max-width: 1330px) {
+@media (max-width: 1630px) {
   /* Link + Embed share .copy-link-btn */
   .copy-link-btn { display: none !important; }
 }
-@media (max-width: 1200px) {
+@media (max-width: 1500px) {
   .pizzint-indicator { display: none !important; }
 }
 @media (max-width: 1075px) {
   .mission-preset-mount { display: none !important; }
 }
-@media (max-width: 980px) {
-  .variant-switcher { display: none !important; }
+@media (min-width: 981px) and (max-width: 1375px) {
+  .header { padding-inline: 8px; }
+  .header-left { gap: 6px; }
+  .header-right { gap: 6px; }
+  .header .search-btn { margin-right: 0; }
+  .header .region-select { width: 80px; }
+  .header .status-indicator,
+  .header .logo { display: none; }
+  .header .variant-option { padding: 2px 4px; letter-spacing: 0.5px; }
+  .header .variant-divider { margin: 0; }
 }
 
 .search-btn {
@@ -29094,9 +29090,50 @@ body.map-width-resizing {
    Panel Tabs — named, persistent dashboard workspaces
    ========================================================================== */
 
+.dashboard-navigation-row {
+  flex-shrink: 0;
+}
+
 .dashboard-tabs-mount {
   flex-shrink: 0;
   min-height: 36px;
+}
+
+.tablet-variant-mount {
+  display: none;
+}
+
+@media (min-width: 768px) and (max-width: 980px) {
+  .dashboard-navigation-row {
+    display: flex;
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-navigation-row .dashboard-tabs-mount {
+    min-width: 0;
+    max-width: 50%;
+    flex-shrink: 1;
+  }
+
+  .dashboard-navigation-row .dashboard-tabs-bar {
+    border-bottom: none;
+  }
+
+  .tablet-variant-mount {
+    display: block;
+    min-width: 0;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .tablet-variant-mount .variant-switcher {
+    display: flex !important;
+    width: max-content;
+    margin: 0 6px;
+  }
 }
 
 .dashboard-tabs-bar {
