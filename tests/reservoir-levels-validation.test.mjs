@@ -29,7 +29,7 @@ function gaugeAt(t) {
 
 const median = (v) => { const s = [...v].sort((a, b) => a - b); const k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
 
-export function meadComparison() {
+function meadComparison() {
   const passes = classifyPasses(baseline.reservoirs.mead.passes.map(tupleToPass)).filter((p) => p.ok);
   const matched = passes.map((p) => ({ ...p, gauge: gaugeAt(Date.parse(p.time)) })).filter((p) => p.gauge != null);
   const x = matched.map((p) => p.levelM);
