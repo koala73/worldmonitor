@@ -35,6 +35,15 @@
   min-width: 0;
 }
 
+/* Three short chips: wrap them instead of hiding the last one behind the
+   shared tab strip's horizontal scroll and edge fade. */
+.wl-panel .wl-filters {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
 .wl-panel .wl-filter-count {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -191,11 +200,16 @@
   text-underline-offset: 2px;
 }
 
-/* Map popup */
-.wl-popup .wl-popup-title {
+/* Map popup. The shared title is one red ellipsized line; reservoir names run
+   long ("Grand Ethiopian Renaissance Dam reservoir") and the status chip carries
+   the colour, so the title wraps in body text. */
+.wl-popup .popup-header .wl-popup-title {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  color: var(--text);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .wl-popup .wl-popup-place {
@@ -211,11 +225,14 @@
   line-height: 1.45;
 }
 
-.wl-popup .stat-value {
+/* The shared popup paints values in the accent colour, which reads as "good";
+   a fall in water level must not look positive, so values use body text. */
+.wl-popup .popup-body .stat-value {
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.wl-popup .wl-popup-anomaly {
+.wl-popup .popup-body .wl-popup-anomaly {
   color: var(--wl-tone-text);
   font-weight: 600;
 }
