@@ -2066,10 +2066,6 @@ export class GlobeMap {
           </div>`;
         }).join('')}
       </div>`, "legacy direct innerHTML migration"));
-    const authorBadge = document.createElement('div');
-    authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
-    el.appendChild(authorBadge);
     this.container.appendChild(el);
     this.layerTogglesEl = el;
 
