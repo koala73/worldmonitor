@@ -10,6 +10,15 @@ const findTool = (name) => TOOL_REGISTRY.find((tool) => tool.name === name);
 // Registry contract
 // ---------------------------------------------------------------------------
 
+it('publishes population event fields including folded eventCount', () => {
+  const tool = findTool('get_population_exposure');
+  const fields = tool.outputSchema.properties.data.properties.events.items.properties;
+  for (const field of ['eventCount', 'name', 'country', 'nearestCountry', 'exposedPopulation', 'exposureRadiusKm', 'densityPerKm2']) {
+    assert.ok(fields?.[field]?.description, field);
+  }
+  assert.equal(fields.eventCount.type, 'integer');
+});
+
 describe('wave-2a analysis tools registry contract', () => {
   const expected = {
     get_signal_convergence: {
@@ -195,6 +204,27 @@ describe('wave-2 analysis tools: user-input bounds', () => {
       assert.equal(result.data.exposure?.nearestCountry ?? null, country);
     }
   });
+
+  for (const [name, lat, lon, country] of [
+    ['Eilat centre', 29.55, 34.95, 'ISR'],
+    ['Eilat south', 29.54, 34.94, 'ISR'],
+    ['Eilat north (atlas Jordan)', 29.57, 34.96, null],
+    ['Teknaf', 20.86, 92.30, null],
+    ['Aqaba', 29.649, 35.033, null],
+    ['Moldova', 48.40742803917716, 27.510716032731192, null],
+    ['Laos', 21.261407681930056, 100.77073645052123, null],
+    ['Cameroon', 8.846732292626287, 12.8475151779719, null],
+    ['offshore Lagos', 6.30, 3.39, null],
+    ['Haifa', 32.82, 34.99, 'ISR'],
+  ]) {
+    it(`MCP point regression: ${name}`, async () => {
+      const result = await findTool('get_population_exposure')._execute({ mode: 'point', lat, lon }, '', {}, {});
+      assert.equal(result.error, undefined);
+      assert.equal(result.data.exposure?.country ?? null, country);
+      assert.equal(result.data.exposure?.nearestCountry ?? null, country);
+      if (country === 'ISR') assert.equal(result.data.exposure.densityPerKm2, 444);
+    });
+  }
 
   it('clamps a runaway radius and reports the radius actually used', async () => {
     const tool = findTool('get_population_exposure');

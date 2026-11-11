@@ -1,0 +1,22 @@
+name: Oil Calendar Horizon
+
+on:
+  schedule:
+    - cron: '43 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  horizon:
+    if: github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Fail when either publisher calendar is within 45 days of its last row
+        run: node scripts/check-oil-calendar-horizon.mts

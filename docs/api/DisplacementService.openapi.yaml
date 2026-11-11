@@ -522,7 +522,7 @@ paths:
                                     "densityPerKm2": 1
                                     "exposedPopulation": 1
                                     "exposureRadiusKm": 1.5
-                                    "nearestCountry": "US"
+                                    "nearestCountry": "ISR"
                                 "success": true
                             schema:
                                 $ref: '#/components/schemas/GetPopulationExposureResponse'
@@ -1218,7 +1218,10 @@ components:
                     description: Radius used for the estimate in km.
                 nearestCountry:
                     type: string
+                    examples:
+                        - ISR
                     description: ISO3 code of the priority country containing the point, whose density was used.
+                    example: ISR
                 densityPerKm2:
                     type: integer
                     format: int32

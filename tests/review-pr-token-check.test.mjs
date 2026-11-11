@@ -38,11 +38,43 @@ describe('bot-PR workflows', () => {
   for (const file of openers) {
     it(`${file} opens and auto-merges its PR with REVIEW_PR_TOKEN only`, () => {
       const text = read(file);
-      assert.doesNotMatch(text, /github\.token/, 'the Actions token opens PRs that get no CI');
+      // The Actions token opens PRs that get no CI. It may appear only in a
+      // step that runs a shell command with no PR-capable call: an issue from
+      // github-actions[bot] notifies the owner, one from the owner's PAT does not.
+      const ACTIONS_TOKEN = /github\.token|secrets\.GITHUB_TOKEN/;
+      // Reading PRs (`gh pr list`, `view`, ...) cannot open one; every other
+      // `gh pr` subcommand, `gh api` and the REST or GraphQL PR calls can.
+      const PR_WRITE = /\bgh pr (?!(list|view|status|checks|diff)\b)\S+/;
+      const PR_CAPABLE = new RegExp(`${PR_WRITE.source}|\\bgh api\\b|pulls|createPullRequest`);
+      const workflow = YAML.parse(text);
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        const { steps = [], ...jobWithoutSteps } = job;
+        assert.doesNotMatch(JSON.stringify(jobWithoutSteps), ACTIONS_TOKEN, `job ${jobName} hands the Actions token to every step`);
+        for (const step of steps) {
+          if (!ACTIONS_TOKEN.test(JSON.stringify(step))) continue;
+          const label = step.name ?? step.id ?? step.uses;
+          assert.equal(step.uses, undefined, `${label} passes the Actions token to an action`);
+          assert.doesNotMatch(step.run ?? '', PR_CAPABLE, `${label} can open a PR with the Actions token`);
+        }
+        for (const step of steps.filter((entry) => PR_WRITE.test(entry.run ?? ''))) {
+          assert.equal(step.env?.GH_TOKEN ?? job.env?.GH_TOKEN ?? workflow.env?.GH_TOKEN, '${{ secrets.REVIEW_PR_TOKEN }}', `${step.name ?? step.id} runs gh pr without REVIEW_PR_TOKEN`);
+        }
+      }
+      const { jobs: _jobs, ...workflowWithoutJobs } = workflow;
+      assert.doesNotMatch(JSON.stringify(workflowWithoutJobs), ACTIONS_TOKEN, 'a workflow-wide Actions token reaches every step');
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
       assert.doesNotMatch(text, /gh pr merge[^\n]*BRANCH_NAME/, 'a branch name can also match a fork PR');
       assert.match(text, /gh pr merge --auto --squash "\$(pr_url|\(tail -n 1 "\$RUNNER_TEMP\/snapshot-pr\.out"\))"/, 'merge the PR this run created');
-      assert.match(text, /select\([^)]*\.isCrossRepository \| not/, 'a fork PR on the same branch name is never this workflow\'s PR');
+      assert.match(
+        text,
+        /select\([^)]*\.isCrossRepository \| not|pulls\?[^"\n]*head=\$\{GITHUB_REPOSITORY_OWNER\}:/,
+        'a fork PR on the same branch name is never this workflow\'s PR',
+      );
+      if (file === 'seo-gsc-weekly.yml') {
+        // A fork PR filtered out of a fixed-size page can still push this
+        // week's PR off that page, so this file asks GitHub for owner heads only.
+        assert.doesNotMatch(text, /gh pr list[^\n]*--head/, 'a bare --head lookup also returns fork PRs');
+      }
       assert.match(
         text,
         /--jq '\.state == "OPEN" and \(\.isDraft \| not\) and \(\.isCrossRepository \| not\)'\)" = "true" \]; then\n\s+gh pr merge --auto --squash "\$existing_pr"/,

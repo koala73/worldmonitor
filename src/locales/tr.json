@@ -2112,7 +2112,8 @@
       "channelOrVideoUrl": "YouTube kanal veya video URL'si",
       "channelUrlHint": "Kanal URL'si (youtube.com/channel/UC…) veya canlı video URL'si yapıştırın",
       "youtubeChannel": "YouTube kanalı",
-      "httpsStreamHint": "Tarayıcılar güvensiz (http) yayınları engeller. Güvenli (https) bir yayın URL'si yapıştırın"
+      "httpsStreamHint": "Tarayıcılar güvensiz (http) yayınları engeller. Güvenli (https) bir yayın URL'si yapıştırın",
+      "tapToPlay": "Oynatmak için dokunun"
     },
     "map": {
       "showMap": "Haritayı Göster",

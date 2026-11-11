@@ -1,3 +1,5 @@
+import { exposureLocationKey } from '../../scripts/shared/exposure-location-key.mjs';
+import { ucdpExposureName } from '../../shared/ucdp-display';
 import type { ExposureCoverage, PopulationExposure } from '@/types';
 import {
   estimateExposure,
@@ -7,18 +9,14 @@ import {
 interface EventForExposure {
   id: string;
   name: string;
+  /** Present for UCDP inputs, including an empty place name. */
+  locationName?: string;
   type: string;
   country: string;
   hasPreciseLocation?: boolean;
   lat: number;
   lon: number;
   eventCount?: number;
-}
-
-// UCDP reports separate events at one geocoded point. Rounding to about 100 m
-// folds them; scripts/_ucdp-dashboard.mjs groups its exposure rows the same way.
-function locationKey(lat: number, lon: number): string {
-  return `${lat.toFixed(3)},${lon.toFixed(3)}`;
 }
 
 export function enrichEventsWithExposure(
@@ -42,7 +40,7 @@ export function enrichEventsWithExposure(
       continue;
     }
 
-    const key = locationKey(event.lat, event.lon);
+    const key = exposureLocationKey(event.lat, event.lon);
     const existing = byLocation.get(key);
     if (existing) {
       existing.eventCount += eventCount;
@@ -56,7 +54,9 @@ export function enrichEventsWithExposure(
 
     byLocation.set(key, {
       eventId: event.id,
-      eventName: event.name,
+      eventName: event.locationName !== undefined
+        ? ucdpExposureName(event.locationName, event.country, exposure.country)
+        : event.name,
       eventType: event.type,
       lat: event.lat,
       lon: event.lon,
