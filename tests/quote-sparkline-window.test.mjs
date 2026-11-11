@@ -397,6 +397,16 @@ describe('cotton raw bars and revised history, 2026-11-09 through 11', () => {
       assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 3600), values), null).sparkline, values);
     }
   });
+
+  it('keeps actual trading gaps across bucketing for sparse pair decisions', () => {
+    for (const values of [[78, 82, 79, 78, 78, 78, 78, 78], [82, 78, 81, 82, 82, 82, 82, 82]]) {
+      for (let minute = 0; minute < 5; minute += 1) {
+        const out = buildQuoteSparkline(chart(values.map((_, i) => T0 + minute * 60 + i * 16 * 60), values), null);
+        assert.deepEqual(out.sparkline, values, `bucket phase ${minute}`);
+        assert.equal(out.sparklineStartAt, T0 * 1000, 'label remains bucket-aligned');
+      }
+    }
+  });
 });
 
 describe('adaptive FX filtering reaches both commodity writers', () => {

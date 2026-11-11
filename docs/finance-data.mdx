@@ -280,6 +280,7 @@ Both writers reject isolated outliers before bucketing and again on the five-min
 At least three independent close-to-close changes must remain after excluding the candidate's transitions; otherwise the candidate is kept because volatility cannot be estimated from that short tape.
 
 Sparse two-print neighborhoods are evaluated before singletons. If a bounded reversal fails the internal clustering rule, both prints are retained so successive singleton removals cannot erase the broader movement.
+The five-minute close pass uses each closing print's actual timestamp for trading-gap decisions; only the displayed window start is rounded to its five-minute bucket.
 
 The November 9–11, 2026 CT=F fixture records Yahoo's raw minute OHLCV, fresh five-minute bars, and the existing cached history. The cache placed 82.72 at November 10 08:20 UTC beside the zero-volume 82.37 print; the freshly fetched minute and five-minute charts place 82.72 at November 11 08:20 UTC. The cached pair reverts to 78.39 and is removed as a historical data island. The later November 11 level near 82.5 persists across closes with volume and is kept. These observations establish inconsistent historical bars, not an independently verified contract roll; the filter neither rebases nor removes a sustained level change.
 

@@ -125,17 +125,19 @@ function buildQuoteSparkline(chart, history) {
   if (bars.length === 0) return { sparkline: [] };
 
   const closes = new Map();
-  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar.v);
+  // Keep the closing print's actual time for trading-gap decisions. Rounding
+  // a 16-minute gap to 15 minutes must not change a sparse pair's treatment.
+  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar);
   // A bad print that follows a smaller bad print passes the first pass, then
   // becomes its bucket's close: USDTRY read 50.207, 50.113, 50.207 on a 50.229
   // tape. The filter runs again on the closes, before the window is cut, so
   // the window's first close is tested against the close before it.
-  const points = dropSingleTickSpikes([...closes].map(([t, v]) => ({ t, v })).sort((a, b) => a.t - b.t))
+  const points = dropSingleTickSpikes([...closes.values()].sort((a, b) => a.t - b.t))
     .slice(-SPARKLINE_POINTS);
   return {
     sparkline: points.map((point) => point.v),
     sparklineIntervalSeconds: SPARKLINE_INTERVAL_SECONDS,
-    sparklineStartAt: points[0].t * 1000,
+    sparklineStartAt: Math.floor(points[0].t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS * 1000,
   };
 }
 
