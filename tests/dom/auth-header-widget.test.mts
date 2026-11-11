@@ -52,6 +52,9 @@ describe('AuthHeaderWidget signed-out chrome', () => {
     expect(root.querySelector('.auth-free-reason')?.textContent).toBe(
       'Free: save your layout, follow countries, get alerts',
     );
+    expect(root.querySelector<HTMLElement>('.auth-free-reason')?.title).toBe(
+      'Free: save your layout, follow countries, get alerts',
+    );
     expect(root.querySelector('.auth-signup-link')).toBeNull();
 
     root.querySelector<HTMLButtonElement>('.auth-signin-btn')!.click();

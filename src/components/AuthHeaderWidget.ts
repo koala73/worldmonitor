@@ -82,6 +82,7 @@ export class AuthHeaderWidget {
     const freeReason = document.createElement('span');
     freeReason.className = 'auth-free-reason';
     freeReason.textContent = t('auth.freeReason');
+    freeReason.title = freeReason.textContent;
     this.container.appendChild(freeReason);
 
     const signInBtn = document.createElement('button');

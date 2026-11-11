@@ -23,7 +23,7 @@ describe('openSignIn withSignUp', () => {
     const src = readFileSync(CLERK_SRC, 'utf8');
     assert.match(
       src,
-      /if \(signUpResumeHook\?\.\(openClerk\)\) return;/,
+      /if \(signUpResumeHook\?\.\(openClerk, intent\)\) return;/,
       'openSignIn must resume a pending email-code attempt after Create account was removed from the header',
     );
     assert.doesNotMatch(
