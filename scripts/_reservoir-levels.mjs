@@ -183,6 +183,13 @@ export async function listGranules(bbox, sinceIso, fetchImpl = (...a) => globalT
 // SlideRule native record stream
 // ---------------------------------------------------------------------------
 
+// Ceilings on what the upstream stream may declare. Real records are file chunks of at
+// most a few MB and CSV lines are under 200 bytes; anything far beyond means a corrupt
+// or hostile stream, and failing the batch (retried next run, last-good kept) is safer
+// than buffering it.
+export const MAX_RECORD_BYTES = 64 * 1024 * 1024;
+export const MAX_CSV_LINE_BYTES = 64 * 1024;
+
 const cstr = (buf) => {
   const z = buf.indexOf(0);
   return buf.subarray(0, z < 0 ? buf.length : z).toString('utf8');
@@ -220,7 +227,10 @@ export function createRecordParser(onRecord) {
           if (version !== 2) throw new Error(`bad SlideRule record version ${version}`);
           header = { typeSize: h.readInt16BE(2), dataSize: h.readInt32BE(4) };
           need = header.typeSize + header.dataSize;
-          if (need <= 0) { header = null; need = 8; }
+          if (header.typeSize < 0 || header.dataSize < 0 || need > MAX_RECORD_BYTES) {
+            throw new Error(`SlideRule record size out of range (type ${header.typeSize}, data ${header.dataSize})`);
+          }
+          if (need === 0) { header = null; need = 8; }
         } else {
           const { typeSize } = header;
           const rec = Buffer.from(take(need)); // copy: detach from the shared chunk buffer
@@ -290,6 +300,7 @@ export function createCsvLineReader(onRow) {
       const lines = text.split('\n');
       tail = lines.pop();
       for (const l of lines) line(l);
+      if (tail.length > MAX_CSV_LINE_BYTES) throw new Error(`SlideRule CSV line exceeds ${MAX_CSV_LINE_BYTES} bytes`);
     },
     end() {
       const rest = tail + decoder.decode();

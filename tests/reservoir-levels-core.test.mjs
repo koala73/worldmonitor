@@ -5,6 +5,8 @@ import {
   classifyPasses,
   createCsvLineReader,
   createRecordParser,
+  MAX_CSV_LINE_BYTES,
+  MAX_RECORD_BYTES,
   decodeEventRecord,
   dedupeGranules,
   failedGranulesFromEvents,
@@ -293,5 +295,25 @@ describe('pass merge', () => {
       const [m] = mergePasses(...order);
       assert.equal(m.levelM, 320.4);
     }
+  });
+});
+
+describe('stream ceilings', () => {
+  it('rejects a record that declares a size above the ceiling', () => {
+    const h = Buffer.alloc(8);
+    h.writeInt16BE(2, 0); h.writeInt16BE(8, 2); h.writeInt32BE(MAX_RECORD_BYTES, 4);
+    const p = createRecordParser(() => {});
+    assert.throws(() => p.push(h), /record size out of range/);
+  });
+
+  it('rejects a negative declared size', () => {
+    const h = Buffer.alloc(8);
+    h.writeInt16BE(2, 0); h.writeInt16BE(8, 2); h.writeInt32BE(-5, 4);
+    assert.throws(() => createRecordParser(() => {}).push(h), /record size out of range/);
+  });
+
+  it('rejects a CSV stream with no newline past the line ceiling', () => {
+    const r = createCsvLineReader(() => {});
+    assert.throws(() => r.push(Buffer.alloc(MAX_CSV_LINE_BYTES + 1, 0x31)), /CSV line exceeds/);
   });
 });
