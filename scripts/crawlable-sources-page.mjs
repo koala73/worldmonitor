@@ -482,14 +482,20 @@ const US_EMBASSY_COUNTRIES = new Map([
   ['co', 'Colombia'],
   ['de', 'Germany'],
   ['do', 'the Dominican Republic'],
+  ['id', 'Indonesia'],
   ['in', 'India'],
   ['it', 'Italy'],
+  ['kh', 'Cambodia'],
   ['mm', 'Myanmar'],
   ['mx', 'Mexico'],
+  ['my', 'Malaysia'],
+  ['ph', 'the Philippines'],
   ['pk', 'Pakistan'],
   ['pl', 'Poland'],
+  ['sg', 'Singapore'],
   ['th', 'Thailand'],
   ['ua', 'Ukraine'],
+  ['vn', 'Vietnam'],
 ]);
 
 const BRAND_TOKEN_OVERRIDES = new Map([
