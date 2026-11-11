@@ -1,4 +1,5 @@
-// Reviewed 2026-11-10. Update these tables when publishers revise their schedules.
+// EIA rechecked 2026-11-11: all 14 published rows match; last release 2026-11-12.
+// CME reviewed 2026-11-10. Update when publishers revise their schedules.
 // EIA: https://www.eia.gov/petroleum/supply/weekly/schedule.php
 // Keys are the NEW observation's week-ending date; values include the ET offset.
 export const EIA_RELEASE_SHIFTS: Readonly<Record<string, string>> = {
@@ -47,3 +48,23 @@ export const CME_ENERGY_CLOSES: Readonly<Record<string, number>> = {
   '2027-11-26': 14 * 60 + 45,
   '2027-12-24': 0,
 };
+
+// Derive horizons from the actual rows, so adding a year cannot leave a separate
+// expiry constant behind. CME date-only entries use midnight UTC conservatively.
+export function oilCalendarHorizons(now = Date.now()): Record<string, {
+  lastDate: string; daysLeft: number; status: 'ok' | 'expiring' | 'expired';
+}> {
+  if (!Number.isFinite(now)) throw new Error('Invalid oil calendar check time');
+  const ends = {
+    eia: Math.max(...Object.values(EIA_RELEASE_SHIFTS).map(Date.parse)),
+    cme: Math.max(...Object.keys(CME_ENERGY_CLOSES).map(Date.parse)),
+  };
+  return Object.fromEntries(Object.entries(ends).map(([name, end]) => {
+    if (!Number.isFinite(end)) throw new Error(`Missing ${name} oil calendar horizon`);
+    const daysLeft = Math.floor((end - now) / 86_400_000);
+    return [name, {
+      lastDate: new Date(end).toISOString(), daysLeft,
+      status: now > end ? 'expired' : end - now <= 45 * 86_400_000 ? 'expiring' : 'ok',
+    }];
+  }));
+}

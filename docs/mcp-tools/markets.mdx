@@ -16,7 +16,7 @@ Brent and WTI quote rows identify the provider in `priceSource`, futures or spot
 
 Daily spot prices go stale after four days.
 
-Futures quotes use a 30-minute bound during normal NYMEX trading. The daily break runs from 17:00 to 18:00 New York time. The weekend closure runs from Friday at 17:00 to Sunday at 18:00. These closures extend the bound through 30 minutes after trading resumes. This schedule accounts for daylight saving time. Exchange holidays and exceptional closures are not modeled. Invalid or future observation times remain stale.
+Futures quotes use a 30-minute bound during normal NYMEX trading. The daily break runs from 17:00 to 18:00 New York time. The weekend closure runs from Friday at 17:00 to Sunday at 18:00. These closures extend the bound through 30 minutes after trading resumes. This schedule accounts for daylight saving time. The checked-in CME energy holiday sessions for 2026–2027 also extend this bound, including early halts. Quotes already stale before a halt remain stale. Unlisted dates use regular hours; exceptional closures are not detected automatically. Invalid or future observation times remain stale.
 
 **Parameters (tool-specific):**
 
