@@ -4504,6 +4504,7 @@
   "auth": {
     "signIn": "Přihlášení",
     "createAccount": "Vytvořit účet",
+    "freeReason": "Zdarma: ulož rozložení, sleduj země, upozornění",
     "settings": "Nastavení",
     "passkeyOffer": {}
   },
