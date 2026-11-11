@@ -13,6 +13,7 @@ import { seedAnonymousDashboard } from './bootstrap-request-budget-fixtures';
 const VIEWPORTS = [
   { width: 1920, height: 1200, mobile: false },
   { width: 1366, height: 768, mobile: false },
+  { width: 1440, height: 900, mobile: false },
   // A touch screen with columns under 300px, where controls sit 4px apart.
   { width: 1280, height: 800, mobile: true },
   { width: 393, height: 852, mobile: true },
@@ -303,9 +304,9 @@ test('panel headers keep the title readable with nothing overlapping', async ({ 
     expect.soft(long.titleClipped, `${label}: title "${LONG_TITLE}" is clipped`).toBe(false);
     expect.soft(long.titleLines, `${label}: title "${LONG_TITLE}" takes at most two lines`).toBeLessThanOrEqual(2);
     expect.soft(long.overlaps, `${label}: overlapping header items with a long title`).toEqual([]);
-    // In a 248px laptop column the dots sit beside a two-line title rather
+    // In a column below 300px the dots sit beside a two-line title rather
     // than on a row of their own.
-    if (viewport.width === 1366) expect.soft(long.belowTitle, `${label}: header items under "${LONG_TITLE}"`).toEqual([]);
+    if (long.panel < 300) expect.soft(long.belowTitle, `${label}: header items under "${LONG_TITLE}"`).toEqual([]);
     // The dots move under a title they would otherwise push onto a third line.
     await addInfoButton(page);
     await setTitle(page, WRAP_TITLE);

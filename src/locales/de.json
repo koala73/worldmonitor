@@ -1679,7 +1679,7 @@
       "estimateWithin": "Etwa {{count}} Menschen im Umkreis von {{km}} km",
       "method": "Die Schätzungen verwenden die durchschnittliche Bevölkerungsdichte des Landes.",
       "empty": "Keine geeigneten Ereignisorte",
-      "infoTooltip": "Ereignisse mit Daten zur Bevölkerungsdichte des Landes werden angezeigt. Orte aus älteren Daten ohne Angaben zur Genauigkeit werden als ausstehend markiert. Die geschätzten Gebiete können sich überschneiden.",
+      "infoTooltip": "Ereignisse mit Daten zur Bevölkerungsdichte des Landes werden angezeigt. Orte aus älteren Daten ohne Angaben zur Genauigkeit werden als ausstehend markiert. Die geschätzten Gebiete können sich überschneiden. Unruhen benötigen einen genauen Standort; als ungenau markierte UCDP-Ereignisse werden ausgeschlossen. Ein Ort aus zwei Quellen (Unruhen und UCDP) erscheint in zwei Zeilen.",
       "eventCount_one": "{{count}} Ereignis",
       "eventCount_other": "{{count}} Ereignisse",
       "locationPending": "Ortsgenauigkeit wartet auf Aktualisierung",
@@ -4460,6 +4460,7 @@
   "auth": {
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
+    "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
     "passkeyOffer": {}
   },

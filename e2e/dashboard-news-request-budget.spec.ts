@@ -1194,10 +1194,15 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
   });
 
   for (const viewport of [
-    // From SPLIT_LAYOUT_MIN_WIDTH (900, src/app/split-layout.ts — #6417) the
+    // From SPLIT_LAYOUT_MIN_WIDTH (1440, src/app/split-layout.ts — #6417) the
     // split layout makes .panels-grid the scroll owner; below it the stacked
     // layout scrolls .main-content.
-    { label: 'desktop', width: 1280, height: 720, scrollOwner: 'panels-grid' },
+    { label: 'small-laptop', width: 940, height: 660, scrollOwner: 'main-content' },
+    { label: 'foldable', width: 1000, height: 703, scrollOwner: 'main-content' },
+    { label: 'landscape-tablet', width: 1180, height: 820, scrollOwner: 'main-content' },
+    { label: 'desktop', width: 1280, height: 720, scrollOwner: 'main-content' },
+    { label: 'split-boundary', width: 1440, height: 900, scrollOwner: 'panels-grid' },
+    { label: 'zoomed-widescreen', width: 1536, height: 864, scrollOwner: 'panels-grid' },
     { label: 'narrow-desktop', width: 850, height: 720, scrollOwner: 'main-content' },
     { label: 'mobile', width: 390, height: 844, scrollOwner: 'main-content' },
     { label: 'ultra-wide', width: 1720, height: 720, scrollOwner: 'panels-grid' },
@@ -1219,6 +1224,24 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       await expect(stablecoins).toBeAttached();
 
       const initial = await readScrollMetrics(page);
+      if (viewport.width >= 940) {
+        const columns = await page.locator('#panelsGrid').evaluate((grid) =>
+          getComputedStyle(grid).gridTemplateColumns.split(' ').length,
+        );
+        expect(columns, 'laptop and wider layouts must show at least two panel columns').toBeGreaterThanOrEqual(2);
+      }
+      if ([940, 1000, 1180].includes(viewport.width)) {
+        const sideBySide = await page.locator('#panelsGrid').evaluate((grid) => {
+          const boxes = [...grid.querySelectorAll('.panel')].map((panel) => panel.getBoundingClientRect())
+            .filter((box) => box.width > 0 && box.top < window.innerHeight && box.bottom > 0);
+          return boxes.some((a, i) => boxes.slice(i + 1).some((b) =>
+            Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)
+            && (a.right <= b.left || b.right <= a.left),
+          ));
+        });
+        expect(sideBySide, 'two panels must be visible side by side on first load').toBe(true);
+      }
+      await page.screenshot({ path: testInfo.outputPath(`initial-${viewport.label}.png`) });
       expect(initial.owner, 'the layout must use the expected dashboard scroll owner').toBe(
         viewport.scrollOwner,
       );

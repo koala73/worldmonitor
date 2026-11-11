@@ -1,3 +1,4 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
 import { MapDistanceControl } from './map-distance-control';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
@@ -649,6 +650,7 @@ export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private deckOverlay: MapLibreOverlay | null = null;
   // deck.gl's loop polls for layer changes on every display frame. Between
   // map activity it polls on a slow timer instead, which removes most idle
@@ -6349,7 +6351,6 @@ export class DeckGLMap {
     helpBtn?.addEventListener('click', () => this.showLayerHelp());
 
     // Collapse toggle
-    const collapseBtn = toggles.querySelector('.toggle-collapse');
     const toggleList = toggles.querySelector('.toggle-list');
 
     // Manual scroll: intercept wheel, prevent map zoom, scroll the list ourselves
@@ -6362,13 +6363,7 @@ export class DeckGLMap {
       toggles.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: false });
     }
     bindLayerSearch(toggles);
-    const searchEl = toggles.querySelector('.layer-search') as HTMLElement | null;
-
-    collapseBtn?.addEventListener('click', () => {
-      toggleList?.classList.toggle('collapsed');
-      if (searchEl) searchEl.style.display = toggleList?.classList.contains('collapsed') ? 'none' : '';
-      if (collapseBtn) setTrustedHtml(collapseBtn, trustedHtml(toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
-    });
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, toggles, 'layers', t('components.deckgl.layersTitle')));
   }
 
   private async showLayerExplanation(layer: keyof MapLayers): Promise<void> {
@@ -6684,6 +6679,7 @@ export class DeckGLMap {
     legend.appendChild(no2Legend);
 
     this.container.appendChild(legend);
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, legend, 'legend', t('components.deckgl.legend.title')));
     this.updateLegend();
   }
 
@@ -9114,6 +9110,8 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.destroyed = true;
     this.aircraftFetchSeq += 1;
     this.deckFrameProvider.dispose();

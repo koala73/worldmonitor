@@ -1240,6 +1240,7 @@ export class Panel {
     // The CTA opens the /pro plan picker, which shows the Terms above every
     // plan button (#6976), so no assent line is needed here.
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
+    ctaBtn.dataset.dashboardInteraction = 'upgrade';
     ctaBtn.addEventListener('click', () => {
       import('@/services/upgrade-flow').then((m) => m.openUpgradePlans()).catch(() => {
         window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
@@ -1334,6 +1335,10 @@ export class Panel {
     const descEl = h('div', { className: 'panel-locked-desc' }, entry.desc);
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
+    if (reason === PanelGateReason.ANONYMOUS) ctaBtn.dataset.dashboardInteraction = 'signin';
+    else if (reason === PanelGateReason.FREE_TIER || reason === PanelGateReason.LAPSED) {
+      ctaBtn.dataset.dashboardInteraction = 'upgrade';
+    }
     ctaBtn.addEventListener('click', onAction);
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));

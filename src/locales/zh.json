@@ -1665,7 +1665,7 @@
       "estimateWithin": "半径 {{km}} 公里内约有 {{count}} 人",
       "method": "估算使用该国的平均人口密度。",
       "empty": "没有符合条件的事件地点",
-      "infoTooltip": "显示有国家人口密度数据的事件。缺少精度信息的旧数据位置会标记为待更新。估计区域可能重叠。",
+      "infoTooltip": "显示有国家人口密度数据的事件。缺少精度信息的旧数据位置会标记为待更新。估计区域可能重叠。 动乱事件需要精确位置；标记为位置不精确的 UCDP 事件会被排除。同一地点由两个来源（动乱和 UCDP）报告时，会显示为两行。",
       "eventCount_other": "{{count}} 起事件",
       "locationPending": "位置精度待更新",
       "unrestCoverage": "动乱数据覆盖范围",
@@ -4438,6 +4438,7 @@
   "auth": {
     "signIn": "登录",
     "createAccount": "创建账户",
+    "freeReason": "免费：保存布局、关注国家、获取提醒",
     "settings": "设置",
     "passkeyOffer": {}
   },

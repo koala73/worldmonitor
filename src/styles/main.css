@@ -1144,15 +1144,15 @@ canvas,
 }
 
 /* Progressive header disclosure — keep the core right-side actions (Search,
-   settings, and especially the Sign In / Create account cluster) fully on
-   screen as usable width shrinks: small laptops, split-screen, OS scaling
-   (1920px @ 150% = ~1280px CSS), and browsers with a vertical tab strip.
-   With dashboard labels visible, the single-row header wants ~1820px;
-   these tiers keep the rightmost account actions on screen below that width.
-   Items are dropped least-essential first; each is still reachable elsewhere
-   (footer links, the mobile hamburger menu, or the map's own controls). The
-   full mobile hamburger takes over at <=768px. !important mirrors the <=768
-   block below (needed to beat the #missionPresetMount id rule in header.css). */
+   settings, and especially the Sign In cluster) fully on screen as usable
+   width shrinks: small laptops, split-screen, OS scaling (1920px @ 150% =
+   ~1280px CSS), and browsers with a vertical tab strip. With dashboard
+   labels visible, the single-row header wants ~1820px; these tiers keep the
+   rightmost account actions on screen below that width. Items are dropped
+   least-essential first; each is still reachable elsewhere (footer links,
+   the mobile hamburger menu, or the map's own controls). The full mobile
+   hamburger takes over at <=768px. !important mirrors the <=768 block below
+   (needed to beat the #missionPresetMount id rule in header.css). */
 @media (max-width: 1875px) {
   /* redundant with footer/menu: X credit + GitHub icon */
   .credit-link,
@@ -15497,9 +15497,15 @@ button.popup-link {
   justify-content: flex-start;
 }
 
-.mobile-menu-account .auth-signin-btn,
-.mobile-menu-account .auth-signup-link {
+.mobile-menu-account .auth-signin-btn {
   min-height: 44px;
+}
+
+.mobile-menu-account .auth-free-reason {
+  max-width: none;
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
 }
 
 .mobile-menu-item {
@@ -15710,8 +15716,8 @@ button.popup-link {
   }
 
   .header-right > :not(#authWidgetMount),
-  #authWidgetMount .auth-signup-link,
-  #authWidgetMount .auth-header-skeleton-signup {
+  #authWidgetMount .auth-free-reason,
+  #authWidgetMount .auth-header-skeleton-reason {
     display: none !important;
   }
 
@@ -24516,13 +24522,13 @@ body.map-width-resizing {
   display: none;
 }
 
-/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
-   threshold for web and desktop since #6417 (the Tauri window minimum width
-   keeps the desktop app above it, so this block covers both). The map track
+/* 1440px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop. Below it, keep panels full-width so the
+   default map share cannot squeeze them into one column (#10458). The map track
    pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
    + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
    alignment. */
-@media (min-width: 900px) {
+@media (min-width: 1440px) {
   .main-content {
     display: grid;
     grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;
@@ -25674,27 +25680,25 @@ body.map-width-resizing {
   align-items: center;
   position: relative;
   gap: 8px;
+  max-width: var(--header-auth-slot-width, 200px);
+  min-width: 0;
 }
 
-.auth-signup-link {
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+.auth-free-reason {
+  color: var(--text-muted);
+  flex: 1 1 auto;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s;
-}
-.auth-signup-link:hover {
-  border-color: var(--green);
-  color: var(--green-text, var(--green));
-}
-.auth-signup-link:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent);
+  line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Two lines, not one: a single line in the ~120px left of the Sign In slot
+     cut the reason to "Free: sa…". The full text is also the title tooltip. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .auth-settings-btn {
@@ -25728,6 +25732,7 @@ body.map-width-resizing {
   /* Pinned dark, not var(--bg). In light theme var(--bg) is near-white and
      falls to ~3.13:1 on var(--green), failing WCAG AA for 13px text. */
   color: #0a0a0a;
+  flex: 0 0 auto;
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   cursor: pointer;
@@ -27682,6 +27687,29 @@ body.map-width-resizing {
   z-index: 1;
   margin-top: 8px;
   background: var(--surface);
+}
+
+/* Wrapped tabs and pinned links leave little room for controls on short
+   screens. Use the available height while keeping phone navigation clear. */
+@media (max-height: 650px) {
+  .unified-settings-modal {
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+  }
+
+  .unified-settings-modal .dashboard-chrome-links {
+    bottom: -12px;
+  }
+}
+
+@media (max-height: 650px) and (max-width: 768px) {
+  #unifiedSettingsModal {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .unified-settings-modal {
+    max-height: calc(100dvh - 74px - env(safe-area-inset-bottom, 0px));
+  }
 }
 
 .dashboard-site-links-row,
@@ -31017,4 +31045,63 @@ body.map-width-resizing {
   .search-chip { min-height: 44px; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
   .fw-import-tab { min-height: 44px; }
   .fw-import-input { min-height: 44px; }
+}
+
+/* Container-size defaults are managed by map-control-disclosure. */
+.map-control-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-control-disclosure::after { content: ' ▾'; }
+.map-control-disclosure[aria-expanded="false"]::after { content: ' ▸'; }
+.map-control-collapsed > :not(.toggle-header):not(.map-control-disclosure):not(.no2-activity-legend) {
+  display: none !important;
+}
+
+/* Dataset attribution stays visible while its active layer's scale is folded. */
+.map-control-collapsed > .no2-activity-legend > :not(.no2-activity-credit) {
+  display: none !important;
+}
+.map-control-collapsed .toggle-header { border-bottom: 0; padding: 0; }
+.map-control-collapsed .toggle-header > :not(.map-control-disclosure) { display: none; }
+.map-legend.map-control-collapsed { padding: 0; gap: 0; }
+.map-legend.map-control-compact:not(.map-control-collapsed) {
+  bottom: 58px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  flex-wrap: wrap;
+}
+.map-control-panel > .legend-label-title { display: none; }
+.layer-toggles:not(.deckgl-layer-toggles) > .map-control-disclosure { flex-basis: 100%; }
+.layer-toggles.map-control-collapsed { width: auto; }
+
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+    display: flex !important;
+  }
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+    display: flex;
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    bottom: 58px;
+  }
+}
+
+/* Keep the existing 48px touch targets; mouse users can use a compact row. */
+@media (pointer: fine) {
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {
+    padding: 4px 6px;
+  }
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider .time-btn {
+    min-width: 40px;
+    min-height: 28px;
+  }
 }

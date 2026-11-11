@@ -48,11 +48,13 @@ async function fixture(options: {
   const signIns: unknown[] = [];
   const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
   const captures: unknown[][] = [];
+  const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   let requests = 0;
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
     window: {
+      innerWidth: 1000,
       addEventListener: (type: string, fn: (event: { persisted: boolean }) => void) => {
         if (!pageListeners.has(type)) pageListeners.set(type, new Set());
         pageListeners.get(type)!.add(fn);
@@ -62,7 +64,7 @@ async function fixture(options: {
       },
       location: { href: browser.location.href, assign: (url: string) => navigations.push(url) },
       sessionStorage: browser.sessionStorage,
-      umami: { track() {} },
+      umami: { track: (event: string, data?: Record<string, unknown>) => analyticsEvents.push({ event, data }) },
       setTimeout: browser.setTimeout.bind(browser), clearTimeout: browser.clearTimeout.bind(browser),
       setInterval: browser.setInterval.bind(browser), clearInterval: browser.clearInterval.bind(browser),
     },
@@ -93,7 +95,7 @@ async function fixture(options: {
   const firePageShow = (persisted: boolean) => {
     for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
   };
-  return { checkout, phases, navigations, signIns, captures, requests: () => requests, options, firePageShow };
+  return { checkout, phases, navigations, signIns, captures, analyticsEvents, requests: () => requests, options, firePageShow };
 }
 
 for (const [name, options] of [
@@ -154,6 +156,7 @@ it('clears the old error and redirects when a later attempt succeeds', async () 
   try {
     assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
     assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
+    assert.equal(f.analyticsEvents.find(item => item.event === 'checkout-start')?.data?.vw, 'narrow-split');
     assert.equal(document.querySelector('[role="alert"]'), null);
   } finally {
     mock.timers.reset();

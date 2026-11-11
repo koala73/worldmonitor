@@ -11,7 +11,7 @@ describe('map layout settings persistence', () => {
   // failing test, so pin them through the same assertion surface the
   // font-scale precedent uses.
   it('keeps the map layout keys in settings export/import filtering', () => {
-    for (const key of ['map-height', 'map-split-height', 'map-col-width', 'map-side']) {
+    for (const key of ['map-height', 'map-height-mode', 'map-split-height', 'map-col-width', 'map-side']) {
       assert.equal(settingsPersistenceTesting.isSettingsKey(key), true);
     }
   });

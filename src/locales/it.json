@@ -1682,7 +1682,7 @@
       "estimateWithin": "Circa {{count}} persone entro {{km}} km",
       "method": "Le stime si basano sulla densità media di popolazione del paese.",
       "empty": "Nessun luogo di evento soddisfa i criteri",
-      "infoTooltip": "Sono mostrati gli eventi con dati sulla densità di popolazione del paese. Le posizioni di dati precedenti senza informazioni sulla precisione sono contrassegnate come in attesa di aggiornamento. Le aree stimate possono sovrapporsi.",
+      "infoTooltip": "Sono mostrati gli eventi con dati sulla densità di popolazione del paese. Le posizioni di dati precedenti senza informazioni sulla precisione sono contrassegnate come in attesa di aggiornamento. Le aree stimate possono sovrapporsi. I disordini richiedono una posizione precisa; gli eventi UCDP contrassegnati come imprecisi sono esclusi. Un luogo segnalato da due fonti (disordini e UCDP) appare in due righe.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventi",
       "eventCount_other": "{{count}} eventi",
@@ -4482,6 +4482,7 @@
   "auth": {
     "signIn": "Accedi",
     "createAccount": "Crea account",
+    "freeReason": "Gratis: salva il layout, segui i paesi, avvisi",
     "settings": "Impostazioni",
     "passkeyOffer": {}
   },

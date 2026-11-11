@@ -23,6 +23,13 @@ import { initI18n } from '@/services/i18n';
 import { LAYER_REGISTRY } from '@/config/map-layer-definitions';
 import { loadPluginHazardSnapshot, type PluginHazardSnapshot } from '@/services/plugin-map-snapshot';
 import { newsPanelAdmissionSchema, type NewsPanelAdmission } from '../shared/panel-admission';
+import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
+import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
+
+const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
+
+type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown };
+type HostBilling = { refresh: false } | { refresh: true; request_id?: string };
 
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
   if (keys.includes(requested)) return { category: requested };
@@ -43,6 +50,8 @@ function mountPlugin(): void {
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
   let hostView: unknown;
+  // How the host's own call was billed: a refresh is reused only through its request_id.
+  let hostBilling: HostBilling = { refresh: false };
   let refreshing: Promise<void> | undefined;
   let refreshAttempt: { id: string; startedAt: number } | undefined;
   const hazardCache = new Map<string, Promise<PluginHazardSnapshot>>();
@@ -71,6 +80,15 @@ function mountPlugin(): void {
   let openLinks = false;
   let hazardSnapshot: PluginHazardSnapshot | undefined;
   let mapStatus: HTMLElement;
+  let host: PluginHostContext = hostContextFromInitialize(undefined);
+  let expandButton: HTMLButtonElement | undefined;
+  let mounted = false;
+  let queuedResult: { params: unknown } | undefined;
+  let digestReloadAttempted = false;
+  let resolveMounted!: () => void;
+  let rejectMounted!: (error: unknown) => void;
+  const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
+  whenMounted.catch(() => {});
   const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   const send = (message: object) => window.parent.postMessage({ jsonrpc: '2.0', ...message }, '*');
 
@@ -93,16 +111,19 @@ function mountPlugin(): void {
 
   async function renderResult(result: unknown, keepCurrentView = false): Promise<boolean> {
     const inputView = keepCurrentView ? undefined : hostView;
-    if (!keepCurrentView) hostView = undefined;
+    const inputBilling = hostBilling;
+    if (!keepCurrentView) { hostView = undefined; hostBilling = { refresh: false }; }
     if (!result || typeof result !== 'object') return false;
-    const response = result as { isError?: boolean; content?: Array<{ text?: string }>; structuredContent?: ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown } };
+    const response = result as { isError?: boolean; content?: Array<{ type?: string; text?: string }>; structuredContent?: DashboardDigest };
     if (response.isError) {
       status.textContent = response.content?.find(item => item.text)?.text ?? 'News refresh failed. Previously loaded news remains visible.';
       for (const panel of panels.values()) panel.setRefreshDegraded(true);
       return false;
     }
-    const data = response.structuredContent;
-    if (!data?.categories || typeof data.categories !== 'object' || Array.isArray(data.categories)) {
+    const data = hasCategories(response.structuredContent) ? response.structuredContent : digestFromText(response.content);
+    if (!data) {
+      // Hosts may hand the view a file pointer in place of a large result; the view's own call returns it in full.
+      if (!keepCurrentView) return reloadDigest(inputView, inputBilling);
       status.textContent = 'News data is unavailable. Previously loaded news remains visible.';
       return false;
     }
@@ -125,6 +146,43 @@ function mountPlugin(): void {
       });
     }
     return true;
+  }
+
+  function hasCategories(data: unknown): data is DashboardDigest {
+    const categories = (data as { categories?: unknown } | undefined)?.categories;
+    return Boolean(categories) && typeof categories === 'object' && !Array.isArray(categories);
+  }
+
+  function digestFromText(content: Array<{ type?: string; text?: string }> | undefined): DashboardDigest | undefined {
+    const text = content?.find(item => item.type === 'text' && typeof item.text === 'string')?.text;
+    if (!text) return undefined;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return hasCategories(parsed) ? parsed : undefined;
+    } catch { return undefined; }
+  }
+
+  async function reloadDigest(inputView: unknown, billing: HostBilling): Promise<boolean> {
+    // A refresh without a request_id got a one-off admission; reloading it would charge a second request.
+    if (digestReloadAttempted || !serverTools || (billing.refresh && !billing.request_id)) {
+      status.textContent = DIGEST_RELOAD_FAILED;
+      return false;
+    }
+    digestReloadAttempted = true;
+    const generation = renderGeneration;
+    let result: unknown;
+    // Repeat the host's billing arguments so the server reuses the original admission: a plain open
+    // reuses the current window, and a refresh reuses its request_id.
+    const args = billing.refresh ? { ...(inputView as object | undefined), refresh: true, request_id: billing.request_id } : inputView ?? {};
+    try { result = await request('tools/call', { name: 'open_news_dashboard', arguments: args }); }
+    catch {
+      status.textContent = DIGEST_RELOAD_FAILED;
+      return false;
+    }
+    if (generation !== renderGeneration) return false;
+    hostView = inputView;
+    hostBilling = billing;
+    return renderResult(result);
   }
 
   function showUsage(): void {
@@ -410,7 +468,65 @@ function mountPlugin(): void {
     return receipt;
   }
 
+  function onHostMessage(event: MessageEvent): void {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const message = event.data;
+    if (!message.method && typeof message.id === 'number' && pending.has(message.id)) {
+      const call = pending.get(message.id)!;
+      pending.delete(message.id);
+      clearTimeout(call.timer);
+      if (message.error) call.reject(new Error(String(message.error.message ?? 'Host request failed')));
+      else call.resolve(message.result);
+    }
+    if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
+      { name: 'apply_news_view', title: 'Apply news and map view', description: 'Apply news filters, selected hazard/reference map layers and map view; returns the effective state and bounded global snapshot coverage after the map settles.', inputSchema: PLUGIN_NEWS_VIEW_INPUT_SCHEMA },
+      { name: 'focus_news_article', title: 'Focus a news article', description: 'Focus an article already present in the current news snapshot and its supplied geographic location. Reports when no location is available.', inputSchema: { type: 'object', properties: { link: { type: 'string' } }, required: ['link'] } },
+    ] } });
+    if (message.method === 'tools/call') {
+      void whenMounted.then(() => message.params?.name === 'apply_news_view' ? applyView(message.params.arguments ?? {})
+        : message.params?.name === 'focus_news_article' && typeof message.params.arguments?.link === 'string' ? focusNews(message.params.arguments.link)
+        : Promise.reject(new Error('Unknown news action or invalid arguments.')))
+        .then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
+        .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
+    }
+    if (message.method === 'ui/notifications/tool-input') {
+      const args = message.params?.arguments ?? {};
+      hostView = Object.fromEntries(Object.entries(args).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
+      hostBilling = args.refresh === true ? { refresh: true, request_id: typeof args.request_id === 'string' ? args.request_id : undefined } : { refresh: false };
+    }
+    if (message.method === 'ui/notifications/tool-result') {
+      // The handshake finishes before the map exists; hold the latest result until it does.
+      if (!mounted) queuedResult = { params: message.params };
+      else renderHostResult(message.params);
+    }
+    if (message.method === 'ui/notifications/host-context-changed') {
+      host = mergeHostContext(host, message.params);
+      relayout();
+    }
+  }
+
+  function renderHostResult(params: unknown): void {
+    void renderResult(params).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+  }
+
+  function reportSize(): void {
+    if (!layoutFlags(host).fillContainer) send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } });
+  }
+
+  function relayout(): void {
+    if (applyHostLayout(host, expandButton)) reportSize();
+  }
+
   async function start(): Promise<void> {
+    window.addEventListener('message', onHostMessage);
+    // Handshake before the map: Claude drops views that report initialized late.
+    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
+    serverTools = Boolean(initialized.hostCapabilities?.serverTools);
+    modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
+    openLinks = Boolean(initialized.hostCapabilities?.openLinks);
+    host = hostContextFromInitialize(initialized);
+    relayout();
+    send({ method: 'ui/notifications/initialized' });
     await initI18n({ waitForFullTranslation: true });
     const layers: MapLayers = { ...DEFAULT_MAP_LAYERS };
     for (const key of Object.keys(layers) as Array<keyof MapLayers>) layers[key] = false;
@@ -532,34 +648,6 @@ function mountPlugin(): void {
     searchButton.textContent = 'Search news';
     searchButton.addEventListener('click', () => search.open());
     document.getElementById('pluginActions')!.appendChild(searchButton);
-    window.addEventListener('message', event => {
-      if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
-      const message = event.data;
-      if (!message.method && typeof message.id === 'number' && pending.has(message.id)) {
-        const call = pending.get(message.id)!;
-        pending.delete(message.id);
-        clearTimeout(call.timer);
-        if (message.error) call.reject(new Error(String(message.error.message ?? 'Host request failed')));
-        else call.resolve(message.result);
-      }
-      if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
-        { name: 'apply_news_view', description: 'Apply news filters, selected hazard/reference map layers and map view; returns the effective state and bounded global snapshot coverage after the map settles.', inputSchema: PLUGIN_NEWS_VIEW_INPUT_SCHEMA },
-        { name: 'focus_news_article', description: 'Focus an article already present in the current news snapshot and its supplied geographic location. Reports when no location is available.', inputSchema: { type: 'object', properties: { link: { type: 'string' } }, required: ['link'] } },
-      ] } });
-      if (message.method === 'tools/call') {
-        const operation = message.params?.name === 'apply_news_view' ? applyView(message.params.arguments ?? {})
-          : message.params?.name === 'focus_news_article' && typeof message.params.arguments?.link === 'string' ? focusNews(message.params.arguments.link)
-          : Promise.reject(new Error('Unknown news action or invalid arguments.'));
-        void operation.then(receipt => send({ id: message.id, result: { structuredContent: receipt, content: [{ type: 'text', text: JSON.stringify(receipt) }] } }))
-          .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
-      }
-      if (message.method === 'ui/notifications/tool-input') {
-        hostView = Object.fromEntries(Object.entries(message.params?.arguments ?? {}).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
-      }
-      if (message.method === 'ui/notifications/tool-result') void renderResult(message.params).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
-
-      if (message.method === 'ui/notifications/host-context-changed' && ['light', 'dark'].includes(message.params?.theme)) document.documentElement.dataset.theme = message.params.theme;
-    });
     document.addEventListener('click', event => {
       const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
       if (!link) return;
@@ -586,15 +674,18 @@ function mountPlugin(): void {
       finally { refresh.disabled = false; }
     });
     document.getElementById('pluginActions')!.appendChild(refresh);
-    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor', version: '1.0.0' }, appCapabilities: { tools: {} }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object }; hostContext?: { theme?: string } };
-    serverTools = Boolean(initialized.hostCapabilities?.serverTools);
-    modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
-    openLinks = Boolean(initialized.hostCapabilities?.openLinks);
     refresh.disabled = !serverTools;
     refreshMap.disabled = !serverTools;
-    if (['light', 'dark'].includes(initialized.hostContext?.theme ?? '')) document.documentElement.dataset.theme = initialized.hostContext!.theme;
-    send({ method: 'ui/notifications/initialized' });
-    const observer = new ResizeObserver(() => send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }));
+    expandButton = createExpandButton({
+      className: 'search-btn plugin-expand-btn',
+      request,
+      getHost: () => host,
+      setHost: next => { host = next; relayout(); },
+      onRefused: () => { status.textContent = EXPAND_REFUSED; },
+    });
+    document.getElementById('pluginActions')!.appendChild(expandButton);
+    relayout();
+    const observer = new ResizeObserver(reportSize);
     observer.observe(document.body);
     window.addEventListener('pagehide', () => {
       mapClosed = true;
@@ -606,9 +697,19 @@ function mountPlugin(): void {
       for (const panel of panels.values()) panel.destroy();
       map.destroy();
     }, { once: true });
+    mounted = true;
+    resolveMounted();
+    if (queuedResult) {
+      const { params } = queuedResult;
+      queuedResult = undefined;
+      renderHostResult(params);
+    }
   }
 
-  void start().catch(error => { status.textContent = `WorldMonitor could not start: ${error instanceof Error ? error.message : 'unknown error'}`; });
+  void start().catch(error => {
+    rejectMounted(error);
+    status.textContent = `WorldMonitor could not start: ${error instanceof Error ? error.message : 'unknown error'}`;
+  });
 }
 
 if (document.documentElement.dataset.wmPluginManagedBoot === 'true') {
