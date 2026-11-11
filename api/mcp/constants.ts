@@ -391,6 +391,23 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.49.0 → 1.50.0 for get_global_air_activity (101 → 102 tools, #7720).
 export const SERVER_VERSION = '1.50.0';
 
+// MCP `Implementation` (initialize serverInfo, and the modern-era
+// _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,
+// `websiteUrl` and `icons` are spec fields for clients and directories.
+// Mirrored in public/.well-known/mcp/server-card.json::serverInfo; the
+// mcp-server-info-metadata test pins both.
+export const SERVER_INFO = {
+  name: SERVER_NAME,
+  version: SERVER_VERSION,
+  title: 'WorldMonitor',
+  description: 'Real-time global intelligence for agents: markets, conflicts, country risk, sanctions, energy, shipping chokepoints, aviation, cyber, climate and forecasts, plus AI briefs and per-outlet source ratings.',
+  websiteUrl: 'https://www.worldmonitor.app',
+  icons: [
+    { src: 'https://www.worldmonitor.app/favico/android-chrome-512x512.png', mimeType: 'image/png', sizes: ['512x512'] },
+    { src: 'https://www.worldmonitor.app/favico/worldmonitor-icon-1024.png', mimeType: 'image/png', sizes: ['1024x1024'] },
+  ],
+} as const;
+
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
 // push async `notifications/message` log events.

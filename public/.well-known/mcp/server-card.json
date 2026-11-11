@@ -10,10 +10,28 @@
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
+    "title": "WorldMonitor",
     "version": "1.50.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
-    "homepage": "https://www.worldmonitor.app"
+    "homepage": "https://www.worldmonitor.app",
+    "websiteUrl": "https://www.worldmonitor.app",
+    "icons": [
+      {
+        "src": "https://www.worldmonitor.app/favico/android-chrome-512x512.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "512x512"
+        ]
+      },
+      {
+        "src": "https://www.worldmonitor.app/favico/worldmonitor-icon-1024.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "1024x1024"
+        ]
+      }
+    ]
   },
   "protocolVersion": "2025-11-25",
   "transport": {
