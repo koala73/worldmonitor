@@ -25,6 +25,7 @@ const MAP_ASSET_ORIGINS = [
 // CSS, and a bare scheme here would also widen script-src and style-src.
 // preferredDisplayMode asks Claude to open the view in its side panel; hosts without one render inline.
 export const NEWS_DASHBOARD_META = {
+  'openai/widgetDescription': 'Shows WorldMonitor news panels and an interactive hazard map for the requested query, with local topic, filter and layer navigation.',
   ui: {
     domain: UI_DOMAIN,
     preferredDisplayMode: 'fullscreen',
@@ -39,10 +40,12 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export const COUNTRY_VIEW_META = {
+  'openai/widgetDescription': 'Shows a shared country deep dive whose sections load progressively for signed-in users.',
   ui: { domain: UI_DOMAIN, preferredDisplayMode: 'fullscreen', csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export const MARKET_RADAR_META = {
+  'openai/widgetDescription': 'Shows the Fear & Greed composite and quote tables for equities, commodities, crypto, Gulf markets and sectors, with signed change and expandable intraday charts.',
   ui: { domain: UI_DOMAIN, csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
