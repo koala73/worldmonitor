@@ -1145,9 +1145,12 @@
       "estimateWithin": "Cirka {{count}} personer inom en radie på {{km}} km",
       "method": "Uppskattningarna bygger på landets genomsnittliga befolkningstäthet.",
       "empty": "Inga händelseplatser uppfyller kraven",
-      "infoTooltip": "Endast händelser med en exakt plats i länder med uppgifter om befolkningstäthet visas. De uppskattade områdena kan överlappa.",
+      "infoTooltip": "Händelser med uppgifter om landets befolkningstäthet visas. Platser från äldre data utan precisionsuppgifter markeras som väntande på uppdatering. De uppskattade områdena kan överlappa.",
       "eventCount_one": "{{count}} händelse",
       "eventCount_other": "{{count}} händelser",
+      "locationPending": "Platsens precision väntar på uppdatering",
+      "unrestCoverage": "Täckning av oroligheter",
+      "ucdpPending": "UCDP-täckning väntar på uppdatering",
       "coverageShown": "Visade händelser: {{shown}} av {{total}}",
       "coverageLeftOut": "Visas inte: {{imprecise}} utan exakt plats, {{noEstimate}} i länder utan täthetsdata, {{otherPlaces}} efter de första 10 platserna per källa"
     },

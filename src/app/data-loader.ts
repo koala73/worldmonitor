@@ -3976,11 +3976,13 @@ export class DataLoaderManager implements AppModule {
       const { protests } = this.ctx.intelligenceCache;
       const ucdpInput = this.ucdpExposure;
       const perSourceLimit = 10;
+      // Older UCDP snapshots have no precision field. Keep their usable points
+      // visible as pending; unrest still requires confirmed provider precision.
       const ucdp = enrichEventsWithExposure((ucdpInput?.events ?? []).map(e => ({
         id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
         name: e.locationName ? `${e.locationName}, ${currentUcdpCountryName(e.country)}` : `${e.side_a} vs ${e.side_b}`,
         country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
-      })), perSourceLimit);
+      })), perSourceLimit, true);
       const unrest = enrichEventsWithExposure((protests?.events ?? []).map(e => ({
         id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
         name: e.city ? `${e.city}, ${e.country}` : e.title,
@@ -3989,7 +3991,9 @@ export class DataLoaderManager implements AppModule {
       const exposures = [...unrest.exposures, ...ucdp.exposures]
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       const ucdpCoverage = ucdpInput?.source === 'full-feed' ? ucdp.coverage : ucdpInput?.coverage;
-      const coverage = ucdpCoverage && (protests ? addExposureCoverage(unrest.coverage, ucdpCoverage) : ucdpCoverage);
+      const coverage = ucdpCoverage
+        ? (protests ? addExposureCoverage(unrest.coverage, ucdpCoverage) : ucdpCoverage)
+        : (protests ? { ...unrest.coverage, ucdpPending: true } : undefined);
       if (exposures.length === 0 && (!protests || !ucdpInput)) {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
