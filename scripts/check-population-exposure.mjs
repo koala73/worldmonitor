@@ -39,7 +39,18 @@ try {
   result.status = 'failed';
   result.error = String(error);
   result.elapsedMs = Date.now() - started;
-  result.visibility = await page.locator('[data-panel="population-exposure"]').evaluate(el => { const chain = []; for (let node = el; node; node = node.parentElement) { const style = getComputedStyle(node); chain.push({ tag: node.tagName, id: node.id, className: node.className, display: style.display, visibility: style.visibility, contentVisibility: style.contentVisibility }); } return chain; }).catch(() => []);
+  result.visibility = await page.locator('[data-panel="population-exposure"]').evaluate(el => {
+    const chain = [];
+    for (let node = el; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      chain.push({
+        tag: node.tagName, id: node.id, className: node.className,
+        display: style.display, visibility: style.visibility,
+        contentVisibility: style.contentVisibility,
+      });
+    }
+    return chain;
+  }).catch(() => []);
   result.panelText = await page.locator('[data-panel="population-exposure"]').innerText().catch(() => 'not mounted');
   process.exitCode = 1;
 } finally {
