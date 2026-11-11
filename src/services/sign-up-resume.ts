@@ -10,8 +10,9 @@
  *
  * Two triggers, both explicit. `hydration` is the first Clerk emission after
  * load; it resumes only a live code, because a page load must never send an
- * unsolicited email to someone who abandoned. `user` is a Create-account click;
- * an expired code is resent first so the card's "code sent" subtitle is true.
+ * unsolicited email to someone who abandoned. `user` is a Sign In / create-
+ * account click; an expired code is resent first so the card's "code sent"
+ * subtitle is true.
  */
 
 import type { Clerk } from '@clerk/clerk-js';
@@ -160,9 +161,9 @@ export interface SignUpResumePorts {
 export interface SignUpResumeController {
   onClerkEmission: (first: boolean) => void;
   /**
-   * Called by `openSignUp()`. True means the resume surface took the click.
-   * `fallback` opens Clerk's own modal when a resend fails after the click
-   * was taken.
+   * Called by `openSignIn()` / `openSignUp()`. True means the resume surface
+   * took the click. `fallback` opens Clerk's own modal when a resend fails
+   * after the click was taken.
    */
   resumeOnUserIntent: (fallback: () => void) => boolean;
 }
