@@ -20,14 +20,15 @@ import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from 
 import { getPanelScopeBehaviour } from '@/config/panel-scope';
 import { headlineCountries, withoutOwnSourceSuffix } from '@/services/scope-attribution';
 import type { ResolvedScope } from '@/services/tab-focus';
+import { effectivePubDateMs } from '@/services/feed-date';
 
 
 type SortMode = 'relevance' | 'newest';
 type NewsIdentity = Pick<NewsItem, 'link' | 'title' | 'source'>;
 
 /** Identity of a headline across the clustering worker, which hands back copies. */
-function newsScopeKey(item: Pick<NewsItem, 'link' | 'title'>): string {
-  return `${item.link}\u0000${item.title}`;
+function newsScopeKey(item: NewsIdentity): string {
+  return `${item.link}\u0000${item.title}\u0000${item.source}`;
 }
 
 function matchesNewsItem(item: NewsIdentity, link: string, identity?: NewsIdentity): boolean {
@@ -617,7 +618,7 @@ export class NewsPanel extends Panel {
     let sorted: NewsItem[];
     if (this.sortMode === 'newest') {
       sorted = [...items].sort((a, b) => (this.scopeRank(a) - this.scopeRank(b))
-        || new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+        || effectivePubDateMs(b) - effectivePubDateMs(a));
     } else {
       // Relevance: sort by importanceScore desc when available, fall back to pubDate.
       // Under a focus, chosen countries first, then neighbours, then no country.
@@ -627,7 +628,7 @@ export class NewsPanel extends Panel {
         const sa = a.importanceScore ?? 0;
         const sb = b.importanceScore ?? 0;
         if (sb !== sa) return sb - sa;
-        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+        return effectivePubDateMs(b) - effectivePubDateMs(a);
       });
     }
 

@@ -4680,6 +4680,7 @@
       "emptyAdvisories": "No travel advisories for these countries",
       "emptyConflict": "No UCDP conflict events for these countries",
       "emptyConflictPartial": "No conflict events for these countries among the latest events. The full list did not load.",
+      "partialConflictLoading": "Showing conflict events from the latest 150 while the full list loads.",
       "partialConflict": "Showing conflict events from the latest 150 only. The full list did not load.",
       "loadingConflict": "Loading all conflict events for these countries…",
       "emptyAirports": "None of your watched airports are in these countries",

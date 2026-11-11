@@ -4957,7 +4957,8 @@
       "unattributed_other": "{{count}} 项无国家标记",
       "showUnattributedAria_other": "显示 {{count}} 项无国家标记的内容",
       "hideUnattributedAria_other": "隐藏 {{count}} 项无国家标记的内容",
-      "partialConflict": "仅显示最近150条冲突事件。完整列表未加载。"
+      "partialConflict": "仅显示最近150条冲突事件。完整列表未加载。",
+      "partialConflictLoading": "正在加载完整列表，目前显示最新150条冲突事件。"
     }
   }
 }

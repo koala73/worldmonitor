@@ -4985,7 +4985,8 @@
       "showUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi göster",
       "hideUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi gizle",
       "hideUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi gizle",
-      "partialConflict": "Son 150 çatışma olayı gösteriliyor. Tam liste yüklenemedi."
+      "partialConflict": "Son 150 çatışma olayı gösteriliyor. Tam liste yüklenemedi.",
+      "partialConflictLoading": "En son 150 çatışma olayı gösterilmektedir, tam liste yüklenirken."
     }
   }
 }

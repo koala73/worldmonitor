@@ -5013,7 +5013,8 @@
       "hideUnattributedAria_one": "Masquer l'{{count}} élément sans pays",
       "hideUnattributedAria_many": "Masquer les {{count}} éléments sans pays",
       "hideUnattributedAria_other": "Masquer les {{count}} éléments sans pays",
-      "partialConflict": "Affichage des événements de conflit des 150 derniers uniquement. La liste complète n'a pas pu être chargée."
+      "partialConflict": "Affichage des événements de conflit des 150 derniers uniquement. La liste complète n'a pas pu être chargée.",
+      "partialConflictLoading": "Affichage des événements de conflit des 150 derniers pendant le chargement de la liste complète."
     }
   }
 }

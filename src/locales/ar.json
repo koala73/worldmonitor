@@ -5097,7 +5097,8 @@
       "hideUnattributedAria_few": "إخفاء {{count}} عناصر بلا دولة",
       "hideUnattributedAria_many": "إخفاء {{count}} عنصرًا بلا دولة",
       "hideUnattributedAria_other": "إخفاء {{count}} عنصر بلا دولة",
-      "partialConflict": "يتم عرض أحداث النزاع من آخر 150 فقط. لم يتم تحميل القائمة الكاملة."
+      "partialConflict": "يتم عرض أحداث النزاع من آخر 150 فقط. لم يتم تحميل القائمة الكاملة.",
+      "partialConflictLoading": "يتم عرض أحداث الصراع من آخر 150 حدث أثناء تحميل القائمة الكاملة."
     }
   }
 }

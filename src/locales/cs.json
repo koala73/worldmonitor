@@ -5041,7 +5041,8 @@
       "hideUnattributedAria_few": "Skrýt {{count}} položky bez státu",
       "hideUnattributedAria_many": "Skrýt {{count}} položek bez státu",
       "hideUnattributedAria_other": "Skrýt {{count}} položek bez státu",
-      "partialConflict": "Zobrazuji pouze poslední konfliktní události ze 150. Úplný seznam se nenačetl."
+      "partialConflict": "Zobrazuji pouze poslední konfliktní události ze 150. Úplný seznam se nenačetl.",
+      "partialConflictLoading": "Zobrazuji konfliktní události z posledních 150 událostí, zatímco se načítá úplný seznam."
     }
   }
 }

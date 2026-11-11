@@ -230,7 +230,17 @@ export class PanelScopeFilter {
       default: return;
     }
     this.onChange();
-    // The clicked button is replaced by the re-render; keep keyboard focus in the strip.
-    this.strip.querySelector<HTMLButtonElement>('button[data-scope-action]')?.focus({ preventScroll: true });
+    // The clicked button is replaced by its counterpart; keep keyboard focus on
+    // that one, not on whichever strip button comes first.
+    const counterpart: Partial<Record<StripAction, StripAction>> = {
+      'show-all': 'apply',
+      apply: 'show-all',
+      'show-unattributed': 'hide-unattributed',
+      'hide-unattributed': 'show-unattributed',
+    };
+    const target = counterpart[action];
+    const next = (target && this.strip.querySelector<HTMLButtonElement>(`button[data-scope-action="${target}"]`))
+      || this.strip.querySelector<HTMLButtonElement>('button[data-scope-action]');
+    next?.focus({ preventScroll: true });
   }
 }

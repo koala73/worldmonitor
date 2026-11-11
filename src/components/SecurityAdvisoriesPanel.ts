@@ -47,15 +47,20 @@ export class SecurityAdvisoriesPanel extends Panel {
     if (!this.scopeFilter.setScope(scope)) return;
     // The next successful setData draws with the new focus; redrawing now
     // would erase a load failure.
-    if (this.hasData && !this.showingLoadFailure) this.render();
+    if (this.hasData && !this.showingLoadFailure && !this.refreshing) this.render();
   }
 
+  /** A refresh is in flight: the loading indicator must stay until setData lands. */
+  private refreshing = false;
+
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.refreshing = false;
     this.scopeFilter.hideStrip();
     super.showError(message, onRetry, autoRetrySeconds);
   }
 
   public override showLoading(message?: string): void {
+    this.refreshing = true;
     this.scopeFilter?.hideStrip();
     super.showLoading(message);
   }
@@ -64,6 +69,7 @@ export class SecurityAdvisoriesPanel extends Panel {
     const prevCount = this.advisories.length;
     this.advisories = advisories;
     this.hasData = true;
+    this.refreshing = false;
 
     if (prevCount > 0 && advisories.length > prevCount) {
       this.setNewBadge(advisories.length - prevCount);

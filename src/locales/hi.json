@@ -4985,7 +4985,8 @@
       "showUnattributedAria_other": "बिना देश के {{count}} आइटम दिखाएं",
       "hideUnattributedAria_one": "बिना देश का {{count}} आइटम छुपाएं",
       "hideUnattributedAria_other": "बिना देश के {{count}} आइटम छुपाएं",
-      "partialConflict": "केवल नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं। पूरी सूची लोड नहीं हुई।"
+      "partialConflict": "केवल नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं। पूरी सूची लोड नहीं हुई।",
+      "partialConflictLoading": "पूरी सूची लोड होने के दौरान नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं।"
     }
   }
 }

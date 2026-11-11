@@ -4957,7 +4957,8 @@
       "unattributed_other": "国が不明な{{count}}件",
       "showUnattributedAria_other": "国が不明な{{count}}件を表示",
       "hideUnattributedAria_other": "国が不明な{{count}}件を非表示",
-      "partialConflict": "最新150件の紛争イベントのみを表示しています。全リストは読み込まれませんでした。"
+      "partialConflict": "最新150件の紛争イベントのみを表示しています。全リストは読み込まれませんでした。",
+      "partialConflictLoading": "フル リストの読み込み中に、最新150件の紛争イベントを表示しています。"
     }
   }
 }

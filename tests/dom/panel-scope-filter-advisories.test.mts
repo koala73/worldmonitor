@@ -129,6 +129,18 @@ describe('SecurityAdvisoriesPanel under a focus', () => {
     expect(titles().length).toBeGreaterThan(0);
   });
 
+  it('a focus change during a refresh keeps the loading state until the new data lands', async () => {
+    panel.setData([US, LAOS, THAILAND, HEALTH]);
+    panel.showLoading('Refreshing advisories');
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(el().querySelector('.panel-loading-text, .panel-loading-radar')).toBeTruthy();
+    expect(el().querySelector('.sa-item')).toBeNull();
+    panel.setData([US, LAOS, THAILAND, HEALTH]);
+    await settle();
+    expect(titles().length).toBeGreaterThan(0);
+  });
+
   it('an empty focused result is distinct from a load failure', async () => {
     panel.setData([US, HEALTH]);
     panel.applyScope(FOCUS);

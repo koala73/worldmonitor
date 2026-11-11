@@ -2273,6 +2273,7 @@
   "focus.filter.loadingConflict": "Loading all conflict events for these countries…",
   "focus.filter.noCountryTag": "No country",
   "focus.filter.partialConflict": "Showing conflict events from the latest 150 only. The full list did not load.",
+  "focus.filter.partialConflictLoading": "Showing conflict events from the latest 150 while the full list loads.",
   "focus.filter.show": "Show",
   "focus.filter.showAll": "Show all",
   "focus.filter.showAllAria_one": "Show everything in this panel, including {{count}} item outside the focus",

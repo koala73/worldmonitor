@@ -4985,7 +4985,8 @@
       "showUnattributedAria_other": "نمایش {{count}} مورد بدون کشور",
       "hideUnattributedAria_one": "پنهان کردن {{count}} مورد بدون کشور",
       "hideUnattributedAria_other": "پنهان کردن {{count}} مورد بدون کشور",
-      "partialConflict": "نمایش رویدادهای تنازع از ۱۵۰ مورد اخیر فقط. لیست کامل بارگیری نشد."
+      "partialConflict": "نمایش رویدادهای تنازع از ۱۵۰ مورد اخیر فقط. لیست کامل بارگیری نشد.",
+      "partialConflictLoading": "نمایش رویدادهای درگیری از ۱۵۰ مورد اخیر در حین بارگیری لیست کامل."
     }
   }
 }

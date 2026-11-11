@@ -45,6 +45,8 @@ export class UcdpEventsPanel extends Panel {
   private readonly loadFullSet: UcdpFullSetLoader;
   private fullEvents: UcdpGeoEvent[] | null = null;
   private fullSetState: 'idle' | 'loading' | 'failed' = 'idle';
+  /** Identifies the full-set request whose result may still be applied. */
+  private fullSetRequest = 0;
 
   constructor(options: { loadFullSet?: UcdpFullSetLoader } = {}) {
     super({
@@ -95,6 +97,7 @@ export class UcdpEventsPanel extends Panel {
     if (!aggregates) {
       this.fullEvents = null;
       this.fullSetState = 'idle';
+      this.fullSetRequest++; // an upgrade still in flight is now stale
     }
     this.ensureFullSetForScope();
     this.renderContent();
@@ -127,19 +130,22 @@ export class UcdpEventsPanel extends Panel {
     if (!this.scopeFilter.scope || !this.hasLoadedEvents || !this.holdsProjection) return;
     if (this.fullEvents || this.fullSetState !== 'idle') return;
     this.fullSetState = 'loading';
+    const request = ++this.fullSetRequest;
     this.loadFullSet().then(
       (events) => {
+        if (request !== this.fullSetRequest) return; // a newer result superseded this request
         if (events && events.length > 0) {
           this.fullEvents = events;
           this.fullSetState = 'idle';
         } else {
           this.fullSetState = 'failed';
         }
-        this.renderContent();
+        if (!this.showingLoadFailure) this.renderContent();
       },
       () => {
+        if (request !== this.fullSetRequest) return;
         this.fullSetState = 'failed';
-        this.renderContent();
+        if (!this.showingLoadFailure) this.renderContent();
       },
     );
   }
@@ -172,7 +178,9 @@ export class UcdpEventsPanel extends Panel {
     }
     // A partial list (full set missing) must say so even when rows are shown:
     // the counts would describe the 150-row projection, not the focus.
-    this.scopeFilter.renderStrip(view, undefined, partial && this.fullSetState === 'failed' ? t('focus.filter.partialConflict') : undefined);
+    this.scopeFilter.renderStrip(view, undefined, partial && this.fullSetState !== 'idle'
+      ? t(this.fullSetState === 'loading' ? 'focus.filter.partialConflictLoading' : 'focus.filter.partialConflict')
+      : undefined);
     const scoped = view.rows.map((row) => row.item);
     this.setCount(scoped.length);
     if (view.emptyByFocus) {

@@ -42,6 +42,15 @@ describe('headlineCountries', () => {
 });
 
 describe('withoutOwnSourceSuffix', () => {
+  it('strips a source whose own name contains a separator, as a whole', () => {
+    assert.equal(withoutOwnSourceSuffix('Rates unchanged - Thailand - News', 'Thailand - News'), 'Rates unchanged');
+    assert.equal(withoutOwnSourceSuffix('Rates unchanged | Thailand | News', 'Thailand | News'), 'Rates unchanged');
+    // Only the item's own source: another outlet's suffix stays.
+    assert.equal(withoutOwnSourceSuffix('Rates unchanged - Thailand - News', 'News'), 'Rates unchanged - Thailand');
+    assert.equal(withoutOwnSourceSuffix('Rates unchanged - Thailand - News', 'Bangkok Post'), 'Rates unchanged - Thailand - News');
+    assert.equal(withoutOwnSourceSuffix('Rates unchangedThailand - News', 'Thailand - News'), 'Rates unchangedThailand - News');
+  });
+
   it('stays linear on a long whitespace run (feed titles are third-party input)', () => {
     const started = performance.now();
     assert.equal(withoutOwnSourceSuffix(' '.repeat(200_000), 'Vietnam News'), ' '.repeat(200_000));

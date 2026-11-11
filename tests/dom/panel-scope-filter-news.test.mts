@@ -100,6 +100,29 @@ describe('NewsPanel under a focus', () => {
     expect(stripButton('show-unattributed')?.getAttribute('aria-label')).toBe('Show the 1 item with no country');
   });
 
+  it('keeps two articles with the same link and title but different sources apart', async () => {
+    mountFlat();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = { ...news('Border crossing reopens after talks'), source: 'Reuters', locationName: 'Thailand' } as NewsItem;
+    const b = { ...a, source: 'Reuters Asia', locationName: 'Laos' } as NewsItem;
+    panel.renderNews([a, b]);
+    panel.applyScope(FOCUS);
+    await settle();
+    const tags = [...panel.getElement().querySelectorAll('.item')].map((row) => row.querySelector('.panel-scope-tag-neighbour')?.textContent ?? '');
+    expect(tags.sort()).toEqual(['', 'Neighbour: Laos']);
+  });
+
+  it('newest-first ranks an article without a real date as old, not fresh', async () => {
+    mountFlat();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const dated = news('Thailand imposes a curfew');
+    const undated = { ...news('Thailand lifts a curfew'), pubDate: new Date(Date.parse('2026-11-12T00:00:00Z')), pubDateMissing: true } as NewsItem;
+    panel.renderNews([undated, dated]);
+    panel.applyScope(scopeOf(['TH']));
+    await settle();
+    expect(titles()).toEqual([dated.title, undated.title]);
+  });
+
   it('keeps the order and the marker in the clustered view', async () => {
     panel = new NewsPanel('politics', 'World News', undefined, { clusterNews: async (items) => clusterNews(items) });
     document.body.appendChild(panel.getElement());

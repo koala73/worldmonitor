@@ -107,15 +107,17 @@ const isSpace = (ch: string | undefined): boolean => ch !== undefined && /\s/.te
 export function withoutOwnSourceSuffix(title: string, source: string | null | undefined): string {
   const name = (source ?? '').trim().toLowerCase();
   if (!name) return title;
-  // Linear scan for the LAST separator. A regex here backtracks quadratically
-  // on a long whitespace run, and titles come from third-party feeds.
-  let at = -1;
-  for (let i = title.length - 1; i >= 0; i--) {
-    if (SUFFIX_SEPARATORS.has(title[i]!)) { at = i; break; }
-  }
-  if (at <= 0 || !isSpace(title[at - 1]) || !isSpace(title[at + 1])) return title;
-  if (title.slice(at + 1).trim().toLowerCase() !== name) return title;
-  return title.slice(0, at).trimEnd();
+  // Match the WHOLE trailing source name, then its separator: a source such as
+  // "Thailand - News" contains a separator itself. Linear, with no regex: a
+  // regex here backtracked quadratically on whitespace runs in feed titles.
+  const trimmed = title.trimEnd();
+  if (trimmed.length <= name.length || trimmed.slice(-name.length).toLowerCase() !== name) return title;
+  const head = trimmed.slice(0, trimmed.length - name.length);
+  if (!isSpace(head[head.length - 1])) return title;
+  const rest = head.trimEnd();
+  const separator = rest[rest.length - 1];
+  if (!separator || !SUFFIX_SEPARATORS.has(separator) || !isSpace(rest[rest.length - 2])) return title;
+  return rest.slice(0, -1).trimEnd();
 }
 
 let airportCountries: Map<string, string> | null = null;

@@ -143,6 +143,55 @@ describe('UcdpEventsPanel under a focus', () => {
     expect(ids()).toEqual(['mm', 'la', 'th']);
   });
 
+  it('warns that the list is partial while the full set loads, even with rows shown', async () => {
+    let release: (events: UcdpGeoEvent[]) => void = () => {};
+    loadFullSet.mockImplementationOnce(() => new Promise<UcdpGeoEvent[]>((resolve) => { release = resolve; }));
+    panel.setEvents(EVENTS, AGGREGATES);
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(ids()).toEqual(['th', 'la']);
+    expect(strip()?.textContent).toContain('while the full list loads');
+    expect(stripButton('show-all')).toBeTruthy();
+    release([...EVENTS, MYANMAR]);
+    await settle();
+    expect(strip()?.textContent ?? '').not.toContain('full list');
+    expect(ids()).toEqual(['th', 'la', 'mm']);
+  });
+
+  it('ignores a full-set result that a newer full set superseded, and does not paint over a failure', async () => {
+    let release: (events: UcdpGeoEvent[]) => void = () => {};
+    loadFullSet.mockImplementationOnce(() => new Promise<UcdpGeoEvent[]>((resolve) => { release = resolve; }));
+    panel.setEvents(EVENTS, AGGREGATES);
+    panel.applyScope(FOCUS);
+    await settle();
+    // A newer full set arrives (no aggregates) while the old request is pending.
+    const NEWER = event('newer', 'Thailand', 9);
+    panel.setEvents([NEWER]);
+    await settle();
+    release([...EVENTS, MYANMAR]); // stale: must not overwrite the newer set
+    await settle();
+    expect(ids()).toEqual(['newer']);
+
+    panel.setEvents(EVENTS, AGGREGATES);
+    loadFullSet.mockImplementationOnce(() => new Promise<UcdpGeoEvent[]>((resolve) => { release = resolve; }));
+    panel.applyScope(scopeOf(['VN']));
+    await settle();
+    panel.showError('UCDP failed');
+    release([...EVENTS, MYANMAR]);
+    await settle();
+    expect(el().querySelector('.panel-error-state')?.textContent).toContain('UCDP failed');
+  });
+
+  it('keeps keyboard focus on the control that replaced the one activated', async () => {
+    panel.setEvents(EVENTS, AGGREGATES);
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(stripButton('show-all')).toBeTruthy();
+    stripButton('show-unattributed')?.click();
+    await settle();
+    expect(document.activeElement).toBe(stripButton('hide-unattributed'));
+  });
+
   it('"Show all" restores the whole list; clearing the focus hides the strip', async () => {
     panel.setEvents(EVENTS);
     panel.applyScope(FOCUS);

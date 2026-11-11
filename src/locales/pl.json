@@ -5041,7 +5041,8 @@
       "hideUnattributedAria_few": "Ukryj {{count}} elementy bez kraju",
       "hideUnattributedAria_many": "Ukryj {{count}} elementów bez kraju",
       "hideUnattributedAria_other": "Ukryj {{count}} elementów bez kraju",
-      "partialConflict": "Wyświetlanie zdarzeń konfliktowych tylko z ostatnich 150. Pełna lista nie została załadowana."
+      "partialConflict": "Wyświetlanie zdarzeń konfliktowych tylko z ostatnich 150. Pełna lista nie została załadowana.",
+      "partialConflictLoading": "Wyświetlanie zdarzeń konfliktowych z ostatnich 150 podczas ładowania pełnej listy."
     }
   }
 }

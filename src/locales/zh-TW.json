@@ -4957,7 +4957,8 @@
       "unattributed_other": "{{count}} 項無國家標記",
       "showUnattributedAria_other": "顯示 {{count}} 項無國家標記的內容",
       "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容",
-      "partialConflict": "僅顯示最近150條衝突事件。完整列表未載入。"
+      "partialConflict": "僅顯示最近150條衝突事件。完整列表未載入。",
+      "partialConflictLoading": "正在載入完整列表，目前顯示最新150條衝突事件。"
     }
   }
 }
