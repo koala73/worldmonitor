@@ -8,7 +8,7 @@ import {
   decodeEventRecord,
   dedupeGranules,
   failedGranulesFromEvents,
-  fetchAtl13Segments,
+  fetchSegments,
   granuleDate,
   listGranules,
   mergePasses,
@@ -95,7 +95,7 @@ describe('SlideRule record stream parser', () => {
   });
 });
 
-describe('fetchAtl13Segments', () => {
+describe('fetchSegments', () => {
   const okRows = lakeRows({ t: '2026-06-01T20:00:00Z', rgt: 1201, h: 320 });
   const csv = csvFromRows(okRows);
 
@@ -109,7 +109,7 @@ describe('fetchAtl13Segments', () => {
       ]), [11]));
     };
     const rows = [];
-    const r = await fetchAtl13Segments([{ lon: 0, lat: 0 }], [G1, G2, G3], (row) => rows.push(row), fetchImpl);
+    const r = await fetchSegments([{ lon: 0, lat: 0 }], [G1, G2, G3], (row) => rows.push(row), fetchImpl);
     assert.equal(calls.length, 1);
     assert.deepEqual(calls[0].resources, [G1, G2, G3]);
     assert.equal(rows.length, okRows.length);
@@ -121,7 +121,7 @@ describe('fetchAtl13Segments', () => {
     const recs = csvFileRecords(csv, 37);
     recs.pop(); // drop arrowrec.eof
     const rows = [];
-    const r = await fetchAtl13Segments([], [G1], (row) => rows.push(row), async () => streamResponse([Buffer.concat(recs)]));
+    const r = await fetchSegments([], [G1], (row) => rows.push(row), async () => streamResponse([Buffer.concat(recs)]));
     assert.deepEqual(r.processed, [G1]);
     assert.equal(rows.length, okRows.length);
   });
@@ -133,7 +133,7 @@ describe('fetchAtl13Segments', () => {
       sizes.push(JSON.parse(init.body).parms.resources.length);
       return streamResponse([eventRecord('no resources to process', 2)]);
     };
-    const r = await fetchAtl13Segments([], names, () => {}, fetchImpl);
+    const r = await fetchSegments([], names, () => {}, fetchImpl);
     assert.deepEqual(sizes, [20, 20, 5]);
     assert.equal(r.processed.length, 45);
     assert.equal(r.failed.length, 0);
@@ -143,16 +143,16 @@ describe('fetchAtl13Segments', () => {
     const full = Buffer.concat(csvFileRecords(csv, 37));
     const fetchImpl = async () => streamResponse([full.subarray(0, full.length - 40)]);
     const rows = [];
-    const r = await fetchAtl13Segments([], [G1, G3], (row) => rows.push(row), fetchImpl);
+    const r = await fetchSegments([], [G1, G3], (row) => rows.push(row), fetchImpl);
     assert.deepEqual(r.failed, [G1, G3]);
     assert.equal(rows.length, 0);
   });
 
   it('marks the batch failed on HTTP errors and leaves granules past the deadline untouched', async () => {
-    const r1 = await fetchAtl13Segments([], [G1], () => {}, async () => streamResponse([Buffer.from('busy')], { status: 503, contentType: 'text/plain' }));
+    const r1 = await fetchSegments([], [G1], () => {}, async () => streamResponse([Buffer.from('busy')], { status: 503, contentType: 'text/plain' }));
     assert.deepEqual(r1.failed, [G1]);
     assert.match(r1.errors[0], /HTTP 503/);
-    const r2 = await fetchAtl13Segments([], [G1, G2], () => {}, async () => { throw new Error('unreachable'); }, { deadlineAtMs: Date.now() - 1 });
+    const r2 = await fetchSegments([], [G1, G2], () => {}, async () => { throw new Error('unreachable'); }, { deadlineAtMs: Date.now() - 1 });
     assert.deepEqual(r2.skipped, [G1, G2]);
     assert.deepEqual(r2.failed, []);
   });

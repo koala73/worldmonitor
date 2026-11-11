@@ -1,25 +1,36 @@
-// Strategic reservoir water levels from NASA ICESat-2 ATL13 (inland water surface height).
+// Strategic reservoir water levels from NASA ICESat-2 lidar: ATL13 (inland water surface
+// height) by default, ATL06 (land ice height) for water bodies ATL13 covers poorly.
 //
 // Pure helpers shared by the daily seeder (seed-reservoir-levels.mjs) and the offline
 // backfill (backfill-reservoir-levels.mjs). The only I/O is through an injected fetch.
 //
 // Data path (keyless):
-//   1. NASA CMR lists ATL13 v007 granules that intersect a reservoir's core box.
+//   1. NASA CMR lists ATL13 (or ATL06) v007 granules that intersect a reservoir's core box.
 //   2. The public SlideRule Earth cluster subsets those granules to the core polygon
-//      (POST /source/atl13x) and streams the segments back as a CSV inside native records.
+//      (POST /source/atl13x or /source/atl06x) and streams the segments back as a CSV
+//      inside native records.
 //   3. Segments are reduced to one robust level per overpass (UTC date + reference ground
 //      track), filtered, despiked, and turned into change metrics.
 //
-// Levels are orthometric water-surface heights (`ht_ortho`, metres above the EGM2008
-// geoid). They are lake levels, not storage volumes.
+// Levels are orthometric water-surface heights in metres above the EGM2008 geoid: ATL13
+// `ht_ortho`, or ATL06 `h_li - geoid_h`. They are lake levels, not storage volumes.
+//
+// ATL06 has no water mask, so every land segment inside the box arrives too. Its passes are
+// reduced to the lowest flat cluster of heights first (lowestCluster): a water surface is
+// the lowest flat surface in a box drawn over the lake. The rest of the pipeline is shared.
 
 import { CHROME_UA, withRetry } from './_seed-utils.mjs';
 
 export const CMR_GRANULES_URL = 'https://cmr.earthdata.nasa.gov/search/granules.json';
 export const SLIDERULE_ATL13_URL = 'https://sliderule.slideruleearth.io/source/atl13x';
+export const SLIDERULE_ATL06_URL = 'https://sliderule.slideruleearth.io/source/atl06x';
 export const MISSION_START_ISO = '2018-10-01';
 export const ATL13_VERSION = '007';
+export const ATL06_VERSION = '007';
 export const SLIDERULE_BATCH_SIZE = 20;
+// ATL06 returns every land segment in the box as well as the water: about 10x the rows of
+// ATL13 for the same box. Smaller batches bound the per-batch row buffer.
+export const SLIDERULE_ATL06_BATCH_SIZE = 5;
 export const SLIDERULE_BATCH_TIMEOUT_MS = 8 * 60 * 1000;
 export const CMR_TIMEOUT_MS = 30_000;
 export const CMR_PAGE_SIZE = 2000;
@@ -60,8 +71,28 @@ export const HIGH_PERCENT = 85;
 export const SEASONAL_Z_ALERT = 1.5;
 export const SERIES_MONTHS = 36;
 
-const GRANULE_RE = /ATL13_\d{14}_\d{8}_\d{3}_\d{2}\.h5/g;
-const GRANULE_EXACT_RE = /^ATL13_(\d{14})_(\d{8})_(\d{3})_(\d{2})\.h5$/;
+// ATL06 lowest-cluster rule. ATL06 has no water mask: the box returns land as well as
+// water, and a falling reservoir exposes its bed inside the box. A water surface is the
+// lowest flat surface in a box drawn over the lake, so:
+//   1. Keep segments with atl06_quality_summary == ATL06_GOOD_QUALITY whose along-track
+//      slope |dh_fit_dx| is at most ATL06_MAX_SLOPE. On Lake Mead and Ataturk 94-97% of
+//      water segments pass it. Without it, thousands of hillside segments fill every
+//      height gap and chain the water into one cluster 100-300 m tall: in the first
+//      cross-check 41 of 77 Lake Mead passes and 50 of 66 Ataturk passes came out with a
+//      MAD above 1 m.
+//   2. Sort the heights, split them wherever consecutive heights differ by more than
+//      ATL06_CLUSTER_GAP_M, and read the pass from the lowest cluster holding at least
+//      max(ATL06_CLUSTER_MIN_POINTS, ATL06_CLUSTER_MIN_FRACTION of the kept segments).
+//      Smaller low clusters are noise (a canal, a stray low return) and are skipped.
+// The cluster then goes through the same pass statistics and quality rules as ATL13.
+export const ATL06_MAX_SLOPE = 0.01;
+export const ATL06_CLUSTER_GAP_M = 0.5;
+export const ATL06_CLUSTER_MIN_POINTS = 5;
+export const ATL06_CLUSTER_MIN_FRACTION = 0.1;
+export const ATL06_GOOD_QUALITY = 0;
+
+const GRANULE_RE = /ATL(?:06|13)_\d{14}_\d{8}_\d{3}_\d{2}\.h5/g;
+const GRANULE_EXACT_RE = /^(ATL(?:06|13))_(\d{14})_(\d{8})_(\d{3})_(\d{2})\.h5$/;
 
 // ---------------------------------------------------------------------------
 // Small numeric helpers
@@ -94,14 +125,14 @@ export function bboxToPolygon([w, s, e, n]) {
 export function granuleDate(name) {
   const m = GRANULE_EXACT_RE.exec(name);
   if (!m) return null;
-  const t = m[1];
+  const t = m[2];
   return `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}`;
 }
 
 /** Orbit identity without the release revision (`_01`, `_02`). */
 export function granuleBase(name) {
   const m = GRANULE_EXACT_RE.exec(name);
-  return m ? `ATL13_${m[1]}_${m[2]}_${m[3]}` : null;
+  return m ? `${m[1]}_${m[2]}_${m[3]}_${m[4]}` : null;
 }
 
 /**
@@ -120,19 +151,94 @@ export function dedupeGranules(names) {
 }
 
 // ---------------------------------------------------------------------------
+// Products
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-product request and row handling. A watchlist entry picks one with `product`
+ * ("atl13" when absent). `slim` keeps only the columns the reduction reads (null drops the
+ * row) and `height` turns a slim or raw CSV row into metres above EGM2008.
+ */
+export const PRODUCTS = Object.freeze({
+  atl13: Object.freeze({
+    id: 'atl13',
+    shortName: 'ATL13',
+    version: ATL13_VERSION,
+    url: SLIDERULE_ATL13_URL,
+    batchSize: SLIDERULE_BATCH_SIZE,
+    parms: (poly, resources, { ancFields = ['atl13refid'] } = {}) => ({
+      poly,
+      resources,
+      atl13: { anc_fields: ancFields },
+      output: { path: 'atl13.csv', format: 'csv', open_on_complete: false },
+    }),
+    slim: (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid }),
+    height: (r) => Number(r.ht_ortho),
+  }),
+  atl06: Object.freeze({
+    id: 'atl06',
+    shortName: 'ATL06',
+    version: ATL06_VERSION,
+    url: SLIDERULE_ATL06_URL,
+    batchSize: SLIDERULE_ATL06_BATCH_SIZE,
+    parms: (poly, resources) => ({
+      poly,
+      resources,
+      atl06_fields: ['dem/geoid_h'],
+      output: { path: 'atl06.csv', format: 'csv', open_on_complete: false },
+    }),
+    // Quality and slope are filtered here so rejected land segments are never buffered.
+    slim: (r) => (atl06SegmentOk(r)
+      ? { time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: String(atl06OrthoHeight(r)) }
+      : null),
+    height: (r) => (r.ht_ortho != null ? Number(r.ht_ortho) : (atl06SegmentOk(r) ? atl06OrthoHeight(r) : NaN)),
+  }),
+});
+
+export const DEFAULT_PRODUCT = 'atl13';
+
+/** The product config for a watchlist entry, or for a product id. Throws on an unknown id. */
+export function productOf(entryOrId) {
+  const id = typeof entryOrId === 'string' ? entryOrId : (entryOrId?.product ?? DEFAULT_PRODUCT);
+  const p = PRODUCTS[id];
+  if (!p) throw new Error(`unknown reservoir product ${id}`);
+  return p;
+}
+
+/** ATL06 segment filter: good quality flag and a flat along-track fit (see ATL06_MAX_SLOPE). */
+function atl06SegmentOk(r) {
+  if (r.atl06_quality_summary == null || r.atl06_quality_summary === '') return false;
+  if (Number(r.atl06_quality_summary) !== ATL06_GOOD_QUALITY) return false;
+  const slope = Math.abs(Number(r.dh_fit_dx));
+  return Number.isFinite(slope) && slope <= ATL06_MAX_SLOPE;
+}
+
+// h_li is the height above the WGS84 ellipsoid; dem/geoid_h is the EGM2008 geoid height
+// above the same ellipsoid, so the difference is the orthometric height ATL13 reports as
+// ht_ortho. Sign and datum confirmed against ATL13 and the USBR Mead gauge
+// (tests/reservoir-levels-atl06-crosscheck.test.mjs).
+function atl06OrthoHeight(r) {
+  const h = Number(r.h_li);
+  const geoid = Number(r['dem/geoid_h'] ?? r.geoid_h);
+  return Number.isFinite(h) && Number.isFinite(geoid) ? h - geoid : NaN;
+}
+
+// ---------------------------------------------------------------------------
 // CMR granule discovery
 // ---------------------------------------------------------------------------
 
 /**
- * List ATL13 granules intersecting `bbox` ([W,S,E,N]) with start time >= sinceIso.
- * Paginates with CMR-Search-After. Returns deduplicated granule names, oldest first.
+ * List ATL13 (or opts.product) granules intersecting `bbox` ([W,S,E,N]) with start time
+ * >= sinceIso. Paginates with CMR-Search-After. Returns deduplicated granule names, oldest
+ * first.
  */
 export async function listGranules(bbox, sinceIso, fetchImpl = (...a) => globalThis.fetch(...a), opts = {}) {
-  const { untilIso = null, retries = 3, retryDelayMs = 2000, maxPages = 20, timeoutMs = CMR_TIMEOUT_MS } = opts;
+  const { untilIso = null, retries = 3, retryDelayMs = 2000, maxPages = 20, timeoutMs = CMR_TIMEOUT_MS, product = DEFAULT_PRODUCT } = opts;
+  const prod = productOf(product);
   const temporal = `${sinceIso.length === 10 ? `${sinceIso}T00:00:00Z` : sinceIso},${untilIso ?? ''}`;
   const params = new URLSearchParams({
-    short_name: 'ATL13',
-    version: ATL13_VERSION,
+    short_name: prod.shortName,
+    version: prod.version,
     bounding_box: bbox.join(','),
     temporal,
     sort_key: 'start_date',
@@ -159,7 +265,7 @@ export async function listGranules(bbox, sinceIso, fetchImpl = (...a) => globalT
       const name = typeof e?.producer_granule_id === 'string' && GRANULE_EXACT_RE.test(e.producer_granule_id)
         ? e.producer_granule_id
         : (typeof e?.title === 'string' ? (e.title.match(GRANULE_RE) || [])[0] : null);
-      if (name) names.push(name);
+      if (name && name.startsWith(`${prod.shortName}_`)) names.push(name);
     }
     if (entries.length < CMR_PAGE_SIZE || !next) break;
     searchAfter = next;
@@ -290,11 +396,11 @@ export function createCsvLineReader(onRow) {
 }
 
 /**
- * Stream one SlideRule atl13x request and feed CSV rows to onRow.
+ * Stream one SlideRule request (atl13x or atl06x at `url`) and feed CSV rows to onRow.
  * Returns { rows, fileSize, csvBytes, gotEof, events }.
  */
-export async function streamAtl13Request(parms, onRow, fetchImpl, { timeoutMs = SLIDERULE_BATCH_TIMEOUT_MS } = {}) {
-  const res = await fetchImpl(SLIDERULE_ATL13_URL, {
+export async function streamSlideRuleRequest(url, parms, onRow, fetchImpl, { timeoutMs = SLIDERULE_BATCH_TIMEOUT_MS } = {}) {
+  const res = await fetchImpl(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify({ parms }),
@@ -337,14 +443,13 @@ export async function streamAtl13Request(parms, onRow, fetchImpl, { timeoutMs = 
   return { rows, fileSize, csvBytes, gotEof, events };
 }
 
-// Keep only the columns the reduction reads, to bound memory while a batch is buffered.
-const slimRow = (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid });
-
 const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|produced an empty dataframe|invalid dataframe/i;
 
 /**
- * Fetch ATL13 segments for `granules` inside `poly`, in batches of <= SLIDERULE_BATCH_SIZE.
- * Rows go to onRow(row, granuleBatch). Never throws for upstream failures: returns
+ * Fetch segments of opts.product (ATL13 by default) for `granules` inside `poly`, in
+ * batches of the product's batch size. Rows go to onRow(slimRow, granuleBatch); the slim
+ * row keeps only the columns the reduction reads, to bound memory while a batch is
+ * buffered (ATL06 rows that fail the quality flag are dropped there). Never throws for upstream failures: returns
  * { processed: [...granules that completed], failed: [...granules to retry],
  * skipped: [...granules not attempted because deadlineAtMs passed], rows, errors,
  * okBatches, failedBatches }. A batch whose request completed counts as ok even when some
@@ -352,9 +457,10 @@ const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|pro
  * A whole-request failure marks every granule in that batch failed; a per-granule error
  * event marks only that granule failed and keeps the rest of the batch.
  */
-export async function fetchAtl13Segments(poly, granules, onRow, fetchImpl = (...a) => globalThis.fetch(...a), opts = {}) {
+export async function fetchSegments(poly, granules, onRow, fetchImpl = (...a) => globalThis.fetch(...a), opts = {}) {
+  const prod = productOf(opts.product ?? DEFAULT_PRODUCT);
   const {
-    batchSize = SLIDERULE_BATCH_SIZE,
+    batchSize = prod.batchSize,
     timeoutMs = SLIDERULE_BATCH_TIMEOUT_MS,
     deadlineAtMs = Infinity,
     ancFields = ['atl13refid'],
@@ -372,17 +478,15 @@ export async function fetchAtl13Segments(poly, granules, onRow, fetchImpl = (...
     // so the next run picks them up.
     const remainingMs = deadlineAtMs - Date.now();
     if (remainingMs <= 0) { skipped.push(...granules.slice(i)); break; }
-    const parms = {
-      poly,
-      resources: batch,
-      atl13: { anc_fields: ancFields },
-      output: { path: 'atl13.csv', format: 'csv', open_on_complete: false },
-    };
+    const parms = prod.parms(poly, batch, { ancFields });
     // Rows are buffered per batch so a batch that dies mid-stream contributes nothing:
     // a half-delivered pass would otherwise be stored as if complete.
     const batchRows = [];
     try {
-      const r = await streamAtl13Request(parms, (row) => batchRows.push(slimRow(row)), fetchImpl, {
+      const r = await streamSlideRuleRequest(prod.url, parms, (row) => {
+        const slim = prod.slim(row);
+        if (slim) batchRows.push(slim);
+      }, fetchImpl, {
         timeoutMs: Math.max(30_000, Math.min(timeoutMs, remainingMs)),
       });
       const empty = r.fileSize == null && r.csvBytes === 0 && r.events.some((e) => EMPTY_SELECTION_RE.test(e.msg));
@@ -424,14 +528,18 @@ function rowTimeMs(t) {
 /**
  * Streaming accumulator. add(row) groups segments by UTC date + reference ground track.
  * finish() returns one stats record per pass. Optional `refid` keeps only segments of that
- * ATL13 water body (when the row carries `atl13refid`).
+ * ATL13 water body (when the row carries `atl13refid`). With product 'atl06' the row height
+ * is h_li - geoid_h (or the slim row's ht_ortho), and each pass is first cut down to its
+ * lowest cluster (lowestCluster); a pass with no qualifying cluster is dropped.
  */
-export function createPassAccumulator({ heightField = 'ht_ortho', refid = null } = {}) {
+export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, product = DEFAULT_PRODUCT } = {}) {
+  const prod = productOf(product);
+  const isAtl06 = prod.id === 'atl06';
   const groups = new Map();
   return {
     add(row) {
       if (refid != null && row.atl13refid != null && row.atl13refid !== '' && Number(row.atl13refid) !== refid) return;
-      const h = Number(row[heightField]);
+      const h = isAtl06 ? prod.height(row) : Number(row[heightField]);
       if (!Number.isFinite(h) || Math.abs(h) > ATL13_HEIGHT_FILL_LIMIT_M) return;
       const ms = rowTimeMs(row.time_ns ?? row.time);
       if (!Number.isFinite(ms)) return;
@@ -451,11 +559,48 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null }
     get size() { return groups.size; },
     finish() {
       const out = [];
-      for (const g of groups.values()) out.push(passStats(g));
+      for (const g of groups.values()) {
+        const surface = isAtl06 ? lowestClusterGroup(g) : g;
+        if (surface) out.push(passStats(surface));
+      }
       out.sort(comparePasses);
       return out;
     },
   };
+}
+
+/**
+ * ATL06 lowest-cluster rule (see ATL06_CLUSTER_* above). Returns { lo, hi, count } of the
+ * lowest cluster of sorted heights, split at gaps > gapM, that holds at least
+ * max(minPoints, minFraction x heights.length) points; null when none does.
+ */
+export function lowestCluster(heights, {
+  gapM = ATL06_CLUSTER_GAP_M,
+  minPoints = ATL06_CLUSTER_MIN_POINTS,
+  minFraction = ATL06_CLUSTER_MIN_FRACTION,
+} = {}) {
+  const s = heights.filter(Number.isFinite).sort((a, b) => a - b);
+  const need = Math.max(minPoints, Math.ceil(minFraction * s.length));
+  let start = 0;
+  for (let i = 1; i <= s.length; i++) {
+    if (i === s.length || s[i] - s[i - 1] > gapM) {
+      if (i - start >= need) return { lo: s[start], hi: s[i - 1], count: i - start };
+      start = i;
+    }
+  }
+  return null;
+}
+
+function lowestClusterGroup(g) {
+  const c = lowestCluster(g.h);
+  if (!c) return null;
+  const inside = (x) => x >= c.lo && x <= c.hi;
+  const byBeam = new Map();
+  for (const [beam, v] of g.byBeam) {
+    const kept = v.filter(inside);
+    if (kept.length) byBeam.set(beam, kept);
+  }
+  return { ...g, h: g.h.filter(inside), byBeam };
 }
 
 function passStats(g) {
