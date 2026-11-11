@@ -2326,7 +2326,7 @@ export class UnifiedSettings {
           <h3>API and desktop keys</h3>
           <p class="panel-locked-desc">Connect your own tools to World Monitor data, or activate Pro in the desktop app.</p>
           <p class="panel-locked-desc">Sign in to see the keys available with your plan.</p>
-          <button class="panel-locked-cta api-keys-gate-btn">Sign In</button>
+          <button class="panel-locked-cta api-keys-gate-btn" data-dashboard-interaction="signin">Sign In</button>
         </div>`;
     }
 
@@ -2340,10 +2340,10 @@ export class UnifiedSettings {
           <div class="panel-locked-icon" aria-hidden="true">${upgradeIcon}</div>
           <h3>Choose the access you need</h3>
           <div class="panel-locked-desc">Desktop keys come with Pro. Use one to get your Pro data in your own desktop app.</div>
-          <button class="panel-locked-cta upgrade-pro-cta">Upgrade to Pro</button>
+          <button class="panel-locked-cta upgrade-pro-cta" data-dashboard-interaction="upgrade">Upgrade to Pro</button>
           <div class="panel-locked-desc">Need the REST API, SDKs or webhooks for your organization's internal tools? API Starter adds them to the full Pro dashboard. Customer-facing products need API Business.</div>
           ${checkoutConsentHtml(WEB_APP_ORIGIN)}
-          <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
+          <button class="panel-locked-cta api-keys-gate-btn" data-dashboard-interaction="upgrade">Upgrade to API Starter</button>
         </div>`;
     }
 

@@ -451,6 +451,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackMissionSelected(...args) { push('trackMissionSelected', args); }
       export function trackVariantSwitch(...args) { push('trackVariantSwitch', args); }
       export function trackDashboardFirstInteraction(...args) { push('trackDashboardFirstInteraction', args); }
+      export function replayPendingDashboardFirstInteraction() {}
       export function trackThemeChanged(...args) { push('trackThemeChanged', args); }
       export function trackMapViewChange(...args) { push('trackMapViewChange', args); }
       export function trackMapLayerToggle(...args) { push('trackMapLayerToggle', args); }

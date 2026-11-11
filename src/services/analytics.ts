@@ -1,5 +1,5 @@
 import { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
-import { viewportAnalyticsFields } from '../../shared/analytics-viewport';
+import { isViewportBand, viewportAnalyticsFields, type ViewportBand } from '../../shared/analytics-viewport';
 export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
 /**
  * Analytics facade — wired to Umami.
@@ -158,6 +158,7 @@ const UMAMI_IDENTIFY_RETRY_LIMIT = 2;
 const UMAMI_IDENTIFY_RETRY_BASE_DELAY_MS = 1_000;
 const UMAMI_TRACK_RETRY_LIMIT = 2;
 const CRITICAL_TRACK_EVENTS = new Set<UmamiEvent>([
+  'dashboard-first-interaction',
   'checkout-start',
   'checkout-success',
   'checkout-failed',
@@ -411,6 +412,7 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (!isDurableMarkerResolved(outcome.failure)) return;
 
   if (outcome.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (outcome.eventName === 'dashboard-first-interaction') settleDashboardFirstInteraction();
   if (outcome.eventName === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {
     noteProFunnelReplayDelivered();
@@ -596,6 +598,7 @@ function scheduleTrackRetry(call: Extract<QueuedUmamiCall, { kind: 'track' }>, e
  * the /pro handoff still holds here.
  */
 function clearUnobservableCriticalMarker(call: Extract<QueuedUmamiCall, { kind: 'track' }>): void {
+  if (call.event === 'dashboard-first-interaction') settleDashboardFirstInteraction();
   if (call.event === 'checkout-success') clearPendingCheckoutSuccessMarker();
   if (call.event === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (call.event === 'checkout-start' && call.data?.replayed === true) {
@@ -700,7 +703,10 @@ function loadUmamiScript(): void {
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
   if (event === 'checkout-start' || event === 'checkout-success' || event === 'variant-switch') {
-    data = { ...data, ...viewportAnalyticsFields() };
+    const viewport = data?.replayed === true && isViewportBand(data.vw)
+      ? { vw: data.vw }
+      : viewportAnalyticsFields();
+    data = { ...data, ...viewport };
   }
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
@@ -1174,6 +1180,7 @@ function sanitizePendingConversionData(
   if (typeof data.panelKey === 'string') out.panelKey = bucketPanelKeyForAnalytics(data.panelKey);
   if (typeof data.variant === 'string' && isSiteVariant(data.variant)) out.variant = data.variant;
   if (data.deviceClass === 'mobile' || data.deviceClass === 'desktop') out.deviceClass = data.deviceClass;
+  if (isViewportBand(data.vw)) out.vw = data.vw;
   return out;
 }
 
@@ -1237,6 +1244,7 @@ export function trackCheckoutStart(
     });
   const data: Record<string, unknown> = {
     ...funnelFields,
+    ...viewportAnalyticsFields(),
     productId: bucketProductIdForAnalytics(productId),
     surface: context.eventSurface,
     authed,
@@ -1277,12 +1285,14 @@ function clearPendingCheckoutSuccessMarker(): void {
  * overlay session-flag path (see panel-layout.ts checkout-return wiring).
  */
 export function trackCheckoutSuccess(source: 'url-return' | 'overlay-flag'): void {
+  const viewport = viewportAnalyticsFields();
   try {
-    window.sessionStorage.setItem(CHECKOUT_SUCCESS_PENDING_KEY, source);
+    window.sessionStorage.setItem(CHECKOUT_SUCCESS_PENDING_KEY,
+      viewport.vw ? JSON.stringify({ source, ...viewport }) : source);
   } catch {
     // Storage denied — fall back to fire-and-hope, matching every other event.
   }
-  track('checkout-success', { source });
+  track('checkout-success', { source, ...viewport });
 }
 
 /**
@@ -1300,7 +1310,18 @@ export function replayPendingCheckoutSuccess(): void {
     return;
   }
   if (!source) return;
-  track('checkout-success', { source, replayed: true });
+  let vw: ViewportBand | undefined;
+  if (source !== 'url-return' && source !== 'overlay-flag') {
+    try {
+      const stored = JSON.parse(source);
+      source = stored?.source;
+      if (isViewportBand(stored?.vw)) vw = stored.vw;
+    } catch {
+      return;
+    }
+  }
+  if (source !== 'url-return' && source !== 'overlay-flag') return;
+  track('checkout-success', { source, ...(vw ? { vw } : {}), replayed: true });
 }
 
 /**
@@ -1380,7 +1401,7 @@ export function replayPendingProFunnelEvents(): void {
   }
   if (!raw) return;
 
-  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean }> = [];
+  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean; vw?: ViewportBand }> = [];
   try {
     const items: unknown = JSON.parse(raw);
     if (Array.isArray(items)) {
@@ -1393,6 +1414,7 @@ export function replayPendingProFunnelEvents(): void {
           productId: bucketProductIdForAnalytics(String(d.productId ?? '')),
           surface: d.surface === 'pro-resume' ? 'pro-resume' : 'pro-page',
           authed: Boolean(d.authed),
+          ...(isViewportBand(d.vw) ? { vw: d.vw } : {}),
         });
       }
     }
@@ -1897,14 +1919,35 @@ let dashboardInteractionTracked = false;
 /** Tab-session scope, matching the dashboard's other session analytics guards. */
 export function trackDashboardFirstInteraction(target: DashboardInteractionTarget): void {
   if (dashboardInteractionTracked) return;
+  const data = { ...viewportAnalyticsFields(), target };
   try {
     if (window.sessionStorage.getItem(DASHBOARD_INTERACTION_KEY)) return;
-    window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, '1');
+    window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, JSON.stringify(data));
   } catch {
     // Denied storage still permits at most one event in this document.
   }
   dashboardInteractionTracked = true;
-  track('dashboard-first-interaction', { ...viewportAnalyticsFields(), target });
+  track('dashboard-first-interaction', data);
+}
+
+function settleDashboardFirstInteraction(): void {
+  try { window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, '1'); } catch { /* document guard remains */ }
+}
+
+/** Replay only an actual prior touch, never create an event for an idle visit. */
+export function replayPendingDashboardFirstInteraction(): void {
+  if (dashboardInteractionTracked) return;
+  try {
+    const raw = window.sessionStorage.getItem(DASHBOARD_INTERACTION_KEY);
+    if (!raw || raw === '1') return;
+    const data = JSON.parse(raw);
+    if (!['map', 'panel', 'live-news', 'switcher', 'search', 'signin', 'upgrade'].includes(data?.target)) return;
+    dashboardInteractionTracked = true;
+    track('dashboard-first-interaction', {
+      ...(isViewportBand(data.vw) ? { vw: data.vw } : viewportAnalyticsFields()),
+      target: data.target,
+    });
+  } catch { /* unavailable or malformed storage cannot replay */ }
 }
 
 export function trackThemeChanged(theme: string): void {

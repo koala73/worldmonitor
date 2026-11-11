@@ -88,6 +88,7 @@ import {
   trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
+  replayPendingDashboardFirstInteraction,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -409,6 +410,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    replayPendingDashboardFirstInteraction();
     this.stopInteractionAnalytics?.();
     this.stopInteractionAnalytics = observeDashboardFirstInteraction(this.ctx.container);
     this.setupSearchControls();
