@@ -58,7 +58,7 @@ import { loadStoredMissionPreset } from '@/services/mission-presets';
 import { peekPendingMissionAttribution } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser, isProTierResolved, subscribeWidgetAccess } from '@/services/widget-store';
-import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
+import { LAYER_REGISTRY, sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import {
   panelGateStateChanged,
@@ -90,6 +90,17 @@ import {
   hasNewTabPanels,
   saveNewTabPanels,
 } from '@/services/tab-store';
+import {
+  captureTeamDashboardLayout,
+  loadTeamDashboards,
+  publishTeamDashboard,
+  removeTeamDashboard,
+  teamDashboardErrorKind,
+  toTeamDashboardTab,
+  type PanelSize,
+  type TeamDashboardMap,
+  type TeamDashboards,
+} from '@/services/team-dashboards';
 import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
   DASHBOARD_TAB_UNAVAILABLE_RESULT,
@@ -133,7 +144,15 @@ import { markLcpDebug } from '@/utils/lcp-debug';
 import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import {
+  clearPanelColSpanEntry,
+  clearPanelSpanEntry,
+  loadPanelCollapsed,
+  loadPanelColSpans,
+  loadPanelSpans,
+  savePanelColSpan,
+  savePanelSpan,
+} from '@/utils/panel-storage';
 import { observePanelGridColumns } from '@/utils/panel-grid';
 import { registerSettingsExportFlush } from '@/utils/settings-persistence';
 import { measure, mutate } from '@/utils/layout-batch';
@@ -488,6 +507,13 @@ export class PanelLayoutManager implements AppModule {
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private gatingPrincipal: string | null | undefined = undefined;
+  // Team dashboards for the signed-in user: null until loaded, and for anyone
+  // without an API Business or Enterprise team. Keyed by the user they were
+  // loaded for, so a result never crosses an account switch.
+  private teamDashboards: TeamDashboards | null = null;
+  private teamPrincipal: string | null = null;
+  private teamLoad: Promise<void> | null = null;
+  private teamBusy = false;
   private premiumPanelsUnlocked = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
@@ -1077,6 +1103,7 @@ export class PanelLayoutManager implements AppModule {
       }
     }
     this.gatingPrincipal = state.user?.id ?? null;
+    this.syncTeamDashboardsPrincipal(state.user?.id ?? null);
 
     // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
     // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
@@ -1496,6 +1523,14 @@ export class PanelLayoutManager implements AppModule {
       hasNewTabPanels,
       onSaveNewTabPanels: () => this.saveActiveTabAsNewTabPanels(),
       onClearNewTabPanels: () => this.useDefaultNewTabPanels(),
+      team: {
+        view: () => this.teamDashboardsView(),
+        onOpenMenu: () => { void this.reloadTeamDashboards(); },
+        onOpen: (id) => this.openTeamDashboard(id),
+        onShareTab: () => { void this.shareActiveTabWithTeam(); },
+        onUpdateTab: () => this.updateActiveTabFromTeam(),
+        onStopSharing: (id) => { void this.stopSharingTeamDashboard(id); },
+      },
     });
     mount.appendChild(this.panelTabBar.getElement());
     this.updateTabCapLock();
@@ -1512,6 +1547,231 @@ export class PanelLayoutManager implements AppModule {
     clearNewTabPanels();
     this.panelTabBar?.refresh();
     showToast(t('dashboardTabs.newTabStartsDefault'));
+  }
+
+  // ============================================
+  // Team dashboards — tabs shared within an API Business or Enterprise team
+  // ============================================
+
+  private syncTeamDashboardsPrincipal(userId: string | null): void {
+    if (userId === this.teamPrincipal) return;
+    this.teamPrincipal = userId;
+    this.teamDashboards = null;
+    this.panelTabBar?.refresh();
+    if (userId) void this.reloadTeamDashboards();
+  }
+
+  private reloadTeamDashboards(): Promise<void> {
+    const userId = this.teamPrincipal;
+    if (!userId) return Promise.resolve();
+    if (this.teamLoad) return this.teamLoad;
+    const load = loadTeamDashboards(userId)
+      .then((result) => {
+        if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
+        this.teamDashboards = result;
+        this.panelTabBar?.refresh();
+      })
+      .catch((err: unknown) => {
+        // Keep what was shown; the next menu open asks again.
+        console.warn('[TeamDashboards] Failed to load team dashboards:', err);
+      })
+      .finally(() => {
+        if (this.teamLoad === load) this.teamLoad = null;
+      });
+    this.teamLoad = load;
+    return load;
+  }
+
+  private activeTab(): PanelTab | null {
+    const state = this.tabsState;
+    return state?.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
+  }
+
+  private teamDashboardsView() {
+    const team = this.teamDashboards;
+    if (!team) return null;
+    const link = this.activeTab()?.team;
+    const linked = link ? team.dashboards.find((d) => d.id === link.id) : undefined;
+    return {
+      dashboards: team.dashboards.map((d) => ({ id: d.id, name: d.name })),
+      active: linked && link ? { id: linked.id, behind: linked.version > link.version } : null,
+      busy: this.teamBusy,
+    };
+  }
+
+  private openTeamDashboard(id: string): void {
+    const dashboard = this.teamDashboards?.dashboards.find((d) => d.id === id);
+    if (!dashboard || !this.tabsState) return;
+
+    // Already open here: go to that tab rather than stacking copies.
+    const existing = this.tabsState.tabs.find((tab) => tab.team?.id === id);
+    if (existing) {
+      this.switchToTab(existing.id);
+      return;
+    }
+
+    const verdict = this.updateTabCapLock();
+    if (!verdict.allowed) {
+      trackGateHit('dashboard-tab');
+      this.panelTabBar?.showAddLockNotice();
+      return;
+    }
+
+    const built = toTeamDashboardTab(dashboard.layout, this.ctx.panelSettings);
+    this.createAndActivateTab(dashboard.name, {
+      panelSettings: built.panelSettings,
+      panelOrder: built.panelOrder,
+      bottomSet: built.bottomSet,
+      team: { id: dashboard.id, version: dashboard.version },
+    });
+    this.applyTeamPanelSizes(built.sizes);
+    this.applyTeamMap(built.map);
+    showToast(t('teamDashboards.opened', { name: dashboard.name }));
+  }
+
+  private updateActiveTabFromTeam(): void {
+    const tab = this.activeTab();
+    const dashboard = tab?.team && this.teamDashboards?.dashboards.find((d) => d.id === tab.team!.id);
+    if (!tab || !dashboard || !this.tabsState) return;
+
+    const built = toTeamDashboardTab(dashboard.layout, this.ctx.panelSettings);
+    this.applyTabPanelState(built.panelSettings, built.panelOrder, built.bottomSet);
+    this.applyTeamPanelSizes(built.sizes);
+    this.applyTeamMap(built.map);
+    this.snapshotActiveTab();
+    tab.team = { id: dashboard.id, version: dashboard.version };
+    saveTabsState(this.tabsState);
+    this.panelTabBar?.refresh();
+    showToast(t('teamDashboards.updated'));
+  }
+
+  private async shareActiveTabWithTeam(): Promise<void> {
+    const userId = this.teamPrincipal;
+    const tab = this.activeTab();
+    if (!userId || !tab || !this.teamDashboards || this.teamBusy) return;
+
+    const mapState = this.ctx.map?.getState();
+    const layout = captureTeamDashboardLayout({
+      ...this.captureCurrentTabState().snapshot,
+      rowSpans: loadPanelSpans(),
+      colSpans: loadPanelColSpans(),
+      map: this.ctx.map && mapState
+        ? {
+          view: mapState.view,
+          zoom: mapState.zoom,
+          center: this.ctx.map.getCenter(),
+          timeRange: mapState.timeRange,
+          layers: mapState.layers as unknown as Record<string, boolean | undefined>,
+        }
+        : null,
+    });
+    // A link to a dashboard someone has since removed shares as a new one.
+    const linkedId = tab.team && this.teamDashboards.dashboards.some((d) => d.id === tab.team!.id)
+      ? tab.team.id
+      : undefined;
+
+    this.teamBusy = true;
+    this.panelTabBar?.refresh();
+    try {
+      const link = await publishTeamDashboard(userId, { name: tab.name, layout, dashboardId: linkedId });
+      if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
+      tab.team = link;
+      if (this.tabsState) saveTabsState(this.tabsState);
+      showToast(t('teamDashboards.shared', { name: tab.name }));
+      await this.reloadTeamDashboards();
+    } catch (err) {
+      const kind = teamDashboardErrorKind(err);
+      showToast(kind === 'TEAM_DASHBOARD_LIMIT'
+        ? t('teamDashboards.limit', { limit: String((err as { data?: { limit?: number } }).data?.limit ?? 25) })
+        : t('teamDashboards.failed'));
+    } finally {
+      this.teamBusy = false;
+      this.panelTabBar?.refresh();
+    }
+  }
+
+  private async stopSharingTeamDashboard(id: string): Promise<void> {
+    const userId = this.teamPrincipal;
+    const dashboard = this.teamDashboards?.dashboards.find((d) => d.id === id);
+    if (!userId || !dashboard || this.teamBusy) return;
+    if (!window.confirm(t('teamDashboards.confirmStop', { name: dashboard.name }))) return;
+
+    this.teamBusy = true;
+    this.panelTabBar?.refresh();
+    try {
+      await removeTeamDashboard(userId, id);
+      if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
+      // Tabs opened from it keep their panels; they are just no longer linked.
+      let unlinked = false;
+      for (const tab of this.tabsState?.tabs ?? []) {
+        if (tab.team?.id !== id) continue;
+        delete tab.team;
+        unlinked = true;
+      }
+      if (unlinked && this.tabsState) saveTabsState(this.tabsState);
+      showToast(t('teamDashboards.stopped', { name: dashboard.name }));
+      await this.reloadTeamDashboards();
+    } catch {
+      showToast(t('teamDashboards.failed'));
+    } finally {
+      this.teamBusy = false;
+      this.panelTabBar?.refresh();
+    }
+  }
+
+  /**
+   * Panel sizes are kept per panel, not per tab, so a shared layout's sizes
+   * become this browser's sizes for those panels. Mounted panels resize now;
+   * the rest read the saved size when they mount.
+   */
+  private applyTeamPanelSizes(sizes: readonly PanelSize[]): void {
+    for (const { key, rows, cols } of sizes) {
+      const panel = this.ctx.panels[key] as Panel | undefined;
+      if (panel && typeof panel.applySharedSize === 'function') {
+        panel.applySharedSize(rows, cols);
+        continue;
+      }
+      if (rows === undefined) clearPanelSpanEntry(key);
+      else savePanelSpan(key, rows);
+      if (cols === undefined) clearPanelColSpanEntry(key);
+      else savePanelColSpan(key, cols);
+    }
+  }
+
+  /** Same order and safeguards as a shared link's map state (applyInitialUrlState). */
+  private applyTeamMap(map: TeamDashboardMap | null): void {
+    if (!map || !this.ctx.map) return;
+    this.ctx.map.setView(map.view as import('@/components/MapContainer').MapView, map.zoom);
+    this.ctx.map.setTimeRange(map.timeRange);
+
+    const requested = new Set(map.layers);
+    const next = { ...this.ctx.mapLayers };
+    for (const layer of Object.keys(LAYER_REGISTRY) as Array<keyof MapLayers>) {
+      next[layer] = requested.has(layer);
+    }
+    let normalized = normalizeExclusiveChoropleths(next, this.ctx.mapLayers);
+    if (normalized.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+      normalized = { ...normalized, resilienceScore: false };
+    }
+    if (shouldSanitizeLockedLayers(
+      hasPremiumAccess(getAuthState()),
+      isProTierResolved(),
+      this.callbacks.isFreeTierFallbackActive?.() === true,
+    )) {
+      normalized = sanitizeLockedLayers(normalized, false);
+    }
+    const previous = { ...this.ctx.mapLayers };
+    this.ctx.mapLayers = normalized;
+    this.ctx.map.setLayers(normalized);
+    // Opening a team dashboard is the user's choice, so its layers persist
+    // and load their data like a toggle would.
+    saveToStorage(STORAGE_KEYS.mapLayers, normalized);
+    for (const layer of Object.keys(normalized) as Array<keyof MapLayers>) {
+      if (!!previous[layer] !== !!normalized[layer]) {
+        this.callbacks.applyMapLayerChange?.(layer, !!normalized[layer], 'programmatic');
+      }
+    }
+    this.ctx.map.setCenter(map.lat, map.lon, map.zoom);
   }
 
   /**
@@ -1956,12 +2216,15 @@ export class PanelLayoutManager implements AppModule {
     }));
   }
 
-  private createAndActivateTab(name: string): { tab: PanelTab; persisted: boolean } {
+  private createAndActivateTab(
+    name: string,
+    preset?: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet' | 'team'>,
+  ): { tab: PanelTab; persisted: boolean } {
     if (!this.tabsState) {
       throw new Error('Dashboard tabs are not available.');
     }
     this.snapshotActiveTab();
-    const defaults = buildNewTabPanels(this.ctx.panelSettings);
+    const defaults = preset ?? buildNewTabPanels(this.ctx.panelSettings);
     const tab: PanelTab = {
       id: generateTabId(),
       name,
@@ -1973,7 +2236,8 @@ export class PanelLayoutManager implements AppModule {
         ? enforceFreePanelLimit(defaults.panelSettings, isProUser())
         : defaults.panelSettings,
       panelOrder: defaults.panelOrder,
-      bottomSet: [],
+      bottomSet: preset?.bottomSet ?? [],
+      ...(preset?.team ? { team: preset.team } : {}),
     };
     this.tabsState.tabs.push(tab);
     this.tabsState.activeTabId = tab.id;

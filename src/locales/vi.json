@@ -4489,7 +4489,9 @@
     "newTabOptionsHint": "Các tab bạn đã có sẵn sẽ không thay đổi.",
     "useThisTabPanels": "Sử dụng các bảng điều khiển của tab này",
     "useDefaultPanels": "Sử dụng các bảng điều khiển mặc định",
-    "newTabPanelsNotSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web."
+    "newTabPanelsNotSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web.",
+    "team": "Nhóm",
+    "teamDashboards": "Dashboard của nhóm"
   },
   "theaterPresets": {
     "label": "Gói phủ khu vực",
@@ -4861,5 +4863,22 @@
     "close": "Đóng",
     "alertsHint": "Cài đặt World Monitor vào Màn hình chính để nhận cảnh báo trên iPhone hoặc iPad này.",
     "how": "Cách cài đặt"
+  },
+  "teamDashboards": {
+    "desc": "Dashboard mà nhóm của bạn chia sẻ. Mở một dashboard để thêm nó làm tab mới.",
+    "empty": "Nhóm của bạn chưa chia sẻ dashboard nào. Chia sẻ tab này để mọi người trong nhóm có thể xem các panel, kích thước và bản đồ của nó.",
+    "open": "Mở {{name}} làm tab mới",
+    "stopSharing": "Dừng chia sẻ {{name}}",
+    "confirmStop": "Dừng chia sẻ {{name}} với nhóm của bạn? Các tab mà mọi người đã mở từ nó sẽ giữ nguyên.",
+    "shareTab": "Chia sẻ tab này với nhóm của bạn",
+    "shareChanges": "Chia sẻ các thay đổi của tab này với nhóm của bạn",
+    "behind": "Nhóm của bạn đã thay đổi dashboard này sau khi bạn mở nó.",
+    "getLatest": "Lấy phiên bản mới nhất",
+    "opened": "Đã mở {{name}} từ nhóm của bạn.",
+    "shared": "Đã chia sẻ {{name}} với nhóm của bạn.",
+    "updated": "Tab này hiện có phiên bản mới nhất của nhóm của bạn.",
+    "stopped": "Đã dừng chia sẻ {{name}}.",
+    "failed": "Không thể kết nối tới dashboard của nhóm. Vui lòng thử lại.",
+    "limit": "Nhóm của bạn đã chia sẻ {{limit}} dashboard ở đây. Hãy dừng chia sẻ một dashboard trước."
   }
 }

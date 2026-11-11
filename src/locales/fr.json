@@ -4533,7 +4533,9 @@
     "newTabOptionsHint": "Les onglets que vous avez déjà ne changent pas.",
     "useThisTabPanels": "Utiliser les panneaux de cet onglet",
     "useDefaultPanels": "Utiliser les panneaux par défaut",
-    "newTabPanelsNotSaved": "Impossible d'enregistrer. Ce navigateur bloque le stockage des données du site."
+    "newTabPanelsNotSaved": "Impossible d'enregistrer. Ce navigateur bloque le stockage des données du site.",
+    "team": "Équipe",
+    "teamDashboards": "Dashboards d'équipe"
   },
   "theaterPresets": {
     "label": "Packs de couverture",
@@ -4905,5 +4907,22 @@
     "close": "Fermer",
     "alertsHint": "Installez World Monitor sur votre écran d'accueil pour recevoir des alertes sur cet iPhone ou iPad.",
     "how": "Comment installer"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards partagés par votre équipe. Ouvrez-en un pour l'ajouter comme nouvel onglet.",
+    "empty": "Votre équipe n'a pas encore partagé de dashboard. Partagez cet onglet pour donner à toute votre équipe ses panneaux, ses tailles et sa carte.",
+    "open": "Ouvrir {{name}} dans un nouvel onglet",
+    "stopSharing": "Arrêter le partage de {{name}}",
+    "confirmStop": "Arrêter le partage de {{name}} avec votre équipe ? Les onglets déjà ouverts à partir de ce dashboard restent tels quels.",
+    "shareTab": "Partager cet onglet avec votre équipe",
+    "shareChanges": "Partager les modifications de cet onglet avec votre équipe",
+    "behind": "Votre équipe a modifié ce dashboard depuis que vous l'avez ouvert.",
+    "getLatest": "Obtenir la dernière version",
+    "opened": "{{name}} ouvert depuis votre équipe.",
+    "shared": "{{name}} partagé avec votre équipe.",
+    "updated": "Cet onglet a maintenant la dernière version de votre équipe.",
+    "stopped": "Partage de {{name}} arrêté.",
+    "failed": "Impossible de se connecter aux dashboards de votre équipe. Réessayez.",
+    "limit": "Votre équipe partage déjà {{limit}} dashboards ici. Arrêtez d'abord d'en partager un."
   }
 }

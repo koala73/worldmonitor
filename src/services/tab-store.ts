@@ -19,6 +19,12 @@ export interface PanelTab {
   panelSettings: Record<string, PanelConfig>;
   panelOrder: string[];
   bottomSet: string[];
+  /**
+   * Set when the tab was opened from, or shared as, a team dashboard
+   * (src/services/team-dashboards.ts): that dashboard's id and the version
+   * this tab holds.
+   */
+  team?: { id: string; version: number };
 }
 
 export interface TabsState {
@@ -63,6 +69,14 @@ export function normalizeTabsState(parsed: unknown): TabsState | null {
     && !!t.panelSettings && typeof t.panelSettings === 'object'
     && Array.isArray(t.panelOrder) && Array.isArray(t.bottomSet));
   if (tabs.length === 0) return null;
+  for (const tab of tabs) {
+    const team = tab.team as unknown;
+    if (team === undefined) continue;
+    const ok = !!team && typeof team === 'object'
+      && typeof (team as { id?: unknown }).id === 'string'
+      && Number.isInteger((team as { version?: unknown }).version);
+    if (!ok) delete tab.team;
+  }
   const activeTabId = tabs.some((t) => t.id === candidate.activeTabId)
     ? candidate.activeTabId
     : tabs[0]!.id;
@@ -93,7 +107,7 @@ export function saveTabsState(state: TabsState): TabsPersistReceipt {
   }
 }
 
-type TabPanels = Pick<PanelTab, 'panelSettings' | 'panelOrder'>;
+export type TabPanels = Pick<PanelTab, 'panelSettings' | 'panelOrder'>;
 
 const hasOwn = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
 
@@ -187,9 +201,21 @@ export function clearNewTabPanels(): void {
  * key cannot take a free-cap slot.
  */
 export function buildNewTabPanels(currentPanelSettings: Record<string, PanelConfig>): TabPanels {
+  return overlayPanelChoices(currentPanelSettings, loadNewTabPanels() ?? []);
+}
+
+/**
+ * The variant's default panels (dynamic panels keep their live config) with a
+ * list of panel choices laid over them, in the list's order. Shared by saved
+ * new-tab panels and team dashboards.
+ */
+export function overlayPanelChoices(
+  currentPanelSettings: Record<string, PanelConfig>,
+  choices: readonly NewTabPanelChoice[],
+): TabPanels {
   const base = resetMissionPresetState(currentPanelSettings);
   const order: string[] = [];
-  for (const { key, on } of loadNewTabPanels() ?? []) {
+  for (const { key, on } of choices) {
     // Own-property checks: a stored or imported key such as `__proto__` or
     // `constructor` reads an inherited member through a plain lookup.
     if (!hasOwn(base.panelSettings, key) || !(hasOwn(ALL_PANELS, key) || isDynamicPanel(key))) continue;

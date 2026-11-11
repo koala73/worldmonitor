@@ -4533,7 +4533,9 @@
     "newTabOptionsHint": "Le schede che hai già non cambiano.",
     "useThisTabPanels": "Usa i pannelli di questa scheda",
     "useDefaultPanels": "Usa i pannelli predefiniti",
-    "newTabPanelsNotSaved": "Impossibile salvare. Questo browser blocca l'archiviazione del sito."
+    "newTabPanelsNotSaved": "Impossibile salvare. Questo browser blocca l'archiviazione del sito.",
+    "team": "Team",
+    "teamDashboards": "Dashboard del team"
   },
   "theaterPresets": {
     "label": "Preset di copertura",
@@ -4905,5 +4907,22 @@
     "close": "Chiudi",
     "alertsHint": "Installa World Monitor sulla schermata Home per ricevere avvisi su questo iPhone o iPad.",
     "how": "Come installare"
+  },
+  "teamDashboards": {
+    "desc": "Dashboard che il tuo team condivide. Aprine uno per aggiungerlo come nuova scheda.",
+    "empty": "Il tuo team non ha ancora condiviso nessun dashboard. Condividi questa scheda per dare a tutti nel team i suoi pannelli, dimensioni e mappa.",
+    "open": "Apri {{name}} come nuova scheda",
+    "stopSharing": "Interrompi la condivisione di {{name}}",
+    "confirmStop": "Interrompere la condivisione di {{name}} con il tuo team? Le schede che le persone hanno già aperto rimangono come sono.",
+    "shareTab": "Condividi questa scheda con il tuo team",
+    "shareChanges": "Condividi i cambiamenti di questa scheda con il tuo team",
+    "behind": "Il tuo team ha modificato questo dashboard dopo che l'hai aperto.",
+    "getLatest": "Ottieni la versione più recente",
+    "opened": "Aperto {{name}} dal tuo team.",
+    "shared": "Condiviso {{name}} con il tuo team.",
+    "updated": "Questa scheda ora ha la versione più recente del tuo team.",
+    "stopped": "Interrotta la condivisione di {{name}}.",
+    "failed": "Impossibile raggiungere i dashboard del tuo team. Riprova.",
+    "limit": "Il tuo team condivide già {{limit}} dashboard qui. Interrompi la condivisione di uno prima."
   }
 }

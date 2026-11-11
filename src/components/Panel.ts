@@ -1748,6 +1748,27 @@ export class Panel {
     this.syncKeyboardColResizeAria();
   }
 
+  /**
+   * Take the size a shared layout gives this panel: a span sets it the way a
+   * resize would, and no span puts the panel back to its natural size.
+   */
+  public applySharedSize(rows: number | undefined, cols: number | undefined): void {
+    if (rows === undefined) {
+      this.resetHeight();
+    } else {
+      setSpanClass(this.element, rows);
+      savePanelSpan(this.panelId, rows);
+      this.syncKeyboardRowResizeAria();
+    }
+    if (cols === undefined) {
+      this.resetWidth();
+    } else {
+      setColSpanClass(this.element, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      savePanelColSpan(this.panelId, clampColSpan(cols, MAX_PANEL_COL_SPAN));
+      this.syncKeyboardColResizeAria();
+    }
+  }
+
   protected get signal(): AbortSignal {
     return this.abortController.signal;
   }

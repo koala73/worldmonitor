@@ -939,7 +939,9 @@
     "renameHint": "{{name}} — double-click to rename",
     "deleteTab": "Delete tab",
     "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "tabNameAria": "Tab name",
+    "team": "Team",
+    "teamDashboards": "Team dashboards"
   },
   "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
   "countryHistory":{"title":"Daily country history"}

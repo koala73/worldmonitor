@@ -4533,7 +4533,9 @@
     "newTabOptionsHint": "Filele pe care le ai deja nu se schimbă.",
     "useThisTabPanels": "Folosiți panourile acestei file",
     "useDefaultPanels": "Folosiți panourile implicite",
-    "newTabPanelsNotSaved": "Nu s-a putut salva. Acest browser blochează stocarea pentru site."
+    "newTabPanelsNotSaved": "Nu s-a putut salva. Acest browser blochează stocarea pentru site.",
+    "team": "Echipă",
+    "teamDashboards": "Dashboard-uri de echipă"
   },
   "theaterPresets": {
     "label": "Preseturi de acoperire",
@@ -4905,5 +4907,22 @@
     "close": "Închide",
     "alertsHint": "Instalează World Monitor pe ecranul principal pentru a primi alerte pe acest iPhone sau iPad.",
     "how": "Cum se instalează"
+  },
+  "teamDashboards": {
+    "desc": "Dashboard-uri pe care echipa ta le partajează. Deschide unul pentru a-l adăuga ca o nouă filă.",
+    "empty": "Echipa ta nu a partajat încă niciun dashboard. Partajează această filă pentru a da tuturor din echipă panourile, dimensiunile și harta acesteia.",
+    "open": "Deschide {{name}} ca o nouă filă",
+    "stopSharing": "Oprește partajarea {{name}}",
+    "confirmStop": "Oprești partajarea {{name}} cu echipa ta? Filele pe care le-au deschis deja nu se vor schimba.",
+    "shareTab": "Partajează această filă cu echipa ta",
+    "behind": "Echipa ta a modificat acest dashboard după ce l-ai deschis.",
+    "getLatest": "Obține versiunea cea mai recentă",
+    "opened": "{{name}} deschis din echipa ta.",
+    "shared": "{{name}} partajat cu echipa ta.",
+    "updated": "Această filă are acum versiunea cea mai recentă a echipei tale.",
+    "stopped": "Partajarea {{name}} oprit.",
+    "failed": "Nu s-a putut contacta dashboard-urile echipei tale. Încearcă din nou.",
+    "limit": "Echipa ta partajează deja {{limit}} dashboard-uri aici. Oprește partajarea unuia mai întâi.",
+    "shareChanges": "Partajează modificările acestei file cu echipa ta"
   }
 }

@@ -4511,7 +4511,9 @@
     "newTabOptionsHint": "Bereits vorhandene Tabs ändern sich nicht.",
     "useThisTabPanels": "Panels dieses Tabs verwenden",
     "useDefaultPanels": "Standard-Panels verwenden",
-    "newTabPanelsNotSaved": "Speichern fehlgeschlagen. Dieser Browser blockiert Website-Speicherung."
+    "newTabPanelsNotSaved": "Speichern fehlgeschlagen. Dieser Browser blockiert Website-Speicherung.",
+    "team": "Team",
+    "teamDashboards": "Team-Dashboards"
   },
   "theaterPresets": {
     "label": "Abdeckungs-Voreinstellungen",
@@ -4883,5 +4885,22 @@
     "close": "Schließen",
     "alertsHint": "Installieren Sie World Monitor auf dem Home-Bildschirm, um auf diesem iPhone oder iPad Warnungen zu erhalten.",
     "how": "Installationsanleitung"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards, die dein Team teilt. Öffne eines, um es als neuen Tab hinzuzufügen.",
+    "empty": "Dein Team hat noch kein Dashboard geteilt. Teile diesen Tab, um alle Panels, Größen und die Karte mit deinem Team zu teilen.",
+    "open": "{{name}} als neuen Tab öffnen",
+    "stopSharing": "Sharing von {{name}} beenden",
+    "confirmStop": "Sharing von {{name}} mit deinem Team beenden? Tabs, die Personen bereits geöffnet haben, bleiben unverändert.",
+    "shareTab": "Diesen Tab mit deinem Team teilen",
+    "shareChanges": "Änderungen an diesem Tab mit deinem Team teilen",
+    "behind": "Dein Team hat dieses Dashboard nach dem Öffnen geändert.",
+    "getLatest": "Aktuelle Version abrufen",
+    "opened": "{{name}} von deinem Team geöffnet.",
+    "shared": "{{name}} mit deinem Team geteilt.",
+    "updated": "Dieser Tab hat jetzt die aktuelle Version deines Teams.",
+    "stopped": "Sharing von {{name}} beendet.",
+    "failed": "Konnte Team-Dashboards nicht erreichen. Versuche es erneut.",
+    "limit": "Dein Team teilt bereits {{limit}} Dashboards. Beende das Sharing von einem zuerst."
   }
 }

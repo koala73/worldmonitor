@@ -4533,7 +4533,9 @@
     "newTabOptionsHint": "Las pestañas que ya tienes no cambian.",
     "useThisTabPanels": "Usa los paneles de esta pestaña",
     "useDefaultPanels": "Usa los paneles predeterminados",
-    "newTabPanelsNotSaved": "No se pudo guardar. Este navegador está bloqueando el almacenamiento del sitio."
+    "newTabPanelsNotSaved": "No se pudo guardar. Este navegador está bloqueando el almacenamiento del sitio.",
+    "team": "Equipo",
+    "teamDashboards": "Dashboards del equipo"
   },
   "theaterPresets": {
     "label": "Paquetes de cobertura",
@@ -4905,5 +4907,22 @@
     "close": "Cerrar",
     "alertsHint": "Instala World Monitor en tu pantalla de inicio para recibir alertas en este iPhone o iPad.",
     "how": "Cómo instalar"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards que comparte tu equipo. Abre uno para agregarlo como una nueva pestaña.",
+    "empty": "Tu equipo aún no ha compartido ningún dashboard. Comparte esta pestaña para darle a todos en tu equipo sus paneles, tamaños y mapa.",
+    "open": "Abrir {{name}} como una nueva pestaña",
+    "stopSharing": "Dejar de compartir {{name}}",
+    "confirmStop": "¿Dejar de compartir {{name}} con tu equipo? Las pestañas que las personas ya abrieron desde él permanecerán como están.",
+    "shareTab": "Compartir esta pestaña con tu equipo",
+    "shareChanges": "Compartir los cambios de esta pestaña con tu equipo",
+    "behind": "Tu equipo cambió este dashboard después de que lo abriste.",
+    "getLatest": "Obtener la versión más reciente",
+    "opened": "Se abrió {{name}} desde tu equipo.",
+    "shared": "Se compartió {{name}} con tu equipo.",
+    "updated": "Esta pestaña ahora tiene la versión más reciente de tu equipo.",
+    "stopped": "Se dejó de compartir {{name}}.",
+    "failed": "No se pudo acceder a los dashboards de tu equipo. Intenta de nuevo.",
+    "limit": "Tu equipo ya comparte {{limit}} dashboards aquí. Deja de compartir uno primero."
   }
 }
