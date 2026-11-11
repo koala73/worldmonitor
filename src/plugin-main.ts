@@ -85,6 +85,7 @@ function mountPlugin(): void {
   let mounted = false;
   let queuedResult: { params: unknown } | undefined;
   let digestReloadAttempted = false;
+  let openingResultSeen = false;
   let resolveMounted!: () => void;
   let rejectMounted!: (error: unknown) => void;
   const whenMounted = new Promise<void>((resolve, reject) => { resolveMounted = resolve; rejectMounted = reject; });
@@ -109,7 +110,7 @@ function mountPlugin(): void {
     return { summary: data.summary, model: data.model ?? '' };
   }
 
-  async function renderResult(result: unknown, keepCurrentView = false): Promise<boolean> {
+  async function renderResult(result: unknown, keepCurrentView = false, openingResult = false): Promise<boolean> {
     const inputView = keepCurrentView ? undefined : hostView;
     const inputBilling = hostBilling;
     if (!keepCurrentView) { hostView = undefined; hostBilling = { refresh: false }; }
@@ -123,7 +124,8 @@ function mountPlugin(): void {
     const data = hasCategories(response.structuredContent) ? response.structuredContent : digestFromText(response.content);
     if (!data) {
       // Hosts may hand the view a file pointer in place of a large result; the view's own call returns it in full.
-      if (!keepCurrentView) return reloadDigest(inputView, inputBilling);
+      // Only the opening result is the dashboard's: later host results can echo the view's own tool calls.
+      if (openingResult) return reloadDigest(inputView, inputBilling);
       status.textContent = 'News data is unavailable. Previously loaded news remains visible.';
       return false;
     }
@@ -182,7 +184,7 @@ function mountPlugin(): void {
     if (generation !== renderGeneration) return false;
     hostView = inputView;
     hostBilling = billing;
-    return renderResult(result);
+    return renderResult(result, false, true);
   }
 
   function showUsage(): void {
@@ -506,7 +508,9 @@ function mountPlugin(): void {
   }
 
   function renderHostResult(params: unknown): void {
-    void renderResult(params).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
+    const openingResult = !openingResultSeen;
+    openingResultSeen = true;
+    void renderResult(params, false, openingResult).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
   }
 
   function reportSize(): void {

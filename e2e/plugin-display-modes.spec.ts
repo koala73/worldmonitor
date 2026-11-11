@@ -247,6 +247,20 @@ test.describe('digest the host did not deliver', () => {
     expect(host.viewCalls).toEqual([{ name: 'open_news_dashboard', arguments: { country: 'JP' } }]);
   });
 
+  test('a later host result without a digest, such as the echo of an in-view analysis call, starts no reload', async ({ page }) => {
+    const host = await installHost(page);
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+    // The MCP Apps interactive phase lets a host echo a view-initiated call's input and result as notifications.
+    await page.evaluate(() => {
+      const frame = document.querySelector('iframe')!.contentWindow!;
+      frame.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { headlines: ['Controlled earthquake report in Japan'], mode: 'brief' } } }, '*');
+      frame.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: { structuredContent: { summary: 'Fixture summary', model: 'fixture' }, content: [{ type: 'text', text: 'Fixture summary' }] } }, '*');
+    });
+    await page.waitForTimeout(500);
+    expect(host.viewCalls).toEqual([]);
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+  });
+
   test('a refreshed open is reloaded with its request_id so the server reuses that request', async ({ page }) => {
     const host = await installHost(page, { initialResult: 'pointer', initialView: { country: 'JP', refresh: true, request_id: REFRESH_ID } });
     await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
