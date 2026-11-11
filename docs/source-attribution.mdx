@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **866 active source hosts** representing **846 active providers** (**380 structured/API**, **470 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **870 active source hosts** representing **848 active providers** (**384 structured/API**, **470 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -487,6 +487,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | n1ctsota.akamaized.net (n1ctsota.akamaized.net) | feed — src/config/live-video-sources.ts |
 | n1info.hr (n1info.hr) | feed — shared/news-catalog.json |
 | Naharnet Lebanon (www.naharnet.com) | feed — shared/news-catalog.json |
+| NASA Earthdata CMR (cmr.earthdata.nasa.gov) | structured — scripts/_reservoir-levels.mjs |
 | NASA FIRMS (firms.modaps.eosdis.nasa.gov) | structured — scripts/wildfire/firms-area.mjs |
 | NASA FIRMS (firms2.modaps.eosdis.nasa.gov) | Excluded / candidate — No current fetch observed |
 | nasstatus.faa.gov (nasstatus.faa.gov) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/_shared.ts |
@@ -513,6 +514,7 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | npa.gov.gh (npa.gov.gh) | structured — scripts/shared/regional-energy-feeds.json |
 | nrk-nrk1.akamaized.net (nrk-nrk1.akamaized.net) | feed — src/config/live-video-sources.ts |
 | NSIDC (noaadata.apps.nsidc.org) | structured — scripts/seed-climate-ocean-ice.mjs |
+| NSIDC (nsidc.org) | structured — scripts/seed-reservoir-levels.mjs |
 | nti.org (nti.org) | feed — shared/news-catalog.json |
 | NVD (NIST) (nvd.nist.gov) | structured — scripts/seed-cve-reference.mjs |
 | NVD (NIST) (services.nvd.nist.gov) | structured — scripts/seed-cve-reference.mjs |
@@ -650,6 +652,8 @@ This generated inventory covers **866 active source hosts** representing **846 a
 | Sky News (news.sky.com) | feed — shared/news-catalog.json |
 | slack-status.com (slack-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | slack.com (slack.com) | structured — api/channel-oauth-bind.ts, api/slack/oauth/callback.ts, api/slack/oauth/start.ts |
+| SlideRule Earth (sliderule.slideruleearth.io) | structured — scripts/_reservoir-levels.mjs |
+| SlideRule Earth (slideruleearth.io) | structured — scripts/seed-reservoir-levels.mjs |
 | slidstvo.info (slidstvo.info) | feed — shared/news-catalog.json |
 | spglobal.com (spglobal.com) | feed — shared/news-catalog.json |
 | ssl.bing.com (ssl.bing.com) | structured — scripts/seo-bing-collect.mjs |
