@@ -1685,7 +1685,7 @@
       "estimateWithin": "Unas {{count}} personas en un radio de {{km}} km",
       "method": "Las estimaciones se basan en la densidad media de población del país.",
       "empty": "No hay ubicaciones de eventos que cumplan los criterios",
-      "infoTooltip": "Se muestran eventos con datos de densidad de población del país. Las ubicaciones de datos antiguos sin información de precisión se marcan como pendientes de actualización. Las áreas estimadas pueden superponerse.",
+      "infoTooltip": "Se muestran eventos con datos de densidad de población del país. Las ubicaciones de datos antiguos sin información de precisión se marcan como pendientes de actualización. Las áreas estimadas pueden superponerse. Los disturbios requieren una ubicación precisa; se excluyen los eventos UCDP marcados como imprecisos. Un lugar registrado por dos fuentes (disturbios y UCDP) aparece en dos filas.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventos",
       "eventCount_other": "{{count}} eventos",

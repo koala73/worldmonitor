@@ -22,7 +22,7 @@ const SPARKLINE_HISTORY_QUERY = '?range=3d&interval=5m';
 const SPARKLINE_HISTORY_RETRY_SECONDS = 15 * 60;
 
 const SPIKE_MAD_MULTIPLE = 10;
-const SPIKE_MIN_MOVE = 0.002;
+const SPIKE_CHANGE_MULTIPLE = 6;
 const SPIKE_MAD_RADIUS = 30;
 // Thin contracts skip minutes all the time; a trading gap is a closed market.
 const TRADING_GAP_SECONDS = 15 * 60;
@@ -54,36 +54,59 @@ function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-// A bad tick jumps away from both neighbours in the same direction, and the
-// next print returns to where the previous one was. A move that holds is kept,
-// and so is a print with a trading gap on one side only, such as a session
-// open. A print with a gap on both sides is a thin contract's lone print, and
-// it is tested against the prints across the gaps: CT=F printed 82.37 with no
-// volume between 78.76 and 78.39, three hours either side.
+/**
+ * Remove locally anomalous, bounded reversals from timestamped quote bars.
+ * Keep sustained moves, session opens, and sparse pairs that do not cluster.
+ * Sparse two-print neighborhoods are decided before singleton removal so a
+ * broad reversal cannot be erased by chaining two singleton decisions.
+ * @param {{t: number, v: number}[]} bars Quote bars in provider order.
+ * @returns {{t: number, v: number}[]} Retained bars, including both endpoints.
+ */
 function dropSingleTickSpikes(bars) {
   if (bars.length < 3) return bars;
   const diffs = bars.slice(1).map((bar, i) => bar.v - bars[i].v);
   const kept = [bars[0]];
   for (let i = 1; i < bars.length - 1; i += 1) {
-    const prev = bars[i - 1];
-    const cur = bars[i];
-    const next = bars[i + 1];
-    const gapBefore = cur.t - prev.t > TRADING_GAP_SECONDS;
-    const gapAfter = next.t - cur.t > TRADING_GAP_SECONDS;
-    if (gapBefore !== gapAfter) {
-      kept.push(cur);
-      continue;
+    const prev = kept.at(-1);
+    let consumed = 0;
+    for (const length of [2, 1]) {
+      const next = bars[i + length];
+      if (!next) continue;
+      const island = bars.slice(i, i + length);
+      const gapBefore = island[0].t - prev.t > TRADING_GAP_SECONDS;
+      const gapAfter = next.t - island.at(-1).t > TRADING_GAP_SECONDS;
+      if (gapBefore !== gapAfter) continue;
+      // Dense adjacent closes confirm a move. Only sparse contracts admit a
+      // two-print island, with trading gaps on both sides and between prints.
+      if (length === 2 && (!gapBefore || island[1].t - island[0].t <= TRADING_GAP_SECONDS)) continue;
+      const window = diffs.slice(Math.max(0, i - SPIKE_MAD_RADIUS), i - 1)
+        .concat(diffs.slice(i + length, i + length + SPIKE_MAD_RADIUS));
+      // Without independent changes, a short tape cannot distinguish a
+      // genuine reversal from noise. Keep it until volatility is measurable.
+      if (window.length < 3) continue;
+      const center = median(window);
+      const mad = median(window.map((d) => Math.abs(d - center)));
+      // Calibrate to this symbol's local tape, excluding the candidate's
+      // entry/exit moves. Flat tapes need only a floating-point noise floor.
+      const threshold = Math.max(SPIKE_MAD_MULTIPLE * mad,
+        SPIKE_CHANGE_MULTIPLE * median(window.map(Math.abs)),
+        Number.EPSILON * Math.max(1, Math.abs(prev.v)) * 32);
+      const direction = Math.sign(island[0].v - prev.v);
+      const departure = Math.min(...island.flatMap((bar) => [Math.abs(bar.v - prev.v), Math.abs(bar.v - next.v)]));
+      const spike = island.every((bar) => Math.sign(bar.v - prev.v) === direction && Math.sign(bar.v - next.v) === direction)
+        && departure > threshold
+        && Math.abs(next.v - prev.v) < departure;
+      if (spike) {
+        const clustered = Math.max(...island.map((bar) => bar.v)) - Math.min(...island.map((bar) => bar.v)) < departure / 2;
+        // A broad two-print reversal is evidence of movement, not an island.
+        // Consume both prints so a later singleton cannot erase the second.
+        if (!clustered) kept.push(...island);
+        consumed = length;
+        break;
+      }
     }
-    const up = cur.v - prev.v;
-    const down = cur.v - next.v;
-    const window = diffs.slice(Math.max(0, i - SPIKE_MAD_RADIUS), i + SPIKE_MAD_RADIUS);
-    const center = median(window);
-    const mad = median(window.map((d) => Math.abs(d - center)));
-    const threshold = Math.max(SPIKE_MAD_MULTIPLE * mad, SPIKE_MIN_MOVE * Math.abs(prev.v));
-    const spike = Math.sign(up) === Math.sign(down)
-      && Math.min(Math.abs(up), Math.abs(down)) > threshold
-      && Math.abs(next.v - prev.v) < Math.min(Math.abs(up), Math.abs(down)) / 2;
-    if (!spike) kept.push(cur);
+    if (consumed) i += consumed - 1;
+    else kept.push(bars[i]);
   }
   kept.push(bars[bars.length - 1]);
   return kept;
@@ -102,17 +125,19 @@ function buildQuoteSparkline(chart, history) {
   if (bars.length === 0) return { sparkline: [] };
 
   const closes = new Map();
-  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar.v);
+  // Keep the closing print's actual time for trading-gap decisions. Rounding
+  // a 16-minute gap to 15 minutes must not change a sparse pair's treatment.
+  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar);
   // A bad print that follows a smaller bad print passes the first pass, then
   // becomes its bucket's close: USDTRY read 50.207, 50.113, 50.207 on a 50.229
   // tape. The filter runs again on the closes, before the window is cut, so
   // the window's first close is tested against the close before it.
-  const points = dropSingleTickSpikes([...closes].map(([t, v]) => ({ t, v })).sort((a, b) => a.t - b.t))
+  const points = dropSingleTickSpikes([...closes.values()].sort((a, b) => a.t - b.t))
     .slice(-SPARKLINE_POINTS);
   return {
     sparkline: points.map((point) => point.v),
     sparklineIntervalSeconds: SPARKLINE_INTERVAL_SECONDS,
-    sparklineStartAt: points[0].t * 1000,
+    sparklineStartAt: Math.floor(points[0].t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS * 1000,
   };
 }
 

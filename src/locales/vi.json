@@ -1668,7 +1668,7 @@
       "estimateWithin": "Khoảng {{count}} người trong bán kính {{km}} km",
       "method": "Ước tính dựa trên mật độ dân số trung bình của quốc gia.",
       "empty": "Không có địa điểm sự kiện đủ điều kiện",
-      "infoTooltip": "Hiển thị các sự kiện có dữ liệu mật độ dân số quốc gia. Các vị trí từ dữ liệu cũ không có thông tin độ chính xác được đánh dấu đang chờ cập nhật. Các khu vực ước tính có thể chồng lấn.",
+      "infoTooltip": "Hiển thị các sự kiện có dữ liệu mật độ dân số quốc gia. Các vị trí từ dữ liệu cũ không có thông tin độ chính xác được đánh dấu đang chờ cập nhật. Các khu vực ước tính có thể chồng lấn. Các sự kiện bất ổn cần vị trí chính xác; sự kiện UCDP được đánh dấu không chính xác bị loại trừ. Một địa điểm từ hai nguồn (bất ổn và UCDP) hiển thị thành hai hàng.",
       "eventCount_other": "{{count}} sự kiện",
       "locationPending": "Độ chính xác vị trí đang chờ cập nhật",
       "unrestCoverage": "Phạm vi dữ liệu bất ổn",

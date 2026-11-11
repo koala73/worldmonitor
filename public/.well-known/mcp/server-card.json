@@ -5,13 +5,13 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.50.0",
+  "version": "1.51.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
     "title": "WorldMonitor",
-    "version": "1.50.0",
+    "version": "1.51.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app",
@@ -783,7 +783,7 @@
       "description": "Open the embedded WorldMonitor news and map dashboard and return the full feed digest (categories with items, publication dates, source provenance, coordinates, feedStatuses, coverage) plus requestedView. The view arguments (query, source, category, country, time_range, renderer, map_layers, map center and zoom) configure the rendered instance; requestedView echoes what was requested, not an already-open map's applied state, and empty arguments open the default dashboard. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one dashboard request covers the news load and bounded map snapshot loads, repeat opens reuse it for at least five minutes, and refresh with request_id starts one new request. Read-only; up to 1 MB of digest.",
       "_meta": {
         "ui": {
-          "resourceUri": "ui://worldmonitor/news-dashboard-v3.html"
+          "resourceUri": "ui://worldmonitor/news-dashboard-v4.html"
         },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "meta"
@@ -842,7 +842,7 @@
       "description": "Open the interactive WorldMonitor country brief for one country and return {countryCode, topic, panelRequest}; the host renders the embedded view, which then loads its assessment, source evidence, resilience, security, economy, resources and society sections progressively over the authenticated connection. The tool itself returns only the resolved country and topic: no assessment text, scores or section data reach the caller. topic (default overview) selects which section group the view opens on. Requires a paid plan; weight 2 on API plans. On dedicated paid plans one country request covers the view's internal section loads, same-country opens reuse it for five minutes, and refresh with request_id starts a new request. Read-only.",
       "_meta": {
         "ui": {
-          "resourceUri": "ui://worldmonitor/country-view-v3.html"
+          "resourceUri": "ui://worldmonitor/country-view-v4.html"
         },
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
@@ -1011,10 +1011,10 @@
         "ui://worldmonitor/natural-disasters-v3.html",
         "ui://worldmonitor/prediction-markets-v3.html",
         "ui://worldmonitor/forecasts-v4.html",
-        "ui://worldmonitor/news-dashboard-v3.html",
-        "ui://worldmonitor/country-view-v3.html"
+        "ui://worldmonitor/news-dashboard-v4.html",
+        "ui://worldmonitor/country-view-v4.html"
       ],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk-v3.html, get_world_brief → world-brief-v2.html, get_country_brief → country-brief-v3.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor-v2.html, get_news_intelligence → news-intelligence-v3.html, get_conflict_events → conflict-events-v2.html, get_natural_disasters → natural-disasters-v3.html, get_prediction_markets → prediction-markets-v3.html, get_forecast_predictions → forecasts-v4.html, open_news_dashboard → news-dashboard-v3.html, open_country_brief → country-view-v3.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk-v3.html, get_world_brief → world-brief-v2.html, get_country_brief → country-brief-v3.html, get_market_data → market-radar-v3.html, get_chokepoint_status → chokepoint-monitor-v2.html, get_news_intelligence → news-intelligence-v3.html, get_conflict_events → conflict-events-v2.html, get_natural_disasters → natural-disasters-v3.html, get_prediction_markets → prediction-markets-v3.html, get_forecast_predictions → forecasts-v4.html, open_news_dashboard → news-dashboard-v4.html, open_country_brief → country-view-v4.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {

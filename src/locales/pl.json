@@ -1594,7 +1594,7 @@
       "estimateWithin": "Około {{count}} osób w promieniu {{km}} km",
       "method": "Szacunki opierają się na średniej gęstości zaludnienia kraju.",
       "empty": "Brak lokalizacji zdarzeń spełniających kryteria",
-      "infoTooltip": "Wyświetlane są zdarzenia z danymi o gęstości zaludnienia kraju. Lokalizacje ze starszych danych bez informacji o dokładności są oznaczane jako oczekujące na aktualizację. Szacowane obszary mogą się nakładać.",
+      "infoTooltip": "Wyświetlane są zdarzenia z danymi o gęstości zaludnienia kraju. Lokalizacje ze starszych danych bez informacji o dokładności są oznaczane jako oczekujące na aktualizację. Szacowane obszary mogą się nakładać. Niepokoje wymagają dokładnej lokalizacji; zdarzenia UCDP oznaczone jako niedokładne są pomijane. Jedno miejsce z dwóch źródeł (niepokoje i UCDP) pojawia się w dwóch wierszach.",
       "eventCount_one": "{{count}} zdarzenie",
       "eventCount_few": "{{count}} zdarzenia",
       "eventCount_many": "{{count}} zdarzeń",

@@ -1149,7 +1149,7 @@
       "estimateWithin": "Cerca de {{count}} pessoas num raio de {{km}} km",
       "method": "As estimativas usam a densidade populacional média do país.",
       "empty": "Nenhum local de evento atende aos critérios",
-      "infoTooltip": "São mostrados eventos com dados de densidade populacional do país. Locais de dados antigos sem informações de precisão são marcados como aguardando atualização. As áreas estimadas podem se sobrepor.",
+      "infoTooltip": "São mostrados eventos com dados de densidade populacional do país. Locais de dados antigos sem informações de precisão são marcados como aguardando atualização. As áreas estimadas podem se sobrepor. Os distúrbios exigem uma localização precisa; eventos UCDP marcados como imprecisos são excluídos. Um local relatado por duas fontes (distúrbios e UCDP) aparece em duas linhas.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventos",
       "eventCount_other": "{{count}} eventos",

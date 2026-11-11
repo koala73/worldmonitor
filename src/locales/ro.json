@@ -1676,7 +1676,7 @@
       "estimateWithin": "Aproximativ {{count}} de persoane pe o rază de {{km}} km",
       "method": "Estimările se bazează pe densitatea medie a populației din țară.",
       "empty": "Nicio locație de eveniment eligibilă",
-      "infoTooltip": "Sunt afișate evenimentele cu date despre densitatea populației țării. Locațiile din date mai vechi fără informații despre precizie sunt marcate ca așteptând actualizarea. Zonele estimate se pot suprapune.",
+      "infoTooltip": "Sunt afișate evenimentele cu date despre densitatea populației țării. Locațiile din date mai vechi fără informații despre precizie sunt marcate ca așteptând actualizarea. Zonele estimate se pot suprapune. Tulburările necesită o locație precisă; evenimentele UCDP marcate ca imprecise sunt excluse. Un loc raportat de două surse (tulburări și UCDP) apare pe două rânduri.",
       "eventCount_one": "{{count}} eveniment",
       "eventCount_few": "{{count}} evenimente",
       "eventCount_other": "{{count}} de evenimente",

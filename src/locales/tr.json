@@ -1672,7 +1672,7 @@
       "estimateWithin": "{{km}} km yarıçap içinde yaklaşık {{count}} kişi",
       "method": "Tahminler ülkenin ortalama nüfus yoğunluğuna dayanır.",
       "empty": "Ölçütleri karşılayan olay konumu yok",
-      "infoTooltip": "Ülkenin nüfus yoğunluğu verileri bulunan olaylar gösterilir. Doğruluk bilgisi olmayan eski verilerdeki konumlar, güncelleme bekliyor olarak işaretlenir. Tahmini alanlar örtüşebilir.",
+      "infoTooltip": "Ülkenin nüfus yoğunluğu verileri bulunan olaylar gösterilir. Doğruluk bilgisi olmayan eski verilerdeki konumlar, güncelleme bekliyor olarak işaretlenir. Tahmini alanlar örtüşebilir. Huzursuzluk olayları kesin konum gerektirir; kesin olmayan UCDP olayları hariç tutulur. İki kaynaktan (huzursuzluk ve UCDP) bildirilen aynı yer iki satırda gösterilir.",
       "eventCount_one": "{{count}} olay",
       "eventCount_other": "{{count}} olay",
       "locationPending": "Konum doğruluğu güncelleme bekliyor",

@@ -1870,7 +1870,7 @@
       "eventCount_other": "{{count}} events",
       "method": "Estimates use country-average population density.",
       "empty": "No eligible event locations",
-      "infoTooltip": "Events with country density data are shown. Locations from older data without precision information are marked pending update. The estimated areas can overlap.",
+      "infoTooltip": "Country density required. Unrest needs a precise location; UCDP marked imprecise is excluded, unknown is pending. One place from two sources shows as two rows. Areas may overlap.",
       "locationPending": "Location precision pending update",
       "unrestCoverage": "Unrest coverage",
       "ucdpPending": "UCDP coverage pending update",
