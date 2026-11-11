@@ -2911,13 +2911,13 @@ body.panel-drag-active .map-bottom-grid:empty::after {
   border-top-color: var(--accent);
 }
 
-/* Hide the drop zone below the split threshold. 899px mirrors
+/* Hide the drop zone below the split threshold. 1440px mirrors
    SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts), one threshold for web
    and desktop since #6417 — from that width up, ensureCorrectZones() moves
    saved bottom-set panels INTO this container, so hiding it any higher
    makes those panels vanish (#6426).
    tests/responsive-zone-listener.test.mjs pins the alignment. */
-@media (max-width: 899px) {
+@media (width < 1440px) {
   .map-bottom-grid {
     display: none !important;
   }

@@ -46,7 +46,7 @@ message ExposureResult {
   // Radius used for the estimate in km.
   double exposure_radius_km = 2;
   // ISO3 code of the priority country containing the point, whose density was used.
-  string nearest_country = 3;
+  string nearest_country = 3 [(sebuf.http.field_examples) = { values: ["ISR"] }];
   // Population density used for the estimate.
   int32 density_per_km2 = 4;
 }
