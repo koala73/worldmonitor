@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  MAX_ATL06_GRANULES_PER_RUN,
   MAX_GRANULE_FAILURES,
+  MAX_GRANULES_PER_RUN,
   STATE_SCHEMA,
   buildSeedOptions,
   countWithLatest,
@@ -13,7 +15,7 @@ import {
   planFetches,
   stripState,
 } from '../scripts/seed-reservoir-levels.mjs';
-import { csvFileRecords, csvFromRows, exceptRecord, eventRecord, streamResponse } from './helpers/sliderule-stream.mjs';
+import { csvFileRecords, csvFromAtl06Rows, csvFromRows, exceptRecord, eventRecord, streamResponse } from './helpers/sliderule-stream.mjs';
 
 const NOW = Date.parse('2026-11-11T00:00:00Z');
 const DAY = 86_400_000;
@@ -221,5 +223,69 @@ describe('planning and state', () => {
     const raw = { reservoirs: [], _state: { schema: 1, byId: { a: {} } } };
     assert.deepEqual(o.extraKeys[0].transform(raw), raw._state);
     assert.deepEqual(o.publishTransform(raw), { reservoirs: [] });
+  });
+});
+
+describe('ATL06 entries in the seeder run', () => {
+  const GAMMA = { id: 'gamma', name: 'Gamma', country: 'XC', riparians: ['XC'], river: 'C', lat: 3, lon: 3, core: [2.9, 2.9, 3.1, 3.1], product: 'atl06', tags: ['hydropower'], why: 'c' };
+  const watchlist = [WATCHLIST[0], GAMMA];
+  const baseline = { ...BASELINE, reservoirs: { alpha: BASELINE.reservoirs.alpha, gamma: { passes: history(800, '2026-08-01'), processedThrough: '2026-08-01', failedGranules: {} } } };
+  const gran06 = (date, rgt) => gran(date, rgt).replace('ATL13_', 'ATL06_');
+
+  function fake({ cmr }) {
+    const calls = { cmr: [], slide: [] };
+    const fetchImpl = async (url, init = {}) => {
+      const u = new URL(String(url));
+      if (u.hostname === 'cmr.earthdata.nasa.gov') {
+        const id = u.searchParams.get('bounding_box') === GAMMA.core.join(',') ? 'gamma' : 'alpha';
+        calls.cmr.push({ id, shortName: u.searchParams.get('short_name') });
+        const names = (cmr[id] || []).filter((g) => g.startsWith(`${u.searchParams.get('short_name')}_`));
+        return { ok: true, status: 200, headers: new Headers(), json: async () => ({ feed: { entry: names.map((g) => ({ producer_granule_id: g })) } }) };
+      }
+      const parms = JSON.parse(init.body).parms;
+      calls.slide.push({ path: u.pathname, resources: parms.resources });
+      const rows = [];
+      for (const g of parms.resources) {
+        const t = `${g.slice(6, 10)}-${g.slice(10, 12)}-${g.slice(12, 14)}T12:00:00Z`;
+        const rgt = Number(g.slice(21, 25));
+        if (u.pathname === '/source/atl06x') {
+          // Water at 799.5 m among land segments 40-90 m higher and a steep shore.
+          for (let i = 0; i < 30; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 799.5 + (i % 3) * 0.01 });
+          for (let i = 0; i < 60; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 840 + i * 0.8, dx: i % 2 ? 0.2 : 0 });
+        } else {
+          for (let i = 0; i < 20; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 300, refid: 11 });
+        }
+      }
+      const csv = u.pathname === '/source/atl06x' ? csvFromAtl06Rows(rows) : csvFromRows(rows);
+      return streamResponse(csvFileRecords(csv, 200));
+    };
+    return { fetchImpl, calls };
+  }
+
+  it('routes ATL06 entries to the ATL06 collection and atl06x, and ATL13 entries unchanged', async () => {
+    const { fetchImpl, calls } = fake({ cmr: { alpha: [gran('2026-09-02', 21)], gamma: [gran06('2026-09-03', 33)] } });
+    const data = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl });
+    assert.deepEqual(calls.cmr.map((c) => `${c.id}:${c.shortName}`).sort(), ['alpha:ATL13', 'gamma:ATL06']);
+    assert.deepEqual(calls.slide.find((c) => c.path === '/source/atl06x').resources, [gran06('2026-09-03', 33)]);
+    assert.deepEqual(calls.slide.find((c) => c.path === '/source/atl13x').resources, [gran('2026-09-02', 21)]);
+    const gamma = data.reservoirs.find((r) => r.id === 'gamma');
+    assert.equal(gamma.latest.date, '2026-09-03');
+    assert.ok(Math.abs(gamma.latest.levelM - 799.51) < 0.02, `level ${gamma.latest.levelM}`);
+    assert.equal(data._state.byId.gamma.cursor, '2026-09-03');
+    assert.equal(data.reservoirs.find((r) => r.id === 'alpha').latest.date, '2026-09-02');
+  });
+
+  it('budgets ATL06 granules separately from ATL13 granules', async () => {
+    assert.ok(MAX_ATL06_GRANULES_PER_RUN < MAX_GRANULES_PER_RUN);
+    const g06 = Array.from({ length: 6 }, (_, i) => gran06(`2026-09-${String(10 + i).padStart(2, '0')}`, 40 + i));
+    const g13 = Array.from({ length: 4 }, (_, i) => gran(`2026-09-${String(10 + i).padStart(2, '0')}`, 60 + i));
+    const { fetchImpl, calls } = fake({ cmr: { alpha: g13, gamma: g06 } });
+    const data = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl, budget: 3, atl06Budget: 2 });
+    const fetched = (path) => calls.slide.filter((c) => c.path === path).flatMap((c) => c.resources);
+    // ATL06 is capped at its own budget; it neither borrows from nor starves ATL13.
+    assert.deepEqual(fetched('/source/atl06x'), g06.slice(0, 2));
+    assert.deepEqual(fetched('/source/atl13x'), g13.slice(0, 3));
+    // The rest stays queued: the cursor advanced only to the fetched granules.
+    assert.equal(data._state.byId.gamma.cursor, '2026-09-11');
   });
 });

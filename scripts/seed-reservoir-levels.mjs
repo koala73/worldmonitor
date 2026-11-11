@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Strategic reservoir and lake water levels from NASA ICESat-2 ATL13 lidar.
+// Strategic reservoir and lake water levels from NASA ICESat-2 lidar (ATL13, or ATL06 for
+// entries with product "atl06").
 //
 // Daily bundle member of seed-bundle-climate. Each run starts from the committed
 // backfill baseline (scripts/data/reservoir-levels-baseline.json) merged with the
@@ -21,11 +22,12 @@ import {
   classifyPasses,
   computeChange,
   createPassAccumulator,
-  fetchAtl13Segments,
+  fetchSegments,
   granuleDate,
   listGranules,
   mergePasses,
   passToTuple,
+  productOf,
   tupleToPass,
 } from './_reservoir-levels.mjs';
 import {
@@ -59,6 +61,13 @@ export const CURSOR_OVERLAP_DAYS = 10;
 export const PROCESSED_RETENTION_DAYS = 120;
 export const MAX_GRANULE_FAILURES = 3;
 export const MAX_GRANULES_PER_RUN = 150;
+// ATL06 granules are budgeted separately: the box returns land as well as water, so a
+// granule carries about 10x the rows of ATL13 and takes longer to subset. Measured on the
+// public cluster (2026-11-11, 5-granule batches, 3 streams at once, 8 boxes): median
+// 1.2 s per granule, 90th percentile 3.6 s, maximum 4.6 s. 20 granules therefore cost
+// at most about 90 s of one stream inside the 7-minute fetch budget, while an ATL06 box
+// gains only about 8 granules a year.
+export const MAX_ATL06_GRANULES_PER_RUN = 20;
 export const CMR_CONCURRENCY = 4;
 export const CMR_RUN_TIMEOUT_MS = 20_000;
 export const SLIDERULE_CONCURRENCY = 3;
@@ -66,14 +75,15 @@ export const RUN_FETCH_BUDGET_MS = 7 * 60 * 1000;
 export const MIN_LATEST_SHARE = 0.8;
 
 export const SOURCE = Object.freeze({
-  name: 'NASA ICESat-2 ATL13 (NSIDC), processed via SlideRule Earth',
-  product: 'ATL13 v007 inland water surface height',
+  name: 'NASA ICESat-2 ATL13 and ATL06 (NSIDC), processed via SlideRule Earth',
+  product: 'ATL13 v007 inland water surface height; ATL06 v007 land ice height for reservoirs ATL13 covers poorly',
   url: 'https://nsidc.org/data/atl13',
   processing: 'https://slideruleearth.io',
 });
 
 export const METHODOLOGY = 'Water-surface height from ICESat-2 laser altimetry (ATL13), in metres above the EGM2008 geoid. '
   + 'Each value is the median of the segments one satellite overpass records inside a fixed open-water box on the reservoir. '
+  + 'A few reservoirs that ATL13 covers poorly use ATL06 instead, read from the lowest flat cluster of heights in the box. '
   + 'Passes with fewer than 5 segments, a median absolute deviation above 0.25 m, beams disagreeing by more than 0.3 m, '
   + 'or a jump from the line through their neighbours are dropped. This is a lake level, not a storage volume. '
   + 'Data reach NASA 50 to 70 days after the overpass and revisit ranges from a few days to about a month by reservoir. '
@@ -269,6 +279,7 @@ export async function fetchReservoirLevels({
   baseline = loadBaseline(),
   watchlist = loadWatchlist(),
   budget = MAX_GRANULES_PER_RUN,
+  atl06Budget = MAX_ATL06_GRANULES_PER_RUN,
   deadlineAtMs = Date.now() + RUN_FETCH_BUDGET_MS,
   log = console.log,
 } = {}) {
@@ -285,7 +296,7 @@ export async function fetchReservoirLevels({
       ? new Date(Date.parse(s.cursor) - CURSOR_OVERLAP_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
     try {
-      const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS });
+      const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS, product: productOf(e).id });
       queues.set(e.id, granuleQueue(s, listed));
       return true;
     } catch (err) {
@@ -301,8 +312,10 @@ export async function fetchReservoirLevels({
   await mapLimit(watchlist.slice(1), CMR_CONCURRENCY, discover);
   if (cmrFailures === watchlist.length) throw outage(`CMR unreachable for all ${watchlist.length} reservoirs`);
 
-  // 2. Fetch a bounded, round-robin selection from SlideRule.
-  const plan = planFetches(new Map(watchlist.map((e) => [e.id, queues.get(e.id) || []])), budget);
+  // 2. Fetch a bounded, round-robin selection from SlideRule, with separate budgets for
+  // ATL13 and the larger ATL06 granules.
+  const queuesFor = (productId) => new Map(watchlist.filter((e) => productOf(e).id === productId).map((e) => [e.id, queues.get(e.id) || []]));
+  const plan = new Map([...planFetches(queuesFor('atl13'), budget), ...planFetches(queuesFor('atl06'), atl06Budget)]);
   const planned = [...plan.values()].reduce((n, g) => n + g.length, 0);
   let okBatches = 0;
   let failedBatches = 0;
@@ -313,8 +326,10 @@ export async function fetchReservoirLevels({
   await mapLimit(entries, SLIDERULE_CONCURRENCY, async (e) => {
     const granules = plan.get(e.id);
     if (Date.now() > deadlineAtMs) { skippedForTime += granules.length; return; }
-    const acc = createPassAccumulator({ refid: e.refid ?? null });
-    const r = await fetchAtl13Segments(bboxToPolygon(e.core), granules, (row) => acc.add(row), fetchImpl, {
+    const product = productOf(e).id;
+    const acc = createPassAccumulator({ refid: e.refid ?? null, product });
+    const r = await fetchSegments(bboxToPolygon(e.core), granules, (row) => acc.add(row), fetchImpl, {
+      product,
       deadlineAtMs,
       log: (m) => log(`  [${e.id}]${m}`),
     });
