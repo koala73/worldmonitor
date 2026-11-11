@@ -21,6 +21,7 @@ function team(...names: string[]): TeamDashboards {
 /** A store whose loads the test settles by hand, in any order. */
 function harness() {
   const loads: Array<{ userId: string; settle: ReturnType<typeof deferred<TeamDashboards | null>> }> = [];
+  const timers: Array<{ ms: number; run: () => void; cancelled: boolean }> = [];
   let changes = 0;
   const store = new TeamDashboardsStore({
     load: (userId) => {
@@ -29,8 +30,14 @@ function harness() {
       return settle.promise;
     },
     onChange: () => { changes += 1; },
+    schedule: (run, ms) => {
+      const timer = { ms, run, cancelled: false };
+      timers.push(timer);
+      return () => { timer.cancelled = true; };
+    },
   });
-  return { store, loads, changes: () => changes };
+  const pending = () => timers.filter((t) => !t.cancelled);
+  return { store, loads, timers, pending, changes: () => changes };
 }
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -73,9 +80,61 @@ describe('TeamDashboardsStore', () => {
     await flush();
     assert.equal(store.dashboards?.dashboards.length, 1);
 
-    // A loaded (or team-less) user is not asked again on every pass.
+    // A user already loaded with a team is not asked again on every pass.
     store.setPrincipal('alice');
     assert.equal(loads.length, 2);
+  });
+
+  it('asks again on the next access pass for a user who had no team, since they may have just joined one', async () => {
+    const { store, loads } = harness();
+    store.setPrincipal('alice');
+    loads[0]!.settle.resolve(null);
+    await flush();
+    assert.equal(store.dashboards, null);
+
+    store.setPrincipal('alice');
+    assert.equal(loads.length, 2);
+    loads[1]!.settle.resolve(team('Gulf watch'));
+    await flush();
+    assert.equal(store.dashboards?.dashboards.length, 1);
+  });
+
+  it('retries a failed load on its own a few times, then waits for the next pass', async () => {
+    const { store, loads, pending } = harness();
+    store.setPrincipal('alice');
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      loads.at(-1)!.settle.reject(new Error('offline'));
+      await flush();
+      const timer = pending()[0];
+      if (attempt === 3) {
+        assert.equal(timer, undefined, 'retries stop after three');
+        break;
+      }
+      assert.ok(timer, `retry ${attempt + 1} scheduled`);
+      assert.ok(timer.ms >= 10_000);
+      timer.cancelled = true;
+      timer.run();
+      assert.equal(loads.length, attempt + 2);
+    }
+
+    // A later pass still gets a fresh try, with a fresh retry budget.
+    store.setPrincipal('alice');
+    assert.equal(loads.length, 5);
+    loads[4]!.settle.resolve(team('Gulf watch'));
+    await flush();
+    assert.equal(store.dashboards?.dashboards.length, 1);
+    assert.equal(pending().length, 0);
+  });
+
+  it('cancels a scheduled retry when the user signs out', async () => {
+    const { store, loads, pending } = harness();
+    store.setPrincipal('alice');
+    loads[0]!.settle.reject(new Error('offline'));
+    await flush();
+    assert.equal(pending().length, 1);
+
+    store.setPrincipal(null);
+    assert.equal(pending().length, 0);
   });
 
   it('a fresh load after a write wins over a load that started before it', async () => {

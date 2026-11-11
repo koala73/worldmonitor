@@ -344,9 +344,10 @@ export class PanelTabBar {
       open.title = t('teamDashboards.open', { name: dashboard.name });
       open.setAttribute('aria-label', t('teamDashboards.open', { name: dashboard.name }));
       if (isActive) open.setAttribute('aria-current', 'true');
+      // Close first: opening can run into the tab cap, whose notice must stay.
       open.addEventListener('click', () => {
-        this.callbacks.team?.onOpen(dashboard.id);
         this.closeNotice(true);
+        this.callbacks.team?.onOpen(dashboard.id);
       });
 
       const stop = document.createElement('button');
@@ -379,8 +380,8 @@ export class PanelTabBar {
       behind.className = 'tab-cap-notice-desc';
       behind.textContent = t('teamDashboards.behind');
       nodes.push(behind, action(t('teamDashboards.getLatest'), () => {
-        this.callbacks.team?.onUpdateTab();
         this.closeNotice(true);
+        this.callbacks.team?.onUpdateTab();
       }));
     }
     const share = action(
@@ -470,7 +471,10 @@ export class PanelTabBar {
     // The tablist owns only tabs; the add, options and team buttons are siblings in the bar.
     const hasTeam = this.callbacks.team?.view() != null;
     const teamBtn = hasTeam ? [this.teamBtn] : [];
+    // Re-inserting a focused button blurs it; put keyboard focus back.
+    const focused = [this.optionsBtn, this.teamBtn].find((btn) => btn === document.activeElement);
     this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, this.liveRegion);
+    if (focused?.isConnected) focused.focus();
     // An open team menu follows the list as it loads or changes; it closes if
     // the team goes away (sign-out, seat removed).
     if (this.noticeKind === 'team' && this.notice) {

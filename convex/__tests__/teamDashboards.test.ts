@@ -83,7 +83,7 @@ async function seedEnterprise(t: T) {
   return accountId as Id<"enterpriseAccounts">;
 }
 
-const publish = (t: T, userId: string, args: Partial<{ name: string; variant: string; layout: TeamDashboardLayout; dashboardId: Id<"teamDashboards"> }> = {}) =>
+const publish = (t: T, userId: string, args: Partial<{ name: string; variant: string; layout: TeamDashboardLayout; dashboardId: Id<"teamDashboards">; baseVersion: number }> = {}) =>
   t.withIdentity(who(userId)).mutation(api.teamDashboards.publish, {
     variant: "full",
     name: "Gulf watch",
@@ -247,6 +247,21 @@ describe("publishing", () => {
     expect(result).toEqual({ id, version: 2 });
     const [row] = (await list(t, OWNER)).dashboards;
     expect(row).toMatchObject({ id, name: "Gulf watch v2", version: 2, layout: changed });
+  });
+
+  test("an update based on an older version is refused, so a teammate's newer layout is not overwritten unseen", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    const { id } = await publish(t, OWNER);
+    await publish(t, SEAT, { dashboardId: id, baseVersion: 1, name: "Seat's version" });
+
+    expect(await errorKind(publish(t, OWNER, { dashboardId: id, baseVersion: 1, name: "Owner's version" })))
+      .toBe("VERSION_CONFLICT");
+    expect((await list(t, OWNER)).dashboards[0]).toMatchObject({ name: "Seat's version", version: 2 });
+
+    // Having seen version 2, the owner can still replace it.
+    await expect(publish(t, OWNER, { dashboardId: id, baseVersion: 2, name: "Owner's version" }))
+      .resolves.toEqual({ id, version: 3 });
   });
 
   test("a dashboard of another team cannot be overwritten or removed", async () => {

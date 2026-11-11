@@ -1640,9 +1640,13 @@ export class PanelLayoutManager implements AppModule {
         }
         : null,
     });
-    // A link to a dashboard someone has since removed shares as a new one.
-    const linkedId = tab.team && team.dashboards.some((d) => d.id === tab.team!.id)
-      ? tab.team.id
+    // Update the linked dashboard from the version this browser last saw. The
+    // list can lag a publish this tab just made, so fall back to the tab's own
+    // version. A link to a removed dashboard shares as a new one
+    // (publishOrShareAsNew); a newer teammate version is refused until seen.
+    const linkedId = tab.team?.id;
+    const baseVersion = linkedId
+      ? team.dashboards.find((d) => d.id === linkedId)?.version ?? tab.team!.version
       : undefined;
 
     this.teamBusy = true;
@@ -1650,7 +1654,7 @@ export class PanelLayoutManager implements AppModule {
     try {
       const link = await publishOrShareAsNew(
         (args) => publishTeamDashboard(userId, args),
-        { name: tab.name, layout, dashboardId: linkedId },
+        { name: tab.name, layout, dashboardId: linkedId, baseVersion },
       );
       if (this.team.userId !== userId || this.ctx.isDestroyed) return;
       tab.team = link;
@@ -1659,6 +1663,12 @@ export class PanelLayoutManager implements AppModule {
       await this.team.reload({ fresh: true });
     } catch (err) {
       const kind = teamDashboardErrorKind(err);
+      if (kind === 'VERSION_CONFLICT') {
+        // Show the newer version; sharing again from the menu replaces it.
+        showToast(t('teamDashboards.behind'));
+        if (this.team.userId === userId) void this.team.reload({ fresh: true });
+        return;
+      }
       showToast(kind === 'TEAM_DASHBOARD_LIMIT'
         ? t('teamDashboards.limit', { limit: String((err as { data?: { limit?: number } }).data?.limit ?? 25) })
         : t('teamDashboards.failed'));

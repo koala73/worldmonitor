@@ -944,5 +944,6 @@
     "teamDashboards": "Team dashboards"
   },
   "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
-  "countryHistory":{"title":"Daily country history"}
+  "countryHistory":{"title":"Daily country history"},
+  "teamDashboards":{"desc":"Dashboards your team shares. Open one to add it as a new tab.","empty":"Your team hasn't shared a dashboard yet. Share this tab to give everyone on your team its panels, sizes and map.","open":"Open {{name}} as a new tab","stopSharing":"Stop sharing {{name}}","shareTab":"Share this tab with your team","shareChanges":"Share this tab's changes with your team","behind":"Your team changed this dashboard after you opened it.","getLatest":"Get the latest version"}
 }

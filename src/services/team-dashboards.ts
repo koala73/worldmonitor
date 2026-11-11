@@ -191,7 +191,7 @@ export async function loadTeamDashboards(userId: string): Promise<TeamDashboards
 
 export async function publishTeamDashboard(
   userId: string,
-  args: { name: string; layout: TeamDashboardLayout; dashboardId?: string },
+  args: { name: string; layout: TeamDashboardLayout; dashboardId?: string; baseVersion?: number },
 ): Promise<TeamDashboardLink> {
   const action = 'sharing a dashboard with your team';
   const { client, api } = await convexForUser(userId, action);
@@ -200,6 +200,7 @@ export async function publishTeamDashboard(
     name: args.name,
     layout: args.layout,
     ...(args.dashboardId ? { dashboardId: args.dashboardId as Id<'teamDashboards'> } : {}),
+    ...(args.dashboardId && args.baseVersion !== undefined ? { baseVersion: args.baseVersion } : {}),
   }));
   return { id: String(result.id), version: result.version };
 }

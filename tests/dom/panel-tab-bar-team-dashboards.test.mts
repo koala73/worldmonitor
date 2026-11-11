@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import { PanelTabBar, type TeamDashboardCallbacks, type TeamDashboardsView } from '@/components/PanelTabBar';
+import { PanelTabBar, tabCapGateCopy, type TeamDashboardCallbacks, type TeamDashboardsView } from '@/components/PanelTabBar';
+import { PanelGateReason } from '@/services/panel-gating';
 import type { PanelTab, TabsState } from '@/services/tab-store';
 
 import { initTestI18n } from './helpers/i18n.mts';
@@ -71,6 +72,17 @@ describe('PanelTabBar team button', () => {
     expect(teamBtn()).toBeNull();
   });
 
+  it('keeps keyboard focus on the bar buttons when the bar re-renders', () => {
+    teamBtn()!.focus();
+    bar.refresh();
+    expect(document.activeElement).toBe(teamBtn());
+
+    const options = bar.getElement().querySelector<HTMLButtonElement>('.dashboard-tab-options')!;
+    options.focus();
+    bar.refresh();
+    expect(document.activeElement).toBe(options);
+  });
+
   it('is absent for a bar built without team callbacks', () => {
     bar.destroy();
     bar = new PanelTabBar(() => state, {
@@ -104,6 +116,18 @@ describe('PanelTabBar team menu', () => {
     expect(team.onOpen).toHaveBeenCalledWith('d2');
     expect(popover()).toBeNull();
     expect(document.activeElement).toBe(teamBtn());
+  });
+
+  it('keeps the tab limit notice when opening a dashboard runs into the cap', () => {
+    bar.setAddLock({ copy: tabCapGateCopy(PanelGateReason.FREE_TIER, 3), onAction: vi.fn() });
+    team.onOpen.mockImplementation(() => bar.showAddLockNotice());
+    teamBtn()!.click();
+    openButtons()[0]!.click();
+
+    expect(popover()).toBeNull();
+    const notice = document.querySelector('.tab-cap-notice');
+    expect(notice).not.toBeNull();
+    expect(document.activeElement).toBe(notice!.querySelector('.tab-cap-notice-cta'));
   });
 
   it('shares the tab and stops sharing a dashboard', () => {

@@ -228,6 +228,9 @@ export class Panel {
   private connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
+  /** The built-in row span from PanelOptions, kept for applySharedSize. */
+  private readonly defaultRowSpan: number | null;
+
   constructor(options: PanelOptions) {
     this.panelId = options.id;
     this.element = document.createElement('div');
@@ -364,8 +367,9 @@ export class Panel {
     this.setupColResizeHandlers();
 
     // Apply default row span (before restore, so saved preferences win)
-    if (options.defaultRowSpan && options.defaultRowSpan > 1) {
-      this.element.classList.add(`span-${options.defaultRowSpan}`);
+    this.defaultRowSpan = options.defaultRowSpan && options.defaultRowSpan > 1 ? options.defaultRowSpan : null;
+    if (this.defaultRowSpan) {
+      this.element.classList.add(`span-${this.defaultRowSpan}`);
     }
 
     // Restore saved span (overrides default)
@@ -1750,11 +1754,13 @@ export class Panel {
 
   /**
    * Take the size a shared layout gives this panel: a span sets it the way a
-   * resize would, and no span puts the panel back to its natural size.
+   * resize would, and no span puts the panel back to its built-in size.
    */
   public applySharedSize(rows: number | undefined, cols: number | undefined): void {
     if (rows === undefined) {
       this.resetHeight();
+      if (this.defaultRowSpan) this.element.classList.add(`span-${this.defaultRowSpan}`);
+      this.syncKeyboardRowResizeAria();
     } else {
       setSpanClass(this.element, rows);
       savePanelSpan(this.panelId, rows);
