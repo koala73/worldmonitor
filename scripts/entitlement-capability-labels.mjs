@@ -7,6 +7,7 @@ export const LABELS = {
   'api.rest':['REST API','Programmatic access, daily and burst quotas'],
   'aviation.data':['Aviation data','Flight status, carrier ops, airport flights, callsign search'],
   'correlation.llm':['LLM convergence assessments','AI scoring on cross-source convergence cards'],
+  'dashboards.focus':['Dashboard focus','Scope a dashboard to chosen countries, their neighbours and a date window'],
   'digest.scheduled':['Scheduled AI digest','Ranked briefs on your cadence, plus the Latest Brief panel'],
   'economic.debt':['National debt data','Sovereign debt series'],
   'embed.panels':['Embeddable panels','Panels embedded outside the app (apiAccess-gated)'],

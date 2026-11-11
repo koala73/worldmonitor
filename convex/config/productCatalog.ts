@@ -214,6 +214,19 @@ export type PlanFeatures = {
    * entries below ALWAYS set the field explicitly.
    */
   dataExport?: boolean;
+  /**
+   * Dashboard focus (#10453): scoping a tab to chosen countries (plus their
+   * neighbours) and a date window, and sharing a focused team dashboard. True
+   * for Pro Business, API Business and Enterprise. `tier` cannot express this:
+   * Pro Business shares `tier: 1` with Pro, and API Starter shares `tier: 2`
+   * with API Business. `shared/tab-focus-access.ts` holds the predicate.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  tabFocus?: boolean;
 };
 
 export interface CatalogEntry {
@@ -276,6 +289,7 @@ const FREE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: false,
+  tabFocus: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -301,6 +315,7 @@ const PRO_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 2,
   dataExport: false,
+  tabFocus: false,
 };
 
 /**
@@ -337,6 +352,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 3,
   dataExport: true,
+  tabFocus: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -362,6 +378,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: false,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -388,6 +405,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: true,
 };
 
 // Enterprise is sold by contract. These numbers are the contract default —
@@ -424,6 +442,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: true,
 };
 
 // ---------------------------------------------------------------------------

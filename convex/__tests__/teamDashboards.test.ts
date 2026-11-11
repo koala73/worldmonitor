@@ -120,7 +120,7 @@ describe("team membership", () => {
     const { id } = await publish(t, OWNER);
     const seen = await list(t, SEAT);
 
-    expect(seen.team).toEqual({ kind: "business" });
+    expect(seen.team).toMatchObject({ kind: "business" });
     expect(seen.dashboards).toEqual([
       { id, name: "Gulf watch", version: 1, updatedAt: expect.any(Number), layout: LAYOUT },
     ]);
@@ -168,7 +168,7 @@ describe("team membership", () => {
     });
 
     expect((await list(t, SEAT)).team).toBeNull();
-    expect((await list(t, OWNER)).team).toEqual({ kind: "business" });
+    expect((await list(t, OWNER)).team).toMatchObject({ kind: "business" });
   });
 
   test("a non-business plan is not a team", async () => {
@@ -188,7 +188,7 @@ describe("team membership", () => {
     await publish(t, ENT_MEMBER, { name: "Enterprise layout" });
 
     const seen = await list(t, ENT_ADMIN);
-    expect(seen.team).toEqual({ kind: "enterprise" });
+    expect(seen.team).toMatchObject({ kind: "enterprise" });
     expect(seen.dashboards.map((d) => d.name)).toEqual(["Enterprise layout"]);
   });
 
@@ -211,7 +211,7 @@ describe("team membership", () => {
     await publish(t, ENT_MEMBER, { name: "Enterprise layout" });
 
     const seen = await list(t, SEAT);
-    expect(seen.team).toEqual({ kind: "enterprise" });
+    expect(seen.team).toMatchObject({ kind: "enterprise" });
     expect(seen.dashboards.map((d) => d.name)).toEqual(["Enterprise layout"]);
   });
 
@@ -354,5 +354,169 @@ describe("publishing", () => {
     });
 
     expect(await errorKind(publish(t, OWNER))).toBe("ACCOUNT_DELETION_IN_PROGRESS");
+  });
+});
+
+describe("focus (#10453)", () => {
+  const SCOPE = { countries: ["IR", "IQ"], neighbours: true, start: "2026-11-01", end: "2026-11-20" };
+  const FOCUSED: TeamDashboardLayout = { ...LAYOUT, scope: SCOPE, panelFilters: [{ key: "live-news", value: "IR" }] };
+  const FOCUS = ["focus"];
+
+  async function seedEntitlement(t: T, userId: string, planKey: string, validUntil = NOW + 300 * DAY_MS) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId,
+        planKey,
+        features: PRODUCT_CATALOG[planKey]!.features,
+        validUntil,
+        updatedAt: NOW,
+      });
+    });
+  }
+
+  const listWith = (t: T, userId: string, capabilities?: string[]) =>
+    t.withIdentity(who(userId)).query(api.teamDashboards.listForVariant, { variant: "full", capabilities });
+
+  test("tabFocus is set on every catalog plan and true exactly for Pro Business, API Business and Enterprise", () => {
+    const focused = Object.entries(PRODUCT_CATALOG)
+      .filter(([, entry]) => entry.features.tabFocus === true)
+      .map(([key]) => key)
+      .sort();
+    expect(focused).toEqual([
+      "api_business",
+      "api_business_annual",
+      "enterprise",
+      "pro_business_annual",
+      "pro_business_monthly",
+    ]);
+    for (const entry of Object.values(PRODUCT_CATALOG)) expect(typeof entry.features.tabFocus).toBe("boolean");
+  });
+
+  test("an entitled member publishes a focused dashboard and a focus-aware teammate gets the scope intact", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, OWNER, "api_business");
+
+    const { id } = await publish(t, OWNER, { layout: FOCUSED });
+    const seen = await listWith(t, SEAT, FOCUS);
+
+    expect(seen.dashboards).toEqual([
+      { id, name: "Gulf watch", version: 1, updatedAt: expect.any(Number), layout: FOCUSED },
+    ]);
+  });
+
+  test("a seat holder, whose own entitlement is Pro, may publish a focused dashboard on an API Business team", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, SEAT, "pro_monthly");
+
+    await publish(t, SEAT, { layout: FOCUSED });
+
+    expect((await listWith(t, SEAT, FOCUS)).team).toEqual({ kind: "business", focus: true });
+    expect((await listWith(t, OWNER, FOCUS)).dashboards[0]!.layout.scope).toEqual(SCOPE);
+  });
+
+  test("Enterprise members may publish a focused dashboard", async () => {
+    const t = convexTest(schema, modules);
+    await seedEnterprise(t);
+
+    await publish(t, ENT_MEMBER, { layout: FOCUSED });
+
+    expect((await listWith(t, ENT_ADMIN, FOCUS)).dashboards.map((d) => d.layout.scope)).toEqual([SCOPE]);
+  });
+
+  test.each([
+    ["Pro", "pro_monthly", NOW + 300 * DAY_MS],
+    ["Free", "free", NOW + 300 * DAY_MS],
+    ["an expired API Business", "api_business", NOW - DAY_MS],
+  ])("publishing a focus is refused for a member whose entitlement is %s", async (_label, planKey, validUntil) => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, OWNER, planKey, validUntil);
+
+    expect(await errorKind(publish(t, OWNER, { layout: FOCUSED }))).toBe("FOCUS_NOT_ENTITLED");
+    expect((await listWith(t, OWNER, FOCUS)).team).toEqual({ kind: "business", focus: false });
+    // Without a focus the same member still publishes as before.
+    await expect(publish(t, OWNER)).resolves.toMatchObject({ version: 1 });
+  });
+
+  test("an unentitled member cannot republish a dashboard that already carries a focus", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, SEAT, "pro_monthly");
+    const { id } = await publish(t, SEAT, { layout: FOCUSED });
+    await seedEntitlement(t, OWNER, "pro_monthly");
+
+    expect(await errorKind(publish(t, OWNER, { dashboardId: id, baseVersion: 1, layout: FOCUSED })))
+      .toBe("FOCUS_NOT_ENTITLED");
+    // Dropping the focus is allowed.
+    await expect(publish(t, OWNER, { dashboardId: id, baseVersion: 1 })).resolves.toEqual({ id, version: 2 });
+  });
+
+  test("a row stored before focus existed still loads", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("teamDashboards", {
+        teamKey: "business:sub_panoptic",
+        variant: "full",
+        name: "Old layout",
+        layout: { panels: [{ key: "live-news", on: true }] },
+        version: 3,
+        createdAt: NOW - DAY_MS,
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+
+    for (const capabilities of [undefined, FOCUS]) {
+      expect((await listWith(t, SEAT, capabilities)).dashboards).toEqual([
+        { id: expect.anything(), name: "Old layout", version: 3, updatedAt: NOW - DAY_MS, layout: { panels: [{ key: "live-news", on: true }] } },
+      ]);
+    }
+  });
+
+  test("a client without focus support does not receive focused dashboards", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, OWNER, "api_business");
+    await publish(t, OWNER, { name: "Focused", layout: FOCUSED });
+    await publish(t, OWNER, { name: "World" });
+
+    expect((await listWith(t, SEAT)).dashboards.map((d) => d.name)).toEqual(["World"]);
+    expect((await listWith(t, SEAT, ["something-else"])).dashboards.map((d) => d.name)).toEqual(["World"]);
+    expect((await listWith(t, SEAT, FOCUS)).dashboards.map((d) => d.name)).toEqual(["Focused", "World"]);
+  });
+
+  const scoped = (scope: unknown, extra: Partial<TeamDashboardLayout> = {}) =>
+    ({ layout: { panels: [{ key: "a", on: true }], scope, ...extra } }) as never;
+
+  test.each([
+    ["no countries", scoped({ countries: [] })],
+    ["13 countries", scoped({ countries: ["US", "CA", "MX", "GB", "FR", "DE", "IT", "ES", "PT", "NL", "BE", "LU", "CH"] })],
+    ["an unknown country code", scoped({ countries: ["IR", "XX"] })],
+    ["a lowercase country code", scoped({ countries: ["ir"] })],
+    ["a duplicate country", scoped({ countries: ["IR", "IR"] })],
+    ["an end before the start", scoped({ countries: ["IR"], start: "2026-11-20", end: "2026-11-01" })],
+    ["a date that is not a calendar day", scoped({ countries: ["IR"], start: "2026-02-30" })],
+    ["a duplicate panel filter key", scoped({ countries: ["IR"] }, { panelFilters: [{ key: "a", value: "x" }, { key: "a", value: "y" }] })],
+    ["a malformed panel filter key", scoped({ countries: ["IR"] }, { panelFilters: [{ key: "bad key", value: "x" }] })],
+    ["a panel filter value over 200 characters", scoped({ countries: ["IR"] }, { panelFilters: [{ key: "a", value: "x".repeat(201) }] })],
+    ["more than 40 panel filters", scoped({ countries: ["IR"] }, { panelFilters: Array.from({ length: 41 }, (_, i) => ({ key: `k${i}`, value: "x" })) })],
+  ])("rejects a layout with %s", async (_label, args) => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, OWNER, "api_business");
+
+    expect(await errorKind(publish(t, OWNER, args))).toBe("INVALID_LAYOUT");
+  });
+
+  test("accepts 12 countries and a single open-ended date", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    await seedEntitlement(t, OWNER, "api_business");
+    const twelve = ["US", "CA", "MX", "GB", "FR", "DE", "IT", "ES", "PT", "NL", "BE", "LU"];
+
+    await expect(publish(t, OWNER, scoped({ countries: twelve, neighbours: false, start: "2026-11-01" })))
+      .resolves.toMatchObject({ version: 1 });
   });
 });

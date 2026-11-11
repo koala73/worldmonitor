@@ -25,7 +25,8 @@ export interface TeamDashboard {
 }
 
 export interface TeamDashboards {
-  team: { kind: 'business' | 'enterprise' };
+  /** `focus`: whether this user may publish a focused dashboard (#10453). */
+  team: { kind: 'business' | 'enterprise'; focus?: boolean };
   dashboards: TeamDashboard[];
 }
 
@@ -181,7 +182,10 @@ export async function loadTeamDashboards(userId: string): Promise<TeamDashboards
   const action = 'loading team dashboards';
   const { client, api } = await convexForUser(userId, action);
   const result = await settleAccountOperation(userId, action,
-    () => client.query(api.teamDashboards.listForVariant, { variant: SITE_VARIANT }));
+    // "focus": this build understands a layout's `scope`, so the server may
+    // include focused dashboards (#10453). Older builds omit it and do not
+    // receive them.
+    () => client.query(api.teamDashboards.listForVariant, { variant: SITE_VARIANT, capabilities: ['focus'] }));
   if (!result.team) return null;
   return {
     team: result.team,
