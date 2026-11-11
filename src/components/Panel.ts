@@ -86,8 +86,8 @@ function getRowSpan(element: HTMLElement): number {
   const spanClass = getSpanClass(element);
   if (spanClass !== null && element.classList.contains('resized')) return spanClass;
 
-  // Otherwise the rendered span is the resize baseline the user sees. Natural
-  // wide video panels take three rows (#8276), and the CLS-pinned span-2
+  // Otherwise the rendered span is the resize baseline the user sees. The
+  // natural webcam wall takes three rows (#8276), and the CLS-pinned span-2
   // defaults take four on desktop, so their classes understate it.
   if (typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
     const match = /^span\s+([1-4])(?:\s|$)/.exec(window.getComputedStyle(element).gridRowStart);
