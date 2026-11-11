@@ -4489,7 +4489,9 @@
     "newTabOptionsHint": "이미 있는 탭은 변경되지 않습니다.",
     "useThisTabPanels": "이 탭의 패널 사용",
     "useDefaultPanels": "기본 패널 사용",
-    "newTabPanelsNotSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다."
+    "newTabPanelsNotSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다.",
+    "team": "팀",
+    "teamDashboards": "팀 대시보드"
   },
   "theaterPresets": {
     "label": "커버리지 프리셋",
@@ -4861,5 +4863,22 @@
     "close": "닫기",
     "alertsHint": "이 iPhone 또는 iPad에서 알림을 받으려면 World Monitor를 홈 화면에 설치하세요.",
     "how": "설치 방법"
+  },
+  "teamDashboards": {
+    "desc": "팀이 공유하는 대시보드입니다. 열어서 새 탭으로 추가하세요.",
+    "empty": "팀이 아직 대시보드를 공유하지 않았습니다. 이 탭을 공유하여 팀의 모든 사람이 패널, 크기 및 지도를 볼 수 있도록 하세요.",
+    "open": "{{name}}을(를) 새 탭으로 열기",
+    "stopSharing": "{{name}} 공유 중지",
+    "confirmStop": "{{name}}을(를) 팀과 공유하지 않으시겠습니까? 이미 열어본 탭은 그대로 유지됩니다.",
+    "shareTab": "이 탭을 팀과 공유",
+    "shareChanges": "이 탭의 변경사항을 팀과 공유",
+    "behind": "팀이 이 대시보드를 열은 후 변경했습니다.",
+    "getLatest": "최신 버전 가져오기",
+    "opened": "팀에서 {{name}}을(를) 열었습니다.",
+    "shared": "{{name}}을(를) 팀과 공유했습니다.",
+    "updated": "이 탭이 팀의 최신 버전으로 업데이트되었습니다.",
+    "stopped": "{{name}} 공유를 중지했습니다.",
+    "failed": "팀의 대시보드에 연결할 수 없습니다. 다시 시도하세요.",
+    "limit": "팀이 여기에서 이미 {{limit}}개의 대시보드를 공유 중입니다. 먼저 하나의 공유를 중지하세요."
   }
 }

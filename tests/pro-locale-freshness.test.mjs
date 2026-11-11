@@ -55,7 +55,7 @@ const ENGLISH_ALLOWED_KEYS = new Set([
   'apiSection.business',
   'apiSection.starter',
   'welcome.agents.resources.api',
-  'pricing.tiers.enterprise.features[8]',
+  'pricing.tiers.enterprise.features[9]',
   'enterpriseShowcase.soc',
 ]);
 

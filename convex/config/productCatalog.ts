@@ -598,6 +598,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
+      "Shared team dashboards",
       "Priority support",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
@@ -645,6 +646,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
       "Everything in Pro + API",
+      "Shared team dashboards",
       "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",

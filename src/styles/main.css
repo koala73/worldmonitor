@@ -29147,7 +29147,8 @@ body.map-width-resizing {
 }
 
 .dashboard-tab-add,
-.dashboard-tab-options {
+.dashboard-tab-options,
+.dashboard-tab-team {
   background: transparent;
   border: 1px dashed var(--border);
   border-radius: 5px;
@@ -29163,13 +29164,24 @@ body.map-width-resizing {
 
 .dashboard-tab-add:hover,
 .dashboard-tab-options:hover,
-.dashboard-tab-options[aria-expanded="true"] {
+.dashboard-tab-options[aria-expanded="true"],
+.dashboard-tab-team:hover,
+.dashboard-tab-team[aria-expanded="true"] {
   color: var(--green-text, var(--green));
   border-color: var(--green);
 }
 
 .dashboard-tab-options {
   margin-left: 2px;
+}
+
+/* A word, not a glyph: smaller type so it sits level with "+" and "▾". */
+.dashboard-tab-team {
+  margin-left: 2px;
+  padding: 5px 9px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-family: inherit;
+  letter-spacing: 0.04em;
 }
 
 /* Tab-cap locked notice. Body-anchored and fixed-positioned from the add
@@ -29217,6 +29229,83 @@ body.map-width-resizing {
 .tab-cap-notice-action:focus-visible {
   color: var(--green-text, var(--green));
   border-color: var(--green);
+}
+
+.tab-cap-notice-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Team dashboards: a list of shared layouts above the share action. */
+.team-dashboards-notice {
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  align-items: stretch;
+  text-align: left;
+}
+
+.team-dashboards-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.team-dashboards-item {
+  display: flex;
+  align-items: stretch;
+}
+
+.team-dashboards-item + .team-dashboards-item {
+  border-top: 1px solid var(--border);
+}
+
+.team-dashboards-open,
+.team-dashboards-stop {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-family: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+}
+
+.team-dashboards-open {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-dashboards-item.active .team-dashboards-open {
+  color: var(--green-text, var(--green));
+}
+
+.team-dashboards-stop {
+  padding: 0 10px;
+  color: var(--text-dim);
+}
+
+.team-dashboards-open:hover,
+.team-dashboards-open:focus-visible {
+  color: var(--green-text, var(--green));
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+.team-dashboards-stop:hover,
+.team-dashboards-stop:focus-visible {
+  color: var(--red, #ef4444);
+}
+
+.team-dashboards-stop:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──

@@ -4511,7 +4511,9 @@
     "newTabOptionsHint": "Zaten sahip olduğunuz sekmeler değişmez.",
     "useThisTabPanels": "Bu sekmenin panellerini kullan",
     "useDefaultPanels": "Varsayılan panelleri kullan",
-    "newTabPanelsNotSaved": "Kaydedilemedi. Bu tarayıcı site depolamayı engelliyor."
+    "newTabPanelsNotSaved": "Kaydedilemedi. Bu tarayıcı site depolamayı engelliyor.",
+    "team": "Takım",
+    "teamDashboards": "Takım panoları"
   },
   "theaterPresets": {
     "label": "Kapsama ön ayarları",
@@ -4883,5 +4885,22 @@
     "close": "Kapat",
     "alertsHint": "Bu iPhone veya iPad'de uyarı almak için World Monitor'ı ana ekranınıza yükleyin.",
     "how": "Nasıl yüklenir"
+  },
+  "teamDashboards": {
+    "desc": "Takımınızın paylaştığı panolar. Yeni sekme olarak eklemek için bir tanesini açın.",
+    "empty": "Takımınız henüz bir pano paylaşmamış. Panonun tüm panellerini, boyutlarını ve haritasını takımınızın herkes tarafından görmesi için bu sekmeyi paylaşın.",
+    "open": "{{name}} öğesini yeni sekme olarak aç",
+    "stopSharing": "{{name}} öğesini paylaşmayı durdur",
+    "confirmStop": "{{name}} öğesini takımınızla paylaşmayı durdursun? Kişilerin zaten açtıkları sekmeler olduğu gibi kalır.",
+    "shareTab": "Bu sekmeyi takımınızla paylaş",
+    "shareChanges": "Bu sekmedeki değişiklikleri takımınızla paylaş",
+    "behind": "Takımınız bu panoyu açtıktan sonra değiştirdi.",
+    "getLatest": "En son sürümü al",
+    "opened": "{{name}} öğesi takımınızdan açıldı.",
+    "shared": "{{name}} öğesi takımınızla paylaşıldı.",
+    "updated": "Bu sekme artık takımınızın en son sürümünü içeriyor.",
+    "stopped": "{{name}} öğesini paylaşmak durduruldu.",
+    "failed": "Takımınızın panolarına ulaşılamadı. Lütfen tekrar deneyin.",
+    "limit": "Takımınız burada zaten {{limit}} pano paylaşıyor. Önce bir tanesini paylaşmayı durdurun."
   }
 }

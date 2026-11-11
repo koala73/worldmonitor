@@ -889,6 +889,7 @@ export function canadianWildfireAfterPublish(data, { previousMeta = null } = {})
             consecutiveFailures: snapshot.consecutiveFailures,
             firstFailureAt: snapshot.firstFailureAt,
             retainedUntil: snapshot.retainedUntil,
+            retainedRecordCount: snapshot.fireDetections.length,
           },
         },
         lastSourceAttemptAt: snapshot.lastAttemptAt,

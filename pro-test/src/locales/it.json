@@ -326,6 +326,7 @@
         "description": "Soluzioni personalizzate per organizzazioni",
         "features": [
           "Tutto nel piano Pro + API",
+          "Dashboard condivise del team",
           "10.000 richieste API al giorno, più su contratto",
           "Supporto dedicato",
           "Integrazioni personalizzate",
@@ -347,6 +348,7 @@
           "300 richieste/minuto",
           "10.000 richieste/giorno incluse (REST + MCP combinati; una chiamata MCP live conta come 2-3)",
           "5 licenze Pro — invita utenti con qualsiasi dominio email aziendale",
+          "Dashboard condivise del team",
           "Supporto prioritario"
         ],
         "highlightFeatures": [

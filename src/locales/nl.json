@@ -4511,7 +4511,9 @@
     "newTabOptionsHint": "Tabbladen die je al hebt, veranderen niet.",
     "useThisTabPanels": "Gebruik de panelen van dit tabblad",
     "useDefaultPanels": "Gebruik de standaardpanelen",
-    "newTabPanelsNotSaved": "Kon niet opslaan. Deze browser blokkeert sitegegevens."
+    "newTabPanelsNotSaved": "Kon niet opslaan. Deze browser blokkeert sitegegevens.",
+    "team": "Team",
+    "teamDashboards": "Teamdashboards"
   },
   "theaterPresets": {
     "label": "Dekkingspresets",
@@ -4883,5 +4885,22 @@
     "close": "Sluiten",
     "alertsHint": "Installeer World Monitor op je beginscherm om meldingen te ontvangen op deze iPhone of iPad.",
     "how": "Installatie-instructies"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards die je team deelt. Open er een om het als nieuw tabblad toe te voegen.",
+    "empty": "Je team heeft nog geen dashboard gedeeld. Deel dit tabblad om iedereen in je team de panelen, groottes en kaart ervan te geven.",
+    "open": "Open {{name}} als nieuw tabblad",
+    "stopSharing": "Stoppen met delen van {{name}}",
+    "confirmStop": "Stoppen met het delen van {{name}} met je team? Tabbladen die mensen er al van hebben geopend, blijven zoals ze zijn.",
+    "shareTab": "Deel dit tabblad met je team",
+    "shareChanges": "Deel de wijzigingen van dit tabblad met je team",
+    "behind": "Je team heeft dit dashboard gewijzigd nadat je het opende.",
+    "getLatest": "Haal de nieuwste versie op",
+    "opened": "{{name}} van je team geopend.",
+    "shared": "{{name}} gedeeld met je team.",
+    "updated": "Dit tabblad heeft nu de nieuwste versie van je team.",
+    "stopped": "Gestopt met delen van {{name}}.",
+    "failed": "Kan de dashboards van je team niet bereiken. Probeer het opnieuw.",
+    "limit": "Je team deelt hier al {{limit}} dashboards. Stop eerst met het delen van een ervan."
   }
 }

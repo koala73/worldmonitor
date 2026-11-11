@@ -4533,7 +4533,9 @@
     "newTabOptionsHint": "Os separadores que já tem não mudam.",
     "useThisTabPanels": "Usar os painéis deste separador",
     "useDefaultPanels": "Usar os painéis predefinidos",
-    "newTabPanelsNotSaved": "Não foi possível guardar. Este navegador está a bloquear o armazenamento do site."
+    "newTabPanelsNotSaved": "Não foi possível guardar. Este navegador está a bloquear o armazenamento do site.",
+    "team": "Equipa",
+    "teamDashboards": "Dashboards da equipa"
   },
   "theaterPresets": {
     "label": "Predefinições de cobertura",
@@ -4905,5 +4907,22 @@
     "close": "Fechar",
     "alertsHint": "Instale o World Monitor na Tela de Início para receber alertas neste iPhone ou iPad.",
     "how": "Como instalar"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards que a sua equipa partilha. Abra um para o adicionar como novo separador.",
+    "empty": "A sua equipa ainda não partilhou nenhum dashboard. Partilhe este separador para dar a toda a equipa os seus painéis, tamanhos e mapa.",
+    "open": "Abrir {{name}} num novo separador",
+    "stopSharing": "Deixar de partilhar {{name}}",
+    "confirmStop": "Deixar de partilhar {{name}} com a sua equipa? Os separadores que já foram abertos a partir dele ficam como estão.",
+    "shareTab": "Partilhar este separador com a sua equipa",
+    "shareChanges": "Partilhar as alterações deste separador com a sua equipa",
+    "behind": "A sua equipa alterou este dashboard depois de o abrir.",
+    "getLatest": "Obter a versão mais recente",
+    "opened": "{{name}} aberto a partir da sua equipa.",
+    "shared": "{{name}} partilhado com a sua equipa.",
+    "updated": "Este separador tem agora a versão mais recente da sua equipa.",
+    "stopped": "Deixou de partilhar {{name}}.",
+    "failed": "Não foi possível aceder aos dashboards da sua equipa. Tente novamente.",
+    "limit": "A sua equipa já partilha {{limit}} dashboards aqui. Deixe primeiro de partilhar um."
   }
 }

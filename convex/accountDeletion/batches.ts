@@ -423,7 +423,43 @@ async function eraseGrants(
     }
   }
   const leftover = await collectGrantIds(ctx, deletion);
-  return { writes, done: leftover.length === 0 };
+  if (leftover.length > 0) return { writes, done: false };
+  return eraseOwnedTeamDashboards(ctx, deletion, budget, writes);
+}
+
+/**
+ * An API Business team ends with its owner's account (the seats above are
+ * gone and the subscriptions are cancelled), so the dashboards it shared go
+ * too. Enterprise dashboards belong to the contract account and stay.
+ */
+async function eraseOwnedTeamDashboards(
+  ctx: MutationCtx,
+  deletion: DeletionDoc,
+  budget: number,
+  writes: number,
+): Promise<{ writes: number; done: boolean }> {
+  for (const dodoSubscriptionId of deletion.dodoSubscriptionIds ?? []) {
+    const teamKey = `business:${dodoSubscriptionId}`;
+    while (writes < budget) {
+      const rows = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .take(budget - writes);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+        writes += 1;
+      }
+    }
+    if (writes >= budget) {
+      const more = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .first();
+      if (more) return { writes, done: false };
+    }
+  }
+  return { writes, done: true };
 }
 
 async function anonymizeBilling(

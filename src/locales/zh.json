@@ -4489,7 +4489,9 @@
     "newTabOptionsHint": "已有的标签页不会改变。",
     "useThisTabPanels": "使用此标签页的面板",
     "useDefaultPanels": "使用默认面板",
-    "newTabPanelsNotSaved": "无法保存。浏览器阻止了网站存储。"
+    "newTabPanelsNotSaved": "无法保存。浏览器阻止了网站存储。",
+    "team": "团队",
+    "teamDashboards": "团队仪表盘"
   },
   "theaterPresets": {
     "label": "覆盖预设",
@@ -4861,5 +4863,22 @@
     "close": "关闭",
     "alertsHint": "将 World Monitor 安装到主屏幕，以便在此 iPhone 或 iPad 上接收提醒。",
     "how": "如何安装"
+  },
+  "teamDashboards": {
+    "desc": "团队共享的仪表盘。打开一个可将其作为新标签页添加。",
+    "empty": "你的团队还未共享任何仪表盘。共享此标签页可让团队成员获得相同的面板、尺寸和地图。",
+    "open": "以新标签页打开 {{name}}",
+    "stopSharing": "停止共享 {{name}}",
+    "confirmStop": "停止与团队共享 {{name}}？已打开的标签页将保持不变。",
+    "shareTab": "将此标签页与团队共享",
+    "shareChanges": "将此标签页的更改与团队共享",
+    "behind": "你打开此仪表盘后，团队进行了更改。",
+    "getLatest": "获取最新版本",
+    "opened": "从团队共享中打开了 {{name}}。",
+    "shared": "已将 {{name}} 与团队共享。",
+    "updated": "此标签页现已是团队的最新版本。",
+    "stopped": "停止共享 {{name}}。",
+    "failed": "无法连接团队仪表盘。请重试。",
+    "limit": "你的团队已在此共享 {{limit}} 个仪表盘。请先停止共享其中一个。"
   }
 }

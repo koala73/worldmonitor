@@ -3804,11 +3804,24 @@ function projectSourceFailure(meta, policy, now, maxStaleMin) {
   if (Array.isArray(policy)) policy = policy.find(candidate => candidate.failureCodePattern.test(meta?.errorCode));
   if (!policy || meta?.sourceState !== 'degraded') return null;
   let retainedUntil = Infinity;
+  let sourceHealth;
   if (policy.sources) {
     const failed = meta.failedSources;
     const states = Array.isArray(failed) && failed.length > 0 && failed.length < policy.sources.length
       && new Set(failed).size === failed.length && failed.every((source) => policy.sources.includes(source))
       ? failed.map((source) => meta.sourceHealth?.[source]) : [];
+    if (states.length > 0) {
+      sourceHealth = Object.fromEntries(failed.map((source, index) => {
+        const state = states[index];
+        const evidence = {};
+        for (const field of ['lastSuccessAt', 'firstFailureAt', 'retainedUntil', 'retainedRecordCount']) {
+          const value = state?.[field];
+          evidence[field] = Number.isSafeInteger(value) && value >= (field === 'retainedRecordCount' ? 0 : 1)
+            ? value : null;
+        }
+        return [source, evidence];
+      }));
+    }
     const valid = states.length > 0 && states.every((state) =>
       Number.isSafeInteger(state?.consecutiveFailures) && state.consecutiveFailures >= 1
       && [state.lastSuccessAt, state.firstFailureAt, state.retainedUntil].every((value) => Number.isSafeInteger(value) && value > 0)
@@ -3859,6 +3872,7 @@ function projectSourceFailure(meta, policy, now, maxStaleMin) {
     lastSourceFailureCode,
     pending,
     pendingUntil,
+    sourceHealth,
   };
 }
 
@@ -4571,6 +4585,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // sitting unread in seed-meta.
   if ((fault === 'SEED_ERROR' || sourceFailure) && errorCode) entry.errorCode = errorCode;
   if (sourceFailure) {
+    if (sourceFailure.sourceHealth) entry.sourceHealth = sourceFailure.sourceHealth;
     if (sourceFailure.consecutiveSourceFailures !== null) {
       entry.consecutiveSourceFailures = sourceFailure.consecutiveSourceFailures;
     }
@@ -5960,6 +5975,7 @@ const SOURCE_INCIDENT_DIAGNOSTIC_FIELDS = [
   'minRecordCount', 'rankableRecordCount', 'minRankableRecordCount',
   'poolCounts', 'minPoolCounts', 'coverage', 'decisionGroups', 'failedDatasets',
   'dominantFailureMode', 'lastSourceFailureCode', 'consecutiveSourceFailures',
+  'sourceHealth',
   'chinaStatus', 'seedStatus', 'counts', 'problems', 'degradedStreak', 'degradedProblemKey', 'reason',
   // Set by the composers after classification: chokepoint transits missing
   // their measurable inputs, the CII input audit, the read-model gate, and the

@@ -633,13 +633,13 @@ function pricingSummary() {
         name: 'API Business',
         price_usd_monthly: byKey.api_business.price,
         price_usd_yearly: byKey.api_business_annual.price,
-        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_business'), '5 Pro licenses — invite users at any corporate email domain', 'commercial license — for your customers', 'priority support'],
+        features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)', dashboardAi('api_business'), '5 Pro licenses — invite users at any corporate email domain', 'team dashboards (up to 25 per variant)', 'commercial license — for your customers', 'priority support'],
       },
       {
         name: 'Enterprise',
         price: 'Custom',
         contact: 'enterprise@worldmonitor.app',
-        features: ['team workspaces', 'white-label', 'on-premises', 'air-gapped', 'dedicated support', 'SSO/MFA/RBAC (by contract)'],
+        features: ['team dashboards (up to 25 per variant)', 'team workspaces', 'white-label', 'on-premises', 'air-gapped', 'dedicated support', 'SSO/MFA/RBAC (by contract)'],
       },
     ],
   };

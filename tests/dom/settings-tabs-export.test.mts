@@ -7,6 +7,7 @@ import { countFreePanelCapUsage, FREE_MAX_PANELS } from '@/config/panels';
 import { resetMissionPresetState } from '@/services/mission-presets';
 import type { PanelConfig } from '@/types';
 import { initTestI18n } from './helpers/i18n.mts';
+import { TeamDashboardsStore } from '@/services/team-dashboards-store';
 
 const tabsKey = 'worldmonitor-tabs-v1:full';
 const tab = (id: string, name: string): PanelTab => ({
@@ -25,6 +26,7 @@ interface LayoutHarness {
   initPanelTabs: () => void;
   unregisterExportFlush: (() => void) | null;
   panelTabBar: { destroy: () => void } | null;
+  team: TeamDashboardsStore;
 }
 
 let manager: LayoutHarness;
@@ -39,6 +41,8 @@ beforeEach(() => {
   manager.bottomSetMemory = new Set(['markets']);
   manager.healStoredTabSnapshots = vi.fn();
   manager.updateTabCapLock = vi.fn();
+  // Object.create skips field initializers.
+  manager.team = new TeamDashboardsStore({ load: async () => null, onChange: () => {} });
   manager.initPanelTabs();
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:settings');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});

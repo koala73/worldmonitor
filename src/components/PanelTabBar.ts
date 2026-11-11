@@ -14,10 +14,32 @@ export interface PanelTabBarCallbacks {
   hasNewTabPanels(): boolean;
   onSaveNewTabPanels(): void;
   onClearNewTabPanels(): void;
+  /** Team dashboards. The "Team" button shows only while `view()` is non-null. */
+  team?: TeamDashboardCallbacks;
+}
+
+/** What the team popover lists, computed by the layout manager. */
+export interface TeamDashboardsView {
+  dashboards: Array<{ id: string; name: string }>;
+  /** The team dashboard the active tab was opened from, if it is still shared. */
+  active: { id: string; behind: boolean } | null;
+  /** A share or stop-sharing call is in flight. */
+  busy: boolean;
+}
+
+export interface TeamDashboardCallbacks {
+  /** Asked on every render. Null hides the button: no team, or not loaded yet. */
+  view(): TeamDashboardsView | null;
+  /** The menu opened: a cue to ask the server for the current list. */
+  onOpenMenu(): void;
+  onOpen(dashboardId: string): void;
+  onShareTab(): void;
+  onUpdateTab(): void;
+  onStopSharing(dashboardId: string): void;
 }
 
 /** The bar holds one popover at a time; this says which button it belongs to. */
-type NoticeKind = 'cap' | 'options';
+type NoticeKind = 'cap' | 'options' | 'team';
 
 /** Locked state of the "+" control while the dashboard tab cap applies (KTD8). */
 export interface TabAddLock {
@@ -78,6 +100,7 @@ export class PanelTabBar {
   // Built once, unlike "+", so an open popover keeps its anchor and a truthful
   // aria-expanded across re-renders.
   private readonly optionsBtn: HTMLButtonElement;
+  private readonly teamBtn: HTMLButtonElement;
   private readonly liveRegion: HTMLElement;
   private readonly onNoticeOutsideClick: (event: MouseEvent) => void;
   private readonly onNoticeKeyDown: (event: KeyboardEvent) => void;
@@ -112,6 +135,15 @@ export class PanelTabBar {
     this.optionsBtn.setAttribute('aria-label', t('dashboardTabs.newTabOptions'));
     this.optionsBtn.setAttribute('aria-expanded', 'false');
     this.optionsBtn.addEventListener('click', () => this.toggleNewTabOptions());
+
+    this.teamBtn = document.createElement('button');
+    this.teamBtn.type = 'button';
+    this.teamBtn.className = 'dashboard-tab-team';
+    this.teamBtn.textContent = t('dashboardTabs.team');
+    this.teamBtn.title = t('dashboardTabs.teamDashboards');
+    this.teamBtn.setAttribute('aria-label', t('dashboardTabs.teamDashboards'));
+    this.teamBtn.setAttribute('aria-expanded', 'false');
+    this.teamBtn.addEventListener('click', () => this.toggleTeamDashboards());
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
     // The trailing "+" button is an action, not a tab, so the tablist is an
@@ -269,14 +301,111 @@ export class PanelTabBar {
     this.openNotice('options', popover, useTab);
   }
 
+  private toggleTeamDashboards(): void {
+    if (this.noticeKind === 'team') {
+      this.closeNotice();
+      return;
+    }
+    const popover = document.createElement('div');
+    popover.id = 'dashboard-team-dashboards';
+    popover.className = 'tab-cap-notice team-dashboards-notice';
+    popover.setAttribute('role', 'group');
+    popover.setAttribute('aria-label', t('dashboardTabs.teamDashboards'));
+    const focus = this.fillTeamDashboards(popover);
+    if (!focus) return;
+    this.openNotice('team', popover, focus);
+    this.callbacks.team?.onOpenMenu();
+  }
+
+  /**
+   * (Re)build the team popover's contents from the current view. Returns the
+   * control to focus, or null when there is no team to show.
+   */
+  private fillTeamDashboards(popover: HTMLElement): HTMLElement | null {
+    const view = this.callbacks.team?.view();
+    if (!view) return null;
+
+    const desc = document.createElement('p');
+    desc.className = 'tab-cap-notice-desc';
+    desc.id = 'dashboard-team-dashboards-desc';
+    desc.textContent = t(view.dashboards.length > 0 ? 'teamDashboards.desc' : 'teamDashboards.empty');
+
+    const list = document.createElement('ul');
+    list.className = 'team-dashboards-list';
+    for (const dashboard of view.dashboards) {
+      const isActive = view.active?.id === dashboard.id;
+      const item = document.createElement('li');
+      item.className = `team-dashboards-item${isActive ? ' active' : ''}`;
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'team-dashboards-open';
+      open.textContent = dashboard.name;
+      open.title = t('teamDashboards.open', { name: dashboard.name });
+      open.setAttribute('aria-label', t('teamDashboards.open', { name: dashboard.name }));
+      if (isActive) open.setAttribute('aria-current', 'true');
+      // Close first: opening can run into the tab cap, whose notice must stay.
+      open.addEventListener('click', () => {
+        this.closeNotice(true);
+        this.callbacks.team?.onOpen(dashboard.id);
+      });
+
+      const stop = document.createElement('button');
+      stop.type = 'button';
+      stop.className = 'team-dashboards-stop';
+      stop.textContent = '×';
+      stop.disabled = view.busy;
+      stop.title = t('teamDashboards.stopSharing', { name: dashboard.name });
+      stop.setAttribute('aria-label', t('teamDashboards.stopSharing', { name: dashboard.name }));
+      stop.addEventListener('click', () => this.callbacks.team?.onStopSharing(dashboard.id));
+
+      item.append(open, stop);
+      list.appendChild(item);
+    }
+
+    const action = (label: string, run: () => void): HTMLButtonElement => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tab-cap-notice-action';
+      btn.textContent = label;
+      btn.disabled = view.busy;
+      btn.addEventListener('click', run);
+      return btn;
+    };
+
+    const nodes: HTMLElement[] = [desc];
+    if (view.dashboards.length > 0) nodes.push(list);
+    if (view.active?.behind) {
+      const behind = document.createElement('p');
+      behind.className = 'tab-cap-notice-desc';
+      behind.textContent = t('teamDashboards.behind');
+      nodes.push(behind, action(t('teamDashboards.getLatest'), () => {
+        this.closeNotice(true);
+        this.callbacks.team?.onUpdateTab();
+      }));
+    }
+    const share = action(
+      t(view.active ? 'teamDashboards.shareChanges' : 'teamDashboards.shareTab'),
+      () => this.callbacks.team?.onShareTab(),
+    );
+    nodes.push(share);
+    popover.replaceChildren(...nodes);
+    return popover.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? share;
+  }
+
+  private anchorFor(kind: NoticeKind): HTMLButtonElement | null {
+    if (kind === 'options') return this.optionsBtn;
+    if (kind === 'team') return this.teamBtn;
+    return this.addBtn;
+  }
+
   private noticeAnchor(): HTMLButtonElement | null {
-    if (!this.noticeKind) return null;
-    return this.noticeKind === 'options' ? this.optionsBtn : this.addBtn;
+    return this.noticeKind ? this.anchorFor(this.noticeKind) : null;
   }
 
   private openNotice(kind: NoticeKind, notice: HTMLElement, focus: HTMLElement): void {
     this.closeNotice();
-    const anchor = kind === 'options' ? this.optionsBtn : this.addBtn;
+    const anchor = this.anchorFor(kind);
     if (!anchor) return;
 
     // The bar scrolls horizontally (overflow-x: auto), so an in-flow popover
@@ -289,9 +418,9 @@ export class PanelTabBar {
 
     this.notice = notice;
     this.noticeKind = kind;
-    if (kind === 'options') {
-      this.optionsBtn.setAttribute('aria-expanded', 'true');
-      this.optionsBtn.setAttribute('aria-controls', notice.id);
+    if (kind !== 'cap') {
+      anchor.setAttribute('aria-expanded', 'true');
+      anchor.setAttribute('aria-controls', notice.id);
     }
     document.addEventListener('mousedown', this.onNoticeOutsideClick);
     document.addEventListener('keydown', this.onNoticeKeyDown);
@@ -306,8 +435,10 @@ export class PanelTabBar {
     this.notice.remove();
     this.notice = null;
     this.noticeKind = null;
-    this.optionsBtn.setAttribute('aria-expanded', 'false');
-    this.optionsBtn.removeAttribute('aria-controls');
+    for (const btn of [this.optionsBtn, this.teamBtn]) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.removeAttribute('aria-controls');
+    }
     if (restoreFocus) anchor?.focus();
   }
 
@@ -337,8 +468,21 @@ export class PanelTabBar {
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
     this.addBtn = addBtn;
     this.applyAddLock();
-    // The tablist owns only tabs; the add and options buttons are siblings in the bar.
-    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, this.liveRegion);
+    // The tablist owns only tabs; the add, options and team buttons are siblings in the bar.
+    const hasTeam = this.callbacks.team?.view() != null;
+    const teamBtn = hasTeam ? [this.teamBtn] : [];
+    // Re-inserting a focused button blurs it; put keyboard focus back.
+    const focused = [this.optionsBtn, this.teamBtn].find((btn) => btn === document.activeElement);
+    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, this.liveRegion);
+    if (focused?.isConnected) focused.focus();
+    // An open team menu follows the list as it loads or changes; it closes if
+    // the team goes away (sign-out, seat removed).
+    if (this.noticeKind === 'team' && this.notice) {
+      const hadFocus = this.notice.contains(document.activeElement);
+      const focus = hasTeam ? this.fillTeamDashboards(this.notice) : null;
+      if (!focus) this.closeNotice();
+      else if (hadFocus && !this.notice.contains(document.activeElement)) focus.focus();
+    }
   }
 
   private renderTab(tab: PanelTab, isActive: boolean, canDelete: boolean): HTMLElement {
