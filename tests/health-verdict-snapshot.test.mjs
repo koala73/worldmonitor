@@ -1,6 +1,7 @@
 import { decodeHealthPipeline } from './helpers/health-pipeline-fixture.mjs';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
@@ -669,6 +670,7 @@ function sweepFetch({
   chinaCoverageSummary,
   chinaDecisionMeta,
   incidentAlerts = null,
+  seedMeta = {},
 } = {}) {
   return async (_url, init) => {
     const { commands, encodeResults } = decodeHealthPipeline(init.body);
@@ -695,6 +697,7 @@ function sweepFetch({
       if (op === 'GET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) {
         return incidentAlerts === INCIDENT_ALERTS_UNREADABLE ? { error: 'ERR unreachable' } : { result: incidentAlerts };
       }
+      if (op === 'GET' && Object.hasOwn(seedMeta, key)) return { result: JSON.stringify(seedMeta[key]) };
       if (op === 'GET' && key === TEMPORAL_META_KEY) {
         return {
           result: JSON.stringify({
@@ -1100,6 +1103,78 @@ test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-act
     'a recovered source leaves the record so a recurrence alerts again',
   );
   assert.deepEqual(nextAlertedIncidents('[]', current, ['b:SEED_ERROR']), ['b:SEED_ERROR'], 'only accepted deliveries are recorded');
+});
+
+// WORLDMONITOR-1DQ: Tanzania's ministry posted no wholesale price sheet for 14
+// days, one day past the source's freshness limit, and that opened a Sentry
+// issue. A government publication running late is the publisher's schedule,
+// not a fault we can fix. The panel already labels it stale; Sentry waits a
+// month past the limit, when the source may really have stopped.
+test('a late government food-price release stays out of Sentry for a month past its limit', () => {
+  const { isReportableIncident, GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN } = __testing__;
+  const DAY_MIN = 1_440;
+  assert.equal(GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN, 30 * DAY_MIN);
+  const limit = 14 * DAY_MIN;
+  const staleBy = (overMin) => ({
+    foodPricesMit: { status: 'STALE_CONTENT', records: 952, contentAgeMin: limit + overMin, maxContentAgeMin: limit },
+  });
+
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(180)), false, 'the 1DQ case: 3 h late');
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(30 * DAY_MIN)), false, 'exactly a month late');
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(30 * DAY_MIN + 1)), true, 'more than a month late');
+
+  // No content age means no date could be read, which points at our parser.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', {
+    foodPricesMit: { status: 'STALE_CONTENT', records: 0, maxContentAgeMin: limit },
+  }), true);
+  // A dead seeder or a failed fetch is ours to fix and reports at once.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_SEED', {
+    foodPricesMit: { status: 'STALE_SEED', records: 952, seedAgeMin: 5_000, maxStaleMin: 4_320 },
+  }), true);
+  assert.equal(isReportableIncident('foodPricesMit:SEED_ERROR', { foodPricesMit: { status: 'SEED_ERROR' } }), true);
+  // Fast feeds keep the immediate alarm: a frozen live feed is a real fault.
+  assert.equal(isReportableIncident('temporalAnomalies:STALE_CONTENT', {
+    temporalAnomalies: { status: 'STALE_CONTENT', records: 10, contentAgeMin: 200, maxContentAgeMin: 120 },
+  }), true);
+});
+
+test('every food-price source gets the government release grace', () => {
+  const { GOVERNMENT_RELEASE_KEYS, SEED_META } = __testing__;
+  const sources = JSON.parse(readFileSync(new URL('../shared/food-price-sources.json', import.meta.url), 'utf8'));
+  const graced = [...GOVERNMENT_RELEASE_KEYS].map((name) => SEED_META[name]?.key).sort();
+  assert.deepEqual(graced, sources.map((source) => `seed-meta:economic:food-prices-${source.id}`).sort());
+});
+
+test('handleHealth holds a late government release back from Sentry, then reports it once it is a month late', async () => {
+  const limitMin = 14 * 1_440;
+  const sweep = async (overMin) => {
+    const captures = [];
+    globalThis.fetch = sweepFetch({
+      seedMeta: {
+        'seed-meta:economic:food-prices-mit': {
+          fetchedAt: Date.now() - 60_000,
+          recordCount: 952,
+          newestItemAt: Date.now() - (limitMin + overMin) * 60_000,
+          maxContentAgeMin: limitMin,
+        },
+      },
+    });
+    const response = await handleHealth(new Request('https://api.worldmonitor.app/api/health?compact=1'), undefined, {
+      captureIncident: async (error, opts) => { captures.push(opts.tags); return true; },
+    });
+    const body = await response.json();
+    return { body, mit: captures.filter((tags) => tags.health_source === 'foodPricesMit'), total: captures.length };
+  };
+
+  // Past the 3 h stale-content grace, so health reports it, but well inside a month.
+  const late = await sweep(6 * 60);
+  assert.equal(late.body.problems.foodPricesMit?.status, 'STALE_CONTENT', 'health still shows the late release');
+  assert.deepEqual(late.mit, [], 'Sentry does not hear about it');
+  assert.ok(late.total > 0, 'other incidents in the same sweep still report');
+
+  const gone = await sweep(31 * 1_440);
+  assert.equal(gone.body.problems.foodPricesMit?.status, 'STALE_CONTENT');
+  assert.deepEqual(gone.mit, [{ health_source: 'foodPricesMit', health_status: 'STALE_CONTENT' }], 'a month past the limit, it reports');
 });
 
 test('a source incident carries the diagnostics that say why it fired', async () => {

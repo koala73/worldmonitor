@@ -2699,6 +2699,19 @@ if (!IRAN_EVENTS_ENABLED) {
   delete SEED_META.strikePressure;
 }
 
+// Sources whose content is a scheduled government release (food-price sheets
+// from ministries, statistics offices and FAO/FEWS NET). These publishers run
+// days or weeks late without anything being broken on our side, so a
+// STALE_CONTENT incident waits GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN past the
+// content limit before it goes to Sentry (WORLDMONITOR-1DQ). Health status and
+// the panel's stale label still change at the limit itself.
+const GOVERNMENT_RELEASE_KEYS = new Set(
+  Object.entries(SEED_META)
+    .filter(([, meta]) => meta.key.startsWith('seed-meta:economic:food-prices-'))
+    .map(([name]) => name),
+);
+const GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN = 30 * 24 * 60;
+
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
 // Empty = WARN not CRIT since they only exist after first request.
 //
@@ -5895,6 +5908,28 @@ function pendingIncidentKeys(alertedRaw, sigKeys) {
   return sigKeys.filter((key) => !alerted.has(key));
 }
 
+/**
+ * Whether a `<source>:<status>` incident should go to Sentry now. A late
+ * government release is held back until its content is more than
+ * GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN past its limit. Without a readable
+ * content age nothing is held back: no parsable date points at our parser,
+ * not the publisher.
+ */
+function isReportableIncident(key, checks) {
+  const separator = key.lastIndexOf(':');
+  const name = key.slice(0, separator);
+  if (key.slice(separator + 1) !== 'STALE_CONTENT' || !GOVERNMENT_RELEASE_KEYS.has(name)) return true;
+  const { contentAgeMin, maxContentAgeMin } = checks[name] ?? {};
+  if (!Number.isFinite(contentAgeMin) || !Number.isFinite(maxContentAgeMin)) return true;
+  return contentAgeMin > maxContentAgeMin + GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN;
+}
+
+// A held-back incident is never recorded as alerted, so each sweep re-checks
+// it and it reports on the first sweep after its grace runs out.
+function reportableIncidentKeys(keys, checks) {
+  return keys.filter((key) => isReportableIncident(key, checks));
+}
+
 // The next record: still-active incidents already accepted, plus the ones
 // accepted this sweep. Recovered and undelivered incidents are left out.
 function nextAlertedIncidents(alertedRaw, sigKeys, delivered) {
@@ -6687,7 +6722,7 @@ export async function handleHealth(req, ctx, options = {}) {
       if (Array.isArray(result) && result[1] && !result[1].error
         && parseAlertedIncidents(result[1].result) !== null) {
         const alertedRaw = result[1].result ?? null;
-        const pending = pendingIncidentKeys(alertedRaw, diagnostics.sigKeys);
+        const pending = reportableIncidentKeys(pendingIncidentKeys(alertedRaw, diagnostics.sigKeys), checks);
         const outcomes = await Promise.all(pending.map((key) => (
           reportSourceIncident(key, checks, ctx, options.captureIncident).catch(() => false)
         )));
@@ -6828,6 +6863,10 @@ export const __testing__ = {
   healthResponseBody,
   collectFailureLogProblems,
   pendingIncidentKeys,
+  isReportableIncident,
+  reportableIncidentKeys,
+  GOVERNMENT_RELEASE_KEYS,
+  GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN,
   nextAlertedIncidents,
   HEALTH_INCIDENT_ALERTS_KEY,
   dataStatusFromSummary,

@@ -742,6 +742,12 @@ pairs, so a failed delivery is retried by the next sweep. An unchanged incident
 does not re-alert; a recovered source that breaks again does. `?history=1`
 lists the incident log.
 
+Food-price sources are government releases that often run late. Their
+`STALE_CONTENT` shows in `/api/health` and on the panel at the content limit,
+but it reaches Sentry only when the content is more than 30 days past that
+limit. A `STALE_CONTENT` with no readable content date, and every other status,
+reports at once.
+
 ### MCP preset liveness
 
 The **MCP Preset Liveness** workflow checks the Quick Connect catalog every
