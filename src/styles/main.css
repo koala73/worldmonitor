@@ -1728,50 +1728,41 @@ canvas,
 }
 
 .site-footer {
+  /* #10461: the dashboard shell does not scroll, so a multi-row footer ate
+     78–124px of the first screen. Keep a single 28px meta line; site links
+     live in Settings and the mobile More menu. */
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* The digest coverage row (#7085) joins as a full-width flex child and
-     wraps onto its own line; the brand/nav/copy children still fit one row. */
-  flex-wrap: wrap;
-  padding: 12px 20px;
+  gap: 12px;
+  height: 28px;
+  max-height: 28px;
+  padding: 0 12px;
+  overflow: hidden;
+  flex-wrap: nowrap;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
   background: var(--surface);
 }
-.site-footer-brand {
+.site-footer-meta {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.site-footer-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-}
-.site-footer-brand-text {
-  display: flex;
-  flex-direction: column;
-}
-.site-footer-name {
+  min-width: 0;
+  flex-shrink: 0;
   font-family: var(--font-mono, monospace);
-  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: 1px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  white-space: nowrap;
 }
-.site-footer-sub {
+.site-footer-version,
+.site-footer-copy {
   font-family: var(--font-mono, monospace);
-  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
+     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
+     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
   color: var(--text-dim);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-}
-.site-footer nav {
-  display: flex;
-  gap: 16px;
 }
 .site-footer a {
   color: var(--text-dim);
@@ -1782,27 +1773,25 @@ canvas,
 .site-footer a:hover {
   color: var(--accent);
 }
-.site-footer-copy {
-  font-family: var(--font-mono, monospace);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  /* No opacity: 0.6 fade — it dropped --text-dim (#888) to an effective
-     #5a5a5a on the #141414 footer (2.67:1). At full strength #888 clears
-     4.5:1 (≈5.2:1) for WCAG AA, matching the footer nav links. */
-  color: var(--text-dim);
+.site-footer-download-link {
+  white-space: nowrap;
 }
 
-/* #7085: digest coverage status row, mounted into the site footer by
-   StatusPanel. Text-only state disclosure — same muted mono treatment as the
-   footer copy, which already clears WCAG AA on this surface. */
+/* #7085 + #10461: digest coverage mounts into the compact footer as an
+   inline status line. Ellipsis keeps the whole footer on one 28px row so the
+   coverage text cannot grow the shell the way the old wrapped row did. */
 .site-footer .status-panel-container {
-  flex-basis: 100%;
-  order: 10;
+  flex: 1 1 auto;
+  min-width: 0;
+  order: 0;
 }
 .digest-coverage-row {
   font-family: var(--font-mono, monospace);
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
-  padding-top: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Mobile application navigation is injected with the hydrated shell but stays
@@ -1814,9 +1803,12 @@ canvas,
 @media (max-width: 768px) {
   /* #7085: display:none on the whole footer removed the digest coverage row's
      live region from the mobile accessibility tree (PR #7267 review). Keep the
-     footer in flow but collapse it: brand/nav/copy stay hidden, and the
-     coverage row announces from off-screen instead of painting. */
+     footer in flow but collapse it: the compact meta line stays hidden, and the
+     coverage row announces from off-screen instead of painting. #10461 also
+     zeroes the 28px desktop height so the tab bar does not sit above a gap. */
   .site-footer {
+    height: 0;
+    max-height: 0;
     padding: 0;
     border-top: none;
   }
@@ -2030,25 +2022,48 @@ canvas,
 
 /* #8276: Reserve enough grid rows for the natural wide video panels.
    Let the panels fill their grid area without overlapping the next row.
-   Preserve user-resized spans and the mobile layout. */
+   Preserve user-resized spans and the mobile layout.
+   The webcam wall is a 2x2 grid and takes three rows. Live News is one 16:9
+   player: at the widths the panel actually gets (386-830px) a third row was
+   111-290px of empty panel under the video, so it takes two (404px). */
 @media (min-width: 769px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
+    grid-row: span 2;
+    height: 100%;
+  }
+
   #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
     grid-row: span 3;
     height: 100%;
   }
 }
 
-/* #8276: Keep natural video panels compact on short desktop viewports.
+/* #8276: Keep the natural webcam wall compact on short desktop viewports.
    Two 200px grid rows plus the 4px gap provide a 404px footprint.
    The breakpoint prevents the default three-row footprint from
    exceeding the webcam panel's former viewport-height limit.
    Explicit user-resized spans remain untouched. */
 @media (min-width: 769px) and (height < 672px) {
-  #panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
   #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.panel-collapsed):not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
     grid-row: span 2;
     height: 100%;
+  }
+}
+
+/* The Live News player fills whatever height its panel has, at the natural
+   footprint and at any user-resized one; the video letterboxes inside the
+   player. A fixed 16:9 box left the rest of the panel empty. Mobile keeps the
+   16:9 box: there the panel is as tall as its content. */
+@media (min-width: 769px) {
+  .panel[data-panel="live-news"]:not(.panel-collapsed) > .panel-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel[data-panel="live-news"] .live-news-player {
+    flex: 1 1 auto;
+    min-height: 0;
+    aspect-ratio: auto;
   }
 }
 
@@ -20275,18 +20290,6 @@ button.popup-link {
   display: none;
 }
 
-/* Map author credit badge (inside layers panel) */
-.map-author-badge {
-  padding: 6px 10px;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #00e5ff;
-  border-top: 1px solid rgba(0, 229, 255, 0.2);
-  pointer-events: none;
-}
-
 /* Map tile attribution */
 .map-attribution {
   position: absolute;
@@ -27676,6 +27679,18 @@ body.map-width-resizing {
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
    terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
+/* #10461: site destinations + legal docs pin together so opening Settings
+   keeps both rows one tap away without scrolling a long tab. -20px cancels
+   .modal's own bottom padding so the stack sits flush to the edge. */
+.dashboard-chrome-links {
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  margin-top: 8px;
+  background: var(--surface);
+}
+
+.dashboard-site-links-row,
 .legal-links-row {
   display: flex;
   flex-wrap: wrap;
@@ -27684,22 +27699,24 @@ body.map-width-resizing {
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border-color, #30363d);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
-     enough that a row parked at the end of the scroll would be several
-     screens down, which is not "one click from the dashboard". -20px cancels
-     .modal's own bottom padding so it pins flush to the edge. */
-  position: sticky;
-  bottom: -20px;
-  z-index: 1;
-  margin-top: 8px;
   background: var(--surface);
 }
 
+.dashboard-site-links-row {
+  padding-bottom: 8px;
+}
+
+.legal-links-row {
+  padding-top: 8px;
+}
+
+.dashboard-site-links-item,
 .legal-links-item {
   color: var(--text-dim);
   text-decoration: none;
 }
 
+.dashboard-site-links-item:hover,
 .legal-links-item:hover {
   color: var(--text);
   text-decoration: underline;

@@ -2064,7 +2064,8 @@
       "channelUrlHint": "Incolla un URL del canale (youtube.com/channel/UC…) o un URL di video in diretta",
       "youtubeChannel": "Canale YouTube",
       "insecureStream": "{{name}} utilizza un flusso non sicuro (http), bloccato dai browser. Aggiungilo di nuovo con un URL di flusso sicuro (https)",
-      "httpsStreamHint": "I browser bloccano i flussi non sicuri (http). Incolla un URL di flusso sicuro (https)"
+      "httpsStreamHint": "I browser bloccano i flussi non sicuri (http). Incolla un URL di flusso sicuro (https)",
+      "tapToPlay": "Tocca per riprodurre"
     },
     "securityAdvisories": {
       "loading": "Caricamento avvisi di viaggio...",

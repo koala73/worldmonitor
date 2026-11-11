@@ -107,6 +107,23 @@ describe('exposure event adapters', () => {
     assert.deepEqual(ucdpEventsToExposureEvents(payload, 0), []);
   });
 
+  it('folds conflicts at three decimals but preserves distinct nearby locations', () => {
+    const events = [[50.4501, 30.5231], [50.4504, 30.5234], [50.452, 30.523]].map(([latitude, longitude], id) => ({
+      id, country: 'Ukraine', locationName: 'Kyiv', dateStart: '2026-07-28',
+      location: { latitude, longitude }, hasPreciseLocation: true,
+    }));
+    assert.deepEqual(ucdpEventsToExposureEvents({ events }).map(e => e.eventCount), [2, 1]);
+  });
+
+  it('names Gaza conflicts for their PSE density while retaining the reported country', () => {
+    const [event] = ucdpEventsToExposureEvents({ events: [{
+      id: 'gaza', country: 'Israel', locationName: 'Gaza town',
+      location: { latitude: 31.52, longitude: 34.45 }, hasPreciseLocation: true,
+    }] });
+    assert.equal(event.name, 'Gaza town, Palestine');
+    assert.equal(event.reportedCountry, 'Israel');
+  });
+
   it('uses current UCDP country names and handles missing place or country names', () => {
     const events = ucdpEventsToExposureEvents({ events: [
       { country: 'Yemen (North Yemen)' },

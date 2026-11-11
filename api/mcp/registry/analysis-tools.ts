@@ -949,13 +949,13 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
     title: 'Population exposed to active events',
     _outputBudgetBytes: 65536,
     description:
-      'Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. ' +
-      'Same method as the dashboard: the average density (population / area) of the country the point is in, times the ' +
-      'event-type circle area (50 km for conflict, 100 km for earthquakes and floods, 30 km for fires). Only the 20 countries ' +
-      'in the countries table have a density; anywhere else gets no estimate (point mode returns exposure null, events mode ' +
-      'leaves the event out). Conflict events need a precise point location. Modes: events (default) ' +
-      'ranks the seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. ' +
-      'Coarse screening numbers with no city-level data behind them: ranking signals, not casualty projections.',
+      'Estimated people within earthquake (100 km), wildfire (30 km), or conflict (50 km) radii, using country average density × circle area. ' +
+      'Only the 20 countries in the population table are supported; other points return null or are omitted in events mode. ' +
+      'Conflicts require precise points and fold into one row per location (3 decimal coordinates); eventCount counts folded events. ' +
+      'Names use Place, Country (Palestine for PSE density). limit caps locations, not underlying conflict events. ' +
+      'Unprojected events responses can exceed the 64 KB output budget; use jmespath or a limit. ' +
+      'Modes: events (default) ranks feeds by exposure; point estimates at lat/lon; countries lists the table. ' +
+      'Coarse screening estimates, not casualty projections.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -964,7 +964,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         lat: { type: 'number', description: 'Latitude for point mode.' },
         lon: { type: 'number', description: 'Longitude for point mode.' },
         radius_km: { type: 'number', description: 'Radius in km for point mode (default 50, clamped to 1000).' },
-        limit: { type: 'number', description: 'Cap the enriched event list in events mode (default 20, pass 0 for no cap).' },
+        limit: { type: 'number', description: 'Cap locations in events mode, after conflict events are folded by location (default 20, pass 0 for no cap). Use a limit or jmespath to stay within the 64 KB output budget.' },
       },
       required: [],
     },
@@ -977,7 +977,27 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         data: {
           type: 'object',
           properties: {
-            events: { type: ['array', 'null'], items: { type: 'object' } },
+            events: {
+              type: ['array', 'null'],
+              description: 'Ranked exposure rows in events mode; conflicts have one row per location. Null in other modes.',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'Representative source event identifier.' },
+                  name: { type: 'string', description: 'Display name; conflicts use Place, Country or Conflict event — Country when the place is missing. PSE density locations display Palestine.' },
+                  type: { type: 'string', description: 'Event type: conflict, earthquake, or wildfire.' },
+                  lat: { type: 'number', description: 'Representative event latitude in degrees.' },
+                  lon: { type: 'number', description: 'Representative event longitude in degrees.' },
+                  reportedCountry: { type: 'string', description: 'Conflict source country label with former country names removed; may differ from the density country.' },
+                  eventCount: { type: 'integer', description: 'Number of conflict events folded into this location row; absent for other event types.' },
+                  country: { type: 'string', description: 'ISO3 country code whose density was used for the estimate.' },
+                  nearestCountry: { type: 'string', deprecated: true, description: 'Deprecated alias of country, retained for this published revision.' },
+                  exposedPopulation: { type: 'number', description: 'Estimated people within the radius using country average density, rounded to a whole person.' },
+                  exposureRadiusKm: { type: 'number', description: 'Impact radius in kilometres used for the estimate.' },
+                  densityPerKm2: { type: 'number', description: 'Country average people per square kilometre used for the estimate.' },
+                },
+              },
+            },
             exposure: { type: ['object', 'null'], description: 'Point mode: the estimate, with country as the ISO3 code whose density was used. nearestCountry is a deprecated alias retained for this published revision in point and event estimates. Null in other modes and for a point outside the countries table.' },
             countries: { type: ['array', 'null'], items: { type: 'object' } },
           },
