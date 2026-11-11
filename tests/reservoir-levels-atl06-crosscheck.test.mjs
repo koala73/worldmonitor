@@ -24,8 +24,8 @@ const gaugeFile = read('./fixtures/reservoir-levels/mead-gauge-usbr.json');
 
 // Gate: RMSE after removing the datum offset <= 0.15 m against both the
 // gauge and ATL13, and no matched ok pass off by more than 0.5 m.
-export const GATE_RMSE_M = 0.15;
-export const GATE_MAX_RESIDUAL_M = 0.5;
+const GATE_RMSE_M = 0.15;
+const GATE_MAX_RESIDUAL_M = 0.5;
 
 // End-of-day reading for local date D is taken at D+1 00:00 MST (07:00 UTC).
 const gauge = gaugeFile.data.map(([d, m]) => ({ t: Date.parse(`${d}T07:00:00Z`) + 86_400_000, m }));
@@ -45,7 +45,7 @@ function gaugeAt(t) {
 const median = (v) => { const s = [...v].sort((a, b) => a - b); const k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
 
 /** n, median offset (x - y), RMSE and max |residual| after the offset, Pearson r. */
-export function compare(pairs) {
+function compare(pairs) {
   const x = pairs.map((p) => p[0]);
   const y = pairs.map((p) => p[1]);
   const mx = x.reduce((s, v) => s + v, 0) / x.length;
@@ -69,7 +69,7 @@ const okPasses = (tuples) => classifyPasses(tuples.map(tupleToPass)).filter((p) 
 const MATCH_WINDOW_MS = 15 * 60 * 1000;
 
 /** ATL06 ok passes matched to the ATL13 ok pass of the same overpass. */
-export function vsAtl13(id) {
+function vsAtl13(id) {
   const atl13 = okPasses(baseline.reservoirs[id].passes);
   const pairs = [];
   for (const p of okPasses(fixture.reservoirs[id].passes)) {
@@ -80,7 +80,7 @@ export function vsAtl13(id) {
   return compare(pairs);
 }
 
-export function meadVsGauge() {
+function meadVsGauge() {
   return compare(okPasses(fixture.reservoirs.mead.passes).map((p) => [p.levelM, gaugeAt(Date.parse(p.time))]).filter((p) => p[1] != null));
 }
 
