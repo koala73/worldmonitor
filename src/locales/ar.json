@@ -1985,7 +1985,8 @@
       "channelUrlHint": "الصق عنوان قناة (youtube.com/channel/UC…) أو عنوان فيديو مباشر",
       "youtubeChannel": "قناة YouTube",
       "insecureStream": "{{name}} يستخدم بث غير آمن (http)، والمتصفحات تحظره. أضفه مجددًا ببث آمن (https)",
-      "httpsStreamHint": "المتصفحات تحظر البث غير الآمن (http). الصق عنوان بث آمن (https)"
+      "httpsStreamHint": "المتصفحات تحظر البث غير الآمن (http). الصق عنوان بث آمن (https)",
+      "tapToPlay": "اضغط للتشغيل"
     },
     "securityAdvisories": {
       "loading": "جاري جلب التحذيرات الأمنية...",
