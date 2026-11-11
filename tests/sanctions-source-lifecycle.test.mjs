@@ -674,12 +674,12 @@ it('keeps malformed and mixed-invalid IDs unknown through the real saved-state r
       const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
       const result = projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt));
       assert.equal(result.state, 'observed');
-      assert.equal(result.sanctionsDesignations, 80);
+      assert.equal(result.sanctionsDesignations, 0, 'SEMA target states do not supply country evidence');
       assert.equal(result.sanctionsNewDesignations, null, JSON.stringify(entryIds));
       assert.equal(result.websiteCounts.sanctionsNewDesignations, null);
       assert.equal(result.comparison.kind, 'baseline-unavailable');
       assert.equal(result.comparison.from, null);
-      assert.equal(result.countryRow.newEntryCount, canonical.countries.find(row => row.countryCode === 'IR').newEntryCount);
+      assert.equal(result.countryRow, null);
     }
   });
 });

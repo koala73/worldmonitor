@@ -206,6 +206,15 @@ function hasCountryCode(code) {
   return Boolean(code) && code !== 'XX';
 }
 
+// Regulation targets describe a sanctions regime, never a designee's country.
+// Reuse the display ranking only; this projection must not feed risk or briefs.
+function buildRegulationTargets(entries) {
+  return buildCountryPressure(entries.map(entry => ({ ...entry,
+    countryCodes: entry._targetCountryCodes || [],
+    countryNames: entry._targetCountryNames || [],
+  })));
+}
+
 function buildFlagRegistries(entries) {
   const map = new Map();
   for (const entry of entries) {
@@ -922,6 +931,7 @@ async function fetchSanctionsPressure() {
     unattributed,
     countries: buildCountryPressure(entries),
     flagRegistries: buildFlagRegistries(entries),
+    regulationTargets: buildRegulationTargets(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
     pressureMetadata,
@@ -968,7 +978,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, _changes, _ofacAttribution, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
-        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, ...publicEntry } = entry;
+        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, _targetCountryCodes, _targetCountryNames, ...publicEntry } = entry;
         return publicEntry;
       });
     }

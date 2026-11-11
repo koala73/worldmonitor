@@ -13,6 +13,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import ts from 'typescript';
+import vm from 'node:vm';
+import { mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { CSL_SOURCES, CSL_ROW_ID } from '../scripts/_csl-sanctions.mjs';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
@@ -593,6 +596,29 @@ function emptyAux() {
     militaryCii: null as Record<string, any> | null,
   };
 }
+
+it('keeps SEMA regulation targets out of the sanctions boost, including the new-entry increment', () => {
+  const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
+  const producer = vm.createContext({ console, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
+  vm.runInContext(source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '')
+    .split('async function fetchSource')[0], producer);
+  const ofac = Array.from({ length: 100 }, (_, i) => ({
+    id: `SDN:${i}`, name: `Address entity ${i}`, entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+    countryCodes: ['IR'], countryNames: ['Iran'], sourceLists: ['SDN'], programs: [], isNew: false,
+  }));
+  const sema = parseSemaXml(Array.from({ length: 500 }, (_, i) =>
+    `<record><Country>Iran</Country><EntityOrShip>Target entity ${i}</EntityOrShip><Schedule>1</Schedule><Item>${i + 1}</Item></record>`).join('')).records;
+  sema.forEach(row => { row.isNew = true; });
+  const entries = mergeSanctionEntries({ ofac, sema });
+  const aux = emptyAux();
+  aux.sanctionsCountries = producer.buildCountryPressure(entries);
+  aux.sanctionsCountryCounts = producer.buildCountryCounts(entries);
+  const terms: Record<string, any> = {};
+  computeCIIScores([], aux, {}, terms);
+  assert.equal(terms.IR.boosts.sanctions, 3, '100 address designations stay in the lowest tier; 500 new targets add no boost');
+  assert.equal(aux.sanctionsCountryCounts?.IR, 100);
+  assert.equal(producer.buildRegulationTargets(entries)[0].entryCount, 500);
+});
 
 function acledEvent(country: string, type: string, fatalities = 0) {
   return { country, event_type: type, fatalities };

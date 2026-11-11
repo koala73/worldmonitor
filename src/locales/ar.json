@@ -2776,7 +2776,8 @@
         "countries": "الدول المعاقَبة",
         "entries": "التسميات الأخيرة",
         "programs": "البرامج",
-        "flagRegistries": "سجلات أعلام السفن وتسجيل الطائرات"
+        "flagRegistries": "سجلات أعلام السفن وتسجيل الطائرات",
+        "regulationTargets": "الدول المستهدفة بلوائح SEMA"
       },
       "empty": {
         "countries": "لا توجد نسبة دول متاحة.",
@@ -2803,7 +2804,8 @@
       "designations_zero": "{{count}} تعيينات",
       "designations_two": "{{count}} تعيينان",
       "designations_few": "{{count}} تعيينات",
-      "designations_many": "{{count}} تعيين"
+      "designations_many": "{{count}} تعيين",
+      "targetExplanation": "الدول المستهدفة باللوائح ليست دليلاً على الجنسية أو العنوان. تُستبعد من درجات مخاطر الدول والموجزات."
     },
     "radiationWatch": {
       "title": "مراقب الإشعاع",

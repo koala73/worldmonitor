@@ -2697,7 +2697,8 @@
         "countries": "Nchi zilizoidhinishwa",
         "entries": "Majina ya hivi majuzi",
         "programs": "Mipango",
-        "flagRegistries": "Rejista za bendera za vyombo na za ndege"
+        "flagRegistries": "Rejista za bendera za vyombo na za ndege",
+        "regulationTargets": "Nchi zinazolengwa na kanuni za SEMA"
       },
       "empty": {
         "countries": "Hakuna sifa ya nchi inayopatikana.",
@@ -2720,7 +2721,8 @@
         "unattributed": "Haijahusishwa",
         "program": "Mpango",
         "undated": "isiyo na tarehe"
-      }
+      },
+      "targetExplanation": "Nchi zinazolengwa na kanuni si ushahidi wa uraia au anwani. Hazijumuishwi katika alama za hatari za nchi na taarifa fupi."
     },
     "radiationWatch": {
       "title": "Saa ya Mionzi",
