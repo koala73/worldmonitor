@@ -417,11 +417,15 @@ jobs:
           # Anyone can open an issue or comment on this public repository, so
           # only this workflow's own issues and comments count: exact title,
           # authored by github-actions[bot].
-          for number in $(gh issue list --state all --search "\"${title}\" in:title" --limit 20 --json number,title,author \
-            | jq -r --arg title "$title" '.[] | select(.title == $title and .author.login == "app/github-actions") | .number'); do
-            if gh issue view "$number" --json body,comments \
-              | jq -r '([.body] + [.comments[] | select(.author.login == "github-actions") | .body]) | join("\n")' \
-              | grep -qF "$marker"; then
+          # Each read is a plain assignment so that, under bash -e, a failed
+          # read stops the step instead of reading as "not reported yet" and
+          # posting the same week twice.
+          issues=$(gh issue list --state all --search "\"${title}\" in:title" --limit 20 --json number,title,state,author)
+          own=$(jq -r --arg title "$title" '.[] | select(.title == $title and .author.login == "app/github-actions") | .number' <<< "$issues")
+          for number in $own; do
+            thread=$(gh issue view "$number" --json body,comments)
+            text=$(jq -r '([.body] + [.comments[] | select(.author.login == "github-actions") | .body]) | join("\n")' <<< "$thread")
+            if grep -qF "$marker" <<< "$text"; then
               echo "::notice::The decline in $(basename "$file") was already reported in issue ${number}."
               exit 0
             fi
@@ -434,8 +438,7 @@ jobs:
             + line("Cited in web-search answers"; .comparison.citations) + "\n\n"
             + "Details: docs/research/seo-ai-visibility/answerrank/\(.date).md, in \($pr).\n\n" + $marker
           ' "$file")
-          existing=$(gh issue list --state open --search "\"${title}\" in:title" --limit 20 --json number,title,author \
-            | jq -r --arg title "$title" '[.[] | select(.title == $title and .author.login == "app/github-actions")][0].number // empty')
+          existing=$(jq -r --arg title "$title" '[.[] | select(.title == $title and .author.login == "app/github-actions" and .state == "OPEN")][0].number // empty' <<< "$issues")
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
