@@ -15531,6 +15531,9 @@
           "path": "scripts/check-live-video-sources.mjs"
         },
         {
+          "path": "scripts/check-population-exposure.mjs"
+        },
+        {
           "path": "scripts/comparison-shortlist.mjs"
         },
         {
