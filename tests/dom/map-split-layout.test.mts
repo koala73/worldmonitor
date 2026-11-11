@@ -506,6 +506,26 @@ describe('map split layout (#6417)', () => {
   });
 
   describe('mode-scoped map height storage', () => {
+    it('does not migrate a newly saved stacked height when desktop mode becomes split', () => {
+      manager.destroy();
+      manager = new EventHandlerManager({
+        container: document.createElement('div'), isDesktopApp: true,
+        panels: {}, panelSettings: {}, mapLayers: {},
+        map: { resize, setIsResizing: vi.fn() },
+      } as never, {} as never);
+      stubInnerWidth(1200);
+      const { handle } = buildHeightDom();
+      manager.setupMapResize();
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(localStorage.getItem('map-height')).toBe('540px');
+      manager.destroy();
+      document.body.replaceChildren();
+      stubInnerWidth(1440);
+      const { container } = buildHeightDom();
+      manager.setupMapResize();
+      expect(container.style.height).toBe('');
+      expect(localStorage.getItem('map-split-height')).toBeNull();
+    });
     it('split mode writes map-split-height and leaves map-height alone', () => {
       stubInnerWidth(2000);
       localStorage.setItem('map-height', '400px');

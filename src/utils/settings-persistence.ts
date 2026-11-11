@@ -29,6 +29,7 @@ const SETTINGS_KEYS: readonly string[] = [
   'worldmonitor-webcam-prefs',
   'worldmonitor-disabled-feeds-schema',
   'map-height',
+  'map-height-mode',
   'map-split-height',
   'map-col-width',
   'map-side',

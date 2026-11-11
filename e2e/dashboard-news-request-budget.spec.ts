@@ -1230,6 +1230,17 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
         );
         expect(columns, 'laptop and wider layouts must show at least two panel columns').toBeGreaterThanOrEqual(2);
       }
+      if ([940, 1000, 1180].includes(viewport.width)) {
+        const sideBySide = await page.locator('#panelsGrid').evaluate((grid) => {
+          const boxes = [...grid.querySelectorAll('.panel')].map((panel) => panel.getBoundingClientRect())
+            .filter((box) => box.width > 0 && box.top < window.innerHeight && box.bottom > 0);
+          return boxes.some((a, i) => boxes.slice(i + 1).some((b) =>
+            Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)
+            && (a.right <= b.left || b.right <= a.left),
+          ));
+        });
+        expect(sideBySide, 'two panels must be visible side by side on first load').toBe(true);
+      }
       await page.screenshot({ path: testInfo.outputPath(`initial-${viewport.label}.png`) });
       expect(initial.owner, 'the layout must use the expected dashboard scroll owner').toBe(
         viewport.scrollOwner,
