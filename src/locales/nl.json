@@ -1145,7 +1145,7 @@
       "estimateWithin": "Ongeveer {{count}} mensen binnen een straal van {{km}} km",
       "method": "De schattingen zijn gebaseerd op de gemiddelde bevolkingsdichtheid van het land.",
       "empty": "Geen geschikte gebeurtenislocaties",
-      "infoTooltip": "Gebeurtenissen met gegevens over de bevolkingsdichtheid van het land worden getoond. Locaties uit oudere gegevens zonder nauwkeurigheidsinformatie worden gemarkeerd als wachtend op een update. De geschatte gebieden kunnen overlappen. Onrust vereist een precieze locatie; UCDP-gebeurtenissen met een onnauwkeurige locatie worden uitgesloten. Eén plaats uit twee bronnen (onrust en UCDP) verschijnt in twee rijen.",
+      "infoTooltip": "Gebeurtenissen met gegevens over de bevolkingsdichtheid van het land worden getoond. Locaties van UCDP-gebeurtenissen zonder nauwkeurigheidsinformatie worden gemarkeerd als wachtend op een update. De geschatte gebieden kunnen overlappen. Onrust vereist een precieze locatie; UCDP-gebeurtenissen met een onnauwkeurige locatie worden uitgesloten. Eén plaats uit twee bronnen (onrust en UCDP) verschijnt in twee rijen.",
       "eventCount_one": "{{count}} gebeurtenis",
       "eventCount_other": "{{count}} gebeurtenissen",
       "locationPending": "Locatienauwkeurigheid wacht op update",

@@ -1819,7 +1819,7 @@
       "estimateWithin": "Körülbelül {{count}} ember {{km}} km-es körzetben",
       "method": "A becslések az ország átlagos népsűrűségén alapulnak.",
       "empty": "Nincs megfelelő eseményhelyszín",
-      "infoTooltip": "Az ország népsűrűségi adataival rendelkező események jelennek meg. A régebbi adatokból származó, pontossági információ nélküli helyek frissítésre váró jelölést kapnak. A becsült területek átfedhetik egymást. A zavargásokhoz pontos hely szükséges; a pontatlannak jelölt UCDP-események kimaradnak. Egy két forrásban (zavargások és UCDP) szereplő hely két sorban jelenik meg.",
+      "infoTooltip": "Az ország népsűrűségi adataival rendelkező események jelennek meg. A pontossági információ nélküli UCDP-események helyei frissítésre váró jelölést kapnak. A becsült területek átfedhetik egymást. A zavargásokhoz pontos hely szükséges; a pontatlannak jelölt UCDP-események kimaradnak. Egy két forrásban (zavargások és UCDP) szereplő hely két sorban jelenik meg.",
       "eventCount_one": "{{count}} esemény",
       "eventCount_other": "{{count}} esemény",
       "locationPending": "A hely pontossága frissítésre vár",
