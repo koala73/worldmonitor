@@ -1,5 +1,5 @@
 {
-  "description": "Strategic reservoirs and lakes measured by ICESat-2 ATL13. core is the open-water box [W,S,E,N] the level is read from; refid is the ATL13 water body id inside it. Built with scripts/backfill-reservoir-levels.mjs.",
+  "description": "Strategic reservoirs and lakes measured by ICESat-2. core is the open-water box [W,S,E,N] the level is read from; refid is the ATL13 water body id inside it. Entries with product \"atl06\" are read from ATL06 instead (no water mask): levelWindowM bounds the heights the water surface can take, and despikePerGapDayM, where set, raises the despike allowance for a reservoir whose level moves faster than 0.05 m a day. Built with scripts/backfill-reservoir-levels.mjs.",
   "reservoirs": [
     {
       "id": "gerd",
@@ -195,6 +195,20 @@
       "refid": 2310001362,
       "tags": ["hydropower", "irrigation", "transboundary"],
       "why": "Kurdistan Region's main reservoir on a Tigris tributary that rises in Iran."
+    },
+    {
+      "id": "darbandikhan",
+      "name": "Darbandikhan reservoir",
+      "country": "IQ",
+      "riparians": ["IQ", "IR"],
+      "river": "Diyala (Sirwan)",
+      "lat": 35.18,
+      "lon": 45.81,
+      "core": [45.7, 35.09, 45.92, 35.27],
+      "product": "atl06",
+      "levelWindowM": [440, 500],
+      "tags": ["hydropower", "irrigation", "transboundary"],
+      "why": "Stores the Sirwan below Iran's dams and diversions and supplies power and irrigation water to eastern Iraq."
     },
     {
       "id": "karkheh",
@@ -442,6 +456,21 @@
       "refid": 1210000158,
       "tags": ["terminal-lake", "transboundary"],
       "why": "A desert lake fed by the Ethiopian Omo; upstream dams and irrigation threaten its level and fishery."
+    },
+    {
+      "id": "gibe-iii",
+      "name": "Gibe III reservoir",
+      "country": "ET",
+      "riparians": ["ET", "KE"],
+      "river": "Omo",
+      "lat": 6.95,
+      "lon": 37.42,
+      "core": [37.3, 6.84, 37.55, 7.25],
+      "product": "atl06",
+      "levelWindowM": [800, 905],
+      "despikePerGapDayM": 0.3,
+      "tags": ["hydropower", "transboundary"],
+      "why": "Ethiopia's largest dam on the Omo, which sets how much water reaches Lake Turkana in Kenya."
     },
     {
       "id": "gatun",
