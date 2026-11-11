@@ -24,6 +24,8 @@ import {
   createPassAccumulator,
   fetchSegments,
   granuleDate,
+  granuleRevision,
+  granuleRgt,
   listGranules,
   mergePasses,
   passToTuple,
@@ -57,8 +59,13 @@ export const STATE_TTL_SECONDS = 45 * 24 * 3600;
 export const MAX_STALE_MIN = 4320; // 3x the daily cadence
 export const STATE_SCHEMA = 1;
 
-export const CURSOR_OVERLAP_DAYS = 10;
-export const PROCESSED_RETENTION_DAYS = 120;
+// Discovery searches acquisition dates this far behind the cursor, because NASA publishes
+// granules 50-70 days after acquisition and not in acquisition order: a granule acquired
+// before the newest processed one can appear weeks later. Already-processed names are
+// skipped, so the wide window costs only CMR listing. Retention of processed names must
+// exceed the window, or a pruned granule would be fetched again.
+export const DISCOVERY_LOOKBACK_DAYS = 120;
+export const PROCESSED_RETENTION_DAYS = 150;
 export const MAX_GRANULE_FAILURES = 3;
 export const MAX_GRANULES_PER_RUN = 150;
 // ATL06 granules are budgeted separately: the box returns land as well as water, so a
@@ -256,6 +263,22 @@ function outage(message) {
   return err;
 }
 
+/**
+ * Tag each new pass with the release revision of the granule it came from (same RGT,
+ * acquisition date within a day), so a reprocessed granule replaces the older values.
+ */
+export function withRevisions(passes, granules) {
+  return passes.map((p) => {
+    let revision = 1;
+    for (const g of granules) {
+      if (granuleRgt(g) !== p.rgt) continue;
+      const gd = granuleDate(g);
+      if (gd && Math.abs(Date.parse(gd) - Date.parse(p.date)) <= DAY_MS) revision = Math.max(revision, granuleRevision(g) ?? 1);
+    }
+    return { ...p, revision };
+  });
+}
+
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
   let next = 0;
@@ -296,7 +319,7 @@ export async function fetchReservoirLevels({
   const discover = async (e) => {
     const s = byId[e.id];
     const since = s.cursor
-      ? new Date(Date.parse(s.cursor) - CURSOR_OVERLAP_DAYS * DAY_MS).toISOString().slice(0, 10)
+      ? new Date(Date.parse(s.cursor) - DISCOVERY_LOOKBACK_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
     try {
       const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS, product: productOf(e).id });
@@ -342,7 +365,7 @@ export async function fetchReservoirLevels({
     attempted += r.processed.length + r.failed.length;
     succeeded += r.processed.length;
     const s = byId[e.id];
-    const fresh = acc.finish();
+    const fresh = withRevisions(acc.finish(), r.processed);
     const processed = new Set([...s.processed, ...r.processed]);
     const failures = { ...s.failures };
     const gaveUp = new Set(s.gaveUp);
@@ -365,6 +388,10 @@ export async function fetchReservoirLevels({
   // Outage = no request reached a working SlideRule. Per-granule server errors inside a
   // completed request are partial success (retried next run, dropped after three runs).
   if (failedBatches > 0 && okBatches === 0) throw outage(`SlideRule failed for all ${failedBatches} requests`);
+  // Planned work that never started (slow discovery spent the run deadline) is not a
+  // refresh: publishing would advance freshness and the completion marker on unchanged
+  // data and delay the next attempt.
+  if (planned > 0 && attempted === 0) throw outage(`no SlideRule request started for ${planned} planned granules before the run deadline`);
   log(`  granules: planned ${planned}, fetched ${succeeded}/${attempted}, deferred for time ${skippedForTime}`);
 
   const summary = buildSummary(watchlist, byId, nowMs);
