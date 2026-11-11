@@ -22,11 +22,26 @@ describe('header auth layout alignment', () => {
   });
 
   it('does not clip #authWidgetMount: the signed-in UserButton popover must stay visible', () => {
-    const mountRules = [...headerCss.matchAll(/(?:^|[};/])\s*([^{}/]*)\{([^}]*)\}/g)]
-      .filter(([, selector]) => selector.split(',').some((s) => s.trim() === '#authWidgetMount'));
-    assert.ok(mountRules.length >= 2, 'finds the shared and the sizing #authWidgetMount rules');
+    // Strip comments, then match selector blocks that are not at-rules. Nested
+    // `#authWidgetMount` rules inside @media / @container are inspected too —
+    // a prior regex swallowed the media wrapper and skipped those bodies.
+    const withoutComments = headerCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    const mountRules = [...withoutComments.matchAll(/([^{}@][^{}]*)\{([^{}]*)\}/g)].filter(([, selector]) =>
+      selector
+        .split(',')
+        .map((part) => part.trim())
+        .includes('#authWidgetMount'),
+    );
+    assert.ok(
+      mountRules.length >= 3,
+      'finds the shared, sizing, and 981–1199px #authWidgetMount rules',
+    );
     for (const [, selector, body] of mountRules) {
-      assert.doesNotMatch(body, /overflow\s*:/, `only the pending placeholder may clip, not the mount (${selector.trim()})`);
+      assert.doesNotMatch(
+        body,
+        /overflow\s*:/,
+        `only the pending placeholder may clip, not the mount (${selector.trim()})`,
+      );
     }
   });
 
