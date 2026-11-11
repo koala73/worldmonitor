@@ -2455,7 +2455,8 @@
       "channelOrVideoUrl": "YouTube-csatorna vagy videó URL",
       "channelUrlHint": "Illesszen be egy csatorna URL-t (youtube.com/channel/UC…) vagy egy élő videó URL-t",
       "youtubeChannel": "YouTube-csatorna",
-      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t"
+      "httpsStreamHint": "A böngészők blokkolják a nem biztonságos (http) streameket. Illesszen be egy biztonságos (https) stream URL-t",
+      "tapToPlay": "Koppintson a lejátszáshoz"
     },
     "map": {
       "showMap": "Térkép megjelenítése",
