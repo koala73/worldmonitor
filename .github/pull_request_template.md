@@ -45,3 +45,7 @@
 ## Screenshots
 
 <!-- If applicable, add screenshots or screen recordings -->
+
+## Bundle budget provenance
+
+<!-- Required when scripts/shared/bundle-budgets.json changes: list each raised budget, old/new byte limits, measured growth, and the commit SHA(s) responsible for that growth. Attribute all growth, including growth already on main. Link the responsible commits and explain why their cost is accepted; do not absorb unattributed growth from other PRs. Otherwise write N/A. -->
