@@ -185,7 +185,7 @@ export const PRODUCTS = Object.freeze({
       output: { path: 'atl13.csv', format: 'csv', open_on_complete: false },
     }),
     slim: (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid }),
-    height: (r) => Number(r.ht_ortho),
+    height: (r) => csvNumber(r.ht_ortho),
   }),
   atl06: Object.freeze({
     id: 'atl06',
@@ -203,7 +203,7 @@ export const PRODUCTS = Object.freeze({
     slim: (r) => (atl06SegmentOk(r)
       ? { time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: String(atl06OrthoHeight(r)) }
       : null),
-    height: (r) => (r.ht_ortho != null ? Number(r.ht_ortho) : (atl06SegmentOk(r) ? atl06OrthoHeight(r) : NaN)),
+    height: (r) => (r.ht_ortho != null ? csvNumber(r.ht_ortho) : (atl06SegmentOk(r) ? atl06OrthoHeight(r) : NaN)),
   }),
 });
 
@@ -217,11 +217,18 @@ export function productOf(entryOrId) {
   return p;
 }
 
+// A CSV field as a number; an empty or missing field is NaN, never 0 (Number('') is 0, which
+// would pass the slope guard or turn an absent geoid into an ellipsoidal height).
+function csvNumber(v) {
+  if (v == null) return NaN;
+  const t = String(v).trim();
+  return t === '' ? NaN : Number(t);
+}
+
 /** ATL06 segment filter: good quality flag and a flat along-track fit (see ATL06_MAX_SLOPE). */
 function atl06SegmentOk(r) {
-  if (r.atl06_quality_summary == null || r.atl06_quality_summary === '') return false;
-  if (Number(r.atl06_quality_summary) !== ATL06_GOOD_QUALITY) return false;
-  const slope = Math.abs(Number(r.dh_fit_dx));
+  if (csvNumber(r.atl06_quality_summary) !== ATL06_GOOD_QUALITY) return false;
+  const slope = Math.abs(csvNumber(r.dh_fit_dx));
   return Number.isFinite(slope) && slope <= ATL06_MAX_SLOPE;
 }
 
@@ -230,8 +237,8 @@ function atl06SegmentOk(r) {
 // ht_ortho. Sign and datum confirmed against ATL13 and the USBR Mead gauge
 // (tests/reservoir-levels-atl06-crosscheck.test.mjs).
 function atl06OrthoHeight(r) {
-  const h = Number(r.h_li);
-  const geoid = Number(r['dem/geoid_h'] ?? r.geoid_h);
+  const h = csvNumber(r.h_li);
+  const geoid = csvNumber(r['dem/geoid_h'] ?? r.geoid_h);
   return Number.isFinite(h) && Number.isFinite(geoid) ? h - geoid : NaN;
 }
 

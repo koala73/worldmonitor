@@ -263,3 +263,30 @@ describe('committed watchlist products', () => {
     }
   });
 });
+
+describe('ATL06 row guards treat empty CSV fields as missing', () => {
+  const p = productOf('atl06');
+  const good = { atl06_quality_summary: '0', dh_fit_dx: '0.001', h_li: '400.5', 'dem/geoid_h': '-30.2', time_ns: '1', rgt: '1', gt: '10' };
+
+  it('keeps a complete good row and reports h_li - geoid_h', () => {
+    assert.ok(p.slim(good));
+    assert.ok(Math.abs(p.height(good) - 430.7) < 1e-9);
+  });
+
+  for (const field of ['dh_fit_dx', 'dem/geoid_h', 'h_li']) {
+    it(`drops a row whose ${field} is empty instead of reading it as 0`, () => {
+      const row = { ...good, [field]: '' };
+      const slim = p.slim(row);
+      const h = slim ? Number(slim.ht_ortho) : NaN;
+      assert.ok(!Number.isFinite(h), `slim height ${h}`);
+      assert.ok(!Number.isFinite(p.height(row)), `height ${p.height(row)}`);
+    });
+  }
+});
+
+describe('ATL13 height treats an empty ht_ortho as missing', () => {
+  it('returns NaN, not a 0 m water level', () => {
+    assert.ok(!Number.isFinite(productOf('atl13').height({ ht_ortho: '' })));
+    assert.equal(productOf('atl13').height({ ht_ortho: '371.25' }), 371.25);
+  });
+});
