@@ -15901,12 +15901,22 @@ button.popup-link {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Full-viewport map on mobile (Google Maps-like experience) */
+  /* Today: a short map strip (32% of the viewport) so the first content panel is on the first screen
+     (#10457). The full-viewport map is the Map tab, which opens the section
+     fullscreen (.live-news-fullscreen restates its own height below). */
   .map-section {
-    height: calc(100vh - 48px) !important;
-    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
-    min-height: 60vh !important;
+    height: 32vh !important;
+    height: calc(100dvh * 0.32) !important;
+    min-height: 220px !important;
     max-height: 100dvh !important;
+  }
+
+  /* The distance ruler reserves a 150px nav column and its panel needs ~180px
+     more; the strip has neither, so its Reset/Exit buttons fall outside the map
+     (narrow desktop windows use the Deck renderer that mounts it). It stays
+     available in the fullscreen Map view. */
+  .map-section:not(.live-news-fullscreen) .map-distance-control {
+    display: none;
   }
 
   /* Collapsed map on mobile — higher specificity overrides .map-section above */

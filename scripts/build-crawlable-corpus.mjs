@@ -4595,7 +4595,7 @@ ${chokepointHubRows.map((row) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Maritime Chokepoints: Live Shipping Lane Status | World Monitor',
+    title: 'Maritime Chokepoints: Live Shipping Status | World Monitor',
     description,
     lastmod,
     jsonLd: [
@@ -5834,7 +5834,7 @@ function renderChangelogPage({ releases, pageIndex, totalPages, baseUrl, lastmod
   const title = pageIndex === 0
     ? 'World Monitor Changelog | World Monitor'
     : `World Monitor Changelog Page ${pageIndex + 1} | World Monitor`;
-  const description = 'Paginated release notes for World Monitor — new panels, data sources, API changes and fixes.';
+  const description = 'Release notes for every World Monitor version: new dashboard panels, data sources, API changes and bug fixes, listed by release date with version numbers.';
   const body = `      <p class="eyebrow">Release notes</p>
       <h1>World Monitor changelog</h1>
       <p class="lede">${escapeHtml(description)}</p>

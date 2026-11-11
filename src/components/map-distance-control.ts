@@ -20,6 +20,7 @@ export class MapDistanceControl {
   private active = false;
   private pointerStart: Coordinate | null = null;
   private dragged = false;
+  private visibilityObserver: ResizeObserver | null = null;
 
   constructor(private readonly map: MapLibreMap, private readonly container: HTMLElement, private readonly changed: () => void) {
     this.root.className = 'map-distance-control';
@@ -65,6 +66,14 @@ export class MapDistanceControl {
     container.addEventListener('pointermove', this.handlePointerMove, true);
     container.addEventListener('keydown', this.handleKey, true);
     map.on('resize', this.refreshScale);
+    // CSS can hide the control (the short mobile map strip). A hidden control
+    // must not leave measurement armed, or canvas clicks stop opening markers.
+    if (typeof ResizeObserver !== 'undefined') {
+      this.visibilityObserver = new ResizeObserver(() => {
+        if (this.active && this.root.getClientRects().length === 0) this.setActive(false);
+      });
+      this.visibilityObserver.observe(this.root);
+    }
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.updateLabels);
     this.updateLabels();
   }
@@ -177,6 +186,8 @@ export class MapDistanceControl {
   }
 
   destroy(): void {
+    this.visibilityObserver?.disconnect();
+    this.visibilityObserver = null;
     this.scale.onRemove();
     this.map.off('resize', this.refreshScale);
     window.removeEventListener(I18N_RESOURCES_LOADED_EVENT, this.updateLabels);
