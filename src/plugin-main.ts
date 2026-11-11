@@ -80,7 +80,7 @@ function mountPlugin(): void {
   let openLinks = false;
   let hazardSnapshot: PluginHazardSnapshot | undefined;
   let mapStatus: HTMLElement;
-  let host: PluginHostContext = { displayMode: 'inline', availableDisplayModes: [] };
+  let host: PluginHostContext = hostContextFromInitialize(undefined);
   let expandButton: HTMLButtonElement | undefined;
   let mounted = false;
   let queuedResult: { params: unknown } | undefined;

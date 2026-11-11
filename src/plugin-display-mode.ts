@@ -51,12 +51,14 @@ export function createExpandButton(options: {
   icon.appendChild(path);
   button.appendChild(icon);
   button.addEventListener('click', () => {
-    const clicked = options.getHost();
+    const revision = options.getHost().displayModeRevision;
     void options.request('ui/request-display-mode', { mode: 'fullscreen' }).then(result => {
       if ((result as { mode?: unknown } | undefined)?.mode !== 'fullscreen') { options.onRefused(); return; }
-      // A host notification since the click is newer than this answer; keep it.
-      if (options.getHost() !== clicked) return;
-      options.setHost(mergeHostContext(clicked, { displayMode: 'fullscreen' }));
+      // A display-mode notification since the click is newer than this answer; keep it.
+      // Other updates (theme, size) do not, so merge the granted mode into the latest state.
+      const latest = options.getHost();
+      if (latest.displayModeRevision !== revision) return;
+      options.setHost(mergeHostContext(latest, { displayMode: 'fullscreen' }));
     }).catch(options.onRefused);
   });
   return button;

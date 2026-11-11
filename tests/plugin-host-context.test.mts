@@ -48,6 +48,12 @@ test('a partial update carrying only theme keeps the previous dimensions and mod
   assert.equal(state.theme, 'dark', 'merging does not mutate the previous state');
 });
 
+test('only updates that supply displayMode advance the display-mode revision', () => {
+  const state = hostContextFromInitialize({ hostContext: { displayMode: 'inline' } });
+  assert.equal(mergeHostContext(state, { theme: 'light', containerDimensions: { width: 500, height: 600 } }).displayModeRevision, state.displayModeRevision);
+  assert.equal(mergeHostContext(state, { displayMode: 'inline' }).displayModeRevision, state.displayModeRevision + 1);
+});
+
 test('updates are accepted both flat and wrapped in hostContext', () => {
   const state = hostContextFromInitialize({ hostContext: { availableDisplayModes: ['inline', 'fullscreen'] } });
   assert.equal(mergeHostContext(state, { displayMode: 'fullscreen' }).displayMode, 'fullscreen');

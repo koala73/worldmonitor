@@ -373,7 +373,7 @@ async function mountPlugin(): Promise<void> {
   const whenReady = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
   whenReady.catch(() => {});
   let hostResultSeen = false;
-  let host: PluginHostContext = { displayMode: 'inline', availableDisplayModes: [] };
+  let host: PluginHostContext = hostContextFromInitialize(undefined);
   const reportSize = () => { if (!layoutFlags(host).fillContainer) send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }); };
   const expandButton = createExpandButton({
     className: 'country-expand-btn',

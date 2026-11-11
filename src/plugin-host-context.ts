@@ -11,6 +11,8 @@ export interface PluginSafeAreaInsets { top?: number; right?: number; bottom?: n
 export interface PluginHostContext {
   theme?: 'light' | 'dark';
   displayMode: PluginDisplayMode;
+  /** Counts updates that supplied displayMode, so a late answer can tell whether the host spoke since. */
+  displayModeRevision: number;
   availableDisplayModes: string[];
   containerDimensions?: PluginContainerDimensions;
   safeAreaInsets?: PluginSafeAreaInsets;
@@ -41,7 +43,10 @@ function finiteFields<K extends string>(value: unknown, keys: readonly K[]): Par
 function applyUpdate(state: PluginHostContext, update: Record<string, unknown>): PluginHostContext {
   const next: PluginHostContext = { ...state };
   if (update.theme === 'light' || update.theme === 'dark') next.theme = update.theme;
-  if ('displayMode' in update) next.displayMode = update.displayMode === 'fullscreen' ? 'fullscreen' : 'inline';
+  if ('displayMode' in update) {
+    next.displayMode = update.displayMode === 'fullscreen' ? 'fullscreen' : 'inline';
+    next.displayModeRevision = state.displayModeRevision + 1;
+  }
   if (Array.isArray(update.availableDisplayModes)) {
     next.availableDisplayModes = update.availableDisplayModes.filter((mode): mode is string => typeof mode === 'string');
   }
@@ -54,7 +59,7 @@ function applyUpdate(state: PluginHostContext, update: Record<string, unknown>):
 
 /** Host state from the `ui/initialize` result. */
 export function hostContextFromInitialize(result: unknown): PluginHostContext {
-  return mergeHostContext({ displayMode: 'inline', availableDisplayModes: [] }, record(result)?.hostContext);
+  return mergeHostContext({ displayMode: 'inline', displayModeRevision: 0, availableDisplayModes: [] }, record(result)?.hostContext);
 }
 
 /** Merge a `ui/notifications/host-context-changed` payload, flat or wrapped in `hostContext`. */

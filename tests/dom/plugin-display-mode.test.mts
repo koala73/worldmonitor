@@ -4,7 +4,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyHostLayout, createExpandButton } from '@/plugin-display-mode';
-import { hostContextFromInitialize, type PluginHostContext } from '@/plugin-host-context';
+import { hostContextFromInitialize, mergeHostContext, type PluginHostContext } from '@/plugin-host-context';
 
 const offersFullscreen = (hostContext: Record<string, unknown> = {}): PluginHostContext =>
   hostContextFromInitialize({ hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], ...hostContext } });
@@ -65,17 +65,29 @@ describe('createExpandButton', () => {
     expect(view.onRefused).not.toHaveBeenCalled();
   });
 
-  it('keeps a host notification that arrives before the fullscreen answer', async () => {
+  it('keeps a display-mode notification that arrives before the fullscreen answer', async () => {
     let answer!: (value: unknown) => void;
     const view = setup(() => new Promise(resolve => { answer = resolve; }));
     view.button.click();
     // The host enters fullscreen and the user closes it again before the request resolves.
-    view.setHost(offersFullscreen({ displayMode: 'inline', containerDimensions: { width: 700 } }));
+    view.setHost(mergeHostContext(view.getHost(), { displayMode: 'fullscreen', containerDimensions: { width: 700, height: 800 } }));
+    view.setHost(mergeHostContext(view.getHost(), { displayMode: 'inline', containerDimensions: { width: 700 } }));
     view.setHost.mockClear();
     answer({ mode: 'fullscreen' });
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(view.setHost).not.toHaveBeenCalled();
     expect(view.getHost().displayMode).toBe('inline');
+    expect(view.onRefused).not.toHaveBeenCalled();
+  });
+
+  it('applies the fullscreen answer over a theme-only update that arrived first, keeping the update', async () => {
+    let answer!: (value: unknown) => void;
+    const view = setup(() => new Promise(resolve => { answer = resolve; }));
+    view.button.click();
+    view.setHost(mergeHostContext(view.getHost(), { theme: 'light' }));
+    answer({ mode: 'fullscreen' });
+    await vi.waitFor(() => expect(view.getHost().displayMode).toBe('fullscreen'));
+    expect(view.getHost().theme).toBe('light');
     expect(view.onRefused).not.toHaveBeenCalled();
   });
 
