@@ -5,13 +5,13 @@
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.51.0",
+  "version": "1.52.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
     "title": "WorldMonitor",
-    "version": "1.51.0",
+    "version": "1.52.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app",
@@ -902,6 +902,14 @@
       "_meta": {
         "worldmonitor/access": "free",
         "worldmonitor/category": "meta"
+      }
+    },
+    {
+      "name": "prepare_travel_risk_assessment",
+      "description": "Draft a travel risk assessment for 1 to 6 countries in travel order, for an analyst to finish. Country codes, optional cities and dates only; never traveller names or addresses. Markdown plus structured content: a rating (higher of the US and Australian levels), government advice, 30-day security events, natural hazards, health, airports, internet outages, empty analyst sections and sources with capture time. Each finding names its source and date; unreadable sources say unavailable. Requires the Pro Business, API Business or Enterprise plan; weight 2 on API plans.",
+      "_meta": {
+        "worldmonitor/access": "subscription",
+        "worldmonitor/category": "geopolitical-security"
       }
     }
   ],

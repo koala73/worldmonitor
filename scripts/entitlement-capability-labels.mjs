@@ -33,7 +33,7 @@ export const LABELS = {
   'markets.implications':['AI market implications','What an event means for markets'],
   'markets.stock_analysis':['Stock analysis','AI equity analysis and history'],
   'markets.wsb':['WSB ticker scanner','Retail sentiment scanning'],
-  'mcp.access':['MCP access','69 tools for Claude Desktop and other AI clients'],
+  'mcp.access':['MCP access','103 tools for Claude Desktop and other AI clients'],
   'military.aircraft':['Military aircraft detail','Per-airframe detail lookup'],
   'monitoring.company':['Company monitoring','Monitored company accounts — requires an active paid plan'],
   'news.classification':['AI event classification','LLM classification of incoming events'],
