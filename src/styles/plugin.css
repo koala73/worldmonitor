@@ -33,3 +33,17 @@ body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
   #pluginActions { width: 100%; max-width: 100%; min-width: 0; flex-shrink: 1; justify-content: flex-start; }
   #pluginActions select { max-width: 100%; }
 }
+
+/* Fullscreen and side panel: fill the host-reported height instead of sizing by content. */
+.plugin-expand-btn { min-width: 44px; min-height: 44px; justify-content: center; align-items: center; padding: 0; }
+@layer base {
+  /* Beats the layered `#pluginActions .search-btn { display: inline-flex !important }` above. */
+  #pluginActions .plugin-expand-btn[hidden] { display: none !important; }
+}
+.plugin-expand-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+body.plugin-body[data-wm-fill] { height: var(--wm-fill-height, 100vh); min-height: 0; overflow: auto; overflow-x: hidden; box-sizing: border-box; }
+/* Same breakpoint as the shared split layout: below it the view stacks and the body scrolls. */
+@media (min-width: 1440px) {
+  body.plugin-body[data-wm-fill] { display: flex; flex-direction: column; overflow: hidden; }
+  body.plugin-body[data-wm-fill] #pluginRoot { flex: 1 1 auto; height: auto; min-height: 0; }
+}
