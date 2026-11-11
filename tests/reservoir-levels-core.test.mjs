@@ -278,6 +278,20 @@ describe('pass merge', () => {
   });
 
   it('round-trips the compact tuple form', () => {
-    for (const p of [a, b]) assert.deepEqual(tupleToPass(passToTuple(p)), p);
+    for (const p of [a, b]) assert.deepEqual(tupleToPass(passToTuple(p)), { ...p, revision: 1 });
+    // Revision 1 keeps the six-element baseline form; a later revision is stored as a seventh.
+    assert.equal(passToTuple(a).length, 6);
+    const r2 = { ...a, revision: 2 };
+    assert.equal(passToTuple(r2).length, 7);
+    assert.deepEqual(tupleToPass(passToTuple(r2)), r2);
+  });
+
+  it('a higher granule revision wins the merge whatever its segment count', () => {
+    const old = { ...a, n: 400, levelM: 320 };
+    const corrected = { ...a, n: 12, levelM: 320.4, revision: 2 };
+    for (const order of [[[old], [corrected]], [[corrected], [old]]]) {
+      const [m] = mergePasses(...order);
+      assert.equal(m.levelM, 320.4);
+    }
   });
 });
