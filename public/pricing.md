@@ -97,7 +97,7 @@ Map links share the map position and layers. Team dashboards share panel layouts
 
 - API Business includes team dashboards for the subscription owner and accepted Pro-seat members.
 - Enterprise includes team dashboards for active account members with a current contract.
-- Only one team is available at a time. An eligible Enterprise account takes priority, followed by your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards.
+- Only one team is available at a time. An eligible Enterprise account takes priority, followed by your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
 - Standalone Pro, Pro Business, and API Starter subscriptions do not create a team. Pro Business's 25 custom dashboards are personal tabs.
 - Each team can share up to 25 dashboards per dashboard variant. Each member's personal tab limit still applies when opening a shared dashboard.
 - Every member can publish, update, or stop sharing a team dashboard. Custom widgets and MCP panels are excluded. Existing tabs remain when sharing stops.
