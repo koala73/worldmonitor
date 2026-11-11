@@ -87,6 +87,12 @@ export function ensurePrivateScratchDir(dir) {
   if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
     throw new Error(`scratch directory ${dir} belongs to another user`);
   }
+  if (process.platform === 'win32') return;
+  // A directory others could write may already hold planted files; tightening it now
+  // would keep them, so start over in a fresh directory instead.
+  if ((st.mode & 0o022) !== 0) {
+    throw new Error(`scratch directory ${dir} is writable by other users; remove it or pass --scratch with a fresh directory`);
+  }
   if ((st.mode & 0o077) !== 0) chmodSync(dir, 0o700);
 }
 
@@ -104,9 +110,12 @@ function loadScratch(dir, entry) {
   return s;
 }
 
-function saveScratch(dir, s) {
+export function saveScratch(dir, s) {
   const f = scratchFile(dir, s.id);
-  writeFileSync(`${f}.tmp`, JSON.stringify(s));
+  // Remove any leftover temp entry and create it exclusively, so a planted symlink is
+  // never followed. rename replaces the target entry itself.
+  rmSync(`${f}.tmp`, { force: true });
+  writeFileSync(`${f}.tmp`, JSON.stringify(s), { flag: 'wx', mode: 0o600 });
   renameSync(`${f}.tmp`, f);
 }
 

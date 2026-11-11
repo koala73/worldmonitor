@@ -1,10 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { assembleBaseline, ensurePrivateScratchDir } from '../scripts/backfill-reservoir-levels.mjs';
+import { assembleBaseline, ensurePrivateScratchDir, saveScratch } from '../scripts/backfill-reservoir-levels.mjs';
+
+// Windows has no owner/group/other permission bits for these checks to read.
+const POSIX = process.platform !== 'win32';
 
 const ENTRY = { id: 'mead', core: [-114.8, 36.0, -114.4, 36.3], refid: 2310000809 };
 
@@ -69,7 +72,7 @@ describe('baseline assembly', () => {
 });
 
 describe('scratch directory', () => {
-  it('creates the directory readable only by its owner', () => {
+  it('creates the directory readable only by its owner', { skip: !POSIX }, () => {
     const parent = mkdtempSync(join(tmpdir(), 'reservoir-scratch-'));
     try {
       const dir = join(parent, 'scratch');
@@ -79,14 +82,39 @@ describe('scratch directory', () => {
     } finally { rmSync(parent, { recursive: true, force: true }); }
   });
 
-  it('tightens an existing directory that other users could write', () => {
+  it('refuses an existing directory that other users could write', { skip: !POSIX }, () => {
+    // Tightening it afterwards would keep whatever another user already planted inside.
     const parent = mkdtempSync(join(tmpdir(), 'reservoir-scratch-'));
     try {
       const dir = join(parent, 'scratch');
       mkdirSync(dir);
       chmodSync(dir, 0o777);
+      assert.throws(() => ensurePrivateScratchDir(dir), /writable by other users/);
+    } finally { rmSync(parent, { recursive: true, force: true }); }
+  });
+
+  it('tightens an existing directory that others could only read', { skip: !POSIX }, () => {
+    const parent = mkdtempSync(join(tmpdir(), 'reservoir-scratch-'));
+    try {
+      const dir = join(parent, 'scratch');
+      mkdirSync(dir);
+      chmodSync(dir, 0o755);
       ensurePrivateScratchDir(dir);
       assert.equal(statSync(dir).mode & 0o777, 0o700);
+    } finally { rmSync(parent, { recursive: true, force: true }); }
+  });
+
+  it('does not write through a planted temp-file symlink', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'reservoir-scratch-'));
+    try {
+      const dir = join(parent, 'scratch');
+      ensurePrivateScratchDir(dir);
+      const victim = join(parent, 'victim.txt');
+      writeFileSync(victim, 'keep');
+      symlinkSync(victim, join(dir, 'mead.json.tmp'));
+      saveScratch(dir, { id: 'mead', passes: [] });
+      assert.equal(readFileSync(victim, 'utf8'), 'keep');
+      assert.equal(JSON.parse(readFileSync(join(dir, 'mead.json'), 'utf8')).id, 'mead');
     } finally { rmSync(parent, { recursive: true, force: true }); }
   });
 
