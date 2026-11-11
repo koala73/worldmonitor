@@ -215,11 +215,14 @@ export function granuleQueue(state, listed) {
 // Summary payload
 // ---------------------------------------------------------------------------
 
+/** Per-entry despike override (see classifyPasses); absent means the shared default. */
+export const despikeOpts = (e) => (e.despikePerGapDayM != null ? { perGapDayM: e.despikePerGapDayM } : {});
+
 const WATCHLIST_FIELDS = ['id', 'name', 'country', 'riparians', 'river', 'lat', 'lon', 'tags', 'why'];
 
 export function buildSummary(watchlist, byId, nowMs) {
   const reservoirs = watchlist.map((e) => {
-    const passes = classifyPasses((byId[e.id]?.passes || []).map(tupleToPass));
+    const passes = classifyPasses((byId[e.id]?.passes || []).map(tupleToPass), despikeOpts(e));
     const m = computeChange(passes, nowMs);
     const out = {};
     for (const f of WATCHLIST_FIELDS) out[f] = e[f];
@@ -327,7 +330,7 @@ export async function fetchReservoirLevels({
     const granules = plan.get(e.id);
     if (Date.now() > deadlineAtMs) { skippedForTime += granules.length; return; }
     const product = productOf(e).id;
-    const acc = createPassAccumulator({ refid: e.refid ?? null, product });
+    const acc = createPassAccumulator({ refid: e.refid ?? null, product, levelWindow: e.levelWindowM ?? null });
     const r = await fetchSegments(bboxToPolygon(e.core), granules, (row) => acc.add(row), fetchImpl, {
       product,
       deadlineAtMs,
@@ -388,7 +391,7 @@ export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
     recordCount: countWithLatest,
     publishTransform: stripState,
     declareRecords,
-    sourceVersion: 'icesat2-atl13-v007-sliderule-core-box-v1',
+    sourceVersion: 'icesat2-atl13-atl06-v007-sliderule-core-box-v2',
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
     lockTtlMs: 9 * 60 * 1000,

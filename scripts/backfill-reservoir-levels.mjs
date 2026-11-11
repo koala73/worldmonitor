@@ -14,7 +14,7 @@
 //   node scripts/backfill-reservoir-levels.mjs [--only id,id] [--scratch DIR] [--concurrency 3]
 //   node scripts/backfill-reservoir-levels.mjs --assemble        # write the baseline from scratch files
 //   node scripts/backfill-reservoir-levels.mjs --report [--from-scratch]
-//   node scripts/backfill-reservoir-levels.mjs --reset id,id     # forget scratch progress (after a core box or product change)
+//   node scripts/backfill-reservoir-levels.mjs --reset id,id     # forget scratch progress (after a core box, product or level window change)
 //   --watchlist FILE reads entries from another file of the same shape (candidate trials,
 //   cross-checks); --assemble refuses it so the baseline always matches the real watchlist.
 
@@ -37,6 +37,10 @@ import {
   tupleToPass,
 } from './_reservoir-levels.mjs';
 import { allSettledWithConcurrency } from './_seed-utils.mjs';
+
+// Same per-entry despike override as the seeder (kept local: importing the seeder would run
+// its env loading).
+const despikeOpts = (e) => (e.despikePerGapDayM != null ? { perGapDayM: e.despikePerGapDayM } : {});
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const WATCHLIST_PATH = join(__dirname, 'data', 'strategic-reservoirs.json');
@@ -69,11 +73,12 @@ function scratchFile(dir, id) { return join(dir, `${id}.json`); }
 function loadScratch(dir, entry) {
   const f = scratchFile(dir, entry.id);
   const product = productOf(entry).id;
-  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, granules: null, processed: [], failures: {}, passes: [], done: false };
+  const levelWindowM = entry.levelWindowM ?? null;
+  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, levelWindowM, granules: null, processed: [], failures: {}, passes: [], done: false };
   const s = JSON.parse(readFileSync(f, 'utf8'));
   if (JSON.stringify(s.core) !== JSON.stringify(entry.core) || (s.refid ?? null) !== (entry.refid ?? null)
-    || (s.product ?? DEFAULT_PRODUCT) !== product) {
-    throw new Error(`${entry.id}: scratch was built for a different core box, refid or product; run --reset ${entry.id}`);
+    || (s.product ?? DEFAULT_PRODUCT) !== product || JSON.stringify(s.levelWindowM ?? null) !== JSON.stringify(levelWindowM)) {
+    throw new Error(`${entry.id}: scratch was built for a different core box, refid, product or level window; run --reset ${entry.id}`);
   }
   return s;
 }
@@ -104,7 +109,7 @@ async function backfillOne(entry, dir, untilIso) {
     const batchSize = round === 0 ? prod.batchSize : Math.max(1, Math.floor(prod.batchSize / 4));
     for (let i = 0; i < todo.length; i += batchSize) {
       const batch = todo.slice(i, i + batchSize);
-      const acc = createPassAccumulator({ refid: entry.refid ?? null, product: prod.id });
+      const acc = createPassAccumulator({ refid: entry.refid ?? null, product: prod.id, levelWindow: entry.levelWindowM ?? null });
       const r = await fetchSegments(poly, batch, (row) => acc.add(row), undefined, {
         product: prod.id,
         batchSize,
@@ -122,7 +127,7 @@ async function backfillOne(entry, dir, untilIso) {
   s.done = true;
   s.processedThrough = s.processed.map(granuleDate).sort().at(-1) ?? null;
   saveScratch(dir, s);
-  const rep = cadenceReport(classifyPasses(s.passes.map(tupleToPass)));
+  const rep = cadenceReport(classifyPasses(s.passes.map(tupleToPass), despikeOpts(entry)));
   console.log(`${entry.id}: DONE ${rep.ok}/${rep.passes} ok passes, ${Object.keys(s.failures).length} granules ever failed, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 
@@ -150,7 +155,7 @@ export function assembleBaseline(watchlist, dir, nowIso = new Date().toISOString
 export function reportRows(watchlist, baseline) {
   return watchlist.map((e) => {
     const r = baseline.reservoirs[e.id];
-    const rep = cadenceReport(classifyPasses((r?.passes || []).map(tupleToPass)));
+    const rep = cadenceReport(classifyPasses((r?.passes || []).map(tupleToPass), despikeOpts(e)));
     return { id: e.id, ...rep, failedGranules: Object.keys(r?.failedGranules || {}).length };
   });
 }

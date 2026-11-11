@@ -531,8 +531,13 @@ function rowTimeMs(t) {
  * ATL13 water body (when the row carries `atl13refid`). With product 'atl06' the row height
  * is h_li - geoid_h (or the slim row's ht_ortho), and each pass is first cut down to its
  * lowest cluster (lowestCluster); a pass with no qualifying cluster is dropped.
+ * Optional `levelWindow` [minM, maxM] (watchlist `levelWindowM`) drops segments outside the
+ * heights the water surface can take. ATL06 needs it where a pass can miss the water and
+ * cross only land: its lowest flat cluster is then a plateau hundreds of metres up (Gibe
+ * III: 8 of 65 passes read 1142-1254 m, one of them the newest pass, against an observed
+ * water range of 819-894 m).
  */
-export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, product = DEFAULT_PRODUCT } = {}) {
+export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, product = DEFAULT_PRODUCT, levelWindow = null } = {}) {
   const prod = productOf(product);
   const isAtl06 = prod.id === 'atl06';
   const groups = new Map();
@@ -541,6 +546,7 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, 
       if (refid != null && row.atl13refid != null && row.atl13refid !== '' && Number(row.atl13refid) !== refid) return;
       const h = isAtl06 ? prod.height(row) : Number(row[heightField]);
       if (!Number.isFinite(h) || Math.abs(h) > ATL13_HEIGHT_FILL_LIMIT_M) return;
+      if (levelWindow && (h < levelWindow[0] || h > levelWindow[1])) return;
       const ms = rowTimeMs(row.time_ns ?? row.time);
       if (!Number.isFinite(ms)) return;
       const date = new Date(ms).toISOString().slice(0, 10);
@@ -688,8 +694,14 @@ export function passIsOk(p) {
  * such as the Kakhovka drawdown. Distance outside the neighbour range never flags a
  * monotone run, and dropping the worst first stops a spike from condemning its
  * neighbours. Thresholds are unchanged; the Lake Mead validation test pins the result.
+ *
+ * `perGapDayM` (watchlist `despikePerGapDayM`) raises the per-day allowance for a reservoir
+ * whose real level moves faster than 0.05 m/day between sparse passes. Gibe III moves up
+ * to 0.55 m/day in the Omo flood and drops about 0.27 m/day in the dry season; at the
+ * default rate 6 of its 60 passes, all real seasonal minima with agreeing beams, were
+ * despiked and the record low read 847 m instead of 819 m.
  */
-export function classifyPasses(passes) {
+export function classifyPasses(passes, { perGapDayM = DESPIKE_PER_GAP_DAY_M } = {}) {
   const out = [...passes].sort(comparePasses).map((p) => ({ ...p, ok: passIsOk(p), spike: false }));
   const ok = out.filter((p) => p.ok);
   for (;;) {
@@ -699,7 +711,7 @@ export function classifyPasses(passes) {
       const a = ok[i - 1], b = ok[i], c = ok[i + 1];
       const gapDays = Math.max(Date.parse(b.time) - Date.parse(a.time), Date.parse(c.time) - Date.parse(b.time)) / DAY_MS;
       const outside = Math.max(b.levelM - Math.max(a.levelM, c.levelM), Math.min(a.levelM, c.levelM) - b.levelM);
-      const excess = outside - (DESPIKE_BASE_M + DESPIKE_PER_GAP_DAY_M * gapDays);
+      const excess = outside - (DESPIKE_BASE_M + perGapDayM * gapDays);
       if (excess > worstExcess) { worstExcess = excess; worst = i; }
     }
     if (worst < 0) break;
@@ -720,7 +732,7 @@ export function classifyPasses(passes) {
     const spikes = sameTrack.filter((p) => p.spike).length;
     if (spikes < UNTRUSTED_TRACK_MIN_SPIKES || spikes * 2 < sameTrack.length) break;
     const gapDays = (Date.parse(last.time) - Date.parse(prev.time)) / DAY_MS;
-    if (Math.abs(last.levelM - prev.levelM) <= DESPIKE_BASE_M + DESPIKE_PER_GAP_DAY_M * gapDays) break;
+    if (Math.abs(last.levelM - prev.levelM) <= DESPIKE_BASE_M + perGapDayM * gapDays) break;
     ok.pop();
     last.ok = false;
     last.spike = true;

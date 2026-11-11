@@ -162,6 +162,21 @@ describe('ATL06 lowest-cluster reduction', () => {
     assert.deepEqual(reduceRows(rows, { product: 'atl06' }), []);
   });
 
+  it('a level window drops a land-only pass and finds the water under a lower plateau', () => {
+    const t = '2026-08-29T08:00:00Z';
+    // A pass that misses the water: its only flat surface is a plateau at 1142 m.
+    const landOnly = Array.from({ length: 7 }, (_, i) => atl06Row({ t, rgt: 1173, gt: 10 + (i % 3) * 20, h: 1142.6 + i * 0.01 }));
+    assert.equal(reduceRows(landOnly, { product: 'atl06' })[0].levelM > 1142, true);
+    assert.deepEqual(reduceRows(landOnly, { product: 'atl06', levelWindow: [800, 905] }), []);
+    // A pass with flat valley floor below the window and the lake inside it.
+    const rows = [
+      ...Array.from({ length: 40 }, (_, i) => atl06Row({ t, rgt: 228, gt: 10 + (i % 3) * 20, h: 650 + (i % 5) * 0.02 })),
+      ...Array.from({ length: 30 }, (_, i) => atl06Row({ t, rgt: 228, gt: 10 + (i % 3) * 20, h: 861.25 + (i % 3) * 0.01 })),
+    ];
+    assert.ok(Math.abs(reduceRows(rows, { product: 'atl06' })[0].levelM - 650) < 0.05);
+    assert.ok(Math.abs(reduceRows(rows, { product: 'atl06', levelWindow: [800, 905] })[0].levelM - 861.26) < 0.02);
+  });
+
   it('despikes the GERD-style 744 m pass (n = 20) out of an ATL06 fill series', () => {
     const rows = [];
     for (let i = 0; i < 18; i++) {
@@ -192,5 +207,47 @@ describe('ATL06 lowest-cluster reduction', () => {
     assert.equal(p.rgt, 341);
     assert.ok(Math.abs(p.levelM - 328.835) <= 0.03, `level ${p.levelM}`);
     assert.equal(passIsOk(p), true);
+  });
+});
+
+describe('per-reservoir despike allowance', () => {
+  // Gibe III 2019: dry-season drawdown to 819 m between sparse passes, then the Omo flood.
+  const series = [['2019-01-12', 850.556], ['2019-03-15', 833.919], ['2019-06-05', 819.338], ['2019-09-04', 867.409], ['2019-10-11', 882.612]]
+    .map(([date, levelM], i) => ({ time: `${date}T08:00Z`, date, rgt: 100 + i, levelM, madM: 0.02, n: 500, beamSpreadM: 0.05 }));
+
+  it('the shared 0.05 m/day allowance despikes a real seasonal minimum', () => {
+    assert.equal(classifyPasses(series).find((p) => p.date === '2019-06-05').spike, true);
+  });
+
+  it('an entry allowance of 0.3 m/day keeps it and still drops a 300 m land pass', () => {
+    const withLand = [...series, { time: '2019-07-20T08:00Z', date: '2019-07-20', rgt: 999, levelM: 1142.6, madM: 0.05, n: 7, beamSpreadM: null }];
+    const c = classifyPasses(withLand, { perGapDayM: 0.3 });
+    assert.equal(c.find((p) => p.date === '2019-06-05').ok, true);
+    assert.equal(c.find((p) => p.rgt === 999).spike, true);
+  });
+});
+
+describe('committed watchlist products', () => {
+  const watchlist = JSON.parse(readFileSync(new URL('../scripts/data/strategic-reservoirs.json', import.meta.url), 'utf8')).reservoirs;
+  const baseline = JSON.parse(readFileSync(new URL('../scripts/data/reservoir-levels-baseline.json', import.meta.url), 'utf8'));
+
+  it('every entry names a known product; ATL06 entries carry a level window and no ATL13 refid', () => {
+    for (const e of watchlist) {
+      const p = productOf(e);
+      if (p.id === 'atl06') {
+        assert.equal(e.refid, undefined, e.id);
+        assert.ok(Array.isArray(e.levelWindowM) && e.levelWindowM.length === 2 && e.levelWindowM[0] < e.levelWindowM[1], e.id);
+      } else {
+        assert.equal(e.levelWindowM, undefined, `${e.id}: level windows are an ATL06 rule`);
+      }
+    }
+  });
+
+  it('every ATL06 entry has baseline passes inside its level window', () => {
+    for (const e of watchlist.filter((x) => productOf(x).id === 'atl06')) {
+      const passes = baseline.reservoirs[e.id]?.passes ?? [];
+      assert.ok(passes.length > 0, e.id);
+      for (const t of passes) assert.ok(t[2] >= e.levelWindowM[0] && t[2] <= e.levelWindowM[1], `${e.id} ${t[0]} ${t[2]}`);
+    }
   });
 });

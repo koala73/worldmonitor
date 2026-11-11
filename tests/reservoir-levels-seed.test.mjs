@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildSummary,
   MAX_ATL06_GRANULES_PER_RUN,
   MAX_GRANULE_FAILURES,
   MAX_GRANULES_PER_RUN,
@@ -273,6 +274,24 @@ describe('ATL06 entries in the seeder run', () => {
     assert.ok(Math.abs(gamma.latest.levelM - 799.51) < 0.02, `level ${gamma.latest.levelM}`);
     assert.equal(data._state.byId.gamma.cursor, '2026-09-03');
     assert.equal(data.reservoirs.find((r) => r.id === 'alpha').latest.date, '2026-09-02');
+  });
+
+  it('applies the entry level window: a pass with no segment inside it adds nothing', async () => {
+    const { fetchImpl } = fake({ cmr: { gamma: [gran06('2026-09-03', 33)] } });
+    const windowed = [WATCHLIST[0], { ...GAMMA, levelWindowM: [700, 790] }];
+    const data = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist: windowed, readState: async () => null, log: () => {}, fetchImpl });
+    assert.ok(data._state.byId.gamma.processed.includes(gran06('2026-09-03', 33)));
+    assert.equal(data._state.byId.gamma.passes.length, baseline.reservoirs.gamma.passes.length);
+    assert.equal(data.reservoirs.find((r) => r.id === 'gamma').latest.date < '2026-09-03', true);
+  });
+
+  it('buildSummary applies an entry despike allowance', () => {
+    const day = (d, level, rgt) => [`${d}T08:00Z`, rgt, level, 0.02, 500, 0.05];
+    const passes = [day('2019-01-12', 850.556, 1), day('2019-03-15', 833.919, 2), day('2019-06-05', 819.338, 3), day('2019-09-04', 867.409, 4), day('2019-10-11', 882.612, 5)];
+    const byId = { gamma: { passes } };
+    const now = Date.parse('2019-10-20T00:00:00Z');
+    assert.equal(buildSummary([GAMMA], byId, now).reservoirs[0].recordMinM, 850.556);
+    assert.equal(buildSummary([{ ...GAMMA, despikePerGapDayM: 0.3 }], byId, now).reservoirs[0].recordMinM, 819.338);
   });
 
   it('budgets ATL06 granules separately from ATL13 granules', async () => {
