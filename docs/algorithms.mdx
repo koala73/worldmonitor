@@ -90,7 +90,7 @@ compositeScore =
 
 ### Population Exposure Estimation
 
-Each active event (conflicts, earthquakes, floods, wildfires) is estimated as the `population / area` density of its country times the area of a circle with the event-type radius. The country is the one the event reports. A bare point, such as an earthquake or an API request, is matched to a country by its outline. Only countries in the local priority population table have a density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
+Each active event (conflicts, earthquakes, floods, wildfires) is estimated as the `population / area` density of its country times the area of a circle with the event-type radius. The country is the one the event reports, with one provider correction: an Israel-labelled event inside the Palestinian outline uses Palestine’s density. This applies to both the dashboard and MCP. A bare point, such as an earthquake or an API request, is matched to a country by its outline. Only countries in the local priority population table have a density. This is a coarse exposure approximation, not a live WorldPop lookup. Event-specific radii reflect typical impact footprints:
 
 | Event Type      | Radius | Rationale                                |
 | --------------- | ------ | ---------------------------------------- |
@@ -98,6 +98,12 @@ Each active event (conflicts, earthquakes, floods, wildfires) is estimated as th
 | **Earthquakes** | 100 km | Shaking intensity propagation            |
 | **Floods**      | 100 km | Watershed and drainage basin extent      |
 | **Wildfires**   | 30 km  | Smoke and evacuation perimeter           |
+
+Country outlines use the pinned `world-atlas@2.0.2` 10m Natural Earth atlas, simplified at 0.02° and rounded to 0.001°. When no outline contains a point, the model uses the nearest table-country outline within 5 km. This is a coastline-resolution allowance, not a population search radius. The fallback is disabled within 5 km of a mapped land border, to avoid assigning a neighbouring country's density. More distant offshore points get no estimate.
+
+**Disputed-area policy:** point lookup follows the atlas's de facto outlines; it does not establish sovereignty. Crimea and Kerch resolve to Russia (`RUS`). The Palestinian outline resolves to Palestine (`PSE`). The atlas is approximate around Jerusalem: the test points at 31.78° N, 35.20° E and 35.21° E fall inside its PS outline, although they are west of the Green Line. They therefore use PSE density, including Israel-labelled events under the provider correction. This known boundary limitation remains; these estimates must not be used to determine borders or address-level population. A precise Jerusalem boundary would need a separately sourced geometry change.
+
+MCP exposure estimates expose `country` as the ISO3 density code. `nearestCountry` remains a deprecated alias with the same value in point and event results for this published revision. Clients should migrate to `country`; the v1 REST field remains `nearestCountry`.
 
 An event outside that table gets no estimate, and so does a conflict event located only to a district or country. The Population Exposure panel displays a summary header with total affected population and a per-event breakdown table.
 
