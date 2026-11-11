@@ -23,8 +23,7 @@ import {
   MODERN_SERVER_INSTRUCTIONS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
-  SERVER_NAME,
-  SERVER_VERSION,
+  SERVER_INFO,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
@@ -1417,7 +1416,7 @@ async function mcpHandlerInner(
       return respond(rpcOk(id, {
         protocolVersion: negotiatedVersion,
         capabilities: serverCapabilities(),
-        serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        serverInfo: SERVER_INFO,
         instructions: isChatGptHost(req) ? CHATGPT_SERVER_INSTRUCTIONS : SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders }));
     }
