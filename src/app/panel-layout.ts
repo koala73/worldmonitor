@@ -15,6 +15,7 @@ import {
 } from '@/app/panel-mount-deferral';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   clampMapColWidthPercent,
   mapRightClassForVisualSide,
   type MapVisualSide,
@@ -483,6 +484,7 @@ export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
   private callbacks: PanelLayoutManagerCallbacks;
   private panelDragCleanupHandlers: Array<() => void> = [];
+  private variantPlacementCleanup: (() => void) | null = null;
   private deferredPanelMounts: Map<string, DeferredPanelMount> = new Map();
   private lazyPanelRegistrations: Map<string, LazyPanelRegistration> = new Map();
   private observedHydrationPanels = new WeakSet<Panel>();
@@ -899,6 +901,8 @@ export class PanelLayoutManager implements AppModule {
 
   /** Retire panel resources and watches, then settle pending entitlement verification. */
   destroy(): void {
+    this.variantPlacementCleanup?.();
+    this.variantPlacementCleanup = null;
     this.pendingStorageFacilityId = null;
     this.checkoutReturnFocusController.abort();
     clearAllPendingCalls();
@@ -1362,7 +1366,10 @@ export class PanelLayoutManager implements AppModule {
         </button>`
       ).join('')}
       </div>
-      <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
+      <div class="dashboard-navigation-row">
+        <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
+        <div class="tablet-variant-mount"></div>
+      </div>
       <main id="main" tabindex="-1" class="main-content${mapRightClassActive ? ' map-right' : ''}"${mapColWidthStyle}>
         <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
@@ -1421,6 +1428,20 @@ export class PanelLayoutManager implements AppModule {
         </span>
       </footer>
     `, "legacy direct innerHTML migration"));
+    // Move the same links so navigation, analytics and focus targets stay shared.
+    this.variantPlacementCleanup?.();
+    const switcher = this.ctx.container.querySelector('.variant-switcher');
+    const headerLeft = this.ctx.container.querySelector('.header-left');
+    const tabletMount = this.ctx.container.querySelector('.tablet-variant-mount');
+    const tabletWidth = window.matchMedia('(min-width: 768px) and (max-width: 980px)');
+    const placeSwitcher = () => {
+      if (!switcher || !headerLeft || !tabletMount) return;
+      if (tabletWidth.matches) tabletMount.append(switcher);
+      else headerLeft.prepend(switcher);
+    };
+    placeSwitcher();
+    tabletWidth.addEventListener('change', placeSwitcher);
+    this.variantPlacementCleanup = () => tabletWidth.removeEventListener('change', placeSwitcher);
     // Mark AFTER the innerHTML swap so the timestamp reflects when the new shell
     // DOM is actually live — placing it before setTrustedHtml recorded a time
     // earlier than any LCP candidate in the new shell, making it useless for
@@ -4263,7 +4284,7 @@ export class PanelLayoutManager implements AppModule {
   private getEffectiveUltraWide(): boolean {
     const mapSection = document.getElementById('mapSection');
     const mapEnabled = !mapSection?.classList.contains('hidden');
-    return window.innerWidth >= this.getUltraWideMinWidth() && mapEnabled;
+    return isSplitLayoutViewport(window) && mapEnabled;
   }
 
   private insertByOrder(grid: HTMLElement, el: HTMLElement, key: string): void {
