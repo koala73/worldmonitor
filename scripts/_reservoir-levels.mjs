@@ -444,6 +444,14 @@ function rowTimeMs(t) {
   return Date.parse(String(t).replace(' ', 'T').slice(0, 23) + 'Z');
 }
 
+// A CSV field as a number; an empty or missing field is NaN, never 0. Number('') is 0, so a
+// pass of empty heights would otherwise reduce to a clean 0 m level.
+function csvNumber(v) {
+  if (v == null) return NaN;
+  const t = String(v).trim();
+  return t === '' ? NaN : Number(t);
+}
+
 /**
  * Streaming accumulator. add(row) groups segments by UTC date + reference ground track.
  * finish() returns one stats record per pass. Optional `refid` keeps only segments of that
@@ -454,7 +462,7 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null }
   return {
     add(row) {
       if (refid != null && row.atl13refid != null && row.atl13refid !== '' && Number(row.atl13refid) !== refid) return;
-      const h = Number(row[heightField]);
+      const h = csvNumber(row[heightField]);
       if (!Number.isFinite(h) || Math.abs(h) > ATL13_HEIGHT_FILL_LIMIT_M) return;
       const ms = rowTimeMs(row.time_ns ?? row.time);
       if (!Number.isFinite(ms)) return;
