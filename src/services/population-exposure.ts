@@ -24,13 +24,15 @@ function locationKey(lat: number, lon: number): string {
 export function enrichEventsWithExposure(
   events: EventForExposure[],
   limit = events.length,
+  allowUnknownPrecision = false,
 ): { exposures: PopulationExposure[]; coverage: ExposureCoverage } {
   const byLocation = new Map<string, PopulationExposure>();
   const coverage: ExposureCoverage = { totalEvents: 0, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0 };
   for (const event of events) {
     const eventCount = event.eventCount ?? 1;
     coverage.totalEvents += eventCount;
-    if (event.hasPreciseLocation !== true) {
+    const locationPending = allowUnknownPrecision && event.hasPreciseLocation === undefined;
+    if (event.hasPreciseLocation !== true && !locationPending) {
       coverage.withoutPreciseLocation += eventCount;
       continue;
     }
@@ -44,6 +46,7 @@ export function enrichEventsWithExposure(
     const existing = byLocation.get(key);
     if (existing) {
       existing.eventCount += eventCount;
+      if (locationPending) existing.locationPending = true;
       continue;
     }
     if (byLocation.size >= limit) {
@@ -60,6 +63,7 @@ export function enrichEventsWithExposure(
       exposedPopulation: exposure.exposedPopulation,
       exposureRadiusKm: exposure.exposureRadiusKm,
       eventCount,
+      ...(locationPending ? { locationPending: true } : {}),
     });
   }
   return { exposures: [...byLocation.values()], coverage };

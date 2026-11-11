@@ -1145,9 +1145,12 @@
       "estimateWithin": "Ongeveer {{count}} mensen binnen een straal van {{km}} km",
       "method": "De schattingen zijn gebaseerd op de gemiddelde bevolkingsdichtheid van het land.",
       "empty": "Geen geschikte gebeurtenislocaties",
-      "infoTooltip": "Alleen gebeurtenissen met een precieze locatie en beschikbare bevolkingsdichtheid voor het land worden getoond. De geschatte gebieden kunnen elkaar overlappen.",
+      "infoTooltip": "Gebeurtenissen met gegevens over de bevolkingsdichtheid van het land worden getoond. Locaties uit oudere gegevens zonder nauwkeurigheidsinformatie worden gemarkeerd als wachtend op een update. De geschatte gebieden kunnen overlappen.",
       "eventCount_one": "{{count}} gebeurtenis",
       "eventCount_other": "{{count}} gebeurtenissen",
+      "locationPending": "Locatienauwkeurigheid wacht op update",
+      "unrestCoverage": "Dekking van onrust",
+      "ucdpPending": "UCDP-dekking wacht op update",
       "coverageShown": "Getoonde gebeurtenissen: {{shown}} van {{total}}",
       "coverageLeftOut": "Niet getoond: {{imprecise}} zonder precieze locatie, {{noEstimate}} in landen zonder dichtheidsgegevens, {{otherPlaces}} na de eerste 10 plaatsen per bron"
     },

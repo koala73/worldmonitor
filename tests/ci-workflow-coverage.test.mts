@@ -503,6 +503,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/panel-grid-column-clamp.spec.ts',
   'e2e/narrow-panel-overflow.spec.ts',
   'e2e/hormuz-chart-width.spec.ts',
+  'e2e/population-exposure-legacy.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [

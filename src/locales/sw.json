@@ -1819,9 +1819,12 @@
       "estimateWithin": "Takriban watu {{count}} ndani ya eneo la kilomita {{km}}",
       "method": "Makadirio yanatumia wastani wa msongamano wa watu nchini.",
       "empty": "Hakuna maeneo ya matukio yanayokidhi vigezo",
-      "infoTooltip": "Matukio yanaonyeshwa ikiwa eneo lake linajulikana kwa usahihi na nchi ina data ya msongamano wa watu. Maeneo yaliyokadiriwa yanaweza kuingiliana.",
+      "infoTooltip": "Matukio yenye data ya msongamano wa watu wa nchi yanaonyeshwa. Maeneo kutoka data ya zamani bila taarifa za usahihi yanawekwa alama ya kusubiri sasisho. Maeneo yanayokadiriwa yanaweza kuingiliana.",
       "eventCount_one": "{{count}} tukio",
       "eventCount_other": "{{count}} matukio",
+      "locationPending": "Usahihi wa eneo unasubiri sasisho",
+      "unrestCoverage": "Ufunikaji wa machafuko",
+      "ucdpPending": "Ufunikaji wa UCDP unasubiri sasisho",
       "coverageShown": "Matukio yaliyoonyeshwa: {{shown}} kati ya {{total}}",
       "coverageLeftOut": "Hayajaonyeshwa: {{imprecise}} bila mahali sahihi, {{noEstimate}} katika nchi zisizo na data ya msongamano, {{otherPlaces}} baada ya maeneo 10 ya kwanza kwa kila chanzo"
     },

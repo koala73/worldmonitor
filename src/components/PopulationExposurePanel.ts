@@ -35,6 +35,7 @@ export class PopulationExposurePanel extends Panel {
         <div class="popexp-card-pop">
           ${t('components.populationExposure.estimateWithin', { count: formatPopulation(e.exposedPopulation), km: e.exposureRadiusKm })}
           ${e.eventCount > 1 ? `· ${t('components.populationExposure.eventCount', { count: e.eventCount })}` : ''}
+          ${e.locationPending ? `· ${t('components.populationExposure.locationPending')}` : ''}
         </div>
       </div>`;
     }));
@@ -49,16 +50,18 @@ export class PopulationExposurePanel extends Panel {
   }
 
   private renderCoverage(coverage: ExposureCoverage | undefined) {
-    if (!coverage || coverage.totalEvents === 0) return safeHtml``;
+    if (!coverage || (coverage.totalEvents === 0 && !coverage.ucdpPending)) return safeHtml``;
     const n = (value: number) => value.toLocaleString();
     const shown = coverage.totalEvents - coverage.withoutPreciseLocation - coverage.withoutEstimate - coverage.atOtherPlaces;
     return safeHtml`<div class="popexp-coverage">
+      ${coverage.ucdpPending ? safeHtml`<div>${t('components.populationExposure.unrestCoverage')}</div>` : ''}
       <div>${t('components.populationExposure.coverageShown', { shown: n(shown), total: n(coverage.totalEvents) })}</div>
       <div>${t('components.populationExposure.coverageLeftOut', {
         imprecise: n(coverage.withoutPreciseLocation),
         noEstimate: n(coverage.withoutEstimate),
         otherPlaces: n(coverage.atOtherPlaces),
       })}</div>
+      ${coverage.ucdpPending ? safeHtml`<div>${t('components.populationExposure.ucdpPending')}</div>` : ''}
     </div>`;
   }
 

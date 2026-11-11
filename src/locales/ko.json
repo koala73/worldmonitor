@@ -1665,8 +1665,11 @@
       "estimateWithin": "반경 {{km}}km 내 약 {{count}}명",
       "method": "추정에는 해당 국가의 평균 인구 밀도를 사용합니다.",
       "empty": "조건에 맞는 사건 위치 없음",
-      "infoTooltip": "위치가 정확하고 국가 인구 밀도 데이터가 있는 사건만 표시합니다. 추정 범위는 서로 겹칠 수 있습니다.",
+      "infoTooltip": "국가 인구 밀도 데이터가 있는 사건을 표시합니다. 정확도 정보가 없는 이전 데이터의 위치에는 업데이트 대기 중으로 표시됩니다. 추정 지역은 겹칠 수 있습니다.",
       "eventCount_other": "{{count}}개 사건",
+      "locationPending": "위치 정확도 업데이트 대기 중",
+      "unrestCoverage": "소요 사태 집계 범위",
+      "ucdpPending": "UCDP 집계 업데이트 대기 중",
       "coverageShown": "표시된 이벤트: {{total}}건 중 {{shown}}건",
       "coverageLeftOut": "표시 안 됨: 정확한 위치 없음 {{imprecise}}건, 인구 밀도 데이터가 없는 국가 {{noEstimate}}건, 출처별 처음 10곳 이후 {{otherPlaces}}건"
     },

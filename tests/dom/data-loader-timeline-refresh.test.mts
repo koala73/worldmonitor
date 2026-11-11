@@ -401,12 +401,14 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     );
   });
 
-  it('hides coverage counts when the projection predates them', async () => {
+  it('keeps unrest coverage when the projection predates UCDP coverage', async () => {
     const point = {
       id: 'eligible', locationName: 'Taiz', country: 'Yemen', latitude: 13.58, longitude: 44.02,
       type_of_violence: 'state-based', hasPreciseLocation: true, eventCount: 2,
     };
-    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [
+      { ...protestEvent, id: 'aden', city: 'Aden', country: 'Yemen', lat: 12.8, lon: 45, hasPreciseLocation: true },
+    ] });
     mocks.fetchUcdpEvents.mockResolvedValueOnce({
       success: true, data: [point], fromCache: false, exposure: { source: 'projection', events: [point] },
     });
@@ -417,7 +419,31 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadIntelligenceSignals();
 
     expect(setExposures).toHaveBeenCalledExactlyOnceWith(
-      [expect.objectContaining({ eventId: 'eligible', eventCount: 2 })], false, undefined,
+      expect.arrayContaining([expect.objectContaining({ eventId: 'eligible', eventCount: 2 })]), false,
+      { totalEvents: 1, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true },
+    );
+  });
+
+  it('keeps legacy UCDP rows pending through the real adapter and excludes explicit imprecision', async () => {
+    const { fetchUcdpEvents } = await vi.importActual<typeof import('@/services/conflict')>('@/services/conflict');
+    const point = {
+      id: 'legacy', country: 'Yemen', locationName: 'Taiz', location: { latitude: 13.58, longitude: 44.02 },
+      dateStart: 0, dateEnd: 0, sideA: 'A', sideB: 'B', deathsBest: 0, deathsLow: 0, deathsHigh: 0,
+      violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', sourceOriginal: '',
+    };
+    const response = await fetchUcdpEvents({
+      events: [point, { ...point, id: 'broad', hasPreciseLocation: false }],
+    } as Parameters<typeof fetchUcdpEvents>[0]);
+    expect(response.data.map(e => e.hasPreciseLocation)).toEqual([undefined, false]);
+    mocks.fetchUcdpEvents.mockResolvedValueOnce(response);
+    mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
+    const { loader, ctx } = await makeLoader();
+    const setExposures = vi.fn();
+    ctx.panels['population-exposure'] = { setExposures } as unknown as AppContext['panels'][string];
+    await loader.loadIntelligenceSignals();
+    expect(setExposures).toHaveBeenCalledExactlyOnceWith(
+      [expect.objectContaining({ eventId: 'legacy', locationPending: true })], false,
+      { totalEvents: 0, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true },
     );
   });
 
@@ -449,7 +475,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
         mocks.fetchProtestEvents.mockResolvedValue({ ...protestData, events: [] });
       }
       const data = failedSource === 'ucdp' ? [] : [{
-        id: 'legacy-row', country: 'Yemen', latitude: 13.58, longitude: 44.02,
+        id: 'imprecise-row', country: 'Yemen', latitude: 13.58, longitude: 44.02, hasPreciseLocation: false,
         side_a: 'Side A', side_b: 'Side B', type_of_violence: 'state-based',
       }];
       mocks.fetchUcdpEvents.mockResolvedValue({

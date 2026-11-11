@@ -460,6 +460,7 @@ export interface PopulationExposure {
   exposedPopulation: number;
   exposureRadiusKm: number;
   eventCount: number;
+  locationPending?: boolean;
 }
 
 // Every feed event lands in exactly one bucket: a shown row or one of the three left-out reasons.
@@ -468,6 +469,8 @@ export interface ExposureCoverage {
   withoutPreciseLocation: number;
   withoutEstimate: number;
   atOtherPlaces: number;
+  // When true, these counts cover unrest only, not the older UCDP projection.
+  ucdpPending?: boolean;
 }
 
 // Military base operator types
