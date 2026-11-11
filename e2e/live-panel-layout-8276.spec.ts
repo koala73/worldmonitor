@@ -197,6 +197,7 @@ test('wide live video panels do not overlap adjacent dashboard panels (#8276)', 
   await newsHandle.press('End');
   await expect(news).toHaveClass(/\bspan-4\b/);
   await expect.poll(deadSpaceBelowPlayer, { message: 'four-row Live News footprint' }).toBeLessThanOrEqual(16);
+  expect(await deadSpaceBelowPlayer(), 'four-row player stays inside the panel').toBeGreaterThanOrEqual(0);
 });
 
 test('collapsing a user-resized video panel releases its grid rows (#10185)', async ({
