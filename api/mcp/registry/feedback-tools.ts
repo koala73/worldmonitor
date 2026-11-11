@@ -131,7 +131,7 @@ export const FEEDBACK_TOOLS: ToolDef[] = [
       required: ['reportId', 'status'],
       properties: {
         reportId: { type: 'string', description: 'The stored report id. Quote it when following up.' },
-        status: { type: 'string', enum: ['received', 'triaged', 'private'], description: 'Triage state of the stored report: received when new, private for a security report. A retry of the same report within 10 minutes returns the first report\'s id and current state, which may be triaged.' },
+        status: { type: 'string', enum: ['received', 'triaged', 'filed', 'duplicate', 'dismissed', 'private', 'closed'], description: 'Triage state of the stored report: received when new, private for a security report. A retry of the same report within 10 minutes returns the first report\'s id and its current state, which may already be triaged, filed, duplicate, dismissed or closed.' },
         advisoryUrl: { type: 'string', description: 'Security reports only: the private advisory form where vulnerability details belong.' },
         notice: { type: 'string', description: 'Security reports only: a reminder not to send exploit details through this tool.' },
       },
