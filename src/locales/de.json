@@ -4504,6 +4504,7 @@
   "auth": {
     "signIn": "Anmelden",
     "createAccount": "Konto erstellen",
+    "freeReason": "Gratis: Layout speichern, Ländern folgen, Alarme",
     "settings": "Einstellungen",
     "passkeyOffer": {}
   },

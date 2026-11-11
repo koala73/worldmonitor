@@ -12,7 +12,7 @@ const COMPONENTS_DIR = 'src/components';
 // dashboard tab bar's new-tab options add 413, its team button adds 61, and
 // the team menu adds 492. Every panel title ships in the shell, so the
 // Strategic Water Levels panel title adds 49.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 49;
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 80 + 49;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

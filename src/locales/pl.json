@@ -4548,6 +4548,7 @@
   "auth": {
     "signIn": "Zaloguj się",
     "createAccount": "Utwórz konto",
+    "freeReason": "Za darmo: zapisz układ, obserwuj kraje, alerty",
     "settings": "Ustawienia",
     "passkeyOffer": {}
   },

@@ -4592,6 +4592,7 @@
   "auth": {
     "signIn": "سجل الدخول",
     "createAccount": "إنشاء حساب",
+    "freeReason": "مجاني: احفظ تخطيطك، تابع الدول، تنبيهات",
     "settings": "الإعدادات",
     "passkeyOffer": {}
   },

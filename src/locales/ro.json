@@ -4526,6 +4526,7 @@
   "auth": {
     "signIn": "Conectare",
     "createAccount": "Creare cont",
+    "freeReason": "Gratuit: salvează aspectul, urmărește țări, alerte",
     "settings": "Setări",
     "passkeyOffer": {}
   },

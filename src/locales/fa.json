@@ -4504,6 +4504,7 @@
   "auth": {
     "signIn": "ورود",
     "createAccount": "ایجاد حساب",
+    "freeReason": "رایگان: ذخیره چیدمان، دنبال کردن کشورها، هشدارها",
     "settings": "تنظیمات",
     "passkeyOffer": {}
   },

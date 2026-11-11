@@ -4504,6 +4504,7 @@
   "auth": {
     "signIn": "Oturum Aç",
     "createAccount": "Hesap oluştur",
+    "freeReason": "Ücretsiz: düzeni kaydet, ülkeleri takip et, uyarılar",
     "settings": "Ayarlar",
     "passkeyOffer": {}
   },

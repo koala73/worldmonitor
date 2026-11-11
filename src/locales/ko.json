@@ -4482,6 +4482,7 @@
   "auth": {
     "signIn": "로그인",
     "createAccount": "계정 만들기",
+    "freeReason": "무료: 레이아웃 저장, 국가 팔로우, 알림",
     "settings": "설정",
     "passkeyOffer": {}
   },
