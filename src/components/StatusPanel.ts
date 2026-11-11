@@ -181,9 +181,10 @@ export class StatusPanel extends Panel {
    * Nothing else mounts this panel — it is otherwise a write-only data sink
    * (no getElement() callers), so the row must reach the document from here
    * or it renders into a detached node no user or screen reader can see.
-   * The site footer always exists by the first digest load (layout Phase 1
-   * precedes data loading), so a missing footer only means a non-dashboard
-   * document; the row then stays detached rather than throwing.
+   * The compact site footer (#10461) always exists by the first digest load
+   * (layout Phase 1 precedes data loading), so a missing footer only means a
+   * non-dashboard document; the row then stays detached rather than throwing.
+   * CSS keeps the row on the same 28px footer line via ellipsis.
    */
   private ensureCoverageRowMounted(): void {
     if (this.element.isConnected) return;

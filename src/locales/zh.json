@@ -2107,7 +2107,8 @@
       "channelOrVideoUrl": "YouTube 频道或视频 URL",
       "channelUrlHint": "粘贴频道 URL (youtube.com/channel/UC…) 或直播视频 URL",
       "youtubeChannel": "YouTube 频道",
-      "httpsStreamHint": "浏览器会阻止不安全的 (http) 流。请粘贴安全的 (https) 流 URL"
+      "httpsStreamHint": "浏览器会阻止不安全的 (http) 流。请粘贴安全的 (https) 流 URL",
+      "tapToPlay": "点击播放"
     },
     "map": {
       "showMap": "显示地图",

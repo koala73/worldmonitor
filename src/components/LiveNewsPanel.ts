@@ -805,6 +805,7 @@ export class LiveNewsPanel extends Panel {
       source,
       autoplay: true,
       muted: this.isMuted,
+      holdUnstarted: true,
       presentation: { title: `${this.getChannelDisplayName(channel)} live feed`, className: 'live-news-media', controls: true },
       onState: (state) => {
         if (isCurrent()) this.onVideoState(channel, state);
@@ -849,9 +850,13 @@ export class LiveNewsPanel extends Panel {
     this.videoPhase = state.phase;
     if (state.phase !== 'connecting') this.clearChannelLoadingState();
     switch (state.phase) {
-      case 'connecting':
-        this.showPlayerStatus('cover', t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) }));
+      case 'connecting': {
+        const connecting = t('components.liveNews.connecting', { name: this.getChannelDisplayName(channel) });
+        // Once the player is up, a corner chip replaces the cover so its own controls can be reached.
+        if (state.tapToPlay) this.showPlayerStatus('chip', t('components.liveNews.tapToPlay'), null, true);
+        else this.showPlayerStatus(state.ready ? 'chip' : 'cover', connecting);
         return;
+      }
       case 'live':
         this.failureMemory.clear(channel.id);
         this.skippedChannelIds.clear();
@@ -867,15 +872,19 @@ export class LiveNewsPanel extends Panel {
       case 'unverified':
         this.failureMemory.clear(channel.id);
         this.setChannelOffline(channel.id, false);
-        this.showPlayerStatus('chip', t('components.liveNews.unverified'), state.watchUrl);
+        if (state.reason === 'not-started') {
+          this.showPlayerStatus('chip', t('components.liveNews.tapToPlay'), state.watchUrl, true);
+        } else {
+          this.showPlayerStatus('chip', t('components.liveNews.unverified'), state.watchUrl);
+        }
         return;
       case 'offline':
         this.handleChannelOffline(channel, state.reason, state.watchUrl);
     }
   }
 
-  /** A cover over the player while it connects, a corner chip for a disclosed state, or nothing once live. */
-  private showPlayerStatus(kind: 'cover' | 'chip' | null, text = '', watchUrl: string | null = null): void {
+  /** A cover over the player until it is ready, a corner chip for a ready player or a disclosed state (with a play button when it is waiting to start), or nothing once live. */
+  private showPlayerStatus(kind: 'cover' | 'chip' | null, text = '', watchUrl: string | null = null, playButton = false): void {
     const container = this.playerContainer;
     if (!container) return;
     container.querySelector('.live-news-status')?.remove();
@@ -884,9 +893,15 @@ export class LiveNewsPanel extends Panel {
     const status = document.createElement('div');
     status.className = `live-news-status live-news-status--${kind}`;
     status.setAttribute('role', 'status');
-    const label = document.createElement('span');
-    label.textContent = text;
-    status.appendChild(label);
+    if (playButton) {
+      status.dataset.tapToPlay = '';
+      // The text is the button's label: one tap target, not a caption beside it.
+      status.appendChild(actionButton(text, () => this.videoSession?.setPaused(false)));
+    } else {
+      const label = document.createElement('span');
+      label.textContent = text;
+      status.appendChild(label);
+    }
     if (watchUrl) {
       status.appendChild(actionButton(t('components.liveNews.signInToYouTube') || 'Sign in to YouTube', () => void this.openYouTubeSignIn()));
       status.appendChild(youtubeLink(watchUrl));

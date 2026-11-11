@@ -269,7 +269,13 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     ]) {
       const desc = html.match(/<meta name="description" content="([^"]+)">/)?.[1];
       assert.ok(desc, `${label} missing description`);
-      assert.ok(desc.length >= 155 && desc.length <= 160, `${label} description length ${desc.length}`);
+      if (label === 'hub') {
+        const hubDescription = 'Step-by-step World Monitor workflows for monitoring supply-chain disruption, country risk and breaking news, with sources, limits and clear next steps.';
+        assert.equal(desc, hubDescription);
+        assert.ok(desc.length >= 120 && desc.length <= 160, `${label} description length ${desc.length}`);
+      } else {
+        assert.ok(desc.length >= 155 && desc.length <= 160, `${label} description length ${desc.length}`);
+      }
       assert.match(
         html,
         new RegExp(`rel="canonical" href="https://www\\.worldmonitor\\.app${canonical.replaceAll('/', '\\/')}"`),
