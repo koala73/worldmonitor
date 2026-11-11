@@ -104,6 +104,18 @@ export function granuleBase(name) {
   return m ? `ATL13_${m[1]}_${m[2]}_${m[3]}` : null;
 }
 
+/** Release revision of a granule name (`_01` -> 1, `_02` -> 2), or null. */
+export function granuleRevision(name) {
+  const m = GRANULE_EXACT_RE.exec(name);
+  return m ? Number(m[4]) : null;
+}
+
+/** Reference ground track encoded in a granule name (`_RRRRCCSS_`), or null. */
+export function granuleRgt(name) {
+  const m = GRANULE_EXACT_RE.exec(name);
+  return m ? Number(m[2].slice(0, 4)) : null;
+}
+
 /**
  * Keep one granule per orbit, preferring the highest revision. CMR can list a reprocessed
  * `_02` next to the original `_01`; processing both would double-count the pass.
@@ -494,29 +506,41 @@ function comparePasses(a, b) {
   return a.time < b.time ? -1 : a.time > b.time ? 1 : a.rgt - b.rgt;
 }
 
-// Compact tuple storage: [timeIso, rgt, levelM, madM, n, beamSpreadM|null].
+// Compact tuple storage: [timeIso, rgt, levelM, madM, n, beamSpreadM|null, revision?].
+// The granule release revision is stored only when above 1, so revision-1 tuples (the
+// whole committed baseline) keep their six-element form.
 export function passToTuple(p) {
-  return [p.time, p.rgt, p.levelM, p.madM, p.n, p.beamSpreadM ?? null];
+  const t = [p.time, p.rgt, p.levelM, p.madM, p.n, p.beamSpreadM ?? null];
+  if ((p.revision ?? 1) > 1) t.push(p.revision);
+  return t;
 }
 
 export function tupleToPass(t) {
-  const [time, rgt, levelM, madM, n, beamSpreadM] = t;
+  const [time, rgt, levelM, madM, n, beamSpreadM, revision] = t;
   const iso = String(time);
   const date = iso.slice(0, 10);
-  return { time: iso.length === 10 ? `${iso}T12:00Z` : iso, date, rgt: Number(rgt), levelM: Number(levelM), madM: Number(madM), n: Number(n), beamSpreadM: beamSpreadM == null ? null : Number(beamSpreadM) };
+  return { time: iso.length === 10 ? `${iso}T12:00Z` : iso, date, rgt: Number(rgt), levelM: Number(levelM), madM: Number(madM), n: Number(n), beamSpreadM: beamSpreadM == null ? null : Number(beamSpreadM), revision: revision == null ? 1 : Number(revision) };
 }
 
 /**
- * Merge new pass stats into a stored list. Keyed by UTC date + RGT; when the same pass
- * arrives again (same granule re-processed, or a pass split across granules), the record
- * with more segments wins, so merging is idempotent and order-independent.
+ * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher granule
+ * release revision always wins: NASA reprocesses a granule to correct it, so its values
+ * replace the earlier ones whatever their segment count. Within one revision (the same
+ * granule re-processed, or a pass split across granules) the record with more segments
+ * wins, then lower deviation, then lower height, so merging is idempotent and
+ * order-independent.
  */
 export function mergePasses(existing, incoming) {
   const byKey = new Map();
+  const better = (p, prev) => {
+    const rp = p.revision ?? 1, rq = prev.revision ?? 1;
+    if (rp !== rq) return rp > rq;
+    return p.n > prev.n || (p.n === prev.n && (p.madM < prev.madM || (p.madM === prev.madM && p.levelM < prev.levelM)));
+  };
   for (const p of [...existing, ...incoming]) {
     const k = passKey(p);
     const prev = byKey.get(k);
-    if (!prev || p.n > prev.n || (p.n === prev.n && (p.madM < prev.madM || (p.madM === prev.madM && p.levelM < prev.levelM)))) byKey.set(k, p);
+    if (!prev || better(p, prev)) byKey.set(k, p);
   }
   return [...byKey.values()].sort(comparePasses);
 }

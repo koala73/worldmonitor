@@ -168,11 +168,35 @@ describe('reservoir seeder run', () => {
     await assert.rejects(run({ fetchImpl }), (err) => err.preservableFetchFailure === true && /SlideRule failed for all \d+ requests/.test(err.message));
   });
 
-  it('defers granules past the run deadline to the next run', async () => {
+  it('planned work that never started (deadline spent in discovery) keeps last-good instead of publishing', async () => {
     const { fetchImpl, calls } = fakeUpstream({ cmr: { alpha: [gran('2026-09-02', 21)] } });
-    const data = await run({ fetchImpl, deadlineAtMs: Date.now() - 1 });
+    await assert.rejects(
+      run({ fetchImpl, deadlineAtMs: Date.now() - 1 }),
+      (err) => err.preservableFetchFailure === true && /no SlideRule request started/.test(err.message),
+    );
     assert.equal(calls.slide.length, 0);
-    assert.equal(data._state.byId.alpha.processed.includes(gran('2026-09-02', 21)), false);
+  });
+
+  it('finds a granule published late for an acquisition date well before the cursor', async () => {
+    // Cursor is 2026-08-20 for alpha. A granule acquired 2026-07-25 that NASA publishes only
+    // now must still be discovered and processed.
+    const late = gran('2026-07-25', 33);
+    const { fetchImpl } = fakeUpstream({ cmr: { alpha: [late] } });
+    const data = await run({ fetchImpl });
+    assert.ok(data._state.byId.alpha.processed.includes(late), 'late granule processed');
+    assert.ok(data._state.byId.alpha.passes.some((t) => String(t[0]).startsWith('2026-07-25') && t[1] === 33), 'late pass merged');
+  });
+
+  it('a reprocessed granule revision replaces the earlier measurement of the same pass', async () => {
+    const r1 = gran('2026-09-02', 21, '01');
+    const r2 = gran('2026-09-02', 21, '02');
+    const first = await run({ fetchImpl: fakeUpstream({ cmr: { alpha: [r1] }, level: { alpha: 300 } }).fetchImpl });
+    const state = first._state;
+    // Revision 02 corrects the height upward with the same segment count, which the old
+    // segments-then-lower-height rule would have discarded.
+    const second = await run({ fetchImpl: fakeUpstream({ cmr: { alpha: [r1, r2] }, level: { alpha: 301.5 } }).fetchImpl, readState: async () => state });
+    const pass = second._state.byId.alpha.passes.find((t) => String(t[0]).startsWith('2026-09-02') && t[1] === 21);
+    assert.ok(Math.abs(pass[2] - 301.51) < 0.02, `expected the revision 02 height, got ${pass[2]}`);
   });
 
   it('propagates a Redis read failure instead of treating it as a cold start', async () => {
