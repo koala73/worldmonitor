@@ -1,5 +1,5 @@
 import { rpcError, rpcOk } from '../rpc';
-import { UI_RESOURCE_MIME_TYPE } from './shell';
+import { UI_DOMAIN, UI_RESOURCE_MIME_TYPE } from './shell';
 import { buildPluginShell } from './_plugin-loader';
 
 export const COUNTRY_VIEW_UI_URI = 'ui://worldmonitor/country-view-v3.html';
@@ -22,6 +22,7 @@ const MAP_ASSET_ORIGINS = [
 // CSS, and a bare scheme here would also widen script-src and style-src.
 export const NEWS_DASHBOARD_META = {
   ui: {
+    domain: UI_DOMAIN,
     csp: {
       connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
       resourceDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
@@ -33,11 +34,11 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export const COUNTRY_VIEW_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  ui: { domain: UI_DOMAIN, csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export const MARKET_RADAR_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  ui: { domain: UI_DOMAIN, csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export async function readNewsDashboard(id: unknown, corsHeaders: Record<string, string>, uri = NEWS_DASHBOARD_UI_URI): Promise<Response> {
