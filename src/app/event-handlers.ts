@@ -143,6 +143,7 @@ import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
   LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   MAP_COL_DEFAULT_PERCENT,
   clampMapColWidthPercent,
   getVisualMapSide,
@@ -2607,7 +2608,7 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle || !mapContainer) return;
 
-    const isSplit = () => window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+    const isSplit = () => isSplitLayoutViewport(window);
     // Split mode sizes #mapContainer, stacked mode sizes #mapSection — two
     // different elements, so each mode keeps its own storage key (#6417).
     const getHeightKey = () => (isSplit() ? 'map-split-height' : 'map-height');

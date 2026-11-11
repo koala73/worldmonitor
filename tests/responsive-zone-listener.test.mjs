@@ -133,7 +133,10 @@ describe('panel layout responsive zone wiring', () => {
   });
   it('keeps embedded plugin overflow rules aligned with the shared layout', () => {
     assert.match(pluginCss, new RegExp(`@media \\(min-width: ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`));
-    assert.match(pluginCss, new RegExp(`@media \\(max-width: ${SPLIT_LAYOUT_MIN_WIDTH - 1}px\\)`));
+    // `width < N` and `min-width: N` are exact complements, so a fractional
+    // viewport width (browser zoom) is never in neither block.
+    assert.match(pluginCss, new RegExp(`@media \\(width < ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`));
+    assert.doesNotMatch(pluginCss, /max-width: 1439px/);
     assert.doesNotMatch(pluginCss, /(?:min-width: 900px|max-width: 899px)/);
   });
   // Behavioral: the contract panel-layout relies on — a breakpoint cross runs
@@ -193,7 +196,7 @@ describe('panel layout responsive zone wiring', () => {
 
     assert.match(
       panelsCss,
-      new RegExp(`@media \\(max-width: ${SPLIT_LAYOUT_MIN_WIDTH - 1}px\\)`),
+      new RegExp(`@media \\(width < ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`),
       'panels.css must hide the bottom zone below the shared threshold',
     );
     assert.doesNotMatch(
