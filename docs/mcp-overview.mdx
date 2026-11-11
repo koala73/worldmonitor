@@ -110,8 +110,9 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Conductor | `https://api.conductor.build/oauth/callback` ([client metadata](https://api.conductor.build/oauth/client-metadata.json)) |
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback` ([client metadata](https://www.skydive.com/api/v1/external-oauth/client-metadata)) |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`, `https://score.mcpjam.com/oauth/callback` ([client metadata](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)) |
+| Manufact Cloud | `https://manufact.com/inspector/oauth/callback` ([client metadata](https://manufact.com/oauth/client-metadata.json)) |
 
-Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, MCPJam, and Manufact Cloud prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
 
 ### Client ID Metadata Documents
 
@@ -143,6 +144,7 @@ The document is fetched over HTTPS with redirects refused, a 3-second timeout, a
 | Conductor | `https://api.conductor.build/oauth/client-metadata.json` |
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/client-metadata` |
 | MCPJam | `https://www.mcpjam.com/.well-known/oauth/client-metadata.json` |
+| Manufact Cloud | `https://manufact.com/oauth/client-metadata.json` |
 | Vercel Connect | `https://connect.vercel.com/connectors/<connector id>`, one document per connector, with the callback pinned to `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 
 ChatGPT's document prefers `private_key_jwt` but also lists `none`; WorldMonitor advertises only `none`, so ChatGPT uses PKCE without a client assertion. Make.com's published client URL redirects instead of serving a document, so it is not on the list. A client whose document is not listed gets an "Unknown Client" error; ask for it to be added.
