@@ -214,6 +214,7 @@ const EVENTS = {
   'live-media-idle-stopped': true,
   'live-media-idle-notice-action': true,
   'live-video-attempt-failed': true,
+  'live-video-tap-to-play': true,
   'live-video-signal-missing': true,
   'live-video-resolved-applied': true,
   // Webcams
