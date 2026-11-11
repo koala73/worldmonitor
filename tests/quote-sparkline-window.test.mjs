@@ -331,6 +331,12 @@ describe('stale-quote dips', () => {
     }
   });
 
+  it('keeps small reversals when a short tape cannot calibrate volatility', () => {
+    for (const values of [[50, 50.01, 50], [50, 50.01, 50, 50], [50, 50, 50.01, 50, 50]]) {
+      assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 300), values, '5m'), null).sparkline, values);
+    }
+  });
+
   it('filters five-minute closes before taking the last 288 points', () => {
     const values = Array.from({ length: 310 * 5 }, () => 50);
     // A two-minute trough survives the minute pass. Its deeper point closes

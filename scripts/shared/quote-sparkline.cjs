@@ -79,6 +79,9 @@ function dropSingleTickSpikes(bars) {
       if (length === 2 && (!gapBefore || island[1].t - island[0].t <= TRADING_GAP_SECONDS)) continue;
       const window = diffs.slice(Math.max(0, i - SPIKE_MAD_RADIUS), i - 1)
         .concat(diffs.slice(i + length, i + length + SPIKE_MAD_RADIUS));
+      // Without independent changes, a short tape cannot distinguish a
+      // genuine reversal from noise. Keep it until volatility is measurable.
+      if (window.length < 3) continue;
       const center = median(window);
       const mad = median(window.map((d) => Math.abs(d - center)));
       // Calibrate to this symbol's local tape, excluding the candidate's
