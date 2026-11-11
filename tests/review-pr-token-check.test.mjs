@@ -38,21 +38,27 @@ describe('bot-PR workflows', () => {
   for (const file of openers) {
     it(`${file} opens and auto-merges its PR with REVIEW_PR_TOKEN only`, () => {
       const text = read(file);
-      // The Actions token opens PRs that get no CI, so no step that runs `gh pr`
-      // may hold it. A step that only opens an issue may: an issue from
+      // The Actions token opens PRs that get no CI. It may appear only in a
+      // step that runs a shell command with no PR-capable call: an issue from
       // github-actions[bot] notifies the owner, one from the owner's PAT does not.
+      const ACTIONS_TOKEN = /github\.token|secrets\.GITHUB_TOKEN/;
+      const PR_CAPABLE = /\bgh (pr|api)\b|pulls|createPullRequest/;
       const workflow = YAML.parse(text);
-      const prSteps = Object.values(workflow.jobs).flatMap((job) => (job.steps ?? [])
-        .filter((step) => /\bgh pr\b/.test(step.run ?? ''))
-        .map((step) => ({ job, step })));
-      assert.ok(prSteps.length > 0);
-      for (const { job, step } of prSteps) {
-        const token = step.env?.GH_TOKEN ?? job.env?.GH_TOKEN ?? workflow.env?.GH_TOKEN;
-        assert.equal(token, '${{ secrets.REVIEW_PR_TOKEN }}', `${step.name ?? step.id} runs gh pr without REVIEW_PR_TOKEN`);
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        const { steps = [], ...jobWithoutSteps } = job;
+        assert.doesNotMatch(JSON.stringify(jobWithoutSteps), ACTIONS_TOKEN, `job ${jobName} hands the Actions token to every step`);
+        for (const step of steps) {
+          if (!ACTIONS_TOKEN.test(JSON.stringify(step))) continue;
+          const label = step.name ?? step.id ?? step.uses;
+          assert.equal(step.uses, undefined, `${label} passes the Actions token to an action`);
+          assert.doesNotMatch(step.run ?? '', PR_CAPABLE, `${label} can open a PR with the Actions token`);
+        }
+        for (const step of steps.filter((entry) => /\bgh pr\b/.test(entry.run ?? ''))) {
+          assert.equal(step.env?.GH_TOKEN ?? job.env?.GH_TOKEN ?? workflow.env?.GH_TOKEN, '${{ secrets.REVIEW_PR_TOKEN }}', `${step.name ?? step.id} runs gh pr without REVIEW_PR_TOKEN`);
+        }
       }
-      for (const job of Object.values(workflow.jobs)) {
-        assert.doesNotMatch(JSON.stringify(job.env ?? {}) + JSON.stringify(workflow.env ?? {}), /github\.token|GITHUB_TOKEN/, 'a job-wide Actions token reaches every gh pr step');
-      }
+      const { jobs: _jobs, ...workflowWithoutJobs } = workflow;
+      assert.doesNotMatch(JSON.stringify(workflowWithoutJobs), ACTIONS_TOKEN, 'a workflow-wide Actions token reaches every step');
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
       assert.doesNotMatch(text, /gh pr merge[^\n]*BRANCH_NAME/, 'a branch name can also match a fork PR');
       assert.match(text, /gh pr merge --auto --squash "\$(pr_url|\(tail -n 1 "\$RUNNER_TEMP\/snapshot-pr\.out"\))"/, 'merge the PR this run created');

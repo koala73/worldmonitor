@@ -8,7 +8,9 @@ import {
   assertNoSecrets,
   buildSnapshot,
   compareSnapshots,
+  INPUT_FILES,
   inputsDigest,
+  previousComparable,
   proportionChange,
   renderMarkdown,
   runAnswerrank,
@@ -35,10 +37,12 @@ const metrics = (n, named, web = 0, cited = 0) => ({
 
 /**
  * A finished answerrank run directory using the committed inputs: `variants`
- * maps a label to [answers, named, web answers, cited], and `failed` adds
- * errored answers for a label.
+ * maps a label to [answers, named, web answers, cited]. `failed` adds
+ * errored answers for a label, `unjudged` adds answers whose judgment failed
+ * (answerrank leaves both out of scores.json), and `retried` adds an error line
+ * before that many scored answers, as a resumed run leaves behind.
  */
-function writeRun({ variants, failed = {} }) {
+function writeRun({ variants, failed = {}, unjudged = {}, retried = 0 }) {
   const dir = tempDir('run-');
   cpSync(join(INPUTS, 'queries.json'), join(dir, 'queries.json'));
   cpSync(join(INPUTS, 'profile.json'), join(dir, 'profile.json'));
@@ -53,6 +57,10 @@ function writeRun({ variants, failed = {} }) {
   for (const [label, count] of Object.entries(failed)) {
     for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|f${i}`, model: label, error: 'NotFoundError' });
   }
+  for (const [label, count] of Object.entries(unjudged)) {
+    for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|u${i}`, model: label, text: 'answer' });
+  }
+  answers.unshift(...answers.slice(0, retried).map(({ key, model }) => ({ key, model, error: 'RateLimitError' })));
   writeFileSync(join(dir, 'answers.jsonl'), answers.map((row) => JSON.stringify(row)).join('\n'));
   writeFileSync(join(dir, 'scores.json'), JSON.stringify({ overall: metrics(...totals), by_model: byModel }));
   writeFileSync(join(dir, 'spend.json'), JSON.stringify({ answer: 5.1, search: 0.6, judge: 1.55 }));
@@ -80,11 +88,9 @@ function snapshotDir(earlier = []) {
   return dir;
 }
 
-const committedDigest = () => inputsDigest({
-  queries: readFileSync(join(INPUTS, 'queries.json'), 'utf8'),
-  profile: readFileSync(join(INPUTS, 'profile.json'), 'utf8'),
-  config: readFileSync(join(INPUTS, 'config.yaml'), 'utf8'),
-});
+const committedDigest = () => inputsDigest(Object.fromEntries(
+  INPUT_FILES.map((name) => [name, readFileSync(join(INPUTS, name), 'utf8')]),
+));
 
 describe('buildSnapshot', () => {
   it('turns judged rates back into counts per variant and overall', () => {
@@ -103,14 +109,26 @@ describe('buildSnapshot', () => {
   it('marks a run with more than 5% failed answers as partial and names the failing variant', () => {
     const snapshot = snapshotOf(writeRun({ variants: VARIANTS, failed: { 'perplexity +web': 39 } }), '2026-11-17');
     assert.equal(snapshot.status, 'partial');
-    assert.deepEqual(snapshot.answers, { planned: 234, answered: 195, failed: 39, failedByVariant: { 'perplexity +web': 39 } });
-    assert.match(snapshot.reason, /39 of 234 answers failed \(perplexity \+web 39\)/);
+    assert.deepEqual(snapshot.answers, { planned: 234, scored: 195, unscored: 39, unscoredByVariant: { 'perplexity +web': 39 } });
+    assert.match(snapshot.reason, /39 of 234 answers were not scored \(perplexity \+web 39\)/);
   });
 
-  it('keeps a run with a few failed answers available', () => {
+  it('counts answers whose judgment failed as unscored, so a judge outage makes the week partial', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS, unjudged: { 'claude +web': 20, gpt: 5 } }), '2026-11-17');
+    assert.equal(snapshot.status, 'partial');
+    assert.deepEqual(snapshot.answers, { planned: 220, scored: 195, unscored: 25, unscoredByVariant: { 'claude +web': 20, gpt: 5 } });
+  });
+
+  it('keeps a run with a few unscored answers available', () => {
     const snapshot = snapshotOf(writeRun({ variants: VARIANTS, failed: { gpt: 3 } }), '2026-11-17');
     assert.equal(snapshot.status, 'available');
-    assert.equal(snapshot.answers.failed, 3);
+    assert.equal(snapshot.answers.unscored, 3);
+  });
+
+  it('counts a retried answer once, by its last line', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS, retried: 10 }), '2026-11-17');
+    assert.deepEqual(snapshot.answers, { planned: 195, scored: 195, unscored: 0, unscoredByVariant: {} });
+    assert.equal(snapshot.status, 'available');
   });
 });
 
@@ -173,10 +191,29 @@ describe('compareSnapshots', () => {
     assert.ok(perplexity);
     const fewerVariants = snapshotOf(writeRun({ variants: withoutPerplexity }), '2026-11-17');
     assert.match(compareSnapshots(before, fewerVariants).reason, /variants differ/);
+    const otherTool = { ...before, tool: { name: 'answerrank', revision: 'def' } };
+    assert.match(compareSnapshots(otherTool, after).reason, /answerrank moved from def to abc/);
     const partial = snapshotOf(writeRun({ variants: VARIANTS, failed: { gpt: 30 } }), '2026-11-17');
     assert.match(compareSnapshots(before, partial).reason, /This snapshot is partial/);
     assert.equal(compareSnapshots(before, fewerVariants).verdict, 'not compared');
     assert.equal(compareSnapshots(before, partial).verdict, 'not compared');
+  });
+});
+
+describe('previousComparable', () => {
+  it('skips a partial week, so a drop that spans it is still measured', () => {
+    const good = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-10');
+    const low = { claude: [39, 0, 0, 0], 'claude +web': [39, 0, 39, 9], gpt: [39, 0, 0, 0], 'gpt +web': [39, 1, 39, 2], perplexity: [39, 0, 39, 3] };
+    const outage = snapshotOf(writeRun({ variants: low, failed: { perplexity: 39 } }), '2026-11-17');
+    const after = snapshotOf(writeRun({ variants: low }), '2026-11-24');
+    assert.equal(outage.status, 'partial');
+    assert.equal(previousComparable([good, outage], after), good);
+    assert.equal(compareSnapshots(previousComparable([good, outage], after), after).verdict, 'declined');
+  });
+
+  it('returns null when no earlier week is comparable', () => {
+    const after = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-24');
+    assert.equal(previousComparable([{ ...after, date: '2026-11-17', inputsDigest: 'sha256:old' }], after), null);
   });
 });
 
@@ -204,7 +241,7 @@ describe('runCli', () => {
     const fewer = { ...VARIANTS, 'claude +web': [39, 0, 39, 9], perplexity: [39, 0, 39, 3], gpt: [39, 0, 0, 0] };
     const { snapshot, written } = await runCli(
       ['--from-run', writeRun({ variants: fewer }), '--date', '2026-11-17', '--dir', dir],
-      { env: {}, log: silent },
+      { env: { ANSWERRANK_REVISION: 'abc' }, log: silent },
     );
     assert.equal(snapshot.inputsDigest, digest);
     assert.equal(snapshot.comparison.previousDate, '2026-11-10');

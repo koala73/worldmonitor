@@ -65,8 +65,13 @@ jobs:
       issues: write
     if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
-    # The AI-answer step alone takes about 30 minutes.
-    timeout-minutes: 110
+    # The AI-answer step alone takes about 30 minutes and has its own
+    # 50-minute bound; the rest keeps the 60 minutes it had before.
+    timeout-minutes: 120
+    env:
+      # The pinned answerrank commit, recorded in each AI-answer snapshot. A
+      # different commit starts a new comparison series.
+      ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
     outputs:
       branch: ${{ steps.reconcile.outputs.branch }}
     steps:
@@ -90,6 +95,9 @@ jobs:
           period=$(date -u +%G-W%V)
           branch="automation/seo-gsc-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          # One date for the AI-answer snapshot and every step that reads it,
+          # so a run that crosses midnight UTC still finds its own file.
+          echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
           # Only an open or merged PR means this week is done. A closed one was
           # rejected, so the week is collected again.
           # A fork PR can carry the same head branch name, so only a PR from this
@@ -156,14 +164,49 @@ jobs:
             exit 0
           fi
           node scripts/seo-umami-collect.mjs --live
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Check for the AI-answer keys
+        id: answerrank_keys
         if: steps.collect.outcome == 'success'
+        env:
+          # Read here only to test presence. The install step that runs
+          # third-party code never sees them.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          if [ -z "${OPENROUTER_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ] || [ -z "${EXA_API_KEY:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping the AI-answer snapshot: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.answerrank_keys.outputs.enabled == 'true'
         with:
           python-version: '3.13'
+      - name: Install answerrank
+        id: answerrank_install
+        if: steps.answerrank_keys.outputs.enabled == 'true'
+        continue-on-error: true
+        # No secrets in this step. answerrank has no releases, so it is fetched
+        # by commit, and every dependency is a hash-pinned wheel from
+        # inputs/requirements.txt, which is part of the series digest.
+        run: |
+          python -m venv "$RUNNER_TEMP/answerrank"
+          "$RUNNER_TEMP/answerrank/bin/pip" install --quiet --require-hashes --only-binary :all: --no-deps \
+            -r docs/research/seo-ai-visibility/answerrank/inputs/requirements.txt
+          src="$RUNNER_TEMP/answerrank-src"
+          git init --quiet "$src"
+          git -C "$src" fetch --quiet --depth 1 https://github.com/misbahsy/answerrank.git "$ANSWERRANK_REVISION"
+          git -C "$src" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$ANSWERRANK_REVISION"
+          printf '#!/bin/sh\nPYTHONPATH="%s/src" exec "%s/bin/python" -m answerrank "$@"\n' "$src" "$RUNNER_TEMP/answerrank" > "$RUNNER_TEMP/answerrank-bin"
+          chmod +x "$RUNNER_TEMP/answerrank-bin"
+          "$RUNNER_TEMP/answerrank-bin" --help > /dev/null
       - name: Collect the AI-answer snapshot
         id: answerrank
-        if: steps.collect.outcome == 'success'
-        # Optional and non-blocking, like Bing and Umami. About 230 model calls
+        if: steps.answerrank_install.outcome == 'success'
+        # Optional and non-blocking, like Bing and Umami. About 200 model calls
         # at concurrency 1: roughly 30 minutes and $8 a run.
         continue-on-error: true
         timeout-minutes: 50
@@ -171,19 +214,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
-          # answerrank has no releases, so it is pinned to a commit and its
-          # dependencies to the versions the series was measured with.
-          ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
-        run: |
-          if [ -z "${OPENROUTER_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ] || [ -z "${EXA_API_KEY:-}" ]; then
-            echo "::notice::Skipping the AI-answer snapshot: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
-            exit 0
-          fi
-          python -m venv "$RUNNER_TEMP/answerrank"
-          "$RUNNER_TEMP/answerrank/bin/pip" install --quiet \
-            "answerrank @ https://github.com/misbahsy/answerrank/archive/${ANSWERRANK_REVISION}.zip" \
-            litellm==1.105.1 pyyaml==6.0.3 tenacity==9.2.1
-          ANSWERRANK_BIN="$RUNNER_TEMP/answerrank/bin/answerrank" node scripts/seo-answerrank-collect.mjs --live
+          SNAPSHOT_DATE: ${{ steps.reconcile.outputs.date }}
+        run: ANSWERRANK_BIN="$RUNNER_TEMP/answerrank-bin" node scripts/seo-answerrank-collect.mjs --live --date "$SNAPSHOT_DATE"
       - name: Regenerate the AI-visibility baseline and scorecard
         id: baseline
         if: steps.collect.outcome == 'success'
@@ -213,6 +245,8 @@ jobs:
           UMAMI_OUTCOME: ${{ steps.umami.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
           ANSWERRANK_OUTCOME: ${{ steps.answerrank.outcome }}
+          ANSWERRANK_INSTALL_OUTCOME: ${{ steps.answerrank_install.outcome }}
+          SNAPSHOT_DATE: ${{ steps.reconcile.outputs.date }}
         run: |
           snapshot_date=$(date -u +%F)
           git switch -c "$BRANCH_NAME"
@@ -248,8 +282,8 @@ jobs:
           else
             umami_note="No Umami referral snapshot this week: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured."
           fi
-          answerrank_file="docs/research/seo-ai-visibility/answerrank/${snapshot_date}.json"
-          if [ "$ANSWERRANK_OUTCOME" = "failure" ]; then
+          answerrank_file="docs/research/seo-ai-visibility/answerrank/${SNAPSHOT_DATE}.json"
+          if [ "$ANSWERRANK_OUTCOME" = "failure" ] || [ "$ANSWERRANK_INSTALL_OUTCOME" = "failure" ]; then
             answerrank_note="The AI-answer collection failed in this run. See the run log."
           elif [ -f "$answerrank_file" ]; then
             answerrank_note=$(jq -r '"AI-answer snapshot: World Monitor named in \(.overall.mentions) of \(.overall.answers) model answers; change since \(.comparison.previousDate // "the last comparable week"): \(.comparison.verdict). See answerrank/\(.date).md."' "$answerrank_file")
@@ -282,9 +316,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
+          SNAPSHOT_DATE: ${{ steps.reconcile.outputs.date }}
         run: |
-          snapshot_date=$(date -u +%F)
-          file="docs/research/seo-ai-visibility/answerrank/${snapshot_date}.json"
+          file="docs/research/seo-ai-visibility/answerrank/${SNAPSHOT_DATE}.json"
           if [ ! -f "$file" ] || [ "$(jq -r '.comparison.verdict' "$file")" != "declined" ]; then
             exit 0
           fi

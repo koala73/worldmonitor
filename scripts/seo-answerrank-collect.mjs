@@ -53,7 +53,7 @@ export const SCHEMA_VERSION = 1;
 export const REQUIRED_KEYS = Object.freeze(['OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'EXA_API_KEY']);
 /** Two-sided 95%: a smaller |z| is reported as no measurable change. */
 export const Z_THRESHOLD = 1.96;
-/** More failed answers than this share makes the week partial and not compared. */
+/** More unscored answers (failed answers or failed judgments) than this share makes the week partial and not compared. */
 export const MAX_FAILED_SHARE = 0.05;
 
 function invariant(condition, message) {
@@ -64,9 +64,20 @@ const sha256 = (text) => `sha256:${createHash('sha256').update(text).digest('hex
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const readJsonl = (path) => readFileSync(path, 'utf8').split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
 
-/** One digest over the three committed inputs, in a fixed order. */
-export function inputsDigest({ queries, profile, config }) {
-  return sha256(JSON.stringify([sha256(queries), sha256(profile), sha256(config)]));
+/**
+ * answerrank appends to answers.jsonl, so a retried answer leaves its error
+ * line and its success line. The last line for a key is the one it scored.
+ */
+const latestByKey = (rows) => [...new Map(rows.map((row) => [row.key, row])).values()];
+
+export const INPUT_FILES = Object.freeze(['queries.json', 'profile.json', 'config.yaml', 'requirements.txt']);
+
+/** One digest over the committed inputs, in a fixed order. */
+export function inputsDigest(files) {
+  return sha256(JSON.stringify(INPUT_FILES.map((name) => {
+    invariant(typeof files[name] === 'string', `missing input ${name}`);
+    return sha256(files[name]);
+  })));
 }
 
 function group(metrics) {
@@ -87,21 +98,23 @@ function group(metrics) {
 
 /**
  * The snapshot for one finished answerrank run directory. `answers.jsonl`
- * gives the planned and failed answers; `scores.json` gives the judged
- * metrics, which answerrank computes over the answers that did not fail.
+ * gives the planned answers per variant. `scores.json` gives the judged
+ * metrics, which answerrank computes only over answers that neither failed
+ * nor lost their judgment, so planned minus scored is everything unscored.
  */
 export function buildSnapshot({ runDir, date, observedAt, digest, revision = null }) {
   invariant(DATE_PATTERN.test(date ?? ''), 'date must be YYYY-MM-DD');
   const scores = readJson(join(runDir, 'scores.json'));
   const spend = existsSync(join(runDir, 'spend.json')) ? readJson(join(runDir, 'spend.json')) : {};
   const run = readJson(join(runDir, 'run.json'));
-  const answers = readJsonl(join(runDir, 'answers.jsonl'));
+  const answers = latestByKey(readJsonl(join(runDir, 'answers.jsonl')));
   const queries = readJson(join(runDir, 'queries.json'));
-  const failedByVariant = {};
-  for (const answer of answers) {
-    if (answer.error) failedByVariant[answer.model] = (failedByVariant[answer.model] ?? 0) + 1;
-  }
-  const failed = Object.values(failedByVariant).reduce((sum, value) => sum + value, 0);
+  const plannedByVariant = {};
+  for (const answer of answers) plannedByVariant[answer.model] = (plannedByVariant[answer.model] ?? 0) + 1;
+  const unscoredByVariant = Object.fromEntries(Object.entries(plannedByVariant)
+    .map(([label, planned]) => [label, planned - (scores.by_model?.[label]?.n ?? 0)])
+    .filter(([, count]) => count > 0)
+    .sort(([a], [b]) => a.localeCompare(b)));
   const byVariant = Object.fromEntries(
     Object.entries(scores.by_model ?? {})
       .filter(([, metrics]) => metrics?.n > 0)
@@ -109,7 +122,10 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
       .map(([label, metrics]) => [label, group(metrics)]),
   );
   const planned = answers.length;
-  const status = failed / planned <= MAX_FAILED_SHARE ? 'available' : 'partial';
+  const scored = scores.overall?.n ?? 0;
+  const unscored = planned - scored;
+  invariant(unscored >= 0, `scores.json has ${scored} scored answers but answers.jsonl plans only ${planned}`);
+  const status = planned > 0 && unscored / planned <= MAX_FAILED_SHARE ? 'available' : 'partial';
   const spendUsd = Object.fromEntries(Object.entries(spend).map(([key, value]) => [key, Number(value.toFixed(4))]));
   spendUsd.total = Number(Object.values(spend).reduce((sum, value) => sum + value, 0).toFixed(4));
   return {
@@ -118,7 +134,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     observedAt,
     status,
     reason: status === 'partial'
-      ? `${failed} of ${planned} answers failed (${Object.entries(failedByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}), over the ${MAX_FAILED_SHARE * 100}% limit, so this week is not compared.`
+      ? `${unscored} of ${planned} answers were not scored (${Object.entries(unscoredByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}), over the ${MAX_FAILED_SHARE * 100}% limit, so this week is not compared.`
       : null,
     tool: { name: 'answerrank', revision },
     inputsDigest: digest,
@@ -128,7 +144,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
       judgeModel: run.judge_model,
       variants: Object.keys(byVariant),
     },
-    answers: { planned, answered: planned - failed, failed, failedByVariant },
+    answers: { planned, scored, unscored, unscoredByVariant },
     overall: group(scores.overall),
     byVariant,
     spendUsd,
@@ -152,11 +168,21 @@ const sameVariants = (a, b) => a.design.variants.join('|') === b.design.variants
 /** Why two snapshots cannot be compared, or null when they can. */
 export function incomparability(previous, current) {
   if (!previous) return 'No earlier snapshot.';
-  if (previous.inputsDigest !== current.inputsDigest) return `The questions, profile or config changed since ${previous.date}, so this week starts a new series.`;
+  if (previous.inputsDigest !== current.inputsDigest) return `The questions, profile, config or dependency lock changed since ${previous.date}, so this week starts a new series.`;
+  if (previous.tool.revision !== current.tool.revision) return `answerrank moved from ${previous.tool.revision ?? 'unknown'} to ${current.tool.revision ?? 'unknown'} since ${previous.date}; its judging may differ, so this week starts a new series.`;
   if (!sameVariants(previous, current)) return `The answered model variants differ from ${previous.date} (${previous.design.variants.join(', ')} then, ${current.design.variants.join(', ')} now).`;
   if (previous.status !== 'available') return `The ${previous.date} snapshot is partial.`;
   if (current.status !== 'available') return 'This snapshot is partial.';
   return null;
+}
+
+/**
+ * The newest earlier snapshot this one can be compared with. A partial or
+ * otherwise incomparable week in between is skipped, so a drop that spans it
+ * is still measured against the last good week.
+ */
+export function previousComparable(earlier, current) {
+  return earlier.findLast((entry) => incomparability(entry, current) === null) ?? null;
 }
 
 export function compareSnapshots(previous, current) {
@@ -231,13 +257,13 @@ export function renderMarkdown(snapshot, comparison, earlier) {
       `| ${label} | ${g.answers} | ${g.mentions} (${pct(rate(g.mentions, g.answers))}) | ${g.topPicks} | ${g.webAnswers > 0 ? `${g.citations} of ${g.webAnswers}` : 'n/a'} | ${g.aeoScore} |`
     )),
   );
-  if (snapshot.answers.failed > 0) {
-    lines.push('', `${snapshot.answers.failed} of ${snapshot.answers.planned} planned answers failed and are excluded: ${Object.entries(snapshot.answers.failedByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}.`);
+  if (snapshot.answers.unscored > 0) {
+    lines.push('', `${snapshot.answers.unscored} of ${snapshot.answers.planned} planned answers were not scored (the answer or its judgment failed) and are excluded: ${Object.entries(snapshot.answers.unscoredByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}.`);
   }
-  const series = [...earlier.filter((entry) => entry.inputsDigest === snapshot.inputsDigest), snapshot];
+  const series = [...earlier.filter((entry) => entry.inputsDigest === snapshot.inputsDigest && entry.tool.revision === snapshot.tool.revision), snapshot];
   lines.push(
     '',
-    '## Series with the same inputs',
+    '## Series with the same inputs and answerrank commit',
     '',
     '| Date | Answers | Named | Cited (web answers) | Status |',
     '|---|---:|---:|---:|---|',
@@ -304,11 +330,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   const date = options.date ?? new Date(now()).toISOString().slice(0, 10);
   const dir = resolve(REPO_ROOT, options.dir);
   const inputsDir = join(dir, 'inputs');
-  const digest = inputsDigest({
-    queries: readFileSync(join(inputsDir, 'queries.json'), 'utf8'),
-    profile: readFileSync(join(inputsDir, 'profile.json'), 'utf8'),
-    config: readFileSync(join(inputsDir, 'config.yaml'), 'utf8'),
-  });
+  const digest = inputsDigest(Object.fromEntries(INPUT_FILES.map((name) => [name, readFileSync(join(inputsDir, name), 'utf8')])));
   let runDir;
   let observedAt;
   if (options.live) {
@@ -329,7 +351,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   }
   const snapshot = buildSnapshot({ runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null });
   const earlier = readEarlierSnapshots(dir, date);
-  snapshot.comparison = compareSnapshots(earlier.at(-1) ?? null, snapshot);
+  snapshot.comparison = compareSnapshots(previousComparable(earlier, snapshot) ?? earlier.at(-1) ?? null, snapshot);
   const json = `${JSON.stringify(snapshot, null, 2)}\n`;
   const markdown = renderMarkdown(snapshot, snapshot.comparison, earlier);
   assertNoSecrets(json + markdown, env);
