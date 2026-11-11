@@ -103,7 +103,7 @@ function stubNetwork(t, hubResponse, previous = null, queryResponse = null) {
     const url = String(input);
     calls.push(url);
     if (url.startsWith('https://redis.test')) return Response.json({ result: previous && JSON.stringify(previous) });
-    if (url.includes(HUB_HOST)) return hubResponse();
+    if (new URL(url).hostname === HUB_HOST) return hubResponse();
     const answer = queryResponse?.(decodeURIComponent(url.replaceAll('+', ' ')));
     if (answer) return answer;
     if (url.includes('outStatistics')) return Response.json({ features: [{ attributes: { avg_total: 50, day_count: 365 } }] });
