@@ -143,6 +143,8 @@ function resolveEurostatCountryFilter(raw: unknown): string[] {
 
 // IDMC rows per events-view call: 100 full rows stay well inside the output budget.
 const IDU_EVENTS_MAX = 100;
+// get_aviation_status disrupted_only: severities that mean no disruption, lowercased.
+const NORMAL_DELAY_SEVERITIES = new Set(['normal', 'flight_delay_severity_normal']);
 
 // The UNHCR seeder stores `{ summary: { year, globalTotals, countries, topFlows } }`.
 // executeTool then files that value under the cache-key label `summary`, so the
@@ -1648,7 +1650,8 @@ export const CACHE_TOOLS: ToolDef[] = [
       const country = argStr(params.country);
       const iata = argStr(params.iata);
       if (argBool(params.disrupted_only)) {
-        narrowNested(data, 'delays-bootstrap', 'alerts', (a) => argStr(a.severity) !== 'normal');
+        // The seeder writes FLIGHT_DELAY_SEVERITY_* enums (scripts/seed-aviation.mjs SEVERITY_MAP).
+        narrowNested(data, 'delays-bootstrap', 'alerts', (a) => !NORMAL_DELAY_SEVERITIES.has(argStr(a.severity)));
       }
       if (country) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => ciIncludes(a.country, country));
       if (iata) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => argStr(a.iata) === iata);

@@ -57,7 +57,7 @@ Series run from about 1990 to 2023 for most reporters. US preferences are report
 | `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
 | `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
 | `product_group` | string (enum) | Products to average over, in WITS naming: an HS chapter range (`84-85_MachElec` is machinery and electrical equipment) or an aggregate (`Textiles`, `Food`, `Fuels`, `manuf` for manufactures). `all` or omitted averages every product. Any group other than `all` answers from the WITS applied series rather than WTO MFN. |
-| `years` | integer | Number of most recent years to return (0–30), one datapoint per year. 0 or omitted: 10. |
+| `years` | integer | Years to look back from the most recent available year, counting both ends (10 returns up to 11 calendar years). 0 or omitted: 10. |
 
 **Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
 

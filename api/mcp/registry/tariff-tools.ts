@@ -242,7 +242,7 @@ export const TARIFF_TOOLS: ToolDef[] = [
           enum: PRODUCT_GROUP_VALUES,
           description: 'Products to average over, in WITS naming: an HS chapter range (84-85_MachElec is machinery and electrical equipment) or an aggregate (Textiles, Food, Fuels, manuf for manufactures). all or omitted averages every product. Any group other than all answers from the WITS applied series rather than WTO MFN.',
         },
-        years: { type: 'integer', minimum: 0, maximum: 30, description: 'Number of most recent years to return, one datapoint per year. 0 or omitted: 10.' },
+        years: { type: 'integer', minimum: 0, maximum: 30, description: 'Years to look back from the most recent available year, counting both ends (10 returns up to 11 calendar years). 0 or omitted: 10.' },
       },
       required: [],
     },
