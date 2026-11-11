@@ -4555,7 +4555,9 @@
     "newTabOptionsHint": "Karty, které již máte, se nemění.",
     "useThisTabPanels": "Použít panely této karty",
     "useDefaultPanels": "Použít výchozí panely",
-    "newTabPanelsNotSaved": "Nepodařilo se uložit. Tento prohlížeč blokuje ukládání dat na webu."
+    "newTabPanelsNotSaved": "Nepodařilo se uložit. Tento prohlížeč blokuje ukládání dat na webu.",
+    "team": "Tým",
+    "teamDashboards": "Týmové dashboardy"
   },
   "theaterPresets": {
     "label": "Balíčky pokrytí",
@@ -4927,5 +4929,22 @@
     "close": "Zavřít",
     "alertsHint": "Nainstalujte World Monitor na plochu, abyste na tomto iPhonu nebo iPadu dostávali upozornění.",
     "how": "Jak nainstalovat"
+  },
+  "teamDashboards": {
+    "desc": "Dashboardy, které si váš tým sdílí. Otevřete jeden a přidejte jej jako novou kartu.",
+    "empty": "Váš tým zatím nesdílí žádný dashboard. Sdílejte tuto kartu a předejte všem členům týmu její panely, velikosti a mapu.",
+    "open": "Otevřít {{name}} jako novou kartu",
+    "stopSharing": "Přestat sdílet {{name}}",
+    "confirmStop": "Přestat sdílet {{name}} se svým týmem? Karty, které si lidé z něj už otevřeli, zůstanou jak jsou.",
+    "shareTab": "Sdílet tuto kartu se svým týmem",
+    "shareChanges": "Sdílet změny v této kartě se svým týmem",
+    "behind": "Váš tým změnil tento dashboard poté, co jste jej otevřeli.",
+    "getLatest": "Získat nejnovější verzi",
+    "opened": "{{name}} otevřen z vašeho týmu.",
+    "shared": "{{name}} sdílen s vaším týmem.",
+    "updated": "Tato karta má nyní nejnovější verzi vašeho týmu.",
+    "stopped": "Sdílení {{name}} zastaveno.",
+    "failed": "Nelze se připojit k dashboardům vašeho týmu. Zkuste to znovu.",
+    "limit": "Váš tým zde již sdílí {{limit}} dashboardů. Nejprve přestanete sdílet jeden."
   }
 }

@@ -4582,7 +4582,26 @@
     "renameHint": "{{name}} — double-click to rename",
     "deleteTab": "Delete tab",
     "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "tabNameAria": "Tab name",
+    "team": "Team",
+    "teamDashboards": "Team dashboards"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards your team shares. Open one to add it as a new tab.",
+    "empty": "Your team hasn't shared a dashboard yet. Share this tab to give everyone on your team its panels, sizes and map.",
+    "open": "Open {{name}} as a new tab",
+    "stopSharing": "Stop sharing {{name}}",
+    "confirmStop": "Stop sharing {{name}} with your team? Tabs people already opened from it stay as they are.",
+    "shareTab": "Share this tab with your team",
+    "shareChanges": "Share this tab's changes with your team",
+    "behind": "Your team changed this dashboard after you opened it.",
+    "getLatest": "Get the latest version",
+    "opened": "Opened {{name}} from your team.",
+    "shared": "Shared {{name}} with your team.",
+    "updated": "This tab now has your team's latest version.",
+    "stopped": "Stopped sharing {{name}}.",
+    "failed": "Couldn't reach your team's dashboards. Try again.",
+    "limit": "Your team already shares {{limit}} dashboards here. Stop sharing one first."
   },
   "layerExplanation": {
     "labels": {

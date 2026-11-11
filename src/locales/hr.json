@@ -4544,7 +4544,9 @@
     "newTabOptionsHint": "Kartice koje već imate se ne mijenjaju.",
     "useThisTabPanels": "Koristi panele ove kartice",
     "useDefaultPanels": "Koristi zadane panele",
-    "newTabPanelsNotSaved": "Nije moguće spremiti. Ovaj preglednik blokira spremanje podataka na web-mjestu."
+    "newTabPanelsNotSaved": "Nije moguće spremiti. Ovaj preglednik blokira spremanje podataka na web-mjestu.",
+    "team": "Tim",
+    "teamDashboards": "Timske nadzorne ploče"
   },
   "theaterPresets": {
     "label": "Paketi pokrivenosti",
@@ -4916,5 +4918,22 @@
     "close": "Zatvori",
     "alertsHint": "Instalirajte World Monitor na početni zaslon kako biste primali upozorenja na ovom iPhoneu ili iPadu.",
     "how": "Kako instalirati"
+  },
+  "teamDashboards": {
+    "desc": "Nadzorne ploče koje dijeli vaš tim. Otvorite jednu da je dodate kao novu karticu.",
+    "empty": "Vaš tim još nije podijelio nijednu nadzornu ploču. Podijelite ovu karticu kako bi svi u vašem timu dobili njezine panele, veličine i kartu.",
+    "open": "Otvori {{name}} kao novu karticu",
+    "stopSharing": "Prestani dijeliti {{name}}",
+    "confirmStop": "Prestati dijeliti {{name}} sa svojim timom? Kartice koje su ljudi već otvorili ostaju kakve jesu.",
+    "shareTab": "Podijelite ovu karticu sa svojim timom",
+    "shareChanges": "Podijelite promjene ove kartice sa svojim timom",
+    "behind": "Vaš tim je promijenio ovu nadzornu ploču nakon što ste je otvorili.",
+    "getLatest": "Preuzmite najnoviju verziju",
+    "opened": "{{name}} otvoreno iz vašeg tima.",
+    "shared": "{{name}} podijeljeno s vašim timom.",
+    "updated": "Ova kartica sada ima najnoviju verziju vašeg tima.",
+    "stopped": "Dijeljenje {{name}} je zaustavljeno.",
+    "failed": "Nije moguće dohvatiti nadzorne ploče vašeg tima. Pokušajte ponovno.",
+    "limit": "Vaš tim već dijeli {{limit}} nadzornih ploča ovdje. Prvo prestanite dijeliti jednu."
   }
 }

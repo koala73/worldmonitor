@@ -4511,7 +4511,9 @@
     "newTabOptionsHint": "A meglévő fülek nem változnak.",
     "useThisTabPanels": "E fül paneljeit használja",
     "useDefaultPanels": "Az alapértelmezett panelek használata",
-    "newTabPanelsNotSaved": "Nem sikerült menteni. A böngésző letiltotta a webhelytárolást."
+    "newTabPanelsNotSaved": "Nem sikerült menteni. A böngésző letiltotta a webhelytárolást.",
+    "team": "Csapat",
+    "teamDashboards": "Csapat-irányítópultok"
   },
   "theaterPresets": {
     "label": "Lefedettségi csomagok",
@@ -4883,5 +4885,22 @@
     "close": "Bezárás",
     "alertsHint": "Telepítse a World Monitort a főképernyőre, hogy értesítéseket kapjon ezen az iPhone-on vagy iPaden.",
     "how": "Telepítési útmutató"
+  },
+  "teamDashboards": {
+    "desc": "A csapatod által megosztott irányítópultok. Nyiss meg egyet, és új fülként kerül a többi mellé.",
+    "empty": "A csapatod még nem osztott meg irányítópultot. Oszd meg ezt a fület, és a csapat minden tagja megkapja a paneljeit, méreteit és térképét.",
+    "open": "{{name}} megnyitása új fülön",
+    "stopSharing": "{{name}} megosztásának leállítása",
+    "confirmStop": "Leállítod a(z) {{name}} megosztását a csapattal? A belőle már megnyitott fülek változatlanok maradnak.",
+    "shareTab": "Oszd meg ezt a fület a csapattal",
+    "shareChanges": "Oszd meg a fül módosításait a csapattal",
+    "behind": "A csapat megváltoztatta ezt az irányítópultot, miután megnyitottad.",
+    "getLatest": "Legújabb verzió letöltése",
+    "opened": "{{name}} megnyitva a csapattól.",
+    "shared": "{{name}} megosztva a csapattal.",
+    "updated": "Ez a fül most a csapat legújabb verzióját tartalmazza.",
+    "stopped": "{{name}} megosztása leállítva.",
+    "failed": "Nem sikerült elérni a csapat irányítópultjait. Próbáld újra.",
+    "limit": "A csapat már {{limit}} irányítópultot oszt meg itt. Előbb állítsd le az egyik megosztását."
   }
 }

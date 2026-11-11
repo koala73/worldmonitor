@@ -4511,7 +4511,9 @@
     "newTabOptionsHint": "Vichupo ulivyonavyo tayari havibadiliki.",
     "useThisTabPanels": "Tumia paneli za kichupo hiki",
     "useDefaultPanels": "Tumia paneli chaguo-msingi",
-    "newTabPanelsNotSaved": "Haikuweza kuhifadhi. Kivinjari hiki kinazuia uhifadhi wa tovuti."
+    "newTabPanelsNotSaved": "Haikuweza kuhifadhi. Kivinjari hiki kinazuia uhifadhi wa tovuti.",
+    "team": "Timu",
+    "teamDashboards": "Dashboards za timu"
   },
   "theaterPresets": {
     "label": "Mipangilio ya ufuatiliaji",
@@ -4883,5 +4885,22 @@
     "close": "Funga",
     "alertsHint": "Sakinisha World Monitor kwenye Skrini ya Mwanzo ili kupata arifa kwenye iPhone au iPad hii.",
     "how": "Jinsi ya kusakinisha"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards ambazo timu yako inashiriki. Fungua moja ili kuiongeza kama kichupo kipya.",
+    "empty": "Timu yako haijashiriki dashboard hata moja. Shiriki kichupo hiki ili kuwapa kila mtu katika timu yako paneli zake, ukubwa na ramani.",
+    "open": "Fungua {{name}} kama kichupo kipya",
+    "stopSharing": "Acha kushiriki {{name}}",
+    "confirmStop": "Acha kushiriki {{name}} na timu yako? Micheza ambayo watu tayari waliyofungua kutoka hapo itabaki kama ilivyokuwa.",
+    "shareTab": "Shiriki kichupo hiki na timu yako",
+    "shareChanges": "Shiriki mabadiliko ya kichupo hiki na timu yako",
+    "behind": "Timu yako ilibadilisha dashboard hii baada ya kulifungua.",
+    "getLatest": "Pata toleo la hivi karibuni",
+    "opened": "Ilifungua {{name}} kutoka timu yako.",
+    "shared": "Ilishiriki {{name}} na timu yako.",
+    "updated": "Kichupo hiki sasa kina toleo la hivi karibuni la timu yako.",
+    "stopped": "Ikacha kushiriki {{name}}.",
+    "failed": "Haikuweza kufikia dashboards za timu yako. Jaribu tena.",
+    "limit": "Timu yako tayari inashiriki dashboards {{limit}} hapa. Acha kushiriki moja kwanza."
   }
 }
