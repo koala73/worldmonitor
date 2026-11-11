@@ -84,8 +84,17 @@ function firstOtherCountry(text: string): string | null {
  *     "about somewhere else" (hidden) from "about no country" (unattributed);
  *   - [] when it names no country.
  */
+/**
+ * Attribution reads at most this much of a headline. Titles come from
+ * third-party feeds with no length bound of their own, and matching costs one
+ * pass per candidate country (up to ~70 under a full focus). A real headline
+ * is far shorter, and a country named only after this point is not a headline
+ * subject.
+ */
+export const MAX_ATTRIBUTION_CHARS = 1000;
+
 export function headlineCountries(text: string, candidates: readonly string[], lang?: string): string[] {
-  const value = text.trim();
+  const value = text.slice(0, MAX_ATTRIBUTION_CHARS).trim();
   if (!value) return [];
   const language = (lang ?? 'en').trim().toLowerCase() || 'en';
   const found = candidates.filter((code) => mentions(value, code, language));

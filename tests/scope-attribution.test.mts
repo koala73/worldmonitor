@@ -11,12 +11,22 @@ import {
   airportCountry,
   countryCodeFromName,
   headlineCountries,
+  MAX_ATTRIBUTION_CHARS,
   withoutOwnSourceSuffix,
 } from '../src/services/scope-attribution.ts';
 
 const FOCUS = ['TH', 'VN', 'ID', 'KH', 'LA', 'MM', 'MY', 'CN'];
 
 describe('headlineCountries', () => {
+  it('reads only the first MAX_ATTRIBUTION_CHARS of a hostile, unbounded title', () => {
+    const filler = 'border talks '.repeat(Math.ceil(MAX_ATTRIBUTION_CHARS / 13) + 1);
+    assert.deepEqual(headlineCountries(`Thailand ${filler}`, FOCUS), ['TH']);
+    assert.deepEqual(headlineCountries(`${filler}Thailand`, FOCUS), []);
+    const started = performance.now();
+    headlineCountries('ไทย '.repeat(250_000), FOCUS, 'th');
+    assert.ok(performance.now() - started < 100, 'attribution cost must not grow with title length');
+  });
+
   it('returns the focused countries a headline names, in focus order', () => {
     assert.deepEqual(headlineCountries('Thailand imposes a curfew', FOCUS), ['TH']);
     assert.deepEqual(headlineCountries('Cambodia accuses Thailand of shelling', FOCUS), ['TH', 'KH']);
