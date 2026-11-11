@@ -41,6 +41,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
+      week_pr: ${{ steps.week.outputs.pr }}
     steps:
       - name: Check for the Search Console credential
         id: check
@@ -56,6 +57,20 @@ jobs:
             exit 0
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
+      - name: Find this week's PR
+        id: week
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
+        run: |
+          # Same rule as the collect job: an open or merged PR from this
+          # repository means this week is done, so the AI-answer job spends
+          # nothing on a rerun. It lives here because the answerrank job runs
+          # third-party code and gets no PR access.
+          branch="automation/seo-gsc-$(date -u +%G-W%V)"
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=all&per_page=100&head=${GITHUB_REPOSITORY_OWNER}:${branch}" \
+            --jq '[.[] | select(.state == "open" or .merged_at != null)][0].number // empty')
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
 
   # Runs answerrank, which is third-party code, with a read-only token and no
   # credential left in the checkout. Its only output is the snapshot artifact.
@@ -63,7 +78,6 @@ jobs:
     needs: guard
     permissions:
       contents: read
-      pull-requests: read
     if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -82,8 +96,7 @@ jobs:
       - name: Plan the AI-answer run
         id: plan
         env:
-          # Read-only here (pull-requests: read): it lists PRs, never opens one.
-          GH_TOKEN: ${{ github.token }}
+          WEEK_PR: ${{ needs.guard.outputs.week_pr }}
           # Read only to test presence. The install step that runs third-party
           # code never sees them.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -96,14 +109,10 @@ jobs:
             echo "::notice::Skipping the AI-answer snapshot: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
             exit 0
           fi
-          # Same rule as the collect job: an open or merged PR from this
-          # repository means this week is done, so a rerun spends nothing.
-          branch="automation/seo-gsc-$(date -u +%G-W%V)"
-          existing_pr=$(gh pr list --state all --head "$branch" --json number,state,isCrossRepository \
-            --jq '[.[] | select(.state != "CLOSED" and (.isCrossRepository | not))][0].number // empty')
-          if [ -n "$existing_pr" ]; then
+          # The guard job found this week's PR, if any (see "Find this week's PR").
+          if [ -n "${WEEK_PR:-}" ]; then
             echo "state=week-done" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping the AI-answer run: PR ${existing_pr} already covers this week."
+            echo "::notice::Skipping the AI-answer run: PR ${WEEK_PR} already covers this week."
             exit 0
           fi
           echo "state=run" >> "$GITHUB_OUTPUT"
@@ -198,10 +207,11 @@ jobs:
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           # Only an open or merged PR means this week is done. A closed one was
           # rejected, so the week is collected again.
-          # A fork PR can carry the same head branch name, so only a PR from this
-          # repository counts.
-          existing_pr=$(gh pr list --state all --head "$branch" --json number,state,isCrossRepository \
-            --jq '[.[] | select(.state != "CLOSED" and (.isCrossRepository | not))][0].number // empty')
+          # A fork PR can carry the same head branch name, so the lookup asks
+          # GitHub only for heads in this repository's owner; filtering forks
+          # out of a fixed-size page would let enough fork PRs hide this one.
+          existing_pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=all&per_page=100&head=${GITHUB_REPOSITORY_OWNER}:${branch}" \
+            --jq '[.[] | select(.state == "open" or .merged_at != null)][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."

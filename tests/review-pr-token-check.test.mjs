@@ -65,7 +65,16 @@ describe('bot-PR workflows', () => {
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
       assert.doesNotMatch(text, /gh pr merge[^\n]*BRANCH_NAME/, 'a branch name can also match a fork PR');
       assert.match(text, /gh pr merge --auto --squash "\$(pr_url|\(tail -n 1 "\$RUNNER_TEMP\/snapshot-pr\.out"\))"/, 'merge the PR this run created');
-      assert.match(text, /select\([^)]*\.isCrossRepository \| not/, 'a fork PR on the same branch name is never this workflow\'s PR');
+      assert.match(
+        text,
+        /select\([^)]*\.isCrossRepository \| not|pulls\?[^"\n]*head=\$\{GITHUB_REPOSITORY_OWNER\}:/,
+        'a fork PR on the same branch name is never this workflow\'s PR',
+      );
+      if (file === 'seo-gsc-weekly.yml') {
+        // A fork PR filtered out of a fixed-size page can still push this
+        // week's PR off that page, so this file asks GitHub for owner heads only.
+        assert.doesNotMatch(text, /gh pr list[^\n]*--head/, 'a bare --head lookup also returns fork PRs');
+      }
       assert.match(
         text,
         /--jq '\.state == "OPEN" and \(\.isDraft \| not\) and \(\.isCrossRepository \| not\)'\)" = "true" \]; then\n\s+gh pr merge --auto --squash "\$existing_pr"/,
