@@ -440,6 +440,23 @@ describe("focus (#10453)", () => {
     await expect(publish(t, OWNER)).resolves.toMatchObject({ version: 1 });
   });
 
+  test("panel filters are part of the focus feature: gated on publish and hidden from older clients", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    const FILTERS_ONLY: TeamDashboardLayout = { ...LAYOUT, panelFilters: [{ key: "live-news", value: "IR" }] };
+
+    await seedEntitlement(t, OWNER, "pro_monthly");
+    expect(await errorKind(publish(t, OWNER, { layout: FILTERS_ONLY }))).toBe("FOCUS_NOT_ENTITLED");
+    // An empty list carries nothing and stays allowed.
+    await expect(publish(t, OWNER, { layout: { ...LAYOUT, panelFilters: [] } })).resolves.toMatchObject({ version: 1 });
+
+    await seedEntitlement(t, SEAT, "api_business");
+    await publish(t, SEAT, { layout: FILTERS_ONLY, name: "filters" });
+    const older = await listWith(t, OWNER);
+    expect(older.dashboards.map((d) => d.name)).not.toContain("filters");
+    expect((await listWith(t, OWNER, FOCUS)).dashboards.map((d) => d.name)).toContain("filters");
+  });
+
   test("an unentitled member cannot republish a dashboard that already carries a focus", async () => {
     const t = convexTest(schema, modules);
     await seedBusiness(t);

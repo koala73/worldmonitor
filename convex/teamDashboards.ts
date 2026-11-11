@@ -27,6 +27,15 @@ export const MAX_TEAM_DASHBOARDS_PER_VARIANT = 25;
 export const TEAM_DASHBOARD_NAME_MAX_LENGTH = 40;
 
 type ReadCtx = QueryCtx | MutationCtx;
+
+/**
+ * Whether a layout uses the focus feature (#10453): a scope, or panel choices
+ * that only a focus-aware client applies. It is gated on publish by `tabFocus`
+ * and left out of the list for a client that does not render it.
+ */
+function usesFocusFeatures(layout: { scope?: unknown; panelFilters?: readonly unknown[] }): boolean {
+  return layout.scope !== undefined || (layout.panelFilters?.length ?? 0) > 0;
+}
 export type TeamKind = "business" | "enterprise";
 /**
  * `planKey` is the plan that makes this a team: "enterprise", or the API
@@ -144,7 +153,7 @@ export const listForVariant = query({
       .query("teamDashboards")
       .withIndex("by_team_variant", (q) => q.eq("teamKey", team.key).eq("variant", args.variant))
       .take(MAX_TEAM_DASHBOARDS_PER_VARIANT))
-      .filter((row) => rendersFocus || !row.layout.scope);
+      .filter((row) => rendersFocus || !usesFocusFeatures(row.layout));
     return {
       team: { kind: team.kind, focus: await callerHasTabFocus(ctx, userId, team, now) },
       dashboards: rows
@@ -183,7 +192,7 @@ export const publish = mutation({
     const { userId, team } = await requireTeam(ctx, now);
     // Any publish that carries a focus needs the entitlement, including an
     // update that resends a focus a teammate set.
-    if (args.layout.scope && !await callerHasTabFocus(ctx, userId, team, now)) {
+    if (usesFocusFeatures(args.layout) && !await callerHasTabFocus(ctx, userId, team, now)) {
       throw new ConvexError({ kind: "FOCUS_NOT_ENTITLED" });
     }
 
