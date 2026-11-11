@@ -36,7 +36,7 @@ import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   DASHBOARD_EXTERNAL_SITE_LINKS,
-  DASHBOARD_SITE_ORIGIN,
+  resolveDashboardSiteOrigin,
 } from '@/config/dashboard-reference-links';
 import { dashboardReferenceAnchorsHtml } from '@/utils/dashboard-site-links';
 import { safeStorageGet } from '@/utils/safe-storage';
@@ -1157,9 +1157,10 @@ export class PanelLayoutManager implements AppModule {
       return ` style="--map-col-width: ${clampMapColWidthPercent(stored, window.innerWidth).toFixed(1)}%"`;
     })();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
-    const referenceOrigin = this.ctx.isDesktopApp || window.location.hostname.endsWith('.worldmonitor.app')
-      ? DASHBOARD_SITE_ORIGIN
-      : '';
+    const referenceOrigin = resolveDashboardSiteOrigin({
+      isDesktopApp: this.ctx.isDesktopApp,
+      hostname: window.location.hostname,
+    });
     const referenceLinksHtml = dashboardReferenceAnchorsHtml(referenceOrigin);
     const pricingHref = `${referenceOrigin}/pro#pricing`;
     const externalSiteLinksHtml = DASHBOARD_EXTERNAL_SITE_LINKS.map(({ label, href }) => (

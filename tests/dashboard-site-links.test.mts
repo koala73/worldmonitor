@@ -11,6 +11,7 @@ import {
   DASHBOARD_EXTERNAL_SITE_LINKS,
   DASHBOARD_REFERENCE_LINKS,
   DASHBOARD_SITE_ORIGIN,
+  resolveDashboardSiteOrigin,
 } from '../src/config/dashboard-reference-links.ts';
 import { dashboardSiteLinksHtml } from '../src/utils/dashboard-site-links.ts';
 
@@ -37,10 +38,30 @@ describe('dashboard site links (#10461)', () => {
     assert.match(html, /class="dashboard-site-links-row"/);
   });
 
+  it('keeps reference destinations local for self-hosted and localhost dashboards', () => {
+    assert.equal(resolveDashboardSiteOrigin({ isDesktopApp: false, hostname: 'localhost' }), '');
+    assert.equal(resolveDashboardSiteOrigin({ isDesktopApp: false, hostname: 'dash.example.com' }), '');
+    assert.equal(
+      resolveDashboardSiteOrigin({ isDesktopApp: false, hostname: 'www.worldmonitor.app' }),
+      DASHBOARD_SITE_ORIGIN,
+    );
+    assert.equal(
+      resolveDashboardSiteOrigin({ isDesktopApp: true, hostname: 'localhost' }),
+      DASHBOARD_SITE_ORIGIN,
+    );
+    const html = dashboardSiteLinksHtml('');
+    for (const { path } of DASHBOARD_REFERENCE_LINKS) {
+      assert.ok(html.includes(`href="${path}"`), `self-host missing relative ${path}`);
+      assert.ok(!html.includes(`href="${DASHBOARD_SITE_ORIGIN}${path}"`), `self-host must not force www for ${path}`);
+    }
+    assert.ok(html.includes('href="/pro#pricing"'));
+  });
+
   it('Settings mounts the site-links row above the legal row in one sticky stack', () => {
     const source = read('src/components/UnifiedSettings.ts');
     assert.match(source, /class="dashboard-chrome-links"/);
     assert.match(source, /dashboardSiteLinksHtml\(/);
+    assert.match(source, /resolveDashboardSiteOrigin\(/);
     const siteIdx = source.indexOf('dashboardSiteLinksHtml(');
     const legalIdx = source.indexOf('legalLinksHtml(');
     assert.ok(siteIdx >= 0 && legalIdx > siteIdx, 'site links must render above legal links');

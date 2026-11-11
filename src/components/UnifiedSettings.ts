@@ -77,7 +77,7 @@ import {
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
 import { dashboardSiteLinksHtml } from '@/utils/dashboard-site-links';
-import { DASHBOARD_SITE_ORIGIN } from '@/config/dashboard-reference-links';
+import { resolveDashboardSiteOrigin } from '@/config/dashboard-reference-links';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -1063,7 +1063,10 @@ export class UnifiedSettings {
           ${this.renderMcpClientsContent()}
         </div>
         <div class="dashboard-chrome-links">
-          ${dashboardSiteLinksHtml(DASHBOARD_SITE_ORIGIN)}
+          ${dashboardSiteLinksHtml(resolveDashboardSiteOrigin({
+            isDesktopApp: this.config.isDesktopApp,
+            hostname: window.location.hostname,
+          }))}
           ${legalLinksHtml(WEB_APP_ORIGIN)}
         </div>
       </div>
