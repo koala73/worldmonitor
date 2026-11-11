@@ -76,6 +76,8 @@ import {
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
+import { dashboardSiteLinksHtml } from '@/utils/dashboard-site-links';
+import { resolveDashboardSiteOrigin } from '@/config/dashboard-reference-links';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -1060,7 +1062,13 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
         </div>
-        ${legalLinksHtml(WEB_APP_ORIGIN)}
+        <div class="dashboard-chrome-links">
+          ${dashboardSiteLinksHtml(resolveDashboardSiteOrigin({
+            isDesktopApp: this.config.isDesktopApp,
+            hostname: window.location.hostname,
+          }))}
+          ${legalLinksHtml(WEB_APP_ORIGIN)}
+        </div>
       </div>
     `, "legacy direct innerHTML migration"));
 
