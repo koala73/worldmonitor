@@ -224,6 +224,17 @@ describe('pass reduction', () => {
     assert.equal(passIsOk(p), false);
   });
 
+  it('skips rows whose height field is empty instead of reading them as 0 m', () => {
+    const rows = lakeRows({ t: '2026-06-01T20:00:00Z', rgt: 1, h: 320 })
+      .map((r) => ({ time_ns: String(BigInt(Date.parse(r.t)) * 1000000n), rgt: r.rgt, gt: r.gt, ht_ortho: String(r.h) }));
+    const blanks = rows.slice(0, 12).map((r) => ({ ...r, ht_ortho: '' }));
+    const [p] = reduceRows([...rows, ...blanks]);
+    assert.equal(p.n, rows.length);
+    assert.ok(Math.abs(p.levelM - 320) < 0.02);
+    // A pass whose heights are all empty must not become a clean 0 m pass.
+    assert.deepEqual(reduceRows(rows.map((r) => ({ ...r, ht_ortho: '' }))), []);
+  });
+
   it('keeps only the configured ATL13 water body when refid is set', () => {
     const rows = [
       ...lakeRows({ t: '2026-06-01T20:00:00Z', rgt: 1, h: 320 }).map((r) => ({ ...r, refid: 7 })),

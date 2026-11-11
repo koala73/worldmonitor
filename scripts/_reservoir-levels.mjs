@@ -574,7 +574,7 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, 
   return {
     add(row) {
       if (refid != null && row.atl13refid != null && row.atl13refid !== '' && Number(row.atl13refid) !== refid) return;
-      const h = isAtl06 ? prod.height(row) : Number(row[heightField]);
+      const h = isAtl06 ? prod.height(row) : csvNumber(row[heightField]);
       if (!Number.isFinite(h) || Math.abs(h) > ATL13_HEIGHT_FILL_LIMIT_M) return;
       if (levelWindow && (h < levelWindow[0] || h > levelWindow[1])) return;
       const ms = rowTimeMs(row.time_ns ?? row.time);
