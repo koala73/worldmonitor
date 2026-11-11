@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyPasses, classifyStatus, computeChange, levelAt } from '../scripts/_reservoir-levels.mjs';
+import { classifyPasses, classifyStatus, computeChange, levelAt, seasonalBaseline } from '../scripts/_reservoir-levels.mjs';
 
 const DAY = 86_400_000;
 const iso = (ms) => new Date(ms).toISOString();
@@ -200,7 +200,16 @@ describe('status', () => {
     assert.equal(classifyStatus({ latest, change90dM: -3, percentOfRange: 99 }, 10), 'falling_fast');
     assert.equal(classifyStatus({ latest, change90dM: 3, percentOfRange: 1 }, 10), 'rising_fast');
     assert.equal(classifyStatus({ latest, change90dM: 0, percentOfRange: 50, seasonalZ: -1.5 }, 10), 'low');
-    assert.equal(classifyStatus({ latest, change90dM: 0, percentOfRange: 15, seasonalZ: 3 }, 10), 'low');
+    // The seasonal z-score decides when it exists; percent of range is the fallback only.
+    assert.equal(classifyStatus({ latest, change90dM: 0, percentOfRange: 15, seasonalZ: 3 }, 10), 'high');
+    assert.equal(classifyStatus({ latest, change90dM: 0, percentOfRange: 13, seasonalZ: -0.1 }, 10), 'normal');
+    assert.equal(classifyStatus({ latest, change90dM: null, percentOfRange: 15, seasonalZ: null }, 10), 'low');
+    // With a seasonal baseline, a fast call needs the raw move and the excess to agree.
+    assert.equal(classifyStatus({ latest, change90dM: 28, change90dExcessM: 1.9, seasonalZ: -0.8 }, 40), 'normal');
+    assert.equal(classifyStatus({ latest, change90dM: 13, change90dExcessM: -9, seasonalZ: -0.4 }, 40), 'normal');
+    assert.equal(classifyStatus({ latest, change90dM: 34, change90dExcessM: null, seasonalZ: 0.1 }, 40), 'normal');
+    assert.equal(classifyStatus({ latest, change90dM: -3, change90dExcessM: -3.9, seasonalZ: -2.4 }, 10), 'falling_fast');
+    assert.equal(classifyStatus({ latest, change90dM: 11, change90dExcessM: 10, seasonalZ: 0.4 }, 20), 'rising_fast');
     assert.equal(classifyStatus({ latest, change90dM: null, percentOfRange: 85, seasonalZ: null }, 10), 'high');
     assert.equal(classifyStatus({ latest, change90dM: null, percentOfRange: null, seasonalZ: null }, 10), 'insufficient_history');
     assert.equal(classifyStatus({ latest: { ageDays: 151 }, recordLow: true }, 10), 'no_recent_data');
@@ -232,5 +241,50 @@ describe('series and ended records', () => {
     assert.ok(m.latest.ageDays > 1000);
     assert.equal(m.recordLow, true);
     assert.ok(m.series.some(([d, l]) => d === '2023-06-12' && l === 9.5), 'the drawdown passes are kept');
+  });
+});
+
+describe('seasonal reservoirs and the newest pass', () => {
+  // Annual cycle: 100 m in winter, 130 m at the late-summer peak, same every year.
+  const cycle = (t) => 115 - 15 * Math.cos(2 * Math.PI * ((t / DAY - 45) % 365.25) / 365.25);
+
+  it('does not call a normal annual fill rising_fast', () => {
+    const passes = series('2019-01-01', '2026-08-20', 20, cycle);
+    const m = metrics(passes, '2026-09-01');
+    assert.ok(m.change90dM > 10, `expected a large seasonal rise, got ${m.change90dM}`);
+    assert.ok(Math.abs(m.change90dExcessM) < 3, `excess ${m.change90dExcessM}`);
+    assert.equal(m.status, 'normal');
+  });
+
+  it('calls a fall that the season does not explain falling_fast', () => {
+    const passes = series('2019-01-01', '2026-08-20', 20, (t) => cycle(t) - (t > Date.parse('2026-05-20') ? (t - Date.parse('2026-05-20')) / DAY * 0.3 : 0));
+    const m = metrics(passes, '2026-09-01');
+    assert.ok(m.change90dM <= -6, `raw ${m.change90dM}`);
+    assert.ok(m.change90dExcessM <= -6, `excess ${m.change90dExcessM}`);
+    assert.equal(m.status, 'falling_fast');
+  });
+
+  it('seasonalBaseline needs three earlier seasons and ignores the current one', () => {
+    const passes = classifyPasses(series('2024-01-01', '2026-08-20', 20, cycle));
+    assert.equal(seasonalBaseline(passes, Date.parse('2026-08-20T12:00:00Z')), null);
+    const longer = classifyPasses(series('2021-01-01', '2026-08-20', 20, cycle));
+    const b = seasonalBaseline(longer, Date.parse('2026-08-20T12:00:00Z'));
+    assert.ok(Math.abs(b.medianM - cycle(Date.parse('2026-08-20T12:00:00Z'))) < 2, `median ${b.medianM}`);
+  });
+
+  it('drops a newest pass from a ground track whose earlier passes were despiked', () => {
+    const flat = series('2024-01-01', '2026-06-01', 15, () => 100).map((p) => ({ ...p, rgt: 10 }));
+    const arm = (d) => pass(d, 121, { rgt: 777 });
+    const c = classifyPasses([...flat, arm('2024-03-07'), arm('2024-09-05'), arm('2025-03-06'), arm('2026-06-10')]);
+    const newest = c.find((p) => p.date === '2026-06-10');
+    assert.equal(newest.ok, false);
+    assert.equal(newest.spike, true);
+    assert.equal(computeChange(c, Date.parse('2026-07-01')).latest.levelM, 100);
+  });
+
+  it('keeps a newest pass that jumps when its track has a clean history', () => {
+    const flat = series('2024-01-01', '2026-06-01', 15, () => 100).map((p) => ({ ...p, rgt: 10 }));
+    const c = classifyPasses([...flat, pass('2026-06-10', 121, { rgt: 10 })]);
+    assert.equal(c.find((p) => p.date === '2026-06-10').ok, true);
   });
 });

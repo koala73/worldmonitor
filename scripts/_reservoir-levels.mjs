@@ -39,6 +39,7 @@ export const CLIP_SIGMA = 3;
 export const CLIP_FLOOR_M = 0.05;
 export const DESPIKE_BASE_M = 1;
 export const DESPIKE_PER_GAP_DAY_M = 0.05;
+export const UNTRUSTED_TRACK_MIN_SPIKES = 2;
 
 // Change-metric windows.
 export const CHANGE_WINDOWS = Object.freeze([
@@ -561,6 +562,24 @@ export function classifyPasses(passes) {
     p.ok = false;
     p.spike = true;
   }
+  // The newest pass has one neighbour, so the rule above can never test it, and it is the
+  // pass every headline metric reads. Ground tracks repeat: a track that clips a river arm
+  // or an edge pool does so on every revisit. When at least half of a track's earlier
+  // quality-passing passes over this water body were despiked (and at least
+  // UNTRUSTED_TRACK_MIN_SPIKES of them), a newest pass from that track that departs from
+  // its only neighbour by more than the despike limit is dropped too.
+  while (ok.length >= 2) {
+    const last = ok[ok.length - 1];
+    const prev = ok[ok.length - 2];
+    const sameTrack = out.filter((p) => p.rgt === last.rgt && p !== last && (p.ok || p.spike));
+    const spikes = sameTrack.filter((p) => p.spike).length;
+    if (spikes < UNTRUSTED_TRACK_MIN_SPIKES || spikes * 2 < sameTrack.length) break;
+    const gapDays = (Date.parse(last.time) - Date.parse(prev.time)) / DAY_MS;
+    if (Math.abs(last.levelM - prev.levelM) <= DESPIKE_BASE_M + DESPIKE_PER_GAP_DAY_M * gapDays) break;
+    ok.pop();
+    last.ok = false;
+    last.spike = true;
+  }
   return out;
 }
 
@@ -603,6 +622,29 @@ export function levelAt(okPasses, tMs, toleranceDays) {
 }
 
 /**
+ * Seasonal baseline at time tMs: the ok-pass levels from earlier seasons (1 = about a year
+ * before tMs) whose day of year is within SEASONAL_WINDOW_DAYS of tMs. Returns null unless
+ * SEASONAL_MIN_PRIOR_YEARS distinct earlier seasons contribute. Counting seasons back from
+ * tMs keeps a window that wraps the new year from counting as two years.
+ */
+export function seasonalBaseline(okPasses, tMs) {
+  const doy = dayOfYear(tMs);
+  const sample = [];
+  const seasons = new Set();
+  for (const p of okPasses) {
+    const t = Date.parse(p.time);
+    const seasonsBack = Math.round((tMs - t) / (365.25 * DAY_MS));
+    if (seasonsBack < 1) continue;
+    if (circularDoyDiff(dayOfYear(t), doy) > SEASONAL_WINDOW_DAYS) continue;
+    sample.push(p.levelM);
+    seasons.add(seasonsBack);
+  }
+  if (seasons.size < SEASONAL_MIN_PRIOR_YEARS) return null;
+  const m = median(sample);
+  return { medianM: m, sigmaM: Math.max(1.4826 * mad(sample, m), SEASONAL_MIN_SIGMA_M) };
+}
+
+/**
  * Compute change metrics from classified passes (output of classifyPasses) as of nowMs.
  * Only ok passes are used. Returns a plain object; fields are null when not computable.
  */
@@ -611,7 +653,7 @@ export function computeChange(passes, nowMs) {
   const empty = {
     latest: null, prevDate: null, changePrevM: null,
     change30dM: null, change90dM: null, change365dM: null,
-    seasonalAnomalyM: null, seasonalZ: null,
+    seasonalAnomalyM: null, seasonalZ: null, change90dExcessM: null,
     recordMinM: null, recordMaxM: null, recordStart: null, percentOfRange: null,
     recordLow: false, recordHigh: false,
     status: 'insufficient_history', series: [],
@@ -636,25 +678,21 @@ export function computeChange(passes, nowMs) {
     out[w.field] = ref == null ? null : round(latest.levelM - ref);
   }
 
-  // Seasonal anomaly vs prior years at the same time of year. Prior years are counted as
-  // seasons back from the latest pass (1 = about a year earlier), so a window that wraps
-  // the new year is not counted as two years.
-  const latestDoy = dayOfYear(tLatest);
-  const sample = [];
-  const years = new Set();
-  for (const p of ok) {
-    const t = Date.parse(p.time);
-    const seasonsBack = Math.round((tLatest - t) / (365.25 * DAY_MS));
-    if (seasonsBack < 1) continue;
-    if (circularDoyDiff(dayOfYear(t), latestDoy) > SEASONAL_WINDOW_DAYS) continue;
-    sample.push(p.levelM);
-    years.add(seasonsBack);
+  // Seasonal anomaly vs earlier years at the same time of year.
+  const baseline = seasonalBaseline(ok, tLatest);
+  if (baseline) {
+    out.seasonalAnomalyM = round(latest.levelM - baseline.medianM);
+    out.seasonalZ = round((latest.levelM - baseline.medianM) / baseline.sigmaM, 2);
   }
-  if (years.size >= SEASONAL_MIN_PRIOR_YEARS) {
-    const m = median(sample);
-    const sigma = Math.max(1.4826 * mad(sample, m), SEASONAL_MIN_SIGMA_M);
-    out.seasonalAnomalyM = round(latest.levelM - m);
-    out.seasonalZ = round((latest.levelM - m) / sigma, 2);
+
+  // 90-day change beyond the usual seasonal swing. A monsoon or snowmelt reservoir rises
+  // tens of metres every year (Tarbela +29 m, Nurek +34 m in the 2026 baseline, both within
+  // 1 m of their seasonal norm); only the part of the move the calendar does not explain is
+  // a signal. Null when either end lacks a seasonal baseline.
+  const t90 = tLatest - 90 * DAY_MS;
+  const baseline90 = out.change90dM == null ? null : seasonalBaseline(ok, t90);
+  if (baseline && baseline90) {
+    out.change90dExcessM = round(out.change90dM - (baseline.medianM - baseline90.medianM));
   }
 
   // Record range.
@@ -695,10 +733,26 @@ export function classifyStatus(m, range) {
   if (m.recordLow) return 'record_low';
   if (m.recordHigh) return 'record_high';
   const fast = Math.max(FAST_CHANGE_MIN_M, FAST_CHANGE_RANGE_FRACTION * (Number.isFinite(range) ? range : 0));
-  if (m.change90dM != null && m.change90dM <= -fast) return 'falling_fast';
-  if (m.change90dM != null && m.change90dM >= fast) return 'rising_fast';
-  if ((m.percentOfRange != null && m.percentOfRange <= LOW_PERCENT) || (m.seasonalZ != null && m.seasonalZ <= -SEASONAL_Z_ALERT)) return 'low';
-  if ((m.percentOfRange != null && m.percentOfRange >= HIGH_PERCENT) || (m.seasonalZ != null && m.seasonalZ >= SEASONAL_Z_ALERT)) return 'high';
+  // Fast change: the level must have moved by the limit over 90 days and, where a seasonal
+  // baseline exists, by the limit beyond the usual seasonal swing as well. Both are needed:
+  // the raw move alone flags every monsoon fill, and the excess alone calls a reservoir that
+  // rose 13 m "falling" because it usually rises 22 m. A reservoir with no seasonal baseline
+  // (still filling) is judged on the raw move.
+  const seasonal = m.seasonalZ != null;
+  const raw = m.change90dM;
+  const excess = m.change90dExcessM;
+  if (raw != null && raw <= -fast && (!seasonal || (excess != null && excess <= -fast))) return 'falling_fast';
+  if (raw != null && raw >= fast && (!seasonal || (excess != null && excess >= fast))) return 'rising_fast';
+  // Low / high: the seasonal z-score decides when it exists. Percent of the record range
+  // misreads a seasonal water body at its normal annual minimum (Tonle Sap in July sits at
+  // 13% of range and 0.1 m from its seasonal norm), so it is the fallback only.
+  if (m.seasonalZ != null) {
+    if (m.seasonalZ <= -SEASONAL_Z_ALERT) return 'low';
+    if (m.seasonalZ >= SEASONAL_Z_ALERT) return 'high';
+    return 'normal';
+  }
+  if (m.percentOfRange != null && m.percentOfRange <= LOW_PERCENT) return 'low';
+  if (m.percentOfRange != null && m.percentOfRange >= HIGH_PERCENT) return 'high';
   if (m.percentOfRange == null && m.seasonalZ == null) return 'insufficient_history';
   return 'normal';
 }
