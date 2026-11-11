@@ -1458,3 +1458,39 @@ describe("getEntitlements surfaces apiDailyAllowance (#3199 U2)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// #10451 — travelRiskAssessment is opt-in to the cache-shape gate
+// ---------------------------------------------------------------------------
+
+describe("getEntitlements requireTravelRiskShape (#10451)", () => {
+  const legacyBusiness = makeEntitlements(1, "pro_business_monthly");
+  const canonicalBusiness = {
+    ...legacyBusiness,
+    features: { ...legacyBusiness.features, travelRiskAssessment: true },
+  };
+
+  test("an ordinary read keeps serving a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-ordinary");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBeUndefined();
+    });
+  });
+
+  test("a travel-risk read reloads a cached row that predates the flag", async () => {
+    await withCachedEntitlementResponse(legacyBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-legacy-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+
+  test("a travel-risk read serves a cached row that already carries the flag", async () => {
+    await withCachedEntitlementResponse(canonicalBusiness, canonicalBusiness, async (fetchMock) => {
+      const result = await getEntitlements("travel-current-shape", { requireTravelRiskShape: true });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+});

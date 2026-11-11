@@ -18,6 +18,7 @@ export const LABELS = {
   'intel.memory':['Intel memory','Historical search, timeline and similar-event lookup'],
   'intel.regional':['Regional intelligence','Regional snapshots and briefs'],
   'intel.telegram':['Telegram intel','Telegram channel intelligence (desktop-gated)'],
+  'intel.travel_risk':['Travel risk assessment','Multi-country travel risk assessment drafts over MCP'],
   'intel.x_accounts':['X news accounts','Curated X/Twitter intel (desktop-gated)'],
   'layers.desktop_gated':['Desktop-gated map layers','Iran attacks, GPS jamming, CII choropleth'],
   'layers.resilience':['Resilience map layer','The one Pro-only map layer'],

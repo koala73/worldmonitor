@@ -97,6 +97,13 @@ export interface CachedEntitlements {
     /** Most active desktop keys one account may hold (R5); `0` without access. */
     maxDesktopKeys?: number;
     /**
+     * Travel risk assessment drafts (#10451), read by the MCP pre-check for
+     * `prepare_travel_risk_assessment`. `undefined` is **fail-CLOSED** at every
+     * tier. The cache-shape gate below checks it only for a read that opts in
+     * (`requireTravelRiskShape`), so other gates keep serving older entries.
+     */
+    travelRiskAssessment?: boolean;
+    /**
      * Catalog plan limits, mirrored verbatim from `PlanFeatures.planLimits`
      * (convex/config/productCatalog.ts). Optional because legacy rows predate
      * it and because the Convex read path only merges what the catalog holds.
@@ -531,6 +538,14 @@ export interface GetEntitlementsOptions {
    * that turns it on.
    */
   requireDesktopKeyShape?: boolean;
+  /**
+   * #10451: the caller is deciding the travel risk assessment question, whose
+   * flag fails closed when absent. A cached entry written before the catalog
+   * carried `travelRiskAssessment` is then refetched through Convex instead of
+   * telling an entitled customer to upgrade until the entry ages out. Only the
+   * MCP pre-check for that one tool turns it on.
+   */
+  requireTravelRiskShape?: boolean;
 }
 
 export async function getEntitlements(
@@ -551,7 +566,9 @@ export async function getEntitlements(
 
   // Coalesced per (user, shape requirement): a desktop-shape read must not be
   // satisfied by a concurrent ordinary read that could return a legacy entry.
-  const inFlightKey = options.requireDesktopKeyShape ? `${userId}\u0000desktop-key-shape` : userId;
+  let inFlightKey = userId;
+  if (options.requireDesktopKeyShape) inFlightKey += '\u0000desktop-key-shape';
+  if (options.requireTravelRiskShape) inFlightKey += '\u0000travel-risk-shape';
   const existing = _inFlight.get(inFlightKey);
   if (existing) return existing;
 
@@ -681,7 +698,8 @@ async function _getEntitlementsImpl(
         hasCurrentEmbedAccessShape &&
         ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
         !legacySharedBudgetShape &&
-        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent))
+        (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent)) &&
+        (!options.requireTravelRiskShape || typeof ent.features.travelRiskAssessment === 'boolean')
       ) {
         return ent;
       }
