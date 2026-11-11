@@ -965,7 +965,7 @@ export function renderResearchIndex({ reports, tpl, baseUrl, lastmod, dataCatalo
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/research/';
   const description =
-    'Original, source-backed World Monitor research: dated, versioned reports built from committed data snapshots, with downloadable data, explicit methodology, and declared gaps.';
+    'Original World Monitor research: dated, versioned reports built from committed data snapshots, with downloadable data, clear methods and declared gaps.';
   const body = `      <p class="eyebrow">Research corpus</p>
       <h1>World Monitor research reports</h1>
       <p class="lede">${escapeHtml(description)}</p>
