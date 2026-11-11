@@ -172,14 +172,17 @@ describe('UcdpEventsPanel under a focus', () => {
     await settle();
     expect(ids()).toEqual(['newer']);
 
-    panel.setEvents(EVENTS, AGGREGATES);
+    // Defer BEFORE the request starts, so the completion really arrives after the failure.
+    loadFullSet.mockClear();
     loadFullSet.mockImplementationOnce(() => new Promise<UcdpGeoEvent[]>((resolve) => { release = resolve; }));
-    panel.applyScope(scopeOf(['VN']));
+    panel.setEvents(EVENTS, AGGREGATES);
     await settle();
+    expect(loadFullSet).toHaveBeenCalledTimes(1);
     panel.showError('UCDP failed');
     release([...EVENTS, MYANMAR]);
     await settle();
     expect(el().querySelector('.panel-error-state')?.textContent).toContain('UCDP failed');
+    expect(el().querySelector('.ucdp-row')).toBeNull();
   });
 
   it('keeps keyboard focus on the control that replaced the one activated', async () => {
