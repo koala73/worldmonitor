@@ -126,7 +126,7 @@ export const publish = mutation({
     name: v.string(),
     layout: teamDashboardLayoutValidator,
     dashboardId: v.optional(v.id("teamDashboards")),
-    // The version the caller last saw. An update from an older one is refused,
+    // Required on updates: the version the caller last saw. An older one is refused,
     // so nobody replaces a teammate's newer layout without seeing it first.
     baseVersion: v.optional(v.number()),
   },
@@ -142,7 +142,7 @@ export const publish = mutation({
       if (!row || row.teamKey !== team.key || row.variant !== args.variant) {
         throw new ConvexError({ kind: "DASHBOARD_NOT_FOUND" });
       }
-      if (args.baseVersion !== undefined && args.baseVersion !== row.version) {
+      if (args.baseVersion !== row.version) {
         throw new ConvexError({ kind: "VERSION_CONFLICT", version: row.version });
       }
       const version = row.version + 1;

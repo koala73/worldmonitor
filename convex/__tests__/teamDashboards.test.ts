@@ -242,11 +242,23 @@ describe("publishing", () => {
     const { id } = await publish(t, OWNER);
     const changed: TeamDashboardLayout = { panels: [{ key: "markets", on: true }] };
 
-    const result = await publish(t, SEAT, { dashboardId: id, name: "Gulf watch v2", layout: changed });
+    const result = await publish(t, SEAT, { dashboardId: id, baseVersion: 1, name: "Gulf watch v2", layout: changed });
 
     expect(result).toEqual({ id, version: 2 });
     const [row] = (await list(t, OWNER)).dashboards;
     expect(row).toMatchObject({ id, name: "Gulf watch v2", version: 2, layout: changed });
+  });
+
+  test("an update without a base version cannot overwrite a teammate's newer layout", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusiness(t);
+    const { id } = await publish(t, OWNER);
+    const changed: TeamDashboardLayout = { panels: [{ key: "markets", on: true }] };
+    await publish(t, SEAT, { dashboardId: id, baseVersion: 1, name: "Seat's version", layout: changed });
+
+    expect(await errorKind(publish(t, OWNER, { dashboardId: id, name: "Owner's version" })))
+      .toBe("VERSION_CONFLICT");
+    expect((await list(t, OWNER)).dashboards[0]).toMatchObject({ name: "Seat's version", version: 2, layout: changed });
   });
 
   test("an update based on an older version is refused, so a teammate's newer layout is not overwritten unseen", async () => {
@@ -303,7 +315,7 @@ describe("publishing", () => {
     expect(await errorKind(publish(t, OWNER, { name: "One more" }))).toBe("TEAM_DASHBOARD_LIMIT");
     // Updating an existing one is still allowed at the limit.
     const [first] = (await list(t, OWNER)).dashboards;
-    await expect(publish(t, OWNER, { dashboardId: first!.id, name: "Renamed" })).resolves.toMatchObject({ version: 2 });
+    await expect(publish(t, OWNER, { dashboardId: first!.id, baseVersion: first!.version, name: "Renamed" })).resolves.toMatchObject({ version: 2 });
   });
 
   test.each([
