@@ -301,6 +301,8 @@ To share a map position and its layers, copy the browser URL. See [Shareable lin
 
 Team dashboards share a tab's panel layout and map settings with signed-in teammates. API Business owners and accepted members of their [Pro seats](/accounts#api-business-team-seats) have access while the subscription covers them. Enterprise members need an active membership and a current contract.
 
+Only one team is available at a time. World Monitor selects your eligible Enterprise account first, then your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards.
+
 Standalone Pro, Pro Business, and API Starter subscriptions do not create a team. The 25 custom dashboards on Pro Business are personal tabs, not 25 shared team dashboards. See [Plans & Pricing](/pricing#dashboard-sharing-by-plan).
 
 #### Share a dashboard with your team
@@ -320,9 +322,11 @@ The dashboard appears in your team's list under the tab's name. It includes pane
 
 The dashboard opens as a new tab. If it is already open, World Monitor switches to that tab. Your personal tab limit still applies when opening a new tab.
 
-Edits stay in your tab until you click **Team**, then **Share this tab's changes with your team**. Teammates can apply a newer shared layout with **Get the latest version**. This replaces the tab's panel layout and applies the shared map settings. Panel sizes also apply to those panels in other tabs in the same browser.
+Your changes are not published to teammates until you click **Team**, then **Share this tab's changes with your team**. Use **Get the latest version** to apply a newer shared layout. This replaces the tab's panel layout, including any unpublished local panel edits.
 
-If another member publishes while you are sharing, the app reports that the team changed the dashboard and refreshes the list. Review the newer version before sharing again.
+Opening a team dashboard as a new tab or getting its latest version also applies its map settings to the browser's current map. Map settings are shared across tabs. Switching tabs restores panel state but does not restore the previous map. Panel sizes also apply to those panels in other tabs in the same browser.
+
+If another member publishes after your Team list was last loaded, sharing reports a conflict and refreshes the list. Once the list refreshes, sharing your older local layout can overwrite the teammate's newer layout without another conflict warning. Save any local work you need, then use **Get the latest version** and review it before publishing further changes.
 
 #### Stop sharing a dashboard
 
