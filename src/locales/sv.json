@@ -4459,6 +4459,7 @@
   "auth": {
     "signIn": "Logga in",
     "createAccount": "Skapa konto",
+    "freeReason": "Gratis: spara layout, följ länder, aviseringar",
     "settings": "Inställningar",
     "passkeyOffer": {}
   },

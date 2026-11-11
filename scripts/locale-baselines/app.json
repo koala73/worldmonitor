@@ -12,6 +12,7 @@
   "alerts.multipleRegions": "Multiple Regions",
   "alerts.trending": "\"{{term}}\" Trending - {{count}} mentions in {{hours}}h",
   "auth.createAccount": "Create account",
+  "auth.freeReason": "Free: save your layout, follow countries, get alerts",
   "auth.settings": "Settings",
   "auth.signIn": "Sign In",
   "commands.categories.actions": "Actions",

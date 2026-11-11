@@ -1157,15 +1157,15 @@ canvas,
 }
 
 /* Progressive header disclosure — keep the core right-side actions (Search,
-   settings, and especially the Sign In / Create account cluster) fully on
-   screen as usable width shrinks: small laptops, split-screen, OS scaling
-   (1920px @ 150% = ~1280px CSS), and browsers with a vertical tab strip.
-   The single-row header wants ~1520px; without these tiers it silently
-   overflows and clips the rightmost item (Sign In) anywhere below ~1520px.
-   Items are dropped least-essential first; each is still reachable elsewhere
-   (footer links, the mobile hamburger menu, or the map's own controls). The
-   full mobile hamburger takes over at <=768px. !important mirrors the <=768
-   block below (needed to beat the #missionPresetMount id rule in header.css). */
+   settings, and especially the Sign In cluster) fully on screen as usable
+   width shrinks: small laptops, split-screen, OS scaling (1920px @ 150% =
+   ~1280px CSS), and browsers with a vertical tab strip. The single-row
+   header wants ~1520px; without these tiers it silently overflows and clips
+   the rightmost item (Sign In) anywhere below ~1520px. Items are dropped
+   least-essential first; each is still reachable elsewhere (footer links,
+   the mobile hamburger menu, or the map's own controls). The full mobile
+   hamburger takes over at <=768px. !important mirrors the <=768 block below
+   (needed to beat the #missionPresetMount id rule in header.css). */
 @media (max-width: 1530px) {
   /* redundant with footer/menu: X credit + GitHub icon */
   .credit-link,
@@ -1181,6 +1181,8 @@ canvas,
 }
 @media (max-width: 1200px) {
   .pizzint-indicator { display: none !important; }
+  /* Export is available from Settings; drop it before Sign In clips (#10464). */
+  .export-panel-container { display: none !important; }
 }
 @media (max-width: 1075px) {
   .mission-preset-mount { display: none !important; }
@@ -15469,9 +15471,13 @@ button.popup-link {
   justify-content: flex-start;
 }
 
-.mobile-menu-account .auth-signin-btn,
-.mobile-menu-account .auth-signup-link {
+.mobile-menu-account .auth-signin-btn {
   min-height: 44px;
+}
+
+.mobile-menu-account .auth-free-reason {
+  max-width: none;
+  white-space: normal;
 }
 
 .mobile-menu-item {
@@ -15682,8 +15688,8 @@ button.popup-link {
   }
 
   .header-right > :not(#authWidgetMount),
-  #authWidgetMount .auth-signup-link,
-  #authWidgetMount .auth-header-skeleton-signup {
+  #authWidgetMount .auth-free-reason,
+  #authWidgetMount .auth-header-skeleton-reason {
     display: none !important;
   }
 
@@ -25658,6 +25664,20 @@ body.map-width-resizing {
   align-items: center;
   position: relative;
   gap: 8px;
+  max-width: var(--header-auth-slot-width, 200px);
+  min-width: 0;
+}
+
+.auth-free-reason {
+  color: var(--text-muted);
+  flex: 1 1 auto;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .auth-signup-link {
@@ -25712,6 +25732,7 @@ body.map-width-resizing {
   /* Pinned dark, not var(--bg). In light theme var(--bg) is near-white and
      falls to ~3.13:1 on var(--green), failing WCAG AA for 13px text. */
   color: #0a0a0a;
+  flex: 0 0 auto;
   font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   cursor: pointer;

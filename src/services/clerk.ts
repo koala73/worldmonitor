@@ -528,7 +528,9 @@ export function runClerkSurfaceOpen(
 }
 
 function openLoadedClerkSignIn(): void {
-  clerkInstance?.openSignIn({ appearance: getAppearance() });
+  // withSignUp folds Create account into the Sign In modal so the header can
+  // keep a single account action (#10464) without losing the sign-up path.
+  clerkInstance?.openSignIn({ appearance: getAppearance(), withSignUp: true });
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {

@@ -4437,6 +4437,7 @@
   "auth": {
     "signIn": "Đăng nhập",
     "createAccount": "Tạo tài khoản",
+    "freeReason": "Miễn phí: lưu bố cục, theo dõi quốc gia, cảnh báo",
     "settings": "Cài đặt",
     "passkeyOffer": {}
   },

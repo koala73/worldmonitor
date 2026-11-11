@@ -4459,6 +4459,7 @@
   "auth": {
     "signIn": "Ingia",
     "createAccount": "Fungua akaunti",
+    "freeReason": "Bure: hifadhi mpangilio, fuata nchi, arifa",
     "settings": "Mipangilio",
     "passkeyOffer": {}
   },

@@ -4481,6 +4481,7 @@
   "auth": {
     "signIn": "Iniciar Sesión",
     "createAccount": "Crear cuenta",
+    "freeReason": "Gratis: guarda tu diseño, sigue países, alertas",
     "settings": "Configuración",
     "passkeyOffer": {}
   },

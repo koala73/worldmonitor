@@ -4459,6 +4459,7 @@
   "auth": {
     "signIn": "Aanmelden",
     "createAccount": "Account aanmaken",
+    "freeReason": "Gratis: layout opslaan, landen volgen, meldingen",
     "settings": "Instellingen",
     "passkeyOffer": {}
   },
