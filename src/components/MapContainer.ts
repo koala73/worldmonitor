@@ -8,6 +8,8 @@ import { isMobileDevice } from '@/utils';
 import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
+import '../styles/reservoir-levels.css';
+import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import {
   isLayerToggleAllowed,
@@ -270,6 +272,7 @@ export class MapContainer {
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedNo2Activity: No2ActivitySnapshot | null = null;
+  private cachedReservoirLevels: ReservoirLevel[] | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -877,6 +880,7 @@ export class MapContainer {
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
+    if (this.cachedReservoirLevels) this.setReservoirLevels(this.cachedReservoirLevels);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -1489,6 +1493,21 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.cachedReservoirLevels = reservoirs;
+    if (this.useGlobe) this.globeMap?.setReservoirLevels(reservoirs);
+    else if (this.useDeckGL) this.deckGLMap?.setReservoirLevels(reservoirs);
+    else this.svgMap?.setReservoirLevels(reservoirs);
+  }
+
+  /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    if (!this.hasActiveRenderer()) return;
+    if (this.useGlobe) this.globeMap?.openReservoir(reservoir);
+    else if (this.useDeckGL) this.deckGLMap?.openReservoir(reservoir);
+    else this.svgMap?.openReservoir(reservoir);
+  }
+
   public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
     this.cachedNo2Activity = snapshot;
     if (this.useDeckGL) this.deckGLMap?.setNo2Activity(snapshot);
@@ -1954,6 +1973,7 @@ export class MapContainer {
     this.cachedAisDisruptions = null;
     this.cachedUkmtoIncidents = null;
     this.cachedUkmtoSnapshot = null;
+    this.cachedReservoirLevels = null;
     this.cachedAisDensity = null;
     this.cachedCableAdvisories = null;
     this.cachedRepairShips = null;
