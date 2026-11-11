@@ -54,7 +54,15 @@ next PR to say "not compared".
 
 When the verdict is `declined`, the workflow opens an issue titled "AI-answer
 visibility declined", or comments on the open one, so the drop does not stay
-inside a PR that merges itself.
+inside a PR that merges itself. Each alert carries a marker with the snapshot
+date. A rerun in a week whose PR already exists skips the paid collection but
+retries the alert from that week's saved snapshot, and the marker keeps it from
+reporting the same week twice.
+
+A run imported with `--from-run` must match the committed config: the same
+models, judge, generator, repetitions and search settings as `inputs/config.yaml`.
+Otherwise the collector refuses it, because the inputs digest would claim
+settings the run did not use. A changed judge model also starts a new series.
 
 ## Running it
 

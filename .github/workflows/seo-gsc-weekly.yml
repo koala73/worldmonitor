@@ -311,25 +311,50 @@ jobs:
           gh pr merge --auto --squash "$pr_url"
           echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
       - name: Open an issue when AI-answer visibility declines
-        # always(): a failed PR step must not swallow the alert.
-        if: always() && steps.collect.outcome == 'success' && steps.answerrank.outcome == 'success'
+        # always(): a failed PR step must not swallow the alert. A rerun in a
+        # week whose PR already exists skips collection, so it retries the
+        # alert from that week's saved snapshot instead; the marker in the
+        # issue keeps a retry from reporting the same week twice.
+        if: always() && steps.reconcile.outcome == 'success' && (steps.answerrank.outcome == 'success' || steps.reconcile.outputs.skip == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
           SNAPSHOT_DATE: ${{ steps.reconcile.outputs.date }}
+          SKIPPED: ${{ steps.reconcile.outputs.skip }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
         run: |
-          file="docs/research/seo-ai-visibility/answerrank/${SNAPSHOT_DATE}.json"
+          dir="docs/research/seo-ai-visibility/answerrank"
+          if [ "$SKIPPED" = "true" ]; then
+            # The week's snapshot is on the weekly branch while its PR is open,
+            # and already in this main checkout once the PR has merged.
+            if git fetch --quiet origin "$BRANCH_NAME" 2>/dev/null; then
+              git checkout --quiet FETCH_HEAD -- "$dir" 2>/dev/null || true
+            fi
+            file=$(find "$dir" -maxdepth 1 -name '20*.json' | sort | tail -n 1)
+            if [ -z "$file" ] || [ "$(date -u -d "$(basename "$file" .json)" +%G-W%V)" != "$(date -u +%G-W%V)" ]; then
+              exit 0
+            fi
+          else
+            file="${dir}/${SNAPSHOT_DATE}.json"
+          fi
           if [ ! -f "$file" ] || [ "$(jq -r '.comparison.verdict' "$file")" != "declined" ]; then
             exit 0
           fi
           title="AI-answer visibility declined"
-          body=$(jq -r --arg pr "${PR_URL:-the weekly snapshot PR}" '
+          marker="<!-- answerrank-alert:$(jq -r '.date' "$file") -->"
+          for number in $(gh issue list --state all --search "\"${title}\" in:title" --limit 10 --json number --jq '.[].number'); do
+            if gh issue view "$number" --json body,comments --jq '([.body] + [.comments[].body]) | join("\n")' | grep -qF "$marker"; then
+              echo "::notice::The decline in $(basename "$file") was already reported in issue ${number}."
+              exit 0
+            fi
+          done
+          body=$(jq -r --arg pr "${PR_URL:-the weekly snapshot PR}" --arg marker "$marker" '
             def pct: if . == null then "n/a" else (. * 1000 | round) as $t | "\($t / 10 | floor).\($t % 10)%" end;
             def line($label; $c): if $c == null then "- \($label): not compared" else "- \($label): \($c.before | pct) → \($c.after | pct) (z = \($c.z)), \($c.verdict)" end;
             "The weekly answerrank run on \(.date) shows a significant drop since \(.comparison.previousDate).\n\n"
             + line("Named in model answers"; .comparison.mentions) + "\n"
             + line("Cited in web-search answers"; .comparison.citations) + "\n\n"
-            + "Details: docs/research/seo-ai-visibility/answerrank/\(.date).md, in \($pr)."
+            + "Details: docs/research/seo-ai-visibility/answerrank/\(.date).md, in \($pr).\n\n" + $marker
           ' "$file")
           existing=$(gh issue list --state open --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
@@ -337,7 +362,6 @@ jobs:
           else
             gh issue create --title "$title" --body "$body"
           fi
-
   # Dispatches Deploy Gate for the new PR directly rather than waiting on the
   # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:

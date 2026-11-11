@@ -42,6 +42,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import YAML from 'yaml';
+
 import { loadEnvFile } from './_seed-utils.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
@@ -165,10 +167,41 @@ export function proportionChange(before, after) {
 
 const sameVariants = (a, b) => a.design.variants.join('|') === b.design.variants.join('|');
 
+/**
+ * How a run's own settings (`run.json`) differ from the committed config, as
+ * readable lines; empty when they match. The inputs digest names the committed
+ * config, so a run made with other models, judge, repetitions or search
+ * settings must not carry it.
+ */
+export function runSettingsMismatch(run, config) {
+  const web = config.web_search ?? {};
+  const expected = {
+    judge_model: config.judge_model,
+    generator_model: config.generator_model,
+    repetitions: config.repetitions,
+    models: (config.models ?? []).map((model) => ({ name: model.name, label: model.label, web_search: Boolean(model.web_search) })),
+    web_search: {
+      compare: Boolean(web.compare), mode: web.mode, search: web.search,
+      max_results: web.max_results, max_searches: web.max_searches, force: Boolean(web.force),
+    },
+  };
+  const actual = {
+    judge_model: run.judge_model,
+    generator_model: run.generator_model,
+    repetitions: run.repetitions,
+    models: (run.models ?? []).map((model) => ({ name: model.name, label: model.label, web_search: Boolean(model.web_search) })),
+    web_search: Object.fromEntries(Object.keys(expected.web_search).map((key) => [key, run.web_search?.[key]])),
+  };
+  return Object.keys(expected)
+    .filter((key) => JSON.stringify(expected[key]) !== JSON.stringify(actual[key]))
+    .map((key) => `${key}: run has ${JSON.stringify(actual[key])}, config has ${JSON.stringify(expected[key])}`);
+}
+
 /** Why two snapshots cannot be compared, or null when they can. */
 export function incomparability(previous, current) {
   if (!previous) return 'No earlier snapshot.';
   if (previous.inputsDigest !== current.inputsDigest) return `The questions, profile, config or dependency lock changed since ${previous.date}, so this week starts a new series.`;
+  if (previous.design.judgeModel !== current.design.judgeModel) return `The judge model changed from ${previous.design.judgeModel} to ${current.design.judgeModel} since ${previous.date}, so this week starts a new series.`;
   if (previous.tool.revision !== current.tool.revision) return `answerrank moved from ${previous.tool.revision ?? 'unknown'} to ${current.tool.revision ?? 'unknown'} since ${previous.date}; its judging may differ, so this week starts a new series.`;
   if (!sameVariants(previous, current)) return `The answered model variants differ from ${previous.date} (${previous.design.variants.join(', ')} then, ${current.design.variants.join(', ')} now).`;
   if (previous.status !== 'available') return `The ${previous.date} snapshot is partial.`;
@@ -342,7 +375,13 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     invariant(options.date, '--from-run needs --date');
     observedAt = statSync(join(runDir, 'scores.json')).mtime.toISOString();
   }
-  // The digest names the committed inputs, so the run must have used them.
+  // The digest names the committed inputs, so the run must have used them:
+  // the same questions and profile, and the same models, judge and settings.
+  const mismatch = runSettingsMismatch(
+    readJson(join(runDir, 'run.json')),
+    YAML.parse(readFileSync(join(inputsDir, 'config.yaml'), 'utf8')),
+  );
+  invariant(mismatch.length === 0, `the run in ${runDir} used other settings than inputs/config.yaml: ${mismatch.join('; ')}`);
   for (const name of ['queries.json', 'profile.json']) {
     invariant(
       readFileSync(join(runDir, name), 'utf8') === readFileSync(join(inputsDir, name), 'utf8'),

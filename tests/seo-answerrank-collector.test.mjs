@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
+import YAML from 'yaml';
 
 import {
   assertNoSecrets,
@@ -15,11 +16,21 @@ import {
   renderMarkdown,
   runAnswerrank,
   runCli,
+  runSettingsMismatch,
 } from '../scripts/seo-answerrank-collect.mjs';
 
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
 const INPUTS = repoPath('docs/research/seo-ai-visibility/answerrank/inputs');
 const silent = () => {};
+const CONFIG = YAML.parse(readFileSync(join(INPUTS, 'config.yaml'), 'utf8'));
+/** run.json as answerrank writes it for the committed config. */
+const RUN_SETTINGS = {
+  generator_model: CONFIG.generator_model,
+  judge_model: CONFIG.judge_model,
+  models: CONFIG.models.map(({ name, label, web_search = false }) => ({ name, label, web_search })),
+  repetitions: CONFIG.repetitions,
+  web_search: { ...CONFIG.web_search, search_tool: '' },
+};
 const TMP_ROOT = mkdtempSync(join(tmpdir(), 'answerrank-test-'));
 const tempDir = (prefix) => mkdtempSync(join(TMP_ROOT, prefix));
 after(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
@@ -42,7 +53,7 @@ const metrics = (n, named, web = 0, cited = 0) => ({
  * (answerrank leaves both out of scores.json), and `retried` adds an error line
  * before that many scored answers, as a resumed run leaves behind.
  */
-function writeRun({ variants, failed = {}, unjudged = {}, retried = 0 }) {
+function writeRun({ variants, failed = {}, unjudged = {}, retried = 0, settings = RUN_SETTINGS }) {
   const dir = tempDir('run-');
   cpSync(join(INPUTS, 'queries.json'), join(dir, 'queries.json'));
   cpSync(join(INPUTS, 'profile.json'), join(dir, 'profile.json'));
@@ -64,7 +75,7 @@ function writeRun({ variants, failed = {}, unjudged = {}, retried = 0 }) {
   writeFileSync(join(dir, 'answers.jsonl'), answers.map((row) => JSON.stringify(row)).join('\n'));
   writeFileSync(join(dir, 'scores.json'), JSON.stringify({ overall: metrics(...totals), by_model: byModel }));
   writeFileSync(join(dir, 'spend.json'), JSON.stringify({ answer: 5.1, search: 0.6, judge: 1.55 }));
-  writeFileSync(join(dir, 'run.json'), JSON.stringify({ repetitions: 3, judge_model: 'anthropic/claude-sonnet-5-5' }));
+  writeFileSync(join(dir, 'run.json'), JSON.stringify(settings));
   return dir;
 }
 
@@ -191,6 +202,8 @@ describe('compareSnapshots', () => {
     assert.ok(perplexity);
     const fewerVariants = snapshotOf(writeRun({ variants: withoutPerplexity }), '2026-11-17');
     assert.match(compareSnapshots(before, fewerVariants).reason, /variants differ/);
+    const otherJudge = { ...before, design: { ...before.design, judgeModel: 'openrouter/openai/gpt-5.5' } };
+    assert.match(compareSnapshots(otherJudge, after).reason, /judge model changed/);
     const otherTool = { ...before, tool: { name: 'answerrank', revision: 'def' } };
     assert.match(compareSnapshots(otherTool, after).reason, /answerrank moved from def to abc/);
     const partial = snapshotOf(writeRun({ variants: VARIANTS, failed: { gpt: 30 } }), '2026-11-17');
@@ -265,6 +278,32 @@ describe('runCli', () => {
       runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
       /queries\.json .* differs/,
     );
+  });
+
+  it('refuses a run made with another judge, models or repetitions than the committed config', async () => {
+    const otherJudge = writeRun({ variants: VARIANTS, settings: { ...RUN_SETTINGS, judge_model: 'openrouter/openai/gpt-5.5' } });
+    await assert.rejects(
+      runCli(['--from-run', otherJudge, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
+      /other settings than inputs\/config\.yaml: judge_model/,
+    );
+    const oldPerplexity = RUN_SETTINGS.models.map((model) => ({ ...model, web_search: false }));
+    assert.match(runSettingsMismatch({ ...RUN_SETTINGS, models: oldPerplexity, repetitions: 5 }, CONFIG).join('\n'), /repetitions[\s\S]*models/);
+    assert.deepEqual(runSettingsMismatch(RUN_SETTINGS, CONFIG), []);
+  });
+
+  it('accepts the 2026-11-11 run settings answerrank actually wrote', () => {
+    const recorded = {
+      generator_model: 'openrouter/openai/gpt-5.5',
+      judge_model: 'anthropic/claude-sonnet-5-5',
+      models: [
+        { name: 'openrouter/openai/gpt-5.5', label: 'gpt', web_search: false },
+        { name: 'anthropic/claude-sonnet-5-5', label: 'claude', web_search: false },
+        { name: 'openrouter/perplexity/sonar-pro', label: 'perplexity', web_search: true },
+      ],
+      repetitions: 3,
+      web_search: { compare: true, mode: 'tool', search: 'exa_ai', max_results: 5, max_searches: 3, force: false, search_tool: '' },
+    };
+    assert.deepEqual(runSettingsMismatch(recorded, CONFIG), []);
   });
 
   it('requires exactly one source and a date for --from-run', async () => {
