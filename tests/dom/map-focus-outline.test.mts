@@ -388,6 +388,25 @@ describe('MapContainer focus scope', () => {
     expect(deck.fitFocusBounds).not.toHaveBeenCalled();
   });
 
+  it('a clear before the renderer is ready cancels the queued fit', async () => {
+    const { map, deck } = container({ ready: false });
+    map.setFocusScope(OUTLINE, { fit: true });
+    await vi.dynamicImportSettled();
+    map.setFocusScope(null, { fit: false });
+    map.markRendererReady(1);
+    expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+  });
+
+  it('a newer fit replaces an older queued one', async () => {
+    const { map, deck } = container({ ready: false });
+    map.setFocusScope(OUTLINE, { fit: true });
+    await vi.dynamicImportSettled();
+    map.setFocusScope({ chosen: ['FJ'], neighbours: [] }, { fit: true });
+    await vi.dynamicImportSettled();
+    map.markRendererReady(1);
+    expect(deck.fitFocusBounds).toHaveBeenCalledOnce();
+  });
+
   it('does not fit when no chosen country has a box, but still outlines', async () => {
     const { map, deck } = container();
     map.setFocusScope({ chosen: ['SG'], neighbours: ['MY', 'ID'] }, { fit: true });

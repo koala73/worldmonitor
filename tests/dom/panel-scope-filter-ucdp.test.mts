@@ -132,6 +132,9 @@ describe('UcdpEventsPanel under a focus', () => {
     await settle();
     expect(ids()).toEqual(['th', 'la']);
     expect(strip()?.textContent).toContain('The full list did not load');
+    // The warning sits beside the reveal controls, it does not replace them.
+    expect(stripButton('show-all')).toBeTruthy();
+    expect(stripButton('show-unattributed')).toBeTruthy();
 
     panel.applyScope(scopeOf(['MM']));
     await settle();

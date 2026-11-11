@@ -141,6 +141,22 @@ describe('AirlineIntelPanel under a focus', () => {
     expect(strip()?.textContent).toContain('1 item with no country');
   });
 
+  it('flights: an endpoint outside the hub list never hides a flight; it counts as having no country', async () => {
+    aviation.fetchAirportFlights.mockResolvedValue([flight('TK9', 'IST', 'HAN'), flight('TK8', 'HAN', 'BKK')]);
+    panel.applyScope(scopeOf(['VN'], false));
+    await settle();
+    tab('flights')?.click();
+    await settle();
+    // HAN is not in the hub list. IST->HAN has no known end in the focus: counted, one click away.
+    // HAN->BKK: BKK is Thailand, outside a Vietnam-only focus, HAN unknown: also counted, not hidden.
+    expect(el().querySelectorAll('.flight-row').length).toBe(0);
+    expect(strip()?.textContent).toContain('2 items with no country');
+    expect(strip()?.textContent).not.toContain('hidden by focus');
+    stripButton('show-unattributed')?.click();
+    await settle();
+    expect([...el().querySelectorAll('.flight-row .flight-num')].map((n) => n.textContent).sort()).toEqual(['TK8', 'TK9']);
+  });
+
   it('news: headlines attributed by the country they name', async () => {
     panel.applyScope(FOCUS);
     await settle();

@@ -1501,6 +1501,16 @@ export class Panel {
     }
   }
 
+  /**
+   * True while the panel shows a load failure (set by showError/showRetrying,
+   * cleared by the next successful content write). A focus change must not
+   * redraw over it: that would erase the failure and make a stale panel look
+   * healthy.
+   */
+  protected get showingLoadFailure(): boolean {
+    return this.header.classList.contains('panel-header-error');
+  }
+
   public setErrorState(hasError: boolean, tooltip?: string): void {
     this.header.classList.toggle('panel-header-error', hasError);
     if (tooltip) {

@@ -495,6 +495,7 @@ export class NewsPanel extends Panel {
   public override applyScope(scope: ResolvedScope | null): void {
     const effective = getPanelScopeBehaviour(this.panelId) === 'filters' ? scope : null;
     if (!this.scopeFilter.setScope(effective)) return;
+    if (this.showingLoadFailure) return;
     this.renderScopedNews();
   }
 

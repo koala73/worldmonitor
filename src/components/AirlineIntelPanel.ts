@@ -217,8 +217,19 @@ export class AirlineIntelPanel extends Panel {
         return resolved ? [...resolved.chosen, ...resolved.neighbours] : [];
     }
 
+    /**
+     * Countries of a flight's endpoints. The airport list is a hub list, not a
+     * directory, so an unknown endpoint must never push a flight out of the
+     * focus: with an unknown end the flight counts as in focus only when a
+     * known end is, and otherwise has no country (counted, one click away).
+     */
     private flightCountries(f: FlightInstance): ScopeCountries {
-        return [airportCountry(f.origin.iata), airportCountry(f.destination.iata)].filter((c): c is string => !!c);
+        const ends = [f.origin?.iata, f.destination?.iata].map((iata) => (iata ? airportCountry(iata) : null));
+        const known = ends.filter((c): c is string => !!c);
+        if (known.length === ends.length) return known;
+        const inFocus = new Set(this.scopeCandidates());
+        const hit = known.filter((c) => inFocus.has(c));
+        return hit;
     }
 
     /** Called by the map when new aircraft positions arrive. */

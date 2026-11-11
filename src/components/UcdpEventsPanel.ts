@@ -105,7 +105,7 @@ export class UcdpEventsPanel extends Panel {
     // A failed full-set load is retried on the next focus change.
     if (this.fullSetState === 'failed') this.fullSetState = 'idle';
     this.ensureFullSetForScope();
-    if (this.hasLoadedEvents) this.renderContent();
+    if (this.hasLoadedEvents && !this.showingLoadFailure) this.renderContent();
   }
 
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
@@ -172,7 +172,7 @@ export class UcdpEventsPanel extends Panel {
     }
     // A partial list (full set missing) must say so even when rows are shown:
     // the counts would describe the 150-row projection, not the focus.
-    this.scopeFilter.renderStrip(view, partial && this.fullSetState === 'failed' ? t('focus.filter.partialConflict') : undefined);
+    this.scopeFilter.renderStrip(view, undefined, partial && this.fullSetState === 'failed' ? t('focus.filter.partialConflict') : undefined);
     const scoped = view.rows.map((row) => row.item);
     this.setCount(scoped.length);
     if (view.emptyByFocus) {

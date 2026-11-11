@@ -123,6 +123,30 @@ describe('FocusBar', () => {
     expect(q('.focus-bar-summary')?.textContent).toBe('Focused on Thailand, Vietnam, Indonesia');
   });
 
+  it('redraws the window status at the next UTC midnight and when the page becomes visible again', () => {
+    vi.useFakeTimers();
+    try {
+      now = new Date('2026-11-18T23:59:00Z');
+      bar.render(resolved(SEA));
+      expect(q('.focus-bar-window')?.textContent).not.toMatch(/ended/);
+      now = new Date('2026-11-19T00:00:30Z');
+      vi.advanceTimersByTime(61_000);
+      expect(q('.focus-bar-window')?.textContent).toMatch(/^Window ended/);
+
+      now = BEFORE; // tab left open, clock moved: a visibility change re-reads it
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(q('.focus-bar-window')?.textContent).toMatch(/^Starts/);
+
+      bar.destroy();
+      now = AFTER;
+      vi.advanceTimersByTime(48 * 3600_000);
+      document.dispatchEvent(new Event('visibilitychange'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('says when an upcoming window starts', () => {
     now = BEFORE;
     bar.render(resolved(SEA));

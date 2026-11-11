@@ -28,6 +28,11 @@ export class FocusBar {
   private expanded = false;
   private lastKey: string | null = null;
   private gate: HTMLElement | null = null;
+  private current: ResolvedScope | null = null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly onVisible = (): void => {
+    if (document.visibilityState === 'visible' && this.current && !this.element.hidden && !this.gate) this.render(this.current);
+  };
 
   constructor(
     private readonly callbacks: FocusBarCallbacks,
@@ -37,6 +42,7 @@ export class FocusBar {
     this.element.className = 'focus-bar';
     this.element.setAttribute('aria-label', t('focus.barLabel'));
     this.element.hidden = true;
+    document.addEventListener('visibilitychange', this.onVisible);
   }
 
   getElement(): HTMLElement {
@@ -44,12 +50,34 @@ export class FocusBar {
   }
 
   destroy(): void {
+    this.clearRefresh();
+    document.removeEventListener('visibilitychange', this.onVisible);
     this.element.remove();
+  }
+
+  private clearRefresh(): void {
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
+  }
+
+  /** The window text is judged by UTC day: redraw just after the next UTC midnight. */
+  private scheduleRefresh(resolved: ResolvedScope): void {
+    this.clearRefresh();
+    if (!resolved.scope.start && !resolved.scope.end) return;
+    const now = this.now();
+    const nextMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const delay = Math.min(Math.max(nextMidnight - now.getTime() + 1000, 1000), 2 ** 31 - 1);
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = null;
+      if (this.current === resolved && !this.element.hidden && !this.gate) this.render(resolved);
+    }, delay);
   }
 
   /** Show the active focus, or hide the bar when there is none. */
   render(resolved: ResolvedScope | null): void {
     this.gate = null;
+    this.current = resolved;
+    this.clearRefresh();
     if (!resolved) {
       this.element.hidden = true;
       this.element.replaceChildren();
@@ -130,6 +158,7 @@ export class FocusBar {
     row.append(text, actions);
 
     this.element.replaceChildren(row, details);
+    this.scheduleRefresh(resolved);
   }
 
   /**

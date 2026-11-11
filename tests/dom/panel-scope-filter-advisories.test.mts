@@ -111,6 +111,24 @@ describe('SecurityAdvisoriesPanel under a focus', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('a focus change during a load failure keeps the failure visible', async () => {
+    panel.setData([US, LAOS, THAILAND, HEALTH]);
+    panel.showError('Advisories failed');
+    expect(el().querySelector('.panel-header-error')).toBeTruthy();
+    panel.applyScope(FOCUS);
+    await settle();
+    panel.applyScope(null);
+    await settle();
+    expect(el().querySelector('.panel-header-error')).toBeTruthy();
+    expect(el().querySelector('.panel-error-state')?.textContent).toContain('Advisories failed');
+    // Recovery draws with the focus that is current by then.
+    panel.applyScope(FOCUS);
+    panel.setData([US, LAOS, THAILAND, HEALTH]);
+    await settle();
+    expect(el().querySelector('.panel-header-error')).toBeNull();
+    expect(titles().length).toBeGreaterThan(0);
+  });
+
   it('an empty focused result is distinct from a load failure', async () => {
     panel.setData([US, HEALTH]);
     panel.applyScope(FOCUS);

@@ -97,6 +97,8 @@ type PendingViewportAction =
     /** humanViewportInteractionToken when the fit was requested. */
     authority: number;
     actionToken: number;
+    /** focusFitSeq when requested: a clear or a newer fit supersedes a queued one. */
+    seq: number;
   };
 
 /** Chosen countries (solid outline, fitted) and neighbours (lighter outline). */
@@ -465,7 +467,7 @@ export class MapContainer {
       if (action.type === 'view') this.applyView(action.view, action.zoom);
       else if (action.type === 'zoom') this.applyZoom(action.zoom);
       else if (action.type === 'focus') {
-        if (action.authority === this.humanViewportInteractionToken) this.applyFocusFit(action);
+        if (action.authority === this.humanViewportInteractionToken && action.seq === this.focusFitSeq) this.applyFocusFit(action);
       } else this.applyCenter(action.lat, action.lon, action.zoom);
     }
   }
@@ -1874,6 +1876,7 @@ export class MapContainer {
         altitude: focusGlobeAltitude(fit),
         authority,
         actionToken,
+        seq,
       };
       if (!this.isViewportRendererReady()) {
         this.pendingViewportActions.push(action);

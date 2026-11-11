@@ -45,7 +45,9 @@ export class SecurityAdvisoriesPanel extends Panel {
 
   public override applyScope(scope: ResolvedScope | null): void {
     if (!this.scopeFilter.setScope(scope)) return;
-    if (this.hasData) this.render();
+    // The next successful setData draws with the new focus; redrawing now
+    // would erase a load failure.
+    if (this.hasData && !this.showingLoadFailure) this.render();
   }
 
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {

@@ -154,9 +154,11 @@ export class PanelScopeFilter {
   /**
    * Draw the strip for a view (null hides it: no focus, loading, or a load
    * failure, where counts would claim more than the panel knows). `note`
-   * replaces the counts, for a panel tab that does not filter.
+   * replaces the counts, for a panel tab that does not filter. `warning` is
+   * shown IN ADDITION to the counts and controls, for a list that is known to
+   * be incomplete: the reveal buttons must stay reachable.
    */
-  public renderStrip(view: ScopeView<unknown> | null, note?: string): void {
+  public renderStrip(view: ScopeView<unknown> | null, note?: string, warning?: string): void {
     const resolved = this.resolved;
     if (!resolved || (!view && !note)) {
       this.hideStrip();
@@ -189,6 +191,7 @@ export class PanelScopeFilter {
         ));
       }
     }
+    if (warning && !note) parts.push(h('span', { className: 'panel-scope-strip-note panel-scope-strip-warning', role: 'status' }, warning));
     replaceChildren(this.strip, ...parts);
     this.strip.dataset.state = note ? 'note' : this.showAll ? 'all' : 'filtering';
     this.strip.hidden = false;
