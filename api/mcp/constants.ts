@@ -394,7 +394,10 @@ export const SERVER_VERSION = '1.50.0';
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,
 // `websiteUrl` and `icons` are spec fields for clients and directories.
-// Mirrored in public/.well-known/mcp/server-card.json::serverInfo; the
+// Icons live on the MCP endpoint's own origin (apex, which Cloudflare 301s
+// to www for most paths but serves /.well-known/ directly), because clients may
+// only accept icons from the server's origin. Mirrored in
+// public/.well-known/mcp/server-card.json::serverInfo; the
 // mcp-server-info-metadata test pins both.
 export const SERVER_INFO = {
   name: SERVER_NAME,
@@ -403,8 +406,8 @@ export const SERVER_INFO = {
   description: 'Real-time global intelligence for agents: markets, conflicts, country risk, sanctions, energy, shipping chokepoints, aviation, cyber, climate and forecasts, plus AI briefs and per-outlet source ratings.',
   websiteUrl: 'https://www.worldmonitor.app',
   icons: [
-    { src: 'https://www.worldmonitor.app/favico/android-chrome-512x512.png', mimeType: 'image/png', sizes: ['512x512'] },
-    { src: 'https://www.worldmonitor.app/favico/worldmonitor-icon-1024.png', mimeType: 'image/png', sizes: ['1024x1024'] },
+    { src: 'https://worldmonitor.app/.well-known/mcp/icon-512.png', mimeType: 'image/png', sizes: ['512x512'] },
+    { src: 'https://worldmonitor.app/.well-known/mcp/icon-1024.png', mimeType: 'image/png', sizes: ['1024x1024'] },
   ],
 } as const;
 
