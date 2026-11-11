@@ -492,7 +492,8 @@
     "marketBreadth": "Marktbreite",
     "climateNews": "Klimanachrichten",
     "fx": "Devisenkurse",
-    "ukmtoIncidents": "UKMTO-Vorfälle"
+    "ukmtoIncidents": "UKMTO-Vorfälle",
+    "reservoirLevels": "Strategische Wasserstände"
   },
   "commands": {
     "prefixes": {
@@ -1153,7 +1154,8 @@
         "canadaRoads": "Kanada-Straßen",
         "canadaAlerts": "Kanada-Warnungen",
         "notamAirspace": "NOTAM-Luftraumbeschränkungen",
-        "no2Activity": "Industrielle Aktivität"
+        "no2Activity": "Industrielle Aktivität",
+        "reservoirLevels": "Wasserstände"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1277,7 +1279,8 @@
           "canadaRoads": "Offizielle Straßenvorkommnisse, Warnungen, Bedingungen, Sperrungen, Bauarbeiten und Gefahren in unterstützten Jurisdiktionen in Kanada",
           "canadaAlerts": "Provinzielle öffentliche Sicherheitswarnungen von Alberta Emergency Alert, B.C. Evacuation Orders and Alerts und SaskAlert",
           "notamAirspace": "Temporäre Flugbeschränkungen und beschränkter, Gefahren- und verbotener Luftraum aus FAA-NOTAMs, derzeit gültig oder innerhalb von 24 Stunden beginnend",
-          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten."
+          "no2Activity": "NO2-Aktivitätsrichtung aus Sentinel-5P für 167 Länder und 32 Industriecluster: das jüngste 56-Tage-Fenster gegenüber denselben Daten der Vorjahre, nach einem Totband von 10 %. Enthält modifizierte Copernicus-Sentinel-Daten.",
+          "reservoirLevels": "Wasserspiegel strategischer Stauseen und Seen aus dem NASA-Satellitenlidar ICESat-2, verglichen mit dem üblichen Stand für den Monat. Die NASA veröffentlicht jeden Überflug etwa zwei Monate nach der Messung."
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -3139,6 +3142,47 @@
       "body": "Ein Stern auf GitHub hilft anderen, es zu finden.",
       "star": "Auf GitHub mit Stern versehen",
       "dismiss": "Verwerfen und nicht mehr fragen"
+    },
+    "reservoirLevels": {
+      "note": "Wasserspiegel aus dem NASA-Satellitenlidar ICESat-2. Die NASA veröffentlicht jeden Überflug etwa zwei Monate nach der Messung, daher zeigt dies Veränderungen über Wochen und Jahreszeiten, nicht über Tage. Nur Wasserstand, kein Volumen.",
+      "source": "Quelle:",
+      "processedWith": "verarbeitet mit",
+      "empty": "Noch keine Messwerte",
+      "filterEmpty": "Keine Gewässer entsprechen diesem Filter",
+      "unavailable": "Wasserstandsdaten sind derzeit nicht verfügbar",
+      "filterLabel": "Gewässer filtern",
+      "filter": {
+        "all": "Alle",
+        "attention": "Auffällig",
+        "transboundary": "Grenzüberschreitend"
+      },
+      "status": {
+        "record_low": "Rekordtief",
+        "record_high": "Rekordhoch",
+        "falling_fast": "Fällt schnell",
+        "rising_fast": "Steigt schnell",
+        "low": "Niedrig für die Jahreszeit",
+        "high": "Hoch für die Jahreszeit",
+        "normal": "Im üblichen Bereich",
+        "insufficient_history": "Zu kurze Messreihe",
+        "no_recent_data": "Kein aktueller Überflug"
+      },
+      "vsUsual": "{{value}} gegenüber üblich im {{month}}",
+      "in12Months": "{{value}} in 12 Monaten",
+      "noComparison": "Noch kein Vergleich",
+      "measured": "gemessen am {{date}} ({{age}})",
+      "noPass": "Noch kein verwertbarer Überflug",
+      "popup": {
+        "level": "Wasserstand",
+        "levelValue": "{{value}} über dem Meeresspiegel (EGM2008)",
+        "anomaly": "Gegenüber üblich im {{month}}",
+        "anomalyPlain": "Gegenüber üblich im Monat",
+        "changePrev": "Seit dem letzten Überflug",
+        "change90": "In 90 Tagen",
+        "change365": "In 12 Monaten",
+        "measured": "Gemessen",
+        "sparkline": "Wasserstand über 36 Monate"
+      }
     }
   },
   "popups": {
@@ -4606,6 +4650,21 @@
         "related": {
           "0": "China-Aktivitäts-Nowcast",
           "1": "Länderbrief"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klima",
+        "purpose": "Markiert strategische Stauseen und Seen danach, wie ihr Wasserspiegel im Vergleich zum üblichen Stand zur selben Jahreszeit liegt und wie schnell er sich ändert.",
+        "source": "Wasseroberflächenhöhe von Binnengewässern aus NASA ICESat-2 ATL13 über NSIDC, verarbeitet mit SlideRule Earth und je Satellitenüberflug vom Dienst seed-reservoir-levels zusammengefasst.",
+        "freshness": "Tägliche Aktualisierung. Die NASA veröffentlicht jeden Überflug 50 bis 70 Tage nach der Messung, und ein Stausee wird alle paar Tage bis etwa einmal im Monat erneut erfasst.",
+        "confidence": "Ein Überflug zählt nur, wenn mindestens 5 Wassersegmente innerhalb von 0,25 m übereinstimmen. Ein saisonaler Vergleich braucht Überflüge aus mindestens 3 früheren Jahren zur selben Jahreszeit.",
+        "limitations": {
+          "0": "Nur Wasserstand, kein Volumen: Derselbe Rückgang bedeutet in jedem Stausee einen anderen Speicherverlust.",
+          "1": "Ein Gewässer ohne Überflug seit 150 Tagen erscheint als ohne aktuellen Überflug statt mit einem alten Wert."
+        },
+        "related": {
+          "0": "Panel „Strategische Wasserstände“",
+          "1": "Klimaanomalien"
         }
       },
       "conflicts": {

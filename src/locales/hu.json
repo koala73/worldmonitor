@@ -561,7 +561,8 @@
     "marketBreadth": "Piaci szélesség",
     "climateNews": "Klíma hírek",
     "fx": "Devizaárfolyamok",
-    "ukmtoIncidents": "UKMTO-események"
+    "ukmtoIncidents": "UKMTO-események",
+    "reservoirLevels": "Stratégiai vízszintek"
   },
   "commands": {
     "prefixes": {
@@ -1460,7 +1461,8 @@
         "canadaRoads": "Kanadai utak",
         "canadaAlerts": "Kanadai riasztások",
         "notamAirspace": "NOTAM légtéri korlátozások",
-        "no2Activity": "Ipari aktivitás"
+        "no2Activity": "Ipari aktivitás",
+        "reservoirLevels": "Vízszintek"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1577,7 +1579,8 @@
           "canadaRoads": "Hivatalos közúti események, figyelmeztetések, útviszonyok, lezárások, építkezések és veszélyek a támogatott kanadai joghatóságokból.",
           "canadaAlerts": "Tartományi közbiztonsági riasztások az Alberta Emergency Alert, a B.C. Evacuation Orders and Alerts és a SaskAlert forrásaiból.",
           "notamAirspace": "Ideiglenes repüléskorlátozások, valamint korlátozott, veszélyes és tiltott légtér az FAA NOTAM-jaiból, amely jelenleg érvényes vagy 24 órán belül kezdődik",
-          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz."
+          "no2Activity": "Sentinel-5P NO2-aktivitás iránya 167 országra és 32 ipari klaszterre: a legutóbbi 56 napos ablak az előző évek azonos dátumaihoz képest, 10%-os holtsáv után. Módosított Copernicus Sentinel adatokat tartalmaz.",
+          "reservoirLevels": "Stratégiai víztározók és tavak vízfelszínének szintje a NASA ICESat-2 műholdas lidarja alapján, a hónapra jellemző szinthez viszonyítva. A NASA minden áthaladást nagyjából két hónappal a mérés után tesz közzé."
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
@@ -3208,6 +3211,47 @@
       "body": "A GitHub-on adott csillag segít másoknak megtalálni.",
       "star": "Csillagozás a GitHubon",
       "dismiss": "Bezárás és többé ne kérdezz rá"
+    },
+    "reservoirLevels": {
+      "note": "Vízfelszín szintje a NASA ICESat-2 műholdas lidarja alapján. A NASA minden áthaladást nagyjából két hónappal a mérés után tesz közzé, ezért ez hetek és évszakok változását követi, nem napokét. Csak vízszint, nem térfogat.",
+      "source": "Forrás:",
+      "processedWith": "feldolgozás:",
+      "empty": "Még nincs mérés",
+      "filterEmpty": "Egy víztest sem felel meg ennek a szűrőnek",
+      "unavailable": "A vízszintadatok jelenleg nem érhetők el",
+      "filterLabel": "Víztestek szűrése",
+      "filter": {
+        "all": "Mind",
+        "attention": "Figyelmet igényel",
+        "transboundary": "Határokon átnyúló"
+      },
+      "status": {
+        "record_low": "Rekordalacsony",
+        "record_high": "Rekordmagas",
+        "falling_fast": "Gyorsan csökken",
+        "rising_fast": "Gyorsan emelkedik",
+        "low": "Alacsony az évszakhoz",
+        "high": "Magas az évszakhoz",
+        "normal": "Szokásos",
+        "insufficient_history": "Túl rövid előzmény",
+        "no_recent_data": "Nincs friss áthaladás"
+      },
+      "vsUsual": "{{value}} a szokásoshoz képest ({{month}})",
+      "in12Months": "{{value}} 12 hónap alatt",
+      "noComparison": "Még nincs összevetés",
+      "measured": "mérve: {{date}} ({{age}})",
+      "noPass": "Még nincs használható áthaladás",
+      "popup": {
+        "level": "Szint",
+        "levelValue": "{{value}} tengerszint felett (EGM2008)",
+        "anomaly": "A szokásoshoz képest ({{month}})",
+        "anomalyPlain": "A hónapra szokásoshoz képest",
+        "changePrev": "Az előző áthaladás óta",
+        "change90": "90 nap alatt",
+        "change365": "12 hónap alatt",
+        "measured": "Mérés ideje",
+        "sparkline": "Vízszint 36 hónap alatt"
+      }
     }
   },
   "popups": {
@@ -4606,6 +4650,21 @@
         "related": {
           "0": "Kína aktivitási nowcast",
           "1": "Országösszefoglaló"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Éghajlat",
+        "purpose": "Megjelöli a stratégiai víztározókat és tavakat aszerint, hogyan viszonyul vízszintjük az évszakra jellemző szinthez, és milyen gyorsan változik.",
+        "source": "Szárazföldi vizek felszínmagassága a NASA ICESat-2 ATL13 adataiból az NSIDC-n keresztül, a SlideRule Earth feldolgozásával, műholdas áthaladásonként összesítve a seed-reservoir-levels szolgáltatással.",
+        "freshness": "Naponta frissül. A NASA minden áthaladást 50–70 nappal a mérés után tesz közzé, és egy tározót néhány naponta vagy nagyjából havonta mérnek újra.",
+        "confidence": "Egy áthaladás csak akkor számít, ha legalább 5 vízszakasz 0,25 m-en belül egyezik. Az évszakos összevetéshez legalább 3 korábbi év azonos időszakából kellenek áthaladások.",
+        "limitations": {
+          "0": "Csak vízszint, nem térfogat: ugyanaz a csökkenés minden tározóban más készletveszteséget jelent.",
+          "1": "Ha egy víztestnél 150 napja nem volt áthaladás, régi érték helyett „nincs friss áthaladás” jelenik meg."
+        },
+        "related": {
+          "0": "Stratégiai vízszintek panel",
+          "1": "Éghajlati anomáliák"
         }
       },
       "conflicts": {

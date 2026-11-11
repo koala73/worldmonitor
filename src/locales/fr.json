@@ -494,7 +494,8 @@
     "marketBreadth": "Étendue du marché",
     "climateNews": "Actualités climatiques",
     "fx": "Taux de change",
-    "ukmtoIncidents": "Incidents UKMTO"
+    "ukmtoIncidents": "Incidents UKMTO",
+    "reservoirLevels": "Niveaux d’eau stratégiques"
   },
   "commands": {
     "prefixes": {
@@ -1261,7 +1262,8 @@
         "canadaRoads": "Routes du Canada",
         "canadaAlerts": "Alertes Canada",
         "notamAirspace": "Restrictions d'espace aérien NOTAM",
-        "no2Activity": "Activité industrielle"
+        "no2Activity": "Activité industrielle",
+        "reservoirLevels": "Niveaux d’eau"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1378,7 +1380,8 @@
           "canadaRoads": "Incidents routiers officiels, alertes, conditions, fermetures, travaux et dangers dans les juridictions canadiennes prises en charge",
           "canadaAlerts": "Alertes provinciales de sécurité publique d’Alberta Emergency Alert, B.C. Evacuation Orders and Alerts et SaskAlert",
           "notamAirspace": "Restrictions de vol temporaires et espaces aériens restreints, dangereux et interdits selon les NOTAMs de la FAA, en vigueur maintenant ou à partir des 24 prochaines heures",
-          "no2Activity": "Direction de l’activité NO2 de Sentinel-5P pour 167 pays et 32 pôles industriels : la dernière fenêtre de 56 jours comparée aux mêmes dates des années précédentes, après une bande morte de 10 %. Contient des données Copernicus Sentinel modifiées."
+          "no2Activity": "Direction de l’activité NO2 de Sentinel-5P pour 167 pays et 32 pôles industriels : la dernière fenêtre de 56 jours comparée aux mêmes dates des années précédentes, après une bande morte de 10 %. Contient des données Copernicus Sentinel modifiées.",
+          "reservoirLevels": "Niveau de la surface de l’eau des réservoirs et lacs stratégiques mesuré par le lidar satellite ICESat-2 de la NASA, comparé au niveau habituel du mois. La NASA publie chaque passage environ deux mois après la mesure."
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"
@@ -3160,6 +3163,47 @@
       "body": "Une étoile sur GitHub aide les autres à le découvrir.",
       "star": "Ajouter une étoile sur GitHub",
       "dismiss": "Masquer et ne plus demander"
+    },
+    "reservoirLevels": {
+      "note": "Niveau de la surface de l’eau mesuré par le lidar satellite ICESat-2 de la NASA. La NASA publie chaque passage environ deux mois après la mesure : ces données suivent donc l’évolution sur des semaines et des saisons, pas sur des jours. Niveau seulement, pas volume.",
+      "source": "Source :",
+      "processedWith": "traité avec",
+      "empty": "Aucune mesure pour l’instant",
+      "filterEmpty": "Aucun plan d’eau ne correspond à ce filtre",
+      "unavailable": "Les données de niveau d’eau sont indisponibles pour le moment",
+      "filterLabel": "Filtrer les plans d’eau",
+      "filter": {
+        "all": "Tous",
+        "attention": "À surveiller",
+        "transboundary": "Transfrontaliers"
+      },
+      "status": {
+        "record_low": "Plus bas historique",
+        "record_high": "Plus haut historique",
+        "falling_fast": "Baisse rapide",
+        "rising_fast": "Hausse rapide",
+        "low": "Bas pour la saison",
+        "high": "Haut pour la saison",
+        "normal": "Habituel",
+        "insufficient_history": "Historique insuffisant",
+        "no_recent_data": "Aucun passage récent"
+      },
+      "vsUsual": "{{value}} par rapport à l’habituel en {{month}}",
+      "in12Months": "{{value}} sur 12 mois",
+      "noComparison": "Pas encore de comparaison",
+      "measured": "mesuré le {{date}} ({{age}})",
+      "noPass": "Aucun passage exploitable pour l’instant",
+      "popup": {
+        "level": "Niveau",
+        "levelValue": "{{value}} au-dessus du niveau de la mer (EGM2008)",
+        "anomaly": "Par rapport à l’habituel en {{month}}",
+        "anomalyPlain": "Par rapport à l’habituel du mois",
+        "changePrev": "Depuis le passage précédent",
+        "change90": "Sur 90 jours",
+        "change365": "Sur 12 mois",
+        "measured": "Mesuré",
+        "sparkline": "Niveau d’eau sur 36 mois"
+      }
     }
   },
   "popups": {
@@ -4628,6 +4672,21 @@
         "related": {
           "0": "Nowcast d’activité de la Chine",
           "1": "Fiche pays"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Climat",
+        "purpose": "Signale les réservoirs et lacs stratégiques selon l’écart de leur niveau d’eau avec le niveau habituel à cette période de l’année et la vitesse de son évolution.",
+        "source": "Hauteur de la surface des eaux continentales NASA ICESat-2 ATL13 via le NSIDC, traitée avec SlideRule Earth et agrégée par passage du satellite par le service seed-reservoir-levels.",
+        "freshness": "Mise à jour quotidienne. La NASA publie chaque passage 50 à 70 jours après la mesure, et chaque réservoir est remesuré tous les quelques jours à environ un mois.",
+        "confidence": "Un passage ne compte que si au moins 5 segments d’eau concordent à 0,25 m près. Une comparaison saisonnière exige des passages d’au moins 3 années antérieures à la même période de l’année.",
+        "limitations": {
+          "0": "Niveau seulement, pas volume : une même baisse représente une perte de stock différente dans chaque réservoir.",
+          "1": "Un plan d’eau sans passage depuis 150 jours apparaît sans passage récent plutôt qu’avec une ancienne mesure."
+        },
+        "related": {
+          "0": "Panneau Niveaux d’eau stratégiques",
+          "1": "Anomalies climatiques"
         }
       },
       "conflicts": {

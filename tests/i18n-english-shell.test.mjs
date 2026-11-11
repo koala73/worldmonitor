@@ -10,8 +10,9 @@ const EN_SHELL_LOCALE = 'src/locales/en.shell.json';
 const COMPONENTS_DIR = 'src/components';
 // First-paint energy labels add 379 bytes to the formatted shell file, the
 // dashboard tab bar's new-tab options add 413, its team button adds 61, and
-// the team menu adds 492.
-const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492;
+// the team menu adds 492. Every panel title ships in the shell, so the
+// Strategic Water Levels panel title adds 49.
+const SHELL_BUDGET_BYTES = 52 * 1024 + 379 + 413 + 61 + 492 + 49;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

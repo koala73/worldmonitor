@@ -490,7 +490,8 @@
     "marketBreadth": "市場の広がり",
     "climateNews": "気候ニュース",
     "fx": "外国為替レート",
-    "ukmtoIncidents": "UKMTO事案"
+    "ukmtoIncidents": "UKMTO事案",
+    "reservoirLevels": "戦略的水位"
   },
   "commands": {
     "prefixes": {
@@ -1307,7 +1308,8 @@
         "canadaRoads": "カナダ道路情報",
         "canadaAlerts": "カナダ警報",
         "notamAirspace": "NOTAM飛行制限空域",
-        "no2Activity": "産業活動"
+        "no2Activity": "産業活動",
+        "reservoirLevels": "水位"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1424,7 +1426,8 @@
           "canadaRoads": "対応するカナダの管轄区域における公式の道路事故、警報、路面状況、通行止め、工事、危険情報",
           "canadaAlerts": "Alberta Emergency Alert、B.C. Evacuation Orders and Alerts、SaskAlert による州の公共安全警報",
           "notamAirspace": "FAA NOTAMの一時的飛行制限および制限空域、危険空域、禁止空域。現在有効、または24時間以内に開始予定",
-          "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。"
+          "no2Activity": "Sentinel-5P の NO2 活動の方向（167 か国と 32 の工業クラスター）: 直近 56 日間のウィンドウを過去数年の同じ日付と比較し、10% のデッドバンドを適用。改変された Copernicus Sentinel データを含みます。",
+          "reservoirLevels": "NASAの衛星ライダーICESat-2による戦略的な貯水池と湖の水面水位を、その月の平年水位と比較して表示します。NASAは各観測パスを測定の約2か月後に公開します。"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -3118,6 +3121,47 @@
       "body": "GitHub でスターをつけると、他のユーザーが見つけやすくなります。",
       "star": "GitHub でスターをつける",
       "dismiss": "非表示にして二度と表示しない"
+    },
+    "reservoirLevels": {
+      "note": "NASAの衛星ライダーICESat-2による水面水位。NASAは各パスを測定の約2か月後に公開するため、日単位ではなく週や季節単位の変化を追跡します。水位のみで、貯水量ではありません。",
+      "source": "出典:",
+      "processedWith": "処理:",
+      "empty": "まだ測定値はありません",
+      "filterEmpty": "このフィルターに一致する水域はありません",
+      "unavailable": "水位データは現在利用できません",
+      "filterLabel": "水域を絞り込む",
+      "filter": {
+        "all": "すべて",
+        "attention": "要注意",
+        "transboundary": "国際河川・湖沼"
+      },
+      "status": {
+        "record_low": "過去最低",
+        "record_high": "過去最高",
+        "falling_fast": "急低下",
+        "rising_fast": "急上昇",
+        "low": "季節平年より低い",
+        "high": "季節平年より高い",
+        "normal": "平年並み",
+        "insufficient_history": "履歴不足",
+        "no_recent_data": "最近のパスなし"
+      },
+      "vsUsual": "{{month}}の平年比 {{value}}",
+      "in12Months": "12か月で{{value}}",
+      "noComparison": "まだ比較なし",
+      "measured": "{{date}}測定（{{age}}）",
+      "noPass": "有効なパスはまだありません",
+      "popup": {
+        "level": "水位",
+        "levelValue": "海抜{{value}}（EGM2008）",
+        "anomaly": "{{month}}の平年比",
+        "anomalyPlain": "その月の平年比",
+        "changePrev": "前回のパス以降",
+        "change90": "90日間",
+        "change365": "12か月間",
+        "measured": "測定日",
+        "sparkline": "36か月の水位"
+      }
     }
   },
   "popups": {
@@ -4584,6 +4628,21 @@
         "related": {
           "0": "中国活動ナウキャスト",
           "1": "国別ブリーフ"
+        }
+      },
+      "reservoirLevels": {
+        "category": "気候",
+        "purpose": "戦略的な貯水池と湖を、水面水位が同じ時期の平年値と比べてどうか、またどれだけ速く変化しているかで示します。",
+        "source": "NSIDC経由のNASA ICESat-2 ATL13内水面高度。SlideRule Earthで処理し、seed-reservoir-levelsサービスが衛星パスごとに集約しています。",
+        "freshness": "毎日更新。NASAは各パスを測定の50〜70日後に公開し、各貯水池は数日から約1か月ごとに再観測されます。",
+        "confidence": "パスは少なくとも5つの水面区間が0.25 m以内で一致した場合のみ採用されます。季節比較には同じ時期の過去3年以上のパスが必要です。",
+        "limitations": {
+          "0": "水位のみで、貯水量ではありません。同じ低下でも貯水池ごとに失われる貯水量は異なります。",
+          "1": "150日間パスがない水域は、古い値ではなく「最近のパスなし」と表示されます。"
+        },
+        "related": {
+          "0": "戦略的水位パネル",
+          "1": "気候異常"
         }
       },
       "conflicts": {
