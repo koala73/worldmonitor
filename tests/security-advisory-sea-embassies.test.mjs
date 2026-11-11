@@ -23,12 +23,13 @@ function alertFeed(host) {
 
 describe('Southeast Asia US embassy alert feeds', () => {
   it('fetches each embassy through the RSS relay and tags its alerts with the host country', async () => {
-    const requestedHosts = new Set();
+    const requestedFeeds = new Set();
     const doFetch = async (url) => {
-      const target = new URL(url).searchParams.get('url');
+      const relay = new URL(url);
+      const target = relay.searchParams.get('url');
       const host = target ? new URL(target).hostname : '';
-      if (SEA_EMBASSIES.some((e) => e.host === host)) {
-        requestedHosts.add(host);
+      if (relay.pathname === '/rss' && SEA_EMBASSIES.some((e) => e.host === host)) {
+        requestedFeeds.add(target);
         return new Response(alertFeed(host), { status: 200 });
       }
       return new Response('', { status: 404 });
@@ -37,7 +38,10 @@ describe('Southeast Asia US embassy alert feeds', () => {
     const report = await fetchAll({ doFetch });
 
     for (const embassy of SEA_EMBASSIES) {
-      assert.ok(requestedHosts.has(embassy.host), `${embassy.host} requested through the relay allowlist`);
+      assert.ok(
+        requestedFeeds.has(`https://${embassy.host}/category/alert/feed/`),
+        `${embassy.host} alert feed requested through the relay allowlist`,
+      );
       const alert = report.advisories.find((a) => a.source === embassy.source);
       assert.ok(alert, `${embassy.source} alert stored`);
       assert.equal(alert.country, embassy.code);
