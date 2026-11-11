@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { countryBox, type CountryBox } from '../shared/country-bbox.ts';
+import { SCOPE_ISO2_CODES } from '../shared/tab-scope.ts';
+import COUNTRY_CENTROIDS from '../scripts/data/country-centroids.json' with { type: 'json' };
 import {
+  FOCUS_CENTRES,
   FOCUS_FIT_MAX_ZOOM,
+  focusCountryBox,
   focusFitBounds,
   focusGlobeAltitude,
+  focusSingleWorldFitBounds,
+  type FocusFitBounds,
 } from '../src/utils/focus-map.ts';
 
 function close(actual: number, expected: number, label: string): void {
@@ -74,15 +81,46 @@ describe('focus map fit (#10453)', () => {
     assert.ok(FOCUS_FIT_MAX_ZOOM >= 4 && FOCUS_FIT_MAX_ZOOM <= 7);
   });
 
-  it('returns null for an empty list, unknown codes, and countries without a box', () => {
+  it('returns null for an empty list and for codes with neither a box nor a centre', () => {
     assert.equal(focusFitBounds([]), null);
     assert.equal(focusFitBounds(['XX', '']), null);
-    // Singapore has no geometry in the bundled boundaries.
-    assert.equal(focusFitBounds(['SG']), null);
   });
 
-  it('skips countries without a box and fits the rest', () => {
-    assert.deepEqual(focusFitBounds(['SG', 'MY']), focusFitBounds(['MY']));
+  it('skips codes with neither a box nor a centre and fits the rest', () => {
+    assert.deepEqual(focusFitBounds(['XX', 'MY']), focusFitBounds(['MY']));
+  });
+
+  it('fits a small state missing from the bundled boundaries around its centre', () => {
+    // Singapore has no geometry in the bundled boundaries.
+    assert.equal(countryBox('SG'), null);
+    const fit = focusFitBounds(['SG']);
+    assert.ok(fit);
+    close(fit.center.lat, 1.36, 'SG lat');
+    close(fit.center.lon, 103.82, 'SG lon');
+    assert.ok(fit.lonSpan > 0 && fit.lonSpan <= 4 && fit.latSpan > 0 && fit.latSpan <= 4, `small box: ${fit.lonSpan} x ${fit.latSpan}`);
+    // Together with a neighbour the union still reaches Singapore.
+    const withMy = focusFitBounds(['SG', 'MY'])!;
+    assert.ok(withMy.south <= 1.36 && withMy.north >= 1.36);
+    assert.ok(withMy.west <= 103.82 && withMy.east >= 103.82);
+  });
+
+  it('can fit every selectable country except Antarctica', () => {
+    const unfittable = SCOPE_ISO2_CODES.filter((code) => !focusFitBounds([code]));
+    assert.deepEqual(unfittable, ['AQ']);
+  });
+
+  it('keeps the centre table to selectable countries without a box, copied from the sourced centroids', () => {
+    const centroids = COUNTRY_CENTROIDS as Record<string, [number, number]>;
+    for (const [code, centre] of Object.entries(FOCUS_CENTRES)) {
+      assert.ok(SCOPE_ISO2_CODES.includes(code), `${code} is selectable`);
+      assert.equal(countryBox(code), null, `${code} has a box, so it needs no centre`);
+      assert.deepEqual(centre, centroids[code], `${code} matches scripts/data/country-centroids.json`);
+    }
+    // A centre box never crosses the antimeridian (Tuvalu sits at 179.2).
+    for (const code of ['TV', 'WF', 'TO']) {
+      const box = focusCountryBox(code)!;
+      assert.ok(box.west <= box.east && box.west >= -180 && box.east <= 180, `${code}: ${JSON.stringify(box)}`);
+    }
   });
 
   it('returns null when a chosen country covers every longitude', () => {
@@ -104,6 +142,58 @@ describe('focus map fit (#10453)', () => {
     assert.equal(fit.west, 170);
     assert.equal(fit.east, 200);
     assert.equal(fit.center.lon, -175);
+  });
+
+  /**
+   * The longitudes a single-world flat map (MapLibre with renderWorldCopies
+   * false, or the SVG map) shows after a fit: the zoom MapLibre's
+   * cameraForBounds picks from the longitude span alone (latitude can only
+   * lower it, which widens the view), capped at the focus max zoom, then the
+   * centre clamped so the view stays inside the one world.
+   */
+  function singleWorldView(fit: FocusFitBounds, widthPx = 1200, paddingPx = 40): { west: number; east: number } {
+    const worldPxAtZ0 = 512;
+    const zoomForLon = Math.log2((widthPx - 2 * paddingPx) / ((fit.lonSpan / 360) * worldPxAtZ0));
+    const zoom = Math.min(FOCUS_FIT_MAX_ZOOM, zoomForLon);
+    const span = Math.min(360, (widthPx / (worldPxAtZ0 * 2 ** zoom)) * 360);
+    const half = span / 2;
+    const centre = Math.max(-180 + half, Math.min(180 - half, fit.center.lon));
+    return { west: centre - half, east: centre + half };
+  }
+
+  function shows(view: { west: number; east: number }, box: CountryBox): boolean {
+    return box.west >= view.west - 1e-9 && box.east <= view.east + 1e-9;
+  }
+
+  it('frames Fiji and the US inside the one world a flat map renders', () => {
+    const fit = focusSingleWorldFitBounds(['FJ', 'US']);
+    assert.ok(fit);
+    assert.ok(fit.west >= -180 && fit.east <= 180, `one world: ${fit.west}..${fit.east}`);
+    const view = singleWorldView(fit);
+    assert.ok(shows(view, countryBox('FJ')!), `Fiji in ${JSON.stringify(view)}`);
+    assert.ok(shows(view, countryBox('US')!), `US in ${JSON.stringify(view)}`);
+    // The short arc across the dateline drops Fiji once the map clamps it
+    // into one world: the reason the flat renderers do not use it.
+    assert.ok(!shows(singleWorldView(focusFitBounds(['FJ', 'US'])!), countryBox('FJ')!));
+  });
+
+  it('keeps the short arc for flat maps when it does not cross the antimeridian', () => {
+    assert.deepEqual(focusSingleWorldFitBounds(['TH', 'VN', 'ID']), focusFitBounds(['TH', 'VN', 'ID']));
+    assert.deepEqual(focusSingleWorldFitBounds(['SG']), focusFitBounds(['SG']));
+    assert.equal(focusSingleWorldFitBounds(['XX']), null);
+    assert.equal(focusSingleWorldFitBounds(['AQ']), null);
+  });
+
+  it('frames Russia on a flat map by its body west of the antimeridian, not the whole world', () => {
+    const fit = focusSingleWorldFitBounds(['RU']);
+    assert.ok(fit);
+    assert.equal(fit.west, 19.6);
+    assert.equal(fit.east, 180);
+    const withUs = focusSingleWorldFitBounds(['RU', 'US']);
+    assert.ok(withUs);
+    const view = singleWorldView(withUs);
+    assert.ok(shows(view, { ...countryBox('US')! }), `US in ${JSON.stringify(view)}`);
+    assert.ok(shows(view, { south: 41.21, west: 19.6, north: 81.29, east: 180 }), `Russia in ${JSON.stringify(view)}`);
   });
 
   it('maps the fitted span to a globe altitude that grows with the span', () => {

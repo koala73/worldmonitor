@@ -29708,6 +29708,9 @@ body.map-width-resizing {
 /* Focus editor dialog. */
 .focus-editor-overlay {
   background: var(--darken-heavy);
+  /* Above .mobile-tab-bar (10003), like .embed-modal-overlay: on a short
+     phone screen the bar otherwise covers Save and Cancel and takes their taps. */
+  z-index: 10020;
 }
 
 .focus-editor {

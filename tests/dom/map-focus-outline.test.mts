@@ -11,7 +11,7 @@ import { DeckGLMap } from '@/components/DeckGLMap';
 import { GlobeMap } from '@/components/GlobeMap';
 import { MapComponent } from '@/components/Map';
 import { MapContainer } from '@/components/MapContainer';
-import { focusFitBounds } from '@/utils/focus-map';
+import { focusFitBounds, focusSingleWorldFitBounds } from '@/utils/focus-map';
 
 const OUTLINE = { chosen: ['TH', 'VN', 'ID'], neighbours: ['KH', 'LA', 'MY'] };
 
@@ -102,14 +102,19 @@ describe('DeckGL focus outline', () => {
     expect(codesOf(map.filters.get('country-focus-chosen-border')!)).toEqual(['TH', 'VN', 'ID']);
   });
 
-  it('fits the unwrapped bounds with the zoom cap and flies to a normalized centre', () => {
+  it('fits the given bounds with the zoom cap and flies to a normalized centre', () => {
     const { deck, map } = deckHost();
-    const fit = focusFitBounds(['FJ', 'US'])!;
+    const fit = focusSingleWorldFitBounds(['FJ', 'US'])!;
     deck.fitFocusBounds(fit, 6);
     expect(map.cameraForBounds).toHaveBeenCalledWith(
       [[fit.west, fit.south], [fit.east, fit.north]],
       expect.objectContaining({ maxZoom: 6 }),
     );
+    // One world (renderWorldCopies: false): the bounds stay in [-180, 180]
+    // and cover Fiji (177.34..180) and the US (-168.08..-66.98).
+    expect(fit.west).toBeGreaterThanOrEqual(-180);
+    expect(fit.west).toBeLessThanOrEqual(-168.08);
+    expect(fit.east).toBe(180);
     const [options] = map.flyTo.mock.calls[0]!;
     expect(options.center[0]).toBeCloseTo(235.18 - 360, 6);
     expect(options.zoom).toBe(4.2);
@@ -273,6 +278,7 @@ describe('MapContainer focus scope', () => {
       fitFocusBounds: vi.fn(),
       setCenter: vi.fn(),
       setView: vi.fn(),
+      setZoom: vi.fn(),
     };
   }
 
@@ -379,6 +385,24 @@ describe('MapContainer focus scope', () => {
     expect(deck.setView.mock.invocationCallOrder[0]).toBeLessThan(deck.fitFocusBounds.mock.invocationCallOrder[0]!);
   });
 
+  it('drops a queued fit when a later viewport command was queued after it', async () => {
+    const { map, deck } = container({ ready: false });
+    map.setFocusScope(OUTLINE, { fit: true });
+    await vi.dynamicImportSettled();
+    map.setZoom(2); // queued after the fit, before the renderer is ready
+    map.markRendererReady(1);
+    expect(deck.setZoom).toHaveBeenCalledWith(2);
+    expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+
+    const later = container({ ready: false });
+    later.map.setFocusScope(OUTLINE, { fit: true });
+    await vi.dynamicImportSettled();
+    later.map.setView('eu');
+    later.map.markRendererReady(1);
+    expect(later.deck.setView).toHaveBeenCalledWith('eu', undefined);
+    expect(later.deck.fitFocusBounds).not.toHaveBeenCalled();
+  });
+
   it('drops a queued fit when the user moved the map before the renderer was ready', async () => {
     const { map, deck } = container({ ready: false });
     map.setFocusScope(OUTLINE, { fit: true });
@@ -407,12 +431,38 @@ describe('MapContainer focus scope', () => {
     expect(deck.fitFocusBounds).toHaveBeenCalledOnce();
   });
 
-  it('does not fit when no chosen country has a box, but still outlines', async () => {
+  it('fits a small state without a boundary box around its centre', async () => {
     const { map, deck } = container();
     map.setFocusScope({ chosen: ['SG'], neighbours: ['MY', 'ID'] }, { fit: true });
     await vi.dynamicImportSettled();
     expect(deck.setFocusOutline).toHaveBeenCalledWith({ chosen: ['SG'], neighbours: ['MY', 'ID'] });
+    expect(deck.fitFocusBounds).toHaveBeenCalledWith(focusFitBounds(['SG']), 6);
+  });
+
+  it('does not fit when no chosen country can be placed, but still outlines', async () => {
+    const { map, deck } = container();
+    map.setFocusScope({ chosen: ['XX'], neighbours: ['MY'] }, { fit: true });
+    await vi.dynamicImportSettled();
+    expect(deck.setFocusOutline).toHaveBeenCalledWith({ chosen: ['XX'], neighbours: ['MY'] });
     expect(deck.fitFocusBounds).not.toHaveBeenCalled();
+  });
+
+  it('gives the one-world flat renderers a fit inside [-180, 180] and the globe the short arc', async () => {
+    const pacific = { chosen: ['FJ', 'US'], neighbours: [] };
+    const deck = container({ renderer: 'deck' });
+    deck.map.setFocusScope(pacific, { fit: true });
+    const svg = container({ renderer: 'svg' });
+    svg.map.setFocusScope(pacific, { fit: true });
+    const globe = container({ renderer: 'globe' });
+    globe.map.setFocusScope(pacific, { fit: true });
+    await vi.dynamicImportSettled();
+    const flat = focusSingleWorldFitBounds(['FJ', 'US'])!;
+    expect(flat.east).toBeLessThanOrEqual(180);
+    expect(deck.deck.fitFocusBounds).toHaveBeenCalledWith(flat, 6);
+    expect(svg.svg.fitFocusBounds).toHaveBeenCalledWith(flat);
+    const arc = focusFitBounds(['FJ', 'US'])!;
+    expect(arc.east).toBeGreaterThan(180);
+    expect(globe.globe.fitFocusBounds).toHaveBeenCalledWith(arc, expect.any(Number));
   });
 
   it('re-applies the outline to a renderer created after a switch', () => {

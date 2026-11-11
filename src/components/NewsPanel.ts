@@ -541,7 +541,7 @@ export class NewsPanel extends Panel {
   }
 
   /** 0 chosen country (or unfocused), 1 neighbour, 2 no country. */
-  private scopeRank(item: Pick<NewsItem, 'link' | 'title'>): number {
+  private scopeRank(item: NewsIdentity): number {
     if (this.scopeRows.size === 0) return 0;
     return this.scopeRows.get(newsScopeKey(item))?.rank ?? 2;
   }

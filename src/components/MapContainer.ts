@@ -91,7 +91,10 @@ type PendingViewportAction =
   | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number }
   | {
     type: 'focus';
+    /** Short arc, for the globe. */
     fit: FocusFitBounds;
+    /** Inside [-180, 180], for the one-world flat renderers (DeckGL, SVG). */
+    flatFit: FocusFitBounds;
     maxZoom: number;
     altitude: number;
     /** humanViewportInteractionToken when the fit was requested. */
@@ -467,7 +470,13 @@ export class MapContainer {
       if (action.type === 'view') this.applyView(action.view, action.zoom);
       else if (action.type === 'zoom') this.applyZoom(action.zoom);
       else if (action.type === 'focus') {
-        if (action.authority === this.humanViewportInteractionToken && action.seq === this.focusFitSeq) this.applyFocusFit(action);
+        // A viewport command queued after the fit supersedes it, as it does
+        // before the fit is queued (setFocusScope's token check).
+        if (
+          action.actionToken === this.viewportActionToken
+          && action.authority === this.humanViewportInteractionToken
+          && action.seq === this.focusFitSeq
+        ) this.applyFocusFit(action);
       } else this.applyCenter(action.lat, action.lon, action.zoom);
     }
   }
@@ -1864,14 +1873,16 @@ export class MapContainer {
     const actionToken = ++this.viewportActionToken;
     const authority = this.humanViewportInteractionToken;
     const chosen = [...focus.chosen];
-    void loadFocusMap().then(({ focusFitBounds, focusGlobeAltitude, FOCUS_FIT_MAX_ZOOM }) => {
+    void loadFocusMap().then(({ focusFitBounds, focusSingleWorldFitBounds, focusGlobeAltitude, FOCUS_FIT_MAX_ZOOM }) => {
       if (this.destroyed || seq !== this.focusFitSeq) return;
       if (actionToken !== this.viewportActionToken || authority !== this.humanViewportInteractionToken) return;
       const fit = focusFitBounds(chosen);
-      if (!fit) return;
+      const flatFit = focusSingleWorldFitBounds(chosen);
+      if (!fit || !flatFit) return;
       const action: Extract<PendingViewportAction, { type: 'focus' }> = {
         type: 'focus',
         fit,
+        flatFit,
         maxZoom: FOCUS_FIT_MAX_ZOOM,
         altitude: focusGlobeAltitude(fit),
         authority,
@@ -1897,8 +1908,8 @@ export class MapContainer {
 
   private applyFocusFit(action: Extract<PendingViewportAction, { type: 'focus' }>): void {
     if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
-    if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.fit, action.maxZoom);
-    else this.svgMap?.fitFocusBounds(action.fit);
+    if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.flatFit, action.maxZoom);
+    else this.svgMap?.fitFocusBounds(action.flatFit);
   }
 
   public highlightCountry(code: string): void {
