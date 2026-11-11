@@ -26,7 +26,7 @@ const row = (source, i, countryCodes = []) => ({
   programs: ['TEST'], entityType: 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL', effectiveAt: '0',
   isNew: false, _aliases: [`Alias ${source} ${i}`], _identifiers: [],
 });
-const canadian = Array.from({ length: 80 }, (_, i) => row(SEMA_SOURCE, i + 1));
+const canadian = Array.from({ length: 80 }, (_, i) => ({ ...row(SEMA_SOURCE, i + 1), _regime: 'Iran', _targetCountryCodes: ['IR'] }));
 const cslRow = (source, i) => ({
   id: `${source}:${i.toString(16).padStart(56, '0')}`, name: `${source} Firm ${i}`, sourceLists: [source],
   countryCodes: ['CN'], countryNames: [], programs: [], entityType: 'SANCTIONS_ENTITY_TYPE_UNSPECIFIED',
@@ -221,6 +221,29 @@ describe('sanctions source lifecycle', () => {
     });
     assert.equal(verdict.status, 'SEED_ERROR');
     assert.equal(verdict.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+  });
+
+  it('publishes SEMA target failures as attribution seed errors, independently of healthy OFAC', async () => {
+    const semaRecords = canadian.map(entry => ({ ...entry, _targetCountryCodes: [] }));
+    const { data, options } = await publish({ semaRecords });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.degraded, false);
+    assert.equal(result.freshnessMetaPatch.semaAttribution.regimes.Iran.unattributedShare, 1);
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._semaAttribution, undefined);
+  });
+
+  it('publishes aircraft resolution failures as seed errors despite whole-list headroom', async () => {
+    const { data, options } = await publish({ io: { fetchSource: async ({ label }) => ({ datasetDate: now,
+      entries: [...Array.from({ length: 99 }, (_, i) => row(label, i + 1, ['RU'])),
+        { ...row(label, 100), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' }],
+    }) } });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0.01);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedAircraftShare, 1);
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
   });
 
   it('keeps health OK and names the quarantined Canadian rows in source health', async () => {

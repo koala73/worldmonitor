@@ -2332,7 +2332,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanktioner och beteckningar",
-      "infoTooltip": "Office of Foreign Assets Control särskilt utnämnda medborgare och konsoliderade listor plus Global Affairs Canada SEMA/JVCFOA-utseenden. Visar vilka länder som står inför högst utseendestryck, vilka program som driver det och vad som nyligen lagts till sedan senaste uppdateringen.",
+      "infoTooltip": "OFAC:s SDN- och konsoliderade listor samt Kanadas SEMA/JVCFOA-sanktioner. Landsrader använder direkta kopplingar. Fartygsflaggor och flygplansregistreringar räknas separat under register; noll tillgångar för ett land betyder inte att sanktionerade tillgångar saknas. Moderorganisationers länder hålls åtskilda från adressuppgifter och ingår inte i riskpoäng.",
       "loading": "Läser in sanktionsdata...",
       "unavailable": "Sanktionsdata är inte tillgänglig.",
       "summary": {

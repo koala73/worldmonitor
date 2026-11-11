@@ -35,6 +35,8 @@ export interface SanctionsEntry {
   effectiveAt: string;
   isNew: boolean;
   note: string;
+  parentCountryCodes: string[];
+  parentCountryNames: string[];
 }
 
 export interface CountrySanctionsPressure {

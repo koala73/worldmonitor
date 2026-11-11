@@ -2716,7 +2716,7 @@
     },
     "sanctionsPressure": {
       "title": "Yaptırımlar ve Tanımlamalar",
-      "infoTooltip": "Yabancı Varlıklar Kontrol Ofisi Özel Olarak Belirlenen Vatandaşlar ve Birleştirilmiş Listeler artı Global İşler Kanada SEMA/JVCFOA listeleme ekleri. Hangi ülkelerin en yüksek listeleme baskısı altında olduğunu, hangi programların bunu çalıştırdığını ve son güncellemeden bu yana yeni eklenenler gösterir.",
+      "infoTooltip": "OFAC SDN ve birleştirilmiş listeler ile Kanada SEMA/JVCFOA yaptırımları. Ülke satırları doğrudan bağlantıları kullanır. Gemi bayrakları ve uçak tescilleri sicillerde ayrı sayılır; bir ülkenin varlık sayısının sıfır olması yaptırıma tabi varlık bulunmadığı anlamına gelmez. Ana kuruluşların ülkeleri adres kanıtlarından ayrı tutulur ve risk puanlarına katılmaz.",
       "loading": "Yaptırım verileri yükleniyor...",
       "unavailable": "Yaptırım verileri kullanılamıyor.",
       "summary": {

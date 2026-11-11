@@ -2569,8 +2569,10 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           entries: { type: 'array', items: { type: 'object', properties: {
             countryCodes: { type: ['array', 'string'] }, entityType: { type: 'string' },
+            parentCountryCodes: { type: 'array', items: { type: 'string' }, description: 'Linked-parent countries for addressless entities, separate from direct country evidence and excluded from country risk counts.' },
+            parentCountryNames: { type: 'array', items: { type: 'string' } },
           } } },
-          countries: { type: 'array', items: { type: 'object', properties: {
+          countries: { type: 'array', description: 'Direct country associations. Asset counts here exclude flags and aircraft registries; zero does not imply no sanctioned assets in a registry. Use flagRegistries for registry counts.', items: { type: 'object', properties: {
             countryCode: { type: 'string' }, pressureScore: { type: 'number' },
           } } },
           unattributed: { type: 'object', description: 'Counts across the full pressure snapshot before country or entity filters.', properties: {
@@ -2656,6 +2658,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowArray(data, 'entities', (e) => matchesCode(e.cc, countries));
         narrowNested(data, 'pressure', 'entries', (e) => matchesCode(e.countryCodes, countries));
         narrowNested(data, 'pressure', 'countries', (c) => matchesCode(c.countryCode, countries));
+        narrowNested(data, 'pressure', 'flagRegistries', (c) => matchesCode(c.countryCode, countries));
       }
       if (etype) {
         narrowArray(data, 'entities', (e) => ciIncludes(e.et, etype));

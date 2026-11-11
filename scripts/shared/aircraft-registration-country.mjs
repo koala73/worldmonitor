@@ -2,12 +2,13 @@
 // A mark is the registration text before the first hyphen. Marks with a
 // sub-allocation by the first letter after the hyphen are keyed `MARK-L`.
 // Shared or reassigned marks (PJ, T9, SU-Y) are omitted: they name no single state.
+// 4U uses the reserved UN code for United Nations aircraft, not a national state.
 const NATIONALITY_MARKS = Object.freeze(Object.assign(Object.create(null), {
   2: 'GG', A2: 'BW', A3: 'TO', A4O: 'OM', A5: 'BT', A6: 'AE', A7: 'QA', A8: 'LR', A9C: 'BH', AP: 'PK',
   C: 'CA', CF: 'CA', C2: 'NR', C3: 'AD', C5: 'GM', C6: 'BS', C9: 'MZ', CC: 'CL', CN: 'MA', CP: 'BO',
   CR: 'PT', CS: 'PT', CU: 'CU', CX: 'UY',
   D: 'DE', D2: 'AO', D4: 'CV', D6: 'KM', DQ: 'FJ',
-  E3: 'ER', E5: 'CK', E7: 'BA', EC: 'ES', EI: 'IE', EJ: 'IE', EK: 'AM', EP: 'IR', ER: 'MD', ES: 'EE',
+  E3: 'ER', E4: 'PS', E5: 'CK', E7: 'BA', EC: 'ES', EI: 'IE', EJ: 'IE', EK: 'AM', EP: 'IR', ER: 'MD', ES: 'EE',
   ET: 'ET', EW: 'BY', EX: 'KG', EY: 'TJ', EZ: 'TM',
   F: 'FR', G: 'GB',
   H4: 'SB', HA: 'HU', HB: 'CH', HC: 'EC', HH: 'HT', HI: 'DO', HK: 'CO', HL: 'KR', HP: 'PA', HR: 'HN',
@@ -26,12 +27,12 @@ const NATIONALITY_MARKS = Object.freeze(Object.assign(Object.create(null), {
   UK: 'UZ', UN: 'KZ', UP: 'KZ', UR: 'UA',
   V2: 'AG', V3: 'BZ', V4: 'KN', V5: 'NA', V6: 'FM', V7: 'MH', V8: 'BN', VH: 'AU', VN: 'VN', VT: 'IN',
   'VP-A': 'AI', 'VP-B': 'BM', 'VQ-B': 'BM', 'VP-C': 'KY', 'VP-F': 'FK', 'VP-L': 'VG', 'VP-M': 'MS',
-  'VQ-T': 'TC',
+  'VP-G': 'GI', 'VQ-H': 'SH', 'VQ-T': 'TC',
   XA: 'MX', XB: 'MX', XC: 'MX', XT: 'BF', XU: 'KH', XY: 'MM', XZ: 'MM',
   YA: 'AF', YI: 'IQ', YJ: 'VU', YK: 'SY', YL: 'LV', YN: 'NI', YR: 'RO', YS: 'SV', YU: 'RS', YV: 'VE',
-  Z: 'ZW', Z3: 'MK', ZA: 'AL', ZK: 'NZ', ZP: 'PY', ZS: 'ZA', ZT: 'ZA', ZU: 'ZA',
+  Z: 'ZW', Z3: 'MK', Z8: 'SS', ZA: 'AL', ZK: 'NZ', ZP: 'PY', ZS: 'ZA', ZT: 'ZA', ZU: 'ZA',
   '3A': 'MC', '3B': 'MU', '3C': 'GQ', '3D': 'SZ', '3X': 'GN',
-  '4K': 'AZ', '4L': 'GE', '4O': 'ME', '4R': 'LK', '4W': 'TL', '4X': 'IL',
+  '4K': 'AZ', '4L': 'GE', '4O': 'ME', '4R': 'LK', '4U': 'UN', '4W': 'TL', '4X': 'IL',
   '5A': 'LY', '5B': 'CY', '5H': 'TZ', '5N': 'NG', '5R': 'MG', '5T': 'MR', '5U': 'NE', '5V': 'TG',
   '5W': 'WS', '5X': 'UG', '5Y': 'KE',
   '6O': 'SO', '6V': 'SN', '6Y': 'JM',
@@ -43,7 +44,7 @@ const NATIONALITY_MARKS = Object.freeze(Object.assign(Object.create(null), {
 
 // Registries that write the mark without a hyphen, followed by a digit
 // (N200VR, JA8089, HL7xxx, YV2040).
-const UNHYPHENATED = /^(N|JA|HL|YV)\d/;
+const UNHYPHENATED = /^(N|JA|HL|YV|RA)\d/;
 
 // China, Taiwan, Hong Kong and Macao share the B mark.
 function chinaRegistry(suffix) {
@@ -54,7 +55,7 @@ function chinaRegistry(suffix) {
 
 /** State of registry for an aircraft registration mark, or null when it names none. */
 export function aircraftRegistrationCountry(raw) {
-  const tail = String(raw ?? '').trim().toUpperCase();
+  const tail = String(raw ?? '').trim().toUpperCase().replace(/\s*-\s*/g, '-');
   const hyphen = tail.indexOf('-');
   if (hyphen === -1) return NATIONALITY_MARKS[tail.match(UNHYPHENATED)?.[1]] ?? null;
   const mark = tail.slice(0, hyphen);
