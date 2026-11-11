@@ -255,11 +255,13 @@ function countUnattributed(entries) {
 function ofacAttributionHealth(entries) {
   const vesselCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL').length;
   const aircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
+  // Location evidence cannot prove that aircraft registry resolution still works.
+  const unattributedAircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && !hasCountryCode(entry._flagCode)).length;
   const unattributed = countUnattributed(entries);
   const share = (count, total) => (total > 0 ? Math.round((count / total) * 10_000) / 10_000 : null);
   const entryShare = share(unattributed.entryCount, entries.length);
   const vesselShare = share(unattributed.vesselCount, vesselCount);
-  const aircraftShare = share(unattributed.aircraftCount, aircraftCount);
+  const aircraftShare = share(unattributedAircraftCount, aircraftCount);
   return {
     entryCount: entries.length,
     unattributedCount: unattributed.entryCount,
@@ -268,13 +270,13 @@ function ofacAttributionHealth(entries) {
     unattributedVesselCount: unattributed.vesselCount,
     unattributedVesselShare: vesselShare,
     aircraftCount,
-    unattributedAircraftCount: unattributed.aircraftCount,
+    unattributedAircraftCount,
     unattributedAircraftShare: aircraftShare,
     maxShare: OFAC_UNATTRIBUTED_MAX_SHARE,
     aircraftMaxShare: OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE,
     degraded: unattributed.entryCount > entries.length * OFAC_UNATTRIBUTED_MAX_SHARE
       || unattributed.vesselCount > vesselCount * OFAC_UNATTRIBUTED_MAX_SHARE
-      || unattributed.aircraftCount > aircraftCount * OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE,
+      || unattributedAircraftCount > aircraftCount * OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE,
   };
 }
 

@@ -492,6 +492,17 @@ describe('ofacAttributionHealth', () => {
     assert.equal(ofacAttributionHealth(atThreshold).degraded, false);
   });
 
+  it('detects registry loss even when aircraft have location countries', () => {
+    const health = ofacAttributionHealth([
+      ...rows(990, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']),
+      ...rows(10, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', ['IR']),
+    ]);
+    assert.equal(health.unattributedShare, 0);
+    assert.equal(health.unattributedAircraftCount, 10);
+    assert.equal(health.unattributedAircraftShare, 1);
+    assert.equal(health.degraded, true);
+  });
+
   it('stays healthy at the threshold and without OFAC records', () => {
     assert.equal(ofacAttributionHealth([
       ...rows(90, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['RU']), ...rows(10, 'SANCTIONS_ENTITY_TYPE_VESSEL', []),

@@ -237,10 +237,10 @@ describe('sanctions source lifecycle', () => {
   it('publishes aircraft resolution failures as seed errors despite whole-list headroom', async () => {
     const { data, options } = await publish({ io: { fetchSource: async ({ label }) => ({ datasetDate: now,
       entries: [...Array.from({ length: 99 }, (_, i) => row(label, i + 1, ['RU'])),
-        { ...row(label, 100), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' }],
+        { ...row(label, 100, ['IR']), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' }],
     }) } });
     const result = await options.afterPublish(data, {});
-    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0.01);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0);
     assert.equal(result.freshnessMetaPatch.attribution.unattributedAircraftShare, 1);
     assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
     assert.equal(result.completionState, 'DEGRADED');
