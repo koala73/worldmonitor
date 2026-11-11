@@ -33,6 +33,7 @@
     "topPicks": 3,
     "recommendations": 13,
     "webAnswers": 117,
+    "searchedAnswers": 89,
     "citations": 25,
     "aeoScore": 5.3,
     "shareOfVoice": 0.05439330543933055
@@ -44,6 +45,7 @@
       "topPicks": 0,
       "recommendations": 0,
       "webAnswers": 0,
+      "searchedAnswers": null,
       "citations": null,
       "aeoScore": 0,
       "shareOfVoice": 0
@@ -54,6 +56,7 @@
       "topPicks": 0,
       "recommendations": 6,
       "webAnswers": 39,
+      "searchedAnswers": 31,
       "citations": 3,
       "aeoScore": 5.8,
       "shareOfVoice": 0.1111111111111111
@@ -64,6 +67,7 @@
       "topPicks": 0,
       "recommendations": 0,
       "webAnswers": 0,
+      "searchedAnswers": null,
       "citations": null,
       "aeoScore": 0,
       "shareOfVoice": 0
@@ -74,6 +78,7 @@
       "topPicks": 0,
       "recommendations": 0,
       "webAnswers": 39,
+      "searchedAnswers": 19,
       "citations": 4,
       "aeoScore": 1,
       "shareOfVoice": 0
@@ -84,6 +89,7 @@
       "topPicks": 3,
       "recommendations": 7,
       "webAnswers": 39,
+      "searchedAnswers": 39,
       "citations": 18,
       "aeoScore": 15.5,
       "shareOfVoice": 0.20588235294117646

@@ -82,7 +82,7 @@ export function inputsDigest(files) {
   })));
 }
 
-function group(metrics) {
+function group(metrics, searchedAnswers = null) {
   invariant(Number.isInteger(metrics?.n) && metrics.n > 0, 'a scored group has no answers');
   const count = (rate, of) => (rate === null || rate === undefined ? null : Math.round(rate * of));
   const webAnswers = metrics.web_answers ?? 0;
@@ -92,6 +92,10 @@ function group(metrics) {
     topPicks: count(metrics.top_pick_rate, metrics.n),
     recommendations: count(metrics.recommend_rate, metrics.n),
     webAnswers,
+    // Web answers that actually ran a search. The citation rate is over all
+    // web answers, so a fall here explains a citation drop without a
+    // visibility change.
+    searchedAnswers: webAnswers > 0 ? searchedAnswers : null,
     citations: webAnswers > 0 ? count(metrics.citation_rate, webAnswers) : null,
     aeoScore: metrics.aeo_score,
     shareOfVoice: metrics.share_of_voice ?? null,
@@ -112,7 +116,11 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
   const answers = latestByKey(readJsonl(join(runDir, 'answers.jsonl')));
   const queries = readJson(join(runDir, 'queries.json'));
   const plannedByVariant = {};
-  for (const answer of answers) plannedByVariant[answer.model] = (plannedByVariant[answer.model] ?? 0) + 1;
+  const searchedByVariant = {};
+  for (const answer of answers) {
+    plannedByVariant[answer.model] = (plannedByVariant[answer.model] ?? 0) + 1;
+    if (!answer.error && answer.web_search && answer.searched) searchedByVariant[answer.model] = (searchedByVariant[answer.model] ?? 0) + 1;
+  }
   const unscoredByVariant = Object.fromEntries(Object.entries(plannedByVariant)
     .map(([label, planned]) => [label, planned - (scores.by_model?.[label]?.n ?? 0)])
     .filter(([, count]) => count > 0)
@@ -121,7 +129,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     Object.entries(scores.by_model ?? {})
       .filter(([, metrics]) => metrics?.n > 0)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, metrics]) => [label, group(metrics)]),
+      .map(([label, metrics]) => [label, group(metrics, searchedByVariant[label] ?? 0)]),
   );
   const planned = answers.length;
   const scored = scores.overall?.n ?? 0;
@@ -147,7 +155,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
       variants: Object.keys(byVariant),
     },
     answers: { planned, scored, unscored, unscoredByVariant },
-    overall: group(scores.overall),
+    overall: group(scores.overall, Object.values(searchedByVariant).reduce((sum, value) => sum + value, 0)),
     byVariant,
     spendUsd,
   };
@@ -259,7 +267,7 @@ export function renderMarkdown(snapshot, comparison, earlier) {
     '',
     `World Monitor was named in ${overall.mentions} of ${overall.answers} model answers (${pct(rate(overall.mentions, overall.answers))}) to ${snapshot.design.questions} fixed buyer questions, asked ${snapshot.design.repetitions} times each per model variant.`,
     overall.webAnswers > 0
-      ? `Answers that used web search cited worldmonitor.app ${overall.citations} of ${overall.webAnswers} times (${pct(rate(overall.citations, overall.webAnswers))}).`
+      ? `Answers that had web search cited worldmonitor.app ${overall.citations} of ${overall.webAnswers} times (${pct(rate(overall.citations, overall.webAnswers))}); ${overall.searchedAnswers} of those ${overall.webAnswers} actually searched.`
       : 'No answer used web search, so there is no citation rate.',
     '',
     'These are model API answers judged by answerrank, not observations of the ChatGPT, Perplexity or Google AI products. Read the counts, not the AEO score: its weights were never fitted to real traffic.',
@@ -284,10 +292,10 @@ export function renderMarkdown(snapshot, comparison, earlier) {
     '',
     '## By model variant',
     '',
-    '| Variant | Answers | Named | Top pick | Cited (web answers) | AEO score |',
-    '|---|---:|---:|---:|---:|---:|',
+    '| Variant | Answers | Named | Top pick | Searched | Cited (web answers) | AEO score |',
+    '|---|---:|---:|---:|---:|---:|---:|',
     ...Object.entries(snapshot.byVariant).map(([label, g]) => (
-      `| ${label} | ${g.answers} | ${g.mentions} (${pct(rate(g.mentions, g.answers))}) | ${g.topPicks} | ${g.webAnswers > 0 ? `${g.citations} of ${g.webAnswers}` : 'n/a'} | ${g.aeoScore} |`
+      `| ${label} | ${g.answers} | ${g.mentions} (${pct(rate(g.mentions, g.answers))}) | ${g.topPicks} | ${g.webAnswers > 0 ? `${g.searchedAnswers} of ${g.webAnswers}` : 'n/a'} | ${g.webAnswers > 0 ? `${g.citations} of ${g.webAnswers}` : 'n/a'} | ${g.aeoScore} |`
     )),
   );
   if (snapshot.answers.unscored > 0) {

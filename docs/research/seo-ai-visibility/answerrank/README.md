@@ -25,7 +25,8 @@ are likely to move.
   hash, for Linux and Python 3.13. Together these four files produce the
   `inputsDigest`.
 - `<date>.json` is the snapshot. It holds counts, not just rates: answers,
-  mentions, top picks, web answers and citations, overall and per model
+  mentions, top picks, web answers, web answers that actually searched, and
+  citations, overall and per model
   variant, plus unscored answers, spend and the comparison with the previous
   comparable week.
 - `<date>.md` is the human summary: headline counts, the verdict, a table per
@@ -55,7 +56,9 @@ next PR to say "not compared".
 When the verdict is `declined`, the workflow opens an issue titled "AI-answer
 visibility declined", or comments on the open one, so the drop does not stay
 inside a PR that merges itself. Each alert carries a marker with the snapshot
-date. A rerun in a week whose PR already exists skips the paid collection but
+date. Only issues with exactly that title opened by `github-actions[bot]`, and
+only that bot's comments, count, so an outside issue or comment cannot absorb
+or suppress an alert. A rerun in a week whose PR already exists skips the paid collection but
 retries the alert from that week's saved snapshot, and the marker keeps it from
 reporting the same week twice.
 
@@ -71,9 +74,13 @@ they are read from `.env.local` through `loadEnvFile()`. In CI they come from
 repository secrets. Without all three, the workflow step skips with a notice.
 One run takes about 30 minutes and costs about $8.
 
-The workflow installs the hash-pinned wheels from `inputs/requirements.txt` in
-a step that has no secrets, fetches answerrank by commit, and only then runs
-the collector with the keys. Locally, with answerrank on your `PATH` (set
+In CI the run happens in its own `answerrank` job, because answerrank is
+third-party code. That job's token can only read, its checkout keeps no
+credential, its install step has no secrets (hash-pinned wheels from
+`inputs/requirements.txt`, answerrank fetched by commit), and only the collect
+step gets the keys. It passes the two snapshot files to the job that opens the
+PR as an artifact, and that job takes them only if exactly those two files
+arrive and the JSON has the expected shape. Locally, with answerrank on your `PATH` (set
 `ANSWERRANK_REVISION` to the commit so the snapshot can be compared with CI
 weeks):
 

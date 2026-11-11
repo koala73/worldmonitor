@@ -63,7 +63,10 @@ function writeRun({ variants, failed = {}, unjudged = {}, retried = 0, settings 
   for (const [label, [n, named, web, cited]] of Object.entries(variants)) {
     byModel[label] = metrics(n, named, web, cited);
     [n, named, web, cited].forEach((value, index) => { totals[index] += value; });
-    for (let i = 0; i < n; i += 1) answers.push({ key: `${label}|${i}`, model: label, text: 'answer' });
+    // The first `web` answers had web search; all but the last of those searched.
+    for (let i = 0; i < n; i += 1) {
+      answers.push({ key: `${label}|${i}`, model: label, text: 'answer', web_search: i < web, searched: i < web - 1 });
+    }
   }
   for (const [label, count] of Object.entries(failed)) {
     for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|f${i}`, model: label, error: 'NotFoundError' });
@@ -109,8 +112,10 @@ describe('buildSnapshot', () => {
     assert.equal(snapshot.status, 'available');
     assert.deepEqual(snapshot.overall, {
       answers: 195, mentions: 14, topPicks: 0, recommendations: 14,
-      webAnswers: 117, citations: 14, aeoScore: 5, shareOfVoice: 0.05,
+      webAnswers: 117, searchedAnswers: 114, citations: 14, aeoScore: 5, shareOfVoice: 0.05,
     });
+    assert.equal(snapshot.byVariant['gpt +web'].searchedAnswers, 38);
+    assert.equal(snapshot.byVariant.gpt.searchedAnswers, null, 'no web answers means no search count, not zero');
     assert.equal(snapshot.byVariant['claude +web'].citations, 9);
     assert.equal(snapshot.byVariant.claude.citations, null, 'no web answers means no citation rate, not zero');
     assert.deepEqual(snapshot.design.variants, ['claude', 'claude +web', 'gpt', 'gpt +web', 'perplexity']);
@@ -237,7 +242,8 @@ describe('renderMarkdown', () => {
     const after = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-17');
     const markdown = renderMarkdown(after, compareSnapshots(before, after), [otherSeries, before]);
     assert.match(markdown, /named in 14 of 195 model answers \(7\.2%\)/);
-    assert.match(markdown, /cited worldmonitor\.app 14 of 117 times/);
+    assert.match(markdown, /cited worldmonitor\.app 14 of 117 times \(12\.0%\); 114 of those 117 actually searched/);
+    assert.match(markdown, /\| gpt \+web \| 39 \| 1 \(2\.6%\) \| 0 \| 38 of 39 \| 2 of 39 \|/);
     assert.match(markdown, /Compared with 2026-11-10: \*\*no measurable change\*\*/);
     assert.match(markdown, /\| 2026-11-10 \|/);
     assert.match(markdown, /\| 2026-11-17 \|/);

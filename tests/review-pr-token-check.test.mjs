@@ -42,7 +42,10 @@ describe('bot-PR workflows', () => {
       // step that runs a shell command with no PR-capable call: an issue from
       // github-actions[bot] notifies the owner, one from the owner's PAT does not.
       const ACTIONS_TOKEN = /github\.token|secrets\.GITHUB_TOKEN/;
-      const PR_CAPABLE = /\bgh (pr|api)\b|pulls|createPullRequest/;
+      // Reading PRs (`gh pr list`, `view`, ...) cannot open one; every other
+      // `gh pr` subcommand, `gh api` and the REST or GraphQL PR calls can.
+      const PR_WRITE = /\bgh pr (?!(list|view|status|checks|diff)\b)\S+/;
+      const PR_CAPABLE = new RegExp(`${PR_WRITE.source}|\\bgh api\\b|pulls|createPullRequest`);
       const workflow = YAML.parse(text);
       for (const [jobName, job] of Object.entries(workflow.jobs)) {
         const { steps = [], ...jobWithoutSteps } = job;
@@ -53,7 +56,7 @@ describe('bot-PR workflows', () => {
           assert.equal(step.uses, undefined, `${label} passes the Actions token to an action`);
           assert.doesNotMatch(step.run ?? '', PR_CAPABLE, `${label} can open a PR with the Actions token`);
         }
-        for (const step of steps.filter((entry) => /\bgh pr\b/.test(entry.run ?? ''))) {
+        for (const step of steps.filter((entry) => PR_WRITE.test(entry.run ?? ''))) {
           assert.equal(step.env?.GH_TOKEN ?? job.env?.GH_TOKEN ?? workflow.env?.GH_TOKEN, '${{ secrets.REVIEW_PR_TOKEN }}', `${step.name ?? step.id} runs gh pr without REVIEW_PR_TOKEN`);
         }
       }
