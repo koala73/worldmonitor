@@ -368,8 +368,8 @@ export class Panel {
 
     // Apply default row span (before restore, so saved preferences win)
     this.defaultRowSpan = options.defaultRowSpan && options.defaultRowSpan > 1 ? options.defaultRowSpan : null;
-    if (this.defaultRowSpan) {
-      this.element.classList.add(`span-${this.defaultRowSpan}`);
+    if (options.defaultRowSpan && options.defaultRowSpan > 1) {
+      this.element.classList.add(`span-${options.defaultRowSpan}`);
     }
 
     // Restore saved span (overrides default)
