@@ -101,6 +101,8 @@ export function createFailureMemory(): FailureMemory {
 
 interface Transport {
   observe(): PlayerObservation;
+  /** Telemetry only: why a live HLS playlist never started playing. */
+  stallDetail?(): string;
   setMuted(muted: boolean): void;
   setPaused(paused: boolean): void;
   destroy(): void;
@@ -130,6 +132,8 @@ const MUTE_SYNC_MS = 500;
 const HLS_PLAYED_SECONDS = 1;
 /** How far the media clock may outrun the wall clock between polls before the jump counts as a seek. */
 const HLS_SEEK_SLACK_SECONDS = 0.25;
+/** HTMLMediaElement.HAVE_FUTURE_DATA: a frame beyond the playhead is buffered. */
+const HAVE_FUTURE_DATA = 3;
 
 // Page-wide, so a feed that just failed in one tile is tried last in the next.
 const recentFailures = new Map<string, number>();
@@ -456,6 +460,13 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   let playedSeconds = 0;
   let lastSample: { readonly atMs: number; readonly seconds: number } | null = null;
   let reportedMuted = context.muted;
+  let playRefusal: string | null = null;
+  const startPlayback = () => {
+    playRefusal = null;
+    video.play()?.catch((error: unknown) => {
+      playRefusal = error instanceof Error ? error.name : 'unknown';
+    });
+  };
 
   const fail = (next: NonNullable<HlsFailure>) => {
     if (destroyed || failure) return;
@@ -483,8 +494,12 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
     else if (Number.isFinite(video.duration) && video.duration > 0) manifest = 'vod';
   });
   video.addEventListener('ended', () => { if (!destroyed) context.onLiveLost(); });
-  video.addEventListener('error', () => fail({ kind: 'fatal', detail: 'media-error' }));
-  video.addEventListener('play', () => { if (!destroyed) context.onPlayingChange(true); });
+  video.addEventListener('error', () => fail({ kind: 'fatal', detail: `media-error-${video.error?.code ?? 0}` }));
+  video.addEventListener('play', () => {
+    // A later start (the autoplay attribute after hls.js attaches its source) supersedes an earlier refusal.
+    playRefusal = null;
+    if (!destroyed) context.onPlayingChange(true);
+  });
   video.addEventListener('pause', () => { if (!destroyed) context.onPlayingChange(false); });
   // Setting video.muted fires volumechange too, so only a change the caller does not already know is news.
   video.addEventListener('volumechange', () => {
@@ -549,10 +564,15 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
       else fail({ kind: 'fatal', detail: 'hls-load-failed' });
     });
   }
-  if (context.autoplay) video.play()?.catch(() => {});
+  if (context.autoplay) startPlayback();
 
   return {
     observe: () => ({ transport: 'hls', elapsedMs: context.elapsedMs(), manifest, progress: readProgress(), failure }),
+    // A refused play() leaves the video paused; a playing video short of HAVE_FUTURE_DATA is still buffering.
+    stallDetail: () => {
+      if (video.paused) return playRefusal ? `refused-${playRefusal}` : 'paused';
+      return video.readyState < HAVE_FUTURE_DATA ? 'buffering' : 'frozen';
+    },
     setMuted(muted) {
       // Already known to the caller: never report it back.
       reportedMuted = muted;
@@ -560,7 +580,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
     },
     setPaused(paused) {
       if (paused) video.pause();
-      else video.play()?.catch(() => {});
+      else startPlayback();
     },
     destroy() {
       destroyed = true;
@@ -594,11 +614,13 @@ function viewState(state: ChainState, parsed: ParsedSource): LiveVideoState {
   }
 }
 
-function attemptOutcome(verdict: SettledVerdict): Record<string, string | number> {
+function attemptOutcome(verdict: SettledVerdict, transport: Transport): Record<string, string | number> {
   if (verdict.verdict === 'failed') {
-    return verdict.outcome.kind === 'player-error'
-      ? { outcome: 'player-error', code: verdict.outcome.code }
-      : { outcome: verdict.outcome.kind };
+    const { outcome } = verdict;
+    if (outcome.kind === 'player-error') return { outcome: 'player-error', code: outcome.code };
+    if (outcome.kind === 'hls-fatal') return { outcome: 'hls-fatal', detail: outcome.detail };
+    const stall = outcome.kind === 'not-started' ? transport.stallDetail?.() : undefined;
+    return stall ? { outcome: outcome.kind, detail: stall } : { outcome: outcome.kind };
   }
   return { outcome: verdict.verdict === 'unverifiable' ? verdict.reason : verdict.verdict };
 }
@@ -670,7 +692,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     const step = advanceChain(state, { type: 'verdict', verdict }, parsed, Date.now());
     if (verdict.verdict !== 'live' && step.state.phase !== 'recording' && step.state.phase !== 'unverified') {
       recentFailures.set(failureKey(slot, candidate), Date.now());
-      track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict) });
+      track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict, transport) });
     }
     if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') {
       track('live-video-tap-to-play', { slot, kind: candidate.kind });
