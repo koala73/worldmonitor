@@ -878,6 +878,28 @@ function getCompanyEnrichmentExample() {
   };
 }
 
+// ListReservoirLevels: ReservoirLevel has 26 properties and none are `required`, so the
+// generic builder kept the alphabetically first five and dropped id/lat/lon, which the
+// handler requires (the record would be filtered out), and the product heuristic named the
+// ATL13 source "diesel". Real Lake Mead values from scripts/data/reservoir-levels-baseline.json,
+// trimmed to the decision fields to stay inside the public OpenAPI scanner budget.
+function getListReservoirLevelsExample() {
+  return {
+    reservoirs: [{
+      id: 'mead',
+      name: 'Lake Mead',
+      lat: 36.13,
+      lon: -114.45,
+      latest: { date: '2026-09-06', levelM: 316.757, ageDays: 24 },
+      change90dM: -2.893,
+      status: 'record_low',
+    }],
+    fetchedAt: 1790812800000,
+    dataAvailable: true,
+    source: { name: 'NASA ICESat-2 ATL13', product: 'ATL13 v007' },
+  };
+}
+
 // ShippingIndex has 12 properties and none are `required`, so the generic
 // builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
 // dropping the four decision-grade period-change fields (#6078) along with
@@ -1260,6 +1282,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getInternalDisplacementExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listreservoirlevels'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListReservoirLevelsExample();
   }
   if (
     depth === 0
