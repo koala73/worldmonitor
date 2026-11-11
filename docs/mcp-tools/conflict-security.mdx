@@ -22,11 +22,11 @@ Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, a
 | `panel_request` | string | Paid conflict panel receipt for bounded internal filtered reads without another daily allocation. |
 | `refresh` | boolean | Request one new paid conflict panel allocation. Requires request_id and no panel_request. |
 | `request_id` | string | Retry identity for an explicit paid refresh. Reuse the ID to avoid another allocation. |
-| `bbox` | object | Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km. |
-| `lat` | number | Centre latitude for radius_km; requires lon and radius_km. |
-| `lon` | number | Centre longitude for radius_km; requires lat and radius_km. |
-| `radius_km` | number | Keep events within this great-circle distance of lat/lon (max 2000). |
-| `since_days` | integer | Keep events dated within the last N days. |
+| `bbox` | object | Keep only events inside this box, given by its south-west and north-east corners in decimal degrees. sw_lon > ne_lon crosses the antimeridian. Use either bbox or lat/lon/radius_km, not both. |
+| `lat` | number | Latitude of the search centre, in decimal degrees (north positive). Give lat, lon and radius_km together. |
+| `lon` | number | Longitude of the search centre, in decimal degrees (east positive). Give lat, lon and radius_km together. |
+| `radius_km` | number | Search radius in kilometres around lat/lon, measured along the Earth's surface. |
+| `since_days` | integer | Look-back window in days: keep events dated within that many days of now. Omit to apply no date filter. |
 
 - **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
 - **Area and age filters:** `bbox` takes `sw_lat`, `sw_lon`, `ne_lat` and `ne_lon` (all required). Pass either `bbox` or all three of `lat`, `lon` and `radius_km`; mixing them or passing part of the radius returns Invalid params before any allowance is spent. The filters apply to UCDP, Iran and unrest events after `country` and `min_fatalities` and before `limit`; country risk scores are not geolocated and are returned unfiltered. An event without valid coordinates (or, with `since_days`, without a date) is dropped, and `data.geo_filter.excluded` counts those rows per list so an empty result is not mistaken for no nearby events. When `since_days` reaches further back than a list's oldest dated row, `data.geo_filter.oldest_held` gives that row's time in epoch milliseconds, so a wide window is not mistaken for full coverage. Without these arguments the response has no `geo_filter` key.
