@@ -6208,11 +6208,6 @@ export class DeckGLMap {
       </div>
     `, "legacy direct innerHTML migration"));
 
-    const authorBadge = document.createElement('div');
-    authorBadge.className = 'map-author-badge';
-    authorBadge.textContent = '© Elie Habib · Someone™';
-    toggles.appendChild(authorBadge);
-
     this.container.appendChild(toggles);
 
     const lockedLayerControls = layerConfig

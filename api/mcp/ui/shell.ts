@@ -51,8 +51,14 @@ const UI_FRAME_ANCESTORS = ['https://chatgpt.com', 'https://claude.ai', 'https:/
 // every widget loads no external assets, embeds no frames, and needs no external
 // base URI (postMessage + inline CSS/JS only). `prefersBorder` asks the host to
 // frame the card.
+// The one HTTPS origin every view declares as `_meta.ui.domain` (ChatGPT app
+// submission requires an exact origin, no path, shared by all views). It is
+// the MCP endpoint's own origin.
+export const UI_DOMAIN = 'https://worldmonitor.app';
+
 export interface UiResourceMeta {
   ui: {
+    domain: string;
     csp: {
       connectDomains: string[];
       resourceDomains: string[];
@@ -69,6 +75,7 @@ export interface UiResourceMeta {
 export function buildUiMeta(): UiResourceMeta {
   return {
     ui: {
+      domain: UI_DOMAIN,
       csp: {
         connectDomains: [...UI_CONNECT_DOMAINS],
         resourceDomains: [],

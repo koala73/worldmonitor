@@ -18,6 +18,24 @@ import { COST_SHOCK_TOOLS } from './cost-shock-tools';
 import { PUBLIC_DOMAIN_TOOLS } from './public-domain-tools';
 import { TARIFF_TOOLS } from './tariff-tools';
 import { WEBCAM_TOOLS } from './webcam-tools';
+
+// `openai/toolInvocation` status labels for every tool that renders a ui://
+// view. Keyed by tool name; tests/mcp-view-metadata.test.mjs fails if a tool
+// with a UI resource has no entry here.
+const TOOL_INVOCATION_LABELS: Record<string, { invoking: string; invoked: string }> = {
+  get_market_data: { invoking: 'Loading market data…', invoked: 'Loaded market data' },
+  get_conflict_events: { invoking: 'Loading conflict events…', invoked: 'Loaded conflict events' },
+  get_news_intelligence: { invoking: 'Loading news intelligence…', invoked: 'Loaded news intelligence' },
+  get_natural_disasters: { invoking: 'Loading natural disasters…', invoked: 'Loaded natural disasters' },
+  get_prediction_markets: { invoking: 'Loading prediction markets…', invoked: 'Loaded prediction markets' },
+  get_chokepoint_status: { invoking: 'Loading chokepoint status…', invoked: 'Loaded chokepoint status' },
+  get_forecast_predictions: { invoking: 'Loading forecasts…', invoked: 'Loaded forecasts' },
+  get_world_brief: { invoking: 'Loading the world brief…', invoked: 'Loaded the world brief' },
+  get_country_brief: { invoking: 'Loading the country brief…', invoked: 'Loaded the country brief' },
+  get_country_risk: { invoking: 'Loading country risk…', invoked: 'Loaded country risk' },
+  open_news_dashboard: { invoking: 'Opening the news dashboard…', invoked: 'Opened the news dashboard' },
+  open_country_brief: { invoking: 'Opening the country brief…', invoked: 'Opened the country brief' },
+};
 import { FEEDBACK_TOOLS } from './feedback-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
@@ -210,6 +228,15 @@ export function buildPublicTool(
   if (tool._uiResourceUri) {
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
+    const invocation = TOOL_INVOCATION_LABELS[tool.name];
+    if (invocation) {
+      // ChatGPT reads the two flat keys (OpenAI Apps reference, tool descriptor
+      // _meta, <= 64 chars each); the nested object is what the MCP platform
+      // scanner checks. Both carry the same strings.
+      publicTool._meta['openai/toolInvocation/invoking'] = invocation.invoking;
+      publicTool._meta['openai/toolInvocation/invoked'] = invocation.invoked;
+      publicTool._meta['openai/toolInvocation'] = { ...invocation };
+    }
     if (tool._openaiEntrypoints) {
       publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
     }
