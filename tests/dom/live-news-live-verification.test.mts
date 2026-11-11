@@ -803,22 +803,39 @@ describe('Live News live verification', () => {
       expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
     });
 
-    it('drops Tap to play once the viewer starts the stream from the player itself', async () => {
+    it('keeps Tap to play through a bare play event and drops it only once playback has advanced', async () => {
       await mountStalledCustomStream();
       await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+
+      // A native play event can fire while the video is still buffering: it is not proof of playback.
+      mediaVideo().dispatchEvent(new Event('play'));
+      await flush(POLL);
       expect(status()?.textContent).toBe('Tap to play');
 
-      mediaVideo().dispatchEvent(new Event('play'));
-      expect(status()?.querySelector('button')).toBeNull();
-      expect(status()?.classList.contains('live-news-status--cover')).toBe(false);
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
+      expect(status()).toBeNull();
     });
 
-    it('verifies a held stream again once the viewer starts it, so a later stream end is recovered, not ignored', async () => {
+    it('treats a fatal stream error while held as a failure, not a dead player under Tap to play', async () => {
       await mountStalledCustomStream();
       await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
       expect(status()?.textContent).toBe('Tap to play');
 
-      mediaVideo().dispatchEvent(new Event('play'));
+      latestHls().emit('hlsError', { fatal: true, details: 'manifestLoadError' });
+      await flush(POLL);
+      expect(content().querySelector('.live-offline')).not.toBeNull();
+      expect(channelButton('custom-hls-1').classList.contains('offline')).toBe(true);
+    });
+
+    it('verifies a held stream once playback advances, so a later stream end is recovered, not ignored', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
       mediaVideo().currentTime = 100;
       await flush(POLL);
       mediaVideo().currentTime += 1;

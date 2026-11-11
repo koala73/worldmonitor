@@ -647,7 +647,9 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   let muted = options.muted;
   let paused = !options.autoplay;
   let lastHint = { ready: false, tapToPlay: false };
-  let attemptStartedAt = Date.now();
+
+  /** A ready, live stream held for the viewer to start: still watched, so it can go live or fail like any other. */
+  const isHeld = () => state.phase === 'unverified' && state.reason === 'not-started';
 
   const stopPolling = () => {
     if (pollTimer === null) return;
@@ -665,7 +667,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     state = step.state;
     if (step.effect.type === 'mount') mount(step.effect.index);
     else if (step.effect.type === 'unmount') unmount();
-    else if (state.phase !== 'connecting') stopPolling();
+    else if (state.phase !== 'connecting' && !isHeld()) stopPolling();
     if (!destroyed) options.onState(viewState(state, parsed));
   };
 
@@ -674,10 +676,16 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   };
 
   const poll = (index: number, candidate: Candidate) => {
-    if (destroyed || !transport || state.phase !== 'connecting' || state.index !== index) return;
+    if (destroyed || !transport || state.phase === 'offline' || (state.phase !== 'connecting' && !isHeld()) || state.index !== index) return;
+    const held = isHeld();
     const observation = transport.observe();
     const lastSource = state.order.every((other) => other === index || state.attempts.some((attempt) => attempt.index === other));
     const verdict = classifyAttempt(observation, { holdUnstarted: options.holdUnstarted === true && lastSource });
+    if (held) {
+      // Still not started: nothing to change. Playback that began, or a fatal error, re-enters the normal transitions.
+      if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') return;
+      state = advanceChain(state, { type: 'resume' }, parsed, Date.now()).state;
+    }
     if (verdict.verdict === 'pending') {
       // Only the last source offers a play control: an earlier one that stalls is about to hand over to the next.
       const hint = connectingHint(observation);
@@ -700,38 +708,21 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     apply(step);
   };
 
-  /** A held stream the viewer starts is verified again, so it regains live-loss recovery like any other. */
-  function resumeHeld(): void {
-    if (state.phase !== 'unverified' || state.reason !== 'not-started') return;
-    const { index } = state;
-    const { candidate } = parsed.candidates[index]!;
-    attemptStartedAt = Date.now();
-    dispatch({ type: 'resume' });
-    // The player is already up: keep its controls uncovered while it is verified again.
-    lastHint = { ready: true, tapToPlay: false };
-    if (!destroyed) options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...lastHint });
-    pollTimer ??= setInterval(() => poll(index, candidate), LIVE_VIDEO_TIMING.pollMs);
-  }
-
   function mount(index: number): void {
     unmount();
     lastHint = { ready: false, tapToPlay: false };
     options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
-    attemptStartedAt = Date.now();
+    const startedAt = Date.now();
     let mounted: Transport | null = null;
     const isCurrent = () => !destroyed && mounted !== null && transport === mounted;
     const context: TransportContext = {
       presentation: options.presentation,
       autoplay: !paused,
       muted,
-      elapsedMs: () => Date.now() - attemptStartedAt,
+      elapsedMs: () => Date.now() - startedAt,
       onLiveLost: () => { if (isCurrent()) dispatch({ type: 'live-lost' }); },
-      onPlayingChange: (playing) => {
-        if (!isCurrent()) return;
-        if (playing) resumeHeld();
-        options.onPlayingChange?.(playing);
-      },
+      onPlayingChange: (playing) => { if (isCurrent()) options.onPlayingChange?.(playing); },
       onMutedChange: (next) => {
         if (!isCurrent()) return;
         muted = next;

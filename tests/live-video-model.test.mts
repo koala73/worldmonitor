@@ -362,7 +362,7 @@ describe('moving on sooner when nothing has loaded at all', () => {
 });
 
 describe('advanceChain: resume', () => {
-  it('re-verifies a held not-started stream from the same source, and ignores resume in any other state', () => {
+  it('moves a held not-started stream back to connecting on the same source, and ignores resume in any other state', () => {
     const parsed = parseSource({ slot: 't', entries: ['https://a.example/live.m3u8'], origin: 'builtin' });
     const start = startChain(parsed, new Set());
     const held = advanceChain(start.state, { type: 'verdict', verdict: { verdict: 'unverifiable', reason: 'not-started' } }, parsed, 0);

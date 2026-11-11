@@ -822,10 +822,7 @@ export class LiveNewsPanel extends Panel {
       },
       onPlayingChange: (playing) => {
         // The viewer paused or resumed from the player's own controls; the idle stop leaves a paused stream alone.
-        if (!isCurrent()) return;
-        // The viewer started it from the player's own button; the verdict is settled, so nothing else clears the chip.
-        if (playing) this.playerContainer?.querySelector('.live-news-status[data-tap-to-play]')?.remove();
-        if (this.isPlaying === playing) return;
+        if (!isCurrent() || this.isPlaying === playing) return;
         this.isPlaying = playing;
         this.updateLiveIndicator();
       },
