@@ -2788,7 +2788,7 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "Az Office of Foreign Assets Control Kijelölt Nationals és Consolidated Lists, valamint a Global Affairs Canada SEMA/JVCFOA lezárások. Megmutatja, mely országok szembesülnek a legmagasabb lezárási nyomással, mely programok hajtják azt, és mi volt az utolsó frissítés óta új hozzáadott.",
+      "infoTooltip": "OFAC SDN és összevont listák, valamint Kanada SEMA/JVCFOA szankciói. Az országok sorai közvetlen kapcsolatokat használnak. A hajólobogók és a repülőgép-lajstromok külön szerepelnek a nyilvántartásokban; egy ország nulla eszközszáma nem jelenti a szankcionált eszközök hiányát. Az anyaszervezetek országai elkülönülnek a címadatoktól, és nem számítanak bele a kockázati pontszámokba.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {

@@ -55,5 +55,6 @@ function countryNameToIso2(raw) {
 
 module.exports = {
   COUNTRY_NAME_TO_ISO2,
+  normalizeCountryToken,
   countryNameToIso2,
 };

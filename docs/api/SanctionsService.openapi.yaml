@@ -523,6 +523,17 @@ components:
                     type: boolean
                 note:
                     type: string
+                parentCountryCodes:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Direct linked-parent countries for addressless entities. These are not
+                             address/nationality evidence and do not feed country risk counts.
+                parentCountryNames:
+                    type: array
+                    items:
+                        type: string
             description: SanctionsEntry is a normalized OFAC sanctions designation.
         CountrySanctionsPressure:
             type: object
@@ -540,9 +551,15 @@ components:
                 vesselCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only. Zero does not mean this
+                         country has no sanctioned vessels; flag counts are in flagRegistries.
                 aircraftCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only; registry counts are in
+                         ListSanctionsPressureResponse.flagRegistries, not this field.
             description: CountrySanctionsPressure summarizes designation volume and recent additions by country.
         ProgramSanctionsPressure:
             type: object

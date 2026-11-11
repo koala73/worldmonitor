@@ -2719,7 +2719,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA-Eintragungen. Zeigt, welche Länder dem höchsten Eintragungs-Druck ausgesetzt sind, welche Programme ihn antreiben und was seit der letzten Aktualisierung neu hinzugekommen ist.",
+      "infoTooltip": "OFAC-SDN- und konsolidierte Listen sowie kanadische SEMA/JVCFOA-Sanktionen. Länderzeilen verwenden direkte Zuordnungen. Schiffsflaggen und Flugzeugregister werden unter Registern separat gezählt; null Vermögenswerte bei einem Land bedeutet nicht, dass keine sanktionierten Vermögenswerte existieren. Länder übergeordneter Unternehmen bleiben von Adressnachweisen getrennt und fließen nicht in Risikowerte ein.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {

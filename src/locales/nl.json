@@ -2335,7 +2335,7 @@
     },
     "sanctionsPressure": {
       "title": "Sancties & Aanwijzingen",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA-toevoegingen. Toont welke landen het meeste druk ervaren voor toevoegingen, welke programma's dit aansturen en wat sinds de laatste update is toegevoegd.",
+      "infoTooltip": "OFAC SDN- en geconsolideerde lijsten plus Canadese SEMA/JVCFOA-sancties. Landrijen gebruiken directe koppelingen. Scheepsvlaggen en vliegtuigregistraties worden apart geteld onder registers; nul activa bij een land betekent niet dat er geen gesanctioneerde activa zijn. Landen van moederorganisaties staan los van adresgegevens en tellen niet mee voor risicoscores.",
       "loading": "Sanctiegegevens laden...",
       "unavailable": "Sanctiegegevens niet beschikbaar.",
       "summary": {

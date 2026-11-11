@@ -2788,7 +2788,7 @@
     },
     "sanctionsPressure": {
       "title": "प्रतिबंध और नामांकन",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals और Consolidated Lists साथ ही Global Affairs Canada SEMA/JVCFOA designations। दिखाता है कि किन देशों को highest designation pressure का सामना है, कौन से programs इसे चला रहे हैं, और अंतिम update के बाद नया क्या जोड़ा गया है।",
+      "infoTooltip": "OFAC SDN और समेकित सूचियाँ तथा कनाडा के SEMA/JVCFOA प्रतिबंध। देश की पंक्तियाँ सीधे संबंधों का उपयोग करती हैं। जहाज़ों के ध्वज और विमानों के पंजीकरण अलग से रजिस्ट्रियों में गिने जाते हैं; किसी देश की परिसंपत्ति संख्या शून्य होने का अर्थ प्रतिबंधित परिसंपत्तियों का न होना नहीं है। मूल संस्थाओं के देश पते के प्रमाण से अलग हैं और जोखिम स्कोर में शामिल नहीं होते।",
       "loading": "प्रतिबंध डेटा लोड हो रहा है...",
       "unavailable": "प्रतिबंध डेटा उपलब्ध नहीं।",
       "summary": {

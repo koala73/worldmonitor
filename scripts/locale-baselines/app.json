@@ -1511,7 +1511,7 @@
   "components.sanctionsPressure.footer.dataset": "dataset {{date}}",
   "components.sanctionsPressure.footer.source": "Source: Office of Foreign Assets Control · GAC SEMA",
   "components.sanctionsPressure.footer.updated": "Updated {{time}}",
-  "components.sanctionsPressure.infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designations. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+  "components.sanctionsPressure.infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets. Parent countries are separate from address evidence and excluded from risk scores.",
   "components.sanctionsPressure.loading": "Loading sanctions data...",
   "components.sanctionsPressure.pills.new": "new",
   "components.sanctionsPressure.pills.newCount": "+{{count}} new",

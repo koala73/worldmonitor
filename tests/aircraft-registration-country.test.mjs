@@ -7,6 +7,8 @@ describe('aircraftRegistrationCountry', () => {
     for (const [tail, code] of [
       ['EP-MMH', 'IR'], ['RA-89049', 'RU'], ['RF-94591', 'RU'], ['EW-001PA', 'BY'], ['YK-AYA', 'SY'],
       ['P-632', 'KP'], ['P4-MGU', 'AW'], ['3A-MGU', 'MC'], ['M-IABU', 'IM'], ['9XR-WK', 'RW'], ['A4O-AA', 'OM'],
+      ['Z8-ABC', 'SS'], ['VP-GAA', 'GI'], ['VQ-HAA', 'SH'], ['E4-ABC', 'PS'], ['4U-ABC', 'UN'],
+      ['RA12345', 'RU'], ['EP - ABC', 'IR'],
     ]) assert.equal(aircraftRegistrationCountry(tail), code, tail);
   });
 

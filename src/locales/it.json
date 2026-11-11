@@ -2730,7 +2730,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanzioni e designazioni",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists più designazioni Global Affairs Canada SEMA/JVCFOA. Mostra quali paesi affrontano la massima pressione di designazione, quali programmi la guidano e cosa è stato aggiunto di recente dall'ultimo aggiornamento.",
+      "infoTooltip": "Liste OFAC SDN e consolidate, oltre alle designazioni SEMA/JVCFOA del Canada. Le righe dei paesi usano associazioni dirette. Le bandiere delle navi e i registri degli aeromobili sono conteggiati separatamente nei registri; un conteggio pari a zero per un paese non indica assenza di beni sanzionati. I paesi delle entità madri sono separati dalle prove di indirizzo ed esclusi dai punteggi di rischio.",
       "loading": "Caricamento dati sanzioni in corso...",
       "unavailable": "Dati sanzioni non disponibili.",
       "summary": {

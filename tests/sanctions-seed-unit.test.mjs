@@ -8,7 +8,7 @@ import sax from 'sax';
 import { ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, parseSemaXml, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 import { aircraftRegistrationCountry } from '../scripts/shared/aircraft-registration-country.mjs';
-import { countryNameToIso2 } from '../scripts/shared/country-name-to-iso2.cjs';
+import { countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from '../scripts/shared/country-name-to-iso2.cjs';
 
 // Normalize values produced inside a vm context to host-realm equivalents.
 // Needed because deepStrictEqual checks prototypes — vm Arrays ≠ host Arrays.
@@ -84,6 +84,9 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
       ${aircraft('13', '64', 'YV2040')}
       ${aircraft('14', '64', 'RA-89049', 'EP-MMH')}
       ${aircraft('15', '49', 'EP-MMH')}
+      ${profile('16', '3', 'Panama (Former)')}
+      ${profile('17', '3', 'Panama (Disputed)')}
+      ${profile('18', '3', 'Congo (Kinshasa)')}
     </DistinctParties>
     <SanctionsEntries>
       <SanctionsEntry ID="1" ProfileID="1"/>
@@ -93,12 +96,12 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
       <SanctionsEntry ID="5" ProfileID="5"/>
       <SanctionsEntry ID="6" ProfileID="6"/>
       <SanctionsEntry ID="7" ProfileID="7"/>
-      ${Array.from({ length: 8 }, (_, i) => `<SanctionsEntry ID="${i + 8}" ProfileID="${i + 8}"/>`).join('')}
+      ${Array.from({ length: 11 }, (_, i) => `<SanctionsEntry ID="${i + 8}" ProfileID="${i + 8}"/>`).join('')}
     </SanctionsEntries>
   </Sanctions>`;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
-    aircraftRegistrationCountry, countryNameToIso2, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml),
   });
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
@@ -108,12 +111,41 @@ it('attributes OFAC vessels by flag and aircraft by registry, leaving unknown, f
     'RU', null, null, 'KP', 'KP', null, null,
     'GM', 'CK', 'AG', null,
     'IR', 'VE', null, null,
+    null, null, 'CD',
   ]);
   assert.equal(entries[0]._flagName, 'Russia');
   assert.equal(entries[3]._flagName, 'Korea, North');
   assert.equal(entries[8]._flagName, 'Cook Islands', 'a flag missing from OFAC\'s list still gets a name');
   assert.equal(entries[11].entityType, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT');
   assert.ok(entries.every(entry => entry.countryCodes.length === 0), 'a flag or registry is not a country association');
+});
+
+it('keeps linked-parent attribution separate and uses only current directional parent links', async () => {
+  const party = (id, country = false, subType = '3') => `<DistinctParty><Profile ID="${id}" PartySubTypeID="${subType}">
+    ${country ? '<Feature FeatureTypeID="1"><FeatureVersion><VersionLocation LocationID="1"/></FeatureVersion></Feature>' : ''}
+  </Profile></DistinctParty>`;
+  const link = (from, to, type = 'owns', former = 'false') => `<ProfileRelationship From-ProfileID="${from}" To-ProfileID="${to}" RelationTypeID="${type}" Former="${former}"/>`;
+  const xml = `<Sanctions>
+    <AreaCodeValues><AreaCode ID="1" Description="Russia">RU</AreaCode></AreaCodeValues>
+    <FeatureTypeValues><FeatureType ID="1">Location</FeatureType></FeatureTypeValues>
+    <RelationTypeValues><RelationType ID="owns">Owned or Controlled By</RelationType><RelationType ID="reverse">Owns, controls, or operates</RelationType><RelationType ID="associate">Associate Of</RelationType></RelationTypeValues>
+    <Locations><Location ID="1"><LocationAreaCode AreaCodeID="1"/></Location></Locations>
+    <DistinctParties>${party('1', true)}${party('2')}${party('3')}${party('4', true)}${party('5', false, '1')}${party('6')}${party('7')}${party('8')}${party('9')}${party('10')}</DistinctParties>
+    <SanctionsEntries>${Array.from({ length: 10 }, (_, i) => `<SanctionsEntry ID="${i + 1}" ProfileID="${i + 1}"/>`).join('')}</SanctionsEntries>
+    <ProfileRelationships>${link('2', '1')}${link('3', '1', 'owns', 'true')}${link('4', '1')}${link('5', '1')}${link('6', '1', 'associate')}${link('1', '7', 'reverse')}${link('8', 'missing')}${link('9', '10')}${link('10', '9')}</ProfileRelationships>
+  </Sanctions>`;
+  const context = vm.createContext({ console: { log() {}, warn() {} }, sax, TextDecoder,
+    ofacRegistrationToIdentifier, aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    fetchOfacSourceResponse: async () => new Response(xml) });
+  vm.runInContext(`${pureSrc}\n${seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc))}`, context);
+  const { entries } = await context.fetchSource({ label: 'SDN' });
+  assert.deepEqual(normalize(entries[1].parentCountryCodes), ['RU']);
+  assert.deepEqual(normalize(entries[1].parentCountryNames), ['Russia']);
+  assert.deepEqual(normalize(entries[6].parentCountryCodes), ['RU']);
+  for (const i of [0, 2, 3, 4, 5, 7, 8, 9]) assert.deepEqual(normalize(entries[i].parentCountryCodes), [], `entry ${i + 1}`);
+  assert.deepEqual(normalize(context.buildCountryCounts(entries)), { RU: 2 }, 'parent links never become address or risk evidence');
+  assert.deepEqual(normalize(entries[1].countryCodes), []);
+  assert.equal(context.countUnattributed([entries[1]]).entryCount, 0);
 });
 
 it('keeps vessel flags out of the country counts that drive risk scores and briefs', async () => {
@@ -152,7 +184,7 @@ it('keeps vessel flags out of the country counts that drive risk scores and brie
   </Sanctions>`;
   const context = vm.createContext({
     console: { log() {}, warn() {} }, sax, TextDecoder, ofacRegistrationToIdentifier,
-    aircraftRegistrationCountry, countryNameToIso2, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
+    aircraftRegistrationCountry, countryNameToIso2, COUNTRY_NAME_TO_ISO2, normalizeCountryToken, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID,
     fetchOfacSourceResponse: async () => new Response(xml),
   });
   const fetchSourceSrc = seedSrc.slice(seedSrc.indexOf('async function fetchSource('), seedSrc.indexOf(fetchPressureSrc));
@@ -445,6 +477,32 @@ describe('ofacAttributionHealth', () => {
     assert.equal(health.degraded, true);
   });
 
+  it('detects aircraft failures hidden by whole-list headroom', () => {
+    const health = ofacAttributionHealth([
+      ...rows(990, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']), ...rows(10, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', []),
+    ]);
+    assert.equal(health.unattributedShare, 0.01);
+    assert.equal(health.unattributedAircraftShare, 1);
+    assert.equal(health.degraded, true);
+    const atThreshold = [
+      ...rows(990, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']),
+      ...rows(6, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', []),
+      ...rows(4, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', []).map(row => ({ ...row, _flagCode: 'IR' })),
+    ];
+    assert.equal(ofacAttributionHealth(atThreshold).degraded, false);
+  });
+
+  it('detects registry loss even when aircraft have location countries', () => {
+    const health = ofacAttributionHealth([
+      ...rows(990, 'SANCTIONS_ENTITY_TYPE_ENTITY', ['RU']),
+      ...rows(10, 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', ['IR']),
+    ]);
+    assert.equal(health.unattributedShare, 0);
+    assert.equal(health.unattributedAircraftCount, 10);
+    assert.equal(health.unattributedAircraftShare, 1);
+    assert.equal(health.degraded, true);
+  });
+
   it('stays healthy at the threshold and without OFAC records', () => {
     assert.equal(ofacAttributionHealth([
       ...rows(90, 'SANCTIONS_ENTITY_TYPE_VESSEL', ['RU']), ...rows(10, 'SANCTIONS_ENTITY_TYPE_VESSEL', []),
@@ -452,8 +510,27 @@ describe('ofacAttributionHealth', () => {
     assert.deepEqual(normalize(ofacAttributionHealth([])), {
       entryCount: 0, unattributedCount: 0, unattributedShare: null,
       vesselCount: 0, unattributedVesselCount: 0, unattributedVesselShare: null, maxShare: 0.1, degraded: false,
+      aircraftCount: 0, unattributedAircraftCount: 0, unattributedAircraftShare: null,
+      aircraftMaxShare: 0.6,
     });
   });
+});
+
+it('checks SEMA non-vessel target attribution per regime without diluting failures', () => {
+  const row = (regime, codes = [], entityType = 'SANCTIONS_ENTITY_TYPE_ENTITY') => ({
+    _regime: regime, _targetCountryCodes: codes, entityType,
+  });
+  const health = ctx.semaAttributionHealth([
+    ...Array.from({ length: 100 }, () => row('Russia', ['RU'])),
+    row('Iran'), row('Iran', [], 'SANCTIONS_ENTITY_TYPE_VESSEL'),
+    ...['Ukraine', 'Moldova', 'JVCFOR', 'Hamas', 'Settler'].map(regime => row(regime)),
+  ]);
+  assert.equal(health.degraded, true);
+  assert.equal(health.regimes.Iran.unattributedShare, 1);
+  assert.equal(health.regimes.Iran.entryCount, 1);
+  assert.equal(health.regimes.Russia.degraded, false);
+  assert.equal(health.regimes.Ukraine, undefined);
+  assert.equal(ctx.semaAttributionHealth([]).degraded, false);
 });
 
 describe('buildCountryCounts', () => {

@@ -2741,7 +2741,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "Office of Foreign Assets Control Special Designated Nationals a Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designace. Ukazuje, které země čelí nejvyššímu tlaku designace, které programy to řídí a co bylo nově přidáno od poslední aktualizace.",
+      "infoTooltip": "Seznamy OFAC SDN a konsolidované seznamy spolu s kanadskými sankcemi SEMA/JVCFOA. Řádky zemí používají přímé vazby. Vlajky plavidel a registrace letadel se počítají odděleně v registrech; nulový počet aktiv u země neznamená, že neexistují sankcionovaná aktiva. Země mateřských subjektů jsou odděleny od údajů o adrese a nevstupují do skóre rizika.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {

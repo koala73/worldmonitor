@@ -18,7 +18,7 @@ message ListSanctionsPressureResponse {
   repeated SanctionsEntry entries = 1;
   // Top 12 countries by address or nationality. SEMA regulation targets are
   // counted separately in regulation_targets. A designation can be associated with more than one
-  // country. Vessel flags and aircraft registries are counted in flag_registries instead.
+  // country. Vessel flags and aircraft registries are counted in flagRegistries instead.
   repeated CountrySanctionsPressure countries = 2;
   repeated ProgramSanctionsPressure programs = 3;
   int64 fetched_at = 4;

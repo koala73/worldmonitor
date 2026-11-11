@@ -2730,7 +2730,7 @@
     },
     "sanctionsPressure": {
       "title": "Sancțiuni și Desemnări",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals și Consolidated Lists plus desemnări Global Affairs Canada SEMA/JVCFOA. Arată care țări se confruntă cu cea mai mare presiune de desemnare, ce programe o conduc și ce a fost nou adăugat de la ultima actualizare.",
+      "infoTooltip": "Listele OFAC SDN și consolidate, plus desemnările SEMA/JVCFOA ale Canadei. Rândurile țărilor folosesc asocieri directe. Pavilioanele navelor și înmatriculările aeronavelor sunt numărate separat în registre; zero active pentru o țară nu înseamnă absența activelor sancționate. Țările entităților-mamă sunt separate de dovezile de adresă și excluse din scorurile de risc.",
       "loading": "Se încarcă datele sancțiunilor...",
       "unavailable": "Datele sancțiunilor nu sunt disponibile.",
       "summary": {

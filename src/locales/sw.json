@@ -2684,7 +2684,7 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals na Consolidated Lists pamoja na Global Affairs Canada SEMA/JVCFOA designations. Inaonyesha nchi ipi inakabali mkazo wa juu wa designation, programu gani inayokamatisha, na nini kilichoongezwa mapya tangu sasisho la mwisho.",
+      "infoTooltip": "Orodha za OFAC SDN na zilizounganishwa pamoja na vikwazo vya Kanada vya SEMA/JVCFOA. Safu za nchi hutumia mahusiano ya moja kwa moja. Bendera za meli na usajili wa ndege huhesabiwa kando katika sajili; idadi ya mali ya nchi ikiwa sifuri haimaanishi hakuna mali iliyowekewa vikwazo. Nchi za taasisi mama hutenganishwa na ushahidi wa anwani na hazijumuishwi katika alama za hatari.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {

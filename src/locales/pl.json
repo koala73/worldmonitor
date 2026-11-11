@@ -2741,7 +2741,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankcje i desygnacje",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists oraz designacje Global Affairs Canada SEMA/JVCFOA. Pokazuje, które kraje stoją w obliczu największej presji desygnacyjnej, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
+      "infoTooltip": "Listy OFAC SDN i skonsolidowane oraz kanadyjskie sankcje SEMA/JVCFOA. Wiersze krajów wykorzystują bezpośrednie powiązania. Bandery statków i rejestracje samolotów są liczone osobno w rejestrach; zerowa liczba aktywów dla kraju nie oznacza braku aktywów objętych sankcjami. Kraje podmiotów nadrzędnych są oddzielone od danych adresowych i nie wpływają na oceny ryzyka.",
       "loading": "Ładowanie danych sankcji...",
       "unavailable": "Dane sankcji niedostępne.",
       "summary": {
