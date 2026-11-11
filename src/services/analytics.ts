@@ -1,4 +1,5 @@
 import { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
+import { viewportAnalyticsFields } from '../../shared/analytics-viewport';
 export { bucketPanelKeyForAnalytics } from '@/utils/analytics-panel-key';
 /**
  * Analytics facade — wired to Umami.
@@ -204,6 +205,7 @@ const EVENTS = {
   // Settings
   'settings-open': true,
   'variant-switch': true,
+  'dashboard-first-interaction': true,
   'theme-changed': true,
   'language-change': true,
   'feature-toggle': true,
@@ -697,6 +699,9 @@ function loadUmamiScript(): void {
 
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */
 export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
+  if (event === 'checkout-start' || event === 'checkout-success' || event === 'variant-switch') {
+    data = { ...data, ...viewportAnalyticsFields() };
+  }
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
     queueUmamiCall({ kind: 'track', event, data: enrichedData });
@@ -1016,6 +1021,7 @@ export function trackPasskeyOfferDismissed(): void {
  * across the shared module import in tests/secondary-startup.test.mts.
  */
 export function resetAnalyticsForTesting(): void {
+  dashboardInteractionTracked = false;
   resetCollectorTransportForTesting();
   clearScheduledIdentityRetry();
   identifyDeliveryGeneration += 1;
@@ -1882,6 +1888,23 @@ export function trackLayoutCustomized(kind: LayoutCustomizationKind): void {
 
 export function trackVariantSwitch(from: string, to: string): void {
   track('variant-switch', { from, to });
+}
+
+export type DashboardInteractionTarget = 'map' | 'panel' | 'live-news' | 'switcher' | 'search' | 'signin' | 'upgrade';
+const DASHBOARD_INTERACTION_KEY = 'wm-dashboard-first-interaction';
+let dashboardInteractionTracked = false;
+
+/** Tab-session scope, matching the dashboard's other session analytics guards. */
+export function trackDashboardFirstInteraction(target: DashboardInteractionTarget): void {
+  if (dashboardInteractionTracked) return;
+  try {
+    if (window.sessionStorage.getItem(DASHBOARD_INTERACTION_KEY)) return;
+    window.sessionStorage.setItem(DASHBOARD_INTERACTION_KEY, '1');
+  } catch {
+    // Denied storage still permits at most one event in this document.
+  }
+  dashboardInteractionTracked = true;
+  track('dashboard-first-interaction', { ...viewportAnalyticsFields(), target });
 }
 
 export function trackThemeChanged(theme: string): void {
