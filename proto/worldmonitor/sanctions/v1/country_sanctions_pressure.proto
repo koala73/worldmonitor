@@ -9,9 +9,9 @@ message CountrySanctionsPressure {
   int32 entry_count = 3;
   int32 new_entry_count = 4;
   // Assets with a direct country association only. Zero does not mean this
-  // country has no sanctioned vessels; flag counts are in flag_registries.
+  // country has no sanctioned vessels; flag counts are in flagRegistries.
   int32 vessel_count = 5;
   // Assets with a direct country association only; registry counts are in
-  // ListSanctionsPressureResponse.flag_registries, not this field.
+  // ListSanctionsPressureResponse.flagRegistries, not this field.
   int32 aircraft_count = 6;
 }

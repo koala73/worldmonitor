@@ -59490,13 +59490,13 @@ components:
                     format: int32
                     description: |-
                         Assets with a direct country association only. Zero does not mean this
-                         country has no sanctioned vessels; flag counts are in flag_registries.
+                         country has no sanctioned vessels; flag counts are in flagRegistries.
                 aircraftCount:
                     type: integer
                     format: int32
                     description: |-
                         Assets with a direct country association only; registry counts are in
-                         ListSanctionsPressureResponse.flag_registries, not this field.
+                         ListSanctionsPressureResponse.flagRegistries, not this field.
             description: CountrySanctionsPressure summarizes designation volume and recent additions by country.
         worldmonitor_sanctions_v1_ProgramSanctionsPressure:
             type: object
