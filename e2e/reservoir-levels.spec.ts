@@ -42,18 +42,19 @@ test('Strategic Water Levels lists attention first, filters, and opens the reser
   const mead = panel.locator('button.wl-row[data-reservoir-id="mead"]');
   await expect(mead.locator('.wl-chip')).toHaveText('Record low');
   await expect(mead.locator('.wl-headline')).toContainText(/−8\.2 m vs usual for September/);
-  await expect(mead.locator('.wl-detail')).toContainText(/−5\.3 m in 12 months · measured 6 Sept?/);
+  await expect(mead.locator('.wl-detail')).toContainText(/−5\.3 m in 12 months · measured (6 Sept?|Sep 6) \(/);
   await expect(mead.locator('.wl-place')).toHaveText('United States · Colorado');
   await expect(mead.locator('svg.mini-sparkline')).toHaveCount(1);
   await expect(panel.locator('.wl-footer a[href="https://nsidc.org/data/atl13"]')).toBeVisible();
 
   await panel.locator('button[data-wl-filter="attention"]').click();
+  await expect(panel.locator('button[data-wl-filter="attention"]')).toHaveAttribute('aria-pressed', 'true');
   const attention = await rows.evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.status));
   expect(attention.length).toBeGreaterThan(0);
   expect(attention.every((s) => !['normal', 'insufficient_history', 'no_recent_data'].includes(s!))).toBe(true);
   await panel.locator('button[data-wl-filter="transboundary"]').click();
   await expect(panel.locator('button.wl-row[data-reservoir-id="gerd"]')).toBeVisible();
-  await expect(panel.locator('button.wl-row[data-reservoir-id="mead"]')).toHaveCount(0);
+  await expect(panel.locator('button.wl-row[data-reservoir-id="three-gorges"]')).toHaveCount(0);
   await panel.locator('button[data-wl-filter="all"]').click();
   await expect(rows).toHaveCount(48);
 
@@ -72,11 +73,14 @@ test('Strategic Water Levels shows the empty state', async ({ page }) => {
   await openDashboard(page, EMPTY, '__reservoir_levels_empty__');
   const panel = page.locator('.panel[data-panel="reservoir-levels"]');
   await expect(panel).toBeVisible();
+  // The data loader reads an opt-in panel only once it nears the viewport.
+  await panel.scrollIntoViewIfNeeded();
   await expect(panel.locator('.wl-empty')).toHaveText('No readings yet');
   await expect(panel.locator('.wl-footer')).toContainText('Level only, not volume.');
 });
 
 test('Water Levels markers follow the layer toggle and open a popup in each renderer', async ({ page }) => {
+  test.setTimeout(150_000);
   await page.route('**/api/**', (route) => route.fulfill({ json: {} }));
   await page.goto('/tests/map-harness.html');
   const results = await page.evaluate(async (fixture) => {
@@ -98,8 +102,8 @@ test('Water Levels markers follow the layer toggle and open a popup in each rend
         ? map.buildLayers().find((layer: { id: string }) => layer.id === 'reservoir-levels-layer')?.props.data.length ?? 0
         : exports.GlobeMap ? map.globe.htmlElementsData().filter((item: { _kind: string }) => item._kind === 'reservoirLevel').length
           : container.querySelectorAll('.wl-marker').length;
-      const waitFor = async (check: () => boolean) => {
-        const deadline = performance.now() + 5000;
+      const waitFor = async (check: () => boolean, ms = 5000) => {
+        const deadline = performance.now() + ms;
         while (!check() && performance.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
       };
       await waitFor(() => count() > 0);
@@ -111,8 +115,12 @@ test('Water Levels markers follow the layer toggle and open a popup in each rend
       await waitFor(() => count() > 0);
       const reenabled = count();
       map.openReservoir(mead);
-      await waitFor(() => Boolean(container.querySelector('.wl-popup .popup-title')));
-      const popupTitle = container.querySelector('.wl-popup .popup-title')?.textContent ?? '';
+      // MapPopup mounts on document.body to escape the map's overflow clipping.
+      // The globe opens the popup from a timer after its camera rotation settles. Under
+      // software WebGL in CI that timer has been measured firing 15 s late, so wait longer.
+      await waitFor(() => Boolean(document.querySelector('.map-popup .wl-popup .popup-title')), 40000);
+      const popupTitle = document.querySelector('.map-popup .wl-popup .popup-title')?.textContent ?? '';
+      document.querySelectorAll('.map-popup').forEach((el) => el.remove());
       result.push({ path, enabled, disabled, reenabled, popupTitle });
       map.destroy();
       container.remove();
