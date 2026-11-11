@@ -33,6 +33,7 @@
  * fails.
  */
 
+import { exposureLocationKey } from './shared/exposure-location-key.mjs';
 import countryNames from './shared/country-name-to-iso2.cjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
@@ -177,7 +178,7 @@ export function selectUcdpExposureRows(events) {
       coverage.withoutEstimate += 1;
       continue;
     }
-    const key = `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+    const key = exposureLocationKey(latitude, longitude);
     const row = rows.get(key);
     if (row) {
       row.exposureEventCount += 1;

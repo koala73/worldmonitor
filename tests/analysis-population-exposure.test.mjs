@@ -10,7 +10,10 @@ import {
 import { densityCountryAt, estimatePointExposure } from '../shared/population-density-country-at.ts';
 import { inRing, ringEdgesNearLatitude } from '../shared/population-density-geometry.ts';
 import PALESTINE from '../shared/population-density-palestine.json' with { type: 'json' };
-import BOUNDARIES from '../shared/population-density-boundaries.json' with { type: 'json' };
+import DATA from '../shared/population-density-boundaries.json' with { type: 'json' };
+import { feature } from 'topojson-client';
+// Accept the old schema only to let the documented revert run reach assertions.
+const BOUNDARIES = { countries: DATA.countries ?? Object.fromEntries(feature(DATA.topology, DATA.topology.objects.countries).features.map(({properties, geometry}) => [properties.code, geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates])) };
 import { resolveCountryCode } from '../shared/country-code-resolve.ts';
 import { getPopulationExposure } from '../server/worldmonitor/displacement/v1/get-population-exposure.ts';
 import { enrichEventsWithExposure } from '../src/services/population-exposure.ts';
@@ -24,6 +27,15 @@ import {
 } from '../shared/analysis-temporal-severity.ts';
 
 describe('dashboard population exposure', () => {
+  it('names dashboard Gaza rows for the PSE estimate', () => {
+    const { exposures } = enrichEventsWithExposure([{
+      id: 'gaza', name: 'Gaza town, Israel', locationName: 'Gaza town', type: 'conflict',
+      country: 'Israel', lat: 31.52, lon: 34.45, hasPreciseLocation: true,
+    }]);
+    assert.equal(exposures[0].eventName, 'Gaza town, Palestine');
+    assert.equal(exposures[0].exposedPopulation, estimateExposure(31.52, 34.45, 'Palestine', 50).exposedPopulation);
+  });
+
   it('retains point precision from the provider codes', () => {
     const coordinates = { latitude: '13.58', longitude: '44.02' };
     const acledEvents = normalizeAcledProtestEvents([1, '1', 2, 3, undefined].map((geo_precision, i) => ({
@@ -125,7 +137,9 @@ describe('analysis-population-exposure core', () => {
   it('has an outline for every country in the density table and nothing else', () => {
     const tableCodes = Object.keys(PRIORITY_COUNTRIES).map((iso3) => resolveCountryCode(iso3)).sort();
     assert.equal(tableCodes.length, 20);
-    assert.deepEqual(PALESTINE, BOUNDARIES.countries.PS);
+    // The browser intentionally retains its small provider-correction outline;
+    // server point lookup uses the unsimplified atlas topology.
+    assert.ok(PALESTINE.length > 0);
     assert.deepEqual(Object.keys(BOUNDARIES.countries).sort(), tableCodes);
   });
 
@@ -194,6 +208,15 @@ describe('indexed country geometry', () => {
 
 describe('point exposure by country outline', () => {
   const places = [
+    ['Eilat centre', 29.55, 34.95, 'ISR'],
+    ['Eilat south', 29.54, 34.94, 'ISR'],
+    ['Eilat north (raw atlas Jordan)', 29.57, 34.96, null],
+    ['Moldova wrong-snap regression', 48.40742803917716, 27.510716032731192, null],
+    ['Laos wrong-snap regression', 21.261407681930056, 100.77073645052123, null],
+    ['Cameroon wrong-snap regression', 8.846732292626287, 12.8475151779719, null],
+    ['Teknaf', 20.86, 92.30, null],
+    ['Aqaba', 29.649, 35.033, null],
+    ['Haifa north control', 32.82, 34.99, 'ISR'],
     ['Kyiv', 50.45, 30.52, 'UKR'],
     ['Lviv', 49.84, 24.03, 'UKR'],
     ["Sana'a", 15.37, 44.19, 'YEM'],

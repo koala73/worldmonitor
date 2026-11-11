@@ -123,7 +123,7 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { currentUcdpCountryName, fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureInput } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureInput } from '@/services/conflict';
 import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
@@ -3980,7 +3980,7 @@ export class DataLoaderManager implements AppModule {
       // visible as pending; unrest still requires confirmed provider precision.
       const ucdp = enrichEventsWithExposure((ucdpInput?.events ?? []).map(e => ({
         id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
-        name: e.locationName ? `${e.locationName}, ${currentUcdpCountryName(e.country)}` : `${e.side_a} vs ${e.side_b}`,
+        name: e.locationName ?? '', locationName: e.locationName ?? '',
         country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
       })), perSourceLimit, true);
       const unrest = enrichEventsWithExposure((protests?.events ?? []).map(e => ({
