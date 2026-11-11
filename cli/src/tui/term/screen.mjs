@@ -7,6 +7,15 @@ export const ATTR = { BOLD: 1, DIM: 2, ITALIC: 4, UNDERLINE: 8, BLINK: 16, REVER
 
 const WIDE_TAIL = '\u0000';
 
+// Glyph ranges whose width terminals agree on: ASCII, Latin-1, general
+// punctuation, arrows, maths operators, box drawing, block elements,
+// geometric shapes and braille.
+export function stableWidth(ch) {
+  const cp = ch.codePointAt(0);
+  if (ch.length > 1 && cp < 0x10000) return false; // combining sequences
+  return cp < 0x7f || (cp >= 0xa0 && cp <= 0xff) || (cp >= 0x2010 && cp <= 0x2027) || (cp >= 0x2190 && cp <= 0x22ff) || (cp >= 0x2500 && cp <= 0x25ff) || (cp >= 0x2800 && cp <= 0x28ff);
+}
+
 export class Screen {
   constructor(cols, rows, { depth = 24 } = {}) {
     this.depth = depth;
@@ -185,6 +194,10 @@ export class Screen {
         const w = charWidth(ch) || 1;
         cursorX = x + w;
         cursorY = y;
+        // Terminals disagree about the width of many symbols and scripts; only
+        // trust the implicit advance for glyphs every terminal renders at the
+        // width we computed, and re-anchor the cursor after anything else.
+        if (!stableWidth(ch)) cursorX = -1;
         if (cursorX >= this.cols) {
           cursorX = -1;
           cursorY = -1;

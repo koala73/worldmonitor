@@ -15,6 +15,7 @@ import { charWidth } from '../src/tui/term/ansi.mjs';
 import { dayFactor, defaultView, makeProjector, normalizeView, panBy, subsolarPoint, wrapLon, zoomAt } from '../src/tui/map/geo.mjs';
 import { ImageryCache, gibsUrl, latestDailyDate } from '../src/tui/map/imagery.mjs';
 import { LAYERS, buildFeatures, defaultLayerState, layerSources } from '../src/tui/map/layers.mjs';
+import { STREET_LAYERS } from '../src/tui/map/osm.mjs';
 import { groundTrack, parseTle, propagate } from '../src/tui/map/orbit.mjs';
 import { decodePng, samplePixel } from '../src/tui/map/png.mjs';
 import { countryCentroidByA2, decodeWorld, renderWorld, worldMask } from '../src/tui/map/world.mjs';
@@ -104,7 +105,7 @@ describe('geo projections', () => {
     assert.ok(Math.abs(after.lon - anchor.lon) < 0.2 && Math.abs(after.lat - anchor.lat) < 0.2);
     const far = panBy(view, 340, 160, 0, 100000);
     assert.ok(far.lat <= 90);
-    assert.ok(normalizeView({ ...view, zoom: 10000 }, 340, 160).zoom <= 160);
+    assert.ok(normalizeView({ ...view, zoom: 1e12 }, 340, 160).zoom <= 2 ** 21, 'zoom is clamped at street level');
   });
   it('computes a plausible subsolar point and day factor', () => {
     const sun = subsolarPoint(Date.UTC(2026, 5, 21, 12, 0, 0)); // June solstice, noon UTC
@@ -346,7 +347,8 @@ describe('map view', () => {
     map.toggleGroup('infra');
     assert.ok(map.layers.cables && map.layers.ports);
     map.resetLayers();
-    assert.deepEqual(Object.keys(map.layers).filter((k) => map.layers[k]).sort(), Object.keys(defaultLayerState()).filter((k) => defaultLayerState()[k]).sort());
+    const defaults = { ...defaultLayerState(), ...Object.fromEntries(STREET_LAYERS.map((l) => [l.id, Boolean(l.on)])) };
+    assert.deepEqual(Object.keys(map.layers).filter((k) => map.layers[k]).sort(), Object.keys(defaults).filter((k) => defaults[k]).sort());
     app.handleEvent({ type: 'key', name: 'L', ch: 'L', shift: true });
     assert.equal(map.focus, 'map');
     app.handleEvent({ type: 'key', name: 'L', ch: 'L', shift: true });

@@ -34,6 +34,24 @@ export class DotCanvas {
     this.occupied.set(other.occupied);
   }
 
+  // Overlay another canvas of the same size: dots merge, colours and glyphs by priority.
+  mergeFrom(other) {
+    for (let i = 0; i < this.code.length; i++) {
+      if (other.code[i]) {
+        this.code[i] |= other.code[i];
+        if (other.pri[i] >= this.pri[i]) {
+          this.pri[i] = other.pri[i];
+          this.color[i] = other.color[i];
+        }
+      }
+      if (other.occupied[i]) this.occupied[i] = 1;
+    }
+    for (const [k, v] of other.glyphs) {
+      const cur = this.glyphs.get(k);
+      if (!cur || v.pri >= cur.pri) this.glyphs.set(k, v);
+    }
+  }
+
   clear() {
     this.code.fill(0);
     this.color.fill(null);
@@ -94,7 +112,7 @@ export class DotCanvas {
   }
 
   // Even-odd scanline fill of one or more rings (array of [x, y] arrays).
-  // pattern: 0 solid, 1 horizontal scanlines (every other dot row), 2 checker.
+  // pattern: 0 solid, 1 horizontal scanlines (every other dot row), 2 checker, 3 sparse (one dot in four).
   fillRings(rings, color, pri = 0, pattern = 0) {
     let minY = Infinity;
     let maxY = -Infinity;
@@ -145,6 +163,7 @@ export class DotCanvas {
         const to = Math.min(this.w - 1, Math.floor(xs[i + 1] - 0.5));
         for (let x = from; x <= to; x++) {
           if (pattern === 2 && (x + py) % 2) continue;
+          if (pattern === 3 && (x + 2 * py) % 4) continue;
           this.dot(x, py, color, pri);
         }
       }
