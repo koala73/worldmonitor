@@ -28,15 +28,17 @@ export type TeamDashboardLayout = Infer<typeof teamDashboardLayoutValidator>;
 
 const MAX_PANELS = 400;
 const MAX_LAYERS = 200;
-const MAX_SPAN = 4;
+// Mirror src/utils/panel-grid.ts (MAX_PANEL_ROW_SPAN, MAX_PANEL_COL_SPAN).
+const MAX_ROW_SPAN = 4;
+const MAX_COL_SPAN = 3;
 const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,79}$/;
 
 function invalid(field: string): never {
   throw new ConvexError({ kind: "INVALID_LAYOUT", field });
 }
 
-function isSpan(value: number | undefined): boolean {
-  return value === undefined || (Number.isInteger(value) && value >= 1 && value <= MAX_SPAN);
+function isSpan(value: number | undefined, max: number): boolean {
+  return value === undefined || (Number.isInteger(value) && value >= 1 && value <= max);
 }
 
 /** Bounds the validator cannot express: sizes, key shape, numeric ranges. */
@@ -45,7 +47,7 @@ export function checkTeamDashboardLayout(layout: TeamDashboardLayout): void {
   const seen = new Set<string>();
   for (const panel of layout.panels) {
     if (!KEY_RE.test(panel.key) || seen.has(panel.key)) invalid("panels.key");
-    if (!isSpan(panel.rows) || !isSpan(panel.cols)) invalid("panels.span");
+    if (!isSpan(panel.rows, MAX_ROW_SPAN) || !isSpan(panel.cols, MAX_COL_SPAN)) invalid("panels.span");
     seen.add(panel.key);
   }
   const map = layout.map;

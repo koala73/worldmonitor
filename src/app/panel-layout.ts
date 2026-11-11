@@ -90,6 +90,7 @@ import {
   hasNewTabPanels,
   saveNewTabPanels,
 } from '@/services/tab-store';
+import { TeamDashboardsStore, publishOrShareAsNew } from '@/services/team-dashboards-store';
 import {
   captureTeamDashboardLayout,
   loadTeamDashboards,
@@ -99,7 +100,6 @@ import {
   toTeamDashboardTab,
   type PanelSize,
   type TeamDashboardMap,
-  type TeamDashboards,
 } from '@/services/team-dashboards';
 import type { PanelTab, TabsPersistReceipt, TabsState } from '@/services/tab-store';
 import {
@@ -508,11 +508,13 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private gatingPrincipal: string | null | undefined = undefined;
   // Team dashboards for the signed-in user: null until loaded, and for anyone
-  // without an API Business or Enterprise team. Keyed by the user they were
-  // loaded for, so a result never crosses an account switch.
-  private teamDashboards: TeamDashboards | null = null;
-  private teamPrincipal: string | null = null;
-  private teamLoad: Promise<void> | null = null;
+  // without an API Business or Enterprise team.
+  private readonly team = new TeamDashboardsStore({
+    load: loadTeamDashboards,
+    onChange: () => {
+      if (!this.ctx.isDestroyed) this.panelTabBar?.refresh();
+    },
+  });
   private teamBusy = false;
   private premiumPanelsUnlocked = new Set<string>();
   private unsubscribeSubscriptionChange: (() => void) | null = null;
@@ -1103,7 +1105,8 @@ export class PanelLayoutManager implements AppModule {
       }
     }
     this.gatingPrincipal = state.user?.id ?? null;
-    this.syncTeamDashboardsPrincipal(state.user?.id ?? null);
+    // Also retries a failed team load for the same user.
+    this.team.setPrincipal(state.user?.id ?? null);
 
     // KTD8: the tab cap rides the SAME pass, so it re-evaluates on both
     // subscribeAuthState and onEntitlementChange (plus onSubscriptionChange).
@@ -1525,7 +1528,7 @@ export class PanelLayoutManager implements AppModule {
       onClearNewTabPanels: () => this.useDefaultNewTabPanels(),
       team: {
         view: () => this.teamDashboardsView(),
-        onOpenMenu: () => { void this.reloadTeamDashboards(); },
+        onOpenMenu: () => { void this.team.reload(); },
         onOpen: (id) => this.openTeamDashboard(id),
         onShareTab: () => { void this.shareActiveTabWithTeam(); },
         onUpdateTab: () => this.updateActiveTabFromTeam(),
@@ -1553,42 +1556,13 @@ export class PanelLayoutManager implements AppModule {
   // Team dashboards — tabs shared within an API Business or Enterprise team
   // ============================================
 
-  private syncTeamDashboardsPrincipal(userId: string | null): void {
-    if (userId === this.teamPrincipal) return;
-    this.teamPrincipal = userId;
-    this.teamDashboards = null;
-    this.panelTabBar?.refresh();
-    if (userId) void this.reloadTeamDashboards();
-  }
-
-  private reloadTeamDashboards(): Promise<void> {
-    const userId = this.teamPrincipal;
-    if (!userId) return Promise.resolve();
-    if (this.teamLoad) return this.teamLoad;
-    const load = loadTeamDashboards(userId)
-      .then((result) => {
-        if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
-        this.teamDashboards = result;
-        this.panelTabBar?.refresh();
-      })
-      .catch((err: unknown) => {
-        // Keep what was shown; the next menu open asks again.
-        console.warn('[TeamDashboards] Failed to load team dashboards:', err);
-      })
-      .finally(() => {
-        if (this.teamLoad === load) this.teamLoad = null;
-      });
-    this.teamLoad = load;
-    return load;
-  }
-
   private activeTab(): PanelTab | null {
     const state = this.tabsState;
     return state?.tabs.find((tab) => tab.id === state.activeTabId) ?? null;
   }
 
   private teamDashboardsView() {
-    const team = this.teamDashboards;
+    const team = this.team.dashboards;
     if (!team) return null;
     const link = this.activeTab()?.team;
     const linked = link ? team.dashboards.find((d) => d.id === link.id) : undefined;
@@ -1600,7 +1574,7 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private openTeamDashboard(id: string): void {
-    const dashboard = this.teamDashboards?.dashboards.find((d) => d.id === id);
+    const dashboard = this.team.dashboards?.dashboards.find((d) => d.id === id);
     if (!dashboard || !this.tabsState) return;
 
     // Already open here: go to that tab rather than stacking copies.
@@ -1631,7 +1605,7 @@ export class PanelLayoutManager implements AppModule {
 
   private updateActiveTabFromTeam(): void {
     const tab = this.activeTab();
-    const dashboard = tab?.team && this.teamDashboards?.dashboards.find((d) => d.id === tab.team!.id);
+    const dashboard = tab?.team && this.team.dashboards?.dashboards.find((d) => d.id === tab.team!.id);
     if (!tab || !dashboard || !this.tabsState) return;
 
     const built = toTeamDashboardTab(dashboard.layout, this.ctx.panelSettings);
@@ -1646,9 +1620,10 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private async shareActiveTabWithTeam(): Promise<void> {
-    const userId = this.teamPrincipal;
+    const userId = this.team.userId;
     const tab = this.activeTab();
-    if (!userId || !tab || !this.teamDashboards || this.teamBusy) return;
+    const team = this.team.dashboards;
+    if (!userId || !tab || !team || this.teamBusy) return;
 
     const mapState = this.ctx.map?.getState();
     const layout = captureTeamDashboardLayout({
@@ -1666,19 +1641,22 @@ export class PanelLayoutManager implements AppModule {
         : null,
     });
     // A link to a dashboard someone has since removed shares as a new one.
-    const linkedId = tab.team && this.teamDashboards.dashboards.some((d) => d.id === tab.team!.id)
+    const linkedId = tab.team && team.dashboards.some((d) => d.id === tab.team!.id)
       ? tab.team.id
       : undefined;
 
     this.teamBusy = true;
     this.panelTabBar?.refresh();
     try {
-      const link = await publishTeamDashboard(userId, { name: tab.name, layout, dashboardId: linkedId });
-      if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
+      const link = await publishOrShareAsNew(
+        (args) => publishTeamDashboard(userId, args),
+        { name: tab.name, layout, dashboardId: linkedId },
+      );
+      if (this.team.userId !== userId || this.ctx.isDestroyed) return;
       tab.team = link;
       if (this.tabsState) saveTabsState(this.tabsState);
       showToast(t('teamDashboards.shared', { name: tab.name }));
-      await this.reloadTeamDashboards();
+      await this.team.reload({ fresh: true });
     } catch (err) {
       const kind = teamDashboardErrorKind(err);
       showToast(kind === 'TEAM_DASHBOARD_LIMIT'
@@ -1691,8 +1669,8 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private async stopSharingTeamDashboard(id: string): Promise<void> {
-    const userId = this.teamPrincipal;
-    const dashboard = this.teamDashboards?.dashboards.find((d) => d.id === id);
+    const userId = this.team.userId;
+    const dashboard = this.team.dashboards?.dashboards.find((d) => d.id === id);
     if (!userId || !dashboard || this.teamBusy) return;
     if (!window.confirm(t('teamDashboards.confirmStop', { name: dashboard.name }))) return;
 
@@ -1700,7 +1678,7 @@ export class PanelLayoutManager implements AppModule {
     this.panelTabBar?.refresh();
     try {
       await removeTeamDashboard(userId, id);
-      if (this.teamPrincipal !== userId || this.ctx.isDestroyed) return;
+      if (this.team.userId !== userId || this.ctx.isDestroyed) return;
       // Tabs opened from it keep their panels; they are just no longer linked.
       let unlinked = false;
       for (const tab of this.tabsState?.tabs ?? []) {
@@ -1710,7 +1688,7 @@ export class PanelLayoutManager implements AppModule {
       }
       if (unlinked && this.tabsState) saveTabsState(this.tabsState);
       showToast(t('teamDashboards.stopped', { name: dashboard.name }));
-      await this.reloadTeamDashboards();
+      await this.team.reload({ fresh: true });
     } catch {
       showToast(t('teamDashboards.failed'));
     } finally {

@@ -18,6 +18,7 @@ import { assertAccountWritable } from "./accountDeletion/guard";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { checkTeamDashboardLayout, teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
 import { isBusinessPlan, isCoveringAt } from "./payments/subscriptionHelpers";
+import { liveMemberAccount } from "./lib/enterpriseAccounts";
 import { isPreferenceVariant } from "../shared/cloud-preferences-contract";
 
 export const MAX_TEAM_DASHBOARDS_PER_VARIANT = 25;
@@ -28,11 +29,15 @@ export type TeamKind = "business" | "enterprise";
 type Team = { key: string; kind: TeamKind };
 
 /**
- * The caller's team, or null. A business subscriber's own covering
- * subscription wins over a seat they hold on someone else's, and either wins
- * over an Enterprise membership.
+ * The caller's team, or null. The order matches the entitlement recompute:
+ * an Enterprise account with a live contract first, then the caller's own
+ * covering API Business subscription, then a seat they hold on someone
+ * else's.
  */
 export async function resolveTeam(ctx: ReadCtx, userId: string, now: number): Promise<Team | null> {
+  const account = await liveMemberAccount(ctx, userId, now);
+  if (account) return { key: `enterprise:${account._id}`, kind: "enterprise" };
+
   const ownSubs = await ctx.db
     .query("subscriptions")
     .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -55,15 +60,6 @@ export async function resolveTeam(ctx: ReadCtx, userId: string, now: number): Pr
     if (sub && isBusinessPlan(sub.planKey) && isCoveringAt(sub, now)) {
       return { key: `business:${grant.businessSubscriptionId}`, kind: "business" };
     }
-  }
-
-  const members = await ctx.db
-    .query("enterpriseMembers")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
-    .collect();
-  const member = members.find((m) => m.status === "active");
-  if (member && (await ctx.db.get(member.accountId))) {
-    return { key: `enterprise:${member.accountId}`, kind: "enterprise" };
   }
   return null;
 }

@@ -192,6 +192,29 @@ describe("team membership", () => {
     expect(seen.dashboards.map((d) => d.name)).toEqual(["Enterprise layout"]);
   });
 
+  test("Enterprise members leave the team when the contract ends, like their entitlement", async () => {
+    const t = convexTest(schema, modules);
+    await seedEnterprise(t);
+    await publish(t, ENT_MEMBER, { name: "Enterprise layout" });
+
+    vi.setSystemTime(NOW + 366 * DAY_MS);
+
+    expect((await list(t, ENT_MEMBER)).team).toBeNull();
+    expect(await errorKind(publish(t, ENT_ADMIN))).toBe("NOT_ON_A_TEAM");
+  });
+
+  test("a user on both an Enterprise account and a business seat gets the Enterprise team, as the entitlement does", async () => {
+    const t = convexTest(schema, modules);
+    const accountId = await seedEnterprise(t);
+    await seedBusiness(t);
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: SEAT });
+    await publish(t, ENT_MEMBER, { name: "Enterprise layout" });
+
+    const seen = await list(t, SEAT);
+    expect(seen.team).toEqual({ kind: "enterprise" });
+    expect(seen.dashboards.map((d) => d.name)).toEqual(["Enterprise layout"]);
+  });
+
   test("a removed Enterprise member leaves the team", async () => {
     const t = convexTest(schema, modules);
     const accountId = await seedEnterprise(t);
@@ -274,9 +297,10 @@ describe("publishing", () => {
     ["an unknown variant", { variant: "sports" }, "INVALID_VARIANT"],
     ["no panels", { layout: { panels: [] } }, "INVALID_LAYOUT"],
     ["a duplicate panel", { layout: { panels: [{ key: "a", on: true }, { key: "a", on: false }] } }, "INVALID_LAYOUT"],
-    ["a panel key that names an object member", { layout: { panels: [{ key: "__proto__", on: true }] } }, "INVALID_LAYOUT"],
+    ["a panel key with a leading underscore", { layout: { panels: [{ key: "__proto__", on: true }] } }, "INVALID_LAYOUT"],
     ["a fractional span", { layout: { panels: [{ key: "a", on: true, rows: 1.5 }] } }, "INVALID_LAYOUT"],
-    ["a span over 4", { layout: { panels: [{ key: "a", on: true, cols: 5 }] } }, "INVALID_LAYOUT"],
+    ["a row span over 4", { layout: { panels: [{ key: "a", on: true, rows: 5 }] } }, "INVALID_LAYOUT"],
+    ["a column span wider than the grid allows", { layout: { panels: [{ key: "a", on: true, cols: 4 }] } }, "INVALID_LAYOUT"],
     ["a latitude past the pole", { layout: { panels: [{ key: "a", on: true }], map: { ...LAYOUT.map!, lat: 91 } } }, "INVALID_LAYOUT"],
     ["a non-finite zoom", { layout: { panels: [{ key: "a", on: true }], map: { ...LAYOUT.map!, zoom: Number.NaN } } }, "INVALID_LAYOUT"],
     ["a malformed layer name", { layout: { panels: [{ key: "a", on: true }], map: { ...LAYOUT.map!, layers: ["bad layer"] } } }, "INVALID_LAYOUT"],
