@@ -6,13 +6,18 @@ import {
   SCOPE_MAX_COUNTRIES,
   isValidScopeIso2,
   normalizeScope,
-  resolveScope,
   scopeEquals,
   scopeStatus,
   type TabScope,
 } from '../shared/tab-scope.ts';
+import { resolveScope } from '../shared/tab-scope-resolve.ts';
 
 const JSON_CODES = Object.keys(JSON.parse(readFileSync(new URL('../shared/iso2-to-iso3.json', import.meta.url), 'utf8'))).sort();
+
+test('tab-scope stays free of the adjacency table (the tab store loads it at first paint)', () => {
+  const source = readFileSync(new URL('../shared/tab-scope.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /^\s*import\b(?!\s+type\b).*country-adjacency/m);
+});
 
 test('the inlined ISO2 list matches shared/iso2-to-iso3.json exactly', () => {
   assert.deepEqual([...SCOPE_ISO2_CODES], JSON_CODES);

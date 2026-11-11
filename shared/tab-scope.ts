@@ -3,9 +3,9 @@
  * to widen to their neighbours, and an optional calendar window (for a trip).
  *
  * Pure code with no Intl, DOM or Node APIs: both convex/ and src/ import it.
+ * It must not import the adjacency table: the tab store loads it at first
+ * paint. Neighbour expansion lives in shared/tab-scope-resolve.ts.
  */
-
-import { neighboursOf } from './country-adjacency';
 
 export interface TabScope {
   countries: string[];
@@ -93,18 +93,6 @@ export function normalizeScope(raw: unknown): TabScope | null {
     if (end) scope.end = end;
   }
   return scope;
-}
-
-/** Chosen countries in their given order, plus the sorted union of their neighbours. */
-export function resolveScope(scope: TabScope): { chosen: string[]; neighbours: string[] } {
-  const chosen = [...scope.countries];
-  if (scope.neighbours === false) return { chosen, neighbours: [] };
-  const picked = new Set(chosen);
-  const neighbours = new Set<string>();
-  for (const code of chosen) {
-    for (const n of neighboursOf(code)) if (!picked.has(n)) neighbours.add(n);
-  }
-  return { chosen, neighbours: [...neighbours].sort() };
 }
 
 function utcDay(now: Date): string | null {
