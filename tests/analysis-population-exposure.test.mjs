@@ -24,6 +24,15 @@ import {
 } from '../shared/analysis-temporal-severity.ts';
 
 describe('dashboard population exposure', () => {
+  it('names dashboard Gaza rows for the PSE estimate', () => {
+    const { exposures } = enrichEventsWithExposure([{
+      id: 'gaza', name: 'Gaza town, Israel', locationName: 'Gaza town', type: 'conflict',
+      country: 'Israel', lat: 31.52, lon: 34.45, hasPreciseLocation: true,
+    }]);
+    assert.equal(exposures[0].eventName, 'Gaza town, Palestine');
+    assert.equal(exposures[0].exposedPopulation, estimateExposure(31.52, 34.45, 'Palestine', 50).exposedPopulation);
+  });
+
   it('retains point precision from the provider codes', () => {
     const coordinates = { latitude: '13.58', longitude: '44.02' };
     const acledEvents = normalizeAcledProtestEvents([1, '1', 2, 3, undefined].map((geo_precision, i) => ({

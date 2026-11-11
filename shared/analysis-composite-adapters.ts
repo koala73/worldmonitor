@@ -21,6 +21,7 @@
  * Dependency-free apart from sibling shared modules.
  */
 
+import { exposureLocationKey } from '../scripts/shared/exposure-location-key.mjs';
 import type {
   AlertDigestInputs,
   AlertSeverity,
@@ -33,7 +34,7 @@ import type {
   ThermalEntry,
 } from './analysis-alert-digest';
 import { finiteNumber, nonEmptyString } from './analysis-adapter-guards';
-import { currentUcdpCountryName } from './ucdp-display';
+import { currentUcdpCountryName, ucdpExposureName } from './ucdp-display';
 import { estimatePointExposure } from './population-density-country-at';
 import { getRadiusForEventType } from './analysis-population-exposure';
 
@@ -120,9 +121,9 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
     const country = currentUcdpCountryName(nonEmptyString(e.country));
     // Reject unestimable rows before they can hide or inflate a supported
     // location, matching the dashboard's estimate-before-group ordering.
-    if (!estimatePointExposure(c.lat, c.lon, getRadiusForEventType('conflict'), country)) continue;
-    // Match selectUcdpExposureRows and the dashboard's locationKey (~100 m).
-    const key = `${c.lat.toFixed(3)},${c.lon.toFixed(3)}`;
+    const estimate = estimatePointExposure(c.lat, c.lon, getRadiusForEventType('conflict'), country);
+    if (!estimate) continue;
+    const key = exposureLocationKey(c.lat, c.lon);
     const existing = byLocation.get(key);
     if (existing) {
       existing.eventCount += 1;
@@ -132,7 +133,7 @@ export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): Exposu
     const place = nonEmptyString(e.locationName);
     byLocation.set(key, {
       id: e.id != null ? String(e.id) : `conflict-${byLocation.size}`,
-      name: place ? [place, country].filter(Boolean).join(', ') : `Conflict event${country ? ` — ${country}` : ''}`,
+      name: ucdpExposureName(place, country, estimate.country),
       type: 'conflict',
       ...c,
       ...(country ? { reportedCountry: country } : {}),
