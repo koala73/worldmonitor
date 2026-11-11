@@ -2716,7 +2716,7 @@ paths:
             tags:
                 - ClimateService
             summary: ListReservoirLevels
-            description: ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes, 50 to 70 days behind real time.
+            description: ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes. Passes typically publish 50 to 70 days after overpass; see latest.ageDays.
             operationId: ListReservoirLevels
             parameters:
                 - name: jmespath
@@ -2734,19 +2734,21 @@ paths:
                         application/json:
                             example:
                                 "dataAvailable": true
-                                "fetchedAt": 1717200000000
-                                "methodology": "example"
+                                "fetchedAt": 1790812800000
                                 "reservoirs":
-                                    - "change30dM": 1.5
-                                      "change365dM": 1.5
-                                      "change90dM": 1.5
-                                      "changePrevM": 1.5
-                                      "country": "US"
+                                    - "change90dM": -2.893
+                                      "id": "mead"
+                                      "lat": 36.13
+                                      "latest":
+                                          "ageDays": 24
+                                          "date": "2026-09-06"
+                                          "levelM": 316.757
+                                      "lon": -114.45
+                                      "name": "Lake Mead"
+                                      "status": "record_low"
                                 "source":
-                                    "name": "WorldMonitor Analyst"
-                                    "processing": "example"
-                                    "product": "diesel"
-                                    "url": "https://example.com/worldmonitor"
+                                    "name": "NASA ICESat-2 ATL13"
+                                    "product": "ATL13 v007"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_climate_v1_ListReservoirLevelsResponse'
                 "400":

@@ -67,6 +67,10 @@ export const STATE_SCHEMA = 1;
 export const DISCOVERY_LOOKBACK_DAYS = 120;
 export const PROCESSED_RETENTION_DAYS = 150;
 export const MAX_GRANULE_FAILURES = 3;
+// A reservoir whose CMR discovery fails this many consecutive runs is listed in the
+// payload's discoveryFailing and left out of the health record count, so health reports
+// partial coverage instead of staying green while that reservoir misses new granules.
+export const DISCOVERY_ALERT_RUNS = 3;
 export const MAX_GRANULES_PER_RUN = 150;
 // ATL06 granules are budgeted separately: the box returns land as well as water, so a
 // granule carries about 10x the rows of ATL13 and takes longer to subset. Measured on the
@@ -141,13 +145,16 @@ export function mergeReservoirState(a, b) {
       failures[g] = Math.max(failures[g] || 0, Number(c) || 0);
     }
   }
-  return {
+  const out = {
     passes,
     cursor: maxDate(x.cursor, y.cursor),
     processed: [...processed].sort(),
     failures,
     gaveUp: [...gaveUp].sort(),
   };
+  const discoveryFailedRuns = Math.max(Number(x.discoveryFailedRuns) || 0, Number(y.discoveryFailedRuns) || 0);
+  if (discoveryFailedRuns > 0) out.discoveryFailedRuns = discoveryFailedRuns;
+  return out;
 }
 
 export function baselineToState(baseline, watchlist) {
@@ -240,11 +247,20 @@ export function buildSummary(watchlist, byId, nowMs) {
     fetchedAt: nowMs,
     source: SOURCE,
     methodology: METHODOLOGY,
+    discoveryFailing: watchlist
+      .filter((e) => (byId[e.id]?.discoveryFailedRuns || 0) >= DISCOVERY_ALERT_RUNS)
+      .map((e) => e.id),
   };
 }
 
 export function countWithLatest(data) {
   return Array.isArray(data?.reservoirs) ? data.reservoirs.filter((r) => r?.latest).length : 0;
+}
+
+/** Health record count: reservoirs with a level whose granule discovery is not failing. */
+export function countTracked(data) {
+  const failing = new Set(Array.isArray(data?.discoveryFailing) ? data.discoveryFailing : []);
+  return Array.isArray(data?.reservoirs) ? data.reservoirs.filter((r) => r?.latest && !failing.has(r.id)).length : 0;
 }
 
 export function makeValidate(watchlistSize) {
@@ -311,11 +327,13 @@ export async function fetchReservoirLevels({
 } = {}) {
   const previous = await readState();
   const byId = mergeState(baseline, previous, watchlist);
+  const priorDiscoveryFailedRuns = new Map(watchlist.map((e) => [e.id, byId[e.id].discoveryFailedRuns || 0]));
 
   // 1. Discover granules per reservoir. The first reservoir doubles as a reachability
   // probe so a CMR outage fails in one timeout instead of one per reservoir.
   let cmrFailures = 0;
   const queues = new Map();
+  const discoveryFailed = new Set();
   const discover = async (e) => {
     const s = byId[e.id];
     const since = s.cursor
@@ -327,6 +345,7 @@ export async function fetchReservoirLevels({
       return true;
     } catch (err) {
       cmrFailures++;
+      discoveryFailed.add(e.id);
       log(`  [${e.id}] CMR failed: ${err?.message || err}`);
       queues.set(e.id, granuleQueue(s, []));
       return false;
@@ -394,6 +413,11 @@ export async function fetchReservoirLevels({
   if (planned > 0 && attempted === 0) throw outage(`no SlideRule request started for ${planned} planned granules before the run deadline`);
   log(`  granules: planned ${planned}, fetched ${succeeded}/${attempted}, deferred for time ${skippedForTime}`);
 
+  // Consecutive discovery failures per reservoir; one successful listing resets the count.
+  for (const e of watchlist) {
+    const { discoveryFailedRuns: _drop, ...rest } = byId[e.id];
+    byId[e.id] = discoveryFailed.has(e.id) ? { ...rest, discoveryFailedRuns: priorDiscoveryFailedRuns.get(e.id) + 1 } : rest;
+  }
   const summary = buildSummary(watchlist, byId, nowMs);
   return {
     ...summary,
@@ -408,14 +432,14 @@ export function stripState(data) {
 }
 
 export function declareRecords(data) {
-  return countWithLatest(data);
+  return countTracked(data);
 }
 
 export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
   return {
     validateFn: makeValidate(watchlistSize),
     ttlSeconds: CACHE_TTL_SECONDS,
-    recordCount: countWithLatest,
+    recordCount: countTracked,
     publishTransform: stripState,
     declareRecords,
     sourceVersion: 'icesat2-atl13-atl06-v007-sliderule-core-box-v2',
