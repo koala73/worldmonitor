@@ -171,10 +171,10 @@ test('fullscreen at 320 by 600 wraps the action row without horizontal overflow'
   }
 });
 
-test('fullscreen at 1200 by 800 puts map and news side by side, and inline sizing resumes after', async ({ page }, info) => {
+test('fullscreen at 1500 by 800 puts map and news side by side, and inline sizing resumes after', async ({ page }, info) => {
   const host = await installHost(page, { availableDisplayModes: ['inline', 'fullscreen'] });
   await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
-  await enterFullscreen(page, 1200, 800);
+  await enterFullscreen(page, 1500, 800);
   const body = host.frame.locator('body');
   await expect.poll(() => body.evaluate(element => element.getBoundingClientRect().height)).toBe(800);
   const map = await host.frame.locator('#mapSection').boundingBox();
@@ -182,7 +182,7 @@ test('fullscreen at 1200 by 800 puts map and news side by side, and inline sizin
   expect(Math.abs(map!.y - panels!.y)).toBeLessThan(map!.height);
   expect(panels!.x).toBeGreaterThan(map!.x);
   expect(panels!.y + panels!.height).toBeLessThanOrEqual(801);
-  await page.screenshot({ path: info.outputPath('news-fullscreen-1200.png') });
+  await page.screenshot({ path: info.outputPath('news-fullscreen-1500.png') });
   const before = sizeChanges(host.messages);
   await setHostContext(page, { displayMode: 'inline', containerDimensions: { width: 1100, maxHeight: 6000 } }, { width: 1100, height: 1050 });
   await expect(body).not.toHaveAttribute('data-wm-fill');

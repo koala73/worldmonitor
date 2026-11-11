@@ -42,7 +42,8 @@ body.plugin-body { overflow: auto; height: auto; min-height: 100vh; }
 }
 .plugin-expand-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 body.plugin-body[data-wm-fill] { height: var(--wm-fill-height, 100vh); min-height: 0; overflow: auto; overflow-x: hidden; box-sizing: border-box; }
-@media (min-width: 900px) {
+/* Same breakpoint as the shared split layout: below it the view stacks and the body scrolls. */
+@media (min-width: 1440px) {
   body.plugin-body[data-wm-fill] { display: flex; flex-direction: column; overflow: hidden; }
   body.plugin-body[data-wm-fill] #pluginRoot { flex: 1 1 auto; height: auto; min-height: 0; }
 }
