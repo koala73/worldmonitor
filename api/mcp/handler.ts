@@ -27,7 +27,7 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
 import { applyChatGptCommercePolicy, isChatGptHost } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
@@ -1266,6 +1266,7 @@ async function mcpHandlerInner(
   let burstPerMinute: number | undefined;
   let freeAccountAllowance = false;
   let planKey: string | undefined;
+  let travelRiskAssessment = false;
   if (isPublicMcpMethod(method, modernEra) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -1329,7 +1330,14 @@ async function mcpHandlerInner(
     }
     context = auth.context;
     setUsageContext(usage, context);
-    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    // A cached entitlement written before the flag existed would read as "not
+    // included" for up to its TTL, so only a call to the tool that needs the
+    // flag pays for a refetch of such an entry.
+    const requireTravelRiskShape = typeof toolCallName === 'string' && TRAVEL_RISK_TOOL_NAMES.has(toolCallName);
+    const preCheck = await runContextPreChecks(
+      context, deps, resourceMetadataUrl, corsHeaders, ctx, id,
+      requireTravelRiskShape ? { requireTravelRiskShape } : {},
+    );
     if (!preCheck.ok) {
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
@@ -1338,6 +1346,7 @@ async function mcpHandlerInner(
     burstPerMinute = preCheck.burstPerMinute;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     planKey = preCheck.planKey;
+    travelRiskAssessment = preCheck.travelRiskAssessment === true;
     // Only a data-bearing resources/read spends an Enterprise contract
     // account's burst (shared with its REST requests); the account status
     // read and unsupported methods stay on the per-user limiter. tools/call
@@ -1450,6 +1459,7 @@ async function mcpHandlerInner(
         usage,
         // Supported versions are YYYY-MM-DD, so string order is date order.
         protocolVersion !== null && protocolVersion >= '2025-11-25',
+        travelRiskAssessment,
       );
       classifyDispatchedUsage(usage, dispatched);
       return respond(dispatched);

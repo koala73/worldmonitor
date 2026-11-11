@@ -466,13 +466,15 @@ export { MAX_JSON_RPC_BODY_BYTES };
 // can quote it without a temporal-dead-zone error.
 export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
 
-// Total budget for every tools/list description together. 68 KiB is about
-// 17k tokens, roughly a sixth of the tools/list envelope (the input and output
+// Total budget for every tools/list description together. 70 KiB is about
+// 18k tokens, roughly a sixth of the tools/list envelope (the input and output
 // schemas are the rest). The 64 KiB cap was set at ~57 KB (#9302) to leave
 // headroom for a few more tools; the #9357 depth work spent that headroom on
 // existing descriptions, and get_no2_activity (#9722) reached ~66 KB, so the
-// cap moves once to restore room for two more tools. Test-enforced only.
-export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 69632;
+// cap moved to 68 KiB. Tools 97 to 102 left 52 B, less than any useful
+// description, so prepare_travel_risk_assessment (#10451) moves it to 70 KiB
+// rather than cutting other tools' descriptions. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 71680;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;

@@ -40,6 +40,7 @@ import type {
   AuthResolutionRejected,
   McpAuthContext,
   McpHandlerDeps,
+  McpPreCheckOptions,
   McpPreCheckResult,
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
@@ -560,6 +561,7 @@ export async function runProPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   // F12: Pro path is unusable without MCP_INTERNAL_HMAC_SECRET — every
   // tool fetch will throw inside buildAuthHeaders. Surface the misconfig
@@ -581,7 +583,7 @@ export async function runProPreChecks(
   const validation = await validateProMcpAuthorization(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
   if (!validation.ok) return validation;
 
-  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx, id);
+  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx, id, options);
 }
 
 /**
@@ -738,7 +740,7 @@ async function checkMcpEntitlementGate(
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
-  options: { requireApiAccess?: boolean } = {},
+  options: McpPreCheckOptions & { requireApiAccess?: boolean } = {},
 ): Promise<McpPreCheckResult> {
   /**
    * Availability failure, not a billing verdict. Mirrors the retryable shape
@@ -756,7 +758,9 @@ async function checkMcpEntitlementGate(
 
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
-    ent = await deps.getEntitlements(userId);
+    ent = options.requireTravelRiskShape
+      ? await deps.getEntitlements(userId, { requireTravelRiskShape: true })
+      : await deps.getEntitlements(userId);
   } catch (err) {
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, fingerprint: ['api/mcp', sentryStep, err instanceof Error ? err.name : 'Error'], ctx });
     // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
@@ -784,6 +788,8 @@ async function checkMcpEntitlementGate(
     },
     burstPerMinute: accountBudget?.account?.perMinuteBurst ?? burstPerMinute,
     ...(typeof ent?.planKey === 'string' ? { planKey: ent.planKey } : {}),
+    // #10451: only an explicit true grants it; a missing field is a plan without it.
+    ...(ent?.features?.travelRiskAssessment === true ? { travelRiskAssessment: true as const } : {}),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -873,6 +879,7 @@ export async function runUserKeyPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   // Same F12 posture as the OAuth door: identity-resolved user_key fetches
   // sign with the internal HMAC, so a missing secret must fail closed here
@@ -891,7 +898,7 @@ export async function runUserKeyPreChecks(
 
   const gate = await checkMcpEntitlementGate(
     context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id,
-    { requireApiAccess: true },
+    { ...options, requireApiAccess: true },
   );
   // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
   // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
@@ -915,12 +922,13 @@ export async function runContextPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   if (context.kind === 'pro') {
-    return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id, options);
   }
   if (context.kind === 'user_key') {
-    return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id, options);
   }
   if (context.kind === 'free') {
     // U7: no entitlement to check — admission was already decided by the

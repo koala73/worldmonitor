@@ -85,6 +85,7 @@ function rewriteError(message: unknown): boolean {
     reason: data.reason as McpDenialReason,
     sharedWithRestApi: data.sharedWithRestApi === true,
     allowance: data.allowance,
+    planFeature: data.planFeature,
   });
   delete data.recommendedPlan;
   delete data.checkoutTool;
