@@ -14,7 +14,7 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
   await page.route('**/api/**', route => route.fulfill({ json: {} }));
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
   await page.locator('html[data-wm-event-handlers-ready="true"]').waitFor();
-  for (const width of [1920, 1830, 1730, 1630, 1536, 1440, 1366, 1280, 1180, 1000, 981, 980, 940, 834, 768, 767, 390, 1440]) {
+  for (const width of [1375, 1920, 1876, 1875, 1831, 1830, 1731, 1730, 1631, 1630, 1536, 1501, 1440, 1376, 1366, 1280, 1201, 1180, 1076, 1075, 1000, 981, 980, 940, 834, 768, 767, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     const switcher = page.locator('.variant-switcher');
     await expect(switcher).toHaveCount(1);
@@ -23,6 +23,7 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
       continue;
     }
     await expect(switcher).toBeVisible();
+    if (width > 1075) await expect(page.locator('.mission-preset-button')).toBeVisible();
     await expect(page.locator(width <= 980 ? '.dashboard-navigation-row .variant-switcher' : '.header-left .variant-switcher')).toHaveCount(1);
     const labels = switcher.locator('.variant-label');
     await expect(labels).toHaveCount(6);
@@ -42,6 +43,11 @@ test('dashboard names remain readable from tablet through desktop', async ({ pag
       await page.screenshot({ path: `test-results/dashboard-switcher-${width}.png` });
     }
   }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('.mission-preset-button').click();
+  await expect(page.getByRole('dialog', { name: 'Mission presets', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Mission presets', exact: true })).toBeHidden();
   await page.setViewportSize({ width: 834, height: 900 });
   await page.locator('.variant-option[data-variant="tech"]').click();
   await expect(page.locator('.variant-option.active[data-variant="tech"]')).toBeVisible();

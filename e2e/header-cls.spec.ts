@@ -67,8 +67,6 @@ test.describe('header CLS reservations', () => {
   });
 
   test('reserves stable space for async header mounts without shifting the header', async ({ page }) => {
-    // Mission is progressively disclosed above 1375px with dashboard labels visible.
-    await page.setViewportSize({ width: 1440, height: 720 });
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
 

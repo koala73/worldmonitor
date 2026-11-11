@@ -1153,7 +1153,7 @@ canvas,
    (footer links, the mobile hamburger menu, or the map's own controls). The
    full mobile hamburger takes over at <=768px. !important mirrors the <=768
    block below (needed to beat the #missionPresetMount id rule in header.css). */
-@media (max-width: 1830px) {
+@media (max-width: 1875px) {
   /* redundant with footer/menu: X credit + GitHub icon */
   .credit-link,
   .github-link { display: none !important; }
@@ -1170,10 +1170,10 @@ canvas,
 @media (max-width: 1500px) {
   .pizzint-indicator { display: none !important; }
 }
-@media (max-width: 1375px) {
+@media (max-width: 1075px) {
   .mission-preset-mount { display: none !important; }
 }
-@media (min-width: 981px) and (max-width: 1200px) {
+@media (min-width: 981px) and (max-width: 1375px) {
   .header { padding-inline: 8px; }
   .header-left { gap: 6px; }
   .header-right { gap: 6px; }
