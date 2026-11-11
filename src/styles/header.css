@@ -73,7 +73,6 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   max-width: var(--header-auth-slot-width);
   min-width: 72px;
   min-height: 32px;
-  overflow: hidden;
 }
 
 .auth-header-widget-pending {

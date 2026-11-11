@@ -21,6 +21,15 @@ describe('header auth layout alignment', () => {
     assert.match(headerCss, new RegExp(`min-width:\\s*${HEADER_AUTH_SLOT_MIN_WIDTH_PX}px`));
   });
 
+  it('does not clip #authWidgetMount: the signed-in UserButton popover must stay visible', () => {
+    const mountRules = [...headerCss.matchAll(/(?:^|[};/])\s*([^{}/]*)\{([^}]*)\}/g)]
+      .filter(([, selector]) => selector.split(',').some((s) => s.trim() === '#authWidgetMount'));
+    assert.ok(mountRules.length >= 2, 'finds the shared and the sizing #authWidgetMount rules');
+    for (const [, selector, body] of mountRules) {
+      assert.doesNotMatch(body, /overflow\s*:/, `only the pending placeholder may clip, not the mount (${selector.trim()})`);
+    }
+  });
+
   it('keeps the free-reason hide band aligned with the TS constants', () => {
     assert.match(
       headerCss,
