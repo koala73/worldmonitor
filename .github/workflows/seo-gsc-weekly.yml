@@ -418,11 +418,13 @@ jobs:
           marker="<!-- answerrank-alert:$(jq -r '.date' "$file") -->"
           # Anyone can open an issue or comment on this public repository, so
           # only this workflow's own issues and comments count: exact title,
-          # authored by github-actions[bot].
+          # authored by github-actions[bot]. The author filter is also in the
+          # search itself, so outside issues with the same title cannot push
+          # the bot's issues past the result limit.
           # Each read is a plain assignment so that, under bash -e, a failed
           # read stops the step instead of reading as "not reported yet" and
           # posting the same week twice.
-          issues=$(gh issue list --state all --search "\"${title}\" in:title" --limit 20 --json number,title,state,author)
+          issues=$(gh issue list --state all --search "\"${title}\" in:title author:app/github-actions" --limit 100 --json number,title,state,author)
           own=$(jq -r --arg title "$title" '.[] | select(.title == $title and .author.login == "app/github-actions") | .number' <<< "$issues")
           for number in $own; do
             thread=$(gh issue view "$number" --json body,comments)
