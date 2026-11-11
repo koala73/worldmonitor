@@ -78,6 +78,8 @@ describe('NGA daily memo fallback', () => {
     const newYearEve = pac.replace('061440Z NOV.', '311440Z DEC.');
     assert.ok(parseNgaDailyMemo(newYearEve, 'P', 'HYDROPAC', Date.UTC(2027, 0, 1, 6)), 'Dec 31 memo read on Jan 1 belongs to the previous year');
     assert.equal(parseNgaDailyMemo(newYearEve, 'P', 'HYDROPAC', Date.UTC(2026, 11, 20)), null, 'a yearless date in the future is not this year');
+    const newYearMidnight = pac.replace('061440Z NOV.', '010000Z JAN.');
+    assert.ok(parseNgaDailyMemo(newYearMidnight, 'P', 'HYDROPAC', Date.UTC(2026, 11, 31, 23, 30)), 'Jan 1 memo seen within the clock-skew hour before midnight is next year');
   });
 
   it('skips the area\'s own in-force summary notice, which carries no warning number', () => {

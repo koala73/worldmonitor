@@ -87,14 +87,18 @@ function parseDtg(value: string): { ms: number; issueDate: string } | null {
 }
 
 // Since 2026-11-10 the memo header omits the year ("101445Z NOV."). Take the
-// latest year that does not put the date in the future, so a 31 Dec memo read
-// on 1 Jan stays in the old year.
+// latest year that puts the date at most an hour ahead, so a 31 Dec memo read
+// on 1 Jan stays in the old year and a 1 Jan memo seen just before midnight
+// lands in the new one.
 function parseHeaderAsOf(dayTimeMonth: string, yy: string | undefined, nowMs: number): { ms: number } | null {
   if (yy !== undefined) return parseDtg(`${dayTimeMonth} ${yy}`);
   const year = new Date(nowMs).getUTCFullYear();
-  const thisYear = parseDtg(`${dayTimeMonth} ${String(year % 100).padStart(2, '0')}`);
-  if (thisYear === null || thisYear.ms <= nowMs + 60 * 60 * 1000) return thisYear;
-  return parseDtg(`${dayTimeMonth} ${String((year - 1) % 100).padStart(2, '0')}`);
+  for (const candidate of [year + 1, year, year - 1]) {
+    const asOf = parseDtg(`${dayTimeMonth} ${String(candidate % 100).padStart(2, '0')}`);
+    if (asOf === null) return null;
+    if (asOf.ms <= nowMs + 60 * 60 * 1000) return asOf;
+  }
+  return null;
 }
 
 /**
