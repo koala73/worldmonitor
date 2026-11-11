@@ -93,10 +93,10 @@ function withContentAttribution(url, {
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
-function assertMetaDescription(description, label) {
+function assertMetaDescription(description, label, bounds = { min: 155, max: 160 }) {
   const length = [...description].length;
-  if (length < 155 || length > 160) {
-    throw new Error(`${label} meta description must be 155–160 chars (got ${length})`);
+  if (length < bounds.min || length > bounds.max) {
+    throw new Error(`${label} meta description must be ${bounds.min}–${bounds.max} chars (got ${length})`);
   }
 }
 
@@ -169,8 +169,8 @@ function renderUseCasesIndex({ tpl, baseUrl, lastmod }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/use-cases/';
   const description =
-    'Evergreen World Monitor use-case workflows that turn a monitoring question into an exact dashboard decision, with provenance, limits, and clear next steps.';
-  assertMetaDescription(description, 'use-cases hub');
+    'Step-by-step World Monitor workflows for monitoring supply-chain disruption, country risk and breaking news, with sources, limits and clear next steps.';
+  assertMetaDescription(description, 'use-cases hub', { min: 120, max: 160 });
 
   const cards = USE_CASE_PAGES.map((page) => `        <a class="card" href="${escapeHtml(page.path)}"><strong>${escapeHtml(page.title)}</strong><br><span>${escapeHtml(page.hubCard)}</span></a>`).join('\n');
 
@@ -191,7 +191,7 @@ ${cards}
   return pageDocument({
     baseUrl,
     path,
-    title: 'Use Cases | World Monitor',
+    title: 'Geopolitical Monitoring Use Cases | World Monitor',
     description,
     lastmod,
     ogType: 'website',
