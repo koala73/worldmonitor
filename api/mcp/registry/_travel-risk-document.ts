@@ -190,11 +190,11 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** Feed text is untrusted: one line, no Markdown table breaks, bounded. */
+/** Feed text is untrusted: one line, no table breaks, no live Markdown links, images, code spans or HTML, bounded. */
 export function cleanText(value: unknown, max = MAX_TEXT_CHARS): string {
   const flat = str(value).replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
   const bounded = [...flat].length > max ? `${[...flat].slice(0, max - 1).join('').trimEnd()}…` : flat;
-  return bounded.replace(/\|/g, '/');
+  return bounded.replace(/\|/g, '/').replace(/[\\[\]<>`]/g, '\\$&');
 }
 
 function httpsUrl(value: unknown): string | null {

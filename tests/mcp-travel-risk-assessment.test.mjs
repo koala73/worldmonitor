@@ -361,6 +361,20 @@ describe('travel risk draft with missing data', () => {
     assert.match(vn.statement, /WMO SWIC.*did not refresh/);
   });
 
+  it('neutralises Markdown and HTML in feed text so a headline cannot add links, images or tags', () => {
+    const hostile = 'Riot ![x](https://evil.example/p.png) [click](javascript:alert(1)) <img src=x onerror=1> `code`';
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: hostile, city: 'Bangkok', country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: ['Bangkok Post'], sourceUrls: [] },
+    ] });
+    const { markdown } = buildTravelRiskResult(TRIP, sources, NOW);
+    assert.match(markdown, /Riot/);
+    assert.doesNotMatch(markdown, /(?<!\\)!\[/, 'no live image syntax');
+    assert.doesNotMatch(markdown, /(?<!\\)\[click\]/, 'no live link syntax');
+    assert.doesNotMatch(markdown, /(?<!\\)<img/, 'no raw HTML tag');
+    assert.doesNotMatch(markdown, /(?<!\\)`code`/, 'no live code span');
+  });
+
   it('flags data past its refresh window', () => {
     const sources = fullSources();
     sources.feeds.ucdp = ok(sources.feeds.ucdp.value, { stale: true });
