@@ -607,8 +607,8 @@ describe('buildProgramPressure', () => {
   });
 });
 
-it('documents the address and nationality risk boundary in both methodology pages', () => {
+it('documents the OFAC location risk boundary in both methodology pages', () => {
   for (const path of ['docs/methodology/cii-risk-scores.mdx', 'docs/country-instability-index.mdx']) {
-    assert.ok(readFileSync(path, 'utf8').includes('Sanctions counts use OFAC address and nationality only; SEMA regulation targets are shown separately and do not feed risk scores.'), path);
+    assert.ok(readFileSync(path, 'utf8').includes('Sanctions counts use OFAC location-based country evidence only; nationality-only features are not counted, and SEMA regulation targets are shown separately and do not feed risk scores.'), path);
   }
 });
