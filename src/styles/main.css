@@ -15888,6 +15888,14 @@ button.popup-link {
     max-height: 100dvh !important;
   }
 
+  /* The distance ruler reserves a 150px nav column and its panel needs ~180px
+     more; the strip has neither, so its Reset/Exit buttons fall outside the map
+     (narrow desktop windows use the Deck renderer that mounts it). It stays
+     available in the fullscreen Map view. */
+  .map-section:not(.live-news-fullscreen) .map-distance-control {
+    display: none;
+  }
+
   /* Collapsed map on mobile — higher specificity overrides .map-section above */
   .main-content .map-section.collapsed {
     height: auto !important;

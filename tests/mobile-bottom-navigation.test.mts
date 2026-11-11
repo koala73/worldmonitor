@@ -170,5 +170,7 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(rule[1], /height:\s*calc\(100dvh \* 0\.32\) !important/);
     assert.doesNotMatch(rule[1], /min-height:\s*60vh/);
     assert.match(css, /\.map-section\.live-news-fullscreen \{\s*height: auto !important;/);
+    // The ruler's panel does not fit the strip, so it is hidden there only.
+    assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
   });
 });
