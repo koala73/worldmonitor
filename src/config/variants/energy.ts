@@ -36,6 +36,8 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
   // Climate — demand driver for heating/cooling
   climate: { name: 'Climate & Weather Impact', enabled: true, priority: 2 },
+  // Hydropower reservoirs and transboundary water (ICESat-2 levels)
+  'reservoir-levels': { name: 'Strategic Water Levels', enabled: true, priority: 2 },
   // Tracking
   monitors: { name: 'My Monitors', enabled: true, priority: 3 },
 };

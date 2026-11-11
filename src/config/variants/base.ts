@@ -71,6 +71,7 @@ export const REFRESH_INTERVALS = {
   energyCrisis: 6 * 60 * 60 * 1000, // 6h — policy data updates infrequently
   pipelineStatus: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
   storageFacilityMap: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  reservoirLevels: 6 * 60 * 60 * 1000, // seeded daily; NASA publishes each pass 50-70 days after the overpass
   fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
   energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
   energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries

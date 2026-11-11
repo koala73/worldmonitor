@@ -7402,6 +7402,9 @@
       "references": [
         {
           "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
         }
       ]
     },
@@ -9449,6 +9452,9 @@
       "references": [
         {
           "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
         }
       ]
     },
