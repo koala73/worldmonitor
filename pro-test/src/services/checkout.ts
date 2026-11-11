@@ -13,6 +13,7 @@
  */
 
 import * as Sentry from '@sentry/react';
+import { viewportAnalyticsFields } from '../../../shared/analytics-viewport';
 import { ensureClerk, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, type LoadedClerk } from './clerk';
 export { ensureClerk } from './clerk';
 
@@ -133,6 +134,7 @@ function flushPendingFunnelEvents(): boolean {
 }
 
 function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
+  if (event === 'checkout-start') data = { ...data, ...viewportAnalyticsFields() };
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   try {
     const umami = getUmami();
