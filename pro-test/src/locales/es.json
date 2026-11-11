@@ -326,6 +326,7 @@
         "description": "Soluciones personalizadas para organizaciones",
         "features": [
           "Todo en Pro + API",
+          "Paneles compartidos del equipo",
           "10 000 solicitudes de API al día, más por contrato",
           "Soporte dedicado",
           "Integraciones personalizadas",
@@ -347,6 +348,7 @@
           "300 solicitudes/minuto",
           "10.000 solicitudes/día incluidas (REST + MCP combinados; una llamada MCP en vivo cuenta como 2-3)",
           "5 licencias Pro — invita a usuarios con cualquier dominio de correo corporativo",
+          "Paneles compartidos del equipo",
           "Soporte prioritario"
         ],
         "highlightFeatures": [

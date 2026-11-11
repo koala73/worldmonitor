@@ -91,6 +91,7 @@
           "300 requests/minute",
           "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
           "5 Pro licenses — invite users at any corporate email domain",
+          "Shared team dashboards",
           "Priority support"
         ],
         "highlightFeatures": [
@@ -101,6 +102,7 @@
         "description": "Custom solutions for organizations",
         "features": [
           "Everything in Pro + API",
+          "Shared team dashboards",
           "10,000 API requests a day, more by contract",
           "Dedicated support",
           "Custom integrations",

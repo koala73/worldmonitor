@@ -326,6 +326,7 @@
         "description": "Solutions personnalisées pour les organisations",
         "features": [
           "Tout ce qui est dans Pro + API",
+          "Tableaux de bord partagés de l'équipe",
           "10 000 requêtes API par jour, plus selon contrat",
           "Support dédié",
           "Intégrations personnalisées",
@@ -347,6 +348,7 @@
           "300 requêtes/minute",
           "10 000 requêtes/jour incluses (REST + MCP combinés ; un appel MCP en direct compte pour 2-3)",
           "5 licences Pro — invitez des utilisateurs avec n’importe quel domaine de messagerie d’entreprise",
+          "Tableaux de bord partagés de l'équipe",
           "Support prioritaire"
         ],
         "highlightFeatures": [
