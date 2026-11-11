@@ -114,7 +114,11 @@ describe('list-reservoir-levels handler', () => {
 describe('reservoir levels registration', () => {
   it('is a standalone health key with a 3x-daily seed budget', () => {
     assert.equal(health.STANDALONE_KEYS.reservoirLevels, 'climate:reservoir-levels:v1');
-    assert.deepEqual(health.SEED_META.reservoirLevels, { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320 });
+    const { key, maxStaleMin, firstPublicationMaxWaitMin, activationKey } = health.SEED_META.reservoirLevels;
+    assert.deepEqual({ key, maxStaleMin, firstPublicationMaxWaitMin, activationKey }, {
+      key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320,
+      firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:climate:reservoir-levels',
+    });
     assert.equal(health.BOOTSTRAP_KEYS.reservoirLevels, undefined);
   });
 

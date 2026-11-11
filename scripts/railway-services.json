@@ -653,6 +653,7 @@
       "scripts/seed-co2-monitoring.mjs",
       "scripts/seed-reservoir-levels.mjs",
       "scripts/_reservoir-levels.mjs",
+      "scripts/_upstash-rest.mjs",
       "scripts/data/strategic-reservoirs.json",
       "scripts/data/reservoir-levels-baseline.json",
       "scripts/shared/compare-and-delete-script.cjs",

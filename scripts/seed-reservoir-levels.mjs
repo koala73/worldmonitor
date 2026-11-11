@@ -34,6 +34,7 @@ import {
   readCanonicalValue,
   runSeed,
 } from './_seed-utils.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -43,6 +44,8 @@ export const RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
 export const RESERVOIR_LEVELS_STATE_KEY = 'climate:reservoir-levels:passes:v1';
 export const WATCHLIST_PATH = join(__dirname, 'data', 'strategic-reservoirs.json');
 export const BASELINE_PATH = join(__dirname, 'data', 'reservoir-levels-baseline.json');
+// Durable, no TTL: health reads it to end the first-publication grace for this new probe.
+export const RESERVOIR_LEVELS_ACTIVATION_KEY = 'seed-activated:climate:reservoir-levels';
 
 // Canonical TTL outlives the health budget (3 days) so last-good stays readable while
 // health reports the outage. The state key lives longer: losing it only costs re-fetching
@@ -380,6 +383,12 @@ export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
       transform: (data) => data._state,
       declareRecords: (state) => Object.keys(state?.byId || {}).length,
     }],
+    // runSeed calls this only after the canonical key, the state key and seed-meta are written.
+    afterFreshness: async () => {
+      const creds = getOptionalUpstashCreds();
+      if (!creds) throw new Error('Missing reservoir levels activation credentials');
+      await upstashCommand(creds, ['SET', RESERVOIR_LEVELS_ACTIVATION_KEY, '1']);
+    },
   };
 }
 
