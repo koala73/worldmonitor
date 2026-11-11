@@ -1151,9 +1151,18 @@ test('every food-price source gets the government release grace', () => {
 
 test('handleHealth holds a late government release back from Sentry, then reports it once it is a month late', async () => {
   const limitMin = 14 * 1_440;
+  // The alert record carries from sweep to sweep, as in production: a held-back
+  // incident recorded as alerted would never report once its grace ran out.
+  let incidentAlerts = null;
   const sweep = async (overMin) => {
     const captures = [];
     globalThis.fetch = sweepFetch({
+      incidentAlerts,
+      onCommands: (commands) => {
+        for (const [op, key, value] of commands) {
+          if (op === 'SET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) incidentAlerts = value;
+        }
+      },
       seedMeta: {
         'seed-meta:economic:food-prices-mit': {
           fetchedAt: Date.now() - 60_000,
@@ -1175,6 +1184,7 @@ test('handleHealth holds a late government release back from Sentry, then report
   assert.equal(late.body.problems.foodPricesMit?.status, 'STALE_CONTENT', 'health still shows the late release');
   assert.deepEqual(late.mit, [], 'Sentry does not hear about it');
   assert.ok(late.total > 0, 'other incidents in the same sweep still report');
+  assert.equal(JSON.parse(incidentAlerts).includes('foodPricesMit:STALE_CONTENT'), false, 'and it is not recorded as alerted');
 
   const gone = await sweep(31 * 1_440);
   assert.equal(gone.body.problems.foodPricesMit?.status, 'STALE_CONTENT');
