@@ -552,7 +552,9 @@ it('lists vessel flag registries in their own section, not under countries', asy
     fetchedAt: new Date(0), datasetDate: null, entries: [], programs: [],
     countries: [{ countryCode: 'RU', countryName: 'Russia', entryCount: 1, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }],
   };
-  panel.setData({ ...base, flagRegistries: [
+  panel.setData({ ...base, regulationTargets: [
+    { countryCode: 'BY', countryName: 'Belarus', entryCount: 500, newEntryCount: 2, vesselCount: 0, aircraftCount: 0 },
+  ], flagRegistries: [
     { countryCode: 'PA', countryName: 'Panama', vesselCount: 2, newVesselCount: 0, aircraftCount: 0, newAircraftCount: 0 },
     { countryCode: 'AW', countryName: 'Aruba', vesselCount: 0, newVesselCount: 0, aircraftCount: 1, newAircraftCount: 1 },
   ] });
@@ -563,9 +565,14 @@ it('lists vessel flag registries in their own section, not under countries', asy
   assert.doesNotMatch(html.slice(countries, registries), /Panama/);
   assert.match(html.slice(registries), /Panama[\s\S]*🚢 2/);
   assert.match(html.slice(registries), /Aruba[\s\S]*pills\.newCount[\s\S]*✈ 1/, 'aircraft registries render beside vessel flags');
+  const targets = html.indexOf('components.sanctionsPressure.sections.regulationTargets');
+  assert.ok(targets > registries);
+  assert.doesNotMatch(html.slice(countries, targets), /Belarus/);
+  assert.match(html.slice(targets), /targetExplanation[\s\S]*Belarus/);
 
   panel.setData({ ...base, flagRegistries: [] });
   assert.doesNotMatch(String(panel.rendered), /sections\.flagRegistries/, 'older snapshots without registries hide the section');
+  assert.doesNotMatch(String(panel.rendered), /sections\.regulationTargets/, 'older snapshots hide missing targets');
 });
 
 it('renders zero-record sanctions data as unavailable', async () => {

@@ -2740,7 +2740,8 @@
         "countries": "Paesi sanzionati",
         "entries": "Designazioni recenti",
         "programs": "Programmi",
-        "flagRegistries": "Registri di bandiera delle navi e degli aeromobili"
+        "flagRegistries": "Registri di bandiera delle navi e degli aeromobili",
+        "regulationTargets": "Paesi destinatari dei regolamenti SEMA"
       },
       "empty": {
         "countries": "Nessuna attribuzione di paese disponibile.",
@@ -2764,7 +2765,8 @@
         "program": "Programma",
         "undated": "senza data"
       },
-      "designations_many": "{{count}} designazioni"
+      "designations_many": "{{count}} designazioni",
+      "targetExplanation": "I paesi destinatari dei regolamenti non costituiscono prove di nazionalità o indirizzo. Sono esclusi dai punteggi di rischio dei paesi e dai rapporti sintetici."
     },
     "radiationWatch": {
       "title": "Monitoraggio radiazioni",

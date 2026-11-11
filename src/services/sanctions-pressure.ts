@@ -54,6 +54,7 @@ export interface SanctionsPressureResult {
   countries: CountrySanctionsPressure[];
   unattributed?: UnattributedSanctionsPressure;
   flagRegistries: FlagRegistrySanctionsPressure[];
+  regulationTargets: CountrySanctionsPressure[];
   programs: ProgramSanctionsPressure[];
   entries: SanctionsEntry[];
 }
@@ -84,6 +85,7 @@ const emptyResult: SanctionsPressureResult = {
   aircraftCount: 0,
   countries: [],
   flagRegistries: [],
+  regulationTargets: [],
   programs: [],
   entries: [],
 };
@@ -103,6 +105,7 @@ function reviveSanctionsPressureResult(result: SanctionsPressureResult): Sanctio
     ...result,
     ...splitSanctionsAttribution(result.countries ?? [], result.unattributed),
     flagRegistries: normalizeFlagRegistries(result.flagRegistries),
+    regulationTargets: result.regulationTargets ?? [],
     fetchedAt: reviveDate(result.fetchedAt),
     datasetDate: reviveNullableDate(result.datasetDate),
     entries: result.entries.map((entry) => ({
@@ -182,6 +185,7 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
     aircraftCount: response.aircraftCount ?? 0,
     ...splitSanctionsAttribution((response.countries ?? []).map(toCountry), response.unattributed),
     flagRegistries: normalizeFlagRegistries(response.flagRegistries),
+    regulationTargets: (response.regulationTargets ?? []).map(toCountry),
     programs: (response.programs ?? []).map(toProgram),
     entries: (response.entries ?? []).map(toEntry),
   };

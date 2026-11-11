@@ -2751,7 +2751,8 @@
         "countries": "Kraje objęte sankcjami",
         "entries": "Niedawne desygnacje",
         "programs": "Programy",
-        "flagRegistries": "Rejestry bander statków i statków powietrznych"
+        "flagRegistries": "Rejestry bander statków i statków powietrznych",
+        "regulationTargets": "Państwa objęte przepisami SEMA"
       },
       "empty": {
         "countries": "Brak przypisania kraju.",
@@ -2776,7 +2777,8 @@
         "undated": "bez daty"
       },
       "designations_few": "{{count}} desygnacje",
-      "designations_many": "{{count}} desygnacji"
+      "designations_many": "{{count}} desygnacji",
+      "targetExplanation": "Państwa objęte przepisami nie stanowią dowodu obywatelstwa ani adresu. Są wyłączone z ocen ryzyka krajów i raportów skrótowych."
     },
     "radiationWatch": {
       "title": "Monitoring promieniowania",

@@ -59416,6 +59416,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_sanctions_v1_FlagRegistrySanctionsPressure'
+                regulationTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_sanctions_v1_CountrySanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         worldmonitor_sanctions_v1_SanctionsEntry:
             type: object

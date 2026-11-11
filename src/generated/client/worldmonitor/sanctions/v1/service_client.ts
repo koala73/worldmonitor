@@ -21,6 +21,7 @@ export interface ListSanctionsPressureResponse {
   semaError?: string;
   unattributed?: UnattributedSanctionsPressure;
   flagRegistries: FlagRegistrySanctionsPressure[];
+  regulationTargets: CountrySanctionsPressure[];
 }
 
 export interface SanctionsEntry {

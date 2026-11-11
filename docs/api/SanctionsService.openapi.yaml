@@ -479,6 +479,10 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/FlagRegistrySanctionsPressure'
+                regulationTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountrySanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         SanctionsEntry:
             type: object

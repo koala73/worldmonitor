@@ -2740,7 +2740,8 @@
         "countries": "Pays sanctionnés",
         "entries": "Désignations récentes",
         "programs": "Programmes",
-        "flagRegistries": "Registres des pavillons et des aéronefs"
+        "flagRegistries": "Registres des pavillons et des aéronefs",
+        "regulationTargets": "Pays visés par les règlements SEMA"
       },
       "empty": {
         "countries": "Aucune attribution de pays disponible.",
@@ -2764,7 +2765,8 @@
         "program": "Programme",
         "undated": "sans date"
       },
-      "designations_many": "{{count}} désignations"
+      "designations_many": "{{count}} désignations",
+      "targetExplanation": "Les pays visés par les règlements ne constituent pas des preuves de nationalité ou d’adresse. Ils sont exclus des scores de risque des pays et des notes de synthèse."
     },
     "radiationWatch": {
       "title": "Surveillance des radiations",

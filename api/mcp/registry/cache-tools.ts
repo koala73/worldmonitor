@@ -2580,6 +2580,10 @@ export const CACHE_TOOLS: ToolDef[] = [
             countryCode: { type: 'string' }, countryName: { type: 'string' }, vesselCount: { type: 'integer' }, newVesselCount: { type: 'integer' },
             aircraftCount: { type: 'integer' }, newAircraftCount: { type: 'integer' },
           } } },
+          regulationTargets: { type: 'array', description: 'Top SEMA regulation target states for people and entities; excluded from country risk and brief counts.', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, countryName: { type: 'string' }, entryCount: { type: 'integer' }, newEntryCount: { type: 'integer' },
+            vesselCount: { type: 'integer' }, aircraftCount: { type: 'integer' },
+          } } },
         },
       },
       changes: {
@@ -2607,10 +2611,11 @@ export const CACHE_TOOLS: ToolDef[] = [
     _postFilter: (data, params) => {
       const { countries, days, cursor } = sanctionsArguments(params);
       const pressure = data.pressure as ListSanctionsPressureResponse | null | undefined;
-      if (Array.isArray(pressure?.countries)) {
+      if (pressure) {
         data.pressure = {
           ...pressure,
-          ...splitSanctionsAttribution(pressure.countries, pressure.unattributed),
+          regulationTargets: pressure.regulationTargets ?? [],
+          ...(Array.isArray(pressure.countries) ? splitSanctionsAttribution(pressure.countries, pressure.unattributed) : {}),
           ...(Array.isArray(pressure.flagRegistries) ? { flagRegistries: normalizeFlagRegistries(pressure.flagRegistries) } : {}),
         };
       }

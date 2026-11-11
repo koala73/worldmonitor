@@ -2345,7 +2345,8 @@
         "countries": "Gesanctioneerde landen",
         "entries": "Recente aanwijzingen",
         "programs": "Programma's",
-        "flagRegistries": "Vlaggen- en luchtvaartuigregisters"
+        "flagRegistries": "Vlaggen- en luchtvaartuigregisters",
+        "regulationTargets": "Doellanden van SEMA-regelgeving"
       },
       "empty": {
         "countries": "Geen landenattributie beschikbaar.",
@@ -2368,7 +2369,8 @@
         "unattributed": "Niet toegewezen",
         "program": "Programma",
         "undated": "zonder datum"
-      }
+      },
+      "targetExplanation": "Doellanden van regelgeving zijn geen bewijs van nationaliteit of adres. Ze worden uitgesloten van landenrisicoscores en samenvattingen."
     },
     "radiationWatch": {
       "title": "Stralingsbewaking",

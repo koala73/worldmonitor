@@ -56,6 +56,14 @@ export class SanctionsPressurePanel extends Panel {
         </div>`
       : '';
 
+    const targetsHtml = data.regulationTargets?.length
+      ? `<div class="sanctions-section">
+          <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.regulationTargets'))}</div>
+          <div class="sanctions-row-meta">${escapeHtml(t('components.sanctionsPressure.targetExplanation'))}</div>
+          <div class="sanctions-list">${data.regulationTargets.slice(0, 6).map(target => this.renderCountryRow(target)).join('')}</div>
+        </div>`
+      : '';
+
     const unattributed = data.unattributed;
     const unattributedHtml = unattributed && unattributed.entryCount > 0
       ? `<div class="sanctions-row">
@@ -91,6 +99,7 @@ export class SanctionsPressurePanel extends Panel {
             <div class="sanctions-list">${countriesHtml}</div>
           </div>
           ${flagRegistriesHtml}
+          ${targetsHtml}
           <div class="sanctions-section">
             <div class="sanctions-section-title">${escapeHtml(t('components.sanctionsPressure.sections.entries'))}</div>
             <div class="sanctions-list">${entriesHtml}</div>

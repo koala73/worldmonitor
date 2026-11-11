@@ -2729,7 +2729,8 @@
         "countries": "Sanktionierte Länder",
         "entries": "Aktuelle Listungen",
         "programs": "Programme",
-        "flagRegistries": "Flaggen- und Luftfahrzeugregister"
+        "flagRegistries": "Flaggen- und Luftfahrzeugregister",
+        "regulationTargets": "Zielstaaten der SEMA-Verordnungen"
       },
       "empty": {
         "countries": "Keine Landzuordnung verfügbar.",
@@ -2752,7 +2753,8 @@
         "unattributed": "Nicht zugeordnet",
         "program": "Programm",
         "undated": "ohne Datum"
-      }
+      },
+      "targetExplanation": "Zielstaaten der Verordnungen sind kein Nachweis für Staatsangehörigkeit oder Adresse. Sie werden bei Länderrisikobewertungen und Lageberichten nicht berücksichtigt."
     },
     "radiationWatch": {
       "title": "Strahlungsüberwachung",
