@@ -232,7 +232,12 @@ function feedSnapshots(
       };
       return;
     }
-    feeds[feed.id] = { status: 'ok', value: payload.value, reason: null, updatedAt: freshness.cached_at, stale: freshness.stale };
+    const failed = meta.status === 'hit' ? (meta.value as { failedSources?: unknown } | null)?.failedSources : undefined;
+    const failedProviders = Array.isArray(failed) ? failed.filter((entry): entry is string => typeof entry === 'string') : [];
+    feeds[feed.id] = {
+      status: 'ok', value: payload.value, reason: null, updatedAt: freshness.cached_at, stale: freshness.stale,
+      ...(failedProviders.length > 0 ? { failedProviders } : {}),
+    };
   });
   return feeds;
 }
@@ -253,6 +258,7 @@ function ciiSnapshot(read: Settled<unknown>): SourceSnapshot {
   if (!read.ok) return unavailable(read.reason);
   const points = (read.value as { history?: { points?: Array<{ date?: unknown }>; stale?: unknown } } | null)?.history;
   const last = Array.isArray(points?.points) ? points.points[points.points.length - 1] : undefined;
+  if (!last) return unavailable('the daily history holds no readings for the window, or could not be read');
   return {
     status: 'ok',
     value: read.value,

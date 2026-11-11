@@ -1367,9 +1367,13 @@ async function mcpHandlerInner(
   // so its answer is never framed as a replayable SSE stream or stored for
   // Last-Event-ID replay. It goes out as the plain JSON response, which
   // mcpHandler shapes and, for tools/call, frames as session-free SSE.
+  // A travel-plan draft is streamed live but never kept for Last-Event-ID
+  // replay: the server holds no copy of a trip (#10451).
+  const noReplay = method === 'tools/call'
+    && TRAVEL_RISK_TOOL_NAMES.has((body.params as { name?: unknown } | undefined)?.name as string);
   const respond = (response: Response): Promise<Response> => modernEra
     ? Promise.resolve(response)
-    : maybeStreamJsonRpcResponse(req, sseOwner, response);
+    : maybeStreamJsonRpcResponse(req, noReplay ? null : sseOwner, response);
 
   if (['tools/list', 'prompts/list', 'resources/list', 'resources/templates/list'].includes(method)) {
     const cursor = (body.params as { cursor?: unknown } | undefined)?.cursor;

@@ -341,6 +341,26 @@ describe('travel risk draft with missing data', () => {
     assert.match(us.statement, /holds no entry for Vietnam/);
   });
 
+  it('does not call a weather set quiet when the provider covering the country failed to refresh', () => {
+    const sources = fullSources();
+    sources.feeds.weather = ok({ alerts: [] }, { failedProviders: ['swic'] });
+    const { document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const vn = blockOf(document, 'hazards', 'VN', 'Weather alerts');
+    assert.equal(vn.status, 'unavailable');
+    assert.match(vn.statement, /WMO SWIC.*did not refresh/);
+    const th = blockOf(document, 'hazards', 'TH', 'Weather alerts');
+    assert.equal(th.status, 'unavailable');
+  });
+
+  it('keeps carried alerts but says which provider slice may be out of date', () => {
+    const sources = fullSources();
+    sources.feeds.weather = ok(sources.feeds.weather.value, { failedProviders: ['swic'] });
+    const { document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const vn = blockOf(document, 'hazards', 'VN', 'Weather alerts');
+    assert.equal(vn.status, 'reported');
+    assert.match(vn.statement, /WMO SWIC.*did not refresh/);
+  });
+
   it('flags data past its refresh window', () => {
     const sources = fullSources();
     sources.feeds.ucdp = ok(sources.feeds.ucdp.value, { stale: true });
@@ -404,6 +424,37 @@ describe('section failure isolation', () => {
     assert.equal(blockOf(document, 'security', scored, 'Instability index').status, 'unavailable');
     assert.equal(blockOf(document, 'security', 'TH', 'Armed conflict events').status, 'reported');
     assert.doesNotMatch(markdown, /secret/);
+  });
+
+  it('an empty or unreadable CII history is unavailable, so a full Redis outage still refuses', async () => {
+    const scored = CII_COUNTRY_CODES[0];
+    const trip = parseTravelRiskArgs({ countries: [{ country_code: scored }] });
+    const emptyHistory = { history: { points: [], stale: true }, reuseUntil: null };
+    const sources = await gatherTravelRiskSources(trip, NOW, deps({
+      readBatch: async () => { throw new Error('down'); },
+      runHotspots: async () => { throw new Error('down'); },
+      readCiiHistory: async () => emptyHistory,
+    }));
+    assert.equal(sources.cii[scored].status, 'unavailable');
+    const tool = createTravelRiskTool(deps({
+      readBatch: async () => { throw new Error('down'); },
+      runHotspots: async () => { throw new Error('down'); },
+      readCiiHistory: async () => emptyHistory,
+    }));
+    await assert.rejects(
+      tool._execute({ countries: [{ country_code: scored }] }, '', { kind: 'pro', userId: 'u' }),
+      (error) => error instanceof McpSourceUnavailableError,
+    );
+  });
+
+  it('records the providers the weather producer reported as failed', async () => {
+    const rows = [
+      ...TRAVEL_RISK_FEEDS.map((feed) => ({ status: 'hit', value: feed.id === 'weather' ? { alerts: [] } : {} })),
+      ...TRAVEL_RISK_FEEDS.map((feed) => ({ status: 'hit', value: feed.id === 'weather' ? { fetchedAt: NOW, failedSources: ['swic', 'nws'] } : { fetchedAt: NOW } })),
+    ];
+    const gathered = await gatherTravelRiskSources(TRIP, NOW, deps({ readBatch: async () => rows }));
+    assert.deepEqual(gathered.feeds.weather.failedProviders, ['swic', 'nws']);
+    assert.equal(gathered.feeds.ucdp.failedProviders, undefined);
   });
 
   it('a whole-batch failure marks every feed unavailable with the cache reason', async () => {

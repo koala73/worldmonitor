@@ -122,6 +122,24 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
     assert.equal(body.error.data.checkoutTool, 'start_upgrade');
   });
 
+  it('streams a legacy SSE draft live without keeping a replayable copy of the trip', async () => {
+    stubSourceReads();
+    const store = (await import('../api/mcp/handler.ts')).__sseReplayStoreForTest;
+    const sse = { Accept: 'application/json, text/event-stream', 'Mcp-Session-Id': 'sess-travel-risk' };
+    const entitled = () => makeProDeps({ getEntitlements: async () => catalogEntitlement('pro_business_monthly') }).deps;
+    const { mcpHandler: handler } = await import('../api/mcp/handler.ts');
+    store.reset();
+    const control = await handler(proReq('POST', { jsonrpc: '2.0', id: 1, method: 'prompts/list' }, sse), entitled());
+    await control.text();
+    assert.ok(store.totalBytes() > 0, 'control: an ordinary SSE answer is buffered for replay');
+    store.reset();
+    const response = await handler(proReq('POST', callBody(TOOL, TRIP), sse), entitled());
+    const text = await response.text();
+    assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/);
+    assert.match(text, /Travel risk assessment draft/, 'the live stream still carries the draft');
+    assert.equal(store.totalBytes(), 0, 'no replay copy of the itinerary is kept');
+  });
+
   for (const planKey of ['pro_business_monthly', 'pro_business_annual', 'api_business', 'api_business_annual', 'enterprise']) {
     it(`${planKey} runs the tool and is metered like the other multi-source tools`, async () => {
       stubSourceReads();

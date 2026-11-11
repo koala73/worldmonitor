@@ -88,6 +88,8 @@ export interface SourceSnapshot {
   updatedAt: string | null;
   /** True when `updatedAt` is older than the source's refresh budget or unknown. */
   stale: boolean;
+  /** Providers the producer reported as failed at its last refresh; their slice is carried over or missing. */
+  failedProviders?: string[];
 }
 
 export interface TravelRiskSources {
@@ -599,6 +601,9 @@ function weatherBlock(source: SourceSnapshot, trip: TripCountry, cap: number): B
   if (source.status !== 'ok') return unavailableBlock(topic, name, source.reason ?? 'the alert feed could not be read');
   const alerts = list(source.value, 'alerts');
   if (!alerts) return unavailableBlock(topic, name, 'the alert feed did not have the expected shape');
+  const provider = trip.countryCode === 'US' ? 'nws' : trip.countryCode === 'CA' ? 'eccc' : 'swic';
+  const providerFailed = source.failedProviders?.includes(provider) === true;
+  const providerNote = providerFailed ? `${WEATHER_SOURCE_NAMES[provider]} did not refresh at the last update, so its alerts may be missing or carried from an earlier refresh` : '';
   const matched = alerts.flatMap((raw): Dated[] => {
     const alert = record(raw);
     if (!alert || str(alert.countryCode).toUpperCase() !== trip.countryCode) return [];
@@ -615,9 +620,10 @@ function weatherBlock(source: SourceSnapshot, trip: TripCountry, cap: number): B
       },
     }];
   });
+  if (providerFailed && matched.length === 0) return unavailableBlock(topic, name, providerNote);
   const updated = updatedPhrase(source);
   return listBlock(topic, matched, cap, {
-    reported: `${plural(matched.length, 'weather alert', 'weather alerts')} for ${trip.countryName} in the current alert set (US NWS, Environment Canada, WMO SWIC, ${updated}).`,
+    reported: `${plural(matched.length, 'weather alert', 'weather alerts')} for ${trip.countryName} in the current alert set (US NWS, Environment Canada, WMO SWIC, ${updated}).${providerNote ? ` Note: ${providerNote}.` : ''}`,
     none: `No weather alert for ${trip.countryName} in the current alert set (US NWS, Environment Canada, WMO SWIC, ${updated}). The set keeps at most 50 alerts worldwide, ranked by severity, so an alert in force can be missing from it.`,
   });
 }
