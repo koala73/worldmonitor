@@ -10,6 +10,7 @@ import { getLocalApiPort, isDesktopRuntime } from '@/services/runtime';
 import {
   advanceChain,
   classifyAttempt,
+  connectingHint,
   failureKey,
   LIVE_VIDEO_TIMING,
   parseSource,
@@ -32,7 +33,8 @@ import {
 import { loadYouTubeIframeApi, type YouTubePlayerLike } from './youtube-iframe-api';
 
 export type LiveVideoState =
-  | { readonly phase: 'connecting'; readonly attempt: number; readonly of: number }
+  /** ready: the player is up and its own controls work. tapToPlay: ready and live but not playing yet. */
+  | { readonly phase: 'connecting'; readonly attempt: number; readonly of: number; readonly ready: boolean; readonly tapToPlay: boolean }
   | { readonly phase: 'live'; readonly via: Candidate['kind']; readonly title: string | null; readonly author: string | null; readonly watchUrl: string | null }
   | { readonly phase: 'recording'; readonly title: string | null; readonly watchUrl: string | null }
   | { readonly phase: 'unverified'; readonly reason: UnverifiableReason; readonly watchUrl: string | null }
@@ -51,6 +53,11 @@ export interface LiveVideoOptions {
   readonly source: LiveVideoSource;
   readonly autoplay: boolean;
   readonly muted: boolean;
+  /**
+   * Keep a ready, live stream that never starts as a 'unverified' (reason 'not-started') state the viewer can
+   * start, instead of failing the source. Applies to the last source in the chain; earlier ones still fall through.
+   */
+  readonly holdUnstarted?: boolean;
   readonly presentation: LiveVideoPresentation;
   /** Called synchronously from openLiveVideo with the first state, then on every change. */
   readonly onState: (state: LiveVideoState) => void;
@@ -570,7 +577,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
 function viewState(state: ChainState, parsed: ParsedSource): LiveVideoState {
   switch (state.phase) {
     case 'connecting':
-      return { phase: 'connecting', attempt: state.attempts.length + 1, of: parsed.candidates.length };
+      return { phase: 'connecting', attempt: state.attempts.length + 1, of: parsed.candidates.length, ready: false, tapToPlay: false };
     case 'live': {
       const candidate = parsed.candidates[state.index]!.candidate;
       const watchUrl = state.video?.videoId ? `https://www.youtube.com/watch?v=${state.video.videoId}` : watchUrlFor(candidate);
@@ -617,6 +624,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   let destroyed = false;
   let muted = options.muted;
   let paused = !options.autoplay;
+  let lastHint = { ready: false, tapToPlay: false };
 
   const stopPolling = () => {
     if (pollTimer === null) return;
@@ -644,19 +652,34 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
 
   const poll = (index: number, candidate: Candidate) => {
     if (destroyed || !transport || state.phase !== 'connecting' || state.index !== index) return;
-    const verdict = classifyAttempt(transport.observe());
-    if (verdict.verdict === 'pending') return;
+    const observation = transport.observe();
+    const lastSource = state.order.every((other) => other === index || state.attempts.some((attempt) => attempt.index === other));
+    const verdict = classifyAttempt(observation, { holdUnstarted: options.holdUnstarted === true && lastSource });
+    if (verdict.verdict === 'pending') {
+      // Only the last source offers a play control: an earlier one that stalls is about to hand over to the next.
+      const hint = connectingHint(observation);
+      const next = { ready: hint.ready, tapToPlay: hint.tapToPlay && options.holdUnstarted === true && lastSource };
+      if (next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
+        lastHint = next;
+        options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...next });
+      }
+      return;
+    }
     reportSignalMissing(slot, verdict);
     const step = advanceChain(state, { type: 'verdict', verdict }, parsed, Date.now());
     if (verdict.verdict !== 'live' && step.state.phase !== 'recording' && step.state.phase !== 'unverified') {
       recentFailures.set(failureKey(slot, candidate), Date.now());
       track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict) });
     }
+    if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') {
+      track('live-video-tap-to-play', { slot, kind: candidate.kind });
+    }
     apply(step);
   };
 
   function mount(index: number): void {
     unmount();
+    lastHint = { ready: false, tapToPlay: false };
     options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
     const startedAt = Date.now();

@@ -759,6 +759,69 @@ describe('Live News live verification', () => {
     expect(status()).toBeNull();
   });
 
+  describe('a ready stream that never starts', () => {
+    const TAP_MS = LIVE_VIDEO_TIMING.tapToPlayMs;
+
+    async function mountStalledCustomStream(): Promise<void> {
+      mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'https://local.example/tv.m3u8' }] });
+      await playFromPlaceholder();
+      // The playlist loads and says live, but the media clock never moves.
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+    }
+
+    it('swaps the cover for a corner chip as soon as the player is ready, so its own controls are reachable', async () => {
+      mount(['custom-hls-1'], { custom: [{ id: 'custom-hls-1', name: 'Local TV', hlsUrl: 'https://local.example/tv.m3u8' }] });
+      await playFromPlaceholder();
+      expect(status()?.classList.contains('live-news-status--cover')).toBe(true);
+
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+      await flush(POLL);
+      expect(status()?.classList.contains('live-news-status--cover')).toBe(false);
+      expect(status()?.classList.contains('live-news-status--chip')).toBe(true);
+      expect(status()?.textContent).toBe('Connecting to Local TV…');
+    });
+
+    it('offers Tap to play within 3 s of ready, and a tap starts the video', async () => {
+      await mountStalledCustomStream();
+      const play = vi.spyOn(mediaVideo(), 'play').mockResolvedValue(undefined);
+
+      await flush(TAP_MS + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+      status()!.querySelector('button')!.click();
+      expect(play).toHaveBeenCalled();
+    });
+
+    it('keeps the channel, with Tap to play, at the deadline instead of marking it offline', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+
+      expect(status()?.textContent).toBe('Tap to play');
+      expect(content().querySelector('.live-offline')).toBeNull();
+      expect(mediaVideo()).toBeTruthy();
+      expect(channelButton('custom-hls-1').classList.contains('offline')).toBe(false);
+      expect(analytics.track).toHaveBeenCalledWith('live-video-tap-to-play', { slot: 'live-news/custom-hls-1', kind: 'hls' });
+      expect(analytics.track).not.toHaveBeenCalledWith('live-video-attempt-failed', expect.anything());
+    });
+
+    it('drops Tap to play once the viewer starts the stream from the player itself', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
+      mediaVideo().dispatchEvent(new Event('play'));
+      expect(status()).toBeNull();
+    });
+
+    it('does not hold a stalled playlist that has a fallback: it still falls through to the next entry', async () => {
+      mount(['bloomberg']);
+      await playFromPlaceholder();
+      latestHls().emit('hlsLevelLoaded', { details: { live: true } });
+      await flush(TAP_MS + POLL);
+      expect(status()?.textContent).toBe('Connecting to Bloomberg…');
+      expect(status()?.querySelector('button')).toBeNull();
+    });
+  });
+
   it('plays the edited channel in its place when an edit from its offline card changes the channel id', async () => {
     mount(['bloomberg', 'custom-foo-news'], { custom: [{ id: 'custom-foo-news', name: 'Foo News', handle: '@FooNews' }] });
     await playFromPlaceholder();

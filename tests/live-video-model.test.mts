@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   classifyAttempt,
+  connectingHint,
   type DurationSample,
   LIVE_VIDEO_TIMING,
   parseSourceEntry,
@@ -288,5 +289,71 @@ describe('classifyAttempt: HLS', () => {
       verdict: 'failed',
       outcome: { kind: 'timeout' },
     });
+  });
+});
+
+describe('tap to play (a ready, live stream that never starts)', () => {
+  const deadline = LIVE_VIDEO_TIMING.verdictDeadlineMs;
+  const upcoming = video({ videoId: '_7nBPHF-hAE' });
+
+  it('holds a YouTube stream that never plays as unverifiable at the deadline instead of failing it, when asked to', () => {
+    assert.deepEqual(classifyAttempt(youtube({ video: upcoming, elapsedMs: deadline }), { holdUnstarted: true }), {
+      verdict: 'unverifiable',
+      reason: 'not-started',
+    });
+  });
+
+  it('holds a live HLS playlist whose playback never advances, when asked to', () => {
+    assert.deepEqual(classifyAttempt(hls({ manifest: 'live', progress: 'stalled', elapsedMs: deadline }), { holdUnstarted: true }), {
+      verdict: 'unverifiable',
+      reason: 'not-started',
+    });
+  });
+
+  it('still fails it as not started when not asked to hold', () => {
+    assert.deepEqual(classifyAttempt(youtube({ video: upcoming, elapsedMs: deadline })), { verdict: 'failed', outcome: { kind: 'not-started' } });
+  });
+
+  it('shows no player controls hint until the player is ready', () => {
+    assert.deepEqual(connectingHint(youtube({ readyAtMs: null, elapsedMs: 5_000 })), { ready: false, tapToPlay: false });
+    assert.deepEqual(connectingHint(hls({ manifest: 'unknown', elapsedMs: 5_000 })), { ready: false, tapToPlay: false });
+  });
+
+  it('reports a ready YouTube player and offers tap to play once it has sat unstarted for tapToPlayMs', () => {
+    const readyAtMs = 1_000;
+    const wait = LIVE_VIDEO_TIMING.tapToPlayMs;
+    assert.deepEqual(connectingHint(youtube({ video: upcoming, readyAtMs, elapsedMs: readyAtMs + wait - 1 })), { ready: true, tapToPlay: false });
+    assert.deepEqual(connectingHint(youtube({ video: upcoming, readyAtMs, elapsedMs: readyAtMs + wait })), { ready: true, tapToPlay: true });
+  });
+
+  it('never offers tap to play for a channel embed with no video, or once playback has been sampled', () => {
+    assert.deepEqual(connectingHint(youtube({ video: video({ videoId: '' }), elapsedMs: 9_000 })), { ready: true, tapToPlay: false });
+    assert.deepEqual(connectingHint(youtube({ video: upcoming, elapsedMs: 9_000, durations: [{ atMs: 2_000, seconds: 10 }] })), { ready: true, tapToPlay: false });
+  });
+
+  it('offers tap to play for a live HLS playlist that has not advanced, never for one that has', () => {
+    const wait = LIVE_VIDEO_TIMING.tapToPlayMs;
+    assert.deepEqual(connectingHint(hls({ manifest: 'live', progress: 'stalled', elapsedMs: wait - 1 })), { ready: true, tapToPlay: false });
+    assert.deepEqual(connectingHint(hls({ manifest: 'live', progress: 'stalled', elapsedMs: wait })), { ready: true, tapToPlay: true });
+    assert.deepEqual(connectingHint(hls({ manifest: 'live', progress: 'advancing', elapsedMs: wait })), { ready: true, tapToPlay: false });
+  });
+});
+
+describe('moving on sooner when nothing has loaded at all', () => {
+  const early = LIVE_VIDEO_TIMING.nothingLoadedDeadlineMs;
+
+  it('times out a frame that never loaded before the full deadline', () => {
+    const observation = { frameLoaded: false, readyAtMs: null };
+    assert.deepEqual(classifyAttempt(youtube({ ...observation, elapsedMs: early - 1 })), { verdict: 'pending' });
+    assert.deepEqual(classifyAttempt(youtube({ ...observation, elapsedMs: early })), { verdict: 'failed', outcome: { kind: 'timeout' } });
+  });
+
+  it('times out an HLS stream with no manifest before the full deadline', () => {
+    assert.deepEqual(classifyAttempt(hls({ elapsedMs: early - 1 })), { verdict: 'pending' });
+    assert.deepEqual(classifyAttempt(hls({ elapsedMs: early })), { verdict: 'failed', outcome: { kind: 'timeout' } });
+  });
+
+  it('keeps waiting the full deadline for a loaded frame whose player is not ready yet', () => {
+    assert.deepEqual(classifyAttempt(youtube({ readyAtMs: null, elapsedMs: early })), { verdict: 'pending' });
   });
 });
