@@ -16,9 +16,9 @@ Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, e
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | Restrict the response to one or more energy sub-datasets. Omit for the full bundle. |
-| `country` | string | Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
-| `limit` | integer | Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions, newest-first storage and inventory histories) to at most this many items (default 30, pass 0 for no cap). |
+| `dataset` | `array<string: eia-petroleum / electricity / ember / gas-storage / fuel-shortages / disruptions / crisis-policies / fossil-share / renewable / eu-gas-storage / nat-gas-storage / crude-inventories>` | Energy sub-datasets to return. eu-gas-storage and nat-gas-storage are the EU (TWh) and US (bcf) storage histories, crude-inventories the US commercial crude stocks, renewable the World Bank renewable share. Omit for the full bundle. |
+| `country` | string | Country to filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
+| `limit` | integer | Maximum items per list-bearing slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history and regions, and the storage and inventory histories, which keep their newest points). Omitted keeps 30; 0 keeps every item. |
 
 - **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`, `GET /api/economic/v1/get-eu-gas-storage`, `GET /api/economic/v1/get-nat-gas-storage`, `GET /api/economic/v1/get-crude-inventories`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -53,7 +53,7 @@ Monthly oil supply and export series for 24 major exporting countries over the l
 | Name | Type | Description |
 |------|------|-------------|
 | `country` | `array<string>` | Countries as ISO alpha-2, alpha-3 or English names (e.g. ["AE"], ["Saudi Arabia"]). Selected countries include their monthly rows. Omit for every covered country, comparison only. Unresolved inputs return Invalid params; a resolvable country outside the 24 covered returns no row. |
-| `window_months` | integer | Months per comparison window, ending at the last complete month (default 6: the last 6 complete months vs the 6 before, plus the same 6 months a year earlier). |
+| `window_months` | integer | Length N, in months, of each comparison window. Compares the last N complete months with the N before and the same N months a year earlier; omitted uses 6. |
 
 The response uses the standard `cached_at`, `stale`, and `data` envelope. Its sources are reported side by side and never blended or summed:
 
@@ -98,7 +98,7 @@ Existing country energy exposure or multi-sector import-cost scenarios for a cho
 
 | Name | Type | Description |
 |------|------|-------------|
-| `mode` | string: energy / multi-sector | Required. Energy exposure or multi-sector import-cost scenario. |
+| `mode` | string: energy / multi-sector | Required. Which model: `energy` returns the refined-product supply deficit and stock cover for one HS2 chapter; `multi-sector` returns added import costs across seeded HS2 sectors over `closure_days`. |
 | `country` | string | Required. Country name or ISO code; normalized to ISO2. |
 | `chokepoint_id` | string | Required. Canonical ID from the shared chokepoint registry. |
 | `hs2` | string | Energy mode only. Default `27` (mineral fuels); one or two digits. Other codes preserve the source unavailable explanation. |
