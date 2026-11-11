@@ -293,8 +293,10 @@ function semaAttributionHealth(entries) {
     const regime = entry._regime || 'Unknown';
     // Classify independently of semaTargetCountry: losing a known state's
     // targets must still alarm. Unknown/thematic schedules are informational.
-    const targetExpected = !/^(ukraine|moldova|jvcfor|hamas|settler)$/i.test(regime)
-      && Boolean(COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regime)]);
+    const regimeName = regime.replace(/\s*\([^)]*\)\s*$/, '');
+    const targetExpected = !/^(ukraine|moldova|jvcfor|hamas|settler)$/i.test(regimeName)
+      && Boolean(COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regime)]
+        || COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regimeName)]);
     const row = Object.hasOwn(regimes, regime) ? regimes[regime] : (regimes[regime] = { entryCount: 0, unattributedCount: 0, targetExpected });
     row.entryCount += 1;
     if (!entry._targetCountryCodes?.some(hasCountryCode)) row.unattributedCount += 1;

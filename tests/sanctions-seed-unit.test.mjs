@@ -245,6 +245,7 @@ describe('partial sanctions publication', () => {
     const healthy = await partialPublication({ semaJson });
     assert.equal(healthy.semaCount, semaJson.data.length);
     assert.equal(healthy.semaError, undefined);
+    assert.equal(healthy._semaAttribution.regimes['Myanmar (Burma)'].targetExpected, true);
     assert.ok(healthy.entries.some(row => row.id === 'sema-ca:russia:1-1:731'));
     const cached = healthy.entries.filter(row => row.sourceLists.includes(SEMA_SOURCE));
     cached.push({ ...cached[0], id: 'sema-ca:unspecified:unspecified:0', name: '1, Part 1' });
@@ -557,6 +558,9 @@ it('checks SEMA non-vessel target attribution per regime without diluting failur
   assert.equal(unknown.regimes['New thematic regime'].targetExpected, false);
   assert.equal(unknown.regimes['New thematic regime'].unattributedCount, 1);
   assert.equal(ctx.semaAttributionHealth([row('Russia')]).degraded, true);
+  assert.equal(ctx.semaAttributionHealth([row('Myanmar (Burma)', ['MM'])]).degraded, false);
+  assert.equal(ctx.semaAttributionHealth([row('Myanmar (Burma)')]).degraded, true, 'the live parenthetical country regime must retain target coverage');
+  assert.equal(ctx.semaAttributionHealth([row('Ukraine (protected state)')]).degraded, false);
 });
 
 describe('buildCountryCounts', () => {
