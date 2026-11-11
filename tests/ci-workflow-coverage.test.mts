@@ -480,6 +480,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/settings-panel-live-apply.spec.ts',
   'e2e/settings-source-live-apply.spec.ts',
   'e2e/dashboard-lcp-attribution.spec.ts',
+  'e2e/dashboard-switcher.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
   'e2e/breaking-news-banner-provenance.spec.ts',
   'e2e/dompurify-regression.spec.ts',
