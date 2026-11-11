@@ -30,6 +30,12 @@ on:
 
 permissions: {}
 
+env:
+  # The pinned answerrank commit, recorded in each AI-answer snapshot. A
+  # different commit starts a new comparison series. The collect job checks
+  # the artifact against it too.
+  ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
+
 concurrency:
   group: seo-gsc-weekly
   cancel-in-progress: false
@@ -81,10 +87,6 @@ jobs:
     if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      # The pinned answerrank commit, recorded in each AI-answer snapshot. A
-      # different commit starts a new comparison series.
-      ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
     outputs:
       date: ${{ steps.plan.outputs.date }}
       state: ${{ steps.done.outputs.state || steps.plan.outputs.state }}
@@ -282,22 +284,18 @@ jobs:
       - name: Add the AI-answer snapshot
         id: answerrank_add
         if: steps.answerrank_download.outcome == 'success'
-        # The artifact comes from the job that ran third-party code, so only the
-        # two expected files are taken, and only if the JSON has the shape the
-        # PR note and the alert read.
+        # The artifact comes from the job that ran third-party code, so none of
+        # it is copied. --accept rebuilds the snapshot from its measured fields
+        # (every count type-checked; labels, digest, revision and judge matched
+        # against the committed inputs), recomputes the comparison against the
+        # committed earlier weeks, and writes its own markdown.
         continue-on-error: true
         env:
           SNAPSHOT_DATE: ${{ needs.answerrank.outputs.date }}
         run: |
           src="$RUNNER_TEMP/answerrank-artifact"
-          dir="docs/research/seo-ai-visibility/answerrank"
           test "$(find "$src" -type f | wc -l)" -eq 2
-          jq -e --arg date "$SNAPSHOT_DATE" '
-            .schemaVersion == 1 and .date == $date
-            and (.overall.answers | type == "number") and (.overall.mentions | type == "number")
-            and (.comparison.verdict | IN("improved", "declined", "no measurable change", "not compared"))
-          ' "$src/${SNAPSHOT_DATE}.json" > /dev/null
-          cp "$src/${SNAPSHOT_DATE}.json" "$src/${SNAPSHOT_DATE}.md" "$dir/"
+          node scripts/seo-answerrank-collect.mjs --accept "$src/${SNAPSHOT_DATE}.json" --date "$SNAPSHOT_DATE"
       - name: Regenerate the AI-visibility baseline and scorecard
         id: baseline
         if: steps.collect.outcome == 'success'

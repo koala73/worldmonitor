@@ -6,6 +6,7 @@ import { after, describe, it } from 'node:test';
 import YAML from 'yaml';
 
 import {
+  acceptSnapshot,
   assertNoSecrets,
   buildSnapshot,
   compareSnapshots,
@@ -13,10 +14,12 @@ import {
   inputsDigest,
   previousComparable,
   proportionChange,
+  parseArgs,
   renderMarkdown,
   runAnswerrank,
   runCli,
   runSettingsMismatch,
+  variantLabels,
 } from '../scripts/seo-answerrank-collect.mjs';
 
 const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
@@ -328,9 +331,98 @@ describe('runCli', () => {
   });
 
   it('requires exactly one source and a date for --from-run', async () => {
-    await assert.rejects(runCli([], { env: {}, log: silent }), /exactly one of --live or --from-run/);
+    await assert.rejects(runCli([], { env: {}, log: silent }), /exactly one of --live, --from-run or --accept/);
     await assert.rejects(runCli(['--from-run', 'x', '--live'], { env: {}, log: silent }), /exactly one/);
     await assert.rejects(runCli(['--from-run', writeRun({ variants: VARIANTS }), '--dir', snapshotDir()], { env: {}, log: silent }), /needs --date/);
+  });
+});
+
+describe('acceptSnapshot (the collect job taking the AI-answer artifact)', () => {
+  const REVISION = 'abc';
+  const acceptContext = () => ({
+    date: '2026-11-17',
+    digest: committedDigest(),
+    revision: REVISION,
+    config: CONFIG,
+    questions: JSON.parse(readFileSync(join(INPUTS, 'queries.json'), 'utf8')).length,
+  });
+
+  /** The pair the answerrank job uploads, made the way that job makes it. */
+  async function produce(variants = VARIANTS, earlier = []) {
+    const dir = snapshotDir(earlier);
+    await runCli(
+      ['--from-run', writeRun({ variants }), '--date', '2026-11-17', '--dir', dir],
+      { env: { ANSWERRANK_REVISION: REVISION }, log: silent },
+    );
+    return { json: join(dir, '2026-11-17.json'), md: join(dir, '2026-11-17.md') };
+  }
+
+  it('lists the variants answerrank answers with for the committed config', () => {
+    assert.deepEqual(variantLabels(CONFIG), ['gpt', 'gpt +web', 'claude', 'claude +web', 'perplexity']);
+  });
+
+  it('rebuilds the uploaded pair byte for byte from the measured fields', async () => {
+    const earlier = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-10', committedDigest());
+    const produced = await produce({ ...VARIANTS, gpt: [39, 0, 0, 0] }, [earlier]);
+    const dir = snapshotDir([earlier]);
+    const { written } = await runCli(
+      ['--accept', produced.json, '--date', '2026-11-17', '--dir', dir],
+      { env: { ANSWERRANK_REVISION: REVISION }, log: silent },
+    );
+    assert.equal(readFileSync(written[0], 'utf8'), readFileSync(produced.json, 'utf8'));
+    assert.equal(readFileSync(written[1], 'utf8'), readFileSync(produced.md, 'utf8'));
+  });
+
+  it('recomputes the comparison, status and markdown instead of copying them', async () => {
+    const produced = await produce();
+    const raw = JSON.parse(readFileSync(produced.json, 'utf8'));
+    const injected = '[click](https://evil.example) @owner';
+    raw.comparison = { previousDate: injected, comparable: true, verdict: 'declined', reason: injected };
+    raw.reason = injected;
+    writeFileSync(produced.json, JSON.stringify(raw));
+    writeFileSync(produced.md, injected);
+    const { snapshot, markdown } = await runCli(
+      ['--accept', produced.json, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'],
+      { env: { ANSWERRANK_REVISION: REVISION }, log: silent },
+    );
+    assert.equal(snapshot.comparison.verdict, 'not compared');
+    assert.equal(snapshot.comparison.previousDate, null);
+    assert.equal(snapshot.reason, null);
+    assert.doesNotMatch(JSON.stringify(snapshot) + markdown, /evil\.example|@owner/);
+  });
+
+  it('rejects text where the snapshot holds counts, labels, amounts or ids', async () => {
+    const valid = JSON.parse(readFileSync((await produce()).json, 'utf8'));
+    assert.doesNotThrow(() => acceptSnapshot(structuredClone(valid), acceptContext()));
+    const relabel = (raw, from, to) => {
+      raw.design.variants = raw.design.variants.map((label) => (label === from ? to : label)).sort((a, b) => a.localeCompare(b));
+      raw.byVariant = Object.fromEntries(raw.design.variants.map((label) => [label, raw.byVariant[label === to ? from : label]]));
+    };
+    const cases = {
+      'a count as text': (raw) => { raw.overall.mentions = '13 <img src=x>'; },
+      'a variant count as text': (raw) => { raw.byVariant.gpt.citations = 'x'; },
+      'a citation count above its web answers': (raw) => { raw.byVariant['gpt +web'].citations = 40; },
+      'a variant label outside the config': (raw) => relabel(raw, 'gpt', 'gpt](https://evil.example)'),
+      'another inputs digest': (raw) => { raw.inputsDigest = 'sha256:other'; },
+      'another answerrank revision': (raw) => { raw.tool.revision = 'def'; },
+      'another judge': (raw) => { raw.design.judgeModel = 'openrouter/openai/gpt-5.5'; },
+      'markup in a spend key': (raw) => { raw.spendUsd['<b>x</b>'] = 1; },
+      'a spend amount as text': (raw) => { raw.spendUsd.total = '$7'; },
+      'an unscored label outside the config': (raw) => { raw.answers = { planned: 196, scored: 195, unscored: 1, unscoredByVariant: { '@owner': 1 } }; },
+      'answer counts that do not add up': (raw) => { raw.answers.planned = 300; },
+      'a free-text timestamp': (raw) => { raw.observedAt = 'yesterday @owner'; },
+      'another date': (raw) => { raw.date = '2026-11-18'; },
+    };
+    for (const [name, mutate] of Object.entries(cases)) {
+      const raw = structuredClone(valid);
+      mutate(raw);
+      assert.throws(() => acceptSnapshot(raw, acceptContext()), /seo-answerrank-collect/, name);
+    }
+  });
+
+  it('needs a date and takes no other source', () => {
+    assert.throws(() => parseArgs(['--accept', 'x.json']), /--accept needs --date/);
+    assert.throws(() => parseArgs(['--accept', 'x.json', '--live', '--date', '2026-11-17']), /exactly one of/);
   });
 });
 

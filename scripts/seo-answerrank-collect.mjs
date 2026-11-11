@@ -25,11 +25,15 @@
  * Usage:
  *   node scripts/seo-answerrank-collect.mjs --live
  *   node scripts/seo-answerrank-collect.mjs --from-run <answerrank run dir> --date 2026-11-10
+ *   node scripts/seo-answerrank-collect.mjs --accept <snapshot.json> --date 2026-11-10
  *
  * Options:
  *   --live                  run answerrank now (needs OPENROUTER_API_KEY,
  *                           ANTHROPIC_API_KEY and EXA_API_KEY)
  *   --from-run <dir>        build the snapshot from a finished answerrank run
+ *   --accept <file>         rebuild a snapshot another job made (CI artifact):
+ *                           measured fields only, checked against the
+ *                           committed inputs; comparison and markdown redone
  *   --date <YYYY-MM-DD>     snapshot date (default today, UTC)
  *   --dir <path>            snapshot directory (default docs/research/seo-ai-visibility/answerrank)
  *   --stdout                print the snapshot instead of writing files
@@ -80,6 +84,17 @@ export function inputsDigest(files) {
     invariant(typeof files[name] === 'string', `missing input ${name}`);
     return sha256(files[name]);
   })));
+}
+
+/** Whether a week with these answer counts can be compared, and why not. */
+function answerStatus({ planned, unscored, unscoredByVariant }) {
+  const status = planned > 0 && unscored / planned <= MAX_FAILED_SHARE ? 'available' : 'partial';
+  return {
+    status,
+    reason: status === 'partial'
+      ? `${unscored} of ${planned} answers were not scored (${Object.entries(unscoredByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}), over the ${MAX_FAILED_SHARE * 100}% limit, so this week is not compared.`
+      : null,
+  };
 }
 
 function group(metrics, searchedAnswers = null) {
@@ -141,7 +156,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
   const scored = scores.overall?.n ?? 0;
   const unscored = planned - scored;
   invariant(unscored >= 0, `scores.json has ${scored} scored answers but answers.jsonl plans only ${planned}`);
-  const status = planned > 0 && unscored / planned <= MAX_FAILED_SHARE ? 'available' : 'partial';
+  const { status, reason } = answerStatus({ planned, unscored, unscoredByVariant });
   const spendUsd = Object.fromEntries(Object.entries(spend).map(([key, value]) => [key, Number(value.toFixed(4))]));
   spendUsd.total = Number(Object.values(spend).reduce((sum, value) => sum + value, 0).toFixed(4));
   return {
@@ -149,9 +164,7 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     date,
     observedAt,
     status,
-    reason: status === 'partial'
-      ? `${unscored} of ${planned} answers were not scored (${Object.entries(unscoredByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}), over the ${MAX_FAILED_SHARE * 100}% limit, so this week is not compared.`
-      : null,
+    reason,
     tool: { name: 'answerrank', revision },
     inputsDigest: digest,
     design: {
@@ -164,6 +177,110 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     overall: group(scores.overall, Object.values(searchedByVariant).reduce((sum, value) => sum + value, 0)),
     byVariant,
     spendUsd,
+  };
+}
+
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+const OBSERVED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const SPEND_KEY_PATTERN = /^[a-z][a-z_]{0,31}$/;
+
+/**
+ * The variant labels answerrank answers with for this config, as its
+ * Config.variants() builds them: a model with native search answers once, and
+ * every other model also answers with the search tool when compare is on.
+ */
+export function variantLabels(config) {
+  return (config.models ?? []).flatMap((model) => (
+    model.web_search || !config.web_search?.compare ? [model.label] : [model.label, `${model.label} +web`]
+  ));
+}
+
+function acceptGroup(raw, where) {
+  invariant(raw && typeof raw === 'object', `${where} is missing`);
+  const { answers, mentions, topPicks, recommendations, webAnswers, searchedAnswers, citations, aeoScore, shareOfVoice } = raw;
+  invariant(isCount(answers) && answers > 0, `${where}.answers is not a positive count`);
+  for (const [key, value] of Object.entries({ mentions, topPicks, recommendations })) {
+    invariant(value === null || (isCount(value) && value <= answers), `${where}.${key} is not a count within its answers`);
+  }
+  invariant(isCount(webAnswers) && webAnswers <= answers, `${where}.webAnswers is not a count within its answers`);
+  for (const [key, value] of Object.entries({ searchedAnswers, citations })) {
+    invariant(
+      webAnswers > 0 ? value === null || (isCount(value) && value <= webAnswers) : value === null,
+      `${where}.${key} is not a count within its web answers`,
+    );
+  }
+  invariant(isFiniteNumber(aeoScore), `${where}.aeoScore is not a number`);
+  invariant(shareOfVoice === null || isFiniteNumber(shareOfVoice), `${where}.shareOfVoice is not a number`);
+  return { answers, mentions, topPicks, recommendations, webAnswers, searchedAnswers, citations, aeoScore, shareOfVoice };
+}
+
+/**
+ * Rebuilds a snapshot made by another job from its measured fields only.
+ * Every count and number is type-checked, every label, digest, revision and
+ * judge must match the committed inputs, and the status is recomputed. The
+ * comparison and the markdown are then made here, so nothing from the other
+ * job reaches the repository or a PR or issue body unchecked.
+ */
+export function acceptSnapshot(raw, { date, digest, revision, config, questions }) {
+  invariant(raw && typeof raw === 'object', 'the snapshot is not an object');
+  invariant(raw.schemaVersion === SCHEMA_VERSION, `schemaVersion is not ${SCHEMA_VERSION}`);
+  invariant(raw.date === date, `date is not ${date}`);
+  invariant(typeof raw.observedAt === 'string' && OBSERVED_AT_PATTERN.test(raw.observedAt), 'observedAt is not an ISO timestamp');
+  invariant(raw.tool?.name === 'answerrank', 'tool.name is not answerrank');
+  invariant(typeof revision === 'string' && revision !== '' && raw.tool.revision === revision, 'tool.revision is not the pinned answerrank commit');
+  invariant(raw.inputsDigest === digest, 'inputsDigest does not match the committed inputs');
+  const labels = variantLabels(config);
+  const design = raw.design ?? {};
+  invariant(design.questions === questions, `design.questions is not ${questions}`);
+  invariant(design.repetitions === config.repetitions, `design.repetitions is not ${config.repetitions}`);
+  invariant(design.judgeModel === config.judge_model, 'design.judgeModel is not the committed judge');
+  const variants = design.variants;
+  invariant(
+    Array.isArray(variants) && variants.length > 0 && variants.every((label) => labels.includes(label)),
+    'design.variants names a variant outside the committed config',
+  );
+  invariant(
+    JSON.stringify(variants) === JSON.stringify([...new Set(variants)].sort((a, b) => a.localeCompare(b))),
+    'design.variants is not sorted and unique',
+  );
+  invariant(
+    raw.byVariant && typeof raw.byVariant === 'object' && JSON.stringify(Object.keys(raw.byVariant)) === JSON.stringify(variants),
+    'byVariant does not match design.variants',
+  );
+  const byVariant = Object.fromEntries(variants.map((label) => [label, acceptGroup(raw.byVariant[label], `byVariant.${label}`)]));
+  const overall = acceptGroup(raw.overall, 'overall');
+  const { planned, scored, unscored, unscoredByVariant } = raw.answers ?? {};
+  invariant([planned, scored, unscored].every(isCount) && planned === scored + unscored, 'answers counts do not add up');
+  invariant(scored === overall.answers, 'answers.scored is not overall.answers');
+  invariant(unscoredByVariant && typeof unscoredByVariant === 'object', 'answers.unscoredByVariant is missing');
+  const unscoredEntries = Object.entries(unscoredByVariant).sort(([a], [b]) => a.localeCompare(b));
+  invariant(
+    unscoredEntries.every(([label, count]) => labels.includes(label) && isCount(count) && count > 0)
+      && unscoredEntries.reduce((sum, [, count]) => sum + count, 0) === unscored,
+    'answers.unscoredByVariant does not match answers.unscored',
+  );
+  const spend = raw.spendUsd;
+  invariant(
+    spend && typeof spend === 'object' && isFiniteNumber(spend.total)
+      && Object.entries(spend).every(([key, value]) => SPEND_KEY_PATTERN.test(key) && isFiniteNumber(value)),
+    'spendUsd is not a map of amounts',
+  );
+  const answers = { planned, scored, unscored, unscoredByVariant: Object.fromEntries(unscoredEntries) };
+  const { status, reason } = answerStatus(answers);
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    date,
+    observedAt: raw.observedAt,
+    status,
+    reason,
+    tool: { name: 'answerrank', revision },
+    inputsDigest: digest,
+    design: { questions, repetitions: config.repetitions, judgeModel: config.judge_model, variants: [...variants] },
+    answers,
+    overall,
+    byVariant,
+    spendUsd: Object.fromEntries(Object.entries(spend)),
   };
 }
 
@@ -335,7 +452,7 @@ export function assertNoSecrets(serialized, env) {
 }
 
 export function parseArgs(argv) {
-  const options = { live: false, fromRun: null, date: null, dir: DEFAULT_DIR, stdout: false };
+  const options = { live: false, fromRun: null, accept: null, date: null, dir: DEFAULT_DIR, stdout: false };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     if (flag === '--live') { options.live = true; continue; }
@@ -345,12 +462,17 @@ export function parseArgs(argv) {
     index += 1;
     switch (flag) {
       case '--from-run': options.fromRun = value; break;
+      case '--accept': options.accept = value; break;
       case '--date': options.date = value; break;
       case '--dir': options.dir = value; break;
       default: throw new Error(`[seo-answerrank-collect] unknown argument ${flag}`);
     }
   }
-  invariant(options.live !== Boolean(options.fromRun), 'pass exactly one of --live or --from-run');
+  invariant(
+    [options.live, Boolean(options.fromRun), Boolean(options.accept)].filter(Boolean).length === 1,
+    'pass exactly one of --live, --from-run or --accept',
+  );
+  invariant(!options.accept || options.date, '--accept needs --date');
   invariant(options.date === null || DATE_PATTERN.test(options.date), '--date must be YYYY-MM-DD');
   return options;
 }
@@ -378,6 +500,21 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   const dir = resolve(REPO_ROOT, options.dir);
   const inputsDir = join(dir, 'inputs');
   const digest = inputsDigest(Object.fromEntries(INPUT_FILES.map((name) => [name, readFileSync(join(inputsDir, name), 'utf8')])));
+  const config = YAML.parse(readFileSync(join(inputsDir, 'config.yaml'), 'utf8'));
+  const snapshot = options.accept
+    ? acceptSnapshot(readJson(resolve(options.accept)), {
+      date,
+      digest,
+      revision: env.ANSWERRANK_REVISION,
+      config,
+      questions: readJson(join(inputsDir, 'queries.json')).length,
+    })
+    : collectSnapshot({ options, env, now, spawn, date, digest, inputsDir, config });
+  return writeSnapshot({ snapshot, dir, date, env, log, stdout: options.stdout });
+}
+
+/** Runs answerrank, or reads a finished run, and builds its snapshot. */
+function collectSnapshot({ options, env, now, spawn, date, digest, inputsDir, config }) {
   let runDir;
   let observedAt;
   if (options.live) {
@@ -391,10 +528,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   }
   // The digest names the committed inputs, so the run must have used them:
   // the same questions and profile, and the same models, judge and settings.
-  const mismatch = runSettingsMismatch(
-    readJson(join(runDir, 'run.json')),
-    YAML.parse(readFileSync(join(inputsDir, 'config.yaml'), 'utf8')),
-  );
+  const mismatch = runSettingsMismatch(readJson(join(runDir, 'run.json')), config);
   invariant(mismatch.length === 0, `the run in ${runDir} used other settings than inputs/config.yaml: ${mismatch.join('; ')}`);
   for (const name of ['queries.json', 'profile.json']) {
     invariant(
@@ -402,13 +536,17 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
       `${name} in ${runDir} differs from ${join(options.dir, 'inputs', name)}`,
     );
   }
-  const snapshot = buildSnapshot({ runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null });
+  return buildSnapshot({ runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null });
+}
+
+/** Compares a snapshot with the earlier ones in `dir` and writes the dated pair. */
+function writeSnapshot({ snapshot, dir, date, env, log, stdout }) {
   const earlier = readEarlierSnapshots(dir, date);
   snapshot.comparison = compareSnapshots(previousComparable(earlier, snapshot) ?? earlier.at(-1) ?? null, snapshot);
   const json = `${JSON.stringify(snapshot, null, 2)}\n`;
   const markdown = renderMarkdown(snapshot, snapshot.comparison, earlier);
   assertNoSecrets(json + markdown, env);
-  if (options.stdout) {
+  if (stdout) {
     log(json);
     return { snapshot, markdown, written: [] };
   }

@@ -79,8 +79,12 @@ third-party code. That job's token can only read, its checkout keeps no
 credential, its install step has no secrets (hash-pinned wheels from
 `inputs/requirements.txt`, answerrank fetched by commit), and only the collect
 step gets the keys. It passes the two snapshot files to the job that opens the
-PR as an artifact, and that job takes them only if exactly those two files
-arrive and the JSON has the expected shape. Locally, with answerrank on your `PATH` (set
+PR as an artifact. That job copies none of it: `--accept` rebuilds the
+snapshot from its measured fields (every count type-checked; variant labels,
+inputs digest, answerrank commit and judge matched against the committed
+inputs), recomputes the comparison against the committed earlier weeks, and
+writes its own markdown, so no text from the third-party job reaches the
+repository, the PR or the decline issue. Locally, with answerrank on your `PATH` (set
 `ANSWERRANK_REVISION` to the commit so the snapshot can be compared with CI
 weeks):
 
