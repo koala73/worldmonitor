@@ -29,6 +29,8 @@ import { initI18n, t as translate } from '@/services/i18n';
 import { combineAbortSignals } from '@/services/timeout-signal';
 import { createHostCountryDownload, hostSupportsCountryDownload, CountryDownloadRequestError, COUNTRY_EXPORT_REQUEST_BYTES } from '@/utils/country-text-download';
 import type { CountryIntelData } from '@/components/CountryBriefPanel';
+import { hostContextFromInitialize, layoutFlags, mergeHostContext, type PluginHostContext } from './plugin-host-context';
+import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-display-mode';
 
 const CHINA_MODEL_CONTEXT_BYTES = 32768;
 const chinaContextTitles = ['Macro Signals', 'Policy & Enforcement', 'Cross-Strait Activity', 'Corporate Disclosures', 'Corridor Conditions', 'Activity Nowcast'];
@@ -365,6 +367,19 @@ async function mountPlugin(): Promise<void> {
   let modelContextRevision = 0;
   let hydratedAt = 0;
   let ready = false;
+  let hostResultSeen = false;
+  let host: PluginHostContext = { displayMode: 'inline', availableDisplayModes: [] };
+  const reportSize = () => { if (!layoutFlags(host).fillContainer) send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }); };
+  const expandButton = createExpandButton({
+    className: 'country-expand-btn',
+    request,
+    getHost: () => host,
+    setHost: next => { host = next; relayout(); },
+    onRefused: () => { status.textContent = EXPAND_REFUSED; },
+  });
+  function relayout(): void {
+    if (applyHostLayout(host, expandButton)) reportSize();
+  }
   let toolsAvailable = false;
   let modelContext = false;
   let linksAvailable = false;
@@ -780,6 +795,7 @@ async function mountPlugin(): Promise<void> {
     }
     if (message.method === 'ui/notifications/tool-input') hostInput = message.params?.arguments ?? message.params;
     if (message.method === 'ui/notifications/tool-result') {
+      hostResultSeen = true;
       const result = message.params?.result ?? message.params;
       if (result?.isError) {
         hostInput = undefined;
@@ -794,8 +810,8 @@ async function mountPlugin(): Promise<void> {
       }
     }
     if (message.method === 'tools/list') send({ id: message.id, result: { tools: [
-      { name: 'select_country_view', description: 'Change the country or topic in this rendered country brief. Returns the applied country, topic and section states.', inputSchema: { type: 'object', properties: { country_code: { type: 'string' }, topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS) } }, required: ['country_code'] } },
-      { name: 'open_country_atlas_asset', description: 'Open a loaded pipeline, storage facility or active fuel shortage detail in the current country view. Returns the displayed details and sources.', inputSchema: { type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['pipeline', 'storage', 'shortage'] }, id: { type: 'string' } }, required: ['type', 'id'] } },
+      { name: 'select_country_view', title: 'Change the country or topic', description: 'Change the country or topic in this rendered country brief. Returns the applied country, topic and section states.', inputSchema: { type: 'object', properties: { country_code: { type: 'string' }, topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS) } }, required: ['country_code'] } },
+      { name: 'open_country_atlas_asset', title: 'Open a country energy asset', description: 'Open a loaded pipeline, storage facility or active fuel shortage detail in the current country view. Returns the displayed details and sources.', inputSchema: { type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['pipeline', 'storage', 'shortage'] }, id: { type: 'string' } }, required: ['type', 'id'] } },
     ] } });
     if (message.method === 'tools/call') void (async () => {
       if (message.params?.name === 'select_country_view') return open(message.params.arguments);
@@ -806,7 +822,10 @@ async function mountPlugin(): Promise<void> {
       scheduleContext();
       return snapshot();
     })().then(result => send({ id: message.id, result: { structuredContent: result, content: [{ type: 'text', text: JSON.stringify(result) }] } })).catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error.message }] } }));
-    if (message.method === 'ui/notifications/host-context-changed' && ['light', 'dark'].includes(message.params?.theme)) document.documentElement.dataset.theme = message.params.theme;
+    if (message.method === 'ui/notifications/host-context-changed') {
+      host = mergeHostContext(host, message.params);
+      relayout();
+    }
   });
 
   const openSelectedCountry = () => { void open({ country_code: input.value }).catch(error => { status.textContent = error.message; }); };
@@ -855,9 +874,14 @@ async function mountPlugin(): Promise<void> {
   });
 
   async function start(): Promise<void> {
+    form.appendChild(expandButton);
+    // Handshake before translations and section data: Claude drops views that report initialized late.
+    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {}, availableDisplayModes: ['inline', 'fullscreen'] }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object } };
+    send({ method: 'ui/notifications/initialized' });
+    host = hostContextFromInitialize(initialized);
+    relayout();
     await initI18n({ waitForFullTranslation: true });
     document.getElementById('deep-dive-close')!.setAttribute('aria-label', 'Close country brief');
-    const initialized = await request('ui/initialize', { appInfo: { name: 'WorldMonitor country brief', version: '1.0.0' }, appCapabilities: { tools: {} }, protocolVersion: '2026-01-26' }) as { hostCapabilities?: { serverTools?: object; openLinks?: object; updateModelContext?: object }; hostContext?: { theme?: string } };
     initialization = initialized;
     negotiationState = 'received';
     renderConnection();
@@ -866,12 +890,11 @@ async function mountPlugin(): Promise<void> {
     modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
     renderConnection();
     ready = true;
-    send({ method: 'ui/notifications/initialized' });
-    const resize = new ResizeObserver(() => send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }));
+    const resize = new ResizeObserver(reportSize);
     resize.observe(document.body);
     window.addEventListener('pagehide', () => resize.disconnect(), { once: true });
-    if (['light', 'dark'].includes(initialized.hostContext?.theme ?? '')) document.documentElement.dataset.theme = initialized.hostContext!.theme;
-    status.textContent = toolsAvailable ? 'Select a country to open its brief.' : 'This host cannot call the connected country tools.';
+    // A host result can arrive while translations load; keep its status instead of the idle prompt.
+    if (!hostResultSeen) status.textContent = toolsAvailable ? 'Select a country to open its brief.' : 'This host cannot call the connected country tools.';
     if (queuedView) await open(queuedView.raw, false, queuedView.receipt, queuedView.fromHost);
   }
   void start().catch(() => { if (negotiationState === 'pending') negotiationState = 'unconfirmed'; renderConnection(); status.textContent = 'The ChatGPT host connection is unavailable. Reload the country view.'; });
