@@ -45,6 +45,8 @@ type RecoveryFixture = { coverage: 'empty' | 'unavailable'; shortages: 'populate
 type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
 // Extra hostContext fields the controlled host reports from ui/initialize (display-mode tests).
 let displayHostContext: Record<string, unknown> | undefined;
+// A view tool call the host sends the moment the view reports initialized, while translations still load.
+let callOnInitialized: { name: string; arguments: object } | undefined;
 
 async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture) {
   const bootTrace: Array<{ event: string; url?: string; method?: string; error?: string }> = [];
@@ -264,10 +266,17 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   });
   await page.goto('/country-host-test');
   const html = cachedShell ?? await readFile(join(root, 'dist/plugin/country.html'), 'utf8');
-  await page.evaluate(({ html, initialCountry }) => {
+  await page.evaluate(({ html, initialCountry, earlyCall }) => {
     const frame = document.querySelector('iframe')!;
     window.addEventListener('message', async event => {
       if (event.source !== frame.contentWindow || event.data?.jsonrpc !== '2.0') return;
+      if (earlyCall && event.data.id === 'early-call' && !event.data.method) {
+        (window as unknown as { earlyCallResult: unknown }).earlyCallResult = event.data.result;
+        return;
+      }
+      if (earlyCall && event.data.method === 'ui/notifications/initialized') {
+        frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'early-call', method: 'tools/call', params: earlyCall }, '*');
+      }
       if (typeof event.data.method === 'string' && event.data.method.startsWith('ui/notifications/')) {
         void (window as unknown as { countryHost: (method: string, params: object) => Promise<object> }).countryHost(event.data.method, event.data.params ?? {});
         return;
@@ -287,7 +296,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       }
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
-  }, { html, initialCountry: factorsTiming ? 'NO' : 'US' });
+  }, { html, initialCountry: factorsTiming ? 'NO' : 'US', earlyCall: callOnInitialized });
   const action = (name: string, args: object) => page.evaluate(({ name, args }) => new Promise<Record<string, unknown>>(resolve => {
     const id = -Math.random();
     const frame = document.querySelector('iframe')!;
@@ -1311,7 +1320,18 @@ test('controlled shortages distinguish empty, unavailable, retained, denial and 
 });
 
 test.describe('country view display modes', () => {
-  test.afterEach(() => { displayHostContext = undefined; });
+  test.afterEach(() => { displayHostContext = undefined; callOnInitialized = undefined; });
+
+  test('a view tool call sent as soon as the view reports initialized waits for startup and opens the country', async ({ page }) => {
+    callOnInitialized = { name: 'select_country_view', arguments: { country_code: 'FR', topic: 'overview' } };
+    await installCountryHost(page);
+    const frame = page.frameLocator('iframe');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { earlyCallResult?: unknown }).earlyCallResult), { timeout: 20_000 }).toBeTruthy();
+    const result = await page.evaluate(() => (window as unknown as { earlyCallResult: { isError?: boolean; structuredContent?: Record<string, unknown> } }).earlyCallResult);
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent?.state).not.toBe('connecting');
+    await expect(frame.locator('.cdp-country-name')).toHaveText(/France/);
+  });
 
   const setHostContext = (page: Page, context: Record<string, unknown>, frameSize?: { width: number; height: number }) => page.evaluate(({ context, frameSize }) => {
     const frame = document.querySelector('iframe')!;

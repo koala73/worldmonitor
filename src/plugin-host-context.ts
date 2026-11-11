@@ -19,7 +19,7 @@ export interface PluginHostContext {
 export interface PluginLayoutFlags {
   /** The host offers fullscreen and the view is not already in it. */
   canExpand: boolean;
-  /** The view is in fullscreen mode and the host reported a numeric height to fill. */
+  /** The view is in fullscreen mode and the host reported a positive height to fill. */
   fillContainer: boolean;
 }
 
@@ -68,6 +68,6 @@ export function layoutFlags(state: PluginHostContext): PluginLayoutFlags {
   const fullscreen = state.displayMode === 'fullscreen';
   return {
     canExpand: !fullscreen && state.availableDisplayModes.includes('fullscreen'),
-    fillContainer: fullscreen && typeof state.containerDimensions?.height === 'number',
+    fillContainer: fullscreen && (state.containerDimensions?.height ?? 0) > 0,
   };
 }

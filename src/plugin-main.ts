@@ -29,6 +29,7 @@ import { applyHostLayout, createExpandButton, EXPAND_REFUSED } from './plugin-di
 const DIGEST_RELOAD_FAILED = 'The news feed could not be loaded. Ask for the dashboard again.';
 
 type DashboardDigest = ListFeedDigestResponse & { requestedView?: unknown; panelRequest?: unknown };
+type HostBilling = { refresh: false } | { refresh: true; request_id?: string };
 
 function resolveNewsCategory(requested: string, keys: string[]): { category: string } | { reason: 'unknown_category' | 'ambiguous_category' } {
   if (keys.includes(requested)) return { category: requested };
@@ -49,6 +50,8 @@ function mountPlugin(): void {
   const usageNotice = document.getElementById('pluginUsage')!;
   let admission: NewsPanelAdmission | undefined;
   let hostView: unknown;
+  // How the host's own call was billed: a refresh is reused only through its request_id.
+  let hostBilling: HostBilling = { refresh: false };
   let refreshing: Promise<void> | undefined;
   let refreshAttempt: { id: string; startedAt: number } | undefined;
   const hazardCache = new Map<string, Promise<PluginHazardSnapshot>>();
@@ -108,7 +111,8 @@ function mountPlugin(): void {
 
   async function renderResult(result: unknown, keepCurrentView = false): Promise<boolean> {
     const inputView = keepCurrentView ? undefined : hostView;
-    if (!keepCurrentView) hostView = undefined;
+    const inputBilling = hostBilling;
+    if (!keepCurrentView) { hostView = undefined; hostBilling = { refresh: false }; }
     if (!result || typeof result !== 'object') return false;
     const response = result as { isError?: boolean; content?: Array<{ type?: string; text?: string }>; structuredContent?: DashboardDigest };
     if (response.isError) {
@@ -119,7 +123,7 @@ function mountPlugin(): void {
     const data = hasCategories(response.structuredContent) ? response.structuredContent : digestFromText(response.content);
     if (!data) {
       // Hosts may hand the view a file pointer in place of a large result; the view's own call returns it in full.
-      if (!keepCurrentView) return reloadDigest(inputView);
+      if (!keepCurrentView) return reloadDigest(inputView, inputBilling);
       status.textContent = 'News data is unavailable. Previously loaded news remains visible.';
       return false;
     }
@@ -158,22 +162,26 @@ function mountPlugin(): void {
     } catch { return undefined; }
   }
 
-  async function reloadDigest(inputView: unknown): Promise<boolean> {
-    if (digestReloadAttempted || !serverTools) {
+  async function reloadDigest(inputView: unknown, billing: HostBilling): Promise<boolean> {
+    // A refresh without a request_id got a one-off admission; reloading it would charge a second request.
+    if (digestReloadAttempted || !serverTools || (billing.refresh && !billing.request_id)) {
       status.textContent = DIGEST_RELOAD_FAILED;
       return false;
     }
     digestReloadAttempted = true;
     const generation = renderGeneration;
     let result: unknown;
-    // No refresh and no request_id: the server's repeat-open reuse serves this from the original request.
-    try { result = await request('tools/call', { name: 'open_news_dashboard', arguments: inputView ?? {} }); }
+    // Repeat the host's billing arguments so the server reuses the original admission: a plain open
+    // reuses the current window, and a refresh reuses its request_id.
+    const args = billing.refresh ? { ...(inputView as object | undefined), refresh: true, request_id: billing.request_id } : inputView ?? {};
+    try { result = await request('tools/call', { name: 'open_news_dashboard', arguments: args }); }
     catch {
       status.textContent = DIGEST_RELOAD_FAILED;
       return false;
     }
     if (generation !== renderGeneration) return false;
     hostView = inputView;
+    hostBilling = billing;
     return renderResult(result);
   }
 
@@ -482,7 +490,9 @@ function mountPlugin(): void {
         .catch(error => send({ id: message.id, result: { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : 'View action failed' }] } }));
     }
     if (message.method === 'ui/notifications/tool-input') {
-      hostView = Object.fromEntries(Object.entries(message.params?.arguments ?? {}).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
+      const args = message.params?.arguments ?? {};
+      hostView = Object.fromEntries(Object.entries(args).filter(([key]) => !['jmespath', 'refresh', 'request_id'].includes(key)));
+      hostBilling = args.refresh === true ? { refresh: true, request_id: typeof args.request_id === 'string' ? args.request_id : undefined } : { refresh: false };
     }
     if (message.method === 'ui/notifications/tool-result') {
       // The handshake finishes before the map exists; hold the latest result until it does.

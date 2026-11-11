@@ -51,9 +51,12 @@ export function createExpandButton(options: {
   icon.appendChild(path);
   button.appendChild(icon);
   button.addEventListener('click', () => {
+    const clicked = options.getHost();
     void options.request('ui/request-display-mode', { mode: 'fullscreen' }).then(result => {
       if ((result as { mode?: unknown } | undefined)?.mode !== 'fullscreen') { options.onRefused(); return; }
-      options.setHost(mergeHostContext(options.getHost(), { displayMode: 'fullscreen' }));
+      // A host notification since the click is newer than this answer; keep it.
+      if (options.getHost() !== clicked) return;
+      options.setHost(mergeHostContext(clicked, { displayMode: 'fullscreen' }));
     }).catch(options.onRefused);
   });
   return button;

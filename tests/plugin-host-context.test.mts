@@ -23,6 +23,11 @@ test('fullscreen at 380 by 700 fills the container', () => {
   assert.deepEqual(state.containerDimensions, { width: 380, height: 700 });
 });
 
+test('fullscreen with a zero height does not fill the container', () => {
+  const state = hostContextFromInitialize({ hostContext: { displayMode: 'fullscreen', containerDimensions: { width: 700, height: 0 } } });
+  assert.equal(layoutFlags(state).fillContainer, false);
+});
+
 test('inline with a maximum height does not fill the container', () => {
   const state = hostContextFromInitialize({ hostContext: { displayMode: 'inline', containerDimensions: { width: 700, maxHeight: 900 } } });
   assert.equal(layoutFlags(state).fillContainer, false);

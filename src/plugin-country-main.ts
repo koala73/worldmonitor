@@ -367,6 +367,11 @@ async function mountPlugin(): Promise<void> {
   let modelContextRevision = 0;
   let hydratedAt = 0;
   let ready = false;
+  // Host tool calls wait for startup: initialized is sent before translations load.
+  let resolveReady!: () => void;
+  let rejectReady!: (error: unknown) => void;
+  const whenReady = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+  whenReady.catch(() => {});
   let hostResultSeen = false;
   let host: PluginHostContext = { displayMode: 'inline', availableDisplayModes: [] };
   const reportSize = () => { if (!layoutFlags(host).fillContainer) send({ method: 'ui/notifications/size-changed', params: { height: document.documentElement.scrollHeight } }); };
@@ -795,15 +800,16 @@ async function mountPlugin(): Promise<void> {
     }
     if (message.method === 'ui/notifications/tool-input') hostInput = message.params?.arguments ?? message.params;
     if (message.method === 'ui/notifications/tool-result') {
-      hostResultSeen = true;
       const result = message.params?.result ?? message.params;
       if (result?.isError) {
+        hostResultSeen = true;
         hostInput = undefined;
         status.textContent = result.content?.find((item: { type: string; text?: string }) => item.type === 'text')?.text ?? 'WorldMonitor could not open this country brief.';
         return;
       }
       const data = result?.structuredContent;
       if (data?.countryCode) {
+        hostResultSeen = true;
         const requested = countryViewSchema.safeParse(hostInput);
         hostInput = undefined;
         void open({ country_code: data.countryCode, topic: data.topic ?? 'overview', refresh: requested.success && requested.data.refresh }, false, data.panelRequest, true).catch(error => { status.textContent = error.message; });
@@ -814,6 +820,7 @@ async function mountPlugin(): Promise<void> {
       { name: 'open_country_atlas_asset', title: 'Open a country energy asset', description: 'Open a loaded pipeline, storage facility or active fuel shortage detail in the current country view. Returns the displayed details and sources.', inputSchema: { type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['pipeline', 'storage', 'shortage'] }, id: { type: 'string' } }, required: ['type', 'id'] } },
     ] } });
     if (message.method === 'tools/call') void (async () => {
+      await whenReady;
       if (message.params?.name === 'select_country_view') return open(message.params.arguments);
       if (message.params?.name !== 'open_country_atlas_asset') throw new Error('Unknown country action');
       const args = message.params.arguments;
@@ -890,6 +897,7 @@ async function mountPlugin(): Promise<void> {
     modelContext = Boolean(initialized.hostCapabilities?.updateModelContext);
     renderConnection();
     ready = true;
+    resolveReady();
     const resize = new ResizeObserver(reportSize);
     resize.observe(document.body);
     window.addEventListener('pagehide', () => resize.disconnect(), { once: true });
@@ -897,7 +905,7 @@ async function mountPlugin(): Promise<void> {
     if (!hostResultSeen) status.textContent = toolsAvailable ? 'Select a country to open its brief.' : 'This host cannot call the connected country tools.';
     if (queuedView) await open(queuedView.raw, false, queuedView.receipt, queuedView.fromHost);
   }
-  void start().catch(() => { if (negotiationState === 'pending') negotiationState = 'unconfirmed'; renderConnection(); status.textContent = 'The ChatGPT host connection is unavailable. Reload the country view.'; });
+  void start().catch(error => { rejectReady(error); if (negotiationState === 'pending') negotiationState = 'unconfirmed'; renderConnection(); status.textContent = 'The ChatGPT host connection is unavailable. Reload the country view.'; });
 
 }
 const mount = () => { void mountPlugin().catch(() => { document.getElementById('countryStatus')!.textContent = 'The country interface could not be loaded. Refresh to retry.'; }); };

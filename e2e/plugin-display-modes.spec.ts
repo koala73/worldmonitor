@@ -14,13 +14,15 @@ type HostOptions = {
   availableDisplayModes?: string[];
   displayModeAnswer?: 'fullscreen' | 'inline';
   serverTools?: boolean;
-  initialResult?: 'digest' | 'pointer' | 'error';
+  initialResult?: 'digest' | 'text' | 'pointer' | 'error';
   reload?: 'digest' | 'fail' | 'pointer';
   frame?: { width: number; height: number };
+  initialView?: Record<string, unknown>;
 };
 
 const ARTICLE = { title: 'Controlled earthquake report in Japan', source: 'Fixture publisher', link: 'https://example.com/news', publishedAt: Date.now(), location: { latitude: 35, longitude: 139 }, isAlert: true };
-const INITIAL_VIEW = { country: 'JP', refresh: true, request_id: 'should-not-be-sent', jmespath: 'categories' };
+const INITIAL_VIEW = { country: 'JP', jmespath: 'categories' };
+const REFRESH_ID = '3f2a6c1e-9b4d-4e7a-8c21-5d0f9e6b7a10';
 
 async function installHost(page: Page, options: HostOptions = {}) {
   const messages: Message[] = [];
@@ -36,8 +38,9 @@ async function installHost(page: Page, options: HostOptions = {}) {
   await page.route('**/display-host-test', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><meta charset="utf-8"><title>Display modes</title><body style="margin:0"><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:${size.width}px;height:${size.height}px;border:0;display:block"></iframe>` }));
   const digest = () => ({ structuredContent: { categories: { world: { items: [ARTICLE] } }, coverage: { state: 'complete', servedStale: false }, requestedView: { country: 'JP' } } });
   const pointer = () => ({ content: [{ type: 'text', text: '/mnt/user-data/tool_results/open_news_dashboard_1.json' }] });
-  const respond = (kind: 'digest' | 'pointer' | 'error' | 'fail') => {
+  const respond = (kind: 'digest' | 'text' | 'pointer' | 'error' | 'fail') => {
     if (kind === 'fail') throw new Error('reload failed');
+    if (kind === 'text') return { content: [{ type: 'text', text: JSON.stringify(digest().structuredContent) }] };
     if (kind === 'error') return { isError: true, content: [{ type: 'text', text: 'Daily MCP quota exceeded. Resets at next UTC midnight.' }] };
     return kind === 'pointer' ? pointer() : digest();
   };
@@ -83,7 +86,7 @@ async function installHost(page: Page, options: HostOptions = {}) {
       }
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
-  }, { html, initialView: INITIAL_VIEW });
+  }, { html, initialView: options.initialView ?? INITIAL_VIEW });
   return { messages, viewCalls, dataRequests, frame: page.frameLocator('iframe') };
 }
 
@@ -231,10 +234,30 @@ test.describe('digest the host did not deliver', () => {
     expect(host.viewCalls).toEqual([]);
   });
 
-  test('a file-pointer result is reloaded once with the original view, without refresh or request_id', async ({ page }) => {
+  test('a digest delivered only as text JSON renders without an extra call', async ({ page }) => {
+    const host = await installHost(page, { initialResult: 'text' });
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+    await page.waitForTimeout(300);
+    expect(host.viewCalls).toEqual([]);
+  });
+
+  test('a file-pointer result is reloaded once with the original view and no refresh', async ({ page }) => {
     const host = await installHost(page, { initialResult: 'pointer' });
     await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
     expect(host.viewCalls).toEqual([{ name: 'open_news_dashboard', arguments: { country: 'JP' } }]);
+  });
+
+  test('a refreshed open is reloaded with its request_id so the server reuses that request', async ({ page }) => {
+    const host = await installHost(page, { initialResult: 'pointer', initialView: { country: 'JP', refresh: true, request_id: REFRESH_ID } });
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+    expect(host.viewCalls).toEqual([{ name: 'open_news_dashboard', arguments: { country: 'JP', refresh: true, request_id: REFRESH_ID } }]);
+  });
+
+  test('a refresh without a request_id is not reloaded, since a reload would be charged again', async ({ page }) => {
+    const host = await installHost(page, { initialResult: 'pointer', initialView: { country: 'JP', refresh: true } });
+    await expect(host.frame.locator('#pluginStatus')).toHaveText('The news feed could not be loaded. Ask for the dashboard again.');
+    await page.waitForTimeout(300);
+    expect(host.viewCalls).toEqual([]);
   });
 
   test('without server tools the view says the feed could not be loaded', async ({ page }) => {

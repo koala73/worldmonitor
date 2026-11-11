@@ -101,7 +101,7 @@ function harness({ country = 'CN', visible = true, capability = true } = {}) {
     resolveCountryCode: value => value, getCountryNameByCode: value => value,
     call: () => new Promise(() => {}), initI18n: async () => {},
     form: doc.getElementById('countryControls'), expandButton: doc.createElement('button'),
-    host: undefined, hostResultSeen: false, relayout() {}, reportSize() {},
+    host: undefined, hostResultSeen: false, relayout() {}, reportSize() {}, resolveReady() {}, rejectReady() {},
     hostContextFromInitialize: () => ({ displayMode: 'inline', availableDisplayModes: [] }),
     admission: undefined, signalCoverage: null, revision: 7, modelContextRevision: 7, nextId: 123, pending: new Map(), modelContext: capability, contextTimer: undefined,
     CHINA_DECISION_SIGNAL_GROUP_IDS: ids,
