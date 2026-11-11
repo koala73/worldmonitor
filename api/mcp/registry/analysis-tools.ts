@@ -978,7 +978,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           type: 'object',
           properties: {
             events: { type: ['array', 'null'], items: { type: 'object' } },
-            exposure: { type: ['object', 'null'], description: 'Point mode: the estimate, with country as the ISO3 code whose density was used. Null in other modes and for a point outside the countries table.' },
+            exposure: { type: ['object', 'null'], description: 'Point mode: the estimate, with country as the ISO3 code whose density was used. nearestCountry is a deprecated alias retained for this published revision in point and event estimates. Null in other modes and for a point outside the countries table.' },
             countries: { type: ['array', 'null'], items: { type: 'object' } },
           },
           required: [],
@@ -1015,10 +1015,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
           };
         }
         const radiusKm = Math.min(MAX_EXPOSURE_RADIUS_KM, Math.max(1, Number(params.radius_km ?? 50) || 50));
+        const exposure = estimatePointExposure(lat, lon, radiusKm);
         return {
           cached_at: null,
           stale: false,
-          data: { events: null, exposure: estimatePointExposure(lat, lon, radiusKm), countries: null },
+          data: { events: null, exposure: exposure ? { ...exposure, nearestCountry: exposure.country } : null, countries: null },
         };
       }
 
@@ -1066,7 +1067,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         .flatMap((read, i) => read.adapt(payloads[i], Number.POSITIVE_INFINITY))
         .flatMap((event) => {
           const exposure = estimatePointExposure(event.lat, event.lon, getRadiusForEventType(event.type), event.reportedCountry);
-          return exposure ? [{ ...event, ...exposure }] : [];
+          return exposure ? [{ ...event, ...exposure, nearestCountry: exposure.country }] : [];
         })
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation)
         .slice(0, limit);
