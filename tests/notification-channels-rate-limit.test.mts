@@ -1,8 +1,9 @@
 /**
  * Every /api/notification-channels POST writes through the Convex relay and the
- * durable-welcome path can send mail, so a signed-in Pro user needs a per-user
- * write budget. The limiter runs after the Pro gate and fails closed on a
- * limiter outage (retryable 503), matching api/notify.ts.
+ * durable-welcome path can send mail, so every signed-in writer — Pro or
+ * free-ladder (#4273) — needs a per-user write budget. The limiter runs after
+ * the billing-verification gate and fails closed on a limiter outage
+ * (retryable 503), matching api/notify.ts.
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
@@ -130,13 +131,18 @@ describe('/api/notification-channels POST write rate limit', () => {
     assert.deepEqual(relayCalls, []);
   });
 
-  it('does not spend the limiter on a caller the Pro gate already turns away', async () => {
-    const { mod, limiterCalls } = await installDeps(ALLOWED, { freeTier: true });
+  it('meters a free caller like any other writer (#4273 free alert ladder)', async () => {
+    // Before #4273 the Pro gate turned every free caller away ahead of the
+    // limiter, so no budget was spent on them. Free accounts now write
+    // free-ladder rules through the same relay, so they take the same
+    // per-user budget as everyone else.
+    const { mod, limiterCalls, relayCalls } = await installDeps(ALLOWED, { freeTier: true });
 
-    const res = await mod.default(makeRequest('POST', { action: 'set-alert-rules', rules: [] }), ctx);
+    const res = await mod.default(makeRequest('POST', { action: 'set-alert-rules', variant: 'full', enabled: true, eventTypes: [], channels: [] }), ctx);
 
-    assert.equal(res.status, 403);
-    assert.deepEqual(limiterCalls, []);
+    assert.equal(res.status, 200);
+    assert.equal(limiterCalls.length, 1);
+    assert.equal(relayCalls.length, 1);
   });
 
   it('leaves GET reads unmetered', async () => {

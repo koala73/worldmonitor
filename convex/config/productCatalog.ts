@@ -214,6 +214,28 @@ export type PlanFeatures = {
    * entries below ALWAYS set the field explicitly.
    */
   dataExport?: boolean;
+  /**
+   * Alert-ladder capabilities (#4273) — what the plan's notification rules
+   * may hold: followed-country count, delivery channels, event sensitivities,
+   * delivery modes, and whether the AI-composed digest is included. Free is a
+   * deliberately small ladder (critical-only, 3 countries, web push + email)
+   * so the retention loop forms before the paywall; every paid tier gets the
+   * full surface. Read through `resolveAlertCapabilities`
+   * (shared/alert-capabilities.ts), whose BY-TIER fallback covers rows
+   * written before these fields existed: a paid row without them keeps full
+   * access, a free row fails closed to the free ladder.
+   *
+   * These are plan STRUCTURE, like the desktop-key limits:
+   * `mergeEntitlementFeatures` takes them from the catalog regardless of what
+   * a stored row carries, so a ladder change here applies to existing
+   * subscribers at read time. Catalog entries below ALWAYS set them
+   * explicitly.
+   */
+  alertMaxCountries?: number;
+  alertChannels?: string[];
+  alertSensitivities?: string[];
+  alertDigestModes?: string[];
+  aiDigestAccess?: boolean;
 };
 
 export interface CatalogEntry {
@@ -244,6 +266,33 @@ export interface CatalogEntry {
 // ---------------------------------------------------------------------------
 // Shared feature sets (avoids duplication across billing variants)
 // ---------------------------------------------------------------------------
+
+// Alert ladder (#4273). This catalog stays import-free (the product-config
+// generator consumes it), so these literals are the authoritative copy and
+// shared/alert-capabilities.ts carries the matching fallback constants;
+// convex/__tests__/alertRules-free-ladder.test.ts pins the two together.
+// Free `alertDigestModes` opens with realtime only: the digest cron
+// (scripts/seed-digest-notifications.mjs) still delivers to tier >= 1, and
+// advertising a daily digest it would drop is a silent lie. Widen to
+// ["realtime", "daily"] in the change that makes the cron free-aware.
+type AlertCapabilityFields = Required<Pick<PlanFeatures,
+  "alertMaxCountries" | "alertChannels" | "alertSensitivities" | "alertDigestModes" | "aiDigestAccess">>;
+
+const FREE_ALERT_CAPABILITIES: AlertCapabilityFields = {
+  alertMaxCountries: 3,
+  alertChannels: ["web_push", "email"],
+  alertSensitivities: ["critical"],
+  alertDigestModes: ["realtime"],
+  aiDigestAccess: false,
+};
+
+const PAID_ALERT_CAPABILITIES: AlertCapabilityFields = {
+  alertMaxCountries: 50,
+  alertChannels: ["telegram", "slack", "email", "discord", "teams", "webhook", "web_push"],
+  alertSensitivities: ["all", "high", "critical"],
+  alertDigestModes: ["realtime", "daily", "twice_daily", "weekly"],
+  aiDigestAccess: true,
+};
 
 const FREE_FEATURES: PlanFeatures = {
   tier: 0,
@@ -276,6 +325,7 @@ const FREE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: false,
+  ...FREE_ALERT_CAPABILITIES,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -301,6 +351,7 @@ const PRO_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 2,
   dataExport: false,
+  ...PAID_ALERT_CAPABILITIES,
 };
 
 /**
@@ -337,6 +388,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 3,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -362,6 +414,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -388,6 +441,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
 };
 
 // Enterprise is sold by contract. These numbers are the contract default —
@@ -424,6 +478,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  ...PAID_ALERT_CAPABILITIES,
 };
 
 // ---------------------------------------------------------------------------

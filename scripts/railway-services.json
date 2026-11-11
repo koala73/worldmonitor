@@ -241,6 +241,7 @@
       "scripts/lib/corroboration-text.cjs",
       "scripts/lib/crypto.cjs",
       "scripts/lib/email-unsubscribe.cjs",
+      "scripts/lib/free-tier-delivery.cjs",
       "scripts/lib/llm-chain.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
