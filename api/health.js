@@ -5912,8 +5912,8 @@ function pendingIncidentKeys(alertedRaw, sigKeys) {
  * Whether a `<source>:<status>` incident should go to Sentry now. A late
  * government release is held back until its content is more than
  * GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN past its limit. Without a readable
- * content age nothing is held back: no parsable date points at our parser,
- * not the publisher.
+ * content age, or with a future-dated one, nothing is held back: both point
+ * at our parser or bad upstream data, not a late publisher.
  */
 function isReportableIncident(key, checks) {
   const separator = key.lastIndexOf(':');
@@ -5921,6 +5921,8 @@ function isReportableIncident(key, checks) {
   if (key.slice(separator + 1) !== 'STALE_CONTENT' || !GOVERNMENT_RELEASE_KEYS.has(name)) return true;
   const { contentAgeMin, maxContentAgeMin } = checks[name] ?? {};
   if (!Number.isFinite(contentAgeMin) || !Number.isFinite(maxContentAgeMin)) return true;
+  // A future-dated item (negative age) is bad data, not a late publisher.
+  if (contentAgeMin < 0) return true;
   return contentAgeMin > maxContentAgeMin + GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN;
 }
 

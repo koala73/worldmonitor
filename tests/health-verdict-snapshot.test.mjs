@@ -1127,6 +1127,10 @@ test('a late government food-price release stays out of Sentry for a month past 
   assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', {
     foodPricesMit: { status: 'STALE_CONTENT', records: 0, maxContentAgeMin: limit },
   }), true);
+  // A future-dated item reads STALE_CONTENT with a negative age: bad data, not lateness.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', {
+    foodPricesMit: { status: 'STALE_CONTENT', records: 952, contentAgeMin: -90, maxContentAgeMin: limit },
+  }), true);
   // A dead seeder or a failed fetch is ours to fix and reports at once.
   assert.equal(isReportableIncident('foodPricesMit:STALE_SEED', {
     foodPricesMit: { status: 'STALE_SEED', records: 952, seedAgeMin: 5_000, maxStaleMin: 4_320 },
