@@ -1167,6 +1167,7 @@
   "components.liveNews.restoreDefaults": "Restore default channels",
   "components.liveNews.save": "Save",
   "components.liveNews.signInToYouTube": "Sign in to YouTube",
+  "components.liveNews.tapToPlay": "Tap to play",
   "components.liveNews.unavailable": "{{name}} can’t be played right now",
   "components.liveNews.unverified": "Can’t confirm this stream is live",
   "components.liveNews.verifying": "Verifying…",

@@ -1498,6 +1498,22 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     ]);
   });
 
+  it('get_market_data: passes the captured clock to oilTapeMaxAgeMs when Date.now advances', (t) => {
+    const captured = Date.parse('2026-12-26T12:00:00Z');
+    const ambient = Date.parse('2026-12-29T16:00:00Z');
+    let clock = captured;
+    t.mock.method(Date, 'now', () => clock);
+    const quote = {
+      symbol: 'CL=F', priceAt: Date.parse('2026-12-24T18:44Z'),
+      // Advance only once the quote is read, after the filter captures its clock.
+      get priceBasis() { clock = ambient; return 'futures'; },
+    };
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_market_data');
+    const out = tool._postFilter({ 'commodities-bootstrap': { quotes: [quote] } }, {});
+    assert.deepEqual(out['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+    assert.equal(Date.now(), ambient, 'ambient clock differs from the captured clock');
+  });
+
   it('get_market_data: Christmas closing quotes stay fresh until the holiday weekend ends', async (t) => {
     t.mock.method(Date, 'now', () => Date.parse('2026-12-26T12:00:00Z'));
     const quote = { symbol: 'CL=F', price: 85, priceBasis: 'futures', priceAt: Date.parse('2026-12-24T18:44Z') };

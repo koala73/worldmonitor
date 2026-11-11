@@ -1982,7 +1982,8 @@
       "channelUrlHint": "Collez une URL de chaîne (youtube.com/channel/UC…) ou une URL de vidéo en direct",
       "youtubeChannel": "Chaîne YouTube",
       "insecureStream": "{{name}} utilise un flux non sécurisé (http), que les navigateurs bloquent. Ajoutez-le à nouveau avec une URL de flux sécurisée (https)",
-      "httpsStreamHint": "Les navigateurs bloquent les flux non sécurisés (http). Collez une URL de flux sécurisée (https)"
+      "httpsStreamHint": "Les navigateurs bloquent les flux non sécurisés (http). Collez une URL de flux sécurisée (https)",
+      "tapToPlay": "Appuyez pour lancer"
     },
     "securityAdvisories": {
       "loading": "Chargement des avis de voyage...",

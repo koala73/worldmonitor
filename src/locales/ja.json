@@ -2110,7 +2110,8 @@
       "channelUrlHint": "チャンネル URL (youtube.com/channel/UC…) またはライブ動画 URL を貼り付けてください",
       "youtubeChannel": "YouTube チャンネル",
       "insecureStream": "{{name}} は安全でない (http) ストリームを使用しており、ブラウザがブロックします。安全な (https) ストリーム URL で再度追加してください",
-      "httpsStreamHint": "ブラウザは安全でない (http) ストリームをブロックします。安全な (https) ストリーム URL を貼り付けてください"
+      "httpsStreamHint": "ブラウザは安全でない (http) ストリームをブロックします。安全な (https) ストリーム URL を貼り付けてください",
+      "tapToPlay": "タップして再生"
     },
     "map": {
       "showMap": "地図を表示",

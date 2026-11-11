@@ -5,6 +5,8 @@ import {
   classifyPasses,
   createCsvLineReader,
   createRecordParser,
+  MAX_CSV_LINE_BYTES,
+  MAX_RECORD_BYTES,
   decodeEventRecord,
   dedupeGranules,
   failedGranulesFromEvents,
@@ -222,6 +224,17 @@ describe('pass reduction', () => {
     assert.equal(passIsOk(p), false);
   });
 
+  it('skips rows whose height field is empty instead of reading them as 0 m', () => {
+    const rows = lakeRows({ t: '2026-06-01T20:00:00Z', rgt: 1, h: 320 })
+      .map((r) => ({ time_ns: String(BigInt(Date.parse(r.t)) * 1000000n), rgt: r.rgt, gt: r.gt, ht_ortho: String(r.h) }));
+    const blanks = rows.slice(0, 12).map((r) => ({ ...r, ht_ortho: '' }));
+    const [p] = reduceRows([...rows, ...blanks]);
+    assert.equal(p.n, rows.length);
+    assert.ok(Math.abs(p.levelM - 320) < 0.02);
+    // A pass whose heights are all empty must not become a clean 0 m pass.
+    assert.deepEqual(reduceRows(rows.map((r) => ({ ...r, ht_ortho: '' }))), []);
+  });
+
   it('keeps only the configured ATL13 water body when refid is set', () => {
     const rows = [
       ...lakeRows({ t: '2026-06-01T20:00:00Z', rgt: 1, h: 320 }).map((r) => ({ ...r, refid: 7 })),
@@ -293,5 +306,25 @@ describe('pass merge', () => {
       const [m] = mergePasses(...order);
       assert.equal(m.levelM, 320.4);
     }
+  });
+});
+
+describe('stream ceilings', () => {
+  it('rejects a record that declares a size above the ceiling', () => {
+    const h = Buffer.alloc(8);
+    h.writeInt16BE(2, 0); h.writeInt16BE(8, 2); h.writeInt32BE(MAX_RECORD_BYTES, 4);
+    const p = createRecordParser(() => {});
+    assert.throws(() => p.push(h), /record size out of range/);
+  });
+
+  it('rejects a negative declared size', () => {
+    const h = Buffer.alloc(8);
+    h.writeInt16BE(2, 0); h.writeInt16BE(8, 2); h.writeInt32BE(-5, 4);
+    assert.throws(() => createRecordParser(() => {}).push(h), /record size out of range/);
+  });
+
+  it('rejects a CSV stream with no newline past the line ceiling', () => {
+    const r = createCsvLineReader(() => {});
+    assert.throws(() => r.push(Buffer.alloc(MAX_CSV_LINE_BYTES + 1, 0x31)), /CSV line exceeds/);
   });
 });

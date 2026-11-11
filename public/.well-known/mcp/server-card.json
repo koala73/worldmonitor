@@ -10,10 +10,28 @@
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
+    "title": "WorldMonitor",
     "version": "1.50.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server, with per-outlet source ratings and a publicly scored forecast record, serving real-time data and AI-generated briefs in these domains: markets, commodities and macro; energy; conflicts, country risk, sanctions, cyber threats and chokepoints; maritime, aviation and supply chains; climate and natural disasters; health signals; displacement and humanitarian crises; AI briefs, forecasts and intel history; tariffs and trade policy.",
     "vendor": "WorldMonitor",
-    "homepage": "https://www.worldmonitor.app"
+    "homepage": "https://www.worldmonitor.app",
+    "websiteUrl": "https://www.worldmonitor.app",
+    "icons": [
+      {
+        "src": "https://worldmonitor.app/.well-known/mcp/icon-512.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "512x512"
+        ]
+      },
+      {
+        "src": "https://worldmonitor.app/.well-known/mcp/icon-1024.png",
+        "mimeType": "image/png",
+        "sizes": [
+          "1024x1024"
+        ]
+      }
+    ]
   },
   "protocolVersion": "2025-11-25",
   "transport": {
@@ -60,7 +78,7 @@
     },
     {
       "name": "get_market_data",
-      "description": "Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index; subscriptions also get SGE physical-vs-COMEX premiums and physical-divergence regimes, which a free account receives as `locked` with an upgradeUrl. Quotes stale after 30m. Brent/WTI: spot 4d; futures normal NYMEX breaks plus 30m restart grace. Covers the curated symbol universe only: symbols filters that snapshot and cannot look up arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.",
+      "description": "Return the seeded market snapshot: equity, commodity, crypto and Gulf-market quotes, sector performance with explicit valuation coverage, ETF flows and the Fear & Greed index; subscriptions also get SGE physical-vs-COMEX premiums and physical-divergence regimes, which a free account receives as `locked` with an upgradeUrl. Quotes stale after 30m. Brent/WTI: spot 4d; futures NYMEX breaks and CME energy holidays (2026–2027) plus 30m restart grace. Curated symbols only: symbols filters this snapshot, not arbitrary tickers. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. asset_class selects classes, limit caps each per-class list (default 30, 0 for no cap). Dedicated paid plans open or reuse one market panel allocation across filters; refresh with request_id starts a new one. API plans retain per-tool billing.",
       "_meta": {
         "ui": {
           "resourceUri": "ui://worldmonitor/market-radar-v3.html"
@@ -626,7 +644,7 @@
     },
     {
       "name": "get_population_exposure",
-      "description": "Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. Same method as the dashboard: the average density (population / area) of the country the point is in, times the event-type circle area (50 km for conflict, 100 km for earthquakes and floods, 30 km for fires). Only the 20 countries in the countries table have a density; anywhere else gets no estimate (point mode returns exposure null, events mode leaves the event out). Conflict events need a precise point location. Modes: events (default) ranks the seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. Coarse screening numbers with no city-level data behind them: ranking signals, not casualty projections.",
+      "description": "Estimated people within earthquake (100 km), wildfire (30 km), or conflict (50 km) radii, using country average density × circle area. Only the 20 countries in the population table are supported; other points return null or are omitted in events mode. Conflicts require precise points and fold into one row per location (3 decimal coordinates); eventCount counts folded events. Names use Place, Country (Palestine for PSE density). limit caps locations, not underlying conflict events. Unprojected events responses can exceed the 64 KB output budget; use jmespath or a limit. Modes: events (default) ranks feeds by exposure; point estimates at lat/lon; countries lists the table. Coarse screening estimates, not casualty projections.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"

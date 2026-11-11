@@ -24,7 +24,7 @@ export const REPORT = {
   //   not current status.
   version: '1.0.1',
   title: 'Strait of Hormuz Transit Report — July 2026',
-  metaTitle: 'Strait of Hormuz Transit Report: July 2026 Traffic Data',
+  metaTitle: 'Strait of Hormuz Transit Report: July 2026',
   // {{m:...}} tokens resolve to computed values here too (plain text, no
   // markup) so the meta description, JSON-LD, and lede can never disagree
   // with the data the way hand-written numbers can.

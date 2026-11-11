@@ -5,6 +5,13 @@ name: Weekly Search Console Snapshot
 # and which families earn impressions per indexed page. The same PR carries
 # the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set, and
 # the Umami referral snapshot when UMAMI_API_USERNAME and UMAMI_API_PASSWORD are.
+# It also asks AI models a fixed set of buyer questions through answerrank and
+# records how often they name World Monitor (answerrank/<date>.json), when
+# OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are set. That runs in
+# its own read-only job, because it executes third-party code; the collect job
+# takes its snapshot as an artifact. A significant drop since the last
+# comparable week opens an issue, so a regression does not hide inside a PR
+# that merges itself.
 # Last, it regenerates the AI-visibility baseline and scorecard from whichever
 # snapshots this run wrote, so no export is supplied by hand.
 #
@@ -23,6 +30,12 @@ on:
 
 permissions: {}
 
+env:
+  # The pinned answerrank commit, recorded in each AI-answer snapshot. A
+  # different commit starts a new comparison series. The collect job checks
+  # the artifact against it too.
+  ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
+
 concurrency:
   group: seo-gsc-weekly
   cancel-in-progress: false
@@ -34,6 +47,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
+      week_pr: ${{ steps.week.outputs.pr }}
     steps:
       - name: Check for the Search Console credential
         id: check
@@ -49,14 +63,125 @@ jobs:
             exit 0
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
+      - name: Find this week's PR
+        id: week
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.REVIEW_PR_TOKEN }}
+        run: |
+          # Same rule as the collect job: an open or merged PR from this
+          # repository means this week is done, so the AI-answer job spends
+          # nothing on a rerun. It lives here because the answerrank job runs
+          # third-party code and gets no PR access.
+          branch="automation/seo-gsc-$(date -u +%G-W%V)"
+          pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=all&per_page=100&head=${GITHUB_REPOSITORY_OWNER}:${branch}" \
+            --jq '[.[] | select(.state == "open" or .merged_at != null)][0].number // empty')
+          echo "pr=${pr}" >> "$GITHUB_OUTPUT"
+
+  # Runs answerrank, which is third-party code, with a read-only token and no
+  # credential left in the checkout. Its only output is the snapshot artifact.
+  answerrank:
+    needs: guard
+    permissions:
+      contents: read
+    if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      date: ${{ steps.plan.outputs.date }}
+      state: ${{ steps.done.outputs.state || steps.plan.outputs.state }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Plan the AI-answer run
+        id: plan
+        env:
+          WEEK_PR: ${{ needs.guard.outputs.week_pr }}
+          # Read only to test presence. The install step that runs third-party
+          # code never sees them.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+        run: |
+          echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          if [ -z "${OPENROUTER_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ] || [ -z "${EXA_API_KEY:-}" ]; then
+            echo "state=no-keys" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping the AI-answer snapshot: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
+            exit 0
+          fi
+          # The guard job found this week's PR, if any (see "Find this week's PR").
+          if [ -n "${WEEK_PR:-}" ]; then
+            echo "state=week-done" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping the AI-answer run: PR ${WEEK_PR} already covers this week."
+            exit 0
+          fi
+          echo "state=run" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.plan.outputs.state == 'run'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.plan.outputs.state == 'run'
+        run: npm ci --ignore-scripts
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.plan.outputs.state == 'run'
+        with:
+          python-version: '3.13'
+      - name: Install answerrank
+        if: steps.plan.outputs.state == 'run'
+        # No secrets in this step. answerrank has no releases, so it is fetched
+        # by commit, and every dependency is a hash-pinned wheel from
+        # inputs/requirements.txt, which is part of the series digest.
+        run: |
+          python -m venv "$RUNNER_TEMP/answerrank"
+          "$RUNNER_TEMP/answerrank/bin/pip" install --quiet --require-hashes --only-binary :all: --no-deps \
+            -r docs/research/seo-ai-visibility/answerrank/inputs/requirements.txt
+          src="$RUNNER_TEMP/answerrank-src"
+          git init --quiet "$src"
+          git -C "$src" fetch --quiet --depth 1 https://github.com/misbahsy/answerrank.git "$ANSWERRANK_REVISION"
+          git -C "$src" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$src" rev-parse HEAD)" = "$ANSWERRANK_REVISION"
+          printf '#!/bin/sh\nPYTHONPATH="%s/src" exec "%s/bin/python" -m answerrank "$@"\n' "$src" "$RUNNER_TEMP/answerrank" > "$RUNNER_TEMP/answerrank-bin"
+          chmod +x "$RUNNER_TEMP/answerrank-bin"
+          "$RUNNER_TEMP/answerrank-bin" --help > /dev/null
+      - name: Collect the AI-answer snapshot
+        if: steps.plan.outputs.state == 'run'
+        # About 200 model calls at concurrency 1: roughly 30 minutes and $8.
+        timeout-minutes: 50
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          SNAPSHOT_DATE: ${{ steps.plan.outputs.date }}
+        run: ANSWERRANK_BIN="$RUNNER_TEMP/answerrank-bin" node scripts/seo-answerrank-collect.mjs --live --date "$SNAPSHOT_DATE"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: steps.plan.outputs.state == 'run'
+        with:
+          name: answerrank-snapshot
+          path: |
+            docs/research/seo-ai-visibility/answerrank/${{ steps.plan.outputs.date }}.json
+            docs/research/seo-ai-visibility/answerrank/${{ steps.plan.outputs.date }}.md
+          if-no-files-found: error
+          retention-days: 14
+      - name: Mark the snapshot collected
+        id: done
+        if: steps.plan.outputs.state == 'run'
+        run: echo "state=collected" >> "$GITHUB_OUTPUT"
 
   collect:
-    needs: guard
+    # !cancelled(): a failed AI-answer job must not stop the Search Console
+    # PR, but a cancelled run stops here.
+    needs: [guard, answerrank]
     # Only this job pushes the weekly branch and opens its PR.
     permissions:
       contents: write
       pull-requests: write
-    if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+      # Only for the issue opened when AI-answer visibility declines.
+      issues: write
+    if: ${{ !cancelled() && (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -84,10 +209,11 @@ jobs:
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           # Only an open or merged PR means this week is done. A closed one was
           # rejected, so the week is collected again.
-          # A fork PR can carry the same head branch name, so only a PR from this
-          # repository counts.
-          existing_pr=$(gh pr list --state all --head "$branch" --json number,state,isCrossRepository \
-            --jq '[.[] | select(.state != "CLOSED" and (.isCrossRepository | not))][0].number // empty')
+          # A fork PR can carry the same head branch name, so the lookup asks
+          # GitHub only for heads in this repository's owner; filtering forks
+          # out of a fixed-size page would let enough fork PRs hide this one.
+          existing_pr=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=all&per_page=100&head=${GITHUB_REPOSITORY_OWNER}:${branch}" \
+            --jq '[.[] | select(.state == "open" or .merged_at != null)][0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Search Console PR ${existing_pr} already exists for ${period}."
@@ -148,6 +274,28 @@ jobs:
             exit 0
           fi
           node scripts/seo-umami-collect.mjs --live
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        id: answerrank_download
+        if: steps.collect.outcome == 'success' && needs.answerrank.outputs.state == 'collected'
+        continue-on-error: true
+        with:
+          name: answerrank-snapshot
+          path: ${{ runner.temp }}/answerrank-artifact
+      - name: Add the AI-answer snapshot
+        id: answerrank_add
+        if: steps.answerrank_download.outcome == 'success'
+        # The artifact comes from the job that ran third-party code, so none of
+        # it is copied. --accept rebuilds the snapshot from its measured fields
+        # (every count type-checked; labels, digest, revision and judge matched
+        # against the committed inputs), recomputes the comparison against the
+        # committed earlier weeks, and writes its own markdown.
+        continue-on-error: true
+        env:
+          SNAPSHOT_DATE: ${{ needs.answerrank.outputs.date }}
+        run: |
+          src="$RUNNER_TEMP/answerrank-artifact"
+          test "$(find "$src" -type f | wc -l)" -eq 2
+          node scripts/seo-answerrank-collect.mjs --accept "$src/${SNAPSHOT_DATE}.json" --date "$SNAPSHOT_DATE"
       - name: Regenerate the AI-visibility baseline and scorecard
         id: baseline
         if: steps.collect.outcome == 'success'
@@ -162,9 +310,11 @@ jobs:
             tests/seo-gsc-collector.test.mjs \
             tests/seo-bing-collector.test.mjs \
             tests/seo-umami-collector.test.mjs \
+            tests/seo-answerrank-collector.test.mjs \
             tests/seo-url-taxonomy.test.mjs \
             tests/seo-weekly-baseline.test.mjs
       - name: Open the weekly snapshot PR
+        id: pr
         if: steps.collect.outcome == 'success'
         env:
           # Same token as the reconcile step, for the same reasons.
@@ -174,6 +324,10 @@ jobs:
           BING_OUTCOME: ${{ steps.bing.outcome }}
           UMAMI_OUTCOME: ${{ steps.umami.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          ANSWERRANK_RESULT: ${{ needs.answerrank.result }}
+          ANSWERRANK_STATE: ${{ needs.answerrank.outputs.state }}
+          ANSWERRANK_ADD_OUTCOME: ${{ steps.answerrank_add.outcome }}
+          ANSWERRANK_DATE: ${{ needs.answerrank.outputs.date }}
         run: |
           snapshot_date=$(date -u +%F)
           git switch -c "$BRANCH_NAME"
@@ -181,7 +335,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # An optional source that skipped or failed writes no directory, and
           # git add refuses a missing pathspec, so stage only what exists.
-          for source in gsc bing umami baselines scorecards; do
+          for source in gsc bing umami answerrank baselines scorecards; do
             if [ -d "docs/research/seo-ai-visibility/${source}" ]; then
               git add "docs/research/seo-ai-visibility/${source}"
             fi
@@ -209,6 +363,14 @@ jobs:
           else
             umami_note="No Umami referral snapshot this week: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured."
           fi
+          answerrank_file="docs/research/seo-ai-visibility/answerrank/${ANSWERRANK_DATE}.json"
+          if [ "$ANSWERRANK_ADD_OUTCOME" = "success" ] && [ -f "$answerrank_file" ]; then
+            answerrank_note=$(jq -r '"AI-answer snapshot: World Monitor named in \(.overall.mentions) of \(.overall.answers) model answers; change since \(.comparison.previousDate // "the last comparable week"): \(.comparison.verdict). See answerrank/\(.date).md."' "$answerrank_file")
+          elif [ "$ANSWERRANK_STATE" = "no-keys" ]; then
+            answerrank_note="No AI-answer snapshot this week: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
+          else
+            answerrank_note="No AI-answer snapshot this week: the AI-answer job ended ${ANSWERRANK_RESULT:-unknown} (state ${ANSWERRANK_STATE:-none}) or its snapshot failed validation. See the run log."
+          fi
           if [ "$BASELINE_OUTCOME" = "failure" ]; then
             baseline_note="The AI-visibility baseline and scorecard failed to regenerate in this run, so neither is in this PR. See the run log."
           else
@@ -218,16 +380,82 @@ jobs:
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
-            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
               "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
               "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
               "$bing_note" \
               "$umami_note" \
+              "$answerrank_note" \
               "$baseline_note" \
               "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")")
           echo "$pr_url"
           gh pr merge --auto --squash "$pr_url"
-
+          echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
+      - name: Open an issue when AI-answer visibility declines
+        # !cancelled(): a failed PR step must not swallow the alert; a
+        # cancelled run posts nothing. A rerun in a week whose PR already
+        # exists skips collection, so it retries the alert from that week's
+        # saved snapshot instead; the marker in the issue keeps a retry from
+        # reporting the same week twice.
+        if: ${{ !cancelled() && steps.reconcile.outcome == 'success' && (steps.answerrank_add.outcome == 'success' || steps.reconcile.outputs.skip == 'true') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          SNAPSHOT_DATE: ${{ needs.answerrank.outputs.date }}
+          SKIPPED: ${{ steps.reconcile.outputs.skip }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          dir="docs/research/seo-ai-visibility/answerrank"
+          if [ "$SKIPPED" = "true" ]; then
+            # The week's snapshot is on the weekly branch while its PR is open,
+            # and already in this main checkout once the PR has merged.
+            if git fetch --quiet origin "$BRANCH_NAME" 2>/dev/null; then
+              git checkout --quiet FETCH_HEAD -- "$dir" 2>/dev/null || true
+            fi
+            file=$(find "$dir" -maxdepth 1 -name '20*.json' | sort | tail -n 1)
+            if [ -z "$file" ] || [ "$(date -u -d "$(basename "$file" .json)" +%G-W%V)" != "$(date -u +%G-W%V)" ]; then
+              exit 0
+            fi
+          else
+            file="${dir}/${SNAPSHOT_DATE}.json"
+          fi
+          if [ ! -f "$file" ] || [ "$(jq -r '.comparison.verdict' "$file")" != "declined" ]; then
+            exit 0
+          fi
+          title="AI-answer visibility declined"
+          marker="<!-- answerrank-alert:$(jq -r '.date' "$file") -->"
+          # Anyone can open an issue or comment on this public repository, so
+          # only this workflow's own issues and comments count: exact title,
+          # authored by github-actions[bot]. The author filter is also in the
+          # search itself, so outside issues with the same title cannot push
+          # the bot's issues past the result limit.
+          # Each read is a plain assignment so that, under bash -e, a failed
+          # read stops the step instead of reading as "not reported yet" and
+          # posting the same week twice.
+          issues=$(gh issue list --state all --search "\"${title}\" in:title author:app/github-actions" --limit 100 --json number,title,state,author)
+          own=$(jq -r --arg title "$title" '.[] | select(.title == $title and .author.login == "app/github-actions") | .number' <<< "$issues")
+          for number in $own; do
+            thread=$(gh issue view "$number" --json body,comments)
+            text=$(jq -r '([.body] + [.comments[] | select(.author.login == "github-actions") | .body]) | join("\n")' <<< "$thread")
+            if grep -qF "$marker" <<< "$text"; then
+              echo "::notice::The decline in $(basename "$file") was already reported in issue ${number}."
+              exit 0
+            fi
+          done
+          body=$(jq -r --arg pr "${PR_URL:-the weekly snapshot PR}" --arg marker "$marker" '
+            def pct: if . == null then "n/a" else (. * 1000 | round) as $t | "\($t / 10 | floor).\($t % 10)%" end;
+            def line($label; $c): if $c == null then "- \($label): not compared" else "- \($label): \($c.before | pct) → \($c.after | pct) (z = \($c.z)), \($c.verdict)" end;
+            "The weekly answerrank run on \(.date) shows a significant drop since \(.comparison.previousDate).\n\n"
+            + line("Named in model answers"; .comparison.mentions) + "\n"
+            + line("Cited in web-search answers"; .comparison.citations) + "\n\n"
+            + "Details: docs/research/seo-ai-visibility/answerrank/\(.date).md, in \($pr).\n\n" + $marker
+          ' "$file")
+          existing=$(jq -r --arg title "$title" '[.[] | select(.title == $title and .author.login == "app/github-actions" and .state == "OPEN")][0].number // empty' <<< "$issues")
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
   # Dispatches Deploy Gate for the new PR directly rather than waiting on the
   # workflow_run event or the gate's 30-minute sweep.
   deploy-gate:

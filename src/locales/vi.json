@@ -2110,7 +2110,8 @@
       "channelUrlHint": "Dán URL kênh (youtube.com/channel/UC…) hoặc URL video trực tiếp",
       "youtubeChannel": "Kênh YouTube",
       "insecureStream": "{{name}} sử dụng luồng không an toàn (http), trình duyệt sẽ chặn. Thêm lại với URL luồng an toàn (https)",
-      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)"
+      "httpsStreamHint": "Trình duyệt chặn các luồng không an toàn (http). Dán URL luồng an toàn (https)",
+      "tapToPlay": "Nhấn để phát"
     },
     "map": {
       "showMap": "Hiển thị bản đồ",

@@ -2508,6 +2508,7 @@
       "connecting": "Connecting to {{name}}…",
       "recording": "Recording",
       "unverified": "Can’t confirm this stream is live",
+      "tapToPlay": "Tap to play",
       "playNextChannel": "Play next channel",
       "signInToYouTube": "Sign in to YouTube",
       "openOnYouTube": "Open on YouTube",

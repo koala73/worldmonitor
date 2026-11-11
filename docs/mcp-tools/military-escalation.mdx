@@ -121,6 +121,10 @@ curl -s https://worldmonitor.app/mcp \
 
 Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events, using the dashboard's method (average density of the country the event is in × event-type circle area). Points outside the 20 countries in the population table, and conflict events located only to a district or country, get no estimate. Coarse screening numbers — there is no city-level population dataset behind them.
 
+In events mode, conflict rows are one per location, folded using coordinates rounded to three decimal places. `eventCount` is the number of events folded into that row; the estimate describes the location once, without multiplying by the count. Names use “Place, Country” (or “Conflict event — Country” when the place is missing). Locations scored with PSE density display Palestine; `reportedCountry` retains the source label. `country` is the ISO3 density country; `nearestCountry` is its deprecated alias. Estimates include `exposedPopulation`, `exposureRadiusKm`, and `densityPerKm2`.
+
+`limit` caps locations, not the number of underlying conflict events. Unprojected events responses can exceed the 64 KB tool output budget, so use `jmespath` to select fields or set a `limit`.
+
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
@@ -130,7 +134,7 @@ Population exposure: estimated people within the impact radius of active earthqu
 | `lat` | number | Latitude for point mode. |
 | `lon` | number | Longitude for point mode. |
 | `radius_km` | number | Radius in km for point mode (default 50, clamped to 1000). |
-| `limit` | number | Cap the enriched event list in events mode (default 20, pass 0 for no cap). |
+| `limit` | number | Cap locations after conflict folding (default 20, pass 0 for no cap). Use a limit or `jmespath` to stay within the output budget. |
 
 - **API endpoints:** `GET /api/displacement/v1/get-population-exposure`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).

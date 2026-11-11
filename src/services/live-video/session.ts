@@ -10,6 +10,7 @@ import { getLocalApiPort, isDesktopRuntime } from '@/services/runtime';
 import {
   advanceChain,
   classifyAttempt,
+  connectingHint,
   failureKey,
   LIVE_VIDEO_TIMING,
   parseSource,
@@ -32,7 +33,8 @@ import {
 import { loadYouTubeIframeApi, type YouTubePlayerLike } from './youtube-iframe-api';
 
 export type LiveVideoState =
-  | { readonly phase: 'connecting'; readonly attempt: number; readonly of: number }
+  /** ready: the player is up and its own controls work. tapToPlay: ready and live but not playing yet. */
+  | { readonly phase: 'connecting'; readonly attempt: number; readonly of: number; readonly ready: boolean; readonly tapToPlay: boolean }
   | { readonly phase: 'live'; readonly via: Candidate['kind']; readonly title: string | null; readonly author: string | null; readonly watchUrl: string | null }
   | { readonly phase: 'recording'; readonly title: string | null; readonly watchUrl: string | null }
   | { readonly phase: 'unverified'; readonly reason: UnverifiableReason; readonly watchUrl: string | null }
@@ -51,6 +53,11 @@ export interface LiveVideoOptions {
   readonly source: LiveVideoSource;
   readonly autoplay: boolean;
   readonly muted: boolean;
+  /**
+   * Keep a ready, live stream that never starts as a 'unverified' (reason 'not-started') state the viewer can
+   * start, instead of failing the source. Applies to the last source in the chain; earlier ones still fall through.
+   */
+  readonly holdUnstarted?: boolean;
   readonly presentation: LiveVideoPresentation;
   /** Called synchronously from openLiveVideo with the first state, then on every change. */
   readonly onState: (state: LiveVideoState) => void;
@@ -94,6 +101,8 @@ export function createFailureMemory(): FailureMemory {
 
 interface Transport {
   observe(): PlayerObservation;
+  /** Telemetry only: why a live HLS playlist never started playing. */
+  stallDetail?(): string;
   setMuted(muted: boolean): void;
   setPaused(paused: boolean): void;
   destroy(): void;
@@ -123,6 +132,8 @@ const MUTE_SYNC_MS = 500;
 const HLS_PLAYED_SECONDS = 1;
 /** How far the media clock may outrun the wall clock between polls before the jump counts as a seek. */
 const HLS_SEEK_SLACK_SECONDS = 0.25;
+/** HTMLMediaElement.HAVE_FUTURE_DATA: a frame beyond the playhead is buffered. */
+const HAVE_FUTURE_DATA = 3;
 
 // Page-wide, so a feed that just failed in one tile is tried last in the next.
 const recentFailures = new Map<string, number>();
@@ -449,6 +460,13 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
   let playedSeconds = 0;
   let lastSample: { readonly atMs: number; readonly seconds: number } | null = null;
   let reportedMuted = context.muted;
+  let playRefusal: string | null = null;
+  const startPlayback = () => {
+    playRefusal = null;
+    video.play()?.catch((error: unknown) => {
+      playRefusal = error instanceof Error ? error.name : 'unknown';
+    });
+  };
 
   const fail = (next: NonNullable<HlsFailure>) => {
     if (destroyed || failure) return;
@@ -476,8 +494,12 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
     else if (Number.isFinite(video.duration) && video.duration > 0) manifest = 'vod';
   });
   video.addEventListener('ended', () => { if (!destroyed) context.onLiveLost(); });
-  video.addEventListener('error', () => fail({ kind: 'fatal', detail: 'media-error' }));
-  video.addEventListener('play', () => { if (!destroyed) context.onPlayingChange(true); });
+  video.addEventListener('error', () => fail({ kind: 'fatal', detail: `media-error-${video.error?.code ?? 0}` }));
+  video.addEventListener('play', () => {
+    // A later start (the autoplay attribute after hls.js attaches its source) supersedes an earlier refusal.
+    playRefusal = null;
+    if (!destroyed) context.onPlayingChange(true);
+  });
   video.addEventListener('pause', () => { if (!destroyed) context.onPlayingChange(false); });
   // Setting video.muted fires volumechange too, so only a change the caller does not already know is news.
   video.addEventListener('volumechange', () => {
@@ -542,10 +564,15 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
       else fail({ kind: 'fatal', detail: 'hls-load-failed' });
     });
   }
-  if (context.autoplay) video.play()?.catch(() => {});
+  if (context.autoplay) startPlayback();
 
   return {
     observe: () => ({ transport: 'hls', elapsedMs: context.elapsedMs(), manifest, progress: readProgress(), failure }),
+    // A refused play() leaves the video paused; a playing video short of HAVE_FUTURE_DATA is still buffering.
+    stallDetail: () => {
+      if (video.paused) return playRefusal ? `refused-${playRefusal}` : 'paused';
+      return video.readyState < HAVE_FUTURE_DATA ? 'buffering' : 'frozen';
+    },
     setMuted(muted) {
       // Already known to the caller: never report it back.
       reportedMuted = muted;
@@ -553,7 +580,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
     },
     setPaused(paused) {
       if (paused) video.pause();
-      else video.play()?.catch(() => {});
+      else startPlayback();
     },
     destroy() {
       destroyed = true;
@@ -570,7 +597,7 @@ function mountHls(container: HTMLElement, candidate: Extract<Candidate, { kind: 
 function viewState(state: ChainState, parsed: ParsedSource): LiveVideoState {
   switch (state.phase) {
     case 'connecting':
-      return { phase: 'connecting', attempt: state.attempts.length + 1, of: parsed.candidates.length };
+      return { phase: 'connecting', attempt: state.attempts.length + 1, of: parsed.candidates.length, ready: false, tapToPlay: false };
     case 'live': {
       const candidate = parsed.candidates[state.index]!.candidate;
       const watchUrl = state.video?.videoId ? `https://www.youtube.com/watch?v=${state.video.videoId}` : watchUrlFor(candidate);
@@ -587,11 +614,13 @@ function viewState(state: ChainState, parsed: ParsedSource): LiveVideoState {
   }
 }
 
-function attemptOutcome(verdict: SettledVerdict): Record<string, string | number> {
+function attemptOutcome(verdict: SettledVerdict, transport: Transport): Record<string, string | number> {
   if (verdict.verdict === 'failed') {
-    return verdict.outcome.kind === 'player-error'
-      ? { outcome: 'player-error', code: verdict.outcome.code }
-      : { outcome: verdict.outcome.kind };
+    const { outcome } = verdict;
+    if (outcome.kind === 'player-error') return { outcome: 'player-error', code: outcome.code };
+    if (outcome.kind === 'hls-fatal') return { outcome: 'hls-fatal', detail: outcome.detail };
+    const stall = outcome.kind === 'not-started' ? transport.stallDetail?.() : undefined;
+    return stall ? { outcome: outcome.kind, detail: stall } : { outcome: outcome.kind };
   }
   return { outcome: verdict.verdict === 'unverifiable' ? verdict.reason : verdict.verdict };
 }
@@ -617,6 +646,10 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   let destroyed = false;
   let muted = options.muted;
   let paused = !options.autoplay;
+  let lastHint = { ready: false, tapToPlay: false };
+
+  /** A ready, live stream held for the viewer to start: still watched, so it can go live or fail like any other. */
+  const isHeld = () => state.phase === 'unverified' && state.reason === 'not-started';
 
   const stopPolling = () => {
     if (pollTimer === null) return;
@@ -634,7 +667,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     state = step.state;
     if (step.effect.type === 'mount') mount(step.effect.index);
     else if (step.effect.type === 'unmount') unmount();
-    else if (state.phase !== 'connecting') stopPolling();
+    else if (state.phase !== 'connecting' && !isHeld()) stopPolling();
     if (!destroyed) options.onState(viewState(state, parsed));
   };
 
@@ -643,20 +676,41 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   };
 
   const poll = (index: number, candidate: Candidate) => {
-    if (destroyed || !transport || state.phase !== 'connecting' || state.index !== index) return;
-    const verdict = classifyAttempt(transport.observe());
-    if (verdict.verdict === 'pending') return;
+    if (destroyed || !transport || state.phase === 'offline' || (state.phase !== 'connecting' && !isHeld()) || state.index !== index) return;
+    const held = isHeld();
+    const observation = transport.observe();
+    const lastSource = state.order.every((other) => other === index || state.attempts.some((attempt) => attempt.index === other));
+    const verdict = classifyAttempt(observation, { holdUnstarted: options.holdUnstarted === true && lastSource });
+    if (held) {
+      // Still not started: nothing to change. Playback that began, or a fatal error, re-enters the normal transitions.
+      if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') return;
+      state = advanceChain(state, { type: 'resume' }, parsed, Date.now()).state;
+    }
+    if (verdict.verdict === 'pending') {
+      // Only the last source offers a play control: an earlier one that stalls is about to hand over to the next.
+      const hint = connectingHint(observation);
+      const next = { ready: hint.ready, tapToPlay: hint.tapToPlay && options.holdUnstarted === true && lastSource };
+      if (next.ready !== lastHint.ready || next.tapToPlay !== lastHint.tapToPlay) {
+        lastHint = next;
+        options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...next });
+      }
+      return;
+    }
     reportSignalMissing(slot, verdict);
     const step = advanceChain(state, { type: 'verdict', verdict }, parsed, Date.now());
     if (verdict.verdict !== 'live' && step.state.phase !== 'recording' && step.state.phase !== 'unverified') {
       recentFailures.set(failureKey(slot, candidate), Date.now());
-      track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict) });
+      track('live-video-attempt-failed', { slot, kind: candidate.kind, ...attemptOutcome(verdict, transport) });
+    }
+    if (verdict.verdict === 'unverifiable' && verdict.reason === 'not-started') {
+      track('live-video-tap-to-play', { slot, kind: candidate.kind });
     }
     apply(step);
   };
 
   function mount(index: number): void {
     unmount();
+    lastHint = { ready: false, tapToPlay: false };
     options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
     const startedAt = Date.now();
