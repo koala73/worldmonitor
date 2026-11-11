@@ -24505,13 +24505,13 @@ body.map-width-resizing {
   display: none;
 }
 
-/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
-   threshold for web and desktop since #6417 (the Tauri window minimum width
-   keeps the desktop app above it, so this block covers both). The map track
+/* 1440px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop. Below it, keep panels full-width so the
+   default map share cannot squeeze them into one column (#10458). The map track
    pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
    + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
    alignment. */
-@media (min-width: 900px) {
+@media (min-width: 1440px) {
   .main-content {
     display: grid;
     grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;

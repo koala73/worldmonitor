@@ -15,6 +15,7 @@ import {
 } from '@/app/panel-mount-deferral';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   clampMapColWidthPercent,
   mapRightClassForVisualSide,
   type MapVisualSide,
@@ -4283,7 +4284,7 @@ export class PanelLayoutManager implements AppModule {
   private getEffectiveUltraWide(): boolean {
     const mapSection = document.getElementById('mapSection');
     const mapEnabled = !mapSection?.classList.contains('hidden');
-    return window.innerWidth >= this.getUltraWideMinWidth() && mapEnabled;
+    return isSplitLayoutViewport(window) && mapEnabled;
   }
 
   private insertByOrder(grid: HTMLElement, el: HTMLElement, key: string): void {
