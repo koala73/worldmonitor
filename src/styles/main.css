@@ -1181,8 +1181,6 @@ canvas,
 }
 @media (max-width: 1200px) {
   .pizzint-indicator { display: none !important; }
-  /* Export is available from Settings; drop it before Sign In clips (#10464). */
-  .export-panel-container { display: none !important; }
 }
 @media (max-width: 1075px) {
   .mission-preset-mount { display: none !important; }
