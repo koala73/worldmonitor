@@ -102,13 +102,13 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     provider: 'NSIDC',
     memberHosts: Object.freeze(['noaadata.apps.nsidc.org', 'nsidc.org']),
     reason: 'nsidc.org is the National Snow and Ice Data Center site that documents ICESat-2 ATL13; noaadata.apps.nsidc.org is its sea-ice data host.',
-    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity review 2026-11-11',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
   }),
   sliderule: Object.freeze({
     provider: 'SlideRule Earth',
     memberHosts: Object.freeze(['sliderule.slideruleearth.io', 'slideruleearth.io']),
     reason: 'sliderule.slideruleearth.io is the processing API documented by the SlideRule Earth site at slideruleearth.io.',
-    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity review 2026-11-11',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
   }),
   nvd: Object.freeze({
     provider: 'NVD (NIST)',

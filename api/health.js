@@ -947,7 +947,7 @@ const SEED_META = {
   // New probe: ROLLOUT_PENDING for up to a day after deploy, until the seeder writes its
   // durable activation marker after its first successful publication.
   reservoirLevels:  { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:climate:reservoir-levels',
-    cutover: { mode: 'activation-marker', fromKey: null, activationKey: 'seed-activated:climate:reservoir-levels' } },
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10490, activationKey: 'seed-activated:climate:reservoir-levels' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {
