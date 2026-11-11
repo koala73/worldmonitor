@@ -94,7 +94,8 @@ export function headlineCountries(text: string, candidates: readonly string[], l
   return other ? [other] : [];
 }
 
-const SOURCE_SUFFIX = /\s+[-\u2013\u2014|]\s+([^-\u2013\u2014|]+)$/;
+const SUFFIX_SEPARATORS = new Set(['-', '\u2013', '\u2014', '|']);
+const isSpace = (ch: string | undefined): boolean => ch !== undefined && /\s/.test(ch);
 
 /**
  * The headline without a trailing " - Publisher" that names its own source.
@@ -106,9 +107,15 @@ const SOURCE_SUFFIX = /\s+[-\u2013\u2014|]\s+([^-\u2013\u2014|]+)$/;
 export function withoutOwnSourceSuffix(title: string, source: string | null | undefined): string {
   const name = (source ?? '').trim().toLowerCase();
   if (!name) return title;
-  const match = SOURCE_SUFFIX.exec(title);
-  if (!match || match[1]!.trim().toLowerCase() !== name) return title;
-  return title.slice(0, match.index).trimEnd();
+  // Linear scan for the LAST separator. A regex here backtracks quadratically
+  // on a long whitespace run, and titles come from third-party feeds.
+  let at = -1;
+  for (let i = title.length - 1; i >= 0; i--) {
+    if (SUFFIX_SEPARATORS.has(title[i]!)) { at = i; break; }
+  }
+  if (at <= 0 || !isSpace(title[at - 1]) || !isSpace(title[at + 1])) return title;
+  if (title.slice(at + 1).trim().toLowerCase() !== name) return title;
+  return title.slice(0, at).trimEnd();
 }
 
 let airportCountries: Map<string, string> | null = null;

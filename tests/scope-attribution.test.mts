@@ -42,6 +42,13 @@ describe('headlineCountries', () => {
 });
 
 describe('withoutOwnSourceSuffix', () => {
+  it('stays linear on a long whitespace run (feed titles are third-party input)', () => {
+    const started = performance.now();
+    assert.equal(withoutOwnSourceSuffix(' '.repeat(200_000), 'Vietnam News'), ' '.repeat(200_000));
+    assert.equal(withoutOwnSourceSuffix(`x${' '.repeat(200_000)}- Vietnam News`, 'Vietnam News'), 'x');
+    assert.ok(performance.now() - started < 250, 'suffix stripping must not backtrack quadratically');
+  });
+
   it('removes a trailing outlet name only when it is the item source', () => {
     assert.equal(withoutOwnSourceSuffix('Fed holds rates - Vietnam News', 'Vietnam News'), 'Fed holds rates');
     assert.equal(withoutOwnSourceSuffix('Fed holds rates | Thai PBS World', 'thai pbs world'), 'Fed holds rates');
