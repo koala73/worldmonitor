@@ -339,7 +339,7 @@ export async function streamAtl13Request(parms, onRow, fetchImpl, { timeoutMs = 
 // Keep only the columns the reduction reads, to bound memory while a batch is buffered.
 const slimRow = (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid });
 
-const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|invalid dataframe/i;
+const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|produced an empty dataframe|invalid dataframe/i;
 
 /**
  * Fetch ATL13 segments for `granules` inside `poly`, in batches of <= SLIDERULE_BATCH_SIZE.
@@ -385,8 +385,11 @@ export async function fetchAtl13Segments(poly, granules, onRow, fetchImpl = (...
         timeoutMs: Math.max(30_000, Math.min(timeoutMs, remainingMs)),
       });
       const empty = r.fileSize == null && r.csvBytes === 0 && r.events.some((e) => EMPTY_SELECTION_RE.test(e.msg));
-      if (!empty && (!r.gotEof || (r.fileSize != null && r.csvBytes !== r.fileSize))) {
-        throw new Error(`incomplete SlideRule output (${r.csvBytes} of ${r.fileSize ?? '?'} bytes, eof=${r.gotEof})`);
+      // The server announces the file size in arrowrec.meta; arrowrec.eof is not always
+      // sent (atl13x on server v5.8 ends the stream without it), so the byte count is the
+      // completeness check.
+      if (!empty && (r.fileSize == null || r.csvBytes !== r.fileSize)) {
+        throw new Error(`incomplete SlideRule output (${r.csvBytes} of ${r.fileSize ?? '?'} bytes)`);
       }
       const bad = new Set(failedGranulesFromEvents(r.events).filter((g) => batch.includes(g)));
       for (const row of batchRows) {

@@ -117,6 +117,15 @@ describe('fetchAtl13Segments', () => {
     assert.deepEqual(r.failed, [G2]);
   });
 
+  it('accepts a complete file without an arrowrec.eof record (server v5.8 omits it)', async () => {
+    const recs = csvFileRecords(csv, 37);
+    recs.pop(); // drop arrowrec.eof
+    const rows = [];
+    const r = await fetchAtl13Segments([], [G1], (row) => rows.push(row), async () => streamResponse([Buffer.concat(recs)]));
+    assert.deepEqual(r.processed, [G1]);
+    assert.equal(rows.length, okRows.length);
+  });
+
   it('batches at most 20 granules per request', async () => {
     const names = Array.from({ length: 45 }, (_, i) => `ATL13_202606${String(1 + (i % 28)).padStart(2, '0')}0000${String(i).padStart(2, '0')}_0${String(1000 + i)}3101_007_01.h5`);
     const sizes = [];
