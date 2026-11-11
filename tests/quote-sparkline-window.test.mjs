@@ -391,6 +391,12 @@ describe('cotton raw bars and revised history, 2026-11-09 through 11', () => {
     const sparse = [79.27, 79.19, 79.14, 78.76, 82.72, 82.37];
     assert.deepEqual(buildQuoteSparkline(chart(sparse.map((_, i) => T0 + i * 3600), sparse), null).sparkline, sparse);
   });
+
+  it('keeps non-clustered sparse two-print reversals before considering singletons', () => {
+    for (const values of [[78, 78, 78, 82, 79, 78, 78, 78], [82, 82, 82, 78, 81, 82, 82, 82]]) {
+      assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 3600), values), null).sparkline, values);
+    }
+  });
 });
 
 describe('adaptive FX filtering reaches both commodity writers', () => {

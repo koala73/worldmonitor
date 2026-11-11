@@ -54,22 +54,24 @@ function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-// A bad tick jumps away from both neighbours in the same direction, and the
-// next print returns to where the previous one was. A move that holds is kept,
-// and so is a print with a trading gap on one side only, such as a session
-// open. A print with a gap on both sides is a thin contract's lone print, and
-// it is tested against the prints across the gaps. Two adjacent sparse prints
-// can form the same bounded island (Yahoo's cached CT=F history did this).
+/**
+ * Remove locally anomalous, bounded reversals from timestamped quote bars.
+ * Keep sustained moves, session opens, and sparse pairs that do not cluster.
+ * Sparse two-print neighborhoods are decided before singleton removal so a
+ * broad reversal cannot be erased by chaining two singleton decisions.
+ * @param {{t: number, v: number}[]} bars Quote bars in provider order.
+ * @returns {{t: number, v: number}[]} Retained bars, including both endpoints.
+ */
 function dropSingleTickSpikes(bars) {
   if (bars.length < 3) return bars;
   const diffs = bars.slice(1).map((bar, i) => bar.v - bars[i].v);
   const kept = [bars[0]];
   for (let i = 1; i < bars.length - 1; i += 1) {
     const prev = kept.at(-1);
-    let dropped = 0;
-    for (const length of [1, 2]) {
+    let consumed = 0;
+    for (const length of [2, 1]) {
       const next = bars[i + length];
-      if (!next) break;
+      if (!next) continue;
       const island = bars.slice(i, i + length);
       const gapBefore = island[0].t - prev.t > TRADING_GAP_SECONDS;
       const gapAfter = next.t - island.at(-1).t > TRADING_GAP_SECONDS;
@@ -93,14 +95,17 @@ function dropSingleTickSpikes(bars) {
       const departure = Math.min(...island.flatMap((bar) => [Math.abs(bar.v - prev.v), Math.abs(bar.v - next.v)]));
       const spike = island.every((bar) => Math.sign(bar.v - prev.v) === direction && Math.sign(bar.v - next.v) === direction)
         && departure > threshold
-        && Math.abs(next.v - prev.v) < departure
-        && Math.max(...island.map((bar) => bar.v)) - Math.min(...island.map((bar) => bar.v)) < departure / 2;
+        && Math.abs(next.v - prev.v) < departure;
       if (spike) {
-        dropped = length;
+        const clustered = Math.max(...island.map((bar) => bar.v)) - Math.min(...island.map((bar) => bar.v)) < departure / 2;
+        // A broad two-print reversal is evidence of movement, not an island.
+        // Consume both prints so a later singleton cannot erase the second.
+        if (!clustered) kept.push(...island);
+        consumed = length;
         break;
       }
     }
-    if (dropped) i += dropped - 1;
+    if (consumed) i += consumed - 1;
     else kept.push(bars[i]);
   }
   kept.push(bars[bars.length - 1]);
