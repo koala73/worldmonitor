@@ -446,6 +446,8 @@ export interface PublicToolShape {
     'openai/ui'?: { entrypoints: Array<{ type: 'global' | 'thread' }> };
     // Present-tense status labels ChatGPT shows while a UI-rendering tool runs / after it finishes.
     'openai/toolInvocation'?: { invoking: string; invoked: string };
+    'openai/toolInvocation/invoking'?: string;
+    'openai/toolInvocation/invoked'?: string;
     'worldmonitor/access': McpAccessClass;
     'worldmonitor/weight': number;
   };

@@ -229,7 +229,14 @@ export function buildPublicTool(
     publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
     publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
     const invocation = TOOL_INVOCATION_LABELS[tool.name];
-    if (invocation) publicTool._meta['openai/toolInvocation'] = { ...invocation };
+    if (invocation) {
+      // ChatGPT reads the two flat keys (OpenAI Apps reference, tool descriptor
+      // _meta, <= 64 chars each); the nested object is what the MCP platform
+      // scanner checks. Both carry the same strings.
+      publicTool._meta['openai/toolInvocation/invoking'] = invocation.invoking;
+      publicTool._meta['openai/toolInvocation/invoked'] = invocation.invoked;
+      publicTool._meta['openai/toolInvocation'] = { ...invocation };
+    }
     if (tool._openaiEntrypoints) {
       publicTool._meta['openai/ui'] = { entrypoints: structuredClone(tool._openaiEntrypoints) };
     }

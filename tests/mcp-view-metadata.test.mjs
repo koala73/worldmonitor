@@ -24,8 +24,12 @@ describe('MCP view metadata', () => {
       assert.equal(typeof inv.invoking, 'string');
       assert.equal(typeof inv.invoked, 'string');
       assert.ok(inv.invoking.length > 0 && inv.invoked.length > 0, t.name);
+      // The wire keys ChatGPT actually reads, <= 64 chars each.
+      assert.equal(t._meta['openai/toolInvocation/invoking'], inv.invoking, t.name);
+      assert.equal(t._meta['openai/toolInvocation/invoked'], inv.invoked, t.name);
+      assert.ok(inv.invoking.length <= 64 && inv.invoked.length <= 64, t.name);
     }
-    const others = TOOL_LIST_RESPONSE.filter((t) => !t._meta?.ui?.resourceUri && t._meta['openai/toolInvocation']);
+    const others = TOOL_LIST_RESPONSE.filter((t) => !t._meta?.ui?.resourceUri && (t._meta['openai/toolInvocation'] || t._meta['openai/toolInvocation/invoking']));
     assert.deepEqual(others.map((t) => t.name), [], 'labels only on view-rendering tools');
   });
 });
