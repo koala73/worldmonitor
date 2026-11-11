@@ -602,6 +602,11 @@ recurrence alerts again. An unreadable or corrupt record opens nothing and is
 left for the next sweep. `?history=1` keeps the incident log, deduplicated by
 its own signature (`health:failure-log-sig`).
 
+Food-price `STALE_CONTENT` waits 30 days past its content limit before it
+opens a Sentry issue, because government publishers routinely run late
+(`GOVERNMENT_RELEASE_KEYS` in `api/health.js`). It still shows in health and on
+the panel at the limit.
+
 Statuses ending in `_ON_DEMAND`, content-age pre-warnings, and entries inside a
 bounded grace window (`pending`) are not actionable and stay out of both
 `dataStatus` and incidents.
