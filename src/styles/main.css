@@ -30412,7 +30412,12 @@ body.map-width-resizing {
 }
 .map-control-disclosure::after { content: ' ▾'; }
 .map-control-disclosure[aria-expanded="false"]::after { content: ' ▸'; }
-.map-control-collapsed > :not(.toggle-header):not(.map-control-disclosure) {
+.map-control-collapsed > :not(.toggle-header):not(.map-control-disclosure):not(.no2-activity-legend) {
+  display: none !important;
+}
+
+/* Dataset attribution stays visible while its active layer's scale is folded. */
+.map-control-collapsed > .no2-activity-legend > :not(.no2-activity-credit) {
   display: none !important;
 }
 .map-control-collapsed .toggle-header { border-bottom: 0; padding: 0; }
