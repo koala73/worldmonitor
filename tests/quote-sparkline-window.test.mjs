@@ -293,6 +293,61 @@ describe('island prints on thin contracts', () => {
 });
 
 describe('stale-quote dips', () => {
+  function liveFx(name) {
+    return JSON.parse(readFileSync(new URL(`./fixtures/${name}-5m-2026-11-11.json`, import.meta.url), 'utf8'));
+  }
+
+  function replay(fixture) {
+    return buildQuoteSparkline(chart(fixture.close.map((_, i) => fixture.sparklineStartAt / 1000 + i * 300), fixture.close, '5m'), null).sparkline;
+  }
+
+  function largestLoneShare(values) {
+    const range = Math.max(...values) - Math.min(...values);
+    if (!range) return 0;
+    return Math.max(0, ...values.slice(1, -1).map((v, i) => {
+      const up = v - values[i];
+      const down = v - values[i + 2];
+      return Math.sign(up) === Math.sign(down) ? Math.min(Math.abs(up), Math.abs(down)) / range : 0;
+    }));
+  }
+
+  for (const [name, dip] of [['usdtry', 50.131], ['usdcny', 6.6696]]) {
+    it(`drops the live ${name} ${dip} lone point below 0.2% and keeps the last close`, () => {
+      const fixture = liveFx(name);
+      assert.ok(fixture.close.includes(dip), 'fixture contains the reported point');
+      const values = replay(fixture);
+      assert.equal(values.filter((v) => v === dip).length, fixture.close.filter((v) => v === dip).length - 1, `${dip} lone point removed; any sustained occurrence kept`);
+      assert.equal(values.at(-1), fixture.close.at(-1));
+      assert.ok(largestLoneShare(values) < 0.5, 'no unconfirmed point dominates the autoscaled range');
+    });
+  }
+
+  it('keeps every close of a sustained 0.4% FX move on both input intervals', () => {
+    const values = [...wobble(40, 50, 0.001), 50.05, 50.10, 50.15, ...wobble(40, 50.20, 0.001)];
+    for (const interval of [60, 300]) {
+      const timestamps = values.map((_, i) => T0 + i * interval);
+      const expected = interval === 300 ? values : values.filter((_, i) => i % 5 === 4 || i === values.length - 1);
+      assert.deepEqual(buildQuoteSparkline(chart(timestamps, values), null).sparkline, expected);
+    }
+  });
+
+  it('keeps small reversals when a short tape cannot calibrate volatility', () => {
+    for (const values of [[50, 50.01, 50], [50, 50.01, 50, 50], [50, 50, 50.01, 50, 50]]) {
+      assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 300), values, '5m'), null).sparkline, values);
+    }
+  });
+
+  it('filters five-minute closes before taking the last 288 points', () => {
+    const values = Array.from({ length: 310 * 5 }, () => 50);
+    // A two-minute trough survives the minute pass. Its deeper point closes
+    // the bucket at index 22, the first point after an unfiltered 288 cut.
+    values[22 * 5 + 3] = 49.6;
+    values[22 * 5 + 4] = 49.5;
+    const out = buildQuoteSparkline(minuteChart(T0, values), null);
+    assert.deepEqual(out.sparkline, Array(288).fill(50));
+    assert.equal(out.sparklineStartAt, (T0 + 21 * 300) * 1000, 'filter then cut backfills one earlier clean close');
+  });
+
   it('drops the two-bar USDTRY dips that land on 5-minute closes (live tape, 2026-11-10)', () => {
     // 50.207 then 50.113: each bar is under the 0.2% floor against its neighbour,
     // but the 50.113 bar closes its 5-minute bucket, 0.23% under the tape.
@@ -308,6 +363,76 @@ describe('stale-quote dips', () => {
     for (let i = 0; i < 120; i += 1) closes.push(i % 20 === 9 ? 50.1119 : +(50.225 + ((i % 3) - 1) * 0.003).toFixed(4));
     const { sparkline } = buildQuoteSparkline(minuteChart(T0, closes), null);
     assert.ok(Math.min(...sparkline) > 50.2, `stale prints removed: ${Math.min(...sparkline)}`);
+  });
+});
+
+describe('cotton raw bars and revised history, 2026-11-09 through 11', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/cotton-bars-2026-11-09-11.json', import.meta.url), 'utf8'));
+  const wrap = (result) => ({ chart: { result: [result] } });
+
+  it('removes the cached two-print island and keeps the sustained November 11 level', () => {
+    const { sparkline } = buildQuoteSparkline(wrap(fixture.recent), wrap(fixture.cachedHistory));
+    const expected = [79.27, 79.19, 79.14, 78.76, 78.39, 78.27, 82.72, 82.55, 82.58, 82.64, 82.35];
+    assert.deepEqual(sparkline.map((v) => +v.toFixed(2)), expected);
+  });
+
+  it('removes the zero-volume November 10 island from raw minute and fresh five-minute bars', () => {
+    for (const result of [fixture.raw, fixture.history]) {
+      const { sparkline } = buildQuoteSparkline(wrap(result), null);
+      assert.ok(!sparkline.some((v) => Math.abs(v - 82.37) < 0.001));
+      assert.ok(sparkline.some((v) => Math.abs(v - 82.55) < 0.001), 'later confirmed level kept');
+      assert.equal(sparkline.at(-1), result.indicators.quote[0].close.at(-1));
+    }
+  });
+
+  it('keeps two confirming liquid-market closes and an unconfirmed final sparse pair', () => {
+    const values = [...wobble(40, 50, 0.001), 50.2, 50.21, ...wobble(40, 50, 0.001)];
+    assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 300), values), null).sparkline, values);
+    const sparse = [79.27, 79.19, 79.14, 78.76, 82.72, 82.37];
+    assert.deepEqual(buildQuoteSparkline(chart(sparse.map((_, i) => T0 + i * 3600), sparse), null).sparkline, sparse);
+  });
+
+  it('keeps non-clustered sparse two-print reversals before considering singletons', () => {
+    for (const values of [[78, 78, 78, 82, 79, 78, 78, 78], [82, 82, 82, 78, 81, 82, 82, 82]]) {
+      assert.deepEqual(buildQuoteSparkline(chart(values.map((_, i) => T0 + i * 3600), values), null).sparkline, values);
+    }
+  });
+
+  it('keeps actual trading gaps across bucketing for sparse pair decisions', () => {
+    for (const values of [[78, 82, 79, 78, 78, 78, 78, 78], [82, 78, 81, 82, 82, 82, 82, 82]]) {
+      for (let minute = 0; minute < 5; minute += 1) {
+        const out = buildQuoteSparkline(chart(values.map((_, i) => T0 + minute * 60 + i * 16 * 60), values), null);
+        assert.deepEqual(out.sparkline, values, `bucket phase ${minute}`);
+        assert.equal(out.sparklineStartAt, T0 * 1000, 'label remains bucket-aligned');
+      }
+    }
+  });
+});
+
+describe('adaptive FX filtering reaches both commodity writers', () => {
+  it('the cron and relay publish the same filtered live USDTRY series', async () => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/usdtry-5m-2026-11-11.json', import.meta.url), 'utf8'));
+    const today = chart(fixture.close.map((_, i) => fixture.sparklineStartAt / 1000 + i * 300), fixture.close, '5m');
+    today.chart.result[0].meta.regularMarketTime = today.chart.result[0].timestamp.at(-1);
+    today.chart.result[0].meta.chartPreviousClose = fixture.close[0];
+    const history = chart([], []);
+    const { fetchYahooQuoteChart } = await import('../scripts/_yahoo-fetch.mjs');
+    const cron = await fetchYahooQuoteChart('USDTRY=X', {
+      fetchJson: async (url) => structuredClone(url.endsWith(SPARKLINE_HISTORY_QUERY) ? history : today),
+      delayMs: 0, sparklineWindow: true,
+    });
+    const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+    const start = source.indexOf('const _sparklineHistories');
+    const end = source.indexOf('function fetchYahooChartDirect(');
+    assert.ok(start > 0 && end > start);
+    const commoditySparkline = Function(
+      '_fetchYahooChartOnce', 'sleep', 'SPARKLINE_HISTORY_QUERY', 'SPARKLINE_HISTORY_RETRY_SECONDS', 'buildQuoteSparkline', 'logThrottled',
+      `${source.slice(start, end)}\nreturn _commoditySparkline;`,
+    )(async () => ({ chart: history }), async () => {}, SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline, () => {});
+    const relay = await commoditySparkline('USDTRY=X', { chart: today, lastTradeAt: today.chart.result[0].meta.regularMarketTime });
+    assert.deepEqual(cron.sparkline, relay.sparkline);
+    assert.ok(!cron.sparkline.includes(50.131));
+    assert.equal(cron.sparkline.at(-1), fixture.close.at(-1));
   });
 });
 

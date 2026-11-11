@@ -214,6 +214,7 @@ export class ProPreviewSection {
       className: 'panel-locked-cta pro-preview__cta',
       onclick: () => void this.onCtaClick(anonymous),
     }, anonymous ? 'Sign In' : 'Upgrade to Pro') as HTMLButtonElement;
+    cta.dataset.dashboardInteraction = anonymous ? 'signin' : 'upgrade';
 
     return [
       badge,

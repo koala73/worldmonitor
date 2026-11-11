@@ -1,3 +1,4 @@
+import { observeDashboardFirstInteraction } from '@/components/dashboard-interaction-analytics';
 import type {
   AppContext,
   AppModule,
@@ -87,6 +88,7 @@ import {
   trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
+  replayPendingDashboardFirstInteraction,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -143,6 +145,7 @@ import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
   LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   MAP_COL_DEFAULT_PERCENT,
   clampMapColWidthPercent,
   getVisualMapSide,
@@ -328,6 +331,7 @@ export interface EventHandlerCallbacks {
 }
 
 export class EventHandlerManager implements AppModule {
+  private stopInteractionAnalytics: (() => void) | null = null;
   private ctx: AppContext;
   private callbacks: EventHandlerCallbacks;
 
@@ -406,6 +410,9 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    replayPendingDashboardFirstInteraction();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = observeDashboardFirstInteraction(this.ctx.container);
     this.setupSearchControls();
     this.setupEventListeners();
     this.mobilePrimaryNav.init();
@@ -531,6 +538,8 @@ export class EventHandlerManager implements AppModule {
 
   destroy(): void {
     this.closeEmbedDialog();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = null;
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
@@ -2385,6 +2394,7 @@ export class EventHandlerManager implements AppModule {
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
         removeStorageValue('map-height');
+        removeStorageValue('map-height-mode');
         removeStorageValue('map-split-height');
         removeStorageValue('map-col-width');
         removeStorageValue('map-side');
@@ -2606,10 +2616,15 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle || !mapContainer) return;
 
-    const isSplit = () => window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+    const isSplit = () => isSplitLayoutViewport(window);
     // Split mode sizes #mapContainer, stacked mode sizes #mapSection — two
     // different elements, so each mode keeps its own storage key (#6417).
     const getHeightKey = () => (isSplit() ? 'map-split-height' : 'map-height');
+    const saveHeight = (key: string, value: string) => {
+      // New stacked edits must never be mistaken for pre-split-key preferences.
+      if (key === 'map-height') writeStorageValue('map-height-mode', 'stacked');
+      writeStorageValue(key, value);
+    };
     const readSavedHeight = (): { value: string | null; sourceKey: string } => {
       const key = getHeightKey();
       const value = readStorageValue(key);
@@ -2618,7 +2633,8 @@ export class EventHandlerManager implements AppModule {
       // restore below completes the migration by writing the split key.
       const canUseLegacySplitHeight = this.ctx.isDesktopApp
         || window.innerWidth >= LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH;
-      if (value === null && isSplit() && canUseLegacySplitHeight) {
+      if (value === null && isSplit() && canUseLegacySplitHeight
+        && readStorageValue('map-height-mode') !== 'stacked') {
         return { value: readStorageValue('map-height'), sourceKey: 'map-height' };
       }
       return { value, sourceKey: key };
@@ -2678,7 +2694,7 @@ export class EventHandlerManager implements AppModule {
         // legacy shared key — writing the mode key completes the migration
         // so stacked-mode edits stop steering split restores.
         if (clamped !== numeric || sourceKey !== getHeightKey()) {
-          writeStorageValue(getHeightKey(), `${clamped}px`);
+          saveHeight(getHeightKey(), `${clamped}px`);
         }
       } else {
         removeStorageValue(sourceKey);
@@ -2690,7 +2706,7 @@ export class EventHandlerManager implements AppModule {
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
-    // Captured at mousedown so a viewport crossing 900px mid-drag cannot
+    // Captured at mousedown so a viewport crossing the breakpoint mid-drag cannot
     // switch the resized element or the storage key under the drag.
     let dragTarget: HTMLElement | null = null;
     let dragKey = 'map-height';
@@ -2702,7 +2718,7 @@ export class EventHandlerManager implements AppModule {
       this.ctx.map?.resize();
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
-      writeStorageValue(dragKey, (dragTarget ?? getTarget()).style.height);
+      saveHeight(dragKey, (dragTarget ?? getTarget()).style.height);
       dragTarget = null;
       syncHeightSeparatorAria();
     };
@@ -2759,7 +2775,7 @@ export class EventHandlerManager implements AppModule {
 
         target.classList.remove('map-section-smooth');
         target.removeEventListener('transitionend', onEnd);
-        writeStorageValue(heightKey, `${finalHeight}px`);
+        saveHeight(heightKey, `${finalHeight}px`);
         this.ctx.map?.setIsResizing(false);
         this.ctx.map?.resize();
         syncHeightSeparatorAria();
@@ -2781,7 +2797,7 @@ export class EventHandlerManager implements AppModule {
       if (isSplit()) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
       this.ctx.map?.resize();
-      writeStorageValue(getHeightKey(), `${newHeight}px`);
+      saveHeight(getHeightKey(), `${newHeight}px`);
       syncHeightSeparatorAria();
     });
 

@@ -618,8 +618,8 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/natural-disasters-v3.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples preserve loaded contracts and snapshot metadata. Missing or malformed categories and unknown freshness remain explicit. |
 | `ui://worldmonitor/forecasts-v4.html` | `get_forecast_predictions` | Loaded forecast cards and local filters, with original case evidence read under the same signed opening allocation. |
-| `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
-| `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
+| `ui://worldmonitor/news-dashboard-v4.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
+| `ui://worldmonitor/country-view-v4.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
 
 Country Risk v2 preserves supplied original and projected objects, including nested CII components and upstream availability. Missing or malformed advisory values remain unknown; an explicit empty native string still means no advisory. Result replacement clears prior risk details. The original `ui://worldmonitor/country-risk.html` remains a private read alias for installed metadata and can be removed when that metadata is retired.
 
