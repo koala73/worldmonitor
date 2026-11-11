@@ -86,6 +86,17 @@ import { PasskeyOfferBoot } from '@/app/passkey-offer-boot';
 import { bootGitHubStarPrompt } from '@/app/github-star-prompt-boot';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
+import type { FocusBar } from '@/components/FocusBar';
+import {
+  canSetFocus,
+  getActiveScope,
+  getResolvedScope,
+  restoreActiveScope,
+  setActiveScope,
+  subscribeScope,
+  type ResolvedScope,
+  type TabScope,
+} from '@/services/tab-focus';
 import {
   loadTabsState,
   saveTabsState,
@@ -97,11 +108,13 @@ import {
 } from '@/services/tab-store';
 import { TeamDashboardsStore, publishOrShareAsNew } from '@/services/team-dashboards-store';
 import {
+  canPublishTeamDashboardScope,
   captureTeamDashboardLayout,
   loadTeamDashboards,
   publishTeamDashboard,
   removeTeamDashboard,
   teamDashboardErrorKind,
+  teamDashboardFailureKey,
   toTeamDashboardTab,
   type PanelSize,
   type TeamDashboardMap,
@@ -479,6 +492,46 @@ type ImportedPanel<M, K extends keyof M> = InstanceType<PanelExport<M, K>>;
 
 type HydrationSchedulePhase = 'visible' | 'near';
 
+type FocusUi = typeof import('@/components/focus-ui');
+
+// Dashboard focus (#10453). The focus UI (bar, gate copy, per-panel notices)
+// is a separate chunk most visitors never load; it arrives the first time a
+// tab is focused or Focus is pressed. Module-level because afterPanelMounted
+// runs with a stand-in `this` in tests.
+let focusUi: FocusUi | null = null;
+let focusUiLoad: Promise<FocusUi> | null = null;
+
+function loadFocusUi(): Promise<FocusUi> {
+  focusUiLoad ??= import('@/components/focus-ui').then(
+    (mod) => {
+      focusUi = mod;
+      return mod;
+    },
+    (err: unknown) => {
+      focusUiLoad = null; // A later focus change retries.
+      throw err;
+    },
+  );
+  return focusUiLoad;
+}
+
+/**
+ * Hand the active focus to one panel and, once the focus UI is loaded, label
+ * it when it does not follow the focus. Runs for every live panel on a focus
+ * change, and for each panel as it mounts. The scope itself is dispatched
+ * synchronously; only the label waits for the chunk.
+ */
+function applyScopeToPanel(key: string, panel: Panel): void {
+  if (typeof panel.applyScope !== 'function') return;
+  const resolved = getResolvedScope();
+  try {
+    panel.applyScope(resolved);
+  } catch (err) {
+    console.error(`[focus] ${key} failed to apply the focus`, err);
+  }
+  focusUi?.applyScopeNotice(key, panel, resolved);
+}
+
 export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
   private callbacks: PanelLayoutManagerCallbacks;
@@ -495,6 +548,11 @@ export class PanelLayoutManager implements AppModule {
   private mobileMapCollapseBtn: HTMLButtonElement | null = null;
   private panelTabBar: PanelTabBar | null = null;
   private tabsState: TabsState | null = null;
+  // Dashboard focus (#10453): the bar above the grid, the active-scope
+  // subscription, and the editor while it is open.
+  private focusBar: FocusBar | null = null;
+  private unsubscribeScope: (() => void) | null = null;
+  private focusEditor: { close(): void } | null = null;
   private unregisterExportFlush: (() => void) | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
@@ -960,6 +1018,12 @@ export class PanelLayoutManager implements AppModule {
     this.mobileMapCollapseBtn = null;
     this.panelTabBar?.destroy();
     this.panelTabBar = null;
+    this.unsubscribeScope?.();
+    this.unsubscribeScope = null;
+    this.focusEditor?.close();
+    this.focusEditor = null;
+    this.focusBar?.destroy();
+    this.focusBar = null;
     this.unregisterExportFlush?.();
     this.unregisterExportFlush = null;
     // Clean up happy variant panels
@@ -1539,9 +1603,145 @@ export class PanelLayoutManager implements AppModule {
         onUpdateTab: () => this.updateActiveTabFromTeam(),
         onStopSharing: (id) => { void this.stopSharingTeamDashboard(id); },
       },
+      focus: {
+        isFocused: () => !!this.activeTab()?.scope,
+        onClick: () => this.openFocusEditor('tabs'),
+      },
     });
     mount.appendChild(this.panelTabBar.getElement());
     this.updateTabCapLock();
+    this.initFocus();
+  }
+
+  // ============================================
+  // Dashboard focus (#10453): countries a tab is about
+  // ============================================
+
+  private initFocus(): void {
+    this.unsubscribeScope?.();
+    this.focusBar?.destroy();
+    this.focusBar = null;
+    this.unsubscribeScope = subscribeScope((resolved) => this.onScopeChanged(resolved));
+    // Reload: the stored tab's focus becomes the active one. Not gated; see
+    // restoreActiveScope.
+    restoreActiveScope(this.activeTab()?.scope ?? null);
+    this.onScopeChanged(getResolvedScope());
+  }
+
+  private onScopeChanged(resolved: ResolvedScope | null): void {
+    if (this.ctx.isDestroyed) return;
+    for (const [key, panel] of Object.entries(this.ctx.panels ?? {})) {
+      if (panel) applyScopeToPanel(key, panel);
+    }
+    this.panelTabBar?.refresh();
+    if (focusUi) {
+      this.renderFocusChrome(focusUi);
+    } else if (resolved) {
+      loadFocusUi().then(
+        (ui) => this.renderFocusChrome(ui),
+        (err: unknown) => console.error('[focus] focus UI failed to load', err),
+      );
+    }
+  }
+
+  /** The bar and every panel's "Not filtered" chip, for the focus active now. */
+  private renderFocusChrome(ui: FocusUi): void {
+    if (this.ctx.isDestroyed || !this.panelTabBar) return;
+    const resolved = getResolvedScope();
+    if (!this.focusBar) {
+      this.focusBar = new ui.FocusBar({
+        onEdit: () => this.openFocusEditor('bar'),
+        onClear: () => this.setActiveTabFocus(null),
+      });
+      // Above the map and the grid, so it reads as a statement about the
+      // whole tab and stays visible however the grid scrolls.
+      document.getElementById('main')?.before(this.focusBar.getElement());
+    }
+    this.focusBar.render(resolved);
+    for (const [key, panel] of Object.entries(this.ctx.panels ?? {})) {
+      if (panel) ui.applyScopeNotice(key, panel, resolved);
+    }
+  }
+
+  /**
+   * Whether this account may set or edit a focus. The plan's own grant, or
+   * the server's word that this teammate may publish focused dashboards: an
+   * API Business seat holds a Pro snapshot locally, but its team plan
+   * includes focus. Client-side only: a personal focus narrows data the plan
+   * already receives, so this protects nothing (see src/services/tab-focus.ts).
+   */
+  private focusAllowed(): boolean {
+    return canSetFocus() || this.team.dashboards?.team.focus === true;
+  }
+
+  private showFocusGate(from: 'tabs' | 'bar'): void {
+    trackGateHit('tab-focus');
+    const auth = getAuthState();
+    const reason = auth.user
+      ? resolveBillingAwareGateReason(PanelGateReason.FREE_TIER)
+      : PanelGateReason.ANONYMOUS;
+    const onAction = resolveGateAction(reason, { openAuthModal: () => this.ctx.authModal?.open() });
+    loadFocusUi().then(
+      (ui) => {
+        if (this.ctx.isDestroyed) return;
+        const copy = ui.focusGateCopy(reason);
+        if (from === 'bar' && this.focusBar) this.focusBar.showGate(copy, onAction);
+        else this.panelTabBar?.showFocusGateNotice(copy, onAction);
+      },
+      (err: unknown) => console.error('[focus] focus UI failed to load', err),
+    );
+  }
+
+  private openFocusEditor(from: 'tabs' | 'bar'): void {
+    if (!this.tabsState || this.focusEditor) return;
+    if (!this.focusAllowed()) {
+      this.showFocusGate(from);
+      return;
+    }
+    const tabId = this.tabsState.activeTabId;
+    void import('@/components/FocusEditor').then(({ openFocusEditor }) => {
+      // The tab can change while the chunk loads; edit only the tab it was opened for.
+      if (this.ctx.isDestroyed || this.focusEditor || this.tabsState?.activeTabId !== tabId) return;
+      this.focusEditor = openFocusEditor({
+        initial: getActiveScope(),
+        onSave: (scope) => {
+          if (this.tabsState?.activeTabId === tabId) this.setActiveTabFocus(scope);
+        },
+        onClear: () => {
+          if (this.tabsState?.activeTabId === tabId) this.setActiveTabFocus(null);
+        },
+        onClose: () => {
+          this.focusEditor = null;
+        },
+      });
+    }).catch((err) => {
+      console.error('[focus] editor failed to load', err);
+      showToast(t('teamDashboards.failed'));
+    });
+  }
+
+  /** Set (or with null, clear) the active tab's focus and persist it with the tab. */
+  private setActiveTabFocus(scope: TabScope | null): void {
+    const tab = this.activeTab();
+    if (!tab || !this.tabsState) return;
+    if (!setActiveScope(scope, scope === null || this.focusAllowed())) {
+      if (scope) this.showFocusGate('bar');
+      return;
+    }
+    const active = getActiveScope();
+    if (active) tab.scope = active;
+    else delete tab.scope;
+    const { persisted } = saveTabsState(this.tabsState);
+    this.panelTabBar?.refresh();
+    if (!persisted) showToast(t('focus.notSaved'));
+    else if (!active) showToast(t('focus.cleared'));
+    else {
+      // A focus was just applied, so onScopeChanged has the focus UI loading.
+      loadFocusUi().then(
+        (ui) => showToast(t('focus.saved', { countries: ui.formatCountryList(active.countries) })),
+        () => showToast(t('focus.saved', { countries: active.countries.join(', ') })),
+      );
+    }
   }
 
   private saveActiveTabAsNewTabPanels(): void {
@@ -1597,11 +1797,17 @@ export class PanelLayoutManager implements AppModule {
     }
 
     const built = toTeamDashboardTab(dashboard.layout, this.ctx.panelSettings);
+    if (built.scopeInvalid) {
+      // Opened without its focus it would pass for the whole world.
+      showToast(t('teamDashboards.focusUnreadable', { name: dashboard.name }));
+      return;
+    }
     this.createAndActivateTab(dashboard.name, {
       panelSettings: built.panelSettings,
       panelOrder: built.panelOrder,
       bottomSet: built.bottomSet,
       team: { id: dashboard.id, version: dashboard.version },
+      ...(built.scope ? { scope: built.scope } : {}),
     });
     this.applyTeamPanelSizes(built.sizes);
     this.applyTeamMap(built.map);
@@ -1614,6 +1820,14 @@ export class PanelLayoutManager implements AppModule {
     if (!tab || !dashboard || !this.tabsState) return;
 
     const built = toTeamDashboardTab(dashboard.layout, this.ctx.panelSettings);
+    if (built.scopeInvalid) {
+      showToast(t('teamDashboards.focusUnreadable', { name: dashboard.name }));
+      return;
+    }
+    // The shared focus (and its neighbours switch) is part of the version.
+    if (built.scope) tab.scope = built.scope;
+    else delete tab.scope;
+    restoreActiveScope(built.scope);
     this.applyTabPanelState(built.panelSettings, built.panelOrder, built.bottomSet);
     this.applyTeamPanelSizes(built.sizes);
     this.applyTeamMap(built.map);
@@ -1629,10 +1843,16 @@ export class PanelLayoutManager implements AppModule {
     const tab = this.activeTab();
     const team = this.team.dashboards;
     if (!userId || !tab || !team || this.teamBusy) return;
+    // Refused before the round trip; `publish` enforces the same rule.
+    if (!canPublishTeamDashboardScope(team.team, tab.scope)) {
+      showToast(t('teamDashboards.focusNotEntitled'));
+      return;
+    }
 
     const mapState = this.ctx.map?.getState();
     const layout = captureTeamDashboardLayout({
       ...this.captureCurrentTabState().snapshot,
+      scope: tab.scope ?? null,
       rowSpans: loadPanelSpans(),
       colSpans: loadPanelColSpans(),
       map: this.ctx.map && mapState
@@ -1674,9 +1894,9 @@ export class PanelLayoutManager implements AppModule {
         if (this.team.userId === userId) void this.team.reload({ fresh: true });
         return;
       }
-      showToast(kind === 'TEAM_DASHBOARD_LIMIT'
-        ? t('teamDashboards.limit', { limit: String((err as { data?: { limit?: number } }).data?.limit ?? 25) })
-        : t('teamDashboards.failed'));
+      showToast(t(teamDashboardFailureKey(kind), {
+        limit: String((err as { data?: { limit?: number } }).data?.limit ?? 25),
+      }));
     } finally {
       this.teamBusy = false;
       this.panelTabBar?.refresh();
@@ -2211,7 +2431,7 @@ export class PanelLayoutManager implements AppModule {
 
   private createAndActivateTab(
     name: string,
-    preset?: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet' | 'team'>,
+    preset?: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet' | 'team' | 'scope'>,
   ): { tab: PanelTab; persisted: boolean } {
     if (!this.tabsState) {
       throw new Error('Dashboard tabs are not available.');
@@ -2231,10 +2451,12 @@ export class PanelLayoutManager implements AppModule {
       panelOrder: defaults.panelOrder,
       bottomSet: preset?.bottomSet ?? [],
       ...(preset?.team ? { team: preset.team } : {}),
+      ...(preset?.scope ? { scope: preset.scope } : {}),
     };
     this.tabsState.tabs.push(tab);
     this.tabsState.activeTabId = tab.id;
     const persist = saveTabsState(this.tabsState);
+    restoreActiveScope(tab.scope ?? null);
     this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
@@ -2341,6 +2563,7 @@ export class PanelLayoutManager implements AppModule {
     this.tabsState.activeTabId = tabId;
     const persist = saveTabsState(this.tabsState);
 
+    restoreActiveScope(target.scope ?? null);
     this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
     this.panelTabBar?.refresh();
     return persist;
@@ -2415,6 +2638,7 @@ export class PanelLayoutManager implements AppModule {
       const fallback = this.tabsState.tabs[Math.max(0, idx - 1)]!;
       this.tabsState.activeTabId = fallback.id;
       persist = saveTabsState(this.tabsState);
+      restoreActiveScope(fallback.scope ?? null);
       this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
     } else {
       persist = saveTabsState(this.tabsState);
@@ -3041,6 +3265,7 @@ export class PanelLayoutManager implements AppModule {
     }
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
+    applyScopeToPanel(key, panel);
     if (key === STORAGE_ATLAS_PANEL_KEY) this.deliverPendingStorageFacility(panel);
     this.observePanelForHydration(panel);
     if (config?.enabled) {
