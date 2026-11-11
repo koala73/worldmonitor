@@ -58,6 +58,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityHubs: true,      // Energy exchanges (ICE, NYMEX, TTF, JKM hubs)
   sanctions: true,          // Sanctions directly impact energy trade
+  reservoirLevels: false,
   economic: false,
   fires: true,              // Fires near energy infrastructure / forestry
   climate: true,            // Weather / heating & cooling demand
@@ -125,6 +126,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityHubs: false,
   sanctions: false,
+  reservoirLevels: false,
   economic: false,
   fires: false,
   climate: false,
