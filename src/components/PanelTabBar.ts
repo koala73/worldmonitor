@@ -469,9 +469,8 @@ export class PanelTabBar {
     this.applyAddLock();
     // The tablist owns only tabs; the add, options and team buttons are siblings in the bar.
     const hasTeam = this.callbacks.team?.view() != null;
-    this.element.replaceChildren(
-      this.tablistEl, addBtn, this.optionsBtn, ...(hasTeam ? [this.teamBtn] : []), this.liveRegion,
-    );
+    const teamBtn = hasTeam ? [this.teamBtn] : [];
+    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, this.liveRegion);
     // An open team menu follows the list as it loads or changes; it closes if
     // the team goes away (sign-out, seat removed).
     if (this.noticeKind === 'team' && this.notice) {
