@@ -1,3 +1,4 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
 /**
  * GlobeMap - 3D interactive globe using globe.gl
  *
@@ -513,6 +514,7 @@ const SET_CENTER_ROTATION_MS = 1200;
 
 export class GlobeMap {
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private globe: GlobeInstance | null = null;
   private initPromise: Promise<void> = Promise.resolve();
   private unsubscribeGlobeQuality: (() => void) | null = null;
@@ -2149,17 +2151,8 @@ export class GlobeMap {
     this.enforceLayerLimit();
 
     bindLayerSearch(el);
-    const searchEl = el.querySelector('.layer-search') as HTMLElement | null;
-
-    const collapseBtn = el.querySelector('.toggle-collapse');
     const list = el.querySelector('.toggle-list') as HTMLElement | null;
-    let collapsed = false;
-    collapseBtn?.addEventListener('click', () => {
-      collapsed = !collapsed;
-      if (list) list.style.display = collapsed ? 'none' : '';
-      if (searchEl) searchEl.style.display = collapsed ? 'none' : '';
-      if (collapseBtn) setTrustedHtml((collapseBtn as HTMLElement), trustedHtml(collapsed ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
-    });
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, el, 'layers', t('components.deckgl.layersTitle')));
 
     // Intercept wheel on layer panel — scroll list, don't zoom globe
     el.addEventListener('wheel', (e) => {
@@ -4153,6 +4146,8 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.popup?.hide();
     this.popup = null;
     this.flightData.clear();

@@ -1,3 +1,4 @@
+import { bindMapControlDisclosure } from './map-control-disclosure';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
@@ -182,6 +183,7 @@ export class MapComponent {
   private static readonly SVG_MARKER_DOM_ZOOM_LAYERS = new Set<keyof MapLayers>(['bases', 'nuclear']);
 
   private container: HTMLElement;
+  private controlDisclosureCleanups: (() => void)[] = [];
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
@@ -495,6 +497,8 @@ export class MapComponent {
   }
 
   public destroy(): void {
+    this.controlDisclosureCleanups.forEach(cleanup => cleanup());
+    this.controlDisclosureCleanups = [];
     this.destroyed = true;
     this.listenerAbort.abort();
     if (this.markerSettleTimer !== null) {
@@ -769,6 +773,7 @@ export class MapComponent {
     toggles.appendChild(helpBtn);
     enforceLayerLimit();
 
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, toggles, 'layers', t('components.deckgl.layersTitle')));
     return toggles;
   }
 
@@ -1029,6 +1034,7 @@ export class MapComponent {
         <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
       `, "legacy direct innerHTML migration"));
     }
+    this.controlDisclosureCleanups.push(bindMapControlDisclosure(this.container, legend, 'legend', t('components.deckgl.legend.title')));
     return legend;
   }
 
