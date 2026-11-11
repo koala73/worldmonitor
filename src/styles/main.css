@@ -6471,6 +6471,23 @@ body.playback-mode .status-dot {
   }
 }
 
+/* Dashboard focus outline on the SVG map (#10453). The DeckGL and globe maps
+   draw the same two styles with their own layers. CSS beats the paths'
+   presentation attributes; the fill is left alone so sanctions shading stays.
+   The map wrapper is CSS-scaled by the zoom, so the width is divided by it
+   (--marker-scale is 1 / zoom) to stay 2px and 1px on screen. */
+.map-base .country.country-focus-neighbour {
+  stroke: var(--green);
+  stroke-opacity: 0.5;
+  stroke-width: calc(1px * var(--marker-scale, 1));
+}
+
+.map-base .country.country-focus-chosen {
+  stroke: var(--green);
+  stroke-opacity: 1;
+  stroke-width: calc(2px * var(--marker-scale, 1));
+}
+
 /* Cable paths */
 .cable-path {
   fill: none;
@@ -29575,6 +29592,117 @@ body.map-width-resizing {
   white-space: nowrap;
   line-height: 1.3;
   cursor: help;
+}
+
+/* Strip above a filtered panel's list: what the focus shows, what it hides,
+   and the per-panel "Show all". Green edge ties it to the focus bar; it wraps
+   instead of scrolling so nothing is cut at phone width. */
+.panel-scope-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  background: var(--surface);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-dim);
+  min-width: 0;
+}
+
+.panel-scope-strip[hidden] {
+  display: none;
+}
+
+.panel-scope-strip[data-state="all"] {
+  border-left-color: var(--yellow);
+}
+
+/* The label takes its own line so the counts below never start with a
+   stray separator when they wrap. */
+.panel-scope-strip-label {
+  flex: 1 0 100%;
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.panel-scope-strip-count,
+.panel-scope-strip-note {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.panel-scope-strip-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--green-text, var(--green));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel-scope-strip-btn:hover {
+  color: var(--text);
+}
+
+.panel-scope-strip-btn:focus-visible {
+  outline: 1px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Row markers. Chosen-country rows carry none; a neighbour is dashed like the
+   focus bar's neighbour chips; "No country" is dotted. */
+.panel-scope-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 4px;
+  padding: 0 5px;
+  border: 1px dotted var(--border-strong);
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-dim);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.panel-scope-tag-neighbour {
+  border-style: dashed;
+}
+
+/* Empty because of the focus. Neutral on purpose: a load failure is the red
+   radar error state and stale data is the header's "cached" badge. */
+.panel-scope-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 12px;
+  padding: 16px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  text-align: center;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.panel-scope-empty-hint {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
 }
 
 /* Focus editor dialog. */

@@ -4931,6 +4931,32 @@
     "saved": "이 탭은 {{countries}}에 포커스되어 있습니다.",
     "cleared": "포커스가 해제되었습니다. 이 탭은 전 세계를 표시합니다.",
     "notSaved": "저장할 수 없습니다. 이 브라우저가 사이트 저장소를 차단하고 있습니다.",
-    "plusNeighbours_other": "+ {{count}}개 인접 국가"
+    "plusNeighbours_other": "+ {{count}}개 인접 국가",
+    "filter": {
+      "showing": "{{countries}}을(를) 표시 중",
+      "showingNeighbours": "{{countries}} + 인접 국가 표시 중",
+      "showAll": "모두 표시",
+      "focusOff": "이 패널에서 포커스 해제: 모든 항목 표시",
+      "applyFocus": "포커스 적용",
+      "applyFocusAria": "이 패널을 포커스로 다시 필터링",
+      "show": "표시",
+      "hide": "숨기기",
+      "noCountryTag": "국가 없음",
+      "emptyHint": "나머지는 모두 위에 계산됨.",
+      "emptyNews": "현재 헤드라인에 해당 국가의 뉴스가 없음",
+      "emptyAdvisories": "해당 국가의 여행 공지가 없음",
+      "emptyConflict": "해당 국가의 UCDP 분쟁 사건이 없음",
+      "emptyConflictPartial": "최신 사건 중 해당 국가의 분쟁 사건이 없음. 전체 목록이 로드되지 않았습니다.",
+      "loadingConflict": "해당 국가의 모든 분쟁 사건을 로드 중…",
+      "emptyAirports": "감시 중인 공항이 해당 국가에 없음",
+      "emptyFlights": "이 보드에서 해당 국가로의 운항편이 없음",
+      "emptyAviationNews": "지난 24시간 동안 해당 국가의 항공 뉴스가 없음",
+      "tabNotFiltered": "이 탭은 국가별로 필터링되지 않음",
+      "hidden_other": "포커스로 {{count}}개 숨김",
+      "showAllAria_other": "포커스 외부의 {{count}}개 항목을 포함하여 이 패널의 모든 항목 표시",
+      "unattributed_other": "국가가 없는 {{count}}개 항목",
+      "showUnattributedAria_other": "국가가 없는 {{count}}개 항목 표시",
+      "hideUnattributedAria_other": "국가가 없는 {{count}}개 항목 숨기기"
+    }
   }
 }

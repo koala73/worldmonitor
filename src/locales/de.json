@@ -4954,6 +4954,37 @@
     "cleared": "Fokus gelöscht. Dieser Tab zeigt die ganze Welt.",
     "notSaved": "Konnte nicht gespeichert werden. Dieser Browser blockiert die Webspeicherung.",
     "plusNeighbours_one": "+ {{count}} Nachbarland",
-    "plusNeighbours_other": "+ {{count}} Nachbarländer"
+    "plusNeighbours_other": "+ {{count}} Nachbarländer",
+    "filter": {
+      "showing": "Zeigt {{countries}}",
+      "showingNeighbours": "Zeigt {{countries}} + Nachbarländer",
+      "showAll": "Alle anzeigen",
+      "focusOff": "Fokus in diesem Panel deaktiviert: zeigt alles",
+      "applyFocus": "Fokus anwenden",
+      "applyFocusAria": "Dieses Panel erneut auf den Fokus filtern",
+      "show": "Anzeigen",
+      "hide": "Verbergen",
+      "noCountryTag": "Kein Land",
+      "emptyHint": "Alles andere ist oben gezählt.",
+      "emptyNews": "Nichts für diese Länder in den aktuellen Schlagzeilen",
+      "emptyAdvisories": "Keine Reisewarnungen für diese Länder",
+      "emptyConflict": "Keine UCDP-Konfliktereignisse für diese Länder",
+      "emptyConflictPartial": "Keine Konfliktereignisse für diese Länder unter den neuesten Ereignissen. Die vollständige Liste wurde nicht geladen.",
+      "loadingConflict": "Lade alle Konfliktereignisse für diese Länder…",
+      "emptyAirports": "Keiner Ihrer überwachten Flughäfen liegt in diesen Ländern",
+      "emptyFlights": "Keine Flüge zu oder von diesen Ländern auf diesem Board",
+      "emptyAviationNews": "Keine Luftfahrtnachrichten für diese Länder in den letzten 24 Stunden",
+      "tabNotFiltered": "Diese Registerkarte wird nicht nach Land gefiltert",
+      "hidden_one": "{{count}} durch Fokus verborgen",
+      "hidden_other": "{{count}} durch Fokus verborgen",
+      "showAllAria_one": "Alles in diesem Panel anzeigen, einschließlich {{count}} Element außerhalb des Fokus",
+      "showAllAria_other": "Alles in diesem Panel anzeigen, einschließlich {{count}} Elemente außerhalb des Fokus",
+      "unattributed_one": "{{count}} Element ohne Land",
+      "unattributed_other": "{{count}} Elemente ohne Land",
+      "showUnattributedAria_one": "Das {{count}} Element ohne Land anzeigen",
+      "showUnattributedAria_other": "Die {{count}} Elemente ohne Land anzeigen",
+      "hideUnattributedAria_one": "Das {{count}} Element ohne Land verbergen",
+      "hideUnattributedAria_other": "Die {{count}} Elemente ohne Land verbergen"
+    }
   }
 }

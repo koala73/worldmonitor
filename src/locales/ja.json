@@ -4931,6 +4931,32 @@
     "saved": "このタブは{{countries}}にフォーカスされています。",
     "cleared": "フォーカスがクリアされました。このタブは世界全体を表示します。",
     "notSaved": "保存できませんでした。このブラウザはサイトストレージをブロックしています。",
-    "plusNeighbours_other": "+ {{count}}個の隣国"
+    "plusNeighbours_other": "+ {{count}}個の隣国",
+    "filter": {
+      "showing": "{{countries}}を表示中",
+      "showingNeighbours": "{{countries}}と隣国を表示中",
+      "showAll": "すべて表示",
+      "focusOff": "このパネルのフォーカスはオフ：すべてを表示中",
+      "applyFocus": "フォーカスを適用",
+      "applyFocusAria": "このパネルをフォーカスで絞り込む",
+      "show": "表示",
+      "hide": "非表示",
+      "noCountryTag": "国なし",
+      "emptyHint": "その他すべては上記で集計されています。",
+      "emptyNews": "これらの国の現在のニュース速報はありません",
+      "emptyAdvisories": "これらの国の渡航勧告はありません",
+      "emptyConflict": "これらの国のUCDP紛争イベントはありません",
+      "emptyConflictPartial": "これらの国の紛争イベントは最新のイベント中にはありません。全リストは読み込まれていません。",
+      "loadingConflict": "これらの国のすべての紛争イベントを読み込み中…",
+      "emptyAirports": "監視中の空港でこれらの国に該当するものはありません",
+      "emptyFlights": "このボード上でこれらの国との往来便はありません",
+      "emptyAviationNews": "過去24時間でこれらの国の航空ニュースはありません",
+      "tabNotFiltered": "このタブは国でフィルタリングされていません",
+      "hidden_other": "{{count}}件がフォーカスで非表示",
+      "showAllAria_other": "このパネル内のすべてを表示。フォーカス外の{{count}}件を含む",
+      "unattributed_other": "国が不明な{{count}}件",
+      "showUnattributedAria_other": "国が不明な{{count}}件を表示",
+      "hideUnattributedAria_other": "国が不明な{{count}}件を非表示"
+    }
   }
 }

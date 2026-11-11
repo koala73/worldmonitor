@@ -2,8 +2,21 @@ import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { t } from '@/services/i18n';
-import { currentUcdpCountryName, type UcdpTabAggregate } from '@/services/conflict';
+import { currentUcdpCountryName, fetchUcdpEvents, type UcdpTabAggregate } from '@/services/conflict';
 import { bindActivationKeys } from '@/utils/activation';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { countryCodeFromName } from '@/services/scope-attribution';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
+
+/** Loads the full UCDP event set (the RPC, not the bootstrap projection); null on failure. */
+export type UcdpFullSetLoader = () => Promise<UcdpGeoEvent[] | null>;
+
+const loadFullUcdpSet: UcdpFullSetLoader = async () => {
+  const result = await fetchUcdpEvents();
+  return result.success ? result.data : null;
+};
+
+const ucdpEventCountry = (event: UcdpGeoEvent): string | null => countryCodeFromName(event.country);
 
 // The panel's tabs are the three UCDP violence types. The projection keys its
 // aggregates by the proto enum, so map between them in exactly one place.
@@ -24,8 +37,16 @@ export class UcdpEventsPanel extends Panel {
   private hasLoadedEvents = false;
   private activeTab: UcdpEventType = 'state-based';
   private onEventClick?: (lat: number, lon: number) => void;
+  // Dashboard focus (#10453). The bootstrap payload is a 150-row projection
+  // (#5300): filtering it would call a country quiet when its events simply
+  // were not in the slice. Under a focus the panel loads the full set once
+  // and filters that in memory; later focus changes reuse it.
+  private readonly scopeFilter: PanelScopeFilter;
+  private readonly loadFullSet: UcdpFullSetLoader;
+  private fullEvents: UcdpGeoEvent[] | null = null;
+  private fullSetState: 'idle' | 'loading' | 'failed' = 'idle';
 
-  constructor() {
+  constructor(options: { loadFullSet?: UcdpFullSetLoader } = {}) {
     super({
       id: 'ucdp-events',
       title: t('panels.ucdpEvents'),
@@ -34,6 +55,8 @@ export class UcdpEventsPanel extends Panel {
       infoTooltip: t('components.ucdpEvents.infoTooltip'),
       defaultRowSpan: 2,
     });
+    this.loadFullSet = options.loadFullSet ?? loadFullUcdpSet;
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.renderContent() });
     this.showLoading(t('common.loadingUcdpEvents'));
 
     this.content.addEventListener('click', (e) => {
@@ -68,8 +91,55 @@ export class UcdpEventsPanel extends Panel {
     this.events = events;
     this.aggregates = aggregates;
     this.hasLoadedEvents = true;
-    this.setCount(aggregates ? totalFromAggregates(aggregates) : events.length);
+    // A full set supersedes any earlier upgrade; a projection keeps it.
+    if (!aggregates) {
+      this.fullEvents = null;
+      this.fullSetState = 'idle';
+    }
+    this.ensureFullSetForScope();
     this.renderContent();
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (!this.scopeFilter.setScope(scope)) return;
+    this.ensureFullSetForScope();
+    if (this.hasLoadedEvents) this.renderContent();
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  /** True while `events` is the bootstrap projection rather than the full set. */
+  private get holdsProjection(): boolean {
+    return this.aggregates !== undefined;
+  }
+
+  private ensureFullSetForScope(): void {
+    if (!this.scopeFilter.scope || !this.hasLoadedEvents || !this.holdsProjection) return;
+    if (this.fullEvents || this.fullSetState !== 'idle') return;
+    this.fullSetState = 'loading';
+    this.loadFullSet().then(
+      (events) => {
+        if (events && events.length > 0) {
+          this.fullEvents = events;
+          this.fullSetState = 'idle';
+        } else {
+          this.fullSetState = 'failed';
+        }
+        this.renderContent();
+      },
+      () => {
+        this.fullSetState = 'failed';
+        this.renderContent();
+      },
+    );
   }
 
   public hasData(): boolean {
@@ -77,7 +147,45 @@ export class UcdpEventsPanel extends Panel {
   }
 
   private renderContent(): void {
-    const filtered = this.events.filter(e => e.type_of_violence === this.activeTab);
+    if (!this.scopeFilter.scope) {
+      this.scopeFilter.hideStrip();
+      this.setCount(this.aggregates ? totalFromAggregates(this.aggregates) : this.events.length);
+      this.renderEvents(this.events, this.aggregates, null);
+      return;
+    }
+    const source = this.fullEvents ?? this.events;
+    const view = this.scopeFilter.view(source, ucdpEventCountry);
+    if (!view.partition) {
+      // "Show all": the whole set, with its own counts.
+      this.scopeFilter.renderStrip(view);
+      const aggregates = this.fullEvents ? undefined : this.aggregates;
+      this.setCount(aggregates ? totalFromAggregates(aggregates) : source.length);
+      this.renderEvents(source, aggregates, null);
+      return;
+    }
+    const partial = this.holdsProjection && !this.fullEvents;
+    if (view.emptyByFocus && partial && this.fullSetState === 'loading') {
+      this.showLoading(t('focus.filter.loadingConflict'));
+      return;
+    }
+    this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
+    this.setCount(scoped.length);
+    if (view.emptyByFocus) {
+      const message = partial ? t('focus.filter.emptyConflictPartial') : t('focus.filter.emptyConflict');
+      this.setSafeContent(unsafeRawHtml(focusedEmptyHtml(message), 'focus empty state: escaped by focusedEmptyHtml'));
+      return;
+    }
+    // Tab counts and deaths describe the focused events, not the world.
+    this.renderEvents(scoped, undefined, new Map(view.rows.map((row) => [row.item, row])));
+  }
+
+  private renderEvents(
+    events: UcdpGeoEvent[],
+    aggregates: Record<string, UcdpTabAggregate> | undefined,
+    rowFor: Map<UcdpGeoEvent, ScopeRow<UcdpGeoEvent>> | null,
+  ): void {
+    const filtered = events.filter(e => e.type_of_violence === this.activeTab);
     const tabs: { key: UcdpEventType; label: string }[] = [
       { key: 'state-based', label: t('components.ucdpEvents.stateBased') },
       { key: 'non-state', label: t('components.ucdpEvents.nonState') },
@@ -89,18 +197,18 @@ export class UcdpEventsPanel extends Panel {
       'non-state': 0,
       'one-sided': 0,
     };
-    if (this.aggregates) {
+    if (aggregates) {
       for (const type of UCDP_EVENT_TYPES) {
-        tabCounts[type] = this.aggregates[PROTO_VIOLENCE_TYPE[type]]?.count ?? 0;
+        tabCounts[type] = aggregates[PROTO_VIOLENCE_TYPE[type]]?.count ?? 0;
       }
     } else {
-      for (const event of this.events) {
+      for (const event of events) {
         tabCounts[event.type_of_violence] += 1;
       }
     }
 
-    const totalDeaths = this.aggregates
-      ? (this.aggregates[PROTO_VIOLENCE_TYPE[this.activeTab]]?.totalDeaths ?? 0)
+    const totalDeaths = aggregates
+      ? (aggregates[PROTO_VIOLENCE_TYPE[this.activeTab]]?.totalDeaths ?? 0)
       : filtered.reduce((sum, e) => sum + e.deaths_best, 0);
 
     const tabsHtml = tabs.map(t =>
@@ -123,7 +231,7 @@ export class UcdpEventsPanel extends Panel {
         const actors = `${escapeHtml(e.side_a)} vs ${escapeHtml(e.side_b)}`;
 
         return `<tr class="ucdp-row" data-lat="${e.latitude}" data-lon="${e.longitude}" tabindex="0">
-          <td class="ucdp-country">${escapeHtml(currentUcdpCountryName(e.country))}</td>
+          <td class="ucdp-country">${escapeHtml(currentUcdpCountryName(e.country))}${scopeTagHtml(rowFor?.get(e))}</td>
           <td class="ucdp-deaths">${deathsHtml}</td>
           <td class="ucdp-date">${e.date_start}</td>
           <td class="ucdp-actors">${actors}</td>

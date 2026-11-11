@@ -4954,6 +4954,37 @@
     "cleared": "Odak temizlendi. Bu sekme tüm dünyayı göstermektedir.",
     "notSaved": "Kaydedilemedi. Bu tarayıcı site depolamasını engelliyor.",
     "plusNeighbours_one": "+ {{count}} komşu",
-    "plusNeighbours_other": "+ {{count}} komşu"
+    "plusNeighbours_other": "+ {{count}} komşu",
+    "filter": {
+      "showing": "{{countries}} gösteriliyor",
+      "showingNeighbours": "{{countries}} + komşu ülkeler gösteriliyor",
+      "showAll": "Tümünü göster",
+      "focusOff": "Bu panelde odak kapalı: her şey gösteriliyor",
+      "applyFocus": "Odağı uygula",
+      "applyFocusAria": "Bu paneli odağa göre filtrele",
+      "show": "Göster",
+      "hide": "Gizle",
+      "noCountryTag": "Ülke yok",
+      "emptyHint": "Diğer her şey yukarıda sayılmıştır.",
+      "emptyNews": "Bu ülkeler için güncel başlıklarda hiçbir şey yok",
+      "emptyAdvisories": "Bu ülkeler için seyahat uyarısı yok",
+      "emptyConflict": "Bu ülkeler için UCDP çatışma olayı yok",
+      "emptyConflictPartial": "Bu ülkeler için son olaylar arasında çatışma olayı yok. Tam liste yüklenmedi.",
+      "loadingConflict": "Bu ülkeler için tüm çatışma olayları yükleniyor…",
+      "emptyAirports": "İzlenen havaalanlarınızdan hiçbiri bu ülkelerde değil",
+      "emptyFlights": "Bu ülkelere veya bu ülkelerden bu panoda uçuş yok",
+      "emptyAviationNews": "Son 24 saatte bu ülkeler için havacılık haberi yok",
+      "tabNotFiltered": "Bu sekme ülkeye göre filtrelenmemiş",
+      "hidden_one": "{{count}} odak tarafından gizlendi",
+      "hidden_other": "{{count}} odak tarafından gizlendi",
+      "showAllAria_one": "Bu panelde odağın dışında {{count}} öğe dahil olmak üzere her şeyi göster",
+      "showAllAria_other": "Bu panelde odağın dışında {{count}} öğe dahil olmak üzere her şeyi göster",
+      "unattributed_one": "Ülkesi olmayan {{count}} öğe",
+      "unattributed_other": "Ülkesi olmayan {{count}} öğe",
+      "showUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi göster",
+      "showUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi göster",
+      "hideUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi gizle",
+      "hideUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi gizle"
+    }
   }
 }

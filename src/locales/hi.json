@@ -4954,6 +4954,37 @@
     "cleared": "फ़ोकस साफ़ किया गया। यह टैब पूरी दुनिया दिखाता है।",
     "notSaved": "सहेज नहीं सकते। यह ब्राउज़र साइट स्टोरेज को ब्लॉक कर रहा है।",
     "plusNeighbours_one": "+ {{count}} पड़ोसी देश",
-    "plusNeighbours_other": "+ {{count}} पड़ोसी देश"
+    "plusNeighbours_other": "+ {{count}} पड़ोसी देश",
+    "filter": {
+      "showing": "{{countries}} दिखा रहे हैं",
+      "showingNeighbours": "{{countries}} + पड़ोसी देश दिखा रहे हैं",
+      "showAll": "सभी दिखाएं",
+      "focusOff": "इस पैनल में फ़ोकस बंद है: सब कुछ दिखा रहे हैं",
+      "applyFocus": "फ़ोकस लागू करें",
+      "applyFocusAria": "इस पैनल को फिर से फ़ोकस के अनुसार फ़िल्टर करें",
+      "show": "दिखाएं",
+      "hide": "छुपाएं",
+      "noCountryTag": "कोई देश नहीं",
+      "emptyHint": "बाकी सब कुछ ऊपर गिना गया है।",
+      "emptyNews": "इन देशों के लिए वर्तमान समाचार में कुछ नहीं",
+      "emptyAdvisories": "इन देशों के लिए कोई यात्रा परामर्श नहीं",
+      "emptyConflict": "इन देशों के लिए कोई UCDP संघर्ष घटना नहीं",
+      "emptyConflictPartial": "नवीनतम घटनाओं में इन देशों के लिए कोई संघर्ष घटना नहीं। पूरी सूची लोड नहीं हुई।",
+      "loadingConflict": "इन देशों की सभी संघर्ष घटनाएं लोड हो रही हैं…",
+      "emptyAirports": "आपके निगरानी वाले हवाई अड्डों में से कोई भी इन देशों में नहीं है",
+      "emptyFlights": "इस बोर्ड पर इन देशों से या इन देशों के लिए कोई उड़ान नहीं",
+      "emptyAviationNews": "पिछले 24 घंटों में इन देशों के लिए कोई विमानन समाचार नहीं",
+      "tabNotFiltered": "यह tab देश के अनुसार फ़िल्टर नहीं किया गया है",
+      "hidden_one": "{{count}} फ़ोकस द्वारा छुपाया गया",
+      "hidden_other": "{{count}} फ़ोकस द्वारा छुपाए गए",
+      "showAllAria_one": "इस पैनल में सब कुछ दिखाएं, जिसमें फ़ोकस के बाहर का {{count}} आइटम शामिल है",
+      "showAllAria_other": "इस पैनल में सब कुछ दिखाएं, जिसमें फ़ोकस के बाहर के {{count}} आइटम शामिल हैं",
+      "unattributed_one": "बिना देश का {{count}} आइटम",
+      "unattributed_other": "बिना देश के {{count}} आइटम",
+      "showUnattributedAria_one": "बिना देश का {{count}} आइटम दिखाएं",
+      "showUnattributedAria_other": "बिना देश के {{count}} आइटम दिखाएं",
+      "hideUnattributedAria_one": "बिना देश का {{count}} आइटम छुपाएं",
+      "hideUnattributedAria_other": "बिना देश के {{count}} आइटम छुपाएं"
+    }
   }
 }

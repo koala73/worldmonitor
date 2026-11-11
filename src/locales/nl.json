@@ -4954,6 +4954,37 @@
     "cleared": "Focus gewist. Dit tabblad toont de hele wereld.",
     "notSaved": "Kon niet opslaan. Deze browser blokkeert siteopslag.",
     "plusNeighbours_one": "+ {{count}} buur",
-    "plusNeighbours_other": "+ {{count}} buren"
+    "plusNeighbours_other": "+ {{count}} buren",
+    "filter": {
+      "showing": "{{countries}} weergegeven",
+      "showingNeighbours": "{{countries}} + buurlanden weergegeven",
+      "showAll": "Alles weergeven",
+      "focusOff": "Focus uit in dit paneel: alles weergegeven",
+      "applyFocus": "Focus toepassen",
+      "applyFocusAria": "Filter dit paneel opnieuw op de focus",
+      "show": "Weergeven",
+      "hide": "Verbergen",
+      "noCountryTag": "Geen land",
+      "emptyHint": "Alles overige is hierboven meegeteld.",
+      "emptyNews": "Niets voor deze landen in de huidige koppen",
+      "emptyAdvisories": "Geen reiswaarschuwingen voor deze landen",
+      "emptyConflict": "Geen UCDP-conflictgebeurtenissen voor deze landen",
+      "emptyConflictPartial": "Geen conflictgebeurtenissen voor deze landen onder de nieuwste gebeurtenissen. De volledige lijst is niet geladen.",
+      "loadingConflict": "Alle conflictgebeurtenissen voor deze landen laden…",
+      "emptyAirports": "Geen van uw gemonitorde luchthavens bevindt zich in deze landen",
+      "emptyFlights": "Geen vluchten naar of van deze landen op dit bord",
+      "emptyAviationNews": "Geen aviatienieuws voor deze landen in de afgelopen 24 uur",
+      "tabNotFiltered": "Dit tabblad is niet op land gefilterd",
+      "hidden_one": "{{count}} verborgen door focus",
+      "hidden_other": "{{count}} verborgen door focus",
+      "showAllAria_one": "Alles in dit paneel weergeven, inclusief {{count}} item buiten de focus",
+      "showAllAria_other": "Alles in dit paneel weergeven, inclusief {{count}} items buiten de focus",
+      "unattributed_one": "{{count}} item zonder land",
+      "unattributed_other": "{{count}} items zonder land",
+      "showUnattributedAria_one": "Het {{count}} item zonder land weergeven",
+      "showUnattributedAria_other": "De {{count}} items zonder land weergeven",
+      "hideUnattributedAria_one": "Het {{count}} item zonder land verbergen",
+      "hideUnattributedAria_other": "De {{count}} items zonder land verbergen"
+    }
   }
 }

@@ -4931,6 +4931,32 @@
     "saved": "Tab này tập trung vào {{countries}}.",
     "cleared": "Tiêu điểm đã xóa. Tab này hiển thị toàn bộ thế giới.",
     "notSaved": "Không thể lưu. Trình duyệt này đang chặn lưu trữ trang web.",
-    "plusNeighbours_other": "+ {{count}} nước lân cận"
+    "plusNeighbours_other": "+ {{count}} nước lân cận",
+    "filter": {
+      "showing": "Hiển thị {{countries}}",
+      "showingNeighbours": "Hiển thị {{countries}} + các nước lân cận",
+      "showAll": "Hiển thị tất cả",
+      "focusOff": "Đã tắt tiêu điểm trong bảng này: hiển thị mọi thứ",
+      "applyFocus": "Áp dụng tiêu điểm",
+      "applyFocusAria": "Lọc lại bảng này theo tiêu điểm",
+      "show": "Hiển thị",
+      "hide": "Ẩn",
+      "noCountryTag": "Không có quốc gia",
+      "emptyHint": "Mọi thứ khác được tính ở trên.",
+      "emptyNews": "Không có tin tức nào cho các quốc gia này trong các tiêu đề hiện tại",
+      "emptyAdvisories": "Không có cảnh báo du lịch nào cho các quốc gia này",
+      "emptyConflict": "Không có sự kiện xung đột UCDP nào cho các quốc gia này",
+      "emptyConflictPartial": "Không có sự kiện xung đột nào cho các quốc gia này trong các sự kiện mới nhất. Danh sách đầy đủ chưa được tải.",
+      "loadingConflict": "Đang tải tất cả các sự kiện xung đột cho các quốc gia này…",
+      "emptyAirports": "Không có sân bay theo dõi nào của bạn ở các quốc gia này",
+      "emptyFlights": "Không có chuyến bay đến hoặc từ các quốc gia này trên bảng này",
+      "emptyAviationNews": "Không có tin tức hàng không nào cho các quốc gia này trong 24 giờ qua",
+      "tabNotFiltered": "Tab này không được lọc theo quốc gia",
+      "hidden_other": "{{count}} mục bị ẩn bởi tiêu điểm",
+      "showAllAria_other": "Hiển thị mọi thứ trong bảng này, bao gồm {{count}} mục ngoài tiêu điểm",
+      "unattributed_other": "{{count}} mục không có quốc gia",
+      "showUnattributedAria_other": "Hiển thị {{count}} mục không có quốc gia",
+      "hideUnattributedAria_other": "Ẩn {{count}} mục không có quốc gia"
+    }
   }
 }

@@ -4931,6 +4931,32 @@
     "saved": "此標籤頁聚焦於 {{countries}}。",
     "cleared": "聚焦已清除。此標籤頁顯示整個世界。",
     "notSaved": "無法儲存。此瀏覽器阻止了網站儲存。",
-    "plusNeighbours_other": "+ {{count}} 個相鄰國家"
+    "plusNeighbours_other": "+ {{count}} 個相鄰國家",
+    "filter": {
+      "showing": "顯示 {{countries}}",
+      "showingNeighbours": "顯示 {{countries}} + 鄰國",
+      "showAll": "顯示全部",
+      "focusOff": "此面板已關閉聚焦：顯示全部內容",
+      "applyFocus": "應用聚焦",
+      "applyFocusAria": "按聚焦重新篩選此面板",
+      "show": "顯示",
+      "hide": "隱藏",
+      "noCountryTag": "無國家",
+      "emptyHint": "其他一切內容已計入上方。",
+      "emptyNews": "當前頭條新聞中沒有這些國家的內容",
+      "emptyAdvisories": "這些國家沒有旅行建議",
+      "emptyConflict": "這些國家沒有 UCDP 衝突事件",
+      "emptyConflictPartial": "最新事件中這些國家沒有衝突事件。完整列表未載入。",
+      "loadingConflict": "正在載入這些國家的所有衝突事件…",
+      "emptyAirports": "您監控的機場中沒有位於這些國家的機場",
+      "emptyFlights": "此面板中沒有往返這些國家的航班",
+      "emptyAviationNews": "最近 24 小時內這些國家沒有航空新聞",
+      "tabNotFiltered": "此選項卡未按國家篩選",
+      "hidden_other": "聚焦隱藏了 {{count}} 項",
+      "showAllAria_other": "顯示此面板中的全部內容，包括聚焦範圍外的 {{count}} 項",
+      "unattributed_other": "{{count}} 項無國家標記",
+      "showUnattributedAria_other": "顯示 {{count}} 項無國家標記的內容",
+      "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容"
+    }
   }
 }

@@ -41,6 +41,22 @@ describe('PANEL_SCOPE_BEHAVIOUR', () => {
       assert.equal(getPanelScopeBehaviour(key), 'filters', key);
     }
   });
+
+  it('declares as filtering exactly the panels whose class filters (NewsPanel regions, advisories, UCDP, aviation)', () => {
+    const filtering = Object.entries(PANEL_SCOPE_BEHAVIOUR)
+      .filter(([, behaviour]) => behaviour === 'filters')
+      .map(([key]) => key)
+      .sort();
+    assert.deepEqual(filtering, [
+      'africa', 'airline-intel', 'asia', 'europe', 'intel', 'latam', 'middleeast', 'politics',
+      'security-advisories', 'ucdp-events', 'us',
+    ]);
+  });
+
+  it('does not claim filtering for regional zones or a pre-cut worldwide slice', () => {
+    assert.equal(getPanelScopeBehaviour('climate'), 'unsupported');
+    assert.equal(getPanelScopeBehaviour('population-exposure'), 'unsupported');
+  });
 });
 
 describe('getPanelScopeBehaviour', () => {

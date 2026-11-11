@@ -4954,6 +4954,37 @@
     "cleared": "Fókusz törölve. Ez a lap a világot mutatja.",
     "notSaved": "Nem sikerült menteni. A böngésző blokkolja az oldal tárolását.",
     "plusNeighbours_one": "+ {{count}} szomszéd",
-    "plusNeighbours_other": "+ {{count}} szomszéd"
+    "plusNeighbours_other": "+ {{count}} szomszéd",
+    "filter": {
+      "showing": "{{countries}} megjelenítése",
+      "showingNeighbours": "{{countries}} + szomszédos országok megjelenítése",
+      "showAll": "Összes megjelenítése",
+      "focusOff": "Fókusz ki ebben a panelben: minden megjelenik",
+      "applyFocus": "Fókusz alkalmazása",
+      "applyFocusAria": "Panel szűrése a fókuszra újra",
+      "show": "Megjelenítés",
+      "hide": "Elrejtés",
+      "noCountryTag": "Nincs ország",
+      "emptyHint": "Minden más fent számításba van véve.",
+      "emptyNews": "Nincs híradás ezekből az országokból az aktuális manchetekben",
+      "emptyAdvisories": "Nincsenek utazási tanácsok ezekre az országokra",
+      "emptyConflict": "Nincsenek UCDP konfliktus események ezekre az országokra",
+      "emptyConflictPartial": "Nincsenek konfliktus események ezekre az országokra az utolsó események között. A teljes lista nem töltődött be.",
+      "loadingConflict": "Összes konfliktus esemény betöltése ezekre az országokra…",
+      "emptyAirports": "A megfigyelt repülőterek közül egyik sem található ezekben az országokban",
+      "emptyFlights": "Nincsenek járatok ezekből vagy ezekbe az országokba ezen a táblán",
+      "emptyAviationNews": "Nincsenek repülési hírek ezekre az országokra az utolsó 24 órában",
+      "tabNotFiltered": "Ez a fül nincs szűrve ország szerint",
+      "hidden_one": "{{count}} elrejtve a fókusz által",
+      "hidden_other": "{{count}} elrejtve a fókusz által",
+      "showAllAria_one": "Minden megjelenítése ebben a panelben, beleértve {{count}} elemet a fókuszon kívülről",
+      "showAllAria_other": "Minden megjelenítése ebben a panelben, beleértve {{count}} elemet a fókuszon kívülről",
+      "unattributed_one": "{{count}} elem ország nélkül",
+      "unattributed_other": "{{count}} elem ország nélkül",
+      "showUnattributedAria_one": "{{count}} elem megjelenítése ország nélkül",
+      "showUnattributedAria_other": "{{count}} elem megjelenítése ország nélkül",
+      "hideUnattributedAria_one": "{{count}} elem elrejtése ország nélkül",
+      "hideUnattributedAria_other": "{{count}} elem elrejtése ország nélkül"
+    }
   }
 }

@@ -4,8 +4,8 @@
  * its header says "Not filtered".
  *
  *   filters      shows only the focused countries (and their neighbours).
- *                Phase 1 covers news, security advisories, conflict, weather
- *                and natural hazards, and aviation. A panel declared here that
+ *                Phase 1 covers the regional news panels, security advisories,
+ *                UCDP conflict events and aviation. A panel declared here that
  *                does not yet override `Panel.applyScope` is labelled "Not
  *                filtered" at runtime, so a declaration can never get ahead
  *                of the code (see `PanelLayoutManager.applyScopeToPanel`).
@@ -22,9 +22,10 @@
 export type PanelScopeBehaviour = 'filters' | 'global' | 'unsupported';
 
 export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>> = Object.freeze({
-  // Filters by country (Phase 1).
+  // Filters by country (Phase 1). News panels attribute a headline by the
+  // country names it contains (shared/country-mention.js), advisories by their
+  // ISO code, UCDP events by their country name, aviation by airport.
   'airline-intel': 'filters', // Airline Intelligence
-  climate: 'filters', // Climate Anomalies
   intel: 'filters', // Intel Feed
   politics: 'filters', // World News
   us: 'filters', // United States
@@ -34,7 +35,6 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   latam: 'filters', // Latin America
   asia: 'filters', // Asia-Pacific
   'ucdp-events': 'filters', // UCDP Conflict Events
-  'population-exposure': 'filters', // Population Exposure
   'security-advisories': 'filters', // Security Advisories
   // Global by nature.
   progress: 'global', // Human Progress
@@ -98,6 +98,15 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   'market-implications': 'global', // AI Market Implications
   // Not supported yet. The map follows the focus itself (fit and outline) and is not a Panel.
   map: 'unsupported', // Global Map
+  // Climate anomalies are regional zones ("Europe", "Sahel", "Coral
+  // Triangle"), not countries: a zone centroid would attribute "Europe" to
+  // Germany. Weather alerts and natural events have no panel; they are map
+  // layers.
+  climate: 'unsupported', // Climate Anomalies
+  // Exposure keeps the 10 largest events per source worldwide before it
+  // reaches the panel, so filtering that slice would call a focused country
+  // quiet when its events were simply cut. Needs filtering before the cut.
+  'population-exposure': 'unsupported', // Population Exposure
   'positive-feed': 'unsupported', // Good News Feed
   spotlight: 'unsupported', // Today's Hero
   breakthroughs: 'unsupported', // Breakthroughs

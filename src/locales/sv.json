@@ -4954,6 +4954,37 @@
     "cleared": "Fokus rensad. Den här fliken visar världen.",
     "notSaved": "Kunde inte spara. Den här webbläsaren blockerar webbplatslagring.",
     "plusNeighbours_one": "+ {{count}} granne",
-    "plusNeighbours_other": "+ {{count}} grannar"
+    "plusNeighbours_other": "+ {{count}} grannar",
+    "filter": {
+      "showing": "Visar {{countries}}",
+      "showingNeighbours": "Visar {{countries}} + grannar",
+      "showAll": "Visa allt",
+      "focusOff": "Fokus av i denna panel: visar allt",
+      "applyFocus": "Använd fokus",
+      "applyFocusAria": "Filtrera denna panel efter fokus igen",
+      "show": "Visa",
+      "hide": "Dölj",
+      "noCountryTag": "Inget land",
+      "emptyHint": "Allt övrigt räknas ovan.",
+      "emptyNews": "Inget för dessa länder i aktuella nyheter",
+      "emptyAdvisories": "Inga resevarningar för dessa länder",
+      "emptyConflict": "Inga UCDP-konflikthändelser för dessa länder",
+      "emptyConflictPartial": "Inga konflikthändelser för dessa länder bland de senaste händelserna. Den fullständiga listan laddades inte.",
+      "loadingConflict": "Laddar alla konflikthändelser för dessa länder…",
+      "emptyAirports": "Ingen av dina övervakade flygplatser ligger i dessa länder",
+      "emptyFlights": "Inga flyg till eller från dessa länder på denna tavla",
+      "emptyAviationNews": "Inga flygnyheterna för dessa länder under de senaste 24 timmarna",
+      "tabNotFiltered": "Denna flik är inte filtrerad efter land",
+      "hidden_one": "{{count}} dold av fokus",
+      "hidden_other": "{{count}} dolda av fokus",
+      "showAllAria_one": "Visa allt i denna panel, inklusive {{count}} objekt utanför fokus",
+      "showAllAria_other": "Visa allt i denna panel, inklusive {{count}} objekt utanför fokus",
+      "unattributed_one": "{{count}} objekt utan land",
+      "unattributed_other": "{{count}} objekt utan land",
+      "showUnattributedAria_one": "Visa {{count}} objekt utan land",
+      "showUnattributedAria_other": "Visa {{count}} objekt utan land",
+      "hideUnattributedAria_one": "Dölj {{count}} objekt utan land",
+      "hideUnattributedAria_other": "Dölj {{count}} objekt utan land"
+    }
   }
 }

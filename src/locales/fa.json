@@ -4954,6 +4954,37 @@
     "cleared": "تمرکز پاک شد. این برگه کل جهان را نمایش می‌دهد.",
     "notSaved": "نتوانست ذخیره شود. مرورگر شما ذخیره‌سازی سایت را مسدود کرده است.",
     "plusNeighbours_one": "+ {{count}} همسایه",
-    "plusNeighbours_other": "+ {{count}} همسایه"
+    "plusNeighbours_other": "+ {{count}} همسایه",
+    "filter": {
+      "showing": "نمایش {{countries}}",
+      "showingNeighbours": "نمایش {{countries}} + کشورهای همسایه",
+      "showAll": "نمایش همه",
+      "focusOff": "تمرکز خاموش در این پنل: نمایش همه",
+      "applyFocus": "اعمال تمرکز",
+      "applyFocusAria": "فیلتر کردن این پنل بر اساس تمرکز دوباره",
+      "show": "نمایش",
+      "hide": "پنهان کردن",
+      "noCountryTag": "بدون کشور",
+      "emptyHint": "بقیه موارد در بالا شمارش شده‌اند.",
+      "emptyNews": "هیچ خبری برای این کشورها در عناوین فعلی وجود ندارد",
+      "emptyAdvisories": "هیچ هشدار سفر برای این کشورها وجود ندارد",
+      "emptyConflict": "هیچ رویداد تعارض UCDP برای این کشورها وجود ندارد",
+      "emptyConflictPartial": "هیچ رویداد تعارض برای این کشورها در میان آخرین رویدادها وجود ندارد. لیست کامل بارگذاری نشد.",
+      "loadingConflict": "بارگذاری تمام رویدادهای تعارض برای این کشورها…",
+      "emptyAirports": "هیچ یک از فرودگاه‌های نظارت شده شما در این کشورها نیستند",
+      "emptyFlights": "هیچ پروازی به یا از این کشورها در این تخته وجود ندارد",
+      "emptyAviationNews": "هیچ خبر هوانوردی برای این کشورها در ۲۴ ساعت گذشته وجود ندارد",
+      "tabNotFiltered": "این برگه بر اساس کشور فیلتر نشده است",
+      "hidden_one": "{{count}} مورد پنهان شده توسط تمرکز",
+      "hidden_other": "{{count}} مورد پنهان شده توسط تمرکز",
+      "showAllAria_one": "نمایش همه در این پنل، شامل {{count}} مورد خارج از تمرکز",
+      "showAllAria_other": "نمایش همه در این پنل، شامل {{count}} مورد خارج از تمرکز",
+      "unattributed_one": "{{count}} مورد بدون کشور",
+      "unattributed_other": "{{count}} مورد بدون کشور",
+      "showUnattributedAria_one": "نمایش {{count}} مورد بدون کشور",
+      "showUnattributedAria_other": "نمایش {{count}} مورد بدون کشور",
+      "hideUnattributedAria_one": "پنهان کردن {{count}} مورد بدون کشور",
+      "hideUnattributedAria_other": "پنهان کردن {{count}} مورد بدون کشور"
+    }
   }
 }
