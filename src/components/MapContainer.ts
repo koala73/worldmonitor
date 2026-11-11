@@ -9,6 +9,7 @@ import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -87,7 +88,25 @@ type PendingCenter = { lat: number; lon: number; zoom?: number; actionToken?: nu
 type PendingViewportAction =
   | { type: 'view'; view: MapView; zoom?: number; actionToken: number }
   | { type: 'zoom'; zoom: number; actionToken: number }
-  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number };
+  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number }
+  | {
+    type: 'focus';
+    fit: FocusFitBounds;
+    maxZoom: number;
+    altitude: number;
+    /** humanViewportInteractionToken when the fit was requested. */
+    authority: number;
+    actionToken: number;
+  };
+
+/** Chosen countries (solid outline, fitted) and neighbours (lighter outline). */
+export interface MapFocusOutline {
+  chosen: readonly string[];
+  neighbours: readonly string[];
+}
+
+// The bbox table and fit math load on the first focus fit, not with the map.
+const loadFocusMap = () => import('@/utils/focus-map');
 
 let mapLibreCssPromise: Promise<unknown> | null = null;
 
@@ -209,6 +228,9 @@ export class MapContainer {
   private destroyed = false;
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
+  private focusOutline: MapFocusOutline | null = null;
+  /** Bumped by every focus fit request and every clear; a stale fit drops itself. */
+  private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
   private hiddenLayerToggles = new Set<keyof MapLayers>();
   private layerLoadingState = new Map<keyof MapLayers, boolean>();
@@ -442,7 +464,9 @@ export class MapContainer {
     for (const action of pendingViewportActions) {
       if (action.type === 'view') this.applyView(action.view, action.zoom);
       else if (action.type === 'zoom') this.applyZoom(action.zoom);
-      else this.applyCenter(action.lat, action.lon, action.zoom);
+      else if (action.type === 'focus') {
+        if (action.authority === this.humanViewportInteractionToken) this.applyFocusFit(action);
+      } else this.applyCenter(action.lat, action.lon, action.zoom);
     }
   }
 
@@ -897,6 +921,7 @@ export class MapContainer {
     for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
+    if (this.focusOutline) this.applyFocusOutline();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
@@ -1808,6 +1833,69 @@ export class MapContainer {
     } else {
       this.svgMap?.fitCountry(code);
     }
+  }
+
+  /**
+   * Dashboard focus (#10453). Outlines the chosen countries solid and the
+   * neighbours lighter on whichever renderer is active (and on any renderer
+   * switched to later), and, when `fit` is set, frames the chosen countries
+   * only. Markers are never filtered. Null removes the outline and leaves
+   * the view where it is.
+   *
+   * The fit is a viewport command like setView or setCenter, ordered by the
+   * same action token. It is dropped when, before it runs, a later viewport
+   * command lands (a team dashboard's saved view, a region pick, an agent
+   * action) or the user moves the map. Before the renderer is ready it
+   * queues with the other pending viewport commands.
+   */
+  public setFocusScope(focus: MapFocusOutline | null, options: { fit: boolean }): void {
+    this.focusOutline = focus
+      ? { chosen: [...focus.chosen], neighbours: [...focus.neighbours] }
+      : null;
+    this.applyFocusOutline();
+    if (!focus) {
+      this.focusFitSeq += 1;
+      return;
+    }
+    if (!options.fit) return;
+    const seq = ++this.focusFitSeq;
+    const actionToken = ++this.viewportActionToken;
+    const authority = this.humanViewportInteractionToken;
+    const chosen = [...focus.chosen];
+    void loadFocusMap().then(({ focusFitBounds, focusGlobeAltitude, FOCUS_FIT_MAX_ZOOM }) => {
+      if (this.destroyed || seq !== this.focusFitSeq) return;
+      if (actionToken !== this.viewportActionToken || authority !== this.humanViewportInteractionToken) return;
+      const fit = focusFitBounds(chosen);
+      if (!fit) return;
+      const action: Extract<PendingViewportAction, { type: 'focus' }> = {
+        type: 'focus',
+        fit,
+        maxZoom: FOCUS_FIT_MAX_ZOOM,
+        altitude: focusGlobeAltitude(fit),
+        authority,
+        actionToken,
+      };
+      if (!this.isViewportRendererReady()) {
+        this.pendingViewportActions.push(action);
+        return;
+      }
+      this.applyFocusFit(action);
+    }).catch((error: unknown) => {
+      console.warn('[MapContainer] Focus fit failed to load', error);
+    });
+  }
+
+  private applyFocusOutline(): void {
+    const outline = this.focusOutline;
+    this.deckGLMap?.setFocusOutline(outline);
+    this.svgMap?.setFocusOutline(outline);
+    this.globeMap?.setFocusOutline(outline);
+  }
+
+  private applyFocusFit(action: Extract<PendingViewportAction, { type: 'focus' }>): void {
+    if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
+    if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.fit, action.maxZoom);
+    else this.svgMap?.fitFocusBounds(action.fit);
   }
 
   public highlightCountry(code: string): void {

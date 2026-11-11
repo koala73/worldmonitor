@@ -87,6 +87,7 @@ import { bootGitHubStarPrompt } from '@/app/github-star-prompt-boot';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar, tabCapGateCopy } from '@/components/PanelTabBar';
 import type { FocusBar } from '@/components/FocusBar';
+import { FocusMapSync } from '@/app/focus-map-sync';
 import {
   canSetFocus,
   getActiveScope,
@@ -553,6 +554,10 @@ export class PanelLayoutManager implements AppModule {
   private focusBar: FocusBar | null = null;
   private unsubscribeScope: (() => void) | null = null;
   private focusEditor: { close(): void } | null = null;
+  // Map outline and fit for the focus; see FocusMapSync for when it moves.
+  // Created on first use, like the other focus state, so a manager built
+  // without its constructor (test harnesses) still dispatches scopes.
+  private focusMapSync: FocusMapSync | null = null;
   private unregisterExportFlush: (() => void) | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
@@ -1628,8 +1633,13 @@ export class PanelLayoutManager implements AppModule {
     this.onScopeChanged(getResolvedScope());
   }
 
+  private focusMap(): FocusMapSync {
+    return (this.focusMapSync ??= new FocusMapSync());
+  }
+
   private onScopeChanged(resolved: ResolvedScope | null): void {
     if (this.ctx.isDestroyed) return;
+    this.focusMap().onScopeChanged(resolved);
     for (const [key, panel] of Object.entries(this.ctx.panels ?? {})) {
       if (panel) applyScopeToPanel(key, panel);
     }
@@ -1802,15 +1812,20 @@ export class PanelLayoutManager implements AppModule {
       showToast(t('teamDashboards.focusUnreadable', { name: dashboard.name }));
       return;
     }
-    this.createAndActivateTab(dashboard.name, {
-      panelSettings: built.panelSettings,
-      panelOrder: built.panelOrder,
-      bottomSet: built.bottomSet,
-      team: { id: dashboard.id, version: dashboard.version },
-      ...(built.scope ? { scope: built.scope } : {}),
-    });
-    this.applyTeamPanelSizes(built.sizes);
-    this.applyTeamMap(built.map);
+    // A stored map view wins over the focus fit; the outline still draws.
+    const open = () => {
+      this.createAndActivateTab(dashboard.name, {
+        panelSettings: built.panelSettings,
+        panelOrder: built.panelOrder,
+        bottomSet: built.bottomSet,
+        team: { id: dashboard.id, version: dashboard.version },
+        ...(built.scope ? { scope: built.scope } : {}),
+      });
+      this.applyTeamPanelSizes(built.sizes);
+      this.applyTeamMap(built.map);
+    };
+    if (built.map) this.focusMap().keepMapView(open);
+    else open();
     showToast(t('teamDashboards.opened', { name: dashboard.name }));
   }
 
@@ -1827,7 +1842,9 @@ export class PanelLayoutManager implements AppModule {
     // The shared focus (and its neighbours switch) is part of the version.
     if (built.scope) tab.scope = built.scope;
     else delete tab.scope;
-    restoreActiveScope(built.scope);
+    // A stored map view wins over the focus fit; the outline still draws.
+    if (built.map) this.focusMap().keepMapView(() => restoreActiveScope(built.scope));
+    else restoreActiveScope(built.scope);
     this.applyTabPanelState(built.panelSettings, built.panelOrder, built.bottomSet);
     this.applyTeamPanelSizes(built.sizes);
     this.applyTeamMap(built.map);
@@ -4111,6 +4128,8 @@ export class PanelLayoutManager implements AppModule {
 
     this.applyPanelSettings();
     this.applyInitialUrlState();
+    // After the URL's view, so a focused tab's fit is the later command.
+    this.focusMap().attachMap(this.ctx.map);
 
     // Observe each panel for viewport entry. As soon as a panel scrolls
     // within ~200px of the viewport it fires loadAllData() once
