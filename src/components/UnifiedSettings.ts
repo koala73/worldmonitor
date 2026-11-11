@@ -1062,8 +1062,10 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
         </div>
-        ${dashboardSiteLinksHtml(DASHBOARD_SITE_ORIGIN)}
-        ${legalLinksHtml(WEB_APP_ORIGIN)}
+        <div class="dashboard-chrome-links">
+          ${dashboardSiteLinksHtml(DASHBOARD_SITE_ORIGIN)}
+          ${legalLinksHtml(WEB_APP_ORIGIN)}
+        </div>
       </div>
     `, "legacy direct innerHTML migration"));
 

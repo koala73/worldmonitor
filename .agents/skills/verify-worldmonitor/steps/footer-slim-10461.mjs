@@ -29,8 +29,14 @@ export default async function ({ page, base, shot, log, expectVisible }) {
   await shot('desktop-footer-940');
 
   await page.locator('#unifiedSettingsBtn').click();
+  await expectVisible('.dashboard-chrome-links');
   await expectVisible('.dashboard-site-links-row');
   await expectVisible('.legal-links-row');
+  const linksInView = await page.locator('.dashboard-site-links-row').evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  });
+  if (!linksInView) throw new Error('Settings site links must be in the viewport on open');
   for (const href of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/accuracy/']) {
     const count = await page.locator(`.dashboard-site-links-row a[href$="${href}"]`).count();
     if (count !== 1) throw new Error(`Settings missing site link ${href}`);

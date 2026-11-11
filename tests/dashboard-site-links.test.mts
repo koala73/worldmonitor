@@ -37,12 +37,17 @@ describe('dashboard site links (#10461)', () => {
     assert.match(html, /class="dashboard-site-links-row"/);
   });
 
-  it('Settings mounts the site-links row above the legal row', () => {
+  it('Settings mounts the site-links row above the legal row in one sticky stack', () => {
     const source = read('src/components/UnifiedSettings.ts');
+    assert.match(source, /class="dashboard-chrome-links"/);
     assert.match(source, /dashboardSiteLinksHtml\(/);
     const siteIdx = source.indexOf('dashboardSiteLinksHtml(');
     const legalIdx = source.indexOf('legalLinksHtml(');
     assert.ok(siteIdx >= 0 && legalIdx > siteIdx, 'site links must render above legal links');
+    const css = read('src/styles/main.css');
+    const stack = css.match(/\.dashboard-chrome-links\s*\{([^}]*)\}/);
+    assert.ok(stack, '.dashboard-chrome-links rule must exist');
+    assert.match(stack[1], /position:\s*sticky/);
   });
 
   it('compact dashboard footer CSS caps height at 28px', () => {

@@ -27637,6 +27637,17 @@ body.map-width-resizing {
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
    terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
+/* #10461: site destinations + legal docs pin together so opening Settings
+   keeps both rows one tap away without scrolling a long tab. -20px cancels
+   .modal's own bottom padding so the stack sits flush to the edge. */
+.dashboard-chrome-links {
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  margin-top: 8px;
+  background: var(--surface);
+}
+
 .dashboard-site-links-row,
 .legal-links-row {
   display: flex;
@@ -27646,26 +27657,15 @@ body.map-width-resizing {
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border-color, #30363d);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
-  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
-     enough that a row parked at the end of the scroll would be several
-     screens down, which is not "one click from the dashboard". -20px cancels
-     .modal's own bottom padding so it pins flush to the edge. */
-  position: sticky;
-  bottom: -20px;
-  z-index: 1;
-  margin-top: 8px;
   background: var(--surface);
 }
 
-/* Site links sit just above legal links; only the bottom legal row needs the
-   sticky pin. Keep site links in normal flow so both rows remain reachable. */
 .dashboard-site-links-row {
-  position: static;
-  bottom: auto;
-  margin-top: 8px;
-  margin-bottom: 0;
   padding-bottom: 8px;
-  border-top: 1px solid var(--border-color, #30363d);
+}
+
+.legal-links-row {
+  padding-top: 8px;
 }
 
 .dashboard-site-links-item,
