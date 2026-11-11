@@ -9,6 +9,7 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 const { nextChinaDecisionCoverageFailure } = await import('../scripts/seed-china-decision-signals.mjs');
+const { canadianWildfireAfterPublish } = await import('../scripts/wildfire/bc-fire-points.mjs');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -1189,6 +1190,49 @@ test('handleHealth holds a late government release back from Sentry, then report
   const gone = await sweep(31 * 1_440);
   assert.equal(gone.body.problems.foodPricesMit?.status, 'STALE_CONTENT');
   assert.deepEqual(gone.mit, [{ health_source: 'foodPricesMit', health_status: 'STALE_CONTENT' }], 'a month past the limit, it reports');
+});
+
+test('wildfire incidents distinguish retained source data from unavailable source data', async () => {
+  const now = Date.now();
+  const lastSuccessAt = now - 40 * 60_000;
+  const firstFailureAt = now - 30 * 60_000;
+  const retainedUntil = lastSuccessAt + 3 * 60 * 60_000;
+  for (const mode of ['retained', 'expired', 'legacy', 'malformed']) {
+    const retained = mode !== 'expired';
+    const snapshot = {
+      fetchedAt: retained ? lastSuccessAt : null,
+      firstFailureAt,
+      retainedUntil: retained ? retainedUntil : null,
+      lastAttemptAt: now - 60_000,
+      consecutiveFailures: retained ? 3 : 18,
+      fireDetections: retained ? [{ id: 'cwfis:one' }, { id: 'cwfis:two' }] : [],
+    };
+    const { freshnessMetaPatch } = canadianWildfireAfterPublish({
+      _firmsState: 'ok', _bcState: 'ok', _cwfisState: 'failed', _cwfisSnapshot: snapshot,
+    });
+    freshnessMetaPatch.sourceHealth.cwfis.providerResponse = 'must not reach public health or Sentry';
+    if (mode === 'legacy') delete freshnessMetaPatch.sourceHealth.cwfis.retainedRecordCount;
+    if (mode === 'malformed') freshnessMetaPatch.sourceHealth.cwfis.retainedRecordCount = '2';
+    const expected = { cwfis: {
+      lastSuccessAt: retained ? lastSuccessAt : null,
+      firstFailureAt,
+      retainedUntil: retained ? retainedUntil : null,
+      retainedRecordCount: mode === 'legacy' || mode === 'malformed' ? null : retained ? 2 : 0,
+    } };
+    const captures = [];
+    globalThis.fetch = sweepFetch({ seedMeta: {
+      'seed-meta:wildfire:fires': { fetchedAt: now, recordCount: 100, ...freshnessMetaPatch },
+    } });
+    const response = await handleHealth(new Request('https://api.worldmonitor.app/api/health?compact=1'), undefined, {
+      captureIncident: async (_error, opts) => { captures.push(opts); return true; },
+    });
+    const body = await response.json();
+    assert.equal(body.problems.wildfires.status, 'SEED_ERROR');
+    assert.deepEqual(body.problems.wildfires.sourceHealth, expected);
+    const wildfire = captures.filter((capture) => capture.tags.health_source === 'wildfires');
+    assert.equal(wildfire.length, 1);
+    assert.deepEqual(wildfire[0].extra.sourceHealth, expected);
+  }
 });
 
 test('a source incident carries the diagnostics that say why it fired', async () => {
