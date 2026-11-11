@@ -167,7 +167,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   RegionalIntelligenceBoard: 'panels-intel',
   Regulation: 'panels-intel',
   // Disasters / climate / connectivity / society
-  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
+  ClimateAnomaly: 'panels-risk', ReservoirLevels: 'panels-risk', Counters: 'panels-risk',
   DiseaseOutbreaks: 'panels-risk',
   Displacement: 'panels-risk', GeoHubs: 'panels-risk',
   Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
