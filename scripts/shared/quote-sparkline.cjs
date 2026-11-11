@@ -22,7 +22,7 @@ const SPARKLINE_HISTORY_QUERY = '?range=3d&interval=5m';
 const SPARKLINE_HISTORY_RETRY_SECONDS = 15 * 60;
 
 const SPIKE_MAD_MULTIPLE = 10;
-const SPIKE_MIN_MOVE = 0.002;
+const SPIKE_CHANGE_MULTIPLE = 6;
 const SPIKE_MAD_RADIUS = 30;
 // Thin contracts skip minutes all the time; a trading gap is a closed market.
 const TRADING_GAP_SECONDS = 15 * 60;
@@ -58,32 +58,47 @@ function median(values) {
 // next print returns to where the previous one was. A move that holds is kept,
 // and so is a print with a trading gap on one side only, such as a session
 // open. A print with a gap on both sides is a thin contract's lone print, and
-// it is tested against the prints across the gaps: CT=F printed 82.37 with no
-// volume between 78.76 and 78.39, three hours either side.
+// it is tested against the prints across the gaps. Two adjacent sparse prints
+// can form the same bounded island (Yahoo's cached CT=F history did this).
 function dropSingleTickSpikes(bars) {
   if (bars.length < 3) return bars;
   const diffs = bars.slice(1).map((bar, i) => bar.v - bars[i].v);
   const kept = [bars[0]];
   for (let i = 1; i < bars.length - 1; i += 1) {
-    const prev = bars[i - 1];
-    const cur = bars[i];
-    const next = bars[i + 1];
-    const gapBefore = cur.t - prev.t > TRADING_GAP_SECONDS;
-    const gapAfter = next.t - cur.t > TRADING_GAP_SECONDS;
-    if (gapBefore !== gapAfter) {
-      kept.push(cur);
-      continue;
+    const prev = kept.at(-1);
+    let dropped = 0;
+    for (const length of [1, 2]) {
+      const next = bars[i + length];
+      if (!next) break;
+      const island = bars.slice(i, i + length);
+      const gapBefore = island[0].t - prev.t > TRADING_GAP_SECONDS;
+      const gapAfter = next.t - island.at(-1).t > TRADING_GAP_SECONDS;
+      if (gapBefore !== gapAfter) continue;
+      // Dense adjacent closes confirm a move. Only sparse contracts admit a
+      // two-print island, with trading gaps on both sides and between prints.
+      if (length === 2 && (!gapBefore || island[1].t - island[0].t <= TRADING_GAP_SECONDS)) continue;
+      const window = diffs.slice(Math.max(0, i - SPIKE_MAD_RADIUS), i - 1)
+        .concat(diffs.slice(i + length, i + length + SPIKE_MAD_RADIUS));
+      const center = median(window);
+      const mad = median(window.map((d) => Math.abs(d - center)));
+      // Calibrate to this symbol's local tape, excluding the candidate's
+      // entry/exit moves. Flat tapes need only a floating-point noise floor.
+      const threshold = Math.max(SPIKE_MAD_MULTIPLE * mad,
+        SPIKE_CHANGE_MULTIPLE * median(window.map(Math.abs)),
+        Number.EPSILON * Math.max(1, Math.abs(prev.v)) * 32);
+      const direction = Math.sign(island[0].v - prev.v);
+      const departure = Math.min(...island.flatMap((bar) => [Math.abs(bar.v - prev.v), Math.abs(bar.v - next.v)]));
+      const spike = island.every((bar) => Math.sign(bar.v - prev.v) === direction && Math.sign(bar.v - next.v) === direction)
+        && departure > threshold
+        && Math.abs(next.v - prev.v) < departure
+        && Math.max(...island.map((bar) => bar.v)) - Math.min(...island.map((bar) => bar.v)) < departure / 2;
+      if (spike) {
+        dropped = length;
+        break;
+      }
     }
-    const up = cur.v - prev.v;
-    const down = cur.v - next.v;
-    const window = diffs.slice(Math.max(0, i - SPIKE_MAD_RADIUS), i + SPIKE_MAD_RADIUS);
-    const center = median(window);
-    const mad = median(window.map((d) => Math.abs(d - center)));
-    const threshold = Math.max(SPIKE_MAD_MULTIPLE * mad, SPIKE_MIN_MOVE * Math.abs(prev.v));
-    const spike = Math.sign(up) === Math.sign(down)
-      && Math.min(Math.abs(up), Math.abs(down)) > threshold
-      && Math.abs(next.v - prev.v) < Math.min(Math.abs(up), Math.abs(down)) / 2;
-    if (!spike) kept.push(cur);
+    if (dropped) i += dropped - 1;
+    else kept.push(bars[i]);
   }
   kept.push(bars[bars.length - 1]);
   return kept;
