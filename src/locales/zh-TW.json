@@ -4437,7 +4437,7 @@
   "auth": {
     "signIn": "登入",
     "createAccount": "建立帳戶",
-    "freeReason": "免費：儲存版面、追蹤國家、取得提醒",
+    "freeReason": "免費：儲存佈局、關注國家、獲取提醒",
     "settings": "設定",
     "passkeyOffer": {}
   },
