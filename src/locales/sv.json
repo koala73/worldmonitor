@@ -1145,7 +1145,7 @@
       "estimateWithin": "Cirka {{count}} personer inom en radie på {{km}} km",
       "method": "Uppskattningarna bygger på landets genomsnittliga befolkningstäthet.",
       "empty": "Inga händelseplatser uppfyller kraven",
-      "infoTooltip": "Händelser med uppgifter om landets befolkningstäthet visas. Platser från äldre data utan precisionsuppgifter markeras som väntande på uppdatering. De uppskattade områdena kan överlappa.",
+      "infoTooltip": "Händelser med uppgifter om landets befolkningstäthet visas. Platser från äldre data utan precisionsuppgifter markeras som väntande på uppdatering. De uppskattade områdena kan överlappa. Oroligheter kräver en exakt plats; UCDP-händelser markerade som oprecisa utesluts. En plats från två källor (oroligheter och UCDP) visas på två rader.",
       "eventCount_one": "{{count}} händelse",
       "eventCount_other": "{{count}} händelser",
       "locationPending": "Platsens precision väntar på uppdatering",

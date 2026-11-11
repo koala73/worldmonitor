@@ -322,6 +322,7 @@ export class ResilienceWidget {
         });
       },
     }, cta) as HTMLButtonElement;
+    button.dataset.dashboardInteraction = gateReason === PanelGateReason.ANONYMOUS ? 'signin' : 'upgrade';
 
     return h(
       'div',

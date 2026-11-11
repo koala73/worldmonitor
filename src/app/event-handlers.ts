@@ -1,3 +1,4 @@
+import { observeDashboardFirstInteraction } from '@/components/dashboard-interaction-analytics';
 import type {
   AppContext,
   AppModule,
@@ -87,6 +88,7 @@ import {
   trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
+  replayPendingDashboardFirstInteraction,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -329,6 +331,7 @@ export interface EventHandlerCallbacks {
 }
 
 export class EventHandlerManager implements AppModule {
+  private stopInteractionAnalytics: (() => void) | null = null;
   private ctx: AppContext;
   private callbacks: EventHandlerCallbacks;
 
@@ -407,6 +410,9 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    replayPendingDashboardFirstInteraction();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = observeDashboardFirstInteraction(this.ctx.container);
     this.setupSearchControls();
     this.setupEventListeners();
     this.mobilePrimaryNav.init();
@@ -532,6 +538,8 @@ export class EventHandlerManager implements AppModule {
 
   destroy(): void {
     this.closeEmbedDialog();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = null;
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
