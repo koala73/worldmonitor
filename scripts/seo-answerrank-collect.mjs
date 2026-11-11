@@ -66,6 +66,8 @@ function invariant(condition, message) {
   if (!condition) throw new Error(`[seo-answerrank-collect] ${message}`);
 }
 
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const sha256 = (text) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 const readJsonl = (path) => readFileSync(path, 'utf8').split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
@@ -97,10 +99,40 @@ function answerStatus({ planned, unscored, unscoredByVariant }) {
   };
 }
 
+const COUNT_KEYS = Object.freeze(['answers', 'mentions', 'topPicks', 'recommendations', 'webAnswers', 'searchedAnswers', 'citations']);
+
+/**
+ * The fixed design a run must cover: every variant answers every question
+ * `repetitions` times. Unscored is measured against it, so a run that lost
+ * answer rows outright reads as unscored, not as a smaller complete week.
+ */
+function expectedAnswers(labels, perVariant, scoredByLabel) {
+  const unscoredByVariant = Object.fromEntries(labels
+    .map((label) => [label, perVariant - (scoredByLabel[label] ?? 0)])
+    .filter(([, count]) => count > 0)
+    .sort(([a], [b]) => a.localeCompare(b)));
+  const planned = perVariant * labels.length;
+  const scored = labels.reduce((sum, label) => sum + (scoredByLabel[label] ?? 0), 0);
+  return { planned, scored, unscored: planned - scored, unscoredByVariant };
+}
+
+/** The overall counts must be the sums of the variant counts. */
+function assertTotals(overall, byVariant) {
+  const groups = Object.values(byVariant);
+  for (const key of COUNT_KEYS) {
+    const sum = groups.reduce((total, entry) => total + (entry[key] ?? 0), 0);
+    invariant((overall[key] ?? 0) === sum, `overall.${key} is ${overall[key]} but the variants add up to ${sum}`);
+  }
+}
+
 function group(metrics, searchedAnswers = null) {
   invariant(Number.isInteger(metrics?.n) && metrics.n > 0, 'a scored group has no answers');
   const count = (rate, of) => (rate === null || rate === undefined ? null : Math.round(rate * of));
   const webAnswers = metrics.web_answers ?? 0;
+  // A null rate would drop that metric from the comparison and hide a decline.
+  for (const rate of ['mention_rate', 'top_pick_rate', 'recommend_rate', ...(webAnswers > 0 ? ['citation_rate'] : [])]) {
+    invariant(isFiniteNumber(metrics[rate]), `a scored group has no ${rate}`);
+  }
   return {
     answers: metrics.n,
     mentions: count(metrics.mention_rate, metrics.n),
@@ -124,7 +156,7 @@ function group(metrics, searchedAnswers = null) {
  * nor lost their judgment (`judgments.jsonl`), so planned minus scored is
  * everything unscored.
  */
-export function buildSnapshot({ runDir, date, observedAt, digest, revision = null }) {
+export function buildSnapshot({ runDir, date, observedAt, digest, revision = null, expected = null }) {
   invariant(DATE_PATTERN.test(date ?? ''), 'date must be YYYY-MM-DD');
   const scores = readJson(join(runDir, 'scores.json'));
   const spend = existsSync(join(runDir, 'spend.json')) ? readJson(join(runDir, 'spend.json')) : {};
@@ -142,21 +174,39 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
     plannedByVariant[answer.model] = (plannedByVariant[answer.model] ?? 0) + 1;
     if (!answer.error && judged.has(answer.key) && answer.web_search && answer.searched) searchedByVariant[answer.model] = (searchedByVariant[answer.model] ?? 0) + 1;
   }
-  const unscoredByVariant = Object.fromEntries(Object.entries(plannedByVariant)
-    .map(([label, planned]) => [label, planned - (scores.by_model?.[label]?.n ?? 0)])
-    .filter(([, count]) => count > 0)
-    .sort(([a], [b]) => a.localeCompare(b)));
   const byVariant = Object.fromEntries(
     Object.entries(scores.by_model ?? {})
       .filter(([, metrics]) => metrics?.n > 0)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([label, metrics]) => [label, group(metrics, searchedByVariant[label] ?? 0)]),
   );
-  const planned = answers.length;
-  const scored = scores.overall?.n ?? 0;
-  const unscored = planned - scored;
-  invariant(unscored >= 0, `scores.json has ${scored} scored answers but answers.jsonl plans only ${planned}`);
-  const { status, reason } = answerStatus({ planned, unscored, unscoredByVariant });
+  const scoredByLabel = Object.fromEntries(Object.entries(byVariant).map(([label, entry]) => [label, entry.answers]));
+  let answerCounts;
+  if (expected) {
+    for (const label of [...Object.keys(plannedByVariant), ...Object.keys(byVariant)]) {
+      invariant(expected.labels.includes(label), `the run answered with variant ${label}, which the committed config does not have`);
+    }
+    for (const [label, count] of Object.entries(plannedByVariant)) {
+      invariant(count <= expected.perVariant, `${label} has ${count} answers, more than the ${expected.perVariant} the design asks for`);
+    }
+    answerCounts = expectedAnswers(expected.labels, expected.perVariant, scoredByLabel);
+  } else {
+    const planned = answers.length;
+    const scored = Object.values(scoredByLabel).reduce((sum, value) => sum + value, 0);
+    answerCounts = {
+      planned,
+      scored,
+      unscored: planned - scored,
+      unscoredByVariant: Object.fromEntries(Object.entries(plannedByVariant)
+        .map(([label, count]) => [label, count - (scoredByLabel[label] ?? 0)])
+        .filter(([, count]) => count > 0)
+        .sort(([a], [b]) => a.localeCompare(b))),
+    };
+  }
+  invariant(answerCounts.unscored >= 0, `scores.json has ${answerCounts.scored} scored answers but answers.jsonl plans only ${answerCounts.planned}`);
+  const overall = group(scores.overall, Object.values(searchedByVariant).reduce((sum, value) => sum + value, 0));
+  assertTotals(overall, byVariant);
+  const { status, reason } = answerStatus(answerCounts);
   const spendUsd = Object.fromEntries(Object.entries(spend).map(([key, value]) => [key, Number(value.toFixed(4))]));
   spendUsd.total = Number(Object.values(spend).reduce((sum, value) => sum + value, 0).toFixed(4));
   return {
@@ -173,15 +223,13 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
       judgeModel: run.judge_model,
       variants: Object.keys(byVariant),
     },
-    answers: { planned, scored, unscored, unscoredByVariant },
-    overall: group(scores.overall, Object.values(searchedByVariant).reduce((sum, value) => sum + value, 0)),
+    answers: answerCounts,
+    overall,
     byVariant,
     spendUsd,
   };
 }
 
-const isCount = (value) => Number.isInteger(value) && value >= 0;
-const isFiniteNumber = (value) => typeof value === 'number' && Number.isFinite(value);
 const OBSERVED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 const SPEND_KEY_PATTERN = /^[a-z][a-z_]{0,31}$/;
 
@@ -201,12 +249,12 @@ function acceptGroup(raw, where) {
   const { answers, mentions, topPicks, recommendations, webAnswers, searchedAnswers, citations, aeoScore, shareOfVoice } = raw;
   invariant(isCount(answers) && answers > 0, `${where}.answers is not a positive count`);
   for (const [key, value] of Object.entries({ mentions, topPicks, recommendations })) {
-    invariant(value === null || (isCount(value) && value <= answers), `${where}.${key} is not a count within its answers`);
+    invariant(isCount(value) && value <= answers, `${where}.${key} is not a count within its answers`);
   }
   invariant(isCount(webAnswers) && webAnswers <= answers, `${where}.webAnswers is not a count within its answers`);
   for (const [key, value] of Object.entries({ searchedAnswers, citations })) {
     invariant(
-      webAnswers > 0 ? value === null || (isCount(value) && value <= webAnswers) : value === null,
+      webAnswers > 0 ? isCount(value) && value <= webAnswers : value === null,
       `${where}.${key} is not a count within its web answers`,
     );
   }
@@ -250,23 +298,21 @@ export function acceptSnapshot(raw, { date, digest, revision, config, questions 
   );
   const byVariant = Object.fromEntries(variants.map((label) => [label, acceptGroup(raw.byVariant[label], `byVariant.${label}`)]));
   const overall = acceptGroup(raw.overall, 'overall');
-  const { planned, scored, unscored, unscoredByVariant } = raw.answers ?? {};
-  invariant([planned, scored, unscored].every(isCount) && planned === scored + unscored, 'answers counts do not add up');
-  invariant(scored === overall.answers, 'answers.scored is not overall.answers');
-  invariant(unscoredByVariant && typeof unscoredByVariant === 'object', 'answers.unscoredByVariant is missing');
-  const unscoredEntries = Object.entries(unscoredByVariant).sort(([a], [b]) => a.localeCompare(b));
-  invariant(
-    unscoredEntries.every(([label, count]) => labels.includes(label) && isCount(count) && count > 0)
-      && unscoredEntries.reduce((sum, [, count]) => sum + count, 0) === unscored,
-    'answers.unscoredByVariant does not match answers.unscored',
-  );
+  assertTotals(overall, byVariant);
+  const perVariant = questions * config.repetitions;
+  for (const [label, entry] of Object.entries(byVariant)) {
+    invariant(entry.answers <= perVariant, `byVariant.${label} has more answers than the ${perVariant} the design asks for`);
+  }
+  // Recomputed from the fixed design, so a run that lost answers outright
+  // cannot pass as a smaller complete week.
+  const answers = expectedAnswers(labels, perVariant, Object.fromEntries(Object.entries(byVariant).map(([label, entry]) => [label, entry.answers])));
+  invariant(JSON.stringify(raw.answers) === JSON.stringify(answers), `answers does not match the design: expected ${JSON.stringify(answers)}`);
   const spend = raw.spendUsd;
   invariant(
     spend && typeof spend === 'object' && isFiniteNumber(spend.total)
       && Object.entries(spend).every(([key, value]) => SPEND_KEY_PATTERN.test(key) && isFiniteNumber(value)),
     'spendUsd is not a map of amounts',
   );
-  const answers = { planned, scored, unscored, unscoredByVariant: Object.fromEntries(unscoredEntries) };
   const { status, reason } = answerStatus(answers);
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -536,7 +582,10 @@ function collectSnapshot({ options, env, now, spawn, date, digest, inputsDir, co
       `${name} in ${runDir} differs from ${join(options.dir, 'inputs', name)}`,
     );
   }
-  return buildSnapshot({ runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null });
+  return buildSnapshot({
+    runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null,
+    expected: { labels: variantLabels(config), perVariant: readJson(join(inputsDir, 'queries.json')).length * config.repetitions },
+  });
 }
 
 /** Compares a snapshot with the earlier ones in `dir` and writes the dated pair. */

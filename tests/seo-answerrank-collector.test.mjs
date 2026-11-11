@@ -295,6 +295,37 @@ describe('runCli', () => {
     assert.equal(snapshot.comparison.previousDate, null);
   });
 
+  it('counts answer rows a run never wrote as unscored, so a truncated run is partial', async () => {
+    const { snapshot } = await runCli(
+      ['--from-run', writeRun({ variants: { ...VARIANTS, perplexity: [10, 1, 10, 1] } }), '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'],
+      { env: {}, log: silent },
+    );
+    assert.deepEqual(snapshot.answers, { planned: 195, scored: 166, unscored: 29, unscoredByVariant: { perplexity: 29 } });
+    assert.equal(snapshot.status, 'partial');
+  });
+
+  it('refuses a run whose scores have no mention rate, which would hide a decline', async () => {
+    const runDir = writeRun({ variants: VARIANTS });
+    const scores = JSON.parse(readFileSync(join(runDir, 'scores.json'), 'utf8'));
+    scores.overall.mention_rate = null;
+    writeFileSync(join(runDir, 'scores.json'), JSON.stringify(scores));
+    await assert.rejects(
+      runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
+      /a scored group has no mention_rate/,
+    );
+  });
+
+  it('refuses a run whose overall scores disagree with its variant scores', async () => {
+    const runDir = writeRun({ variants: VARIANTS });
+    const scores = JSON.parse(readFileSync(join(runDir, 'scores.json'), 'utf8'));
+    scores.overall.mention_rate = 0;
+    writeFileSync(join(runDir, 'scores.json'), JSON.stringify(scores));
+    await assert.rejects(
+      runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
+      /overall\.mentions is 0 but the variants add up to 14/,
+    );
+  });
+
   it('refuses a run whose questions differ from the committed inputs', async () => {
     const runDir = writeRun({ variants: VARIANTS });
     writeFileSync(join(runDir, 'queries.json'), '[]');
@@ -412,12 +443,30 @@ describe('acceptSnapshot (the collect job taking the AI-answer artifact)', () =>
       'answer counts that do not add up': (raw) => { raw.answers.planned = 300; },
       'a free-text timestamp': (raw) => { raw.observedAt = 'yesterday @owner'; },
       'another date': (raw) => { raw.date = '2026-11-18'; },
+      'a null mention count, which would skip the decline test': (raw) => { raw.overall.mentions = null; },
+      'a null citation count on a web variant': (raw) => { raw.byVariant['gpt +web'].citations = null; },
+      'overall counts that disagree with the variants': (raw) => { raw.overall.mentions = 0; },
+      'fewer answers than the design, claimed complete': (raw) => {
+        raw.byVariant.gpt.answers = 5;
+        raw.byVariant.gpt.mentions = 0;
+        raw.overall.answers -= 34;
+        raw.overall.mentions -= 2;
+        raw.answers = { planned: 161, scored: 161, unscored: 0, unscoredByVariant: {} };
+      },
     };
     for (const [name, mutate] of Object.entries(cases)) {
       const raw = structuredClone(valid);
       mutate(raw);
       assert.throws(() => acceptSnapshot(raw, acceptContext()), /seo-answerrank-collect/, name);
     }
+  });
+
+  it('accepts a run that lost answers only as a partial week measured against the full design', async () => {
+    const produced = await produce({ ...VARIANTS, gpt: [5, 0, 0, 0] });
+    const raw = JSON.parse(readFileSync(produced.json, 'utf8'));
+    assert.deepEqual(raw.answers, { planned: 195, scored: 161, unscored: 34, unscoredByVariant: { gpt: 34 } });
+    assert.equal(raw.status, 'partial');
+    assert.equal(acceptSnapshot(raw, acceptContext()).status, 'partial');
   });
 
   it('needs a date and takes no other source', () => {
