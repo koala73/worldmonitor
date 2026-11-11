@@ -48,3 +48,18 @@ test('production claims a one-day NX deadline for the data key', () => {
   assert.deepEqual(commands.find((c) => c[0] === 'SET' && c[1] === deadlineKey), ['SET', deadlineKey, String(now + 1440 * 60_000), 'NX']);
   assert.ok(commands.some((c) => c[0] === 'GET' && c[1] === deadlineKey));
 });
+
+test('minRecordCount is the watchlist size, so a reservoir dropping out reads as partial coverage', async () => {
+  const { readFileSync } = await import('node:fs');
+  const wl = JSON.parse(readFileSync(new URL('../scripts/data/strategic-reservoirs.json', import.meta.url), 'utf8'));
+  const size = (Array.isArray(wl) ? wl : wl.reservoirs).length;
+  assert.equal(SEED_META[name].minRecordCount, size);
+  const metaKey = SEED_META[name].key;
+  const withCount = (recordCount) => classifyKey(name, key, { allowOnDemand: true }, {
+    keyStrens: new Map([[key, 4096]]), keyErrors: new Map(), keyMetaErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify({ fetchedAt: now - 60_000, recordCount })]]),
+    activationStates: new Map([[name, true]]), rolloutPendingUntilMs: new Map(), now,
+  }).status;
+  assert.equal(withCount(size), 'OK');
+  assert.equal(withCount(size - 1), 'COVERAGE_PARTIAL');
+});

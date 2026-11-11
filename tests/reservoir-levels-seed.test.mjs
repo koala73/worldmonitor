@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DISCOVERY_ALERT_RUNS,
   MAX_GRANULE_FAILURES,
   STATE_SCHEMA,
   buildSeedOptions,
@@ -52,7 +53,7 @@ const BASELINE = {
  * Fake CMR + SlideRule. cmr: { id -> [granule names] } keyed by core bbox; slide(granules)
  * returns { rows, failGranules, status }.
  */
-function fakeUpstream({ cmr = {}, cmrDown = false, slideDown = false, failGranules = [], level = {} } = {}) {
+function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {} } = {}) {
   const calls = { cmr: 0, slide: [] };
   const byBbox = new Map(WATCHLIST.map((e) => [e.core.join(','), e.id]));
   const fetchImpl = async (url, init = {}) => {
@@ -61,6 +62,7 @@ function fakeUpstream({ cmr = {}, cmrDown = false, slideDown = false, failGranul
       calls.cmr++;
       if (cmrDown) throw new TypeError('fetch failed');
       const id = byBbox.get(u.searchParams.get('bounding_box'));
+      if (cmrDownFor.includes(id)) return { ok: false, status: 400, headers: new Headers(), json: async () => ({}), text: async () => 'boom' };
       const since = u.searchParams.get('temporal').split(',')[0].slice(0, 10);
       const entries = (cmr[id] || []).filter((g) => g.slice(6, 14) >= since.replaceAll('-', '')).map((g) => ({ producer_granule_id: g }));
       return { ok: true, status: 200, headers: new Headers(), json: async () => ({ feed: { entry: entries } }) };
@@ -245,5 +247,30 @@ describe('planning and state', () => {
     const raw = { reservoirs: [], _state: { schema: 1, byId: { a: {} } } };
     assert.deepEqual(o.extraKeys[0].transform(raw), raw._state);
     assert.deepEqual(o.publishTransform(raw), { reservoirs: [] });
+  });
+
+  it('reports a reservoir whose discovery keeps failing and drops it from the health record count', async () => {
+    const opts = buildSeedOptions(WATCHLIST.length);
+    let state = null;
+    let data;
+    for (let i = 1; i <= DISCOVERY_ALERT_RUNS; i++) {
+      const prev = state;
+      data = await run({ ...fakeUpstream({ cmr: { alpha: [gran('2026-08-20', 5)] }, cmrDownFor: ['beta'] }), readState: async () => prev });
+      state = data._state;
+      assert.equal(state.byId.beta.discoveryFailedRuns, i);
+      assert.equal(state.byId.alpha.discoveryFailedRuns ?? 0, 0);
+      const published = stripState(data);
+      const expectFailing = i >= DISCOVERY_ALERT_RUNS ? ['beta'] : [];
+      assert.deepEqual(published.discoveryFailing, expectFailing);
+      assert.equal(opts.declareRecords(published), 2 - expectFailing.length);
+    }
+    // Still publishable: beta keeps its last level and the run is not an outage.
+    assert.equal(countWithLatest(stripState(data)), 2);
+    // One successful discovery clears the alert.
+    const prev = state;
+    data = await run({ ...fakeUpstream({ cmr: { alpha: [gran('2026-08-20', 5)] } }), readState: async () => prev });
+    assert.equal(data._state.byId.beta.discoveryFailedRuns ?? 0, 0);
+    assert.deepEqual(stripState(data).discoveryFailing, []);
+    assert.equal(opts.declareRecords(stripState(data)), 2);
   });
 });
