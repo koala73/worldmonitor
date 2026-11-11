@@ -125,6 +125,7 @@ function mountPlugin(): void {
     if (!data) {
       // Hosts may hand the view a file pointer in place of a large result; the view's own call returns it in full.
       // Only the opening result is the dashboard's: later host results can echo the view's own tool calls.
+      // renderHostResult drops later results without a digest, so this point is reached only by a refresh.
       if (openingResult) return reloadDigest(inputView, inputBilling);
       status.textContent = 'News data is unavailable. Previously loaded news remains visible.';
       return false;
@@ -148,6 +149,11 @@ function mountPlugin(): void {
       });
     }
     return true;
+  }
+
+  function carriesDigest(result: unknown): boolean {
+    const response = result as { isError?: boolean; content?: Array<{ type?: string; text?: string }>; structuredContent?: unknown } | undefined;
+    return Boolean(response) && typeof response === 'object' && !response!.isError && (hasCategories(response!.structuredContent) || Boolean(digestFromText(response!.content)));
   }
 
   function hasCategories(data: unknown): data is DashboardDigest {
@@ -510,6 +516,9 @@ function mountPlugin(): void {
   function renderHostResult(params: unknown): void {
     const openingResult = !openingResultSeen;
     openingResultSeen = true;
+    // Later host results can echo the view's own tool calls, whose responses the view already handled.
+    // Only a later digest renders; an echoed error or analysis result must not touch the status or panels.
+    if (!openingResult && !carriesDigest(params)) return;
     void renderResult(params, false, openingResult).catch(() => { status.textContent = 'The dashboard response is invalid. Previously loaded news remains visible.'; });
   }
 
