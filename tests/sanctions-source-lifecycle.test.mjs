@@ -1,3 +1,4 @@
+import { COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from '../scripts/shared/country-name-to-iso2.cjs';
 import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -38,7 +39,7 @@ async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLI
   const writes = [];
   let options;
   const context = vm.createContext({
-    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync,
+    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync, COUNTRY_NAME_TO_ISO2, normalizeCountryToken,
     Date: class extends Date { static now() { return clock; } },
     SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, mergeSanctionEntries, semaTargetCountry, sanctionsListContentMeta, projectCountrySanctions, buildSanctionsChanges,
     SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200,
@@ -255,14 +256,30 @@ describe('sanctions source lifecycle', () => {
     assert.equal(retainedFailure.data._semaAttribution.degraded, true, 'explicit failure evidence is preserved');
   });
 
+  it('logs the attribution summary on healthy runs', async () => {
+    const logs = [];
+    const { data } = await publish({ io: { console: { log: line => logs.push(line), warn() {} } } });
+    assert.equal(data._ofacAttribution.degraded, false);
+    assert.equal(data._semaAttribution.degraded, false);
+    const line = logs.find(line => line.startsWith('  Sanctions attribution: '));
+    assert.ok(line, 'healthy runs emit the monitorable summary');
+    const summary = JSON.parse(line.slice('  Sanctions attribution: '.length));
+    assert.deepEqual(summary.attribution, normalize(data._ofacAttribution));
+    assert.equal(summary.semaRegimeCount, 1);
+    assert.equal(summary.semaUnattributedCount, 0);
+  });
+
   it('publishes aircraft resolution failures as seed errors despite whole-list headroom', async () => {
     const { data, options } = await publish({ io: { fetchSource: async ({ label }) => ({ datasetDate: now,
       entries: [...Array.from({ length: 99 }, (_, i) => row(label, i + 1, ['RU'])),
-        { ...row(label, 100, ['IR']), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' }],
+        ...Array.from({ length: 5 }, (_, i) => ({ ...row(label, 100 + i, ['IR']), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', _aircraftHasCurrentTail: true }))],
     }) } });
     const result = await options.afterPublish(data, {});
     assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0);
     assert.equal(result.freshnessMetaPatch.attribution.unattributedAircraftShare, 1);
+    assert.equal(result.freshnessMetaPatch.attribution.unresolvedAircraftWithTailCount, 10);
+    assert.equal(data._sourceSnapshots.SDN.records.at(-1)._aircraftHasCurrentTail, true);
+    assert.ok(options.publishTransform(data).entries.every(entry => !Object.hasOwn(entry, '_aircraftHasCurrentTail')));
     assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
     assert.equal(result.completionState, 'DEGRADED');
   });

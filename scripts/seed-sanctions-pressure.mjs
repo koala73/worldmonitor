@@ -59,9 +59,9 @@ const ET_CODE = {
 const DEFAULT_RECENT_LIMIT = 60;
 // Measure OFAC country/registry attribution separately from SEMA regime targets.
 const OFAC_UNATTRIBUTED_MAX_SHARE = 0.10;
-// 186 of 342 aircraft in the 2026-11-10 cohort have no current tail feature.
-// A 60% ceiling leaves that known gap visible while detecting registry failure.
-const OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE = 0.60;
+// Missing current tails are expected upstream. Alarm on a registry-resolution
+// failure affecting 10 aircraft with current tails, independent of cohort size.
+const OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT = 10;
 const ATTRIBUTION_DEGRADED_ERROR_CODE = 'SANCTIONS_ATTRIBUTION_DEGRADED';
 const REGION_NAMES = new Intl.DisplayNames(['en'], { type: 'region' });
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
@@ -97,6 +97,7 @@ function validSourceRecords(source, records) {
       || !Array.isArray(entry.sourceLists) || entry.sourceLists.length !== 1 || entry.sourceLists[0] !== source
       || !['countryCodes', 'countryNames', 'programs'].every(field => Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string'))
       || !['_aliases', '_identifiers', 'parentCountryCodes', 'parentCountryNames'].every(field => entry[field] === undefined || (Array.isArray(entry[field]) && entry[field].every(v => typeof v === 'string')))
+      || !(entry._aircraftHasCurrentTail === undefined || typeof entry._aircraftHasCurrentTail === 'boolean')
       || !['_notice', '_url', '_flagCode', '_flagName'].every(field => entry[field] === undefined || typeof entry[field] === 'string')
       || typeof entry.effectiveAt !== 'string' || !/^\d+$/.test(entry.effectiveAt)) return false;
     ids.add(entry.id);
@@ -257,6 +258,8 @@ function ofacAttributionHealth(entries) {
   const aircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
   // Location evidence cannot prove that aircraft registry resolution still works.
   const unattributedAircraftCount = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && !hasCountryCode(entry._flagCode)).length;
+  const aircraftWithTails = entries.filter(entry => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && entry._aircraftHasCurrentTail);
+  const unresolvedAircraftWithTailCount = aircraftWithTails.filter(entry => !hasCountryCode(entry._flagCode)).length;
   const unattributed = countUnattributed(entries);
   const share = (count, total) => (total > 0 ? Math.round((count / total) * 10_000) / 10_000 : null);
   const entryShare = share(unattributed.entryCount, entries.length);
@@ -273,10 +276,13 @@ function ofacAttributionHealth(entries) {
     unattributedAircraftCount,
     unattributedAircraftShare: aircraftShare,
     maxShare: OFAC_UNATTRIBUTED_MAX_SHARE,
-    aircraftMaxShare: OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE,
+    aircraftWithTailCount: aircraftWithTails.length,
+    unresolvedAircraftWithTailCount,
+    unresolvedAircraftWithTailShare: share(unresolvedAircraftWithTailCount, aircraftWithTails.length),
+    aircraftRegistryFailureCount: OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT,
     degraded: unattributed.entryCount > entries.length * OFAC_UNATTRIBUTED_MAX_SHARE
       || unattributed.vesselCount > vesselCount * OFAC_UNATTRIBUTED_MAX_SHARE
-      || unattributedAircraftCount > aircraftCount * OFAC_AIRCRAFT_UNATTRIBUTED_MAX_SHARE,
+      || unresolvedAircraftWithTailCount >= OFAC_AIRCRAFT_REGISTRY_FAILURE_COUNT,
   };
 }
 
@@ -285,16 +291,17 @@ function semaAttributionHealth(entries) {
   for (const entry of entries) {
     if (entry.entityType === 'SANCTIONS_ENTITY_TYPE_VESSEL') continue;
     const regime = entry._regime || 'Unknown';
-    // These schedules intentionally supply no country target. Do not use
-    // semaTargetCountry to decide eligibility: a failure there is what we measure.
-    if (/^(ukraine|moldova|jvcfor|hamas|settler)$/i.test(regime)) continue;
-    const row = Object.hasOwn(regimes, regime) ? regimes[regime] : (regimes[regime] = { entryCount: 0, unattributedCount: 0 });
+    // Classify independently of semaTargetCountry: losing a known state's
+    // targets must still alarm. Unknown/thematic schedules are informational.
+    const targetExpected = !/^(ukraine|moldova|jvcfor|hamas|settler)$/i.test(regime)
+      && Boolean(COUNTRY_NAME_TO_ISO2[normalizeCountryToken(regime)]);
+    const row = Object.hasOwn(regimes, regime) ? regimes[regime] : (regimes[regime] = { entryCount: 0, unattributedCount: 0, targetExpected });
     row.entryCount += 1;
     if (!entry._targetCountryCodes?.some(hasCountryCode)) row.unattributedCount += 1;
   }
   for (const row of Object.values(regimes)) {
     row.unattributedShare = Math.round(row.unattributedCount / row.entryCount * 10_000) / 10_000;
-    row.degraded = row.unattributedCount > row.entryCount * OFAC_UNATTRIBUTED_MAX_SHARE;
+    row.degraded = row.targetExpected && row.unattributedCount > row.entryCount * OFAC_UNATTRIBUTED_MAX_SHARE;
   }
   return { regimes, maxShare: OFAC_UNATTRIBUTED_MAX_SHARE, degraded: Object.values(regimes).some(row => row.degraded) };
 }
@@ -439,7 +446,9 @@ async function fetchSource(source, { deadlineAt } = {}) {
       // Exact aliases such as Congo (Kinshasa) are valid. Never strip an unknown
       // qualifier such as Former or Disputed to turn it into a current registry.
       if (/[()]/.test(flag)) {
-        return COUNTRY_NAME_TO_ISO2[normalizeCountryToken(flag)] ?? null;
+        const officialName = /^(Iran \(Islamic Republic of\)|Bolivia \(Plurinational State of\)|Venezuela \(Bolivarian Republic of\)|Tanzania \(United Republic of\)|Micronesia \(Federated States of\)|Moldova \(Republic of\)|Netherlands \(Kingdom of the\)|Taiwan \(Province of China\))$/i;
+        return COUNTRY_NAME_TO_ISO2[normalizeCountryToken(flag)]
+          ?? (officialName.test(flag.trim()) ? countryNameToIso2(flag) : null);
       }
       const code = countriesByName.get(flag.toLowerCase()) ?? countryNameToIso2(flag);
       return hasCountryCode(code) ? code : null;
@@ -505,6 +514,8 @@ async function fetchSource(source, { deadlineAt } = {}) {
         countryCodes: sorted.map(([c]) => c),
         countryNames: sorted.map(([, n]) => n),
         flag,
+        aircraftHasCurrentTail: entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' && (profileFeatures ?? []).some(feat =>
+          featureTypes.get(feat.featureTypeId) === 'Aircraft Tail Number' && feat.details.some(detail => detail.trim())),
         aliases: aliasNames,
         identifiers,
       });
@@ -533,6 +544,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
         isNew: false,
         note,
         ...(party?.flag ? { _flagCode: party.flag.code, _flagName: party.flag.name } : {}),
+        ...(party?.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT' ? { _aircraftHasCurrentTail: party.aircraftHasCurrentTail } : {}),
         _aliases: party?.aliases ?? [],
         _identifiers: party?.identifiers ?? [],
       });
@@ -578,7 +590,7 @@ async function fetchSource(source, { deadlineAt } = {}) {
           const type = relationTypes.get(attrs.RelationTypeID);
           let child = attrs['From-ProfileID'], parent = attrs['To-ProfileID'];
           if (type === 'Owns, controls, or operates') [child, parent] = [parent, child];
-          else if (!['Owned or Controlled By', 'Acting for or on behalf of', 'Property in the interest of', 'Linked To'].includes(type)) break;
+          else if (!['Owned or Controlled By', 'Acting for or on behalf of', 'Property in the interest of'].includes(type)) break;
           if (child && parent && child !== parent) {
             const links = parentLinks.get(child) || new Set();
             links.add(parent);
@@ -956,6 +968,12 @@ async function fetchSanctionsPressure() {
     })
     : semaEntries;
   const _semaAttribution = semaAttributionHealth(semaHealthEntries);
+  console.log(`  Sanctions attribution: ${JSON.stringify({
+    attribution: _ofacAttribution,
+    semaRegimeCount: Object.keys(_semaAttribution.regimes).length,
+    semaUnattributedCount: Object.values(_semaAttribution.regimes).reduce((sum, row) => sum + row.unattributedCount, 0),
+    semaAttribution: _semaAttribution,
+  })}`);
   if (_ofacAttribution.degraded) {
     console.warn(`  ${ATTRIBUTION_DEGRADED_ERROR_CODE}: OFAC ${JSON.stringify(_ofacAttribution)}`);
   }
@@ -1065,7 +1083,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, _sourceSnapshots, _sourceHealth, _changes, _ofacAttribution, _semaAttribution, pressureMetadata, ...rest } = data;
     if (Array.isArray(rest.entries)) {
       rest.entries = rest.entries.map((entry) => {
-        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, _targetCountryCodes, _targetCountryNames, ...publicEntry } = entry;
+        const { _aliases, _identifiers, _publishedAt, _regime, _flagCode, _flagName, _aircraftHasCurrentTail, _targetCountryCodes, _targetCountryNames, ...publicEntry } = entry;
         return publicEntry;
       });
     }
