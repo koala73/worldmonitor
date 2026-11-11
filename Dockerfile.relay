@@ -151,6 +151,7 @@ COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
 # reads. seedUcdpEvents() imports it lazily, so a missing file fails only that
 # write (pinned in tests/dockerfile-relay-imports.test.mjs).
 COPY scripts/_ucdp-dashboard.mjs ./scripts/_ucdp-dashboard.mjs
+COPY scripts/shared/exposure-location-key.mjs ./scripts/shared/exposure-location-key.mjs
 # compare-and-delete-script.cjs is the Redis EVAL body shared by releaseLock()
 # in _seed-utils.mjs and the AIS relay. Missing it = ERR_MODULE_NOT_FOUND when
 # any COPY'd seeder loads _seed-utils.mjs (guarded by dockerfile-relay-imports).
