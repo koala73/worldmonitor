@@ -27667,6 +27667,29 @@ body.map-width-resizing {
   background: var(--surface);
 }
 
+/* Wrapped tabs and pinned links leave little room for controls on short
+   screens. Use the available height while keeping phone navigation clear. */
+@media (max-height: 650px) {
+  .unified-settings-modal {
+    max-height: calc(100dvh - 16px);
+    padding: 12px;
+  }
+
+  .unified-settings-modal .dashboard-chrome-links {
+    bottom: -12px;
+  }
+}
+
+@media (max-height: 650px) and (max-width: 768px) {
+  #unifiedSettingsModal {
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .unified-settings-modal {
+    max-height: calc(100dvh - 74px - env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .dashboard-site-links-row,
 .legal-links-row {
   display: flex;
