@@ -407,6 +407,9 @@ const BOOTSTRAP_KEYS = {
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
   ukmtoIncidents: 'maritime:ukmto-incidents:v1',
+  // ICESat-2 strategic reservoir levels (scripts/seed-reservoir-levels.mjs). Served by
+  // /api/climate/v1/list-reservoir-levels with no dashboard consumer yet.
+  reservoirLevels: 'climate:reservoir-levels:v1',
   // Public chokepoint status open dataset index (/data/v1/chokepoints/), published
   // daily by .github/workflows/open-data-chokepoints.yml. Read only by
   // api/open-data-chokepoints.js, never by the dashboard.
@@ -939,6 +942,9 @@ const SEED_META = {
   co2Monitoring:    { key: 'seed-meta:climate:co2-monitoring',  maxStaleMin: 4320 }, // daily cron at 06:00 UTC; 72h tolerates two missed runs
   oceanIce:         { key: 'seed-meta:climate:ocean-ice',       maxStaleMin: 2880 }, // daily cron at 08:00 UTC; 48h = 2× interval, tolerates one missed run
   climateNews:      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 }, // relay loop every 30min; 90 = 3× interval
+  // Daily climate bundle member; 4320 = 3x the daily interval. Observation age (50-150 days
+  // behind real time) is a property of ICESat-2 data latency and is never staleness here.
+  reservoirLevels:  { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320 },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   cveReference: {

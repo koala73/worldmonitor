@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ReservoirLevel is the water-surface level of one strategic reservoir or lake,
+// measured by ICESat-2 lidar. Levels are metres above the EGM2008 geoid.
+// They are lake levels, not storage volumes.
+message ReservoirLevel {
+  // Stable watchlist identifier, e.g. "gerd", "mead".
+  string id = 1;
+  string name = 2;
+  // ISO 3166-1 alpha-2 code of the dam or majority state.
+  string country = 3;
+  // ISO 3166-1 alpha-2 codes of states with a stake in the water body.
+  repeated string riparians = 4;
+  string river = 5;
+  double lat = 6;
+  double lon = 7;
+  // Subset of hydropower, transboundary, irrigation, canal, conflict,
+  // new-impoundment, terminal-lake.
+  repeated string tags = 8;
+  // Why an analyst watches this water body.
+  string why = 9;
+  // Most recent usable overpass. Absent when the record has none.
+  ReservoirLatestPass latest = 10;
+  // Date (YYYY-MM-DD) of the usable overpass before the latest.
+  string prev_date = 11;
+  // Latest level minus the previous usable overpass, metres.
+  optional double change_prev_m = 12;
+  // Latest level minus the level interpolated 30, 90 and 365 days earlier.
+  // Absent when no usable overpass lies close enough to that date.
+  optional double change_30d_m = 13;
+  optional double change_90d_m = 14;
+  optional double change_365d_m = 15;
+  // Latest level minus the median of prior years within 30 days of the same
+  // day of year. Needs three prior years.
+  optional double seasonal_anomaly_m = 16;
+  optional double seasonal_z = 17;
+  optional double record_min_m = 18;
+  optional double record_max_m = 19;
+  // Date (YYYY-MM-DD) of the first usable overpass in the record.
+  string record_start = 20;
+  // Latest level as a percentage of the recorded range. Needs three years
+  // of record and a range of at least 1 m.
+  optional double percent_of_range = 21;
+  bool record_low = 22;
+  bool record_high = 23;
+  // One of no_recent_data, record_low, record_high, falling_fast,
+  // rising_fast, low, high, normal, insufficient_history.
+  string status = 24;
+  // Usable overpasses in the last 36 months, at most one per day.
+  repeated ReservoirLevelPoint series = 25;
+  int32 ok_pass_count = 26;
+}
+
+message ReservoirLatestPass {
+  // Overpass date, YYYY-MM-DD (UTC).
+  string date = 1;
+  double level_m = 2;
+  // Median absolute deviation of the segments in this overpass, metres.
+  double mad_m = 3;
+  // Number of water segments in the overpass.
+  int32 n = 4;
+  // Days between the overpass and the time the snapshot was built.
+  int32 age_days = 5;
+}
+
+message ReservoirLevelPoint {
+  string date = 1;
+  double level_m = 2;
+}
+
+message ReservoirLevelsSource {
+  string name = 1;
+  string product = 2;
+  string url = 3;
+  string processing = 4;
+}
