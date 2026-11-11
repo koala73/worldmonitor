@@ -326,6 +326,7 @@
         "description": "Giải pháp tùy chỉnh cho các tổ chức",
         "features": [
           "Tất cả trong Pro + API",
+          "Bảng điều khiển dùng chung của nhóm",
           "10,000 yêu cầu API mỗi ngày, có thể tăng thêm theo hợp đồng",
           "Hỗ trợ chuyên dụng",
           "Tích hợp tùy chỉnh",
@@ -347,6 +348,7 @@
           "300 yêu cầu/phút",
           "10.000 yêu cầu/ngày (REST + MCP kết hợp; một cuộc gọi MCP trực tiếp tính là 2-3)",
           "5 giấy phép Pro — mời người dùng bằng bất kỳ tên miền email doanh nghiệp nào",
+          "Bảng điều khiển dùng chung của nhóm",
           "Hỗ trợ ưu tiên"
         ],
         "highlightFeatures": [

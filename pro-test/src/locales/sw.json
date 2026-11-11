@@ -90,6 +90,7 @@
           "Ombi 300 kwa dakika",
           "Ombi 10,000 kwa siku zilizoingizwa (REST + MCP pamoja; simu ya MCP hai huhesabu kama 2-3)",
           "Leseni 5 za Pro — waalike watumiaji wenye kikoa chochote cha barua pepe cha shirika",
+          "Dashibodi zinazoshirikiwa na timu",
           "Msaada wa kipaumbele"
         ],
         "highlightFeatures": [
@@ -100,6 +101,7 @@
         "description": "Suluhisho la kawaida kwa mashirikishi",
         "features": [
           "Kila kitu katika Pro + API",
+          "Dashibodi zinazoshirikiwa na timu",
           "Maombi 10,000 ya API kwa siku, zaidi kwa mkataba",
           "Msaada unaozingatiwa",
           "Ujumuishaji wa kawaida",

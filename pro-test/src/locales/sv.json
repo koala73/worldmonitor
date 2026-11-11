@@ -326,6 +326,7 @@
         "description": "Anpassade lösningar för organisationer",
         "features": [
           "Allt i Pro + API",
+          "Delade teampaneler",
           "10 000 API-förfrågningar per dag, mer enligt avtal",
           "Dedikerad support",
           "Anpassade integreringar",
@@ -347,6 +348,7 @@
           "300 begäranden/minut",
           "10 000 förfrågningar/dag inkluderat (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
           "5 Pro-licenser — bjud in användare med valfri företagsdomän för e-post",
+          "Delade teampaneler",
           "Prioriterad support"
         ],
         "highlightFeatures": [

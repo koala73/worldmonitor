@@ -326,6 +326,7 @@
         "description": "Rozwiązania dostosowane dla organizacji",
         "features": [
           "Wszystko z planu Pro + API",
+          "Współdzielone pulpity zespołu",
           "10 000 żądań API dziennie, więcej na podstawie umowy",
           "Wsparcie dedykowane",
           "Niestandardowe integracje",
@@ -347,6 +348,7 @@
           "300 żądań/minutę",
           "10 000 żądań/dzień w pakiecie (REST + MCP razem; jedno aktywne połączenie MCP liczy się jako 2-3)",
           "5 licencji Pro — zapraszaj użytkowników z dowolnej firmowej domeny e-mail",
+          "Współdzielone pulpity zespołu",
           "Wsparcie priorytetowe"
         ],
         "highlightFeatures": [
