@@ -30471,6 +30471,18 @@ body.map-width-resizing {
 .layer-toggles:not(.deckgl-layer-toggles) > .map-control-disclosure { flex-basis: 100%; }
 .layer-toggles.map-control-collapsed { width: auto; }
 
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+    display: flex !important;
+  }
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+    display: flex;
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    bottom: 58px;
+  }
+}
+
 /* Keep the existing 48px touch targets; mouse users can use a compact row. */
 @media (pointer: fine) {
   :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {

@@ -13,7 +13,7 @@ test('collapsed legends preserve active NO2 attribution', async ({ page }) => {
     map.container.style.cssText = 'position:relative;width:562px;height:450px';
     document.body.append(map.container);
     map.controlDisclosureCleanups = [];
-    map.state = { layers: { ...Object.fromEntries(Object.keys(DEFAULT_MAP_LAYERS).map(key => [key, false])), no2Activity: true, hotspots: true } };
+    map.state = { layers: { ...Object.fromEntries(Object.keys(DEFAULT_MAP_LAYERS).map(key => [key, false])), no2Activity: true, diseaseOutbreaks: true } };
     map.no2Activity = { attribution: 'Contains modified Copernicus Sentinel data (2026)' };
     localStorage.removeItem('worldmonitor-map-legend-expanded');
     map.createLegend();
@@ -45,4 +45,43 @@ test('collapsed legends preserve active NO2 attribution', async ({ page }) => {
   });
   await expect(credit).toBeHidden();
   await expect(button).toBeVisible();
+});
+
+test('mobile SVG disclosure buttons remain available except during fullscreen video', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/tests/runtime-harness.html');
+  await page.evaluate(async () => {
+    await import('/src/styles/main.css');
+    const { bindMapControlDisclosure } = await import('/src/components/map-control-disclosure.ts');
+    const container = document.createElement('div');
+    container.style.cssText = 'position:relative;width:390px;height:600px';
+    document.body.append(container);
+    for (const kind of ['layers', 'legend'] as const) {
+      const panel = document.createElement('div');
+      panel.className = kind === 'layers' ? 'layer-toggles' : 'map-legend';
+      const content = document.createElement('span');
+      content.textContent = 'Panel content';
+      panel.append(content);
+      container.append(panel);
+      bindMapControlDisclosure(container, panel, kind, kind);
+    }
+  });
+  for (const selector of ['.layer-toggles', '.map-legend']) {
+    const panel = page.locator(selector);
+    const button = panel.locator('.map-control-disclosure');
+    await expect(button).toBeVisible();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(panel.locator('span')).toBeHidden();
+    await button.click();
+    await expect(panel.locator('span')).toBeVisible();
+    if (selector === '.layer-toggles') {
+      const layers = await panel.boundingBox();
+      const legend = await page.locator('.map-legend').boundingBox();
+      expect(layers!.y + layers!.height).toBeLessThanOrEqual(legend!.y);
+    }
+    await button.click();
+  }
+  await page.evaluate(() => document.body.classList.add('live-news-fullscreen-active'));
+  await expect(page.locator('.layer-toggles')).toBeHidden();
+  await expect(page.locator('.map-legend')).toBeHidden();
 });
