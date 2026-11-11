@@ -79,5 +79,5 @@ export function runSweep() {
 if (isMainModule(import.meta.url, process.argv[1])) {
   const result = runSweep();
   console.log(JSON.stringify(result, null, 2));
-  if (result.counts.wrongCountry || result.counts.nullTableLand > 136) process.exitCode = 1;
+  if (result.counts.wrongCountry || result.counts.nullTableLand > 0) process.exitCode = 1;
 }
