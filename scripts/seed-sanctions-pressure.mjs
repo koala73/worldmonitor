@@ -15,7 +15,7 @@ import { fetchOfacSourceResponse } from './_sanctions-source.mjs';
 import { buildSanctionsChanges } from './_sanctions-changes.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS, ingestCslEntries } from './_csl-sanctions.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
-import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
+import { SANCTIONS_MAX_CONTENT_AGE_MIN, SANCTIONS_SOURCE_VERSION, SEMA_SOURCE, SEMA_TIMEOUT_MS, ingestSemaEntries, mergeSanctionEntries, semaTargetCountry, ofacRegistrationToIdentifier, sanctionsListContentMeta } from './_sema-sanctions.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -946,7 +946,16 @@ async function fetchSanctionsPressure() {
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
   const unattributed = countUnattributed(entries);
   const _ofacAttribution = ofacAttributionHealth(ofacEntries);
-  const _semaAttribution = semaAttributionHealth(semaEntries);
+  // Legacy retained snapshots predate target fields; preserve fresh parser failures
+  // and explicit empty targets. Normalize health input only, not history evidence.
+  const semaHealthEntries = _sourceHealth[SEMA_SOURCE].status === 'retained'
+    ? semaEntries.map(entry => {
+      if (Object.hasOwn(entry, '_targetCountryCodes')) return entry;
+      const target = semaTargetCountry(entry._regime || '', entry.entityType);
+      return { ...entry, _targetCountryCodes: target ? [target.code] : [] };
+    })
+    : semaEntries;
+  const _semaAttribution = semaAttributionHealth(semaHealthEntries);
   if (_ofacAttribution.degraded) {
     console.warn(`  ${ATTRIBUTION_DEGRADED_ERROR_CODE}: OFAC ${JSON.stringify(_ofacAttribution)}`);
   }
