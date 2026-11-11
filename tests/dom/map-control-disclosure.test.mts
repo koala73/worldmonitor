@@ -3,6 +3,7 @@ import { bindMapControlDisclosure } from '@/components/map-control-disclosure';
 
 let resize: () => void;
 let width = 562;
+let height = 600;
 const disconnect = vi.fn();
 class Observer {
   constructor(callback: () => void) { resize = callback; }
@@ -13,6 +14,7 @@ function mount(kind: 'layers' | 'legend' = 'layers') {
   vi.stubGlobal('ResizeObserver', Observer);
   const container = document.createElement('div');
   Object.defineProperty(container, 'clientWidth', { get: () => width });
+  Object.defineProperty(container, 'clientHeight', { get: () => height });
   const panel = document.createElement('div');
   panel.innerHTML = '<div class="content">Controls</div>';
   container.append(panel);
@@ -20,7 +22,7 @@ function mount(kind: 'layers' | 'legend' = 'layers') {
   const cleanup = bindMapControlDisclosure(container, panel, kind, kind);
   return { panel, button: panel.querySelector('button')!, cleanup };
 }
-afterEach(() => { localStorage.clear(); document.body.innerHTML = ''; width = 562; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+afterEach(() => { localStorage.clear(); document.body.innerHTML = ''; width = 562; height = 600; vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('map control disclosure', () => {
   it('uses the map width and follows resize until the visitor chooses', () => {
@@ -41,6 +43,19 @@ describe('map control disclosure', () => {
     layers.cleanup();
     expect(mount().button.getAttribute('aria-expanded')).toBe('true');
     expect(mount('legend').button.getAttribute('aria-expanded')).toBe('false');
+  });
+  it('collapses short stacked maps until the visitor chooses', () => {
+    width = 938;
+    height = 307;
+    const { panel, button } = mount();
+    expect(panel.classList.contains('map-control-compact')).toBe(true);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    height = 400; resize();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    height = 307; resize();
+    button.click();
+    height = 300; resize();
+    expect(button.getAttribute('aria-expanded')).toBe('true');
   });
   it('waits for a hidden map to acquire a width', () => {
     width = 0;

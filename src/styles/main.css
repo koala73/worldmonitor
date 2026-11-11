@@ -30435,7 +30435,7 @@ body.map-width-resizing {
   .fw-import-input { min-height: 44px; }
 }
 
-/* Container-width defaults are managed by map-control-disclosure. */
+/* Container-size defaults are managed by map-control-disclosure. */
 .map-control-disclosure {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -30460,7 +30460,7 @@ body.map-width-resizing {
 .map-control-collapsed .toggle-header { border-bottom: 0; padding: 0; }
 .map-control-collapsed .toggle-header > :not(.map-control-disclosure) { display: none; }
 .map-legend.map-control-collapsed { padding: 0; gap: 0; }
-.map-legend.map-control-narrow:not(.map-control-collapsed) {
+.map-legend.map-control-compact:not(.map-control-collapsed) {
   bottom: 58px;
   width: max-content;
   max-width: calc(100% - 24px);
@@ -30473,10 +30473,10 @@ body.map-width-resizing {
 
 /* Keep the existing 48px touch targets; mouse users can use a compact row. */
 @media (pointer: fine) {
-  :has(> .layer-toggles.map-control-narrow) > .deckgl-time-slider {
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {
     padding: 4px 6px;
   }
-  :has(> .layer-toggles.map-control-narrow) > .deckgl-time-slider .time-btn {
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider .time-btn {
     min-width: 40px;
     min-height: 28px;
   }
