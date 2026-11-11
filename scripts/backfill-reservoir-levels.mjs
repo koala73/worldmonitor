@@ -135,9 +135,10 @@ export function assembleBaseline(watchlist, dir, nowIso = new Date().toISOString
   const reservoirs = {};
   let through = null;
   for (const entry of watchlist) {
-    const f = scratchFile(dir, entry.id);
-    if (!existsSync(f)) throw new Error(`${entry.id}: no scratch file`);
-    const s = JSON.parse(readFileSync(f, 'utf8'));
+    if (!existsSync(scratchFile(dir, entry.id))) throw new Error(`${entry.id}: no scratch file`);
+    // loadScratch checks the scratch was built for this entry's core box, refid, product
+    // and level window, so a trial or cross-check run cannot leak into the baseline.
+    const s = loadScratch(dir, entry);
     if (!s.done) throw new Error(`${entry.id}: backfill not finished`);
     const processed = new Set(s.processed);
     // Granules that never succeeded stay listed so the seeder can retry them.
