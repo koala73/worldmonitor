@@ -86,6 +86,21 @@ function parseDtg(value: string): { ms: number; issueDate: string } | null {
   return Number.isNaN(ms) ? null : { ms, issueDate: `${m[1]}${m[2]}${m[3]}Z ${m[4]} ${year}` };
 }
 
+// Since 2026-11-10 the memo header omits the year ("101445Z NOV."). Take the
+// latest year that puts the date at most an hour ahead, so a 31 Dec memo read
+// on 1 Jan stays in the old year and a 1 Jan memo seen just before midnight
+// lands in the new one.
+function parseHeaderAsOf(dayTimeMonth: string, yy: string | undefined, nowMs: number): { ms: number } | null {
+  if (yy !== undefined) return parseDtg(`${dayTimeMonth} ${yy}`);
+  const year = new Date(nowMs).getUTCFullYear();
+  for (const candidate of [year + 1, year, year - 1]) {
+    const asOf = parseDtg(`${dayTimeMonth} ${String(candidate % 100).padStart(2, '0')}`);
+    if (asOf === null) return null;
+    if (asOf.ms <= nowMs + 60 * 60 * 1000) return asOf;
+  }
+  return null;
+}
+
 /**
  * Parse one NGA daily in-force memorandum into broadcast-warn records.
  * Returns null unless the text is the expected area's memo, as of `nowMs`
@@ -99,8 +114,8 @@ export function parseNgaDailyMemo(
 ): NgaBroadcastWarning[] | null {
   const lines = text.replace(/\r/g, '').split('\n');
   const headerIndex = lines.findIndex((line) => line.trim() !== '');
-  const header = lines[headerIndex]?.trim().match(/^(.+) IN FORCE AS OF (\d{6}Z [A-Z]{3} \d{2})\.$/);
-  const asOf = header ? parseDtg(header[2]!) : null;
+  const header = lines[headerIndex]?.trim().match(/^(.+) IN FORCE AS OF (\d{6}Z [A-Z]{3})(?: (\d{2}))?\.$/);
+  const asOf = header ? parseHeaderAsOf(header[2]!, header[3], nowMs) : null;
   if (!header || header[1] !== authority || !asOf) return null;
   if (asOf.ms > nowMs + 60 * 60 * 1000 || nowMs - asOf.ms > NGA_DAILY_MEMO_MAX_AGE_MS) return null;
 
