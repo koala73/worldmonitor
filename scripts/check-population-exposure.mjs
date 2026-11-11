@@ -55,8 +55,13 @@ try {
   process.exitCode = 1;
 } finally {
   result.finishedAt = new Date().toISOString();
-  await page.screenshot({ path: `${output}/exposure.png` });
-  await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2));
-  console.log(JSON.stringify(result, null, 2));
-  await browser.close();
+  try {
+    await page.screenshot({ path: `${output}/exposure.png` }).catch(error => {
+      result.screenshotError = String(error);
+    });
+    console.log(JSON.stringify(result, null, 2));
+    await writeFile(`${output}/result.json`, JSON.stringify(result, null, 2));
+  } finally {
+    await browser.close();
+  }
 }
