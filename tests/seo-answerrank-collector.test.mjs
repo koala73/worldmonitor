@@ -1,0 +1,286 @@
+import assert from 'node:assert/strict';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, describe, it } from 'node:test';
+
+import {
+  assertNoSecrets,
+  buildSnapshot,
+  compareSnapshots,
+  inputsDigest,
+  proportionChange,
+  renderMarkdown,
+  runAnswerrank,
+  runCli,
+} from '../scripts/seo-answerrank-collect.mjs';
+
+const repoPath = (relativePath) => new URL(`../${relativePath}`, import.meta.url).pathname;
+const INPUTS = repoPath('docs/research/seo-ai-visibility/answerrank/inputs');
+const silent = () => {};
+const TMP_ROOT = mkdtempSync(join(tmpdir(), 'answerrank-test-'));
+const tempDir = (prefix) => mkdtempSync(join(TMP_ROOT, prefix));
+after(() => rmSync(TMP_ROOT, { recursive: true, force: true }));
+
+const metrics = (n, named, web = 0, cited = 0) => ({
+  n,
+  aeo_score: 5,
+  mention_rate: named / n,
+  top_pick_rate: 0,
+  recommend_rate: named / n,
+  web_answers: web,
+  citation_rate: web ? cited / web : null,
+  share_of_voice: 0.05,
+});
+
+/**
+ * A finished answerrank run directory using the committed inputs: `variants`
+ * maps a label to [answers, named, web answers, cited], and `failed` adds
+ * errored answers for a label.
+ */
+function writeRun({ variants, failed = {} }) {
+  const dir = tempDir('run-');
+  cpSync(join(INPUTS, 'queries.json'), join(dir, 'queries.json'));
+  cpSync(join(INPUTS, 'profile.json'), join(dir, 'profile.json'));
+  const answers = [];
+  const byModel = {};
+  const totals = [0, 0, 0, 0];
+  for (const [label, [n, named, web, cited]] of Object.entries(variants)) {
+    byModel[label] = metrics(n, named, web, cited);
+    [n, named, web, cited].forEach((value, index) => { totals[index] += value; });
+    for (let i = 0; i < n; i += 1) answers.push({ key: `${label}|${i}`, model: label, text: 'answer' });
+  }
+  for (const [label, count] of Object.entries(failed)) {
+    for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|f${i}`, model: label, error: 'NotFoundError' });
+  }
+  writeFileSync(join(dir, 'answers.jsonl'), answers.map((row) => JSON.stringify(row)).join('\n'));
+  writeFileSync(join(dir, 'scores.json'), JSON.stringify({ overall: metrics(...totals), by_model: byModel }));
+  writeFileSync(join(dir, 'spend.json'), JSON.stringify({ answer: 5.1, search: 0.6, judge: 1.55 }));
+  writeFileSync(join(dir, 'run.json'), JSON.stringify({ repetitions: 3, judge_model: 'anthropic/claude-sonnet-5-5' }));
+  return dir;
+}
+
+const VARIANTS = {
+  claude: [39, 0, 0, 0],
+  'claude +web': [39, 7, 39, 9],
+  gpt: [39, 2, 0, 0],
+  'gpt +web': [39, 1, 39, 2],
+  perplexity: [39, 4, 39, 3],
+};
+
+const snapshotOf = (runDir, date, digest = 'sha256:same') => buildSnapshot({
+  runDir, date, observedAt: `${date}T06:00:00.000Z`, digest, revision: 'abc',
+});
+
+/** A snapshot directory holding the committed inputs and any earlier snapshots. */
+function snapshotDir(earlier = []) {
+  const dir = tempDir('snapshots-');
+  cpSync(INPUTS, join(dir, 'inputs'), { recursive: true });
+  for (const entry of earlier) writeFileSync(join(dir, `${entry.date}.json`), JSON.stringify(entry));
+  return dir;
+}
+
+const committedDigest = () => inputsDigest({
+  queries: readFileSync(join(INPUTS, 'queries.json'), 'utf8'),
+  profile: readFileSync(join(INPUTS, 'profile.json'), 'utf8'),
+  config: readFileSync(join(INPUTS, 'config.yaml'), 'utf8'),
+});
+
+describe('buildSnapshot', () => {
+  it('turns judged rates back into counts per variant and overall', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-17');
+    assert.equal(snapshot.status, 'available');
+    assert.deepEqual(snapshot.overall, {
+      answers: 195, mentions: 14, topPicks: 0, recommendations: 14,
+      webAnswers: 117, citations: 14, aeoScore: 5, shareOfVoice: 0.05,
+    });
+    assert.equal(snapshot.byVariant['claude +web'].citations, 9);
+    assert.equal(snapshot.byVariant.claude.citations, null, 'no web answers means no citation rate, not zero');
+    assert.deepEqual(snapshot.design.variants, ['claude', 'claude +web', 'gpt', 'gpt +web', 'perplexity']);
+    assert.equal(snapshot.spendUsd.total, 7.25);
+  });
+
+  it('marks a run with more than 5% failed answers as partial and names the failing variant', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS, failed: { 'perplexity +web': 39 } }), '2026-11-17');
+    assert.equal(snapshot.status, 'partial');
+    assert.deepEqual(snapshot.answers, { planned: 234, answered: 195, failed: 39, failedByVariant: { 'perplexity +web': 39 } });
+    assert.match(snapshot.reason, /39 of 234 answers failed \(perplexity \+web 39\)/);
+  });
+
+  it('keeps a run with a few failed answers available', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS, failed: { gpt: 3 } }), '2026-11-17');
+    assert.equal(snapshot.status, 'available');
+    assert.equal(snapshot.answers.failed, 3);
+  });
+});
+
+describe('proportionChange', () => {
+  it('calls a drop from 14/195 to 2/195 a decline', () => {
+    const change = proportionChange({ count: 14, of: 195 }, { count: 2, of: 195 });
+    assert.equal(change.verdict, 'declined');
+    assert.ok(change.z <= -1.96);
+  });
+
+  it('treats 14/195 to 12/195 as normal churn', () => {
+    assert.equal(proportionChange({ count: 14, of: 195 }, { count: 12, of: 195 }).verdict, 'no measurable change');
+  });
+
+  it('calls a rise from 14/195 to 30/195 an improvement', () => {
+    assert.equal(proportionChange({ count: 14, of: 195 }, { count: 30, of: 195 }).verdict, 'improved');
+  });
+
+  it('refuses a side with no denominator or no count', () => {
+    assert.equal(proportionChange({ count: 0, of: 0 }, { count: 1, of: 10 }), null);
+    assert.equal(proportionChange({ count: null, of: 10 }, { count: 1, of: 10 }), null);
+  });
+
+  it('reports zero to zero as no change rather than dividing by zero', () => {
+    assert.deepEqual(proportionChange({ count: 0, of: 50 }, { count: 0, of: 50 }), {
+      before: 0, after: 0, z: 0, verdict: 'no measurable change',
+    });
+  });
+});
+
+describe('compareSnapshots', () => {
+  const before = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-10');
+
+  it('reports a decline when mentions fall significantly', () => {
+    const fewer = { ...VARIANTS, 'claude +web': [39, 0, 39, 9], perplexity: [39, 0, 39, 3], gpt: [39, 0, 0, 0] };
+    const comparison = compareSnapshots(before, snapshotOf(writeRun({ variants: fewer }), '2026-11-17'));
+    assert.equal(comparison.comparable, true);
+    assert.equal(comparison.mentions.verdict, 'declined');
+    assert.equal(comparison.verdict, 'declined');
+  });
+
+  it('reports an improvement when only citations rise significantly', () => {
+    const cited = { ...VARIANTS, 'gpt +web': [39, 1, 39, 20], perplexity: [39, 4, 39, 15] };
+    const comparison = compareSnapshots(before, snapshotOf(writeRun({ variants: cited }), '2026-11-17'));
+    assert.equal(comparison.mentions.verdict, 'no measurable change');
+    assert.equal(comparison.citations.verdict, 'improved');
+    assert.equal(comparison.verdict, 'improved');
+  });
+
+  it('lets a decline outrank an improvement in the headline', () => {
+    const mixed = { claude: [39, 0, 0, 0], 'claude +web': [39, 0, 39, 30], gpt: [39, 0, 0, 0], 'gpt +web': [39, 0, 39, 20], perplexity: [39, 0, 39, 15] };
+    assert.equal(compareSnapshots(before, snapshotOf(writeRun({ variants: mixed }), '2026-11-17')).verdict, 'declined');
+  });
+
+  it('does not compare across changed inputs, variants or a partial week', () => {
+    const after = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-17');
+    assert.match(compareSnapshots(null, after).reason, /No earlier snapshot/);
+    assert.match(compareSnapshots({ ...before, inputsDigest: 'sha256:other' }, after).reason, /new series/);
+    const { perplexity, ...withoutPerplexity } = VARIANTS;
+    assert.ok(perplexity);
+    const fewerVariants = snapshotOf(writeRun({ variants: withoutPerplexity }), '2026-11-17');
+    assert.match(compareSnapshots(before, fewerVariants).reason, /variants differ/);
+    const partial = snapshotOf(writeRun({ variants: VARIANTS, failed: { gpt: 30 } }), '2026-11-17');
+    assert.match(compareSnapshots(before, partial).reason, /This snapshot is partial/);
+    assert.equal(compareSnapshots(before, fewerVariants).verdict, 'not compared');
+    assert.equal(compareSnapshots(before, partial).verdict, 'not compared');
+  });
+});
+
+describe('renderMarkdown', () => {
+  it('states the counts, the verdict and only the series with the same inputs', () => {
+    const before = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-10');
+    const otherSeries = { ...snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-03'), inputsDigest: 'sha256:old' };
+    const after = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-17');
+    const markdown = renderMarkdown(after, compareSnapshots(before, after), [otherSeries, before]);
+    assert.match(markdown, /named in 14 of 195 model answers \(7\.2%\)/);
+    assert.match(markdown, /cited worldmonitor\.app 14 of 117 times/);
+    assert.match(markdown, /Compared with 2026-11-10: \*\*no measurable change\*\*/);
+    assert.match(markdown, /\| 2026-11-10 \|/);
+    assert.match(markdown, /\| 2026-11-17 \|/);
+    assert.doesNotMatch(markdown, /\| 2026-11-03 \|/);
+    assert.match(markdown, /not observations of the ChatGPT, Perplexity or Google AI products/);
+  });
+});
+
+describe('runCli', () => {
+  it('writes the dated pair and compares it with the newest earlier snapshot in the directory', async () => {
+    const digest = committedDigest();
+    const earlier = snapshotOf(writeRun({ variants: VARIANTS }), '2026-11-10', digest);
+    const dir = snapshotDir([earlier]);
+    const fewer = { ...VARIANTS, 'claude +web': [39, 0, 39, 9], perplexity: [39, 0, 39, 3], gpt: [39, 0, 0, 0] };
+    const { snapshot, written } = await runCli(
+      ['--from-run', writeRun({ variants: fewer }), '--date', '2026-11-17', '--dir', dir],
+      { env: {}, log: silent },
+    );
+    assert.equal(snapshot.inputsDigest, digest);
+    assert.equal(snapshot.comparison.previousDate, '2026-11-10');
+    assert.equal(snapshot.comparison.verdict, 'declined');
+    assert.deepEqual(written, [join(dir, '2026-11-17.json'), join(dir, '2026-11-17.md')]);
+    assert.deepEqual(JSON.parse(readFileSync(written[0], 'utf8')), snapshot);
+  });
+
+  it('is idempotent on rerun: the same date never compares with itself', async () => {
+    const dir = snapshotDir();
+    const runDir = writeRun({ variants: VARIANTS });
+    await runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', dir], { env: {}, log: silent });
+    const { snapshot } = await runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', dir], { env: {}, log: silent });
+    assert.equal(snapshot.comparison.previousDate, null);
+  });
+
+  it('refuses a run whose questions differ from the committed inputs', async () => {
+    const runDir = writeRun({ variants: VARIANTS });
+    writeFileSync(join(runDir, 'queries.json'), '[]');
+    await assert.rejects(
+      runCli(['--from-run', runDir, '--date', '2026-11-17', '--dir', snapshotDir(), '--stdout'], { env: {}, log: silent }),
+      /queries\.json .* differs/,
+    );
+  });
+
+  it('requires exactly one source and a date for --from-run', async () => {
+    await assert.rejects(runCli([], { env: {}, log: silent }), /exactly one of --live or --from-run/);
+    await assert.rejects(runCli(['--from-run', 'x', '--live'], { env: {}, log: silent }), /exactly one/);
+    await assert.rejects(runCli(['--from-run', writeRun({ variants: VARIANTS }), '--dir', snapshotDir()], { env: {}, log: silent }), /needs --date/);
+  });
+});
+
+describe('runAnswerrank', () => {
+  const env = { OPENROUTER_API_KEY: 'or-key-123456', ANTHROPIC_API_KEY: 'an-key-123456', EXA_API_KEY: 'exa-key-123456' };
+
+  it('refuses to start without every provider key', () => {
+    assert.throws(() => runAnswerrank({ inputsDir: INPUTS, env: { OPENROUTER_API_KEY: 'x' } }), /missing ANTHROPIC_API_KEY, EXA_API_KEY/);
+  });
+
+  it('seeds the run directory with the fixed questions and runs the committed config', () => {
+    const calls = [];
+    const runDir = runAnswerrank({
+      inputsDir: INPUTS,
+      env,
+      spawn: (bin, args, options) => { calls.push({ bin, args, options }); return { status: 0 }; },
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].bin, 'answerrank');
+    assert.deepEqual(calls[0].args, ['run', '-c', join(INPUTS, 'config.yaml'), '--out', runDir]);
+    assert.equal(calls[0].options.env, env);
+    assert.equal(readFileSync(join(runDir, 'queries.json'), 'utf8'), readFileSync(join(INPUTS, 'queries.json'), 'utf8'));
+    assert.ok(existsSync(join(runDir, 'profile.json')));
+    rmSync(runDir, { recursive: true, force: true });
+  });
+
+  it('fails when answerrank exits non-zero', () => {
+    let runDir;
+    assert.throws(
+      () => runAnswerrank({ inputsDir: INPUTS, env, spawn: (_bin, args) => { runDir = args.at(-1); return { status: 2 }; } }),
+      /exited with status 2/,
+    );
+    rmSync(runDir, { recursive: true, force: true });
+  });
+});
+
+describe('assertNoSecrets', () => {
+  it('refuses output that contains a provider key value', () => {
+    assert.throws(() => assertNoSecrets('x sk-or-v1-abcdef y', { OPENROUTER_API_KEY: 'sk-or-v1-abcdef' }), /OPENROUTER_API_KEY/);
+    assert.doesNotThrow(() => assertNoSecrets('clean', { OPENROUTER_API_KEY: 'sk-or-v1-abcdef' }));
+  });
+});
+
+describe('committed inputs', () => {
+  it('give Perplexity native search so no variant fails on every answer', () => {
+    const config = readFileSync(join(INPUTS, 'config.yaml'), 'utf8');
+    assert.match(config, /label: perplexity, web_search: true/);
+    assert.equal(JSON.parse(readFileSync(join(INPUTS, 'queries.json'), 'utf8')).length, 13);
+  });
+});

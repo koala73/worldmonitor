@@ -38,7 +38,21 @@ describe('bot-PR workflows', () => {
   for (const file of openers) {
     it(`${file} opens and auto-merges its PR with REVIEW_PR_TOKEN only`, () => {
       const text = read(file);
-      assert.doesNotMatch(text, /github\.token/, 'the Actions token opens PRs that get no CI');
+      // The Actions token opens PRs that get no CI, so no step that runs `gh pr`
+      // may hold it. A step that only opens an issue may: an issue from
+      // github-actions[bot] notifies the owner, one from the owner's PAT does not.
+      const workflow = YAML.parse(text);
+      const prSteps = Object.values(workflow.jobs).flatMap((job) => (job.steps ?? [])
+        .filter((step) => /\bgh pr\b/.test(step.run ?? ''))
+        .map((step) => ({ job, step })));
+      assert.ok(prSteps.length > 0);
+      for (const { job, step } of prSteps) {
+        const token = step.env?.GH_TOKEN ?? job.env?.GH_TOKEN ?? workflow.env?.GH_TOKEN;
+        assert.equal(token, '${{ secrets.REVIEW_PR_TOKEN }}', `${step.name ?? step.id} runs gh pr without REVIEW_PR_TOKEN`);
+      }
+      for (const job of Object.values(workflow.jobs)) {
+        assert.doesNotMatch(JSON.stringify(job.env ?? {}) + JSON.stringify(workflow.env ?? {}), /github\.token|GITHUB_TOKEN/, 'a job-wide Actions token reaches every gh pr step');
+      }
       assert.match(text, /GH_TOKEN: \$\{\{ secrets\.REVIEW_PR_TOKEN \}\}/);
       assert.doesNotMatch(text, /gh pr merge[^\n]*BRANCH_NAME/, 'a branch name can also match a fork PR');
       assert.match(text, /gh pr merge --auto --squash "\$(pr_url|\(tail -n 1 "\$RUNNER_TEMP\/snapshot-pr\.out"\))"/, 'merge the PR this run created');

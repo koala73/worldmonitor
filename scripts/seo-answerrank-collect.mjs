@@ -1,0 +1,354 @@
+#!/usr/bin/env node
+
+/**
+ * Ask AI models a fixed set of buyer questions every week, record how often
+ * they name World Monitor, and say whether that moved since the last
+ * comparable week. Writes `answerrank/<date>.json` and `answerrank/<date>.md`
+ * beside the Search Console, Bing and Umami snapshots, in the same weekly PR.
+ *
+ * The measurement is answerrank (github.com/misbahsy/answerrank): each
+ * question goes to each model variant (GPT and Claude with and without a web
+ * search tool, Perplexity Sonar with its own search) three times, and a judge
+ * model records whether World Monitor was named, recommended or cited. These
+ * are model API answers, not the ChatGPT, Perplexity or Google AI products a
+ * person uses, so the snapshot is a proxy and never fills the baseline's
+ * `aiSurfaces`.
+ *
+ * The questions, product profile and answerrank config are committed under
+ * `answerrank/inputs/`. Their digest pins the series: a snapshot is compared
+ * only with the newest earlier snapshot that has the same digest and the same
+ * answered variants. Mentions and citations are counts out of a few hundred
+ * answers, so a week-over-week change is called only when a two-proportion
+ * z-test clears |z| >= 1.96; anything smaller is reported as no measurable
+ * change rather than as a trend.
+ *
+ * Usage:
+ *   node scripts/seo-answerrank-collect.mjs --live
+ *   node scripts/seo-answerrank-collect.mjs --from-run <answerrank run dir> --date 2026-11-10
+ *
+ * Options:
+ *   --live                  run answerrank now (needs OPENROUTER_API_KEY,
+ *                           ANTHROPIC_API_KEY and EXA_API_KEY)
+ *   --from-run <dir>        build the snapshot from a finished answerrank run
+ *   --date <YYYY-MM-DD>     snapshot date (default today, UTC)
+ *   --dir <path>            snapshot directory (default docs/research/seo-ai-visibility/answerrank)
+ *   --stdout                print the snapshot instead of writing files
+ */
+
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { loadEnvFile } from './_seed-utils.mjs';
+import { isMainModule } from './lib/main-module.mjs';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_DIR = 'docs/research/seo-ai-visibility/answerrank';
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const SNAPSHOT_PATTERN = /^\d{4}-\d{2}-\d{2}\.json$/;
+export const SCHEMA_VERSION = 1;
+export const REQUIRED_KEYS = Object.freeze(['OPENROUTER_API_KEY', 'ANTHROPIC_API_KEY', 'EXA_API_KEY']);
+/** Two-sided 95%: a smaller |z| is reported as no measurable change. */
+export const Z_THRESHOLD = 1.96;
+/** More failed answers than this share makes the week partial and not compared. */
+export const MAX_FAILED_SHARE = 0.05;
+
+function invariant(condition, message) {
+  if (!condition) throw new Error(`[seo-answerrank-collect] ${message}`);
+}
+
+const sha256 = (text) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
+const readJsonl = (path) => readFileSync(path, 'utf8').split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+
+/** One digest over the three committed inputs, in a fixed order. */
+export function inputsDigest({ queries, profile, config }) {
+  return sha256(JSON.stringify([sha256(queries), sha256(profile), sha256(config)]));
+}
+
+function group(metrics) {
+  invariant(Number.isInteger(metrics?.n) && metrics.n > 0, 'a scored group has no answers');
+  const count = (rate, of) => (rate === null || rate === undefined ? null : Math.round(rate * of));
+  const webAnswers = metrics.web_answers ?? 0;
+  return {
+    answers: metrics.n,
+    mentions: count(metrics.mention_rate, metrics.n),
+    topPicks: count(metrics.top_pick_rate, metrics.n),
+    recommendations: count(metrics.recommend_rate, metrics.n),
+    webAnswers,
+    citations: webAnswers > 0 ? count(metrics.citation_rate, webAnswers) : null,
+    aeoScore: metrics.aeo_score,
+    shareOfVoice: metrics.share_of_voice ?? null,
+  };
+}
+
+/**
+ * The snapshot for one finished answerrank run directory. `answers.jsonl`
+ * gives the planned and failed answers; `scores.json` gives the judged
+ * metrics, which answerrank computes over the answers that did not fail.
+ */
+export function buildSnapshot({ runDir, date, observedAt, digest, revision = null }) {
+  invariant(DATE_PATTERN.test(date ?? ''), 'date must be YYYY-MM-DD');
+  const scores = readJson(join(runDir, 'scores.json'));
+  const spend = existsSync(join(runDir, 'spend.json')) ? readJson(join(runDir, 'spend.json')) : {};
+  const run = readJson(join(runDir, 'run.json'));
+  const answers = readJsonl(join(runDir, 'answers.jsonl'));
+  const queries = readJson(join(runDir, 'queries.json'));
+  const failedByVariant = {};
+  for (const answer of answers) {
+    if (answer.error) failedByVariant[answer.model] = (failedByVariant[answer.model] ?? 0) + 1;
+  }
+  const failed = Object.values(failedByVariant).reduce((sum, value) => sum + value, 0);
+  const byVariant = Object.fromEntries(
+    Object.entries(scores.by_model ?? {})
+      .filter(([, metrics]) => metrics?.n > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, metrics]) => [label, group(metrics)]),
+  );
+  const planned = answers.length;
+  const status = failed / planned <= MAX_FAILED_SHARE ? 'available' : 'partial';
+  const spendUsd = Object.fromEntries(Object.entries(spend).map(([key, value]) => [key, Number(value.toFixed(4))]));
+  spendUsd.total = Number(Object.values(spend).reduce((sum, value) => sum + value, 0).toFixed(4));
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    date,
+    observedAt,
+    status,
+    reason: status === 'partial'
+      ? `${failed} of ${planned} answers failed (${Object.entries(failedByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}), over the ${MAX_FAILED_SHARE * 100}% limit, so this week is not compared.`
+      : null,
+    tool: { name: 'answerrank', revision },
+    inputsDigest: digest,
+    design: {
+      questions: queries.length,
+      repetitions: run.repetitions,
+      judgeModel: run.judge_model,
+      variants: Object.keys(byVariant),
+    },
+    answers: { planned, answered: planned - failed, failed, failedByVariant },
+    overall: group(scores.overall),
+    byVariant,
+    spendUsd,
+  };
+}
+
+/** Two-proportion z-test; null when either side has no denominator. */
+export function proportionChange(before, after) {
+  if (!before || !after || before.of <= 0 || after.of <= 0 || before.count === null || after.count === null) return null;
+  const p1 = before.count / before.of;
+  const p2 = after.count / after.of;
+  const pooled = (before.count + after.count) / (before.of + after.of);
+  const se = Math.sqrt(pooled * (1 - pooled) * (1 / before.of + 1 / after.of));
+  const z = se === 0 ? 0 : (p2 - p1) / se;
+  const verdict = z >= Z_THRESHOLD ? 'improved' : z <= -Z_THRESHOLD ? 'declined' : 'no measurable change';
+  return { before: p1, after: p2, z: Number(z.toFixed(2)), verdict };
+}
+
+const sameVariants = (a, b) => a.design.variants.join('|') === b.design.variants.join('|');
+
+/** Why two snapshots cannot be compared, or null when they can. */
+export function incomparability(previous, current) {
+  if (!previous) return 'No earlier snapshot.';
+  if (previous.inputsDigest !== current.inputsDigest) return `The questions, profile or config changed since ${previous.date}, so this week starts a new series.`;
+  if (!sameVariants(previous, current)) return `The answered model variants differ from ${previous.date} (${previous.design.variants.join(', ')} then, ${current.design.variants.join(', ')} now).`;
+  if (previous.status !== 'available') return `The ${previous.date} snapshot is partial.`;
+  if (current.status !== 'available') return 'This snapshot is partial.';
+  return null;
+}
+
+export function compareSnapshots(previous, current) {
+  const reason = incomparability(previous, current);
+  if (reason) return { previousDate: previous?.date ?? null, comparable: false, reason, verdict: 'not compared' };
+  const mentions = proportionChange(
+    { count: previous.overall.mentions, of: previous.overall.answers },
+    { count: current.overall.mentions, of: current.overall.answers },
+  );
+  const citations = proportionChange(
+    { count: previous.overall.citations, of: previous.overall.webAnswers },
+    { count: current.overall.citations, of: current.overall.webAnswers },
+  );
+  const verdicts = [mentions?.verdict, citations?.verdict].filter(Boolean);
+  const verdict = verdicts.includes('declined') ? 'declined' : verdicts.includes('improved') ? 'improved' : 'no measurable change';
+  return { previousDate: previous.date, comparable: true, reason: null, verdict, mentions, citations };
+}
+
+/** Every snapshot in `dir` dated before `date`, oldest first. */
+export function readEarlierSnapshots(dir, date) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => SNAPSHOT_PATTERN.test(name) && name.slice(0, 10) < date)
+    .sort()
+    .map((name) => readJson(join(dir, name)));
+}
+
+const pct = (ratio) => (ratio === null || ratio === undefined ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);
+const rate = (count, of) => (count === null || !of ? null : count / of);
+const usd = (value) => (value === null || value === undefined ? 'n/a' : `$${value.toFixed(2)}`);
+
+function changeLine(label, change) {
+  if (!change) return `- ${label}: not compared (no answers on one side).`;
+  return `- ${label}: ${pct(change.before)} → ${pct(change.after)} (z = ${change.z}), ${change.verdict}.`;
+}
+
+export function renderMarkdown(snapshot, comparison, earlier) {
+  const { overall } = snapshot;
+  const lines = [
+    `# AI-answer visibility, ${snapshot.date}`,
+    '',
+    `World Monitor was named in ${overall.mentions} of ${overall.answers} model answers (${pct(rate(overall.mentions, overall.answers))}) to ${snapshot.design.questions} fixed buyer questions, asked ${snapshot.design.repetitions} times each per model variant.`,
+    overall.webAnswers > 0
+      ? `Answers that used web search cited worldmonitor.app ${overall.citations} of ${overall.webAnswers} times (${pct(rate(overall.citations, overall.webAnswers))}).`
+      : 'No answer used web search, so there is no citation rate.',
+    '',
+    'These are model API answers judged by answerrank, not observations of the ChatGPT, Perplexity or Google AI products. Read the counts, not the AEO score: its weights were never fitted to real traffic.',
+    '',
+    '## Change since the last comparable week',
+    '',
+  ];
+  if (comparison.comparable) {
+    lines.push(
+      `Compared with ${comparison.previousDate}: **${comparison.verdict}**.`,
+      '',
+      changeLine('Named in answers', comparison.mentions),
+      changeLine('Cited in web-search answers', comparison.citations),
+      '',
+      `A change is called only at |z| >= ${Z_THRESHOLD}. With about ${overall.answers} answers a week, smaller moves are within normal week-to-week churn.`,
+    );
+  } else {
+    lines.push(`Not compared. ${comparison.reason}`);
+  }
+  if (snapshot.status !== 'available') lines.push('', `**Partial:** ${snapshot.reason}`);
+  lines.push(
+    '',
+    '## By model variant',
+    '',
+    '| Variant | Answers | Named | Top pick | Cited (web answers) | AEO score |',
+    '|---|---:|---:|---:|---:|---:|',
+    ...Object.entries(snapshot.byVariant).map(([label, g]) => (
+      `| ${label} | ${g.answers} | ${g.mentions} (${pct(rate(g.mentions, g.answers))}) | ${g.topPicks} | ${g.webAnswers > 0 ? `${g.citations} of ${g.webAnswers}` : 'n/a'} | ${g.aeoScore} |`
+    )),
+  );
+  if (snapshot.answers.failed > 0) {
+    lines.push('', `${snapshot.answers.failed} of ${snapshot.answers.planned} planned answers failed and are excluded: ${Object.entries(snapshot.answers.failedByVariant).map(([label, count]) => `${label} ${count}`).join(', ')}.`);
+  }
+  const series = [...earlier.filter((entry) => entry.inputsDigest === snapshot.inputsDigest), snapshot];
+  lines.push(
+    '',
+    '## Series with the same inputs',
+    '',
+    '| Date | Answers | Named | Cited (web answers) | Status |',
+    '|---|---:|---:|---:|---|',
+    ...series.map((entry) => (
+      `| ${entry.date} | ${entry.overall.answers} | ${pct(rate(entry.overall.mentions, entry.overall.answers))} | ${pct(rate(entry.overall.citations, entry.overall.webAnswers))} | ${entry.status} |`
+    )),
+    '',
+    `Spend this run: ${usd(snapshot.spendUsd.total)}. Inputs digest \`${snapshot.inputsDigest}\`, answerrank revision \`${snapshot.tool.revision ?? 'unknown'}\`.`,
+    '',
+  );
+  return lines.join('\n');
+}
+
+/** Refuse to write a snapshot that contains any provider key value. */
+export function assertNoSecrets(serialized, env) {
+  for (const name of REQUIRED_KEYS) {
+    const value = env[name];
+    if (value && value.length >= 8 && serialized.includes(value)) {
+      throw new Error(`[seo-answerrank-collect] refusing to write: the snapshot contains the ${name} value`);
+    }
+  }
+}
+
+export function parseArgs(argv) {
+  const options = { live: false, fromRun: null, date: null, dir: DEFAULT_DIR, stdout: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag === '--live') { options.live = true; continue; }
+    if (flag === '--stdout') { options.stdout = true; continue; }
+    const value = argv[index + 1];
+    invariant(value !== undefined && !value.startsWith('--'), `${flag} requires a value`);
+    index += 1;
+    switch (flag) {
+      case '--from-run': options.fromRun = value; break;
+      case '--date': options.date = value; break;
+      case '--dir': options.dir = value; break;
+      default: throw new Error(`[seo-answerrank-collect] unknown argument ${flag}`);
+    }
+  }
+  invariant(options.live !== Boolean(options.fromRun), 'pass exactly one of --live or --from-run');
+  invariant(options.date === null || DATE_PATTERN.test(options.date), '--date must be YYYY-MM-DD');
+  return options;
+}
+
+/** Run answerrank on the committed inputs in a fresh directory and return that directory. */
+export function runAnswerrank({ inputsDir, env, bin = 'answerrank', spawn = spawnSync }) {
+  const missing = REQUIRED_KEYS.filter((name) => !env[name]);
+  invariant(missing.length === 0, `missing ${missing.join(', ')}`);
+  const runDir = mkdtempSync(join(tmpdir(), 'answerrank-'));
+  // answerrank reuses a run directory's profile.json and queries.json, so
+  // seeding them pins the questions instead of regenerating them.
+  copyFileSync(join(inputsDir, 'profile.json'), join(runDir, 'profile.json'));
+  copyFileSync(join(inputsDir, 'queries.json'), join(runDir, 'queries.json'));
+  const result = spawn(bin, ['run', '-c', join(inputsDir, 'config.yaml'), '--out', runDir], {
+    env, stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  invariant(!result.error, `could not start ${bin}: ${result.error?.message}`);
+  invariant(result.status === 0, `${bin} exited with status ${result.status}`);
+  return runDir;
+}
+
+export async function runCli(argv, { env = process.env, log = console.log, now = Date.now, spawn = spawnSync } = {}) {
+  const options = parseArgs(argv);
+  const date = options.date ?? new Date(now()).toISOString().slice(0, 10);
+  const dir = resolve(REPO_ROOT, options.dir);
+  const inputsDir = join(dir, 'inputs');
+  const digest = inputsDigest({
+    queries: readFileSync(join(inputsDir, 'queries.json'), 'utf8'),
+    profile: readFileSync(join(inputsDir, 'profile.json'), 'utf8'),
+    config: readFileSync(join(inputsDir, 'config.yaml'), 'utf8'),
+  });
+  let runDir;
+  let observedAt;
+  if (options.live) {
+    loadEnvFile(import.meta.url, { only: [...REQUIRED_KEYS] });
+    runDir = runAnswerrank({ inputsDir, env, bin: env.ANSWERRANK_BIN || 'answerrank', spawn });
+    observedAt = new Date(now()).toISOString();
+  } else {
+    runDir = resolve(options.fromRun);
+    invariant(options.date, '--from-run needs --date');
+    observedAt = statSync(join(runDir, 'scores.json')).mtime.toISOString();
+  }
+  // The digest names the committed inputs, so the run must have used them.
+  for (const name of ['queries.json', 'profile.json']) {
+    invariant(
+      readFileSync(join(runDir, name), 'utf8') === readFileSync(join(inputsDir, name), 'utf8'),
+      `${name} in ${runDir} differs from ${join(options.dir, 'inputs', name)}`,
+    );
+  }
+  const snapshot = buildSnapshot({ runDir, date, observedAt, digest, revision: env.ANSWERRANK_REVISION || null });
+  const earlier = readEarlierSnapshots(dir, date);
+  snapshot.comparison = compareSnapshots(earlier.at(-1) ?? null, snapshot);
+  const json = `${JSON.stringify(snapshot, null, 2)}\n`;
+  const markdown = renderMarkdown(snapshot, snapshot.comparison, earlier);
+  assertNoSecrets(json + markdown, env);
+  if (options.stdout) {
+    log(json);
+    return { snapshot, markdown, written: [] };
+  }
+  mkdirSync(dir, { recursive: true });
+  const written = [join(dir, `${date}.json`), join(dir, `${date}.md`)];
+  writeFileSync(written[0], json);
+  writeFileSync(written[1], markdown);
+  log(`[seo-answerrank-collect] named ${snapshot.overall.mentions}/${snapshot.overall.answers}; ${snapshot.comparison.verdict}${snapshot.comparison.previousDate ? ` vs ${snapshot.comparison.previousDate}` : ''}`);
+  log(`[seo-answerrank-collect] wrote ${written.map((path) => path.replace(`${REPO_ROOT}/`, '')).join(', ')}`);
+  return { snapshot, markdown, written };
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  runCli(process.argv.slice(2)).catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

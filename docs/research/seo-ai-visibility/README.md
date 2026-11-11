@@ -24,6 +24,12 @@ missing source cannot silently become a zero or a site-wide vanity score.
   referral snapshots from `scripts/seo-bing-collect.mjs` and
   `scripts/seo-umami-collect.mjs`, written by the same weekly run when their
   credentials are configured.
+- `answerrank/<date>.json` and `answerrank/<date>.md` — weekly AI-answer
+  snapshots from `scripts/seo-answerrank-collect.mjs`: how often model API
+  answers to 13 fixed buyer questions name or cite World Monitor, and whether
+  that changed significantly since the last comparable week. They are a proxy,
+  not observations of the AI products, so they never fill `aiSurfaces`. See
+  `answerrank/README.md`.
 - `scripts/seo-weekly-baseline.mjs` — turns one date's snapshots into
   `baselines/<date>.json` and `scorecards/<date>.md`. See
   [Weekly regeneration](#weekly-regeneration).

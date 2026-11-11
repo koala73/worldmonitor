@@ -5,6 +5,11 @@ name: Weekly Search Console Snapshot
 # and which families earn impressions per indexed page. The same PR carries
 # the Bing Webmaster snapshot (#10024) when BING_WEBMASTER_API_KEY is set, and
 # the Umami referral snapshot when UMAMI_API_USERNAME and UMAMI_API_PASSWORD are.
+# It also asks AI models a fixed set of buyer questions through answerrank and
+# records how often they name World Monitor (answerrank/<date>.json), when
+# OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are set. A significant
+# drop since the last comparable week opens an issue, so a regression does not
+# hide inside a PR that merges itself.
 # Last, it regenerates the AI-visibility baseline and scorecard from whichever
 # snapshots this run wrote, so no export is supplied by hand.
 #
@@ -56,9 +61,12 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Only for the issue opened when AI-answer visibility declines.
+      issues: write
     if: ${{ (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The AI-answer step alone takes about 30 minutes.
+    timeout-minutes: 110
     outputs:
       branch: ${{ steps.reconcile.outputs.branch }}
     steps:
@@ -148,6 +156,34 @@ jobs:
             exit 0
           fi
           node scripts/seo-umami-collect.mjs --live
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: steps.collect.outcome == 'success'
+        with:
+          python-version: '3.13'
+      - name: Collect the AI-answer snapshot
+        id: answerrank
+        if: steps.collect.outcome == 'success'
+        # Optional and non-blocking, like Bing and Umami. About 230 model calls
+        # at concurrency 1: roughly 30 minutes and $8 a run.
+        continue-on-error: true
+        timeout-minutes: 50
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          # answerrank has no releases, so it is pinned to a commit and its
+          # dependencies to the versions the series was measured with.
+          ANSWERRANK_REVISION: 7bcc853840cf05a92eed6926a3d012fef371753a
+        run: |
+          if [ -z "${OPENROUTER_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ] || [ -z "${EXA_API_KEY:-}" ]; then
+            echo "::notice::Skipping the AI-answer snapshot: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
+            exit 0
+          fi
+          python -m venv "$RUNNER_TEMP/answerrank"
+          "$RUNNER_TEMP/answerrank/bin/pip" install --quiet \
+            "answerrank @ https://github.com/misbahsy/answerrank/archive/${ANSWERRANK_REVISION}.zip" \
+            litellm==1.105.1 pyyaml==6.0.3 tenacity==9.2.1
+          ANSWERRANK_BIN="$RUNNER_TEMP/answerrank/bin/answerrank" node scripts/seo-answerrank-collect.mjs --live
       - name: Regenerate the AI-visibility baseline and scorecard
         id: baseline
         if: steps.collect.outcome == 'success'
@@ -162,9 +198,11 @@ jobs:
             tests/seo-gsc-collector.test.mjs \
             tests/seo-bing-collector.test.mjs \
             tests/seo-umami-collector.test.mjs \
+            tests/seo-answerrank-collector.test.mjs \
             tests/seo-url-taxonomy.test.mjs \
             tests/seo-weekly-baseline.test.mjs
       - name: Open the weekly snapshot PR
+        id: pr
         if: steps.collect.outcome == 'success'
         env:
           # Same token as the reconcile step, for the same reasons.
@@ -174,6 +212,7 @@ jobs:
           BING_OUTCOME: ${{ steps.bing.outcome }}
           UMAMI_OUTCOME: ${{ steps.umami.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          ANSWERRANK_OUTCOME: ${{ steps.answerrank.outcome }}
         run: |
           snapshot_date=$(date -u +%F)
           git switch -c "$BRANCH_NAME"
@@ -181,7 +220,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # An optional source that skipped or failed writes no directory, and
           # git add refuses a missing pathspec, so stage only what exists.
-          for source in gsc bing umami baselines scorecards; do
+          for source in gsc bing umami answerrank baselines scorecards; do
             if [ -d "docs/research/seo-ai-visibility/${source}" ]; then
               git add "docs/research/seo-ai-visibility/${source}"
             fi
@@ -209,6 +248,14 @@ jobs:
           else
             umami_note="No Umami referral snapshot this week: UMAMI_API_USERNAME and UMAMI_API_PASSWORD are not both configured."
           fi
+          answerrank_file="docs/research/seo-ai-visibility/answerrank/${snapshot_date}.json"
+          if [ "$ANSWERRANK_OUTCOME" = "failure" ]; then
+            answerrank_note="The AI-answer collection failed in this run. See the run log."
+          elif [ -f "$answerrank_file" ]; then
+            answerrank_note=$(jq -r '"AI-answer snapshot: World Monitor named in \(.overall.mentions) of \(.overall.answers) model answers; change since \(.comparison.previousDate // "the last comparable week"): \(.comparison.verdict). See answerrank/\(.date).md."' "$answerrank_file")
+          else
+            answerrank_note="No AI-answer snapshot this week: OPENROUTER_API_KEY, ANTHROPIC_API_KEY and EXA_API_KEY are not all configured."
+          fi
           if [ "$BASELINE_OUTCOME" = "failure" ]; then
             baseline_note="The AI-visibility baseline and scorecard failed to regenerate in this run, so neither is in this PR. See the run log."
           else
@@ -218,15 +265,44 @@ jobs:
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(seo): Search Console snapshot ${snapshot_date} (#8606)" \
-            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
+            --body "$(printf '%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s' \
               "Weekly Search Console snapshot. Per-URL index state and per-family search performance, collected from the API rather than transcribed from the UI." \
               "Read the HTML indexability headline, not the raw coverage count: render subresources and machine-readable twins are bucketed separately on purpose. Shares are measured over inspected rows and are never projected onto a reported total." \
               "$bing_note" \
               "$umami_note" \
+              "$answerrank_note" \
               "$baseline_note" \
               "Collected in ${RUN_URL}. Auto-merge is armed: this PR merges itself once the required checks pass.")")
           echo "$pr_url"
           gh pr merge --auto --squash "$pr_url"
+          echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
+      - name: Open an issue when AI-answer visibility declines
+        # always(): a failed PR step must not swallow the alert.
+        if: always() && steps.collect.outcome == 'success' && steps.answerrank.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          file="docs/research/seo-ai-visibility/answerrank/${snapshot_date}.json"
+          if [ ! -f "$file" ] || [ "$(jq -r '.comparison.verdict' "$file")" != "declined" ]; then
+            exit 0
+          fi
+          title="AI-answer visibility declined"
+          body=$(jq -r --arg pr "${PR_URL:-the weekly snapshot PR}" '
+            def pct: if . == null then "n/a" else (. * 1000 | round) as $t | "\($t / 10 | floor).\($t % 10)%" end;
+            def line($label; $c): if $c == null then "- \($label): not compared" else "- \($label): \($c.before | pct) → \($c.after | pct) (z = \($c.z)), \($c.verdict)" end;
+            "The weekly answerrank run on \(.date) shows a significant drop since \(.comparison.previousDate).\n\n"
+            + line("Named in model answers"; .comparison.mentions) + "\n"
+            + line("Cited in web-search answers"; .comparison.citations) + "\n\n"
+            + "Details: docs/research/seo-ai-visibility/answerrank/\(.date).md, in \($pr)."
+          ' "$file")
+          existing=$(gh issue list --state open --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
 
   # Dispatches Deploy Gate for the new PR directly rather than waiting on the
   # workflow_run event or the gate's 30-minute sweep.
