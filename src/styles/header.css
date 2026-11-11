@@ -68,15 +68,19 @@ html.wm-pro-banner-reserved .pro-banner-slot {
 /* Prefer the 200px Sign In + free-reason cluster, but shrink before the
    rightmost control clips the viewport on tablet widths (#10464). */
 #authWidgetMount {
+  container-type: inline-size;
   flex: 0 1 var(--header-auth-slot-width);
   max-width: var(--header-auth-slot-width);
   min-width: 72px;
   min-height: 32px;
+  overflow: hidden;
 }
 
 .auth-header-widget-pending {
   width: 100%;
   max-width: var(--header-auth-slot-width);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .auth-header-skeleton {
@@ -98,8 +102,20 @@ html.wm-pro-banner-reserved .pro-banner-slot {
   flex: 0 0 72px;
 }
 
+/* Prefer ~120px, but shrink inside a compressed auth slot so the pending
+   placeholders cannot spill past #authWidgetMount during Clerk load. */
 .auth-header-skeleton-reason {
-  flex: 0 0 120px;
+  flex: 1 1 0;
+  max-width: 120px;
+  min-width: 0;
+}
+
+/* Sign In skeleton is 72px + 8px gap. Below ~160px there is not enough room
+   for a useful reason placeholder — collapse it (and its flex gap). */
+@container (max-width: 160px) {
+  .auth-header-skeleton-reason {
+    display: none;
+  }
 }
 
 /* When left-side chrome returns (variant switcher at >980px) and before the
