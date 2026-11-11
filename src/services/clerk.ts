@@ -528,7 +528,9 @@ export function runClerkSurfaceOpen(
 }
 
 function openLoadedClerkSignIn(): void {
-  clerkInstance?.openSignIn({ appearance: getAppearance() });
+  // withSignUp folds Create account into the Sign In modal so the header can
+  // keep a single account action (#10464) without losing the sign-up path.
+  clerkInstance?.openSignIn({ appearance: getAppearance(), withSignUp: true });
 }
 
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
@@ -545,7 +547,12 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const openClerk = (): void => runClerkSurfaceOpen(open, onFail('ui-components-not-ready'));
   // The resume hook needs the loaded client, so it runs after the force-load too.
   const openSurface = (): void => {
-    if (action === 'open-sign-up' && signUpResumeHook?.(openClerk)) return;
+    // Header Sign In now owns create-account via withSignUp (#10464), so a
+    // mid-signup click still resumes. The hook treats Sign In conservatively
+    // (live, undismissed code only, never a resend) so it cannot trap a
+    // returning user away from Clerk's sign-in form.
+    const intent = action === 'open-sign-in' ? 'sign-in' : 'sign-up';
+    if (signUpResumeHook?.(openClerk, intent)) return;
     openClerk();
   };
   // Desktop: passkeys and Google cannot run in the WebView, so sign-in and
@@ -785,11 +792,11 @@ export function openSignUp(): void {
 }
 
 /**
- * Consulted by `openSignUp()` once Clerk is loaded. Returning true means the
- * resume surface took the click; `openClerkSignUp` is the fallback it may call
- * later if resuming fails.
+ * Consulted by `openSignIn()` / `openSignUp()` once Clerk is loaded. Returning
+ * true means the resume surface took the click; the open callback is the
+ * fallback it may call later if resuming fails.
  */
-export type SignUpResumeHook = (openClerkSignUp: () => void) => boolean;
+export type SignUpResumeHook = (openClerkSignUp: () => void, intent: 'sign-in' | 'sign-up') => boolean;
 
 let signUpResumeHook: SignUpResumeHook | null = null;
 

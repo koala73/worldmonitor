@@ -71,7 +71,7 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
     await expect(headerAuth).toBeVisible();
     await expect(signIn).toBeVisible();
     await expect(signIn).toHaveAccessibleName('Sign In');
-    await expect(headerAuth.locator('.auth-signup-link')).toBeHidden();
+    await expect(headerAuth.locator('.auth-signup-link')).toHaveCount(0);
 
     const box = await signIn.boundingBox();
     const headerBox = await page.locator('.header').boundingBox();
