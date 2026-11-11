@@ -1,5 +1,5 @@
 import { rpcError, rpcOk } from '../rpc';
-import { UI_RESOURCE_MIME_TYPE } from './shell';
+import { UI_DOMAIN, UI_RESOURCE_MIME_TYPE } from './shell';
 import { buildPluginShell } from './_plugin-loader';
 
 // v4 carries preferredDisplayMode; hosts cache resource metadata by URI, so a new URI is how installed connectors pick it up.
@@ -26,6 +26,7 @@ const MAP_ASSET_ORIGINS = [
 // preferredDisplayMode asks Claude to open the view in its side panel; hosts without one render inline.
 export const NEWS_DASHBOARD_META = {
   ui: {
+    domain: UI_DOMAIN,
     preferredDisplayMode: 'fullscreen',
     csp: {
       connectDomains: [ASSET_ORIGIN, ...MAP_ASSET_ORIGINS],
@@ -38,11 +39,11 @@ export const NEWS_DASHBOARD_META = {
 };
 
 export const COUNTRY_VIEW_META = {
-  ui: { preferredDisplayMode: 'fullscreen', csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  ui: { domain: UI_DOMAIN, preferredDisplayMode: 'fullscreen', csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN, 'https://upload.wikimedia.org'], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export const MARKET_RADAR_META = {
-  ui: { csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
+  ui: { domain: UI_DOMAIN, csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN], frameDomains: [], baseUriDomains: [ASSET_ORIGIN] }, prefersBorder: true },
 };
 
 export async function readNewsDashboard(id: unknown, corsHeaders: Record<string, string>, uri = NEWS_DASHBOARD_UI_URI): Promise<Response> {
