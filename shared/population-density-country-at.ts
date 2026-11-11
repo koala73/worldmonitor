@@ -8,6 +8,8 @@
  * outline needed to correct the provider's Israel labels.
  */
 
+import { feature } from 'topojson-client';
+import type { Topology, GeometryCollection } from 'topojson-specification';
 import BOUNDARIES from './population-density-boundaries.json';
 import { inRing, ringEdgesNearLatitude, type Ring } from './population-density-geometry';
 import {
@@ -21,19 +23,28 @@ interface CountryOutline {
   polygons: Ring[][];
 }
 
-const OUTLINES: CountryOutline[] = Object.entries(BOUNDARIES.countries as Record<string, Ring[][]>)
-  .map(([code, polygons]) => {
-    const bbox: CountryOutline['bbox'] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const polygon of polygons) {
-      for (const [lon, lat] of polygon[0] ?? []) {
-        bbox[0] = Math.min(bbox[0], lon!);
-        bbox[1] = Math.min(bbox[1], lat!);
-        bbox[2] = Math.max(bbox[2], lon!);
-        bbox[3] = Math.max(bbox[3], lat!);
-      }
+const topology = BOUNDARIES.topology as unknown as Topology<{ countries: GeometryCollection<{ code: string }> }>;
+const countries = feature(topology, topology.objects.countries);
+const OUTLINES: CountryOutline[] = countries.features.map(({ properties, geometry }) => {
+  const code = properties.code;
+  const polygons: Ring[][] = geometry.type === 'Polygon' ? [geometry.coordinates]
+    : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+  const bbox: CountryOutline['bbox'] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const polygon of polygons) {
+    for (const [lon, lat] of polygon[0] ?? []) {
+      bbox[0] = Math.min(bbox[0], lon!);
+      bbox[1] = Math.min(bbox[1], lat!);
+      bbox[2] = Math.max(bbox[2], lon!);
+      bbox[3] = Math.max(bbox[3], lat!);
     }
-    return { code, bbox, polygons };
-  });
+  }
+  return { code, bbox, polygons };
+});
+
+const GUARDS = BOUNDARIES.guards.map(({ owner, arc }) => ({
+  owner,
+  line: feature(topology, { type: 'LineString', arcs: [arc] }).geometry.coordinates,
+}));
 
 const COASTAL_SNAP_KM = 5;
 const KM_PER_DEGREE = 6371 * Math.PI / 180;
@@ -94,7 +105,7 @@ function ringDistanceKm(lat: number, lon: number, ring: Ring): number {
   return nearest;
 }
 
-/** ISO2 country containing the point, or the closest outline within 5 km. */
+/** Exact atlas containment, with an unambiguous coastal allowance within 5 km. */
 export function densityCountryAt(lat: number, lon: number): string | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
   for (const { code, bbox: [west, south, east, north], polygons } of OUTLINES) {
@@ -110,10 +121,11 @@ export function densityCountryAt(lat: number, lon: number): string | null {
   for (const { code, bbox: [west, south, east, north], polygons } of OUTLINES) {
     if (lat < south - latitudeMargin || lat > north + latitudeMargin
       || lon < west - longitudeMargin || lon > east + longitudeMargin) continue;
-    // Snapping across a land border would reintroduce neighbour-density
-    // errors. Refuse this fallback within 5 km of any such border.
-    const borders = (BOUNDARIES.landBorders as Record<string, Ring[]>)[code] ?? [];
-    if (borders.some((line) => ringMayBeWithin(line, lat, lon, latitudeMargin, longitudeMargin)
+    // Include foreign coastlines across water, not just shared land borders.
+    // A different country's land between query and target must have an edge
+    // within the snap radius; reject that ambiguity instead of borrowing density.
+    if (GUARDS.some(({ owner, line }) => owner !== code
+      && ringMayBeWithin(line, lat, lon, latitudeMargin, longitudeMargin)
       && ringDistanceKm(lat, lon, line) <= COASTAL_SNAP_KM)) continue;
     for (const [outer, ...holes] of polygons) {
       if (!outer || !ringMayBeWithin(outer, lat, lon, latitudeMargin, longitudeMargin)
