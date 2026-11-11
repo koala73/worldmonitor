@@ -18,7 +18,7 @@
 //   --watchlist FILE reads entries from another file of the same shape (candidate trials,
 //   cross-checks); --assemble refuses it so the baseline always matches the real watchlist.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync, lstatSync, chmodSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -48,7 +48,9 @@ export const BASELINE_PATH = join(__dirname, 'data', 'reservoir-levels-baseline.
 const MAX_GRANULE_ATTEMPTS = 3;
 
 function parseArgs(argv) {
-  const a = { concurrency: 3, scratch: join(process.env.TMPDIR || '/tmp', 'reservoir-levels-backfill') };
+  // Per-user default: /tmp is shared on Linux, and the run trusts what it finds here.
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 'user';
+  const a = { concurrency: 3, scratch: join(process.env.TMPDIR || '/tmp', `reservoir-levels-backfill-${uid}`) };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--only') a.only = argv[++i].split(',');
@@ -68,7 +70,25 @@ export function loadWatchlist(path = WATCHLIST_PATH) {
   return JSON.parse(readFileSync(path, 'utf8')).reservoirs;
 }
 
-function scratchFile(dir, id) { return join(dir, `${id}.json`); }
+const SCRATCH_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+// Reservoir ids become file names, so only plain slugs are allowed: no separators or "..".
+function scratchFile(dir, id) {
+  if (!SCRATCH_ID_RE.test(String(id))) throw new Error(`unsafe reservoir id for a scratch path: ${JSON.stringify(id)}`);
+  return join(dir, `${id}.json`);
+}
+
+// The scratch directory holds progress the baseline is built from, so other local users
+// must not be able to plant or swap files in it.
+export function ensurePrivateScratchDir(dir) {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const st = lstatSync(dir);
+  if (!st.isDirectory() || st.isSymbolicLink()) throw new Error(`scratch path ${dir} is not a plain directory`);
+  if (typeof process.getuid === 'function' && st.uid !== process.getuid()) {
+    throw new Error(`scratch directory ${dir} belongs to another user`);
+  }
+  if ((st.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+}
 
 function loadScratch(dir, entry) {
   const f = scratchFile(dir, entry.id);
@@ -76,6 +96,7 @@ function loadScratch(dir, entry) {
   const levelWindowM = entry.levelWindowM ?? null;
   if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, levelWindowM, granules: null, processed: [], failures: {}, passes: [], done: false };
   const s = JSON.parse(readFileSync(f, 'utf8'));
+  if (s.id !== entry.id) throw new Error(`${entry.id}: scratch file is labelled ${JSON.stringify(s.id)}; run --reset ${entry.id}`);
   if (JSON.stringify(s.core) !== JSON.stringify(entry.core) || (s.refid ?? null) !== (entry.refid ?? null)
     || (s.product ?? DEFAULT_PRODUCT) !== product || JSON.stringify(s.levelWindowM ?? null) !== JSON.stringify(levelWindowM)) {
     throw new Error(`${entry.id}: scratch was built for a different core box, refid, product or level window; run --reset ${entry.id}`);
@@ -170,8 +191,10 @@ function printReport(rows) {
 async function main() {
   const a = parseArgs(process.argv.slice(2));
   const watchlist = loadWatchlist(a.watchlist ?? WATCHLIST_PATH);
-  mkdirSync(a.scratch, { recursive: true });
+  ensurePrivateScratchDir(a.scratch);
   if (a.reset) {
+    const known = new Set(watchlist.map((e) => e.id));
+    for (const id of a.reset) if (!known.has(id)) throw new Error(`--reset ${id}: not in the watchlist`);
     for (const id of a.reset) rmSync(scratchFile(a.scratch, id), { force: true });
     console.log(`reset ${a.reset.join(', ')}`);
     return;
@@ -182,7 +205,7 @@ async function main() {
       const reservoirs = {};
       for (const e of watchlist) {
         const f = scratchFile(a.scratch, e.id);
-        if (existsSync(f)) { const s = JSON.parse(readFileSync(f, 'utf8')); reservoirs[e.id] = { passes: s.passes, failedGranules: s.failures }; }
+        if (existsSync(f)) { const s = loadScratch(a.scratch, e); reservoirs[e.id] = { passes: s.passes, failedGranules: s.failures }; }
       }
       baseline = { reservoirs };
     } else baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
