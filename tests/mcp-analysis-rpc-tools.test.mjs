@@ -1265,6 +1265,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     payloads['conflict:ucdp-events:v1'].events = [
       { id: 643820, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
       { id: 643824, country: 'Ukraine', locationName: 'Kyiv city', location: { latitude: 50.45, longitude: 30.52 } },
+      { id: 'gaza', country: 'Israel', locationName: 'Gaza town', location: { latitude: 31.52, longitude: 34.45 } },
       { id: 'yemen', country: 'Yemen (North Yemen)', location: { latitude: 15.35, longitude: 44.2 } },
     ].map(event => ({ ...event, dateStart: '2026-07-28', hasPreciseLocation: true }));
     installUpstashStub(payloads);
@@ -1275,6 +1276,7 @@ describe('wave-2 analysis tools: cache-backed orchestration', () => {
     assert.deepEqual(result.data.events.map(({ name, eventCount, reportedCountry, country }) =>
       [name, eventCount, reportedCountry, country]).sort(), [
       ['Conflict event — Yemen', 1, 'Yemen', 'YEM'],
+      ['Gaza town, Palestine', 1, 'Israel', 'PSE'],
       ['Kyiv city, Ukraine', 2, 'Ukraine', 'UKR'],
     ]);
   });
