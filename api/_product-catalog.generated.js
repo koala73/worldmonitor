@@ -165,13 +165,13 @@ export const PUBLIC_PRODUCT_FACTS = {
     }
   ],
   "heroProofStats": {
-    "mapLayers": 59,
+    "mapLayers": 60,
     "feeds": 470,
     "providers": 854,
     "alertOrigins": 5
   },
   "depthProofStats": {
-    "mapLayers": 59,
+    "mapLayers": 60,
     "feeds": 470,
     "providers": 854,
     "alertOrigins": 5,
@@ -184,7 +184,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "hotspots": 29,
     "stockExchanges": 29,
     "mcpTools": 102,
-    "commands": 623,
+    "commands": 625,
     "languages": 28
   },
   "resilienceCoverage": {
