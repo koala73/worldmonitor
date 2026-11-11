@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  advanceChain,
   classifyAttempt,
   connectingHint,
   type DurationSample,
   LIVE_VIDEO_TIMING,
+  parseSource,
   parseSourceEntry,
+  startChain,
   type PlayerObservation,
   type YouTubeVideoSnapshot,
 } from '../src/services/live-video/model.ts';
@@ -355,5 +358,19 @@ describe('moving on sooner when nothing has loaded at all', () => {
 
   it('keeps waiting the full deadline for a loaded frame whose player is not ready yet', () => {
     assert.deepEqual(classifyAttempt(youtube({ readyAtMs: null, elapsedMs: early })), { verdict: 'pending' });
+  });
+});
+
+describe('advanceChain: resume', () => {
+  it('re-verifies a held not-started stream from the same source, and ignores resume in any other state', () => {
+    const parsed = parseSource({ slot: 't', entries: ['https://a.example/live.m3u8'], origin: 'builtin' });
+    const start = startChain(parsed, new Set());
+    const held = advanceChain(start.state, { type: 'verdict', verdict: { verdict: 'unverifiable', reason: 'not-started' } }, parsed, 0);
+    assert.equal(held.state.phase, 'unverified');
+    const resumed = advanceChain(held.state, { type: 'resume' }, parsed, 0);
+    assert.equal(resumed.state.phase, 'connecting');
+    assert.equal(resumed.effect.type, 'keep');
+    assert.equal(resumed.state.attempts.length, 0);
+    assert.equal(advanceChain(start.state, { type: 'resume' }, parsed, 0).state, start.state);
   });
 });

@@ -417,7 +417,9 @@ export type ChainState = ChainProgress & (
 export type ChainEvent =
   | { readonly type: 'verdict'; readonly verdict: SettledVerdict }
   | { readonly type: 'live-lost' }
-  | { readonly type: 'retry' };
+  | { readonly type: 'retry' }
+  /** The viewer started a held (unverified, not-started) stream: verify it again from the top of its clock. */
+  | { readonly type: 'resume' };
 
 export type ChainEffect =
   | { readonly type: 'mount'; readonly index: number }
@@ -488,12 +490,21 @@ export function startChain(parsed: ParsedSource, recentFailureKeys: ReadonlySet<
  *  connecting + blocked API or missing live signal → an untried HLS candidate, else unverified, keep
  *                               (the signal is missing for every YouTube video, so trying the next one cannot help)
  *  connecting + not-started   → unverified, keep (the last source only; the viewer can start it)
+ *  unverified(not-started) + resume → connecting, same source (the viewer started it; verify again)
  *  live + live-lost           → re-resolve from the top once; again inside the relock window → offline(stream-ended)
  *  settled + retry            → start over (the caller clears failure memory)
  *  anything else              → unchanged, keep
  */
 export function advanceChain(state: ChainState, event: ChainEvent, parsed: ParsedSource, nowMs: number): ChainStep {
   const unchanged: ChainStep = { state, effect: KEEP };
+  if (event.type === 'resume') {
+    if (state.phase !== 'unverified' || state.reason !== 'not-started') return unchanged;
+    const { index } = state;
+    return {
+      state: { order: state.order, attempts: state.attempts.slice(0, -1), liveLostAtMs: state.liveLostAtMs, phase: 'connecting', index },
+      effect: KEEP,
+    };
+  }
   if (event.type === 'retry') return state.phase === 'connecting' ? unchanged : startChain(parsed, new Set());
 
   if (event.type === 'live-lost') {

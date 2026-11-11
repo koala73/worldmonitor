@@ -625,6 +625,7 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
   let muted = options.muted;
   let paused = !options.autoplay;
   let lastHint = { ready: false, tapToPlay: false };
+  let attemptStartedAt = Date.now();
 
   const stopPolling = () => {
     if (pollTimer === null) return;
@@ -677,21 +678,38 @@ export function openLiveVideo(container: HTMLElement, options: LiveVideoOptions)
     apply(step);
   };
 
+  /** A held stream the viewer starts is verified again, so it regains live-loss recovery like any other. */
+  function resumeHeld(): void {
+    if (state.phase !== 'unverified' || state.reason !== 'not-started') return;
+    const { index } = state;
+    const { candidate } = parsed.candidates[index]!;
+    attemptStartedAt = Date.now();
+    dispatch({ type: 'resume' });
+    // The player is already up: keep its controls uncovered while it is verified again.
+    lastHint = { ready: true, tapToPlay: false };
+    if (!destroyed) options.onState({ ...(viewState(state, parsed) as Extract<LiveVideoState, { phase: 'connecting' }>), ...lastHint });
+    pollTimer ??= setInterval(() => poll(index, candidate), LIVE_VIDEO_TIMING.pollMs);
+  }
+
   function mount(index: number): void {
     unmount();
     lastHint = { ready: false, tapToPlay: false };
     options.onAudioAvailabilityChange?.('unknown');
     const { candidate } = parsed.candidates[index]!;
-    const startedAt = Date.now();
+    attemptStartedAt = Date.now();
     let mounted: Transport | null = null;
     const isCurrent = () => !destroyed && mounted !== null && transport === mounted;
     const context: TransportContext = {
       presentation: options.presentation,
       autoplay: !paused,
       muted,
-      elapsedMs: () => Date.now() - startedAt,
+      elapsedMs: () => Date.now() - attemptStartedAt,
       onLiveLost: () => { if (isCurrent()) dispatch({ type: 'live-lost' }); },
-      onPlayingChange: (playing) => { if (isCurrent()) options.onPlayingChange?.(playing); },
+      onPlayingChange: (playing) => {
+        if (!isCurrent()) return;
+        if (playing) resumeHeld();
+        options.onPlayingChange?.(playing);
+      },
       onMutedChange: (next) => {
         if (!isCurrent()) return;
         muted = next;

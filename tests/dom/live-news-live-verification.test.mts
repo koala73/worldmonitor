@@ -809,7 +809,27 @@ describe('Live News live verification', () => {
       expect(status()?.textContent).toBe('Tap to play');
 
       mediaVideo().dispatchEvent(new Event('play'));
+      expect(status()?.querySelector('button')).toBeNull();
+      expect(status()?.classList.contains('live-news-status--cover')).toBe(false);
+    });
+
+    it('verifies a held stream again once the viewer starts it, so a later stream end is recovered, not ignored', async () => {
+      await mountStalledCustomStream();
+      await flush(LIVE_VIDEO_TIMING.verdictDeadlineMs + POLL);
+      expect(status()?.textContent).toBe('Tap to play');
+
+      mediaVideo().dispatchEvent(new Event('play'));
+      mediaVideo().currentTime = 100;
+      await flush(POLL);
+      mediaVideo().currentTime += 1;
+      await flush(POLL);
       expect(status()).toBeNull();
+
+      // Now verified live: the stream ending is handled instead of leaving a dead player.
+      mediaVideo().dispatchEvent(new Event('ended'));
+      await flush(POLL);
+      expect(latestHls().url).toBe('https://local.example/tv.m3u8');
+      expect(hlsState.instances.length).toBeGreaterThan(1);
     });
 
     it('does not hold a stalled playlist that has a fallback: it still falls through to the next entry', async () => {
