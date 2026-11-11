@@ -644,7 +644,7 @@
     },
     {
       "name": "get_population_exposure",
-      "description": "Population exposure: estimated people within the impact radius of active earthquakes, wildfires, and conflict events. Same method as the dashboard: the average density (population / area) of the country the point is in, times the event-type circle area (50 km for conflict, 100 km for earthquakes and floods, 30 km for fires). Only the 20 countries in the countries table have a density; anywhere else gets no estimate (point mode returns exposure null, events mode leaves the event out). Conflict events need a precise point location. Modes: events (default) ranks the seeded feeds by exposed population; point estimates around a lat/lon; countries returns the table. Coarse screening numbers with no city-level data behind them: ranking signals, not casualty projections.",
+      "description": "Estimated people within earthquake (100 km), wildfire (30 km), or conflict (50 km) radii, using country average density × circle area. Only the 20 countries in the population table are supported; other points return null or are omitted in events mode. Conflicts require precise points and fold into one row per location (3 decimal coordinates); eventCount counts folded events. Names use Place, Country (Palestine for PSE density). limit caps locations, not underlying conflict events. Unprojected events responses can exceed the 64 KB output budget; use jmespath or a limit. Modes: events (default) ranks feeds by exposure; point estimates at lat/lon; countries lists the table. Coarse screening estimates, not casualty projections.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "geopolitical-security"
