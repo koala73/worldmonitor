@@ -30434,3 +30434,62 @@ body.map-width-resizing {
   .fw-import-tab { min-height: 44px; }
   .fw-import-input { min-height: 44px; }
 }
+
+/* Container-size defaults are managed by map-control-disclosure. */
+.map-control-disclosure {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-dim);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.map-control-disclosure::after { content: ' ▾'; }
+.map-control-disclosure[aria-expanded="false"]::after { content: ' ▸'; }
+.map-control-collapsed > :not(.toggle-header):not(.map-control-disclosure):not(.no2-activity-legend) {
+  display: none !important;
+}
+
+/* Dataset attribution stays visible while its active layer's scale is folded. */
+.map-control-collapsed > .no2-activity-legend > :not(.no2-activity-credit) {
+  display: none !important;
+}
+.map-control-collapsed .toggle-header { border-bottom: 0; padding: 0; }
+.map-control-collapsed .toggle-header > :not(.map-control-disclosure) { display: none; }
+.map-legend.map-control-collapsed { padding: 0; gap: 0; }
+.map-legend.map-control-compact:not(.map-control-collapsed) {
+  bottom: 58px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  flex-wrap: wrap;
+}
+.map-control-panel > .legend-label-title { display: none; }
+.layer-toggles:not(.deckgl-layer-toggles) > .map-control-disclosure { flex-basis: 100%; }
+.layer-toggles.map-control-collapsed { width: auto; }
+
+@media (max-width: 768px) {
+  body:not(.live-news-fullscreen-active) .layer-toggles.map-control-panel:not(.deckgl-layer-toggles) {
+    display: flex !important;
+  }
+  body:not(.live-news-fullscreen-active) .map-legend.map-control-panel:not(.deckgl-legend) {
+    display: flex;
+  }
+  .layer-toggles.map-control-panel:not(.deckgl-layer-toggles):not(.map-control-collapsed) {
+    bottom: 58px;
+  }
+}
+
+/* Keep the existing 48px touch targets; mouse users can use a compact row. */
+@media (pointer: fine) {
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider {
+    padding: 4px 6px;
+  }
+  :has(> .layer-toggles.map-control-compact) > .deckgl-time-slider .time-btn {
+    min-width: 40px;
+    min-height: 28px;
+  }
+}
