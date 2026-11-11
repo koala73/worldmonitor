@@ -138,13 +138,13 @@ export function granuleBase(name) {
 /** Release revision of a granule name (`_01` -> 1, `_02` -> 2), or null. */
 export function granuleRevision(name) {
   const m = GRANULE_EXACT_RE.exec(name);
-  return m ? Number(m[4]) : null;
+  return m ? Number(m[5]) : null;
 }
 
 /** Reference ground track encoded in a granule name (`_RRRRCCSS_`), or null. */
 export function granuleRgt(name) {
   const m = GRANULE_EXACT_RE.exec(name);
-  return m ? Number(m[2].slice(0, 4)) : null;
+  return m ? Number(m[3].slice(0, 4)) : null;
 }
 
 /**

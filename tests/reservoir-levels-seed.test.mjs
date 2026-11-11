@@ -255,9 +255,9 @@ describe('ATL06 entries in the seeder run', () => {
   const GAMMA = { id: 'gamma', name: 'Gamma', country: 'XC', riparians: ['XC'], river: 'C', lat: 3, lon: 3, core: [2.9, 2.9, 3.1, 3.1], product: 'atl06', tags: ['hydropower'], why: 'c' };
   const watchlist = [WATCHLIST[0], GAMMA];
   const baseline = { ...BASELINE, reservoirs: { alpha: BASELINE.reservoirs.alpha, gamma: { passes: history(800, '2026-08-01'), processedThrough: '2026-08-01', failedGranules: {} } } };
-  const gran06 = (date, rgt) => gran(date, rgt).replace('ATL13_', 'ATL06_');
+  const gran06 = (date, rgt, rev) => gran(date, rgt, rev).replace('ATL13_', 'ATL06_');
 
-  function fake({ cmr }) {
+  function fake({ cmr, water = 799.5 }) {
     const calls = { cmr: [], slide: [] };
     const fetchImpl = async (url, init = {}) => {
       const u = new URL(String(url));
@@ -275,7 +275,7 @@ describe('ATL06 entries in the seeder run', () => {
         const rgt = Number(g.slice(21, 25));
         if (u.pathname === '/source/atl06x') {
           // Water at 799.5 m among land segments 40-90 m higher and a steep shore.
-          for (let i = 0; i < 30; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 799.5 + (i % 3) * 0.01 });
+          for (let i = 0; i < 30; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: water + (i % 3) * 0.01 });
           for (let i = 0; i < 60; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 840 + i * 0.8, dx: i % 2 ? 0.2 : 0 });
         } else {
           for (let i = 0; i < 20; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 300, refid: 11 });
@@ -316,6 +316,27 @@ describe('ATL06 entries in the seeder run', () => {
     const now = Date.parse('2019-10-20T00:00:00Z');
     assert.equal(buildSummary([GAMMA], byId, now).reservoirs[0].recordMinM, 850.556);
     assert.equal(buildSummary([{ ...GAMMA, despikePerGapDayM: 0.3 }], byId, now).reservoirs[0].recordMinM, 819.338);
+  });
+
+  it('a reprocessed ATL06 granule revision replaces the earlier level of the same pass', async () => {
+    const r1 = gran06('2026-09-03', 33, '01');
+    const r2 = gran06('2026-09-03', 33, '02');
+    const first = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl: fake({ cmr: { gamma: [r1] } }).fetchImpl });
+    const tupleOf = (data) => data._state.byId.gamma.passes.find((t) => String(t[0]).startsWith('2026-09-03') && t[1] === 33);
+    assert.equal(tupleOf(first)[6], undefined, 'revision 1 is not stored');
+    const second = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => first._state, log: () => {}, fetchImpl: fake({ cmr: { gamma: [r1, r2] }, water: 801 }).fetchImpl });
+    const pass = tupleOf(second);
+    assert.ok(Math.abs(pass[2] - 801.01) < 0.02, `expected the revision 02 level, got ${pass[2]}`);
+    assert.equal(pass[6], 2);
+  });
+
+  it('planned ATL06 work that never started keeps last-good instead of publishing', async () => {
+    const { fetchImpl, calls } = fake({ cmr: { gamma: [gran06('2026-09-03', 33)] } });
+    await assert.rejects(
+      fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl, deadlineAtMs: Date.now() - 1 }),
+      (err) => err.preservableFetchFailure === true && /no SlideRule request started for 1 planned/.test(err.message),
+    );
+    assert.equal(calls.slide.length, 0);
   });
 
   it('budgets ATL06 granules separately from ATL13 granules', async () => {

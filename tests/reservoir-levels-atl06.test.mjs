@@ -12,7 +12,10 @@ import {
   classifyPasses,
   dedupeGranules,
   fetchSegments,
+  granuleBase,
   granuleDate,
+  granuleRevision,
+  granuleRgt,
   listGranules,
   lowestCluster,
   passIsOk,
@@ -69,6 +72,15 @@ describe('ATL06 product routing', () => {
   it('parses ATL06 granule names and dedupes their revisions', () => {
     assert.equal(granuleDate(A1), '2026-06-01');
     assert.deepEqual(dedupeGranules([A2, A1, A1.replace('_01.h5', '_02.h5')]), [A1.replace('_01.h5', '_02.h5'), A2]);
+  });
+
+  it('reads the orbit, revision and RGT of ATL06 and ATL13 names alike', () => {
+    for (const product of ['ATL06', 'ATL13']) {
+      const name = `${product}_20260601195921_12013101_007_02.h5`;
+      assert.equal(granuleBase(name), `${product}_20260601195921_12013101_007`, product);
+      assert.equal(granuleRevision(name), 2, product);
+      assert.equal(granuleRgt(name), 1201, product);
+    }
   });
 
   it('lists ATL06 v007 granules in CMR and ignores names of another product', async () => {
