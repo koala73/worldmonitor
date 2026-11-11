@@ -161,4 +161,16 @@ describe('mobile P0 navigation shell (#5201)', () => {
     for (const read of shellReads) assert.equal(read, "localStorage.getItem('mobile-map-collapsed')==='true'");
     assert.doesNotMatch(shell, /var mapCollapsed=true;/);
   });
+
+  it('caps the expanded mobile map to a short strip so a content panel shows on the first screen (#10457)', () => {
+    // The Map tab opens the section fullscreen, which restates its own height,
+    // so the in-flow map never needs to fill the viewport.
+    const rule = css.match(/\n  \.map-section \{([^}]*)\}/);
+    assert.ok(rule, 'mobile .map-section rule');
+    assert.match(rule[1], /height:\s*calc\(100dvh \* 0\.32\) !important/);
+    assert.doesNotMatch(rule[1], /min-height:\s*60vh/);
+    assert.match(css, /\.map-section\.live-news-fullscreen \{\s*height: auto !important;/);
+    // The ruler's panel does not fit the strip, so it is hidden there only.
+    assert.match(css, /\.map-section:not\(\.live-news-fullscreen\) \.map-distance-control \{\s*display: none;/);
+  });
 });

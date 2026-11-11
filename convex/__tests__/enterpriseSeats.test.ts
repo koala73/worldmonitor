@@ -101,7 +101,7 @@ describe("inviteMembers", () => {
     });
 
     await t.finishAllScheduledFunctions(vi.runAllTimers);
-    const resendCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes("resend.com"));
+    const resendCalls = fetchMock.mock.calls.filter((call) => String(call[0]) === "https://api.resend.com/emails");
     expect(resendCalls).toHaveLength(1);
     const body = JSON.parse(String((resendCalls[0]![1] as RequestInit).body));
     expect(body.to).toEqual(["new.person@hexion.com"]);

@@ -694,7 +694,7 @@ describe('scorecard computation', () => {
     assert.match(markdown, /\| Category \/ definition \| 5 \| 28d: 1 of 5 queries reported \|/);
     assert.match(markdown, /## Reviewed query performance/);
     assert.match(markdown, /\| q01 \| best real-time global intelligence dashboard for geopolitical risk monitoring \| Category \/ definition \| 100 imp \/ 10 clicks \/ 10% \/ pos 8 \|/);
-    assert.match(markdown, new RegExp(`\\| q02 \\| [^|]+ \\| Category / definition \\| ${notReported.replace(/[.]/g, '\\.')} \\|`));
+    assert.match(markdown, new RegExp(`\\| q02 \\| [^|]+ \\| Category / definition \\| ${RegExp.escape(notReported)} \\|`));
     assert.match(markdown, /\| q03 \| [^|]+ \| Category \/ definition \| No row \|/);
 
     // A provider can report traffic without a position; the query was still reported.
