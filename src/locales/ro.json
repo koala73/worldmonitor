@@ -5012,7 +5012,8 @@
       "showUnattributedAria_other": "Afișează {{count}} de elemente fără țară",
       "hideUnattributedAria_one": "Ascunde {{count}} element fără țară",
       "hideUnattributedAria_few": "Ascunde {{count}} elemente fără țară",
-      "hideUnattributedAria_other": "Ascunde {{count}} de elemente fără țară"
+      "hideUnattributedAria_other": "Ascunde {{count}} de elemente fără țară",
+      "partialConflict": "Se afișează doar evenimentele de conflict din ultimele 150. Lista completă nu s-a încărcat."
     }
   }
 }

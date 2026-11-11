@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Onyesha {{count}} kipengee bila nchi",
       "showUnattributedAria_other": "Onyesha {{count}} vipengee bila nchi",
       "hideUnattributedAria_one": "Ficha {{count}} kipengee bila nchi",
-      "hideUnattributedAria_other": "Ficha {{count}} vipengee bila nchi"
+      "hideUnattributedAria_other": "Ficha {{count}} vipengee bila nchi",
+      "partialConflict": "Inaonyesha matukio ya mgogoro kutoka 150 ya hivi karibuni tu. Orodha kamili haikupakiwa."
     }
   }
 }

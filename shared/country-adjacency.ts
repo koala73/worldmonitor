@@ -173,6 +173,8 @@ export const SEA_NEIGHBOUR_PAIRS: readonly CountryPair[] = [
   // South Asia
   ['IN', 'LK'], // Palk Strait
   // Gulf and Red Sea
+  ['CN', 'JP'], // East China Sea; contested maritime boundary (Senkaku/Diaoyu)
+  ['IR', 'KW'], // Northern Gulf; contested Durra/Arash gas field boundary
   ['AE', 'IR'], // Strait of Hormuz; Dubai-Bandar Abbas ferries
   ['IR', 'OM'], // Strait of Hormuz at Musandam
   ['IR', 'QA'], // shared South Pars / North Dome gas field boundary
@@ -203,7 +205,7 @@ export const SEA_NEIGHBOUR_PAIRS: readonly CountryPair[] = [
   ['DK', 'NO'], // Skagerrak ferries
   ['EE', 'FI'], // Tallinn-Helsinki ferries
   // Africa (Atlantic)
-  ['GQ', 'NG'], // Bioko lies off the Nigerian coast
+  ['GQ', 'NG'], // Bioko (Equatorial Guinea) is within ~150 nm of the Niger Delta coast
   // Caribbean
   ['CU', 'US'], // Florida Straits
   ['BS', 'US'], // Bimini lies about 50 nm off Florida

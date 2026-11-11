@@ -4956,7 +4956,8 @@
       "showAllAria_other": "このパネル内のすべてを表示。フォーカス外の{{count}}件を含む",
       "unattributed_other": "国が不明な{{count}}件",
       "showUnattributedAria_other": "国が不明な{{count}}件を表示",
-      "hideUnattributedAria_other": "国が不明な{{count}}件を非表示"
+      "hideUnattributedAria_other": "国が不明な{{count}}件を非表示",
+      "partialConflict": "最新150件の紛争イベントのみを表示しています。全リストは読み込まれませんでした。"
     }
   }
 }

@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Εμφάνιση του {{count}} στοιχείου χωρίς χώρα",
       "showUnattributedAria_other": "Εμφάνιση των {{count}} στοιχείων χωρίς χώρα",
       "hideUnattributedAria_one": "Απόκρυψη του {{count}} στοιχείου χωρίς χώρα",
-      "hideUnattributedAria_other": "Απόκρυψη των {{count}} στοιχείων χωρίς χώρα"
+      "hideUnattributedAria_other": "Απόκρυψη των {{count}} στοιχείων χωρίς χώρα",
+      "partialConflict": "Εμφάνιση συμβάντων σύγκρουσης μόνο από τα τελευταία 150. Η πλήρης λίστα δεν φορτώθηκε."
     }
   }
 }

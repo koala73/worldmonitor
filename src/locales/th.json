@@ -4956,7 +4956,8 @@
       "showAllAria_other": "แสดงทุกอย่างในแผงนี้ รวมถึง {{count}} รายการนอกการโฟกัส",
       "unattributed_other": "{{count}} รายการที่ไม่มีประเทศ",
       "showUnattributedAria_other": "แสดง {{count}} รายการที่ไม่มีประเทศ",
-      "hideUnattributedAria_other": "ซ่อน {{count}} รายการที่ไม่มีประเทศ"
+      "hideUnattributedAria_other": "ซ่อน {{count}} รายการที่ไม่มีประเทศ",
+      "partialConflict": "แสดงเหตุการณ์ความขัดแย้งจาก 150 รายการล่าสุดเท่านั้น ไม่สามารถโหลดรายการทั้งหมดได้"
     }
   }
 }

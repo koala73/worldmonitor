@@ -5040,7 +5040,8 @@
       "hideUnattributedAria_one": "Приховати {{count}} елемент без країни",
       "hideUnattributedAria_few": "Приховати {{count}} елементи без країни",
       "hideUnattributedAria_many": "Приховати {{count}} елементів без країни",
-      "hideUnattributedAria_other": "Приховати {{count}} елементів без країни"
+      "hideUnattributedAria_other": "Приховати {{count}} елементів без країни",
+      "partialConflict": "Показані події конфлікту тільки з останніх 150. Повний список не завантажився."
     }
   }
 }

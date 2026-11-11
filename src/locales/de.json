@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Das {{count}} Element ohne Land anzeigen",
       "showUnattributedAria_other": "Die {{count}} Elemente ohne Land anzeigen",
       "hideUnattributedAria_one": "Das {{count}} Element ohne Land verbergen",
-      "hideUnattributedAria_other": "Die {{count}} Elemente ohne Land verbergen"
+      "hideUnattributedAria_other": "Die {{count}} Elemente ohne Land verbergen",
+      "partialConflict": "Zeigt Konfliktereignisse nur aus den letzten 150 an. Die vollständige Liste konnte nicht geladen werden."
     }
   }
 }

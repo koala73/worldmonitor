@@ -4956,7 +4956,8 @@
       "showAllAria_other": "Hiển thị mọi thứ trong bảng này, bao gồm {{count}} mục ngoài tiêu điểm",
       "unattributed_other": "{{count}} mục không có quốc gia",
       "showUnattributedAria_other": "Hiển thị {{count}} mục không có quốc gia",
-      "hideUnattributedAria_other": "Ẩn {{count}} mục không có quốc gia"
+      "hideUnattributedAria_other": "Ẩn {{count}} mục không có quốc gia",
+      "partialConflict": "Hiển thị các sự kiện xung đột từ 150 sự kiện mới nhất. Danh sách đầy đủ không được tải."
     }
   }
 }

@@ -4956,7 +4956,8 @@
       "showAllAria_other": "顯示此面板中的全部內容，包括聚焦範圍外的 {{count}} 項",
       "unattributed_other": "{{count}} 項無國家標記",
       "showUnattributedAria_other": "顯示 {{count}} 項無國家標記的內容",
-      "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容"
+      "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容",
+      "partialConflict": "僅顯示最近150條衝突事件。完整列表未載入。"
     }
   }
 }

@@ -5040,7 +5040,8 @@
       "hideUnattributedAria_one": "Ukryj {{count}} element bez kraju",
       "hideUnattributedAria_few": "Ukryj {{count}} elementy bez kraju",
       "hideUnattributedAria_many": "Ukryj {{count}} elementów bez kraju",
-      "hideUnattributedAria_other": "Ukryj {{count}} elementów bez kraju"
+      "hideUnattributedAria_other": "Ukryj {{count}} elementów bez kraju",
+      "partialConflict": "Wyświetlanie zdarzeń konfliktowych tylko z ostatnich 150. Pełna lista nie została załadowana."
     }
   }
 }

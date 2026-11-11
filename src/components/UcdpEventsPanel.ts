@@ -102,6 +102,8 @@ export class UcdpEventsPanel extends Panel {
 
   public override applyScope(scope: ResolvedScope | null): void {
     if (!this.scopeFilter.setScope(scope)) return;
+    // A failed full-set load is retried on the next focus change.
+    if (this.fullSetState === 'failed') this.fullSetState = 'idle';
     this.ensureFullSetForScope();
     if (this.hasLoadedEvents) this.renderContent();
   }
@@ -168,7 +170,9 @@ export class UcdpEventsPanel extends Panel {
       this.showLoading(t('focus.filter.loadingConflict'));
       return;
     }
-    this.scopeFilter.renderStrip(view);
+    // A partial list (full set missing) must say so even when rows are shown:
+    // the counts would describe the 150-row projection, not the focus.
+    this.scopeFilter.renderStrip(view, partial && this.fullSetState === 'failed' ? t('focus.filter.partialConflict') : undefined);
     const scoped = view.rows.map((row) => row.item);
     this.setCount(scoped.length);
     if (view.emptyByFocus) {

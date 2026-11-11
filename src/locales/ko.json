@@ -4956,7 +4956,8 @@
       "showAllAria_other": "포커스 외부의 {{count}}개 항목을 포함하여 이 패널의 모든 항목 표시",
       "unattributed_other": "국가가 없는 {{count}}개 항목",
       "showUnattributedAria_other": "국가가 없는 {{count}}개 항목 표시",
-      "hideUnattributedAria_other": "국가가 없는 {{count}}개 항목 숨기기"
+      "hideUnattributedAria_other": "국가가 없는 {{count}}개 항목 숨기기",
+      "partialConflict": "최근 150개의 분쟁 사건만 표시됩니다. 전체 목록을 불러오지 못했습니다."
     }
   }
 }

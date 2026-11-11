@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Het {{count}} item zonder land weergeven",
       "showUnattributedAria_other": "De {{count}} items zonder land weergeven",
       "hideUnattributedAria_one": "Het {{count}} item zonder land verbergen",
-      "hideUnattributedAria_other": "De {{count}} items zonder land verbergen"
+      "hideUnattributedAria_other": "De {{count}} items zonder land verbergen",
+      "partialConflict": "Alleen conflictgebeurtenissen van de laatste 150 weergegeven. De volledige lijst is niet geladen."
     }
   }
 }

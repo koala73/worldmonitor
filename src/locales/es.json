@@ -5012,7 +5012,8 @@
       "showUnattributedAria_other": "Mostrar los {{count}} elementos sin país",
       "hideUnattributedAria_one": "Ocultar el {{count}} elemento sin país",
       "hideUnattributedAria_many": "Ocultar los {{count}} elementos sin país",
-      "hideUnattributedAria_other": "Ocultar los {{count}} elementos sin país"
+      "hideUnattributedAria_other": "Ocultar los {{count}} elementos sin país",
+      "partialConflict": "Se muestran eventos de conflicto solo de los últimos 150. No se cargó la lista completa."
     }
   }
 }

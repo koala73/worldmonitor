@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Visa {{count}} objekt utan land",
       "showUnattributedAria_other": "Visa {{count}} objekt utan land",
       "hideUnattributedAria_one": "Dölj {{count}} objekt utan land",
-      "hideUnattributedAria_other": "Dölj {{count}} objekt utan land"
+      "hideUnattributedAria_other": "Dölj {{count}} objekt utan land",
+      "partialConflict": "Visar konflikthändelser från de senaste 150 endast. Den fullständiga listan laddades inte."
     }
   }
 }

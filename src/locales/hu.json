@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "{{count}} elem megjelenítése ország nélkül",
       "showUnattributedAria_other": "{{count}} elem megjelenítése ország nélkül",
       "hideUnattributedAria_one": "{{count}} elem elrejtése ország nélkül",
-      "hideUnattributedAria_other": "{{count}} elem elrejtése ország nélkül"
+      "hideUnattributedAria_other": "{{count}} elem elrejtése ország nélkül",
+      "partialConflict": "Konfliktusesemények jelenítve meg a legutóbbi 150-ből. A teljes lista nem töltődött be."
     }
   }
 }

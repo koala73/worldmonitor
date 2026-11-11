@@ -125,6 +125,21 @@ describe('UcdpEventsPanel under a focus', () => {
     expect(el().querySelector('.panel-scope-empty')?.textContent).toContain('The full list did not load');
   });
 
+  it('says the list is partial even when rows are shown, and retries on the next focus change', async () => {
+    loadFullSet.mockResolvedValueOnce(null);
+    panel.setEvents(EVENTS, AGGREGATES);
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(ids()).toEqual(['th', 'la']);
+    expect(strip()?.textContent).toContain('The full list did not load');
+
+    panel.applyScope(scopeOf(['MM']));
+    await settle();
+    expect(loadFullSet).toHaveBeenCalledTimes(2);
+    expect(strip()?.textContent ?? '').not.toContain('The full list did not load');
+    expect(ids()).toEqual(['mm', 'la', 'th']);
+  });
+
   it('"Show all" restores the whole list; clearing the focus hides the strip', async () => {
     panel.setEvents(EVENTS);
     panel.applyScope(FOCUS);

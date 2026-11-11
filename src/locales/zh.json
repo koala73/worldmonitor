@@ -4956,7 +4956,8 @@
       "showAllAria_other": "显示此面板中的全部内容，包括聚焦范围外的 {{count}} 项",
       "unattributed_other": "{{count}} 项无国家标记",
       "showUnattributedAria_other": "显示 {{count}} 项无国家标记的内容",
-      "hideUnattributedAria_other": "隐藏 {{count}} 项无国家标记的内容"
+      "hideUnattributedAria_other": "隐藏 {{count}} 项无国家标记的内容",
+      "partialConflict": "仅显示最近150条冲突事件。完整列表未加载。"
     }
   }
 }

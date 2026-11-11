@@ -4984,7 +4984,8 @@
       "showUnattributedAria_one": "Показване на {{count}} елемента без държава",
       "showUnattributedAria_other": "Показване на {{count}} елемента без държава",
       "hideUnattributedAria_one": "Скриване на {{count}} елемента без държава",
-      "hideUnattributedAria_other": "Скриване на {{count}} елемента без държава"
+      "hideUnattributedAria_other": "Скриване на {{count}} елемента без държава",
+      "partialConflict": "Показани са събития на конфликт само от последните 150. Пълният списък не се зареди."
     }
   }
 }

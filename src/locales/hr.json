@@ -5023,7 +5023,8 @@
       "showUnattributedAria_other": "Prikaži {{count}} stavki bez zemlje",
       "hideUnattributedAria_one": "Sakrij {{count}} stavku bez zemlje",
       "hideUnattributedAria_few": "Sakrij {{count}} stavke bez zemlje",
-      "hideUnattributedAria_other": "Sakrij {{count}} stavki bez zemlje"
+      "hideUnattributedAria_other": "Sakrij {{count}} stavki bez zemlje",
+      "partialConflict": "Prikazujem ratne događaje samo iz zadnjih 150. Puna lista se nije učitala."
     }
   }
 }
