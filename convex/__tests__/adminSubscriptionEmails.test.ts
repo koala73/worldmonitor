@@ -23,7 +23,7 @@ function mockResend() {
   process.env.RESEND_API_KEY = "re_test";
   const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
   return () => fetchMock.mock.calls
-    .filter(([url]) => String(url).includes("api.resend.com"))
+    .filter(([url]) => String(url) === "https://api.resend.com/emails")
     .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as ResendSend);
 }
 
