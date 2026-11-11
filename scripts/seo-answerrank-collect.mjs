@@ -106,7 +106,8 @@ function group(metrics, searchedAnswers = null) {
  * The snapshot for one finished answerrank run directory. `answers.jsonl`
  * gives the planned answers per variant. `scores.json` gives the judged
  * metrics, which answerrank computes only over answers that neither failed
- * nor lost their judgment, so planned minus scored is everything unscored.
+ * nor lost their judgment (`judgments.jsonl`), so planned minus scored is
+ * everything unscored.
  */
 export function buildSnapshot({ runDir, date, observedAt, digest, revision = null }) {
   invariant(DATE_PATTERN.test(date ?? ''), 'date must be YYYY-MM-DD');
@@ -114,12 +115,17 @@ export function buildSnapshot({ runDir, date, observedAt, digest, revision = nul
   const spend = existsSync(join(runDir, 'spend.json')) ? readJson(join(runDir, 'spend.json')) : {};
   const run = readJson(join(runDir, 'run.json'));
   const answers = latestByKey(readJsonl(join(runDir, 'answers.jsonl')));
+  // answerrank scores an answer only when its last judgment succeeded, so
+  // searches are counted over the same answers as the citation rate.
+  const judged = new Set(latestByKey(readJsonl(join(runDir, 'judgments.jsonl')))
+    .filter((judgment) => !judgment.error)
+    .map((judgment) => judgment.key));
   const queries = readJson(join(runDir, 'queries.json'));
   const plannedByVariant = {};
   const searchedByVariant = {};
   for (const answer of answers) {
     plannedByVariant[answer.model] = (plannedByVariant[answer.model] ?? 0) + 1;
-    if (!answer.error && answer.web_search && answer.searched) searchedByVariant[answer.model] = (searchedByVariant[answer.model] ?? 0) + 1;
+    if (!answer.error && judged.has(answer.key) && answer.web_search && answer.searched) searchedByVariant[answer.model] = (searchedByVariant[answer.model] ?? 0) + 1;
   }
   const unscoredByVariant = Object.fromEntries(Object.entries(plannedByVariant)
     .map(([label, planned]) => [label, planned - (scores.by_model?.[label]?.n ?? 0)])

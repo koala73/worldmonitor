@@ -71,11 +71,18 @@ function writeRun({ variants, failed = {}, unjudged = {}, retried = 0, settings 
   for (const [label, count] of Object.entries(failed)) {
     for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|f${i}`, model: label, error: 'NotFoundError' });
   }
+  // Every answer that did not fail gets a judgment; an unjudged one gets an
+  // error line, searched with web search on so it would inflate a search count.
+  const judgments = answers.filter((row) => !row.error).map(({ key }) => ({ key, judge: { target: null } }));
   for (const [label, count] of Object.entries(unjudged)) {
-    for (let i = 0; i < count; i += 1) answers.push({ key: `${label}|u${i}`, model: label, text: 'answer' });
+    for (let i = 0; i < count; i += 1) {
+      answers.push({ key: `${label}|u${i}`, model: label, text: 'answer', web_search: true, searched: true });
+      judgments.push({ key: `${label}|u${i}`, error: 'RateLimitError' });
+    }
   }
   answers.unshift(...answers.slice(0, retried).map(({ key, model }) => ({ key, model, error: 'RateLimitError' })));
   writeFileSync(join(dir, 'answers.jsonl'), answers.map((row) => JSON.stringify(row)).join('\n'));
+  writeFileSync(join(dir, 'judgments.jsonl'), judgments.map((row) => JSON.stringify(row)).join('\n'));
   writeFileSync(join(dir, 'scores.json'), JSON.stringify({ overall: metrics(...totals), by_model: byModel }));
   writeFileSync(join(dir, 'spend.json'), JSON.stringify({ answer: 5.1, search: 0.6, judge: 1.55 }));
   writeFileSync(join(dir, 'run.json'), JSON.stringify(settings));
@@ -133,6 +140,14 @@ describe('buildSnapshot', () => {
     const snapshot = snapshotOf(writeRun({ variants: VARIANTS, unjudged: { 'claude +web': 20, gpt: 5 } }), '2026-11-17');
     assert.equal(snapshot.status, 'partial');
     assert.deepEqual(snapshot.answers, { planned: 220, scored: 195, unscored: 25, unscoredByVariant: { 'claude +web': 20, gpt: 5 } });
+  });
+
+  it('counts searches only among scored answers, so an unjudged answer that searched is left out', () => {
+    const snapshot = snapshotOf(writeRun({ variants: VARIANTS, unjudged: { 'claude +web': 2 } }), '2026-11-17');
+    assert.equal(snapshot.status, 'available');
+    assert.equal(snapshot.byVariant['claude +web'].searchedAnswers, 38);
+    assert.ok(snapshot.byVariant['claude +web'].searchedAnswers <= snapshot.byVariant['claude +web'].webAnswers);
+    assert.equal(snapshot.overall.searchedAnswers, 114);
   });
 
   it('keeps a run with a few unscored answers available', () => {

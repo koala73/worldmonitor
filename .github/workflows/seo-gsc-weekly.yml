@@ -161,7 +161,8 @@ jobs:
         run: echo "state=collected" >> "$GITHUB_OUTPUT"
 
   collect:
-    # always(): a failed AI-answer job must not stop the Search Console PR.
+    # !cancelled(): a failed AI-answer job must not stop the Search Console
+    # PR, but a cancelled run stops here.
     needs: [guard, answerrank]
     # Only this job pushes the weekly branch and opens its PR.
     permissions:
@@ -169,7 +170,7 @@ jobs:
       pull-requests: write
       # Only for the issue opened when AI-answer visibility declines.
       issues: write
-    if: ${{ always() && (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
+    if: ${{ !cancelled() && (needs.guard.outputs.enabled == 'true') && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -383,11 +384,12 @@ jobs:
           gh pr merge --auto --squash "$pr_url"
           echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
       - name: Open an issue when AI-answer visibility declines
-        # always(): a failed PR step must not swallow the alert. A rerun in a
-        # week whose PR already exists skips collection, so it retries the
-        # alert from that week's saved snapshot instead; the marker in the
-        # issue keeps a retry from reporting the same week twice.
-        if: always() && steps.reconcile.outcome == 'success' && (steps.answerrank_add.outcome == 'success' || steps.reconcile.outputs.skip == 'true')
+        # !cancelled(): a failed PR step must not swallow the alert; a
+        # cancelled run posts nothing. A rerun in a week whose PR already
+        # exists skips collection, so it retries the alert from that week's
+        # saved snapshot instead; the marker in the issue keeps a retry from
+        # reporting the same week twice.
+        if: ${{ !cancelled() && steps.reconcile.outcome == 'success' && (steps.answerrank_add.outcome == 'success' || steps.reconcile.outputs.skip == 'true') }}
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
