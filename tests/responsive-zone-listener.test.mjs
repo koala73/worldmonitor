@@ -32,6 +32,7 @@ const mainCss = readFileSync(
   resolve(__dirname, '../src/styles/main.css'),
   'utf-8',
 );
+const pluginCss = readFileSync(resolve(__dirname, '../src/styles/plugin.css'), 'utf-8');
 
 class FakeMediaQueryList extends EventTarget {
   constructor(media) {
@@ -129,6 +130,11 @@ describe('responsive zone listener', () => {
 describe('panel layout responsive zone wiring', () => {
   it('keeps small laptops stacked while preserving the 1440px split layout', () => {
     assert.equal(SPLIT_LAYOUT_MIN_WIDTH, 1440);
+  });
+  it('keeps embedded plugin overflow rules aligned with the shared layout', () => {
+    assert.match(pluginCss, new RegExp(`@media \\(min-width: ${SPLIT_LAYOUT_MIN_WIDTH}px\\)`));
+    assert.match(pluginCss, new RegExp(`@media \\(max-width: ${SPLIT_LAYOUT_MIN_WIDTH - 1}px\\)`));
+    assert.doesNotMatch(pluginCss, /(?:min-width: 900px|max-width: 899px)/);
   });
   // Behavioral: the contract panel-layout relies on — a breakpoint cross runs
   // the zone-reconcile callback exactly once, synchronously, with no trailing
