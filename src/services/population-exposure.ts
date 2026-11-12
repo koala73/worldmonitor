@@ -1,4 +1,6 @@
 import { exposureLocationKey } from '../../scripts/shared/exposure-location-key.mjs';
+import { resolveCountryCode } from '../../shared/country-code-resolve';
+import type { UcdpExposureEvent } from '@/services/conflict';
 import { ucdpExposureName } from '../../shared/ucdp-display';
 import type { ExposureCoverage, PopulationExposure } from '@/types';
 import {
@@ -6,7 +8,7 @@ import {
   getRadiusForEventType,
 } from '../../shared/analysis-population-exposure';
 
-interface EventForExposure {
+export interface EventForExposure {
   id: string;
   name: string;
   /** Present for UCDP inputs, including an empty place name. */
@@ -82,4 +84,26 @@ export function formatPopulation(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return String(n);
+}
+
+/** Use the estimate's corrected point country (not an upstream historical label). */
+export function exposureEventCountry(event: EventForExposure): string | null {
+  const estimate = event.hasPreciseLocation !== false
+    ? estimateExposure(event.lat, event.lon, event.country, getRadiusForEventType(event.type))
+    : null;
+  return resolveCountryCode(estimate?.country ?? event.country);
+}
+
+export function ucdpExposureEvents(events: UcdpExposureEvent[]): EventForExposure[] {
+  return events.map(e => ({
+    id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
+    name: e.locationName ?? '', locationName: e.locationName ?? '',
+    country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
+  }));
+}
+
+export interface ExposureSources {
+  unrest: EventForExposure[];
+  ucdp: EventForExposure[];
+  ucdpIsProjection: boolean;
 }

@@ -106,10 +106,7 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   // layers.
   climate: 'unsupported', // Climate Anomalies
   'reservoir-levels': 'filters', // Host or listed riparian country; neighbours optional
-  // Exposure keeps up to 10 locations per source worldwide before it
-  // reaches the panel, so filtering that slice would call a focused country
-  // quiet when its events were simply cut. Needs filtering before the cut.
-  'population-exposure': 'unsupported', // Population Exposure
+  'population-exposure': 'filters', // Source events filtered before location limits
   'positive-feed': 'unsupported', // Good News Feed
   spotlight: 'unsupported', // Today's Hero
   breakthroughs: 'unsupported', // Breakthroughs
@@ -236,7 +233,6 @@ export const PANEL_SCOPE_REASONS: Readonly<Record<string, string>> = Object.free
   monitors: 'Matches keywords the user chose to watch: a focus must not hide what the user asked for.',
   'live-news': 'Video channels have no subject country; geoAvailability says where a channel can be watched, not what it covers.',
   climate: 'Anomalies are regional zones, not countries; a zone-to-country rule is needed before filtering. A zone centroid does not represent every affected country.',
-  'population-exposure': 'Keeps up to 10 locations per source worldwide before the panel; needs country attribution and filtering before the source and display cuts, otherwise missing locations would look quiet.',
 });
 
 /** A panel's declared behaviour; 'unsupported' for dynamic and unknown keys. */

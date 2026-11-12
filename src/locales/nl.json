@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Geen brandstoftekorten voor deze landen",
       "emptyEnergyDisruptions": "Geen energieonderbrekingen voor deze landen",
       "emptyDisplacement": "Geen vluchtelingengegevens voor deze landen",
-      "emptyCorrelation": "Geen signalen voor deze landen"
+      "emptyCorrelation": "Geen signalen voor deze landen",
+      "emptyExposure": "Geen locaties met blootstelling van de bevolking voor deze landen",
+      "emptyExposurePartial": "De beschikbare gegevens bevatten geen blootstellingslocaties voor deze landen. Volledige UCDP-dekking is nog in afwachting.",
+      "partialExposureLoading": "Alle UCDP-locaties worden geladen voordat de blootstelling wordt gefilterd. De dekkingstellingen omvatten alleen onrust.",
+      "partialExposure": "Niet alle UCDP-locaties konden worden geladen. De blootstellingsgegevens zijn onvolledig; de dekkingstellingen omvatten alleen onrust."
     },
     "draftAssessment": "Reisbeoordeling",
     "draftAssessmentAria": "Open de risicoanalyse reisroute, vooringevuld met deze focus",

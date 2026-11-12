@@ -16,7 +16,7 @@ import { feature } from 'topojson-client';
 const BOUNDARIES = { countries: DATA.countries ?? Object.fromEntries(feature(DATA.topology, DATA.topology.objects.countries).features.map(({properties, geometry}) => [properties.code, geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates])) };
 import { resolveCountryCode } from '../shared/country-code-resolve.ts';
 import { getPopulationExposure } from '../server/worldmonitor/displacement/v1/get-population-exposure.ts';
-import { enrichEventsWithExposure } from '../src/services/population-exposure.ts';
+import { enrichEventsWithExposure, exposureEventCountry } from '../src/services/population-exposure.ts';
 import { normalizeAcledProtestEvents } from '../scripts/seed-unrest-events.mjs';
 import ucdpCandidate from '../scripts/shared/ucdp-candidate.cjs';
 import {
@@ -339,5 +339,15 @@ describe('v1 population-exposure compatibility', () => {
     const { country, ...estimate } = estimateExposure(31.0, 34.8, 'ISR', radius);
     assert.deepEqual(result.exposure, { ...estimate, nearestCountry: country });
     assert.equal(result.exposure.exposureRadiusKm, radius);
+  });
+});
+
+describe('exposure country attribution', () => {
+  it('carries the estimated country, including corrected Gaza attribution', () => {
+    const country = exposureEventCountry({
+      id: 'gaza', name: 'Gaza', type: 'conflict', country: 'Israel',
+      lat: 31.52, lon: 34.45, hasPreciseLocation: true,
+    });
+    assert.equal(country, 'PS');
   });
 });
