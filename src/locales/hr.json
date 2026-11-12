@@ -2810,7 +2810,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankcije i Označavanja",
-      "infoTooltip": "Popisi OFAC SDN i konsolidirani popisi te kanadske sankcije SEMA/JVCFOA. Redci država koriste izravne veze. Zastave plovila i registracije zrakoplova broje se zasebno u registrima; nula imovine za državu ne znači da nema sankcionirane imovine. Države matičnih subjekata odvojene su od dokaza o adresi i isključene iz ocjena rizika.",
+      "infoTooltip": "Popisi OFAC SDN i konsolidirani popisi te kanadske sankcije SEMA/JVCFOA. Redci država koriste izravne veze. Zastave plovila i registracije zrakoplova broje se zasebno u registrima; nula imovine za državu ne znači da nema sankcionirane imovine.",
       "loading": "Učitavanje podataka sankcija...",
       "unavailable": "Podaci sankcija nisu dostupni.",
       "summary": {

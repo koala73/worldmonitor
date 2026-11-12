@@ -15542,6 +15542,9 @@
           "path": "api/mcp/auth.ts"
         },
         {
+          "path": "api/mcp/handler.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
