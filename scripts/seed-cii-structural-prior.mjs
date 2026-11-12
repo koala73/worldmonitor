@@ -87,9 +87,11 @@ export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publis
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const startedAt = Date.now();
   loadEnvFile(import.meta.url);
   const dryRun = process.argv.includes('--dry-run');
   seedStructuralPrior({ dryRun }).then((payload) => {
     console.log(JSON.stringify({ dryRun, year: payload.year, recordCount: Object.keys(payload.countries).length, countries: payload.countries }));
+    console.log(`=== Done (${Date.now() - startedAt}ms) ===`);
   }).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

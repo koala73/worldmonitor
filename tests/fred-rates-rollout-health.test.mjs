@@ -271,6 +271,12 @@ function installHealthPipelineMock(recordCount, {
       if (op === 'GET' && key === STANDALONE_KEYS.educationAttainment) {
         return { result: JSON.stringify({ countries: educationCountries }) };
       }
+      if (op === 'GET' && key === STANDALONE_KEYS.ciiStructuralPrior) {
+        const config = SEED_META.ciiStructuralPrior;
+        return { result: JSON.stringify({ indicator: 'GOV_WGI_PV.EST', year: config.year,
+          countries: Object.fromEntries(config.requiredCountries.map((code) =>
+            [code, { pv: 0, year: config.year, source: 'https://api.worldbank.org/' }])) }) };
+      }
       if (op === 'GET' && String(key).includes('health:verdict')) return { result: null };
       if (op === 'GET' && key === 'health:failure-log-sig') return { result: failureSignature };
       if (op === 'GET') {
