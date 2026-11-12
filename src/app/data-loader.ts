@@ -881,7 +881,9 @@ export class DataLoaderManager implements AppModule {
         return fallback ? { digest: fallback, servedStale: true } : null;
       }
       this.lastGoodDigest = retainRicherScopedDigest(this.lastGoodDigest, requestKey, data);
-      if (firstFailure) this.reportDigestFetchFailure(firstFailure.error, 'none', firstFailure.deadlineExpired, 'recovered');
+      // A retry that answered with no stories left the panels as empty as the
+      // failure did, so it is not a recovery.
+      if (firstFailure) this.reportDigestFetchFailure(firstFailure.error, 'none', firstFailure.deadlineExpired, digestHasItems(data) ? 'recovered' : 'failed');
       this.reportDigestCoverage(data);
       return { digest: data, servedStale: data.coverage?.servedStale === true };
     } catch (e) {

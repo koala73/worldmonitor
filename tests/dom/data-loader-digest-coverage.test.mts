@@ -566,6 +566,22 @@ describe('digest coverage follows the selected browser response', () => {
       expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'network', 'digest.fallback': 'none', 'digest.retry': 'failed' });
     });
 
+    // CodeRabbit review: the zero-category check counts keys, so a retry can
+    // succeed with categories that hold no stories. Panels stay empty.
+    it('a retry that answers with no stories is reported as failed, not recovered', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ...digest('complete', 3), categories: { world: { items: [] } } })));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'none', 'digest.retry': 'failed' });
+    });
+
     it('knows which hosts the analytics tracker runs on', async () => {
       const actual = await vi.importActual<typeof import('@/services/analytics')>('@/services/analytics');
       for (const host of ['worldmonitor.app', 'www.worldmonitor.app', 'happy.worldmonitor.app', 'finance.worldmonitor.app']) {
