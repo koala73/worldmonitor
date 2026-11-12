@@ -23,6 +23,10 @@ import { createClient } from 'redis';
 const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 'redis://redis:6379';
 const TOKEN = process.env.SRH_TOKEN || '';
 const PORT = parseInt(process.env.PORT || '80', 10);
+// All interfaces by default: inside Docker the container network is the
+// boundary and compose publishes only 127.0.0.1:8079. A native install has no
+// such boundary, so it sets SRH_BIND_HOST=127.0.0.1.
+const BIND_HOST = (process.env.SRH_BIND_HOST || '').trim() || '0.0.0.0';
 
 // Reject unusable HTTP credentials before creating a Redis client or listener.
 if (!/^[\x21-\x7e]+$/.test(TOKEN)) {
@@ -106,12 +110,22 @@ const ALLOWED_COMMANDS = new Set([
 const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'local revoked = {}',
   "for _, url in ipairs(redis.call('SMEMBERS', KEYS[2])) do revoked[url] = true end",
+  'local exempt = {}',
+  'if ARGV[11] and ARGV[11] ~= \'\' then',
+  '  local okExempt, exemptList = pcall(cjson.decode, ARGV[11])',
+  "  if okExempt and type(exemptList) == 'table' then",
+  "    for _, name in ipairs(exemptList) do if type(name) == 'string' then exempt[name] = true end end",
+  '  end',
+  'end',
+  "local fingerprint = ARGV[12] and string.match(ARGV[12], '^[a-z0-9]+$') or nil",
   'local function countData(data)',
   "  if type(data) ~= 'table' or type(data.categories) ~= 'table' then return nil end",
   '  local categories = 0',
+  '  local total = 0',
   '  local items = 0',
-  '  for _, bucket in pairs(data.categories) do',
-  '    categories = categories + 1',
+  '  for name, bucket in pairs(data.categories) do',
+  '    total = total + 1',
+  '    if not exempt[name] then categories = categories + 1 end',
   "    if type(bucket) == 'table' and type(bucket.items) == 'table' then",
   '      for _, item in ipairs(bucket.items) do',
   "        local isRevoked = type(item) == 'table' and type(item.link) == 'string' and revoked[item.link]",
@@ -119,12 +133,12 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '      end',
   '    end',
   '  end',
-  '  return { categories = categories, items = items }',
+  '  return { categories = categories, total = total, items = items }',
   'end',
   'local okCandidate, candidateData = pcall(cjson.decode, ARGV[5])',
   'local candidate = nil',
   'if okCandidate then candidate = countData(candidateData) end',
-  'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
+  'if not candidate or candidate.total < 1 or candidate.items < 1 then return -1 end',
   'local canonicalRaw = nil',
   "if KEYS[4] then canonicalRaw = redis.call('GET', KEYS[4]) end",
   'local function rejectNarrower()',
@@ -149,12 +163,14 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '  return value >= ARGV[7] and value <= ARGV[8]',
   'end',
   'local carriedPeak, carriedPeakAt = nil, nil',
+  'local catalogChanged = false',
   "local currentRaw = redis.call('GET', KEYS[1])",
   'if currentRaw then',
   '  local okCurrent, snapshot = pcall(cjson.decode, currentRaw)',
   "  if okCurrent and type(snapshot) == 'table' then",
+  "    catalogChanged = fingerprint ~= nil and type(snapshot.catalogFingerprint) == 'string' and snapshot.catalogFingerprint ~= fingerprint",
   '    local current = countData(snapshot.data)',
-  '    if current then',
+  '    if current and not catalogChanged then',
   '      local delta = tonumber(ARGV[1]) - (tonumber(snapshot.acceptedAt) or 0)',
   '      local live = delta >= 0 and delta <= tonumber(ARGV[2])',
   '      if live then',
@@ -171,13 +187,13 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    end',
   '  end',
   'end',
-  'if KEYS[4] then',
+  'if KEYS[4] and not catalogChanged then',
   '  if canonicalRaw then',
   '    local okCanonical, canonicalData = pcall(cjson.decode, canonicalRaw)',
   "    if okCanonical and type(canonicalData) == 'table' then",
   '      local currentCanonical = countData(canonicalData)',
   '      local live = isLiveCanonicalClock(canonicalData.generatedAt)',
-  '      local usable = currentCanonical and currentCanonical.categories >= 1 and currentCanonical.items >= 1',
+  '      local usable = currentCanonical and currentCanonical.total >= 1 and currentCanonical.items >= 1',
   '      if live and usable and isNarrower(candidate, currentCanonical) then return rejectNarrower() end',
   '    end',
   '  end',
@@ -192,6 +208,7 @@ const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "  .. ',\"itemCount\":' .. string.format('%.0f', candidate.items)",
   "  .. ',\"peakItemCount\":' .. string.format('%.0f', carriedPeak or candidate.items)",
   "  .. ',\"peakAt\":' .. string.format('%.0f', carriedPeakAt or tonumber(ARGV[3]) or 0)",
+  "  .. (fingerprint and (',\"catalogFingerprint\":\"' .. fingerprint .. '\"') or '')",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
   "if KEYS[4] then redis.call('SET', KEYS[4], ARGV[5], 'EX', ARGV[6]) end",
@@ -631,6 +648,31 @@ const COMPARE_AND_DELETE_SCRIPT = [
 const LEGACY_COMPARE_AND_DELETE_SCRIPT = [
   'if redis.call("get",KEYS[1]) == ARGV[1] then return redis.call("del",KEYS[1]) else return 0 end',
 ].join('\n');
+// PINNED COPIES of SEED_LOCK_RENEW_SCRIPT and SEED_LOCK_FENCED_SET_SCRIPT in
+// scripts/_seed-utils.mjs. runSeed renews its seed lock and fences the
+// canonical and seed-meta writes on lock ownership with these (SM-122);
+// unpinned, every self-hosted runSeed publish would 403.
+const SEED_LOCK_RENEW_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "return {1, ''}",
+].join('\n');
+const SEED_LOCK_FENCED_SET_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PEXPIRE', KEYS[1], ARGV[2])",
+  "if ARGV[4] == '' then",
+  "  redis.call('SET', KEYS[2], ARGV[3])",
+  'else',
+  "  redis.call('SET', KEYS[2], ARGV[3], 'EX', ARGV[4])",
+  'end',
+  "return {1, ''}",
+].join('\n');
 // PINNED COPY of WRITE_LUA in scripts/shared/pizzint-history.cjs. Kept inline:
 // this file connects to Redis at import time, and the command-gate tests eval
 // the source instead of importing it. The EVAL gate matches script text exactly,
@@ -771,7 +813,73 @@ const HISTORY_COST_UPDATE_SCRIPT = [
   '',
 ].join('\n');
 
+// Pinned copy of scripts/_global-tender-receipts.mjs for the single-file proxy image.
+const TENDER_RECEIPT_UPSERT_SCRIPT = [
+  "",
+  "local entries = redis.call('LRANGE', KEYS[1], 0, -1)",
+  "for index, value in ipairs(entries) do",
+  "  if cjson.decode(value).runId == ARGV[1] then",
+  "    redis.call('LSET', KEYS[1], index - 1, ARGV[2])",
+  "    redis.call('EXPIRE', KEYS[1], ARGV[4])",
+  "    return 1",
+  "  end",
+  "end",
+  "redis.call('LPUSH', KEYS[1], ARGV[2])",
+  "redis.call('LTRIM', KEYS[1], 0, tonumber(ARGV[3]) - 1)",
+  "redis.call('EXPIRE', KEYS[1], ARGV[4])",
+  "return 1",
+  "",
+].join('\n');
+
+// PINNED COPIES of scripts/seed-military-bases.mjs version-switch scripts.
+// The seeder publishes a new bases version, sweeps leaked version keys, arms
+// staging TTLs and backfills seed-meta with these; command-parity tests check
+// exact bytes.
+const MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  "if (current or '') ~= ARGV[3] then",
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('PERSIST', KEYS[3])",
+  "redis.call('PERSIST', KEYS[4])",
+  'if current and current ~= ARGV[1] then',
+  "  redis.call('EXPIRE', KEYS[5], ARGV[4])",
+  "  redis.call('EXPIRE', KEYS[6], ARGV[4])",
+  'end',
+  "redis.call('SET', KEYS[1], ARGV[1])",
+  "redis.call('SET', KEYS[2], ARGV[2])",
+  "return {1, ARGV[1], current or ''}",
+].join('\n');
+const MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT = [
+  "local active = redis.call('GET', KEYS[1])",
+  'if active == ARGV[1] then',
+  "  return {0, 'active', active}",
+  'end',
+  "local ttl = redis.call('TTL', KEYS[2])",
+  'if ttl ~= -1 then',
+  "  return {0, 'ttl', tostring(ttl)}",
+  'end',
+  "local armed = redis.call('EXPIRE', KEYS[2], ARGV[2])",
+  "return {armed, 'armed', active or ''}",
+].join('\n');
+const MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT = [
+  "local active = redis.call('GET', KEYS[1])",
+  'if active == ARGV[1] then',
+  '  return 0',
+  'end',
+  "return redis.call('EXPIRE', KEYS[2], ARGV[2])",
+].join('\n');
+const MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT = [
+  "local current = redis.call('GET', KEYS[1])",
+  'if current ~= ARGV[1] then',
+  "  return {0, current or ''}",
+  'end',
+  "redis.call('SET', KEYS[2], ARGV[2])",
+  'return {1, current}',
+].join('\n');
+
 const ALLOWED_EVAL_SCRIPTS = new Set([
+  TENDER_RECEIPT_UPSERT_SCRIPT,
   HISTORY_COST_UPDATE_SCRIPT,
   CII_DAILY_HISTORY_WRITE_SCRIPT,
   PANEL_REQUEST_RESERVE_SCRIPT,
@@ -779,6 +887,8 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PIZZINT_HISTORY_WRITE_SCRIPT,
   COMPARE_AND_DELETE_SCRIPT,
   LEGACY_COMPARE_AND_DELETE_SCRIPT,
+  SEED_LOCK_RENEW_SCRIPT,
+  SEED_LOCK_FENCED_SET_SCRIPT,
   CABLE_HEALTH_REPAIR_SCRIPT,
   WEBHOOK_OWNER_INDEX_REMOVE_EXPIRED_SCRIPT,
   SOURCE_RETRY_CLAIM_SCRIPT,
@@ -796,6 +906,10 @@ const ALLOWED_EVAL_SCRIPTS = new Set([
   PHYSICAL_PREMIUM_HISTORY_APPEND_SCRIPT,
   PHYSICAL_PREMIUM_PUBLISH_SCRIPT,
   PHYSICAL_DIVERGENCE_PUBLISH_SCRIPT,
+  MILITARY_BASES_PUBLISH_ACTIVE_AND_META_SCRIPT,
+  MILITARY_BASES_ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+  MILITARY_BASES_ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+  MILITARY_BASES_BACKFILL_META_IF_ACTIVE_SCRIPT,
 ]);
 const LEGACY_EVAL_REPLACEMENTS = new Map([
   [LEGACY_COMPARE_AND_DELETE_SCRIPT, COMPARE_AND_DELETE_SCRIPT],
@@ -1211,6 +1325,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Redis REST proxy listening on 0.0.0.0:${PORT}`);
+server.listen(PORT, BIND_HOST, () => {
+  console.log(`Redis REST proxy listening on ${BIND_HOST}:${PORT}`);
 });

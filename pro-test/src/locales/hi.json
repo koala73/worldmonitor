@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "शोर",
     "signalWord": "सिग्नल",
-    "valueProps": "भू-राजनीतिक इंटेलिजेंस की AI परत — इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें।",
+    "valueProps": "एक AI विश्लेषक से पूछें, सतर्कता नियम सेट करें, ब्रीफिंग प्राप्त करें, और इसे Claude में उपयोग करें।",
     "launchingDate": "अब लाइव",
     "tryFreeDashboard": "मुफ़्त डैशबोर्ड आज़माएँ",
     "choosePlan": "अपना प्लान चुनें",
-    "signIn": "साइन इन करें",
     "goToDashboard": "डैशबोर्ड पर जाएँ"
   },
   "wired": {
     "asFeaturedIn": "इनमें उल्लेखित"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "आपका AI विश्लेषक। एक व्यक्तिगत गुप्तचर डेस्क। एक प्लेटफॉर्म जिसपर आप निर्माण कर सकते हैं।",
-    "proF1": "WM Analyst chat — लाइव सेवाओं को संवादात्मक रूप से क्वेरी करें",
-    "proF2": "AI digest — दैनिक, दिन में दो बार या साप्ताहिक — Slack, Discord, Telegram, ईमेल या webhook पर",
-    "proF3": "Custom Widget Builder — AI-सहायता से बदलाव के साथ HTML/CSS/JS",
-    "proF4": "MCP connectors — WorldMonitor को Claude, GPT या अपने LLMs से जोड़ें",
-    "proF5": "इक्विटी रिसर्च, स्टॉक विश्लेषण और backtesting",
-    "proF6": "फ़्लाइट खोज और कीमत तुलना",
-    "proF7": "अलर्ट नियम इंजन — कस्टम triggers, quiet hours, AES-256 एन्क्रिप्टेड चैनल",
-    "proF8": "मार्केट watchlist, macro और central bank tracking",
-    "proF9": "AI मार्केट निहितार्थ और क्षेत्रीय इंटेलिजेंस",
-    "choosePlan": "अपना प्लान चुनें",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "उन टीमों के लिए जिन्हें shared monitoring, API access, deployment options, TV apps और direct support चाहिए।",
-    "entF1": "Pro की हर चीज़, और साथ में:",
-    "entF2": "Live-edge + satellite imagery और SAR",
-    "entF3": "Investor personas और MCP वाले AI agents",
-    "entF4": "बुनियादी ढांचे की संपत्तियां मैप की गई",
-    "entF5": "डेटा कनेक्टर (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + webhooks + बल्क एक्सपोर्ट",
-    "entF7": "SSO/MFA/RBAC वाले team workspaces",
-    "entF8": "White-label और embeddable panels",
-    "entF9": "SOC walls और trading floors के लिए Android TV app",
-    "entF10": "Cloud, on-prem या air-gapped deployment",
-    "entF11": "Dedicated onboarding और support",
-    "entCta": "Sales से बात करें",
-    "freeF2": "क्यूरेटेड फीड, सत्रोपित स्रोत, और मानचित्र परतें",
-    "proF10": "इंटेल मेमोरी — ऐतिहासिक खोज, टाइमलाइन और समान-घटना लुकअप"
-  },
   "whyUpgrade": {
-    "title": "World Monitor Pro में अपग्रेड क्यों करें?",
+    "title": "सुर्खियों से पहले इसके बारे में जानें",
     "noiseTitle": "सबसे पहले जानें",
     "noiseDesc": "AIS anomaly → Brent spike → आपका Slack एक मिनट से कम में। Signal, headlines नहीं।",
     "fasterTitle": "कुछ भी पूछें",
@@ -71,7 +40,7 @@
     "buildOnItDesc": "Custom Widget Builder (HTML/CSS/JS + AI) और Claude, GPT, custom LLMs के लिए MCP."
   },
   "deliveryDesk": {
-    "eyebrow": "DELIVERY DESK",
+    "eyebrow": "डिलीवरी डेस्क",
     "title": "व्यक्तिगत इंटेलिजेंस डेस्क क्या है?",
     "body": "प्रति भेजने पर 30 तक क्रमबद्ध आइटम, स्रोतों के पार डीडुप किए गए, आपकी निगरानी सूची के विरुद्ध स्कोर किए गए। अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक — एक AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत।",
     "closer": "Newsletter नहीं। एक analyst.",
@@ -81,17 +50,14 @@
     "windowTitle": "worldmonitor.app — लाइव डैशबोर्ड",
     "openFullScreen": "Full screen खोलें",
     "tryLiveDashboard": "Live Dashboard आज़माएँ",
-    "iframeTitle": "World Monitor — Live Intelligence Dashboard",
+    "iframeTitle": "World Monitor — लाइव इंटेलिजेंस डैशबोर्ड",
     "description": "3D WebGL ग्लोब · इंटरैक्टिव मानचित्र परतें · रीयल-टाइम बाजार, मैक्रो, भू-राजनीतिक, ऊर्जा, और बुनियादी ढांचे का डेटा"
   },
   "socialProof": {
     "uniqueVisitors": "अद्वितीय आगंतुक",
     "peakDailyUsers": "सर्वाधिक दैनिक उपयोगकर्ता",
     "countriesReached": "पहुँचे हुए देश",
-    "liveDataSources": "लाइव डेटा स्रोत",
-    "quote": "Markets, monetary policy, geopolitics, energy — अब सब साथ चलते हैं। मुझे ऐसा tool चाहिए था जो real time में दिखाए कि ये forces कैसे जुड़ती हैं, सिर्फ़ headlines नहीं बल्कि underlying drivers भी।",
-    "ceo": "सीईओ,",
-    "asToldTo": "जैसा बताया गया"
+    "liveDataSources": "लाइव डेटा स्रोत"
   },
   "audience": {
     "title": "World Monitor किसके लिए बनाया गया है?",
@@ -105,6 +71,10 @@
     "journalistsDesc": "Sources को manually जोड़ने के बिना markets और regions में तेज़ी से बदलती developments follow करें।",
     "govTitle": "Government और institutions",
     "govDesc": "Macro policy tracking, central bank monitoring और geopolitical व infrastructure signals पर situational awareness।",
+    "strategyTitle": "रणनीति और बाज़ार-इंटेलिजेंस टीमें",
+    "strategyDesc": "अपने देशों, ऊर्जा बाज़ारों और व्यापार गलियारों के बदलावों को नेतृत्व के लिए स्रोत सहित ब्रीफ़ में बदलें।",
+    "aiTeamsTitle": "आंतरिक AI और डेटा टीमें",
+    "aiTeamsDesc": "MCP के ज़रिए अपनी कंपनी के सहायक को लाइव वैश्विक संदर्भ दें, आंतरिक उपयोग के लिखित अधिकारों के साथ।",
     "teamsTitle": "Teams और organizations",
     "teamsDesc": "Individual use से shared workflows, API access, TV apps और managed deployments तक जाएँ।"
   },
@@ -146,7 +116,7 @@
   },
   "proShowcase": {
     "proTier": "PRO टियर",
-    "title": "World Monitor AI विश्लेषक क्या करता है?",
+    "title": "स्टॉक, मैक्रो और भू-राजनीति के लिए एक AI विश्लेषक",
     "subtitle": "मुफ़्त डैशबोर्ड आपको दुनिया दिखाता है। Pro आपको पूछने के लिए विश्लेषक, सदस्यता लेने के लिए डाइजेस्ट और निर्माण के लिए आधार देता है। Stocks, macro, geopolitical risk — और इनके बीच के connections।",
     "equityResearch": "इक्विटी रिसर्च",
     "equityResearchDesc": "Financials visualization, analyst price targets और valuation metrics के साथ global stock analysis. Track करें कि markets को क्या move करता है।",
@@ -164,15 +134,6 @@
     "supplyChainLab": "सप्लाई-चेन स्ट्रेस लैब",
     "supplyChainLabDesc": "देशों और क्षेत्रों में लागत आघात का मॉडल बनाएं। चोकपॉइंट निर्भरता द्वारा कमोडिटी कमजोरी को रैंक करें। खदान-से-रिफाइनरी एकाग्रता और SGE–COMEX भौतिक प्रीमियम विचलन को ट्रैक करें — वह श्रृंखला जो हेडलाइन से पहले हिलती है।",
     "roadmapNote": "रोडमैप पर: कक्षीय निगरानी, लंबा इतिहास, प्रीमियम मैप लेयर्स।"
-  },
-  "slackMock": {
-    "morningBrief": "सुबह का ब्रीफ़",
-    "markets": "बाजार",
-    "marketsText": "S&P 500 futures pre-market -1.2%. Fed Chair testimony 10am EST पर — rate-sensitive sectors दबाव में। Q2 earnings पर analyst consensus बदल रहा है।",
-    "elevated": "Macro",
-    "elevatedText": "ECB rates को 3.75% पर रखता है। Euro area GDP 1.1% तक revise up. Central bank divergence बढ़ रहा है — USD/EUR 3-month high पर।",
-    "watch": "भू-राजनीतिक",
-    "watchText": "Hormuz AIS anomaly पर Brent +2.3%. 6h में 4 dark ships. Commodity supply chain risk elevated — energy sector correlations spiking."
   },
   "apiSection": {
     "apiTier": "API टियर",
@@ -194,16 +155,16 @@
     "enterpriseTier": "ENTERPRISE टियर",
     "title": "World Monitor Enterprise में क्या शामिल है?",
     "subtitle": "Governments, institutions, trading desks और organizations के लिए जिन्हें maximum security, AI agents, TV apps और data depth वाला full platform चाहिए।",
-    "security": "सरकारी स्तर की सुरक्षा",
-    "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud tenant, SOC 2 Type II path, SSO/MFA और full audit trail.",
+    "security": "सरकारी स्तर की सुरक्षा, अनुबंध पर",
+    "securityDesc": "अनुबंध पर: नेटवर्क से अलग डिप्लॉयमेंट, ऑन-प्रिमाइसेस Docker, समर्पित क्लाउड टेनेंट, SSO/MFA, पूरा ऑडिट ट्रेल और SOC 2 Type II की राह।",
     "aiAgents": "AI Agents और MCP",
     "aiAgentsDesc": "Investor personas वाले autonomous intelligence agents. World Monitor को MCP के ज़रिए Claude, GPT या custom LLMs के tool के रूप में connect करें।",
     "dataLayers": "विस्तारित डेटा लेयर",
-    "dataLayersDesc": "दुनिया भर में tens of thousands infrastructure assets mapped. Change detection और SAR के साथ satellite imagery integration.",
+    "dataLayersDesc": "दुनिया भर में दसियों हज़ार बुनियादी ढांचा संपत्तियां मैप की गई हैं। बदलाव पहचान और SAR के साथ उपग्रह चित्र, अनुबंध पर।",
     "connectors": "डेटा कनेक्टर",
-    "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams, और अन्य। PDF, CSV, JSON को एक्सपोर्ट करें।",
+    "connectorsDesc": "Slack और Teams अलर्ट के साथ PDF, CSV और JSON निर्यात। PostgreSQL, Snowflake, Splunk, Sentinel और Jira कनेक्टर अनुबंध पर।",
     "whiteLabel": "White-Label, TV और Embeddable",
-    "whiteLabelDesc": "आपका brand, आपका domain, आपका desktop app. SOC walls और trading floors के लिए Android TV app. Embeddable iframe panels.",
+    "whiteLabelDesc": "आपका ब्रांड, आपका डोमेन, आपका डेस्कटॉप ऐप। एम्बेड करने योग्य iframe पैनल। SOC दीवारों और ट्रेडिंग फ्लोर के लिए Android TV ऐप, अनुबंध पर।",
     "financial": "वित्तीय इंटेलिजेंस",
     "financialDesc": "Earnings calendar, energy grid data, cargo inference के साथ enhanced commodity tracking, AIS correlation के साथ sanctions screening.",
     "commodity": "कमोडिटी ट्रेडिंग",
@@ -220,7 +181,7 @@
     "namePlaceholder": "आपका नाम",
     "emailPlaceholder": "कार्य ईमेल",
     "orgPlaceholder": "कंपनी *",
-    "phonePlaceholder": "फ़ोन नंबर *",
+    "phonePlaceholder": "फ़ोन नंबर (वैकल्पिक)",
     "messagePlaceholder": "आप क्या खोज रहे हैं?",
     "workEmailRequired": "कृपया अपना work email address use करें",
     "submitContact": "Message भेजें",
@@ -231,64 +192,30 @@
   "pricingTable": {
     "title": "World Monitor की योजनाएं कैसे तुलना करती हैं?",
     "feature": "सुविधा",
-    "freeHeader": "मुफ़्त ($0)",
-    "proHeader": "Pro ($39.99)",
-    "apiHeader": "API ($99.99)",
-    "entHeader": "Enterprise (संपर्क)",
-    "dataRefresh": "डेटा रीफ़्रेश",
-    "dashboard": "डैशबोर्ड",
-    "ai": "AI",
-    "briefsAlerts": "ब्रीफ़ और अलर्ट",
-    "delivery": "डिलीवरी",
-    "apiRow": "API",
-    "infraLayers": "इन्फ्रास्ट्रक्चर लेयर",
-    "satellite": "ऑर्बिटल निगरानी",
-    "connectorsRow": "कनेक्टर",
-    "deployment": "डिप्लॉयमेंट",
-    "securityRow": "सुरक्षा",
-    "f5_15min": "5-15 मिनट",
-    "fLt60s": "<60 सेकंड",
-    "fPerRequest": "प्रति अनुरोध",
-    "fLiveEdge": "Live-edge",
-    "f50panels": "पैनल",
-    "fWhiteLabel": "White-label",
-    "fBYOK": "BYOK",
+    "rowPrice": "कीमत",
+    "rowLicense": "लाइसेंस",
+    "rowUsers": "नामित उपयोगकर्ता",
+    "rowDashboards": "कस्टम डैशबोर्ड",
+    "rowAi": "प्रति दिन डैशबोर्ड AI अनुरोध",
+    "rowMcp": "प्रति दिन MCP + SDK कॉल",
+    "rowApi": "प्रति दिन REST API अनुरोध",
+    "rowExport": "डेटा निर्यात (CSV, JSON, PDF)",
+    "rowRedistribution": "आपके ग्राहकों को पुनर्वितरण",
+    "rowSupport": "सहायता",
+    "licClient": "क्लाइंट कार्य और आंतरिक उपयोग",
+    "licInternal": "केवल आंतरिक टूल",
+    "licCustomer": "ग्राहक-उन्मुख उत्पाद",
+    "noAccount": "खाते की ज़रूरत नहीं",
+    "freeMcp": "मुफ़्त खाते के साथ 5 कैश्ड कॉल",
+    "sharedWithRest": "REST कोटा के साथ साझा",
+    "supportStandard": "यथासंभव",
+    "supportPriority": "प्राथमिकता",
+    "supportDedicated": "समर्पित",
+    "notIncluded": "शामिल नहीं",
+    "scrollHint": "सभी छह प्लान की तुलना के लिए बगल में स्क्रॉल करें",
     "fIncluded": "शामिल",
-    "fAgentsPersonas": "एजेंट + personas",
-    "fDailyFlash": "दैनिक + फ्लैश",
-    "fTeamDist": "टीम वितरण",
-    "fSlackTgWa": "Slack/Discord/TG/ईमेल/Webhook",
-    "fWebhook": "Webhook",
-    "fSiemMcp": "+ SIEM/MCP",
-    "fRestWebhook": "REST + webhook",
-    "fMcpBulk": "+ MCP + बल्क",
-    "fTensOfThousands": "+ दसियों हज़ार",
-    "fLiveTracking": "लाइव ट्रैकिंग",
-    "fPassAlerts": "पास अलर्ट + विश्लेषण",
-    "fImagerySar": "इमेजरी + SAR",
-    "f100plus": "उपलब्ध",
-    "fCloud": "क्लाउड",
-    "fCloudOnPrem": "Cloud/on-prem/air-gap",
-    "fStandard": "मानक",
-    "fKeyAuth": "कुंजी प्रमाणीकरण",
-    "fSsoMfa": "SSO/MFA/RBAC/ऑडिट",
-    "noteBelow": "मुख्य प्लेटफ़ॉर्म मुफ़्त रहता है। पेड प्लान इक्विटी रिसर्च, मैक्रो एनालिटिक्स, AI ब्रीफ़िंग और संगठनात्मक उपयोग को अनलॉक करते हैं।",
-    "f50plus": "उपलब्ध",
-    "sourcesRow": "स्रोत",
-    "followedRow": "अनुसरण किए गए देश",
-    "tabsRow": "डैशबोर्ड टैब",
     "fUnlimited": "असीमित",
-    "f3": "3",
-    "f10": "10",
-    "f25": "25",
-    "fAllLayers": "सभी लेयर",
-    "fLayersNoResilience": "Resilience को छोड़कर सभी",
-    "fStandardCadence": "मानक",
-    "fQuotes30s": "बाज़ार कोट: 30s",
-    "panelsRow": "पैनल सक्षम",
-    "f40": "40",
-    "f80": "80",
-    "fAll": "सभी"
+    "noteBelow": "मुख्य प्लेटफ़ॉर्म मुफ़्त रहता है। पेड प्लान इक्विटी रिसर्च, मैक्रो एनालिटिक्स, AI ब्रीफ़िंग और संगठनात्मक उपयोग को अनलॉक करते हैं।"
   },
   "faq": {
     "title": "World Monitor Pro के बारे में अक्सर पूछे जाने वाले सवाल",
@@ -299,7 +226,7 @@
     "q3": "Enterprise किसके लिए है?",
     "a3": "Enterprise उन teams के लिए है जिन्हें shared use, APIs, integrations, deployment options और direct support चाहिए।",
     "q4": "क्या मैं Pro से शुरू करके बाद में upgrade कर सकता/सकती हूँ?",
-    "a4": "हां। Pro व्यक्तिगत उपयोग के लिए है। Pro Business ($49.99/माह) वाणिज्यिक लाइसेंस, डेटा एक्सपोर्ट, 25 डैशबोर्ड और 250 MCP कॉल/दिन जोड़ता है। API योजनाएं प्रोग्रामेटिक एक्सेस को कवर करती हैं, और Enterprise कस्टम डिप्लॉयमेंट को कवर करता है। अपग्रेड बिलिंग पोर्टल के माध्यम से चलते हैं — ऐप आपको चरणों के माध्यम से मार्गदर्शन करता है।",
+    "a4": "हां। Pro व्यक्तिगत उपयोग के लिए है। Pro Business ($49.99/माह) वाणिज्यिक लाइसेंस, डेटा एक्सपोर्ट, 25 डैशबोर्ड और 250 MCP कॉल/दिन जोड़ता है। API योजनाएं प्रोग्रामेटिक एक्सेस को कवर करती हैं, और Enterprise कस्टम डिप्लॉयमेंट को कवर करता है। Pro से Pro Business पर जाने के लिए, साइन इन रहते हुए Pro Business चुनें: आपकी सदस्यता बदल जाती है, पुष्टि करने से पहले आप आज का शुल्क देखते हैं, और बिलिंग अवधि उसी दिन से फिर शुरू होती है।",
     "q5": "क्या यह सिर्फ़ conflict monitoring के लिए है?",
     "a5": "नहीं। World Monitor मुख्य रूप से global intelligence platform है जो stock markets, macroeconomics, geopolitical analysis, energy, infrastructure और बहुत कुछ cover करता है। Conflict tracking कई capabilities में से एक है — focus नहीं।",
     "q6": "मुख्य प्लेटफ़ॉर्म को मुफ़्त क्यों रखें?",
@@ -307,11 +234,11 @@
     "q7": "क्या मैं अपने API keys इस्तेमाल कर सकता/सकती हूँ?",
     "a7": "हां। अपनी स्वयं की कुंजियां लाएं हमेशा काम करती हैं। Pro का मतलब केवल यह है कि आपको अलग सेवाओं के लिए पंजीकरण नहीं करना होगा।",
     "q8": "MCP क्या है?",
-    "a8": "MCP AI एजेंटों — Claude, GPT, कस्टम LLMs — को WorldMonitor को एक उपकरण के रूप में उपयोग करने देता है, पंजीकृत सेवाओं को क्वेरी करता है। Pro में शामिल। Enterprise निजी MCP सर्वर और कस्टम तैनातियां जोड़ता है।",
+    "a8": "MCP AI एजेंटों — Claude, GPT, कस्टम LLMs — को World Monitor को एक उपकरण के रूप में उपयोग करने देता है, पंजीकृत सेवाओं को क्वेरी करता है। Pro में शामिल। Enterprise निजी MCP सर्वर और कस्टम तैनातियां जोड़ता है।",
     "q9": "क्या मैं अपने panels बना सकता/सकती हूँ?",
     "a9": "हाँ। Pro में Custom Widget Builder शामिल है — HTML, CSS और JavaScript से panels बनाएं, AI-assisted modification के साथ।",
-    "q10": "क्या मैं Claude या GPT को WorldMonitor से connect कर सकता/सकती हूँ?",
-    "a10": "हाँ। MCP Pro में शामिल है — WorldMonitor को Claude, GPT या किसी भी MCP-compatible LLM में live tool की तरह plug करें।",
+    "q10": "क्या मैं Claude या GPT को World Monitor से connect कर सकता/सकती हूँ?",
+    "a10": "हाँ। MCP Pro में शामिल है — World Monitor को Claude, GPT या किसी भी MCP-compatible LLM में live tool की तरह plug करें।",
     "q11": "Digest कितना personalized है?",
     "a11": "अपनी आवृत्ति चुनें — दैनिक, दिन में दो बार, या साप्ताहिक। हम प्रत्येक निगरानी कहानी को आपके सतर्कता नियमों और निगरानी सूची के विरुद्ध पुनः स्कोर करते हैं, स्रोतों के पार डीडुप करते हैं, और एक AI मूल्यांकन और देखने के लिए संकेत के साथ 30 तक क्रमबद्ध आइटम भेजते हैं। रीयल-टाइम सतर्कताएं भी महत्वपूर्ण ईवेंटों के लिए उपलब्ध हैं।",
     "q12": "Refresh rate क्या है?",
@@ -331,9 +258,9 @@
   },
   "soonBadge": "जल्द",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | एआई इंटेलिजेंस और MCP",
     "description": "World Monitor Pro एक AI विश्लेषक, निर्धारित intelligence डाइजेस्ट, कस्टम विजेट, बाजार अनुसंधान, और लाइव भू-राजनीतिक और वित्तीय डेटा तक MCP एक्सेस जोड़ता है।",
-    "ogTitle": "World Monitor Pro | Geopolitical AI",
+    "ogTitle": "World Monitor Pro | भू-राजनीतिक AI",
     "ogDescription": "इसे पूछें, इसकी सदस्यता लें, इसपर निर्माण करें। WM Analyst chat, आपके शेड्यूल पर एक AI डाइजेस्ट (दैनिक, दिन में दो बार, या साप्ताहिक), कस्टम विजेट बिल्डर, और Claude/GPT के लिए MCP — एक ही कुंजी के तहत लाइव सेवाएं।"
   },
   "pricing": {
@@ -372,7 +299,8 @@
           "भौतिक धातु विचलन, खनिज एकाग्रता और संप्रभु ऋण डेटा",
           "अनुसूचित AI डाइजेस्ट + अलर्ट नियम इंजन",
           "Claude Desktop और अन्य AI क्लाइंट के लिए MCP + SDK एक्सेस (50 कॉल/दिन)",
-          "कस्टम विजेट और 10 डैशबोर्ड (बनाम 3)"
+          "कस्टम विजेट और 10 डैशबोर्ड (बनाम 3)",
+          "डेस्कटॉप कुंजी डेस्कटॉप ऐप के लिए (2 कुंजियाँ)"
         ],
         "highlightFeatures": [
           "व्यक्तिगत लाइसेंस",
@@ -382,7 +310,8 @@
       "api": {
         "description": "लाइव इंटेलिजेंस डेटा पर आंतरिक उपकरण बनाएं",
         "features": [
-          "REST API + आधिकारिक SDK (npm, PyPI, RubyGems, Go)",
+          "पूर्ण Pro डैशबोर्ड शामिल (1 नामित उपयोगकर्ता)",
+          "REST API + आधिकारिक SDKs (npm, PyPI, RubyGems, Go)",
           "लाइसेंस / API कुंजी शामिल",
           "रीयल-टाइम डेटा स्ट्रीम",
           "60 अनुरोध/मिनट",
@@ -390,38 +319,42 @@
           "Webhook सूचनाएँ"
         ],
         "highlightFeatures": [
-          "वाणिज्यिक लाइसेंस — आपके संगठन के लिए"
+          "वाणिज्यिक उपयोग — केवल आंतरिक, ग्राहक-सामना नहीं"
         ]
       },
       "enterprise": {
         "description": "संगठनों के लिए कस्टम समाधान",
         "features": [
           "Pro + API की हर चीज़",
-          "असीमित API अनुरोध",
+          "टीम के साझा डैशबोर्ड",
+          "प्रति दिन 10,000 API अनुरोध, अनुबंध द्वारा अधिक",
           "समर्पित सहायता",
           "कस्टम इंटीग्रेशन",
-          "SLA गारंटी",
+          "SLA गारंटी (अनुबंध पर)",
           "On-premise विकल्प",
           "डेटा प्रोसेसिंग समझौता (DPA)",
           "क्रय-आदेश बिलिंग",
-          "SAML SSO, SCIM",
+          "SAML SSO और SCIM (अनुबंध पर)",
           "कस्टम सुरक्षा और गोपनीयता सेटिंग्स",
-          "पूरी तरह व्हाइट-लेबल्ड — राजस्व साझेदारी के साथ या बिना"
+          "पूरी तरह व्हाइट-लेबल्ड — राजस्व साझेदारी के साथ या बिना",
+          "डैशबोर्ड और MCP पर यात्रा जोखिम आकलन के मसौदे"
         ],
         "cta": "Sales से संपर्क करें"
       },
       "apiBusiness": {
-        "description": "WorldMonitor डेटा पर अपना खुद का उत्पाद लॉन्च करें",
+        "description": "World Monitor डेटा पर अपना खुद का उत्पाद लॉन्च करें",
         "features": [
           "API Starter की हर चीज़",
           "ग्राहक-सामने वाले उत्पादों के लिए R1–R3 पुनर्वितरण अधिकार",
           "300 अनुरोध/मिनट",
           "10,000 अनुरोध/दिन शामिल (REST + MCP संयुक्त; एक लाइव MCP कॉल 2-3 के रूप में गिना जाता है)",
           "5 Pro लाइसेंस — किसी भी कॉर्पोरेट ईमेल डोमेन वाले उपयोगकर्ताओं को आमंत्रित करें",
-          "प्राथमिकता समर्थन"
+          "टीम के साझा डैशबोर्ड",
+          "प्राथमिकता समर्थन",
+          "डैशबोर्ड और MCP पर यात्रा जोखिम आकलन के मसौदे"
         ],
         "highlightFeatures": [
-          "वाणिज्यिक लाइसेंस — आपके ग्राहकों के लिए"
+          "वाणिज्यिक उपयोग — आपके ग्राहक-सामना करने वाले उत्पादों में"
         ]
       },
       "proBusiness": {
@@ -432,7 +365,9 @@
           "डेटा एक्सपोर्ट — CSV, JSON और PDF रिपोर्ट",
           "25 कस्टम डैशबोर्ड (बनाम 10)",
           "MCP + SDK: 250 calls/day (बनाम 50)",
-          "प्राथमिकता समर्थन"
+          "डेस्कटॉप कुंजी डेस्कटॉप ऐप के लिए (3 कुंजियाँ)",
+          "प्राथमिकता समर्थन",
+          "डैशबोर्ड और MCP पर यात्रा जोखिम आकलन के मसौदे"
         ],
         "highlightFeatures": [
           "व्यावसायिक लाइसेंस शामिल",
@@ -447,7 +382,8 @@
     "axisPersonal": "व्यक्तिगत",
     "axisPersonalNote": "व्यक्तिगत उपयोग",
     "axisCommercial": "व्यावसायिक",
-    "axisCommercialNote": "कार्य, क्लाइंट और उत्पाद"
+    "axisCommercialNote": "कार्य, क्लाइंट और उत्पाद",
+    "cancelAnytime": "किसी भी समय अपने खाते से रद्द करें। आप जो अवधि के लिए भुगतान करते हैं उसके अंत तक आपके पास एक्सेस बना रहता है।"
   },
   "welcome": {
     "meta": {
@@ -457,7 +393,7 @@
       "ogDescription": "World Monitor: रीयल-टाइम भू-राजनीतिक इंटेलिजेंस डैशबोर्ड। संघर्षों, शिपिंग, उड़ानों, बाजारों और साइबर का एक निःशुल्क लाइव मानचित्र, API और MCP सर्वर के साथ।"
     },
     "nav": {
-      "useCases": "सहसंबंध",
+      "useCases": "उपयोग के मामले",
       "firstFive": "पहले 5 मिनट",
       "depth": "गहराई",
       "pricing": "मूल्य निर्धारण",
@@ -476,17 +412,17 @@
       "sub": "जब तक यह खबर बन जाए, तब तक आप पहले ही जान चुके होते हैं।",
       "ctaPrimary": "डैशबोर्ड लॉन्च करें",
       "ctaFree": "निःशुल्क · कोई साइनअप नहीं · सेकंड में लोड होता है",
-      "ctaSecondary": "देखें कि लोग इसे कैसे उपयोग करते हैं ↓",
       "trustUsers": "2M+ उपयोगकर्ता",
       "trustOpenSource": "ओपन सोर्स · AGPL-3.0",
       "screenshotAlt": "World Monitor लाइव इंटेलिजेंस डैशबोर्ड — संघर्ष, शिपिंग और बाजार परतों के साथ वैश्विक मानचित्र",
       "plateNote": "लाइव मानचित्र से कैप्चर किया गया — इसे खोलने के लिए क्लिक करें",
       "trustBuild": "इस पर बनाएं:",
-      "positioningLink": "WorldMonitor एक ओपन-सोर्स Palantir नहीं है",
+      "positioningLink": "World Monitor एक ओपन-सोर्स Palantir नहीं है",
       "asOf": "{{date}} तक",
       "whatIsTitle": "World Monitor क्या है?",
       "whatIsBody": "World Monitor एक मुफ़्त ($0), ओपन-सोर्स (AGPL-3.0) डैशबोर्ड है जिसे 2M+ लोग उपयोग करते हैं। यह {{feeds}} समाचार और OSINT फीड को {{providers}} श्रोत प्रदाताओं से एक लाइव विश्व मानचित्र पर {{mapLayers}} मानचित्र परत प्रकारों के साथ स्ट्रीम करता है, जो भू-राजनीति, बाजार, शिपिंग, विमानन और साइबर को कवर करता है। यह उन्हें सहसंबंधित करता है ताकि अभिसारी घटनाएं सुर्खियों से पहले सामने आएँ। हर आँकड़ा स्रोत-युक्त है और हर विधि प्रलेखित है।",
-      "whatIsBestFor": "उन विश्लेषकों, पत्रकारों, ट्रेडरों और डेवलपर्स के लिए सबसे उपयुक्त, जिन्हें लाइव भू-राजनीतिक संकेत चाहिए।"
+      "whatIsBestFor": "उन विश्लेषकों, पत्रकारों, ट्रेडरों और डेवलपर्स के लिए सबसे उपयुक्त, जिन्हें लाइव भू-राजनीतिक संकेत चाहिए।",
+      "ctaPro": "Pro {{price}}/माह से"
     },
     "live": {
       "eyebrow": "अभी लाइव",
@@ -506,7 +442,8 @@
       "marketWeakest": "सबसे कमजोर",
       "trendRising": "बढ़ रहा है",
       "trendFalling": "गिर रहा है",
-      "trendStable": "स्थिर"
+      "trendStable": "स्थिर",
+      "situationLink": "स्थिति पर नज़र रखें: संकट, सुर्खियाँ, चोकपॉइंट और आउटेज एक ही बोर्ड पर"
     },
     "moments": {
       "eyebrow": "सहसंबंध इंजन",
@@ -650,13 +587,13 @@
       "title1": "फ्री वेधशाला है।",
       "title2": "प्रो ऑपरेशन रूम है।",
       "sub": "डैशबोर्ड $0 पर निःशुल्क है — प्रत्येक मानचित्र परत Resilience को छोड़कर, कोई साइन-अप नहीं। Pro निर्णय परत जोड़ता है।",
-      "freeTitle": "फ्री",
+      "freeTitle": "फ्री प्लान",
       "freeDesc": "निःशुल्क स्तर एक संपूर्ण उत्पाद है, परीक्षण नहीं। Resilience को छोड़कर प्रत्येक मानचित्र परत, सभी छह मॉनिटर — कोई साइन-अप नहीं, कोई परीक्षण घड़ी नहीं।",
       "freeF1": "रेजिलिएंस और क्यूरेटेड फीड को छोड़कर सभी मानचित्र परतें",
       "freeF2": "देश संक्षिप्ताएं, हॉटस्पॉट्स, अस्थिरता स्कोर्स",
       "freeF3": "चोकपॉइंट्स, केबलें, कैस्केड विश्लेषण",
       "freeF4": "ब्रेकिंग अलर्ट पाइपलाइन और वॉचलिस्ट्स",
-      "proTitle": "प्रो",
+      "proTitle": "प्रो प्लान",
       "proDesc": "इस पर कार्य करें। ऊपर दिए गए क्षणों में उपयोग किया जाने वाला निर्णय परत:",
       "proF1": "WM Analyst — लाइव सेवाओं के पार चैट, उद्धरणों के साथ",
       "proF2": "परिदृश्य इंजन और रूट एक्सप्लोरर — विघ्नों को उनके आने से पहले खेलें",
@@ -664,7 +601,8 @@
       "proF4": "MCP, REST API और आधिकारिक SDKs — एक कुंजी के तहत लाइव उपकरण",
       "proF5": "अपने स्वयं के पैनल के लिए कस्टम विजेट बिल्डर",
       "cta": "योजनाएं और मूल्य देखें",
-      "note": "$39.99/माह से · वार्षिक बिलिंग पर 3 महीने मुफ़्त"
+      "note": "$39.99/माह से · वार्षिक बिलिंग पर 3 महीने मुफ़्त",
+      "disclaimer": "World Monitor केवल सूचनात्मक उद्देश्यों के लिए है और यह वित्तीय, निवेश, कानूनी, सुरक्षा (security) या संरक्षा (safety) संबंधी सलाह नहीं है। आप जो देखते हैं उसका सत्यापन करें, और ऐसे निर्णय लेने से पहले किसी योग्य पेशेवर से परामर्श लें जिनमें त्रुटि से हानि या नुकसान हो सकता है।"
     },
     "faq": {
       "eyebrow": "कोई पकड़ नहीं",
@@ -686,7 +624,7 @@
       "q8": "क्या मुझे एक खाता चाहिए?",
       "a8": "नहीं। डैशबोर्ड साइनअप के बिना तुरंत काम करता है। एक खाता केवल तब मायने रखता है जब आप Pro में अपग्रेड करते हैं या डिवाइस में सेटिंग्स सिंक करना चाहते हैं।",
       "q9": "क्या यह ओपन सोर्स है?",
-      "a9": "हाँ — GitHub पर AGPL-3.0 के तहत ओपन सोर्स: कोड पढ़ें, स्व-होस्ट करें, या इस पर निर्माण करें। Windows, macOS और Linux के लिए नेटिव डेस्कटॉप ऐप्स भी उपलब्ध हैं, साथ ही दीवार डिस्प्ले के लिए एक Android TV ऐप।",
+      "a9": "हाँ — GitHub पर AGPL-3.0 के तहत ओपन सोर्स: कोड पढ़ें, स्वयं-होस्ट करें, या इसके आधार पर बनाएँ। Pro और Pro Business में डेस्कटॉप कुंजियाँ शामिल हैं, इसलिए आपका निजी डेस्कटॉप बिल्ड Pro क्लाउड डेटा लोड कर सकता है; Docker प्रतियाँ अपने स्वयं के डेटा पर चलती हैं। Windows, macOS और Linux के लिए मूल डेस्कटॉप ऐप्स उपलब्ध हैं, साथ ही दीवार प्रदर्शन के लिए एक Android TV ऐप भी, Enterprise अनुबंध पर।",
       "q10": "World Monitor Palantir क्यों नहीं है?",
       "a10": "Palantir किसी संस्था के अपने डेटा को उस संस्था के अंदर operational बनाता है। World Monitor दूसरे छोर से शुरू करता है: यह सार्वजनिक दुनिया के डेटा को इकट्ठा करता है, सामान्य करता है, सहसंबंधित करता है, और निगरानी करता है, फिर इस intelligence layer को एक मुफ्त dashboard और open-source code के माध्यम से प्रकाशित करता है। अलग काम, अलग उत्पाद।",
       "q11": "मुझे World Monitor का कौन सा लाइसेंस चाहिए?",
@@ -711,22 +649,34 @@
       "chokepointTitle": "एक अड़चन की जांच करें",
       "chokepointDesc": "{{chokepoints}} महत्वपूर्ण समुद्री मार्गों में व्यवधान स्थिति, पोत प्रवाह और जोखिम का निरीक्षण करें।",
       "countryRiskTitle": "किसी देश के जोखिम संबंधी कदम की व्याख्या करें",
-      "countryRiskDesc": "किसी देश के परिवर्तन के पीछे की राजनीतिक, सुरक्षा, आर्थिक और लचीलापन संकेतों को ट्रेस करें, {{resilienceRanked}} देशों के लिए लचीलापन रैंक किया गया है।",
-      "open": "साक्ष्य खोलें"
+      "countryRiskDesc": "किसी देश में बदलाव के पीछे के राजनीतिक, सुरक्षा, आर्थिक और लचीलेपन से जुड़े संकेतों का पता लगाएँ। {{resilienceUniverse}} देशों में से {{resilienceRanked}} देशों, यानी लगभग {{resilienceRankedPct}}%, के लिए लचीलेपन की रैंकिंग उपलब्ध है, ताकि किसी बदलाव को केवल इस सप्ताह की समाचार सुर्खियों के आधार पर समझने के बजाय उस देश के दीर्घकालिक संरचनात्मक आधार के संदर्भ में समझा जा सके।",
+      "open": "साक्ष्य खोलें",
+      "workflow": "चरण-दर-चरण वर्कफ़्लो"
+    },
+    "voices": {
+      "eyebrow": "उनके शब्दों में",
+      "title": "लोग World Monitor के बारे में क्या कहते हैं",
+      "sub": "{{countries}} देशों में {{users}} लोगों ने World Monitor का उपयोग किया है। The Atlantic ने 14 मार्च 2026 को और El País ने दो दिन बाद इसके बारे में लिखा। WIRED, The Economic Times, Arabian Business और L'Orient Today ने भी इसे कवर किया है। यहाँ पढ़ें कि प्रेस और कुछ उपयोगकर्ताओं ने क्या कहा।",
+      "translatedJa": "जापानी से अनूदित",
+      "prev": "पिछले उद्धरण",
+      "next": "और उद्धरण"
     }
   },
   "whatsNew": {
     "eyebrow": "शिपिंग लॉग",
-    "title": "WorldMonitor में क्या नया है",
+    "title": "World Monitor में क्या नया है",
     "subtitle": "पिछले 30 दिनों से नई सुविधाएं — फिक्स और प्लंबिंग शामिल नहीं।",
     "proTag": "PRO",
-    "m1": "भौतिक प्रीमियम विचलन सूचकांक — SGE बनाम COMEX, इतिहास के साथ",
-    "m2": "कमोडिटी सप्लाई-कमजोरी रैंकिंग — चोकपॉइंट निर्भरता फैन-आउट",
-    "m3": "खनिज उत्पादन एकाग्रता और रक्षा औद्योगिक आधार",
-    "m4": "पांच-कारक लचीलापन स्कोरकार्ड संकेतक-स्तर स्कोर के साथ",
-    "m5": "कस्टम टेलीग्राम चैनल वॉचलिस्ट",
-    "m6": "पासकी साइन-इन",
-    "m7": "AI एजेंट डैशबोर्ड चला सकते हैं — पैनल, टैब, मैप लेयर्स और मिशन",
-    "m8": "समृद्ध देश लचीलापन पृष्ठ"
+    "m1": "मीडिया परिप्रेक्ष्य — हर देश के मीडिया किसी भी देश को कैसे कवर करते हैं, AI एजेंटों और API के लिए",
+    "m2": "रणनीतिक जल स्तर — 50 जलाशयों और झीलों के लिए सैटेलाइट लिडार स्तर, मानचित्र पर और AI एजेंटों के लिए",
+    "m3": "अलर्ट, डाइजेस्ट और मानचित्र पॉपअप पर पुष्टि करने वाले स्रोतों की संख्या, साथ में सार्वजनिक /trust पेज",
+    "m4": "हमलों की स्वचालित ट्रैकिंग — हमले के दौरान देश का जोखिम बढ़ता है और हमले रुकने पर घटता है",
+    "m5": "FAA NOTAM से हवाई क्षेत्र बंदी और रिपोर्ट की गई विमान आपात स्थितियों की मानचित्र परत",
+    "m6": "Sentinel-5P उपग्रह के NO2 डेटा से औद्योगिक गतिविधि मानचित्र",
+    "m7": "230 अर्थव्यवस्थाओं और किसी भी देश-जोड़ी के लिए पूंजी प्रवाह, AI एजेंटों और API के लिए",
+    "m8": "टर्मिनल डैशबोर्ड और ज़ूम करने योग्य CLI मानचित्र — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "हम जिन स्रोतों की निगरानी करते हैं"
   }
 }

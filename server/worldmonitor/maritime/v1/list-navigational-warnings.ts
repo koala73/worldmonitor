@@ -6,7 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/maritime/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
-import { parseNgaBroadcastWarnings } from '../../../_shared/nga-broadcast-warnings';
+import { fetchNgaBroadcastWarnings } from '../../../_shared/nga-broadcast-warnings';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'maritime:navwarnings:v3';
@@ -15,8 +15,6 @@ const REDIS_CACHE_TTL = 3600; // 1 hr — NGA broadcasts update daily
 // ========================================================================
 // Helpers
 // ========================================================================
-
-const NGA_WARNINGS_URL = 'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A';
 
 function parseNgaDate(dateStr: unknown): number {
   if (!dateStr || typeof dateStr !== 'string') return 0;
@@ -37,15 +35,7 @@ function parseNgaDate(dateStr: unknown): number {
 
 async function fetchNgaWarnings(): Promise<NavigationalWarning[] | null> {
   try {
-    const response = await fetch(NGA_WARNINGS_URL, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const rawWarnings = parseNgaBroadcastWarnings(data);
+    const rawWarnings = await fetchNgaBroadcastWarnings({ userAgent: CHROME_UA, timeoutMs: 15000 });
     if (rawWarnings === null) return null;
 
     return rawWarnings.map((w): NavigationalWarning => ({

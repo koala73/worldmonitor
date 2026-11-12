@@ -510,7 +510,7 @@ describe('#6095 — the ON_DEMAND grace deliberately keeps the opposite policy',
     // The softening above is only defensible because it is VISIBLE. Without
     // this flag an operator cannot tell a key softened on evidence from one
     // softened on a Redis blip — and for an already-activated key the blip
-    // downgrades EMPTY (crit) to a status check-seed-freshness.mjs excuses.
+    // downgrades EMPTY (crit) to a status health does not alert on.
     assert.equal(checks.newsFeedHealth?.activationUnknown, true);
     assert.equal(checks.portwatchPortActivity?.activationUnknown, true);
   });

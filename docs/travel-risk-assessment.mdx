@@ -1,0 +1,92 @@
+---
+title: "Travel Risk Assessment Drafts"
+description: "Draft a sourced travel risk assessment for a trip across up to 6 countries, over MCP or from the dashboard as Markdown, Word-ready HTML or PDF. Plan requirement, inputs, the 9-section outline and how trip details are handled."
+---
+
+The `prepare_travel_risk_assessment` MCP tool drafts a travel risk assessment for a single trip. You give it the countries in travel order, and optionally cities and dates. It returns the draft as Markdown and as structured blocks. Every finding names its source and the date that source gives, and a source that could not be read is marked unavailable with the reason.
+
+The draft is a starting point for an analyst. It reports what World Monitor's feeds hold for each country, leaves empty headings for the topics no feed covers, and gives no advice of its own.
+
+You can build the same draft two ways: over MCP, or from the dashboard with [Draft assessment](#export-from-the-dashboard), which downloads it as Markdown or as a file Word opens, or prints it to PDF. A native `.docx` file and a custom logo are not available yet.
+
+## Plan requirement
+
+The tool is included in the **Pro Business**, **API Business** and **Enterprise** plans. Members of an Enterprise account have it too.
+
+Pro, API Starter and free accounts can see the tool in `tools/list`, but a call returns JSON-RPC error `-32002` (HTTP 403) with `data.reason: "upgrade-required"` and `data.planFeature: "travelRiskAssessment"`. The server checks the plan for every caller, whether the client signed in with OAuth or sends an API key. The refusal comes before the arguments are read and before the call is counted against any allowance, so a refused call costs nothing. See the [MCP error catalog](/mcp-error-catalog) for the full refusal shape and the upgrade path it names.
+
+A call counts 1 against a plan with its own MCP allowance, such as Pro Business. On plans where MCP and the HTTP API share a single allowance, such as API Business, a call counts 2, as other multi-source tools do.
+
+## Export from the dashboard
+
+An account on a plan that includes the assessment can build the draft in the World Monitor dashboard, without an AI assistant.
+
+On a tab with a focus, press **Draft assessment** in the focus bar. The **Trip assessment** dialog opens with the focus countries (up to 6) and the focus dates already filled in. Put the countries in travel order with the arrows, then add cities, arrival and departure dates, a trip window and a task label as needed. The fields are the same as the tool's [inputs](#inputs). Then choose one of:
+
+- **Download Markdown** saves the draft as a `.md` file.
+- **Download for Word** saves an `.html` file that Word and Google Docs open and edit.
+- **Print or save as PDF** opens the browser print dialog. Choose Save as PDF there. Tables wrap their text instead of clipping, and a table's header row repeats on each page.
+
+All three give the 9 sections described below, from the same data as the MCP tool. Each download reads the sources again and carries its own capture time, so two downloads taken minutes apart can differ.
+
+The plan is checked on the server, for a signed-in browser session, before any source is read. A request from an account without the plan is refused with HTTP 403 and `UPGRADE_REQUIRED`, whatever the dashboard shows. The export does not accept API keys: API plans use the MCP tool. When the plan cannot be verified, for example during a billing-provider outage, the answer is HTTP 503 with a `Retry-After` header and never an upgrade message. An account can build 20 drafts a minute.
+
+## Inputs
+
+| Argument | Required | Shape | Notes |
+|---|---|---|---|
+| `countries` | yes | Array of 1 to 6 objects, in travel order | Each country may appear once. |
+| `countries[].country_code` | yes | ISO 3166-1 alpha-2, such as `TH` | Alpha-3 codes and country names are rejected. |
+| `countries[].cities` | no | Up to 5 city names | Used to mark unrest signals and airports in a listed city. They do not narrow what the feeds return. |
+| `countries[].arrive`, `countries[].depart` | no | `YYYY-MM-DD` | `depart` must be on or after `arrive`, and both must fall inside the trip window when a window is given. |
+| `date_from`, `date_to` | no | `YYYY-MM-DD` | The trip window. `date_to` must be on or after `date_from`. |
+| `task_label` | no | Up to 120 characters | Printed at the top of the draft, such as a project or trip reference. |
+| `jmespath` | no | JMESPath expression | Server-side projection of the result. See the [JMESPath guide](/mcp-jmespath). |
+
+The tool rejects any argument it does not list. There is no field for traveller names, passport numbers, contact details or addresses, and none should be sent in `task_label` or `cities`.
+
+The full parameter reference, with a request example, is in the [Countries tool reference](/mcp-tools/countries#prepare_travel_risk_assessment). Agents can follow the [prepare-travel-risk-assessment skill](https://www.worldmonitor.app/.well-known/agent-skills/prepare-travel-risk-assessment/SKILL.md).
+
+## Outline of the draft
+
+The Markdown draft has 9 numbered sections. Sections 2 to 7 hold a group of blocks for each country, in travel order.
+
+1. **Summary.** An overall rating, which is the strictest country rating on the itinerary, followed by a rating and a short paragraph for each country. A country's rating is the higher of the US State Department and Australian Smartraveller levels, which share a scale of 1 to 4. UK FCDO and CDC levels are reported beside it and are not converted onto that scale.
+2. **Government travel advice.** The current US State Department, UK FCDO, Australian Smartraveller and CDC entries for the country, plus US embassy alerts, each with the date it was published.
+3. **Security.** UCDP armed conflict events from the past 30 days, unrest signals from media reports (unverified), World Monitor's curated hotspots, and the Country Instability Index for countries it scores.
+4. **Natural hazards.** Weather alerts, earthquakes, and natural events and tropical cyclones. Seasonal hazards list the tropical cyclone and flood seasons that match the trip dates. They come from a calendar built from the GDACS event archive (cyclones 2011 onward, floods 2019 onward) that counts, for each country and month, the years with a recorded event. A hazard is listed when it was recorded in that month in at least three years and a fifth of the window. The calendar build date identifies when the archive was read; individual event dates are unavailable from the aggregated calendar, and its coverage years are stated separately. This is recorded history, not a forecast, and it has no wildfire, extreme heat, drought or monsoon rainfall data. A trip without dates, or a country the archive has no record for, is marked unavailable with the reason.
+5. **Health.** Disease outbreak reports and CDC travel health notices.
+6. **Getting in and out.** Status of the airports World Monitor monitors in the country, with airports serving a listed city marked.
+7. **Communications and infrastructure.** Internet outages reported by Cloudflare Radar.
+8. **What this draft does not cover.** Empty headings for street crime, medical facilities, local laws and customs, emergency contacts and venue-specific risks. The analyst completes these.
+9. **Sources and capture time.** Each source the draft read, when its producer last updated it, and whether it was current, stale or unavailable at the time of the call.
+
+Each block carries a status. Read it before the findings.
+
+| Status | Meaning |
+|---|---|
+| `reported` | The source holds items for the country. Each finding has a `source` and an `observed` date, or `null` when the source gives none. |
+| `none` | The source was read and holds nothing for the country in the window the statement names. |
+| `unavailable` | The source could not be read, so nothing is known. This is not a finding of no risk. |
+| `not_covered` | No source covers this topic for the country. |
+
+When a source fails, only the blocks that depend on it are marked unavailable, and the rest of the draft is still returned. The call fails with `-32003` only when no source at all can be read.
+
+## Data handling
+
+Trip plans are sensitive, so the tool uses what you send only to build the response.
+
+- Countries, cities, dates and the task label are not written to logs, usage telemetry, error reports or cache keys. Usage records name the tool and the outcome, never the arguments.
+- The server keeps no copy of the request or the draft. The draft is built from shared country-level data that the server reads the same way for every caller.
+- When an argument is invalid, the error names the field and the rule it broke, never the value you sent.
+
+The dashboard export follows the same rules. The dialog holds what you type only while it is open and saves nothing, so closing it discards the trip. The server keeps no copy of the request or the file, the response is never cached, and the file name carries only the date, never the task label, a country or a city.
+
+The draft repeats your itinerary. Store and share it as you would the trip plan itself.
+
+## Related
+
+- [Countries tool reference](/mcp-tools/countries#prepare_travel_risk_assessment)
+- [MCP error catalog](/mcp-error-catalog)
+- [Agent skills](/agent-skills)
+- [Plans and pricing](https://www.worldmonitor.app/pro)

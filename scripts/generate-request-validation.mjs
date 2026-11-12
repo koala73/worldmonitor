@@ -110,7 +110,7 @@ function collectServices(root) {
   walkReflectionObjects(root, (object) => {
     if (object instanceof protobuf.Service) services.push(object);
   });
-  return services.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  return services.sort((a, b) => a.fullName.localeCompare(b.fullName, 'en-US'));
 }
 
 function typeReachesValidationRules(type, ancestors = new Set()) {
@@ -372,7 +372,7 @@ function buildMessageRules(requestTypeByMethod) {
   const emittedTypes = new Set([...validated, ...stringBearing, ...requestTypes]);
   const messageRules = {};
 
-  for (const type of [...emittedTypes].sort((a, b) => a.fullName.localeCompare(b.fullName))) {
+  for (const type of [...emittedTypes].sort((a, b) => a.fullName.localeCompare(b.fullName, 'en-US'))) {
     const fields = {};
     for (const field of type.fieldsArray) {
       const hasDirectRules = Object.keys(validationOptions(field)).length > 0;
@@ -391,7 +391,7 @@ function buildMessageRules(requestTypeByMethod) {
 function stableObjectFromMap(map, mapValue) {
   return Object.fromEntries(
     [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => a.localeCompare(b, 'en-US'))
       .map(([key, value]) => [key, mapValue(value)]),
   );
 }

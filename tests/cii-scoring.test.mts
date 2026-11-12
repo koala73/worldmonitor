@@ -13,6 +13,9 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import ts from 'typescript';
+import vm from 'node:vm';
+import { mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { CSL_SOURCES, CSL_ROW_ID } from '../scripts/_csl-sanctions.mjs';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
@@ -592,6 +595,32 @@ function emptyAux() {
     temporalAnomalies: [] as any[],
   };
 }
+
+it('keeps SEMA regulation targets separate and all sanctions counts out of CII', () => {
+  const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
+  const producer = vm.createContext({ console, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
+  vm.runInContext(source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '')
+    .split('async function fetchSource')[0], producer);
+  const ofac = Array.from({ length: 100 }, (_, i) => ({
+    id: `SDN:${i}`, name: `Address entity ${i}`, entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+    countryCodes: ['IR'], countryNames: ['Iran'], sourceLists: ['SDN'], programs: [], isNew: false,
+  }));
+  const sema = parseSemaXml(Array.from({ length: 500 }, (_, i) =>
+    `<record><Country>Iran</Country><EntityOrShip>Target entity ${i}</EntityOrShip><Schedule>1</Schedule><Item>${i + 1}</Item></record>`).join('')).records;
+  sema.forEach(row => { row.isNew = true; });
+  const entries = mergeSanctionEntries({ ofac, sema });
+  const aux = {
+    ...emptyAux(),
+    sanctionsCountries: producer.buildCountryPressure(entries),
+    sanctionsCountryCounts: producer.buildCountryCounts(entries),
+  };
+  const terms: Record<string, any> = {};
+  const scores = computeCIIScores([], aux, {}, terms);
+  assert.deepEqual(scores, computeCIIScores([], emptyAux()), 'sanctions are excluded from CII in v15');
+  assert.equal(terms.IR.boosts.sanctions, undefined);
+  assert.equal(aux.sanctionsCountryCounts?.IR, 100);
+  assert.equal(producer.buildRegulationTargets(entries)[0].entryCount, 500);
+});
 
 function acledEvent(country: string, type: string, fatalities = 0) {
   return { country, event_type: type, fatalities };
@@ -2353,6 +2382,7 @@ describe('CII scoring', () => {
       'docs/strategic-risk.mdx',
       'docs/algorithms.mdx',
       'docs/overview.mdx',
+      'docs/platform-evaluation.mdx',
       'docs/features.mdx',
       'docs/methodology/cii-risk-scores.mdx',
       'docs/Docs_To_Review/DOCUMENTATION.md',

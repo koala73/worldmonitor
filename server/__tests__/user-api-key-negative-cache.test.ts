@@ -9,7 +9,9 @@ import {
 import { __clearLocalUnavailableBackoffForTests } from "../_shared/redis";
 
 const VALID_KEY = `wm_${"1234567890abcdef".repeat(2)}12345678`;
-const VALID_RESULT = { id: "key_123", userId: "user_123", name: "prod" };
+const VALID_RESULT = { id: "key_123", userId: "user_123", name: "prod", keyKind: "api" };
+// What the validator hands back: the normalized, versioned cache entry (U3).
+const VALID_ENTRY = { v: 2, userId: "user_123", keyId: "key_123", name: "prod", keyKind: "api" };
 
 const ORIGINAL_ENV = {
   CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
@@ -96,7 +98,7 @@ describe.sequential("validateUserApiKey negative caching", () => {
     expect(harness.convexCalls()).toBe(1);
 
     __clearLocalUnavailableBackoffForTests();
-    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_RESULT);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_ENTRY);
     expect(harness.convexCalls()).toBe(2);
   });
 
@@ -111,7 +113,7 @@ describe.sequential("validateUserApiKey negative caching", () => {
     expect([...harness.redis.values()]).not.toContain(JSON.stringify("__WM_NEG__"));
 
     __clearLocalUnavailableBackoffForTests();
-    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_RESULT);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_ENTRY);
     expect(harness.convexCalls()).toBe(2);
   });
 
@@ -136,7 +138,7 @@ describe.sequential("validateUserApiKey negative caching", () => {
     expect([...harness.redis.values()]).not.toContain(JSON.stringify("__WM_NEG__"));
 
     __clearLocalUnavailableBackoffForTests();
-    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_RESULT);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_ENTRY);
     expect(harness.convexCalls()).toBe(2);
   });
 
@@ -154,7 +156,7 @@ describe.sequential("validateUserApiKey negative caching", () => {
     expect([...harness.redis.values()]).not.toContain(JSON.stringify("__WM_NEG__"));
 
     __clearLocalUnavailableBackoffForTests();
-    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_RESULT);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_ENTRY);
     expect(harness.convexCalls()).toBe(2);
   });
 
@@ -171,7 +173,7 @@ describe.sequential("validateUserApiKey negative caching", () => {
     process.env.CONVEX_SITE_URL = "https://convex.test";
     process.env.CONVEX_SERVER_SHARED_SECRET = "test-shared-secret";
     __clearLocalUnavailableBackoffForTests();
-    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_RESULT);
+    await expect(validateUserApiKey(VALID_KEY)).resolves.toEqual(VALID_ENTRY);
     expect(harness.convexCalls()).toBe(1);
   });
 });

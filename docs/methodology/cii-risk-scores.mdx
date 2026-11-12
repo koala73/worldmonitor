@@ -123,6 +123,8 @@ composite = baseline * 0.4
           + strikeBoost       (≤ 10, strike pressure)
 ```
 
+Sanctions counts use OFAC location-based country evidence only; nationality-only features are not counted, and SEMA regulation targets are shown separately and do not feed risk scores.
+
 Component details that are easy to miss:
 
 - **Unrest severity boost**: high-severity ACLED unrest events (for example,
@@ -280,9 +282,12 @@ with the live feed (CU, LB, RU, IR and IQ) and had no entry for KP, QA, AE or
 SA. On 2026-10-21, while it stood in for the feed for about two hours, Qatar
 fell from 50 to 8 and Russia from 72 to 54. The table has been removed.
 
-Each fresh build keeps the Tier-1 advisory levels it read live, with the
-seeder's `fetchedAt`, in `intelligence:advisories:cii-last-good:v1`. The
-snapshot is replaced only by a live read that lost no Tier-1 country.
+Each fresh build with a live read rewrites
+`intelligence:advisories:cii-last-good:v1`. The snapshot holds the Tier-1
+levels the read listed, each stamped with the seeder's `fetchedAt` as its last
+sighting (`seenAt`). A Tier-1 country the read did not list keeps its previous
+entry and sighting for up to 30 days (`CII_ADVISORY_DROPPED_RETENTION_MS`), and
+is then purged.
 
 - **A failed or stale read.** When a read is missing, or its `fetchedAt` is
   more than 72 hours old (`CII_ADVISORY_MAX_AGE_MS`), the scorer uses the
@@ -290,17 +295,28 @@ snapshot is replaced only by a live read that lost no Tier-1 country.
 - **A partial loss.** `byCountry` is the higher of the US and Australian
   levels, so a read that lost one of them can still pass the seeder's coverage
   check. A Tier-1 country that the snapshot lists but the live read does not is
-  filled from the snapshot and disclosed as `fallback`.
-- **A lost source.** A live read whose stored item list has no levelled
-  item from one of the travel registers (`US`, `AU`) is reported with
-  `sourcesMissing`. This is the same test the seeder uses for `failedSources`
-  on its own seed-meta (`scripts/shared/advisory-registers.mjs`).
+  filled from the snapshot and disclosed as `fallback`, provided its last
+  sighting is within 72 hours. With every register still reporting, the country
+  was delisted at the source, so the fill is a warning (`ciiInputs.warnings`
+  lists the `filled` countries) and not a dead input.
+- **A dropped country.** A country that no read has listed for more than 72
+  hours is absent. It is reported in `droppedCountries`, so a source that stops
+  listing a country never vanishes silently. A register can legitimately stop
+  publishing advice for a country, so this is a warning (`ciiInputs.warnings`)
+  rather than a dead input while the rest of the feed is live.
+- **A lost source.** A live read from which the seeder got no levelled item
+  for one of the travel registers (`US`, `AU`) is reported with
+  `sourcesMissing`. The seeder publishes `registersPresent` from its full
+  fetch, using the same test as `failedSources` on its own seed-meta
+  (`scripts/shared/advisory-registers.mjs`). A payload without that field is
+  read from its stored item list.
 - **Expiry.** A snapshot more than 72 hours old is not used. The advisory boost
   and floor of the countries it would have covered are then absent.
 - **Health.** The risk-scores seed-meta reports the advisories input as
-  `fallback` (with `snapshotAt` and the `filled` countries), `missing`, or
-  `live` with `sourcesMissing`. Each of these marks `riskScores`
-  `COVERAGE_PARTIAL` in `/api/health` from the first affected build.
+  `fallback` (with `snapshotAt` and the `filled` countries) when the read failed
+  or a register is gone, `missing`, or `live` with `sourcesMissing`. Each of
+  these marks `riskScores` `COVERAGE_PARTIAL` in `/api/health` from the first
+  affected build.
 - **An unreadable snapshot.** If the snapshot itself cannot be read, the build
   goes ahead without it and the report carries `snapshotReadFailed`.
 

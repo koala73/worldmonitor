@@ -68,18 +68,18 @@
     },
     "militaryActivity": "กิจกรรมทางทหาร",
     "defenseIndustrial": {
-      "title": "Defense Industrial Base",
-      "expenditure": "Military spend",
-      "personnel": "Personnel",
-      "armsImports": "Arms imports",
+      "title": "ฐานอุตสาหกรรมกลาโหม",
+      "expenditure": "งบประมาณทางทหาร",
+      "personnel": "กำลังพล",
+      "armsImports": "การนำเข้าอาวุธ",
       "concentration": "ดัชนีความเข้มข้นของผู้จัดจำหน่าย",
-      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "suppliers": "ผู้จัดหาอาวุธ ({{start}}–{{end}})",
       "source": "แหล่งที่มา: World Bank และ SIPRI Arms Transfers Database ตัวชี้วัดปริมาณการโอนวัตรวัดการโอนอาวุธโดยสัมพัทธ์ ไม่ใช่มูลค่าทางการเงิน",
-      "sourceWorldBank": "Source: World Bank.",
+      "sourceWorldBank": "แหล่งที่มา: ธนาคารโลก",
       "snapshotAssembled": "รวบรวมภาพรวมข้อมูล {{source}} เมื่อ {{time}}",
-      "unavailable": "Not available",
-      "coverage": "Mapped coverage",
-      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+      "unavailable": "ไม่มีข้อมูล",
+      "coverage": "ความครอบคลุมที่จัดทำแผนที่แล้ว",
+      "supplierRetained": "เก็บข้อมูลผู้จัดหาจากการรีเฟรชผู้นำเข้าที่สำเร็จครั้งล่าสุด"
     },
     "economicIndicators": "ตัวชี้วัดเศรษฐกิจ",
     "ownFlights": "เที่ยวบินในประเทศ",
@@ -192,47 +192,47 @@
       "activityNowcast": "การคาดการณ์กิจกรรมปัจจุบัน",
       "decisionSignalsUnavailable": "ภาพรวมสัญญาณการตัดสินใจของจีนไม่พร้อมใช้งานในขณะนี้"
     },
-    "foodStocks": "Food stocks",
+    "foodStocks": "สต็อกอาหาร",
     "foodStocksHelp": "สต็อกสินค้าโภคภัณฑ์อาหาร USDA ด้านการผลิต อุปทาน และการจัดจำหน่าย ตามปีการตลาด พร้อมอัตราส่วนโลกเพื่ออ้างอิง FAOSTAT Food Balances ให้ข้อมูลการผลิตและอุปทานภายในประเทศเมื่อ Production Supply and Distribution ไม่มีบัญชีประเทศที่สมบูรณ์",
-    "loadingFoodStocks": "Loading food stocks…",
-    "foodStocksUnavailable": "Food stocks unavailable.",
-    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
-    "foodStocksCommodity": "Commodity",
-    "foodStocksMarketingYear": "Marketing year",
-    "foodStocksRatio": "Stocks-to-use",
-    "foodStocksWorld": "World",
+    "loadingFoodStocks": "กำลังโหลดสต็อกอาหาร…",
+    "foodStocksUnavailable": "ไม่มีข้อมูลสต็อกอาหาร",
+    "foodStocksProLocked": "อัปเกรดเป็น PRO เพื่อดูอัตราสต็อกต่อการใช้ของสินค้าโภคภัณฑ์",
+    "foodStocksCommodity": "สินค้าโภคภัณฑ์",
+    "foodStocksMarketingYear": "ปีการตลาด",
+    "foodStocksRatio": "สต็อกต่อการใช้",
+    "foodStocksWorld": "โลก",
     "commodities": {
-      "wheat": "Wheat",
-      "corn": "Corn",
-      "rice": "Rice",
-      "soybeans": "Soybeans",
-      "barley": "Barley",
-      "palmOil": "Palm oil"
+      "wheat": "ข้าวสาลี",
+      "corn": "ข้าวโพด",
+      "rice": "ข้าว",
+      "soybeans": "ถั่วเหลือง",
+      "barley": "ข้าวบาร์เลย์",
+      "palmOil": "น้ำมันปาล์ม"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "ประชากรและแรงงาน",
       "help": "โครงสร้างอายุ ท่อการศึกษา และกำลังแรงงานภาคอุตสาหกรรม จาก UN World Population Prospects UNESCO Institute for Statistics และ World Bank World Development Indicators และ ILOSTAT",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "กำลังโหลดข้อมูลประชากรและแรงงาน…",
+      "unavailable": "ไม่มีข้อมูลประชากรและแรงงาน",
+      "proLocked": "อัปเกรดเป็น PRO เพื่อดูข้อมูลประชากรและแรงงาน",
+      "notAvailable": "ไม่มีข้อมูล",
+      "ageStructure": "โครงสร้างอายุ",
+      "education": "เส้นทางการศึกษา",
+      "industrialWorkforce": "แรงงานภาคอุตสาหกรรม",
+      "medianAge": "อายุมัธยฐาน",
+      "oldAgeDependency": "อัตราพึ่งพิงวัยสูงอายุ",
+      "totalDependency": "อัตราพึ่งพิงรวม",
+      "workingAgePopulation": "ประชากรวัยทำงาน",
+      "workingAgeProjection": "ประชากรวัยทำงาน (+10 ปี)",
+      "tertiaryEnrollment": "อัตราการเข้าเรียนระดับอุดมศึกษา",
       "stemGraduates": "บัณฑิตด้านวิทยาศาสตร์ เทคโนโลยี วิศวกรรม และคณิตศาสตร์",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "นักวิจัย",
+      "craftTrades": "แรงงานช่างฝีมือและงานอาชีพ",
+      "plantOperators": "ผู้ควบคุมโรงงานและเครื่องจักร",
+      "trainedIndustrialWorkforce": "แรงงานภาคอุตสาหกรรมรวม",
+      "manufacturingShare": "การจ้างงานภาคการผลิต",
+      "source": "แหล่งที่มา: {{sources}}",
+      "retained": "เก็บข้อมูล {{stage}} จากการรีเฟรชที่สำเร็จครั้งล่าสุด",
       "statusNotSupplied": "ไม่ได้ระบุสถานะการประมาณค่าและการแทนค่าที่ขาดหาย"
     },
     "fiveFactorScorecard": {
@@ -267,7 +267,7 @@
         "pillar-unavailable": "ไม่มีข้อมูลเสาหลัก"
       },
       "inputs": {
-        "population": "Population",
+        "population": "ประชากร",
         "food_productionBalance": "สมดุลการผลิต",
         "food_stocksToUse": "สต็อกที่จะใช้",
         "food_waterSecurity": "ความมั่นคงด้านน้ำ",
@@ -332,21 +332,21 @@
     "sourceRegionEurope": "ยุโรป",
     "sourceRegionTopical": "เฉพาะเรื่อง",
     "sourceRegionIntel": "ข่าวกรอง",
-    "sourceRegionTechNews": "Tech News",
+    "sourceRegionTechNews": "ข่าวเทคโนโลยี",
     "sourceRegionAiMl": "AI และการเรียนรู้ของเครื่อง",
     "sourceRegionStartupsVc": "บริษัทเริ่มต้นและเงินทุนสนับสนุน",
-    "sourceRegionRegionalTech": "Regional Ecosystems",
-    "sourceRegionDeveloper": "Developer",
-    "sourceRegionCybersecurity": "Cybersecurity",
-    "sourceRegionTechPolicy": "Policy & Research",
-    "sourceRegionTechMedia": "Media & Podcasts",
-    "sourceRegionMarkets": "Markets & Analysis",
+    "sourceRegionRegionalTech": "ระบบนิเวศระดับภูมิภาค",
+    "sourceRegionDeveloper": "นักพัฒนา",
+    "sourceRegionCybersecurity": "ความปลอดภัยไซเบอร์",
+    "sourceRegionTechPolicy": "นโยบายและการวิจัย",
+    "sourceRegionTechMedia": "สื่อและพอดแคสต์",
+    "sourceRegionMarkets": "ตลาดและการวิเคราะห์",
     "sourceRegionFixedIncomeFx": "รายได้คงที่และอัตราแลกเปลี่ยนเงินตราต่างประเทศ",
-    "sourceRegionCommodities": "Commodities",
-    "sourceRegionCryptoDigital": "Crypto & Digital",
-    "sourceRegionCentralBanks": "Central Banks & Economy",
-    "sourceRegionDeals": "Deals & Corporate",
-    "sourceRegionFinRegulation": "Financial Regulation",
+    "sourceRegionCommodities": "สินค้าโภคภัณฑ์",
+    "sourceRegionCryptoDigital": "คริปโตและดิจิทัล",
+    "sourceRegionCentralBanks": "ธนาคารกลางและเศรษฐกิจ",
+    "sourceRegionDeals": "ดีลและองค์กร",
+    "sourceRegionFinRegulation": "กฎระเบียบทางการเงิน",
     "sourceRegionGulfMena": "อ่าวเปอร์เซีย และตะวันออกกลาง แอฟริกาเหนือ",
     "filterPanels": "กรองแผงควบคุม...",
     "resetLayout": "รีเซ็ตเลย์เอาต์",
@@ -385,7 +385,6 @@
     "liveNews": "ข่าวสด",
     "markets": "ตลาด",
     "map": "สถานการณ์โลก",
-    "techMap": "เทคโนโลยีโลก",
     "techHubs": "ศูนย์กลางเทคโนโลยีที่มาแรง",
     "status": "สถานะระบบ",
     "insights": "ข้อมูลเชิงลึก AI",
@@ -429,9 +428,9 @@
     "climate": "ความผิดปกติของสภาพภูมิอากาศ",
     "populationExposure": "ประชากรที่ได้รับผลกระทบ",
     "securityAdvisories": "คำเตือนด้านความปลอดภัย",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "ไซเรนในอิสราเอล",
     "telegramIntel": "ข่าวกรอง Telegram",
-    "xIntel": "X News Accounts",
+    "xIntel": "บัญชีข่าว X",
     "startups": "บริษัทเริ่มต้นและเงินทุนสนับสนุน",
     "vcblogs": "ข้อมูลเชิงลึกและบทความเงินทุนสนับสนุน",
     "regionalStartups": "ข่าวสตาร์ทอัพทั่วโลก",
@@ -457,7 +456,7 @@
     "gulfIndices": "ดัชนีอ่าว",
     "gulfCurrencies": "สกุลเงินอ่าว",
     "gulfOil": "น้ำมันอ่าว",
-    "bigmac": "Real Big Mac Index",
+    "bigmac": "ดัชนีบิ๊กแม็กที่แท้จริง",
     "marketImplications": "ความหมายของตลาด AI",
     "energyComplex": "ความซับซ้อนของพลังงาน",
     "oilInventories": "คลังสินค้าน้ำมัน",
@@ -477,7 +476,7 @@
     "bigmacDesc": "ราคา Big Mac ในประเทศตะวันออกกลาง (Big Mac Index)",
     "bigmacWow": "เปลี่ยนแปลงสัปดาห์ต่อสัปดาห์",
     "bigmacCountry": "ประเทศ",
-    "faoFoodPriceIndex": "ดัชนีราคาอาหาร FAO",
+    "faoFoodPriceIndex": "ราคาอาหาร",
     "fuelPrices": "ราคาน้ำมันเชื้อเพลิง",
     "fuelPricesDesc": "ราคาน้ำมันเบนซินและดีเซลค่าปลีกในกว่า 30 ประเทศทั่วโลก",
     "fuelPricesCountry": "ประเทศ",
@@ -490,7 +489,9 @@
     "fearGreed": "ความกลัวและความโลภ",
     "marketBreadth": "ความกว้างของตลาด",
     "climateNews": "ข่าวสภาพอากาศ",
-    "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ"
+    "fx": "อัตราแลกเปลี่ยนเงินตราต่างประเทศ",
+    "ukmtoIncidents": "เหตุการณ์ UKMTO",
+    "reservoirLevels": "ระดับน้ำเชิงยุทธศาสตร์"
   },
   "commands": {
     "prefixes": {
@@ -571,8 +572,8 @@
         "climate": "สลับความผิดปกติของสภาพภูมิอากาศ",
         "outages": "สลับการขัดข้องของอินเทอร์เน็ต",
         "tradeRoutes": "สลับเส้นทางการค้า",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "เปิด/ปิดเลเยอร์ถนนในแคนาดา",
+        "canadaAlerts": "เปิด/ปิดเลเยอร์การแจ้งเตือนเหตุฉุกเฉินระดับจังหวัดของแคนาดา"
       },
       "view": {
         "dark": "เปลี่ยนเป็นโหมดมืด",
@@ -630,12 +631,12 @@
         "flight": "เที่ยวบิน"
       },
       "flightOnGround": "บนพื้นดิน",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · {{kts}} นอต",
       "flightMilitary": "ทหาร · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "ทหาร · {{type}} · บนพื้นดิน",
       "flightSearchHint": "กด Enter หรือคลิกเพื่อค้นหาตำแหน่งสด",
       "flightNotFound": "ไม่พบตำแหน่งสดสำหรับ {{callsign}}",
-      "addPanel": "Add"
+      "addPanel": "เพิ่ม"
     },
     "signal": {
       "title": "ผลการตรวจสอบข่าวกรอง",
@@ -760,15 +761,17 @@
       "logCleared": "ล้างบันทึกแล้ว",
       "worldMonitor": {
         "apiKey": {
-          "title": "คีย์ใบอนุญาต / API",
+          "title": "คีย์เดสก์ท็อป",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "สมาชิก API Starter และ API Business สร้างคีย์นี้ในแดชบอร์ดเว็บที่ Settings → API Keys หากคีย์แบบเต็มสูญหาย ให้เพิกถอนและสร้างคีย์ใหม่"
+          "description": "สำหรับบิลด์ที่ไม่มีการลงชื่อเข้าใช้ Pro: สร้างคีย์ได้ใน Settings → API Keys บนเว็บ; คีย์แบบ API-plan ก็ใช้ได้เช่นกัน สำหรับการใช้ของคุณเอง; การปรับใช้ที่ใช้ร่วมกันหรือสาธารณะต้องมี API plan ช่วยเหลือ: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "หรือ",
         "register": {
-          "title": "ต้องการคีย์ API หรือไม่?",
-          "description": "ดูคำแนะนำทีละขั้นตอนได้ที่ worldmonitor.app/docs/api-keys คีย์ API แบบกำหนดเองต้องใช้แผน API Starter หรือ API Business",
-          "submitBtn": "ดูแผน API"
+          "submitBtn": "ดูแผน"
+        },
+        "signIn": {
+          "title": "ลงชื่อเข้าใช้ด้วย Pro",
+          "description": "Pro ทำงานที่นี่เมื่อคุณลงชื่อเข้าใช้จากหน้าต่างหลัก ไม่ต้องใช้คีย์"
         }
       },
       "table": {
@@ -867,7 +870,7 @@
         "asia": "เอเชีย",
         "space": "อวกาศ"
       },
-      "play": "เล่น",
+      "play": "ดูสด",
       "previewStatus": "พร้อมที่จะเล่น",
       "connecting": "กำลังเชื่อมต่อ…",
       "unverified": "ไม่สามารถยืนยันว่าสตรีมนี้ออนไลน์ได้",
@@ -924,7 +927,12 @@
         "permissive": "ผ่อนปรน",
         "undefined": "ไม่ระบุ"
       },
-      "infoTooltip": "<strong>กฎระเบียบ</strong> การดำเนินการด้านกฎระเบียบ การเปลี่ยนแปลงนโยบาย และการอัปเดตการบังคับใช้จากหน่วยงานกำกับดูแลทั่วโลก: การเงิน เทคโนโลยี พลังงาน และการค้า แหล่งข้อมูล: สิ่งพิมพ์อย่างเป็นทางการของรัฐบาลและหน่วยงานกำกับดูแล"
+      "infoTooltip": "<strong>กฎระเบียบ</strong> การดำเนินการด้านกฎระเบียบ การเปลี่ยนแปลงนโยบาย และการอัปเดตการบังคับใช้จากหน่วยงานกำกับดูแลทั่วโลก: การเงิน เทคโนโลยี พลังงาน และการค้า แหล่งข้อมูล: สิ่งพิมพ์อย่างเป็นทางการของรัฐบาลและหน่วยงานกำกับดูแล",
+      "latestActions": "การกระทำที่บันทึกไว้ล่าสุด",
+      "otherDeadlines": "กำหนดการปฏิบัติตามข้อกำหนดอื่น ๆ",
+      "daysAgo": "วันที่ผ่านมา",
+      "revokedCount": "ระเบียบที่ยกเลิก ({{count}})",
+      "lapsedCount": "ข้อเสนอที่หมดอายุ ({{count}})"
     },
     "economic": {
       "indicators": "ตัวชี้วัด",
@@ -934,16 +942,16 @@
       "noIndicatorData": "ยังไม่มีข้อมูลตัวชี้วัด - Federal Reserve Economic Data อาจกำลังโหลด",
       "fredKeyMissing": "ต้องใช้ API key Federal Reserve Economic Data เพิ่มใน Settings เพื่อเปิดใช้งานตัวชี้วัดเศรษฐกิจ",
       "in": "ใน",
-      "centralBanks": "Central Banks",
-      "laborMarket": "Labor Market",
-      "metroUnemployment": "Metro Unemployment",
+      "centralBanks": "ธนาคารกลาง",
+      "laborMarket": "ตลาดแรงงาน",
+      "metroUnemployment": "อัตราว่างงานในเขตเมือง",
       "noBisData": "ข้อมูล Bank for International Settlements ไม่พร้อมใช้งานชั่วคราว - จะลองใหม่",
-      "policyRate": "Policy Rate",
+      "policyRate": "อัตราดอกเบี้ยนโยบาย",
       "creditToGdp": "สินเชื่อเทียบกับผลผลิตเศรษฐกิจ",
       "realEer": "อัตราแลกเปลี่ยนที่มีประสิทธิผลจริง",
-      "cut": "cut",
-      "hike": "hike",
-      "hold": "hold",
+      "cut": "ลด",
+      "hike": "ขึ้น",
+      "hold": "คงที่",
       "pressure": {
         "label": "ความดันมหภาค",
         "stress": "ความเครียด",
@@ -966,12 +974,12 @@
       "spikeAlert": "ตรวจพบการพุ่งสูง — อัตราสูงกว่าค่าเฉลี่ย 52 สัปดาห์อย่างมีนัยสำคัญ (รายสัปดาห์)",
       "warnings": "คำเตือน",
       "aisDisruptions": "การขัดขวางการติดตามเรือ",
-      "disruption": "Disruption",
-      "vessels": "vessels",
-      "incidents7d": "incidents (7d)",
-      "corridorDisruption": "Corridor Disruption",
-      "corridor": "Corridor",
-      "loadingCorridors": "Loading corridor data...",
+      "disruption": "การหยุดชะงัก",
+      "vessels": "ลำ",
+      "incidents7d": "เหตุการณ์ (7 วัน)",
+      "corridorDisruption": "การหยุดชะงักของระเบียงขนส่ง",
+      "corridor": "ระเบียงขนส่ง",
+      "loadingCorridors": "กำลังโหลดข้อมูลระเบียงขนส่ง...",
       "mineral": "แร่ธาตุ",
       "topProducers": "ผู้ผลิตรายใหญ่",
       "risk": "ความเสี่ยง",
@@ -985,12 +993,15 @@
       "historyUnavailable": "ไม่มีประวัติการขนส่ง",
       "transitDataUnavailable": "ไม่มีข้อมูลการขนส่ง (บางส่วนต้นน้ำ)",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> ติดตามโลจิสติกส์และทรัพยากรระดับโลก:<ul><li><strong>จุดคอขวด</strong>: สถานะการขนส่งทางทะเล คะแนนการหยุดชะงัก และจำนวนเรือ</li><li><strong>การขนส่งทางเรือ</strong>: ดัชนี Baltic Dry และแนวโน้มอัตราค่าขนส่ง</li><li><strong>แร่ธาตุ</strong>: ความเสี่ยงจากการรวมศูนย์แร่ธาตุที่สำคัญ (ดัชนีความเข้มข้นของผู้ผลิต) และผู้ผลิตชั้นนำ</li></ul>คลิกการ์ดจุดคอขวดเพื่อขยายแผนภูมิประวัติการขนส่ง",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "อัปเกรดเป็น PRO สำหรับสัดส่วนประเทศเหมืองและสถานกลั่นพร้อมความเข้มข้น (ดัชนีความเข้มข้นของผู้ผลิต) ตามขั้นตอน"
+      "mineStage": "การทำเหมือง",
+      "refineryStage": "การถลุง",
+      "stageUnavailable": "ไม่มีตัวเลขที่เผยแพร่สำหรับขั้นตอนนี้",
+      "withheldNote": "W ไม่เปิดเผย",
+      "productionCaption": "สัดส่วนของแต่ละประเทศในการผลิตจริง เลเยอร์แหล่งแร่บนแผนที่แสดงว่าทรัพยากรอยู่ที่ใด ส่วนตารางนี้แสดงว่าใครเป็นผู้ขุดหรือถลุง",
+      "productionProLocked": "อัปเกรดเป็น PRO สำหรับสัดส่วนประเทศเหมืองและสถานกลั่นพร้อมความเข้มข้น (ดัชนีความเข้มข้นของผู้ผลิต) ตามขั้นตอน",
+      "partialTransitCoverage": "ไม่มีข้อมูลการขนส่งของ {{names}}",
+      "oilPipelinesUnavailable": "ข้อมูลท่อส่งน้ำมันไม่พร้อมใช้งาน",
+      "gasPipelinesUnavailable": "ข้อมูลท่อส่งก๊าซไม่พร้อมใช้งาน"
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",
@@ -1034,7 +1045,7 @@
       "noComtradeData": "ไม่มีข้อมูลการไหลเวียนเชิงกลยุทธ์",
       "comtradeUnavailable": "ข้อมูล UN Comtrade ไม่พร้อมใช้งานชั่วคราว",
       "sourceComtrade": "UN Comtrade",
-      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
+      "comtradeNationalScope": "แถวข้อมูล UN Comtrade เป็นสถิติทางการระดับประเทศของประเทศผู้รายงาน ไม่ใช่บันทึกการส่งออกระดับเมือง ระเบียงขนส่ง โรงงาน ท่าเรือ หรือการขนส่งรายเที่ยว",
       "anomalyBadge": "ความผิดปกติ",
       "colReporter": "ประเทศ",
       "colCommodity": "สินค้า",
@@ -1057,9 +1068,9 @@
       "no": "ไม่",
       "vol": "ปริมาณ",
       "closes": "ปิด",
-      "leanYes": "Lean Yes",
-      "leanNo": "Lean No",
-      "tossUp": "Toss-up"
+      "leanYes": "โน้มไปทาง ใช่",
+      "leanNo": "โน้มไปทาง ไม่",
+      "tossUp": "สูสี"
     },
     "stablecoins": {
       "pegHealth": "สุขภาพ Peg",
@@ -1068,7 +1079,7 @@
       "mcap": "มูลค่าตลาด",
       "vol24h": "ปริมาณ 24 ชม.",
       "chg24h": "เปลี่ยนแปลง 24 ชม.",
-      "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
+      "infoTooltip": "<strong>สเตเบิลคอยน์</strong> สุขภาพการตรึงค่า มูลค่าตลาด และปริมาณ 24 ชม. ของโทเคนหลักที่ตรึงกับ USD (USDT, USDC, DAI, BUSD) การหลุดตรึงเป็นสัญญาณความเสี่ยงเชิงระบบ"
     },
     "status": {
       "updatedAt": "อัปเดต {{time}}"
@@ -1078,13 +1089,15 @@
       "live": "สด",
       "historicalPlayback": "เล่นย้อนหลัง",
       "close": "ปิด",
-      "skipToStart": "Skip to start",
-      "previous": "Previous",
-      "next": "Next",
-      "skipToEnd": "Skip to end"
+      "skipToStart": "ข้ามไปต้นสุด",
+      "previous": "ก่อนหน้า",
+      "next": "ถัดไป",
+      "skipToEnd": "ข้ามไปท้ายสุด",
+      "storageUnavailable": "การเล่นย้อนหลังไม่พร้อมใช้งาน เนื่องจากเบราว์เซอร์นี้บล็อกการจัดเก็บข้อมูลของเว็บไซต์ อนุญาตข้อมูลเว็บไซต์สำหรับเว็บไซต์นี้เพื่อเริ่มบันทึกสแนปช็อต"
     },
     "pizzint": {
-      "indexSource": "ดัชนี: World Monitor · ข้อมูลสถานที่:",
+      "indexSource": "ดัชนี: World Monitor",
+      "venueSource": "ข้อมูลสถานที่:",
       "statusNormal": "ปกติ",
       "statusNoData": "ไม่มีข้อมูล",
       "statusNoBaseline": "ไม่มีค่าฐาน",
@@ -1095,6 +1108,16 @@
       "tensionsTitle": "ความตึงเครียดภูมิรัฐศาสตร์",
       "tensionsSource": "ความตึงเครียด: World Monitor คำนวณจากเหตุการณ์ของ GDELT",
       "insufficientData": "ข้อมูลไม่เพียงพอ",
+      "evidenceStrikes": "การโจมตีที่มีรายงานใน 3 วัน ({{countries}}): {{value}}",
+      "evidenceAirports": "สนามบินที่ได้รับผลกระทบ: {{value}}",
+      "evidenceAirportClosed": "สนามบิน{{name}}ปิด",
+      "evidenceAirportHalted": "{{name}}: เที่ยวบินส่วนใหญ่ถูกยกเลิก",
+      "evidenceAirportRestricted": "{{name}}: เที่ยวบินถูกจำกัด",
+      "evidenceMilitaryAircraft": "อากาศยานทหาร ({{country}}) ในภูมิภาค: {{value}}",
+      "evidencePlaAircraft": "อากาศยานทหารจีนใกล้ไต้หวัน: {{value}}",
+      "evidencePlaShips": "เรือรบจีนใกล้ไต้หวัน: {{value}}",
+      "evidenceSanctions": "มาตรการคว่ำบาตรใหม่ของสหรัฐฯ สัปดาห์นี้ ({{country}}): {{value}}",
+      "evidenceUsual": "(ปกติ {{value}})",
       "pizzaUnavailable": "ไม่มีข้อมูลกิจกรรมของร้านพิซซ่า",
       "source": "แหล่งที่มา:",
       "statusClosed": "ปิด",
@@ -1181,6 +1204,7 @@
       "emojiKeyNaval": "สินทรัพย์ทางเรือ"
     },
     "countryBrief": {
+      "moreActions": "การดำเนินการเพิ่มเติม",
       "shareLink": "แชร์ลิงก์",
       "shareStory": "แชร์เรื่องราว",
       "printPdf": "พิมพ์ / PDF",
@@ -1206,26 +1230,10 @@
       "resetView": "รีเซ็ตมุมมอง",
       "legend": {
         "title": "คำอธิบายสัญลักษณ์",
-        "startupHub": "ศูนย์กลางสตาร์ทอัพ",
-        "techHQ": "สำนักงานใหญ่เทคโนโลยี",
-        "accelerator": "แอคเซเลอเรเตอร์",
-        "cloudRegion": "ภูมิภาคคลาวด์",
-        "datacenter": "ศูนย์ข้อมูล",
-        "stockExchange": "ตลาดหลักทรัพย์",
-        "financialCenter": "ศูนย์กลางการเงิน",
-        "centralBank": "ธนาคารกลาง",
-        "commodityHub": "ศูนย์กลางสินค้าโภคภัณฑ์",
-        "waterway": "เส้นทางน้ำ",
         "highAlert": "แจ้งเตือนสูง",
         "elevated": "ยกระดับ",
         "monitoring": "เฝ้าระวัง",
-        "base": "ฐานทัพ",
-        "nuclear": "นิวเคลียร์",
-        "aircraft": "อากาศยาน",
-        "miningSite": "เหมืองแร่",
-        "commodityPort": "ท่าเรือสินค้าโภค",
         "pipeline": "สายท่อ",
-        "processingPlant": "โรงงานแปรรูป",
         "conflict": "พื้นที่ความขัดแย้ง",
         "diseaseAlert": "การแจ้งเตือนโรค",
         "diseaseWarning": "คำเตือนโรค",
@@ -1276,7 +1284,7 @@
         "ucdpEvents": "เหตุการณ์ UCDP",
         "displacementFlows": "กระแสการพลัดถิ่น",
         "climateAnomalies": "ความผิดปกติของสภาพภูมิอากาศ",
-        "weatherAlerts": "การแจ้งเตือนสภาพอากาศรุนแรง (NWS, ECCC, WMO SWIC)",
+        "weatherAlerts": "การแจ้งเตือนสภาพอากาศ",
         "strategicWaterways": "เส้นทางน้ำยุทธศาสตร์",
         "economicCenters": "ศูนย์กลางเศรษฐกิจ",
         "criticalMinerals": "แร่ธาตุสำคัญ",
@@ -1297,8 +1305,11 @@
         "renewableInstallations": "พลังงานสะอาด",
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaRoads": "ถนนในแคนาดา",
+        "canadaAlerts": "การแจ้งเตือนแคนาดา",
+        "notamAirspace": "ข้อจำกัดเขตอากาศ NOTAM",
+        "no2Activity": "กิจกรรมอุตสาหกรรม",
+        "reservoirLevels": "ระดับน้ำ"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1412,12 +1423,29 @@
           "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน",
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนความร้อน Country Instability Index — แสดงสีประเทศตามคะแนน (เขียว=เสถียร แดง=วิกฤต)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaRoads": "เหตุการณ์บนถนน การแจ้งเตือน สภาพถนน การปิดถนน งานก่อสร้าง และอันตรายอย่างเป็นทางการในเขตอำนาจของแคนาดาที่รองรับ",
+          "canadaAlerts": "การแจ้งเตือนความปลอดภัยสาธารณะระดับจังหวัดจาก Alberta Emergency Alert, B.C. Evacuation Orders and Alerts และ SaskAlert",
+          "notamAirspace": "การจำกัดการบินชั่วคราวและเขตอากาศที่จำกัด อันตราย และห้ามบินจาก FAA NOTAMs ที่มีผลบังคับใช้ในขณะนี้หรือเริ่มต้นภายใน 24 ชั่วโมง",
+          "no2Activity": "ทิศทางกิจกรรม NO2 จาก Sentinel-5P สำหรับ 167 ประเทศและ 32 กลุ่มอุตสาหกรรม: ช่วง 56 วันล่าสุดเทียบกับวันที่เดียวกันในปีก่อนหน้า หลังใช้แถบตาย 10% มีข้อมูล Copernicus Sentinel ที่ผ่านการดัดแปลง",
+          "reservoirLevels": "ระดับผิวน้ำของอ่างเก็บน้ำและทะเลสาบเชิงยุทธศาสตร์จากไลดาร์ดาวเทียม ICESat-2 ของ NASA เทียบกับระดับปกติของเดือนนั้น NASA เผยแพร่การโคจรผ่านแต่ละครั้งประมาณสองเดือนหลังการวัด"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
         }
+      },
+      "measure": {
+        "title": "วัดระยะห่าง",
+        "units": "หน่วยระยะทาง",
+        "pointA": "เลือกจุด A คลิกบนแผนที่หรือกด Enter ที่จุดศูนย์กลางของแผนที่",
+        "pointB": "เลือกจุด B เลื่อนแผนที่และกด Enter เพื่อใช้จุดศูนย์กลางของแผนที่",
+        "geodesic": "ระยะทางจีโอเดซิก",
+        "note": "ระหว่างพิกัดที่คลิก ไม่ใช่เส้นทางหรือการแยกสินทรัพย์ที่ตรวจสอบแล้ว กด Escape เพื่อออก",
+        "cancel": "ยกเลิกการเลือก",
+        "cancelShort": "ยกเลิก",
+        "resetShort": "รีเซ็ต",
+        "exitShort": "ออก",
+        "reset": "รีเซ็ตการวัด",
+        "exit": "ออกจากการวัด"
       }
     },
     "cii": {
@@ -1425,8 +1453,8 @@
       "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว",
-      "sectionFollowing": "Following",
-      "sectionAll": "All",
+      "sectionFollowing": "กำลังติดตาม",
+      "sectionAll": "ทั้งหมด",
       "sourceStates": {
         "degraded": "เสื่อมสภาพ",
         "stale": "ล้าสมัย"
@@ -1449,9 +1477,9 @@
         "auto": "อัตโนมัติ (ตามอุปกรณ์)",
         "1_5": "คมชัด (1.5x)"
       },
-      "mapFlashLabel": "Live Event Pulse",
-      "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
+      "mapFlashLabel": "ชีพจรเหตุการณ์สด",
+      "mapFlashDesc": "กะพริบตำแหน่งบนแผนที่เมื่อมีข่าวด่วน",
+      "aiFlowCloudLabel": "AI บนคลาวด์ (OpenRouter)",
       "aiFlowCloudDesc": "ส่งพาดหัวข่าวไปยังคลาวด์เพื่อสรุปด้วย AI (แนะนำ)",
       "aiFlowBrowserLabel": "โมเดลท้องถิ่นในเบราว์เซอร์",
       "aiFlowBrowserDesc": "เรียกใช้ AI ในเบราว์เซอร์ของคุณ",
@@ -1464,13 +1492,13 @@
       "aiFlowStatusBrowserOnly": "โมเดลเบราว์เซอร์เท่านั้น",
       "aiFlowStatusDisabled": "ไม่มีผู้ให้บริการ AI ที่เปิดใช้งาน",
       "insightsDisabledTitle": "การวิเคราะห์ AI ถูกปิดใช้งาน",
-      "insightsDisabledHint": "Enable providers via the settings gear in the map header",
+      "insightsDisabledHint": "เปิดใช้ผู้ให้บริการผ่านไอคอนตั้งค่าในส่วนหัวของแผนที่",
       "badgeAnimLabel": "แอนิเมชันป้าย",
       "badgeAnimDesc": "แสดงแอนิเมชันป้ายอัปเดตบนส่วนหัวของแผง",
       "headlineMemoryLabel": "หน่วยความจำพาดหัว",
       "headlineMemoryDesc": "จดจำพาดหัวที่เคยดูเพื่อเน้นข่าวใหม่",
-      "streamAlwaysOnLabel": "เล่นสตรีมสดบนแดชบอร์ดโดยอัตโนมัติ",
-      "streamAlwaysOnDesc": "เริ่ม Live News และ Live Webcams โดยอัตโนมัติเมื่อมองเห็น ปิดไว้เพื่อโหลดวิดีโอหลังจากคุณคลิกเล่นเท่านั้น",
+      "streamAlwaysOnLabel": "เล่นเว็บแคมสดโดยอัตโนมัติ",
+      "streamAlwaysOnDesc": "เริ่มเล่นวิดีโอเว็บแคมสดโดยอัตโนมัติ ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดเฉพาะเมื่อคุณเล่นด้วยตัวเอง",
       "analysisFrameworksLabel": "กรอบการวิเคราะห์",
       "analysisFrameworksActivePerPanel": "ใช้งานต่อแผง",
       "analysisFrameworksSkillLibrary": "ไลบรารีทักษะ",
@@ -1511,7 +1539,9 @@
       "briefStoryDetails": "รายละเอียดข่าว ({{count}})",
       "streamIdleStopLabel": "หยุดวิดีโอสดเมื่อไม่มีกิจกรรม",
       "streamIdleStopDesc": "หยุด Live News และ Live Webcams หลังจากที่ไม่มีกิจกรรมนาน ๆ และแสดงประกาศในแผง",
-      "streamIdleStopNever": "ไม่เลย"
+      "streamIdleStopNever": "ไม่เลย",
+      "liveNewsAutoplayLabel": "เล่นข่าวสดโดยอัตโนมัติ",
+      "liveNewsAutoplayDesc": "เริ่มเล่นวิดีโอข่าวสดโดยปิดเสียง ทันทีที่ปรากฏบนหน้าจอ ปิดตัวเลือกนี้เพื่อโหลดวิดีโอเฉพาะเมื่อคุณเล่นด้วยตัวเอง"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",
@@ -1596,8 +1626,8 @@
         "degraded": "เสื่อมสภาพ",
         "stale": "ล้าสมัย"
       },
-      "dataFreshness": "Data Freshness",
-      "sourcesDetail": "{{active}}/{{total}} sources"
+      "dataFreshness": "ความสดใหม่ของข้อมูล",
+      "sourcesDetail": "{{active}}/{{total}} แหล่ง"
     },
     "techEvents": {
       "loading": "กำลังโหลดงานเทคโนโลยี...",
@@ -1616,6 +1646,10 @@
       "infoTooltip": "<strong>กิจกรรมเทคโนโลยี</strong> กิจกรรมเทคโนโลยีที่จะมาถึงและล่าสุด: การประชุม การเปิดตัวผลิตภัณฑ์ การพิจารณาด้านกฎระเบียบ และการประชุมผลประกอบการ รวบรวมจากปฏิทินกิจกรรมอย่างเป็นทางการและแหล่งข้อมูลในอุตสาหกรรม"
     },
     "techReadiness": {
+      "ranked": "ได้รับการจัดอันดับ",
+      "unranked": "ไม่ได้รับการจัดอันดับ",
+      "coverageRequirement": "จำนวนตัวชี้วัดขั้นต่ำสำหรับการจัดอันดับ",
+      "coverageLabel": "ตัวชี้วัดที่มีข้อมูล",
       "internetUsers": "ผู้ใช้อินเทอร์เน็ต",
       "mobileSubscriptions": "การสมัครมือถือ",
       "rdSpending": "การใช้จ่ายด้านการวิจัยและพัฒนา",
@@ -1631,17 +1665,23 @@
       "dataPreparing": "กำลังรีเฟรชข้อมูลความพร้อมใช้เทคโนโลยี — ข้อมูลนี้จะปรากฏในไม่ช้า"
     },
     "populationExposure": {
-      "totalAffected": "ผู้ได้รับผลกระทบทั้งหมด",
-      "affectedCount": "{{count}} ผู้ได้รับผลกระทบ",
-      "radiusKm": "รัศมี {{km}} กม.",
-      "infoTooltip": "<strong>การประเมินประชากรที่สัมผัส</strong> ประมาณการประชากรภายในรัศมีผลกระทบของเหตุการณ์ อ้างอิงข้อมูลความหนาแน่นประชากรจาก WorldPop<ul><li>ความขัดแย้ง: รัศมี 50 กม.</li><li>แผ่นดินไหว: รัศมี 100 กม.</li><li>น้ำท่วม: รัศมี 100 กม.</li><li>ไฟป่า: รัศมี 30 กม.</li></ul>"
+      "estimateWithin": "ประมาณ {{count}} คนในรัศมี {{km}} กม.",
+      "method": "การประมาณใช้ความหนาแน่นประชากรเฉลี่ยของประเทศ",
+      "empty": "ไม่มีตำแหน่งเหตุการณ์ที่ตรงตามเกณฑ์",
+      "infoTooltip": "แสดงเหตุการณ์ที่มีข้อมูลความหนาแน่นของประชากรในประเทศ ตำแหน่งของเหตุการณ์ UCDP ที่ไม่มีข้อมูลความแม่นยำจะมีป้ายกำกับว่ารอการอัปเดต พื้นที่ประมาณการอาจทับซ้อนกัน เหตุการณ์ความไม่สงบต้องมีตำแหน่งที่แม่นยำ เหตุการณ์ UCDP ที่ระบุว่าตำแหน่งไม่แม่นยำจะถูกตัดออก สถานที่เดียวที่รายงานจากสองแหล่ง (ความไม่สงบและ UCDP) จะแสดงเป็นสองแถว",
+      "eventCount_other": "{{count}} เหตุการณ์",
+      "locationPending": "ความแม่นยำของตำแหน่งรอการอัปเดต",
+      "unrestCoverage": "ความครอบคลุมของเหตุความไม่สงบ",
+      "ucdpPending": "ความครอบคลุมของ UCDP รอการอัปเดต",
+      "coverageShown": "เหตุการณ์ที่แสดง: {{shown}} จาก {{total}}",
+      "coverageLeftOut": "ไม่ได้แสดง: {{imprecise}} ไม่มีตำแหน่งที่แม่นยำ, {{noEstimate}} ในประเทศที่ไม่มีข้อมูลความหนาแน่น, {{otherPlaces}} หลัง 10 สถานที่แรกของแต่ละแหล่ง"
     },
     "securityAdvisories": {
       "loading": "กำลังโหลดคำเตือนการเดินทาง...",
       "noMatching": "ไม่พบคำเตือนสำหรับตัวกรองนี้",
       "critical": "วิกฤต",
       "health": "สุขภาพ",
-      "sources": "US State Dept, AU DFAT, UK FCDO, CDC, ECDC, WHO, US Embassies",
+      "sources": "กระทรวงการต่างประเทศสหรัฐฯ, DFAT ออสเตรเลีย, FCDO สหราชอาณาจักร, CDC, ECDC, WHO, สถานทูตสหรัฐฯ",
       "refresh": "รีเฟรช",
       "levels": {
         "doNotTravel": "ห้ามเดินทาง",
@@ -1659,14 +1699,14 @@
       "infoTooltip": "<strong>คำเตือนด้านความปลอดภัย</strong><br>คำเตือนการเดินทางและความปลอดภัยจากหน่วยงานรัฐบาล."
     },
     "orefSirens": {
-      "checking": "Checking siren alerts...",
-      "noAlerts": "No active sirens — all clear",
-      "notConfigured": "Sirens service not configured",
-      "activeSirens": "{{count}} active siren(s)",
-      "justNow": "just now",
+      "checking": "กำลังตรวจสอบการแจ้งเตือนไซเรน...",
+      "noAlerts": "ไม่มีไซเรนทำงาน — ปลอดภัย",
+      "notConfigured": "ยังไม่ได้ตั้งค่าบริการไซเรน",
+      "activeSirens": "ไซเรนทำงานอยู่ {{count}} จุด",
+      "justNow": "เมื่อสักครู่",
       "historySummary": "{{count}} การแจ้งเตือนใน 24 ชม. — {{waves}} ระลอก",
       "loadingHistory": "กำลังโหลดประวัติ...",
-      "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
+      "infoTooltip": "<strong>ไซเรนในอิสราเอล</strong><br>การแจ้งเตือนไซเรนจรวดและขีปนาวุธแบบเรียลไทม์จากกองบัญชาการแนวหน้าภายในประเทศของอิสราเอล<br><br>ดึงข้อมูลทุก 10 วินาที ไฟสีแดงกะพริบหมายถึงมีไซเรนกำลังดังอยู่"
     },
     "satelliteFires": {
       "region": "ภูมิภาค",
@@ -1803,8 +1843,6 @@
       "summaryFailed": "สรุปล้มเหลว",
       "sources": "{{count}} แหล่งที่มา",
       "relatedAssetsNear": "สินทรัพย์ที่เกี่ยวข้องใกล้ {{location}}",
-      "sourceCoverage": "{{covered}}/{{total}} แหล่งข่าว",
-      "sourceCoverageHint": "แสดง {{covered}} จาก {{total}} แหล่งข่าวที่เปิดใช้งาน — แผงนี้จะสลับแหล่งข่าวที่ดึงในทุกครั้งที่รีเฟรช",
       "sortBy": "เรียงลำดับตาม",
       "sortNewest": "ล่าสุด",
       "sortRelevance": "ความเกี่ยวข้อง",
@@ -1814,8 +1852,8 @@
       "critical": "วิกฤต",
       "high": "สูง",
       "dismiss": "ปิด",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "การแจ้งเตือนข่าวด่วน",
+      "viewPanel": "ดูแผงที่เกี่ยวข้อง"
     },
     "intelligenceFindings": {
       "breakingAlerts": "การแจ้งเตือนด่วน",
@@ -1887,26 +1925,26 @@
       "filterCyber": "ไซเบอร์"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "โพสต์คัดสรรจากบัญชีข่าวสาธารณะบน X ใช้ API อย่างเป็นทางการเท่านั้น",
+      "loading": "กำลังเชื่อมต่อรีเลย์บัญชีข่าว X...",
+      "empty": "ไม่มีโพสต์",
+      "disabled": "รีเลย์บัญชีข่าว X ไม่ได้ทำงาน",
+      "filterAll": "ทั้งหมด",
+      "filterBreaking": "ข่าวด่วน",
+      "filterConflict": "ความขัดแย้ง",
       "filterOsint": "การรวบรวมข้อมูลจากแหล่งเปิด",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "ตะวันออกกลาง",
+      "live": "สด",
+      "viewSource": "ดูแหล่งที่มา",
+      "filterGeopolitics": "ภูมิรัฐศาสตร์",
+      "filterCyber": "ไซเบอร์"
     },
     "investments": {
       "infoTooltip": "ฐานข้อมูลการลงทุนโดยตรงจากต่างประเทศของซาอุดีอาระเบียและ UAE ในโครงสร้างพื้นฐานสำคัญระดับโลก คลิกแถวเพื่อบินไปยังการลงทุนบนแผนที่",
       "searchPlaceholder": "ค้นหาสินทรัพย์, ประเทศ, หน่วยงาน…",
       "allCountries": "ทุกประเทศ",
       "saudiArabia": "ซาอุดีอาระเบีย",
-      "uae": "UAE",
+      "uae": "ยูเออี",
       "allSectors": "ทุกเซกเตอร์",
       "allEntities": "ทุกหน่วยงาน",
       "allStatuses": "ทุกสถานะ",
@@ -1941,6 +1979,8 @@
       "infoTooltip": "<strong>ตลาดพยากรณ์</strong> ตลาดพยากรณ์ที่ใช้เงินจริง:<ul><li>ราคาสะท้อนการประมาณความน่าจะเป็นของกลุ่ม</li><li>ปริมาณสูง = สัญญาณที่น่าเชื่อถือกว่า</li><li>เน้นภูมิรัฐศาสตร์และเหตุการณ์ปัจจุบัน</li></ul>แหล่งที่มา: Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "คอลัมน์ก่อนหน้า",
+      "moreColumns": "คอลัมน์เพิ่มเติม",
       "unavailable": "ข้อมูลกองทุนที่อนุญาตให้ซื้อขายในตลาดหุ้น ไม่พร้อมใช้งานชั่วคราว",
       "rateLimited": "ข้อมูลกองทุนที่อนุญาตให้ซื้อขายในตลาดหุ้น ไม่พร้อมใช้งานชั่วคราว (จำกัดอัตรา) — กำลังลองใหม่ในไม่ช้า",
       "netFlow": "กระแสสุทธิ",
@@ -1971,8 +2011,8 @@
         "flow": "กระแส",
         "regime": "สภาพตลาด",
         "btcTrend": "แนวโน้ม BTC",
-        "hashRate": "Hash Rate",
-        "momentum": "Momentum",
+        "hashRate": "อัตราแฮช",
+        "momentum": "โมเมนตัม",
         "fearGreed": "ความกลัวและความโลภ"
       },
       "infoTooltip": "<strong>สภาวะตลาด Bitcoin</strong> แดชบอร์ดสัญญาณประกอบสำหรับการวางตำแหน่ง Bitcoin และความชื่นชอบในความเสี่ยง:<ul><li><strong>สภาพคล่อง</strong>: พร็อกซีสภาพคล่องสุทธิของธนาคารกลาง</li><li><strong>กระแส</strong>: ผลตอบแทน BTC vs QQQ 5 วัน</li><li><strong>ระบอบ</strong>: การหมุนเวียน QQQ vs XLP (ความเสี่ยงเปิด/ปิด)</li><li><strong>แนวโน้ม BTC</strong>: ราคา vs SMA50/200 Mayer Multiple</li><li><strong>Hash Rate</strong>: การเปลี่ยนแปลง Hash ของเครือข่าย 30 วัน</li><li><strong>Fear & Greed</strong>: ดัชนีความรู้สึกของตลาด</li></ul>แผงนี้ใช้สำหรับระบอบและการวางตำแหน่ง ไม่ใช่ข้อมูล Macro กว้าง"
@@ -2031,6 +2071,7 @@
       }
     },
     "liveNews": {
+      "audioUnavailable": "ไม่มีเสียง",
       "notLive": "{{name}} ไม่ได้ถ่ายทอดสดอยู่ในขณะนี้",
       "signInToYouTube": "ลงชื่อเข้าใช้ YouTube",
       "openOnYouTube": "เปิดบน YouTube",
@@ -2069,7 +2110,8 @@
       "channelOrVideoUrl": "URL ช่อง YouTube หรือ URL วิดีโอ",
       "channelUrlHint": "วางลิงก์ URL ช่อง (youtube.com/channel/UC…) หรือ URL วิดีโอสด",
       "youtubeChannel": "ช่อง YouTube",
-      "httpsStreamHint": "เบราว์เซอร์จะบล็อกสตรีมที่ไม่ปลอดภัย (http) วาง URL สตรีมที่ปลอดภัย (https)"
+      "httpsStreamHint": "เบราว์เซอร์จะบล็อกสตรีมที่ไม่ปลอดภัย (http) วาง URL สตรีมที่ปลอดภัย (https)",
+      "tapToPlay": "แตะเพื่อเล่น"
     },
     "map": {
       "showMap": "แสดงแผนที่",
@@ -2077,7 +2119,7 @@
       "clearTrails": "ล้างรอยทาง"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "infoTooltip": "<strong>การหยุดชะงักของอินเทอร์เน็ต</strong> อินเทอร์เน็ตล่ม การโจมตี DDoS และความผิดปกติของทราฟฟิกแบบเรียลไทม์จากการเฝ้าระวังเครือข่ายทั่วโลก:<ul><li><strong>อินเทอร์เน็ตล่ม</strong>: การเชื่อมต่อล้มเหลวที่ตรวจพบผ่าน BGP แยกตามประเทศ</li><li><strong>DDoS</strong>: รายงานการโจมตีเชิงปริมาณแยกตามโปรโตคอลและเวกเตอร์</li><li><strong>ความผิดปกติ</strong>: รูปแบบทราฟฟิกที่ผิดปกติจาก Cloudflare Radar</li></ul>",
       "noOutages": "ไม่พบการหยุดชะงักที่ใช้งานอยู่",
       "noDdos": "ไม่มีข้อมูล DDoS",
       "noAnomalies": "ไม่พบความผิดปกติของการจราจร",
@@ -2086,16 +2128,16 @@
       "topTargets": "ประเทศเป้าหมายชั้นนำ"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "infoTooltip": "<strong>สินค้าโภคภัณฑ์</strong> ราคาสินค้าโภคภัณฑ์ที่ซื้อขายได้นอกภาคพลังงาน เน้นโลหะและวัสดุ ราคาพลังงานอยู่ในกลุ่มพลังงาน ส่วนตัวชี้วัดความตึงเครียดมหภาคอยู่ในความตึงเครียดมหภาค",
+      "commodities": "สินค้าโภคภัณฑ์",
+      "physicalPremiums": "ส่วนเพิ่มราคาสินค้าจริง",
+      "physical": "กายภาพ",
+      "paper": "กระดาษ",
+      "premium": "ส่วนเพิ่มราคา",
+      "asOf": "ณ {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "ทองคำ",
+        "silver": "เงิน"
       },
       "divergence": {
         "compositeValue": "ดัชนีความเครียดทางกายภาพ: {{value}} / 100",
@@ -2115,7 +2157,7 @@
       }
     },
     "crypto": {
-      "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
+      "infoTooltip": "<strong>คริปโต</strong> ราคาสด การเปลี่ยนแปลง 24 ชม. และปริมาณซื้อขายของคริปโตเคอร์เรนซีหลัก ข้อมูลจาก CoinGecko"
     },
     "gulfEconomies": {
       "infoTooltip": "<strong>Gulf Economies</strong> ดัชนีหุ้นอ่าวเพาะปลูก อัตราแลกเปลี่ยนเงินตรา และราคาน้ำมันสำหรับเศรษฐกิจสภาความร่วมมือประเทศกลุ่มอ่าว (ซาอุดีอาระเบีย สหรัฐอาหรับเอมิเรตส์ คูเวต กาตาร์ บาห์เรน โอมาน)"
@@ -2124,25 +2166,25 @@
       "infoTooltip": "<strong>Grocery Index</strong> การเปรียบเทียบราคาสินค้าชำ ทั่วโลกในประเทศ 24 แห่ง ติดตามอัตราเงินเฟ้อสินค้าอุปโภคบริโภคในโลกจริงนอกเหนือดัชนีราคาอุปโภคบริโภคหลัก"
     },
     "bigmac": {
-      "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
+      "infoTooltip": "<strong>ดัชนีบิ๊กแม็กที่แท้จริง</strong> ดัชนีบิ๊กแม็กของ The Economist วัดความเสมอภาคของอำนาจซื้อโดยเปรียบเทียบราคาเบอร์เกอร์ของ McDonald's ในแต่ละประเทศ อัปเดตเมื่อมีการเผยแพร่ข้อมูลใหม่ (รายไตรมาส/รายปี)"
     },
     "defiTokens": {
-      "infoTooltip": "<strong>DeFi Tokens</strong> Prices and 24h/7d performance for major decentralized finance protocol tokens — DEXes, lending platforms, and yield protocols."
+      "infoTooltip": "<strong>โทเคน DeFi</strong> ราคาและผลการดำเนินงาน 24 ชม./7 วันของโทเคนโปรโตคอลการเงินแบบกระจายศูนย์หลัก — DEX แพลตฟอร์มปล่อยกู้ และโปรโตคอลผลตอบแทน"
     },
     "aiTokens": {
-      "infoTooltip": "<strong>AI Tokens</strong> Prices and 24h/7d performance for AI and machine learning sector tokens — compute networks, decentralized AI infrastructure, and data protocols."
+      "infoTooltip": "<strong>โทเคน AI</strong> ราคาและผลการดำเนินงาน 24 ชม./7 วันของโทเคนในภาค AI และแมชชีนเลิร์นนิง — เครือข่ายประมวลผล โครงสร้างพื้นฐาน AI แบบกระจายศูนย์ และโปรโตคอลข้อมูล"
     },
     "altTokens": {
-      "infoTooltip": "<strong>Alt Tokens</strong> Prices and 24h/7d performance for alternative and emerging crypto tokens outside the major-cap tiers."
+      "infoTooltip": "<strong>อัลต์โทเคน</strong> ราคาและผลการดำเนินงาน 24 ชม./7 วันของโทเคนคริปโตทางเลือกและเกิดใหม่นอกกลุ่มมูลค่าตลาดหลัก"
     },
     "stockAnalysis": {
-      "infoTooltip": "<strong>Premium Stock Analysis</strong> AI-powered analysis for stocks in your watchlist — buy/hold/sell signals, price targets, key risks, and catalysts updated daily."
+      "infoTooltip": "<strong>การวิเคราะห์หุ้นพรีเมียม</strong> การวิเคราะห์ด้วย AI สำหรับหุ้นในรายการเฝ้าดูของคุณ — สัญญาณซื้อ/ถือ/ขาย ราคาเป้าหมาย ความเสี่ยงหลัก และปัจจัยกระตุ้น อัปเดตทุกวัน"
     },
     "stockBacktest": {
-      "infoTooltip": "<strong>Premium Backtesting</strong> Historical performance backtests for stocks in your watchlist — past returns, max drawdown, and volatility metrics."
+      "infoTooltip": "<strong>การทดสอบย้อนหลังพรีเมียม</strong> การทดสอบผลการดำเนินงานย้อนหลังของหุ้นในรายการเฝ้าดูของคุณ — ผลตอบแทนในอดีต การลดลงสูงสุด และตัวชี้วัดความผันผวน"
     },
     "dailyMarketBrief": {
-      "infoTooltip": "<strong>Daily Market Brief</strong> AI-generated daily summary of global market conditions, key macro trends, and sector-level signals — refreshes each trading day."
+      "infoTooltip": "<strong>สรุปตลาดรายวัน</strong> บทสรุปรายวันที่สร้างโดย AI เกี่ยวกับภาวะตลาดโลก แนวโน้มมหภาคสำคัญ และสัญญาณรายภาคธุรกิจ — รีเฟรชทุกวันทำการซื้อขาย"
     },
     "centralBankWatch": {
       "infoTooltip": "<strong>Central Bank Watch</strong> งบประมาณล่าสุด การตัดสินใจด้านอัตราดอกบัญชี และการสื่อสารจากธนาคารกลาง เฟดรัลเริ่ฟ ธนาคารกลางยุโรป ธนาคารแห่งประเทศอังกฤษ และธนาคารกลางครั้งสำคัญอื่น ๆ ทั่วโลก"
@@ -2180,9 +2222,9 @@
       "sourceFallback": "แหล่งที่มา",
       "attribution": "WHO · ProMED · HealthMap",
       "levels": {
-        "alert": "ALERT",
-        "warning": "WARNING",
-        "watch": "WATCH"
+        "alert": "เตือนภัย",
+        "warning": "คำเตือน",
+        "watch": "เฝ้าระวัง"
       },
       "time": {
         "justNow": "เมื่อสักครู่",
@@ -2210,9 +2252,9 @@
       "revenueActual": "{{value}} รายได้",
       "revenueEstimate": "{{value}} โดยประมาณ",
       "surprise": {
-        "beat": "BEAT",
-        "miss": "MISS",
-        "inLine": "IN LINE"
+        "beat": "ดีกว่าคาด",
+        "miss": "ต่ำกว่าคาด",
+        "inLine": "ตามคาด"
       },
       "errors": {
         "noData": "ไม่มีข้อมูลรายงานกำไร",
@@ -2254,9 +2296,9 @@
       },
       "metrics": {
         "vix": "VIX",
-        "hySpread": "High-yield Spread",
-        "hygPrice": "HYG Price",
-        "tltPrice": "TLT Price"
+        "hySpread": "ส่วนต่างพันธบัตรผลตอบแทนสูง",
+        "hygPrice": "ราคา HYG",
+        "tltPrice": "ราคา TLT"
       },
       "errors": {
         "unavailable": "ข้อมูล Financial Stress Indicator ไม่มีอยู่",
@@ -2285,20 +2327,21 @@
       "proLocked": "อัปเกรดเป็น PRO เพื่อดูคะแนนความเสี่ยงสินค้าโภคนัย"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> การติดตามเรือสดในช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ติดตามจำนวนเรือบรรทุกน้ำมัน เหตุการณ์การหยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ ประมาณ 20% ของอุปทานน้ำมันโลกผ่านที่นี่ทุกวัน",
+      "infoTooltip": "<strong>ตัวติดตามการค้าในช่องแคบฮอร์มุซ</strong> ดัชนีการขนส่งรายวันจาก WTO DataLab สำหรับช่องแคบฮอร์มุซ: น้ำมันดิบ, ก๊าซธรรมชาติเหลว และปุ๋ย ที่ออกจากอ่าว สินค้าเกษตรที่เข้ามา จากปริมาณ, ค่าเฉลี่ยเดือนมกราคม–มีนาคม 2025 = 100, เฉพาะเรือที่มองเห็นได้ผ่าน AIS เท่านั้น สถานะและวันที่มาจากการวิเคราะห์ล่าสุดของ WTO",
       "title": "ตัวติดตามการค้าในช่องแคบฮอร์มุซ",
       "noData": "ไม่มีข้อมูล",
       "notAvailable": "ไม่พร้อมใช้งาน",
       "chartUnavailable": "ข้อมูลแผนภูมิไม่พร้อมใช้งาน",
       "sourcePrefix": "แหล่งที่มา:",
       "units": {
-        "ktPerDay": "kt/วัน",
-        "generic": "หน่วย"
+        "index": "ดัชนี"
       },
       "errors": {
         "unavailable": "ข้อมูลฮอร์มุซไม่พร้อมใช้งาน",
         "failedToLoad": "การโหลดล้มเหลว"
-      }
+      },
+      "analysisDate": "การวิเคราะห์ WTO {{date}}",
+      "indexNote": "ดัชนีการขนส่งจากปริมาณ ค่าเฉลี่ยเดือนมกราคม–มีนาคม 2025 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>เว็บแคมสด</strong> ถ่ายทอดสดจากสถานที่ที่มีความสำคัญทางภูมิรัฐศาสตร์ทั่วโลก: เขตขัดแย้ง เมืองหลวง จุดข้ามพรมแดน และจุดคอขวดเชิงยุทธศาสตร์ สตรีมจาก YouTube และเครือข่ายสาธารณะ"
@@ -2337,7 +2380,15 @@
       "noData": "ข้อมูลพลังงานไม่พร้อมใช้งานชั่วคราว - จะลองใหม่",
       "liveTape": "เทปสด",
       "liveTapeSource": "ใบเสนอราคาตลาด",
-      "infoTooltip": "<strong>สัญญาณพลังงาน</strong> สัญญาณพลังงานจริงและสามารถซื้อขายได้ในที่เดียว:<ul><li><strong>เมตริก US Energy Information Administration</strong>: WTI, Brent การผลิตสหรัฐฯ และสต็อก</li><li><strong>Live tape</strong>: ราคาพลังงานที่สามารถซื้อขายได้เช่น น้ำมันดิบและแก๊สธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดด้านพลังงานจริงจากแผงมหภาคและสินค้าที่กว้างขึ้น</li></ul>"
+      "infoTooltip": "<strong>สัญญาณพลังงาน</strong> สัญญาณพลังงานจริงและสามารถซื้อขายได้ในที่เดียว:<ul><li><strong>เมตริก US Energy Information Administration</strong>: WTI, Brent การผลิตสหรัฐฯ และสต็อก</li><li><strong>Live tape</strong>: ราคาพลังงานที่สามารถซื้อขายได้เช่น น้ำมันดิบและแก๊สธรรมชาติ</li><li><strong>วัตถุประสงค์</strong>: แยกความเครียดด้านพลังงานจริงจากแผงมหภาคและสินค้าที่กว้างขึ้น</li></ul>",
+      "marketTape": "ราคาตลาด",
+      "futures": "สัญญาซื้อขายล่วงหน้า",
+      "dailySpot": "ราคาสปอตรายวัน",
+      "eiaWeeklySpot": "ราคาสปอตของ EIA · ค่าเฉลี่ยรายสัปดาห์",
+      "weekEnding": "สัปดาห์สิ้นสุดวันที่ {{date}}",
+      "unknownPriceDate": "ไม่มีเวลาที่บันทึกราคา",
+      "unknownQuoteSource": "ไม่มีแหล่งที่มาของราคา",
+      "stalePrice": "ข้อมูลเก่า"
     },
     "consumerPrices": {
       "tabs": {
@@ -2346,30 +2397,30 @@
         "movers": "การเปลี่ยนแปลงราคา",
         "spread": "ส่วนต่างราคาของผู้ค้าปลีก",
         "health": "สุขภาพของข้อมูล",
-        "world": "World"
+        "world": "โลก"
       },
       "infoTooltip": "<strong>ราคาผู้บริโภค</strong> ตะกร้าสินค้าเด็จ การเปลี่ยนแปลงรายสัปดาห์ แนวโน้มหมวดหมู่ ราคาที่เคลื่อนไหว และความแตกต่างระหว่างผู้ค้าปลีก มุมมองโลกใช้อัตราเงินเฟ้อรายปีจากมูลนิธิเพื่อพัฒนาวิทยาการสถาบันอเมริกัน",
       "world": {
-        "country": "Country",
+        "country": "ประเทศ",
         "inflationYoY": "อัตราเงินเฟ้อรายปี",
-        "endOfPeriod": "End-of-Period",
-        "year": "Year",
-        "filterPlaceholder": "Filter countries…",
-        "loading": "Loading global inflation…",
-        "empty": "Inflation data not yet available",
-        "noMatches": "No matching countries",
+        "endOfPeriod": "สิ้นงวด",
+        "year": "ปี",
+        "filterPlaceholder": "กรองประเทศ…",
+        "loading": "กำลังโหลดเงินเฟ้อทั่วโลก…",
+        "empty": "ยังไม่มีข้อมูลเงินเฟ้อ",
+        "noMatches": "ไม่พบประเทศที่ตรงกัน",
         "source": "แหล่งที่มา: มูลนิธิเพื่อพัฒนาวิทยาการสถาบันอเมริกัน · ดัชนีราคาผู้บริโภครายปี เศรษฐกิจทั้งหมดที่รายงาน",
-        "countSingular": "country",
-        "countPlural": "countries"
+        "countSingular": "ประเทศ",
+        "countPlural": "ประเทศ"
       }
     },
     "marketImplications": {
       "infoTooltip": "<strong>ผลกระทบต่อตลาด AI</strong> สัญญาณการค้าที่สร้างโดย LLM มาจากสภาวะทางภูมิศาสตร์การเมือง สินค้าโภคนำ และแมโครแบบเรียลไทม์หลังจากแต่ละรอบการพยากรณ์<ul><li><strong>ทิศทาง</strong>: LONG / SHORT / HEDGE</li><li><strong>ระยะเวลา</strong>: ขอบเขตเวลา 1W, 2W, 1M หรือ 3M</li><li><strong>ตัวขับเคลื่อน</strong>: ตัวเร่งหลักที่อยู่เบื้องหลังสัญญาณ</li><li><strong>ความเสี่ยง</strong>: คำเตือนหรือเงื่อนไขการเพิกถอน</li></ul><em>สำหรับวัตถุประสงค์ข้อมูลเท่านั้น ไม่ใช่คำแนะนำการลงทุน</em>",
       "title": "ผลกระทบต่อตลาด AI",
       "directions": {
-        "long": "LONG",
-        "short": "SHORT",
-        "hedge": "HEDGE"
+        "long": "ซื้อ",
+        "short": "ชอร์ต",
+        "hedge": "ป้องกันความเสี่ยง"
       },
       "rationale": "เหตุผล:",
       "driver": "ตัวขับเคลื่อน:",
@@ -2470,14 +2521,14 @@
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} และอีก {{count}} รายการ — {{reason}}",
+        "notFound": "ไม่มีราคา",
+        "providerError": "ดึงราคาไม่สำเร็จ กำลังลองใหม่ในไม่ช้า",
+        "rateLimited": "ผู้ให้บริการราคาจำกัดอัตราคำขอ กำลังลองใหม่ในไม่ช้า",
+        "notConfigured": "ยังไม่ได้ตั้งค่าผู้ให้บริการราคา",
+        "requestLimit": "ขอสัญลักษณ์มากเกินไป",
+        "budget": "ยังไม่ได้โหลด กำลังลองใหม่ในไม่ช้า",
+        "seed": "ข้อมูลตลาดใช้งานไม่ได้ชั่วคราว"
       }
     },
     "heatmap": {
@@ -2510,8 +2561,8 @@
       "infoTooltip": "<strong>Liquidity Shifts</strong> การติดตามตำแหน่งสภาพคล่องสูงและการเปลี่ยนแปลงรายวันสำหรับน้ำมัน ทอง เงิน ดัชนี futures และหุ้น US ชั้นนำ สุทธิผู้จัดการสินทรัพย์ Commitments of Traders และสุทธิกองทุน leveraged เทียบกับการเปลี่ยนแปลงราคารายวัน",
       "cotSection": "น้ำมัน / ทอง / เงิน + ตำแหน่งดัชนี (Commitments of Traders)",
       "stocksSection": "หุ้นสหรัฐฯ ชั้นนำ: การเปลี่ยนแปลงรายวัน",
-      "longShort": "Long {{long}} / Short {{short}}",
-      "lev": "Lev",
+      "longShort": "ซื้อ {{long}} / ขาย {{short}}",
+      "lev": "เลเวอเรจ",
       "noCot": "ไม่มีแถว Commitments of Traders ที่ใช้ได้",
       "noStocks": "ไม่มีราคาหุ้นชั้นนำที่พร้อมใช้งาน",
       "reportDate": "วันที่รายงาน Commitments of Traders: {{date}}",
@@ -2535,8 +2586,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro เปิดตัวแล้ว",
-      "tagline": "สัญญาณมากขึ้น เสียงน้อยลง AI Briefings มากขึ้น นักวิจัยด้านภูมิรัฐศาสตร์และหุ้นส่วนตัวของคุณ",
+      "headline": "สรุปข้อมูล AI ประจำวันทางอีเมลหรือ Slack",
+      "tagline": "รวมถึง WM Analyst, กฎการแจ้งเตือน และ MCP สำหรับ Claude",
       "cta": "อัปเกรดเป็น Pro →",
       "dismiss": "ปิด"
     },
@@ -2549,7 +2600,15 @@
       "renewalFailedDesc": "เราไม่สามารถตรวจสอบการต่ออายุการสมัครสมาชิกของคุณได้ จัดการการเรียกเก็บเงินหรือติดต่อฝ่ายสนับสนุนหากปัญหายังคงอยู่",
       "manageBilling": "จัดการการเรียกเก็บเงิน",
       "lapsedDesc": "การสมัครสมาชิก Pro ของคุณสิ้นสุดแล้ว สมัครใหม่เพื่อกลับมาใช้การเข้าถึงระดับพรีเมียม",
-      "resubscribe": "สมัครใหม่"
+      "resubscribe": "สมัครใหม่",
+      "billingEmailBouncedMessage": "อีเมลเรียกเก็บเงินที่ส่งไปยัง {{email}} ถูกตีกลับ อัปเดตอีเมลสำหรับเรียกเก็บเงินของคุณเพื่อรับใบเสร็จและการแจ้งเตือนการชำระเงิน",
+      "fixBillingEmail": "แก้ไขอีเมลเรียกเก็บเงิน",
+      "billingEmailLabel": "อีเมลเรียกเก็บเงินใหม่",
+      "save": "บันทึก",
+      "billingEmailUpdated": "อัปเดตอีเมลเรียกเก็บเงินเป็น {{email}} แล้ว ตั้งแต่นี้ไปใบเสร็จและการแจ้งเตือนการชำระเงินจะถูกส่งไปที่นั่น",
+      "billingEmailInvalid": "กรุณากรอกที่อยู่อีเมลที่ถูกต้อง",
+      "billingEmailSuppressed": "เราไม่สามารถส่งไปยังที่อยู่นี้ได้เช่นกัน ลองใช้ที่อยู่อื่น",
+      "billingEmailUpdateFailed": "เราไม่สามารถอัปเดตอีเมลเรียกเก็บเงินของคุณได้ ลองอีกครั้ง หรือติดต่อฝ่ายสนับสนุนหากยังล้มเหลวอยู่"
     },
     "checkoutFailureBanner": {
       "message": "ไม่สามารถทำการชำระเงินให้สำเร็จ ไม่มีการเรียกเก็บเงิน",
@@ -2604,6 +2663,15 @@
             "mcpClients": "ตั้งค่า MCP",
             "channels": "ตั้งค่าในการตั้งค่าการแจ้งเตือน"
           }
+        },
+        "about": {
+          "heading": "สิ่งสุดท้าย: คุณจะใช้ World Monitor สำหรับอะไร?",
+          "body": "สามคำตอบสั้น ๆ ช่วยให้เราสร้างเครื่องมือที่เหมาะสำหรับคุณ ข้ามได้ตามต้องการ",
+          "confirmCta": "บันทึกคำตอบของฉัน",
+          "confirming": "กำลังบันทึก…",
+          "doneNote": "ขอบคุณ เราได้รับคำตอบของคุณแล้ว",
+          "summaryLabel": "เกี่ยวกับคุณ",
+          "summaryVerified": "บันทึกแล้ว ขอบคุณ"
         }
       },
       "status": {
@@ -2644,7 +2712,7 @@
     },
     "sanctionsPressure": {
       "title": "การคว่ำบาตรและการระบุตัวตน",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists บวก Global Affairs Canada SEMA/JVCFOA designations แสดงประเทศใดที่เผชิญแรงกดดันการ designation สูงสุด โปรแกรมใดที่ขับเคลื่อน และสิ่งใหม่ที่เพิ่มเข้ามาตั้งแต่การอัปเดตครั้งสุดท้าย",
+      "infoTooltip": "รายชื่อ OFAC SDN และรายชื่อรวม รวมถึงการกำหนดมาตรการของแคนาดาภายใต้ SEMA/JVCFOA แถวประเทศใช้ความเชื่อมโยงโดยตรง ธงเรือและทะเบียนอากาศยานนับแยกในส่วนทะเบียน จำนวนทรัพย์สินของประเทศเป็นศูนย์ไม่ได้หมายความว่าไม่มีทรัพย์สินที่ถูกคว่ำบาตร",
       "loading": "กำลังโหลดข้อมูลการคว่ำบาตร...",
       "unavailable": "ข้อมูลการคว่ำบาตรไม่พร้อมใช้งาน",
       "summary": {
@@ -2656,7 +2724,9 @@
       "sections": {
         "countries": "ประเทศที่ถูกคว่ำบาตร",
         "entries": "การระบุตัวตนเมื่อเร็ว ๆ นี้",
-        "programs": "โปรแกรม"
+        "programs": "โปรแกรม",
+        "flagRegistries": "ทะเบียนธงเรือและทะเบียนอากาศยาน",
+        "regulationTargets": "ประเทศเป้าหมายของข้อบังคับ SEMA"
       },
       "empty": {
         "countries": "ไม่มีข้อมูลการระบุประเทศ",
@@ -2678,14 +2748,15 @@
         "unattributed": "ไม่ได้ระบุแหล่งที่มา",
         "program": "โปรแกรม",
         "undated": "ไม่มีวันที่"
-      }
+      },
+      "targetExplanation": "ประเทศเป้าหมายของข้อบังคับไม่ใช่หลักฐานด้านสัญชาติหรือที่อยู่ จึงไม่นำมารวมในคะแนนความเสี่ยงของประเทศและรายงานสรุป"
     },
     "radiationWatch": {
       "title": "ระบบเฝ้าระวังการแผ่รังสี",
       "infoTooltip": "ข้อมูล EPA RadNet และ Safecast ที่มีการให้คะแนนความผิดปกติและการสังเคราะห์ความเชื่อมั่นของแหล่งที่มา แผงนี้ตอบว่าสิ่งใดเป็นปกติ สิ่งใดสูงขึ้น และความผิดปกติใดที่ได้รับการยืนยันเมื่อเทียบกับที่ยังไม่แน่นอน",
       "loading": "กำลังโหลดข้อมูลรังสี...",
       "empty": "ไม่มีการสังเกตการณ์รังสีที่ใช้ได้",
-      "baseline": "{{value}} baseline",
+      "baseline": "ค่าฐาน {{value}}",
       "flags": {
         "confirmed": "ยืนยันแล้ว",
         "conflict": "ขัดแย้ง",
@@ -2694,7 +2765,7 @@
       "headers": {
         "station": "สถานี",
         "reading": "ค่าอ่าน",
-        "delta": "Delta",
+        "delta": "ส่วนต่าง",
         "status": "สถานะ",
         "observed": "สังเกตเห็น"
       },
@@ -2752,7 +2823,7 @@
       "emptySaved": "ไม่พบการบรรจบกันในการอัปเดตล่าสุดที่ทราบ"
     },
     "thermalEscalation": {
-      "title": "Thermal Escalation",
+      "title": "การยกระดับความร้อน",
       "infoTooltip": "กลุ่มความผิดปกติด้านความร้อน FIRMS/VIIRS ที่มีการเปรียบเทียบ baseline ติดตามความคงอยู่ และบริบทเชิงกลยุทธ์ แผงนี้ตอบว่าที่ใดที่กิจกรรมความร้อนผิดปกติและกลุ่มใดที่อาจบ่งชี้ความขัดแย้ง การขัดขวางอุตสาหกรรม หรือการเพิ่มการสนับสนุน",
       "loading": "กำลังโหลดข้อมูลความร้อน...",
       "empty": "ไม่พบกลุ่มการเพิ่มขึ้นของความร้อน",
@@ -2773,8 +2844,8 @@
         "industrial": "อุตสาหกรรม",
         "strategic": "เชิงกลยุทธ์"
       },
-      "observations_other": "{{count}} obs",
-      "sources_other": "{{count}} src",
+      "observations_other": "สังเกต {{count}} ครั้ง",
+      "sources_other": "{{count}} แหล่ง",
       "age": {
         "minutesAgo_other": "{{count}}m ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
@@ -2792,10 +2863,10 @@
         "babElMandeb": "บาบ เอล-มันเดบ",
         "bosphorus": "ช่องแคบตุรกี",
         "panama": "ปานามา",
-        "danishStraits": "ช่องแคบเดนมาร์ก"
+        "doverStrait": "ช่องแคบโดเวอร์"
       },
       "flow": {
-        "mbd": "{{value}} mb/d",
+        "mbd": "{{value}} ล้านบาร์เรล/วัน",
         "pctOfBaseline": "{{pct}}% ของเส้นฐาน"
       },
       "errors": {
@@ -2805,7 +2876,7 @@
       "attribution": {
         "method": "ความจุการบรรทุก Portwatch + การสอบเทียมการติดตามเรือ",
         "sampleLabel": "สัญญาณการหยุดชะงักการติดตามเรือ",
-        "creditName": "US Energy Information Administration World Oil Transit Chokepoints"
+        "creditName": "สำนักงานสารสนเทศด้านพลังงานสหรัฐฯ — จุดคอขวดการขนส่งน้ำมันโลก"
       }
     },
     "mobileNav": {
@@ -2867,7 +2938,7 @@
       "infoTooltip": "<strong>Currency rates</strong> ความเครียดจัดอันดับ 45 สกุลเงินตามการลดลงสูงสุดในช่วง 24 เดือน พร้อมการเปลี่ยนแปลง 12 เดือน อัตราสปอตใช้ฐาน US dollar และ euro แยกกัน อัตรารูเบิลรัสเซีย รูเบิลต่อหน่วย แหล่งที่มารวมถึง Yahoo Finance European Central Bank และ Bank of Russia",
       "tabs": {
         "stress": "ความเครียดสกุลเงิน",
-        "spot": "Spot",
+        "spot": "ราคาทันที",
         "rub": "RUB"
       },
       "currency": "สกุลเงิน",
@@ -2956,6 +3027,144 @@
       "rosterSummary": "รายงานโดย {{publishers}}",
       "rosterSummaryTier1": "รายงานโดย {{publishers}} รวมถึงระดับ 1 จำนวน {{tier1}} แห่ง",
       "rosterPublishers_other": "{{count}} สำนักข่าว"
+    },
+    "foodPrices": {
+      "title": "ราคาอาหารในพื้นที่",
+      "method": "การเปลี่ยนแปลงรายสัปดาห์เปรียบเทียบสินค้า ตลาด แหล่งกำเนิด และหน่วยเดียวกันกับราคาเมื่อเจ็ดวันก่อนพอดี แต่ละประเทศใช้ตะกร้าสินค้าและสกุลเงินต่างกัน",
+      "loading": "กำลังโหลดราคาอาหาร…",
+      "unavailable": "ไม่มีข้อมูล",
+      "retry": "ลองอีกครั้ง",
+      "country": "ประเทศ",
+      "market": "ตลาด",
+      "retail": "ขายปลีก",
+      "wholesale": "ขายส่ง",
+      "farmgate": "ราคาที่เกษตรกรขายได้",
+      "export": "ส่งออก",
+      "prices": "ราคาอาหาร",
+      "product": "สินค้า",
+      "price": "ราคา / หน่วย",
+      "weekly": "การเปลี่ยนแปลงรายสัปดาห์",
+      "origin": "แหล่งกำเนิด",
+      "versus": "เทียบกับ",
+      "noBaseline": "ไม่มีข้อมูลสัปดาห์ก่อน",
+      "context": "ความมั่นคงทางอาหารและบริบทรายเดือน",
+      "contextNote": "รายงานเหล่านี้ให้บริบทพร้อมวันที่ ไม่ใช่การเปลี่ยนแปลงราคารายสัปดาห์ รายงานของตูนิเซียอาจล่าช้าหลายเดือน",
+      "briefCountry": "รายงานประเทศ",
+      "report": "วันที่รายงาน",
+      "checked": "ตรวจสอบล่าสุด",
+      "current": "ปัจจุบัน",
+      "partial": "บางรายงานไม่มีข้อมูลหรือเก่า",
+      "stale": "ข้อมูลเก่า",
+      "global": "ดัชนีรายเดือนทั่วโลกของ FAO"
+    },
+    "aboutYou": {
+      "title": "ช่วยเราสร้าง World Monitor สำหรับคุณ",
+      "ariaLabel": "เกี่ยวกับคุณ",
+      "progress": "{{current}} จาก {{total}}",
+      "skip": "ข้าม",
+      "close": "ปิด",
+      "done": "เสร็จสิ้น",
+      "saving": "กำลังบันทึก…",
+      "saveFailed": "ไม่สามารถบันทึกได้ ลองใหม่อีกครั้ง",
+      "retry": "ลองใหม่",
+      "thanks": "ขอบคุณ สิ่งนี้ช่วยให้เราตัดสินใจว่าจะสร้างอะไรต่อไป",
+      "questions": {
+        "primaryUse": {
+          "label": "คุณใช้ World Monitor เพื่ออะไรเป็นหลัก",
+          "options": {
+            "news": "ข่าวและเหตุการณ์ในโลก",
+            "markets": "ตลาดและการค้า",
+            "commodities": "สินค้าโภคนะและโลจิสติกส์",
+            "travel": "การเดินทางและเที่ยวบิน",
+            "security": "ความมั่นคงและ OSINT",
+            "research": "งานวิจัยและสื่อมวลชน",
+            "api-agent": "การสร้างงานด้วย API หรือเอเจนต์ AI",
+            "other": "อื่นๆ"
+          }
+        },
+        "usageContext": {
+          "label": "คุณใช้งานเพื่อการทำงานหรือใช้ส่วนตัว",
+          "options": {
+            "personal": "ส่วนตัว",
+            "work": "การทำงาน"
+          }
+        },
+        "payer": {
+          "label": "ใครจ่ายหรือจะจ่ายค่าใช้งาน",
+          "options": {
+            "self": "ตัวฉันเอง",
+            "employer": "นายจ้างหรือทีมของฉัน",
+            "not-paying": "ยังไม่มีใคร"
+          }
+        },
+        "role": {
+          "label": "บทบาทของคุณตรงกับข้อใดมากที่สุด",
+          "options": {
+            "analyst": "นักวิเคราะห์หรือนักวิจัย",
+            "trader": "นายหน้าหรือนักลงทุน",
+            "journalist": "นักสื่อมวลชน",
+            "security": "ความมั่นคงหรือบริหารความเสี่ยง",
+            "government": "รัฐบาลหรือนโยบาย",
+            "supply-chain": "โลจิสติกส์หรือปฏิบัติการ",
+            "developer": "นักพัฒนา",
+            "student": "นักเรียนหรือนักศึกษา",
+            "other": "อื่นๆ"
+          }
+        },
+        "alternative": {
+          "label": "คุณจะใช้อะไรแทนถ้า World Monitor ไม่มีอยู่",
+          "placeholder": "ไม่จำเป็น"
+        }
+      }
+    },
+    "githubStarPrompt": {
+      "title": "ชอบ World Monitor ไหม?",
+      "body": "ดาวบน GitHub ช่วยให้คนอื่นค้นหามันได้ง่ายขึ้น",
+      "star": "ให้ดาวบน GitHub",
+      "dismiss": "ซ่อน และอย่าถามอีก"
+    },
+    "reservoirLevels": {
+      "note": "ระดับผิวน้ำจากไลดาร์ดาวเทียม ICESat-2 ของ NASA NASA เผยแพร่การโคจรผ่านแต่ละครั้งประมาณสองเดือนหลังการวัด ข้อมูลนี้จึงติดตามการเปลี่ยนแปลงในระดับสัปดาห์และฤดูกาล ไม่ใช่รายวัน เฉพาะระดับ ไม่ใช่ปริมาตร",
+      "source": "แหล่งที่มา:",
+      "processedWith": "ประมวลผลด้วย",
+      "empty": "ยังไม่มีค่าที่วัดได้",
+      "filterEmpty": "ไม่มีแหล่งน้ำที่ตรงกับตัวกรองนี้",
+      "unavailable": "ขณะนี้ไม่มีข้อมูลระดับน้ำ",
+      "filterLabel": "กรองแหล่งน้ำ",
+      "filter": {
+        "all": "ทั้งหมด",
+        "attention": "ต้องจับตา",
+        "transboundary": "ข้ามพรมแดน"
+      },
+      "status": {
+        "record_low": "ต่ำสุดเป็นประวัติการณ์",
+        "record_high": "สูงสุดเป็นประวัติการณ์",
+        "falling_fast": "ลดลงเร็ว",
+        "rising_fast": "เพิ่มขึ้นเร็ว",
+        "low": "ต่ำสำหรับฤดูกาล",
+        "high": "สูงสำหรับฤดูกาล",
+        "normal": "ปกติ",
+        "insufficient_history": "ประวัติไม่พอ",
+        "no_recent_data": "ไม่มีการโคจรผ่านล่าสุด",
+        "lowInRange": "ต่ำในช่วงที่บันทึกไว้",
+        "highInRange": "สูงในช่วงที่บันทึกไว้"
+      },
+      "vsUsual": "{{value}} เทียบกับปกติของ{{month}}",
+      "in12Months": "{{value}} ใน 12 เดือน",
+      "noComparison": "ยังไม่มีการเทียบ",
+      "measured": "วัดเมื่อ {{date}} ({{age}})",
+      "noPass": "ยังไม่มีการโคจรผ่านที่ใช้ได้",
+      "popup": {
+        "level": "ระดับ",
+        "levelValue": "{{value}} เหนือระดับน้ำทะเล (EGM2008)",
+        "anomaly": "เทียบกับปกติของ{{month}}",
+        "anomalyPlain": "เทียบกับปกติของเดือน",
+        "changePrev": "ตั้งแต่การโคจรผ่านครั้งก่อน",
+        "change90": "ใน 90 วัน",
+        "change365": "ใน 12 เดือน",
+        "measured": "วันที่วัด",
+        "sparkline": "ระดับน้ำใน 36 เดือน"
+      }
     }
   },
   "popups": {
@@ -2982,7 +3191,8 @@
         "major": "รุนแรง",
         "moderate": "ปานกลาง",
         "minor": "เล็กน้อย"
-      }
+      },
+      "relativePlace": "{{distance}} km {{direction}}ของ {{place}}"
     },
     "base": {
       "types": {
@@ -3006,7 +3216,7 @@
       "navPerformance": "อากาศยานที่ได้รับผลกระทบ",
       "samples": "จำนวนอากาศยานที่ได้รับผลกระทบ",
       "aircraft": "จำนวนอากาศยานที่ตรวจพบทั้งหมด",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "รูปหกเหลี่ยม H3"
     },
     "flight": {
       "groundStop": "หยุดภาคพื้น",
@@ -3022,7 +3232,7 @@
         "faa": "FAA ASWS",
         "eurocontrol": "Eurocontrol",
         "computed": "คำนวณ",
-        "aviationstack": "Flight Data",
+        "aviationstack": "ข้อมูลเที่ยวบิน",
         "notam": "NOTAM"
       },
       "regions": {
@@ -3033,7 +3243,9 @@
         "africa": "แอฟริกา"
       },
       "scheduled": "ตามกำหนด",
-      "estimated": "คาดการณ์"
+      "estimated": "คาดการณ์",
+      "normalOperations": "การบินปกติ",
+      "open": "เปิด"
     },
     "aircraft": {
       "altitude": "ระดับความสูง",
@@ -3044,7 +3256,44 @@
       "airborne": "อยู่ในอากาศ"
     },
     "cyberThreat": {
-      "title": "ภัยคุกคามไซเบอร์"
+      "title": "ภัยคุกคามไซเบอร์",
+      "evidence": "หลักฐานจากแหล่งข้อมูลข่าวคราว",
+      "firstSeen": "เห็นครั้งแรกเมื่อ",
+      "explanations": {
+        "c2_server": "แหล่งข้อมูลรายงานเซิร์ฟเวอร์ command-and-control ที่ใช้ส่งคำสั่งให้กับมัลแวร์",
+        "malware_host": "แหล่งข้อมูลรายงานที่อยู่ที่ใช้โฮสต์มัลแวร์",
+        "phishing": "แหล่งข้อมูลรายงานตัวบ่งชี้ที่เกี่ยวข้องกับการหลอกลวง",
+        "malicious_url": "แหล่งข้อมูลรายงาน URL ที่เกี่ยวข้องกับกิจกรรมอันตราย"
+      },
+      "downloadTag": "malware_download: แหล่งข้อมูลรายงานตำแหน่งการดาวน์โหลดมัลแวร์",
+      "familyNote": "ป้ายกำกับตระกูลมัลแวร์มาจากแหล่งข้อมูลภัยคุกคามและไม่ได้ระบุบุคคลหรือองค์กร",
+      "approximateLocation": "ตำแหน่งที่แมปเป็นบริบทที่ได้มาจาก IP โดยประมาณเท่านั้น ไม่ใช่ตำแหน่งโฮสต์ทางกายภาพที่ยืนยันแล้ว",
+      "network": {
+        "title": "ข้อมูลเครือข่าย",
+        "privacy": "ขยายเพื่อขอข้อมูลเครือข่ายแบบพาสซีฟจาก RIPEstat ที่อยู่ IP ตัวบ่งชี้จะถูกแชร์กับผู้ให้บริการดังกล่าว",
+        "disclaimer": "การลงทะเบียนเครือข่ายและการกำหนดเส้นทางไม่ได้ระบุผู้โจมตีหรือทำให้ผู้ให้บริการรับผิดชอบต่อกิจกรรมดังกล่าว",
+        "loading": "กำลังโหลดข้อมูลเครือข่าย…",
+        "unknown": "ไม่พร้อมใช้งาน",
+        "disabled": "การค้นหาเครือข่ายไม่ถูกเปิดใช้งาน",
+        "invalid": "การค้นหาเครือข่ายต้องใช้ที่อยู่ IP สาธารณะ",
+        "unavailable": "การค้นหาเครือข่ายล้มเหลว ปิดและเปิดป๊อปอัปใหม่เพื่อลองอีกครั้งในภายหลัง",
+        "rateLimited": "การค้นหาเครือข่ายถูกจำกัดชั่วคราว ลองอีกครั้งในภายหลัง",
+        "noData": "ผู้ให้บริการไม่ได้ส่งข้อมูลเครือข่ายสำหรับที่อยู่ IP นี้",
+        "partial": "ไม่สามารถดึงข้อมูลเครือข่ายบางส่วนได้",
+        "ip": "IP",
+        "asn": "ASN ต้นทาง",
+        "operator": "ผู้ถือ ASN ที่รายงาน / ผู้ดำเนินการเครือข่าย",
+        "prefix": "คำนำหน้าการกำหนดเส้นทางที่รายงาน",
+        "hostname": "ชื่อโฮสต์ DNS ย้อนกลับ (rDNS)",
+        "lookupAt": "เวลาการค้นหาเครือข่าย",
+        "routingAt": "เวลาข้อมูลการกำหนดเส้นทาง",
+        "broaderPrefix": "ผู้ให้บริการจับคู่คำนำหน้าการกำหนดเส้นทางที่กว้างขึ้น นี่ไม่ใช่บันทึกการจัดสรร IP ที่แน่นอน",
+        "rdnsNote": "rDNS เป็นป้ายกำกับ DNS ไม่ใช่การพิสูจน์ความเป็นเจ้าของ องค์กรที่ลงทะเบียนและตำแหน่งที่แน่นอนไม่ได้ถูกจัดเตรียมโดยการค้นหานี้",
+        "copy": "คัดลอก",
+        "copied": "คัดลอกแล้ว",
+        "copyFailed": "การคัดลอกล้มเหลว เลือกข้อความเพื่อคัดลอก"
+      },
+      "firstSeenNote": "นี่คือวันที่ตัวบ่งชี้ที่เร็วที่สุดที่พบได้จากฟีด หรือการสังเกตการณ์ World Monitor อาจแตกต่างจากวันที่ของแหล่งข้อมูลที่ระบุไว้"
     },
     "nuclear": {
       "types": {
@@ -3082,6 +3331,14 @@
       },
       "description": "Major {{type}} pipeline infrastructure. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "เปิดในแผนที่คลังเก็บ",
+      "types": {
+        "lngExport": "ส่งออก LNG",
+        "lngImport": "นำเข้า LNG",
+        "crudeTankFarm": "ศูนย์กลางน้ำมันดิบ"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "ดำเนินการอยู่และขนส่งทรัพยากร",
       "construction": "อยู่ระหว่างก่อสร้าง"
@@ -3116,7 +3373,7 @@
     },
     "strategic": "เชิงยุทธศาสตร์",
     "verified": "ยืนยันแล้ว",
-    "sampledList": "Showing a sampled list of {{count}} events.",
+    "sampledList": "แสดงรายการตัวอย่าง {{count}} เหตุการณ์",
     "reason": "สาเหตุ",
     "threat": "ภัยคุกคาม",
     "sponsor": "ผู้สนับสนุน",
@@ -3142,7 +3399,7 @@
       "baseline": "เส้นฐาน",
       "components": {
         "news": "ข่าว",
-        "cii": "Country Instability Index",
+        "cii": "ดัชนีความไม่มั่นคงของประเทศ",
         "geo": "ภูมิศาสตร์",
         "military": "ทหาร"
       },
@@ -3184,10 +3441,10 @@
     "viewNRCan": "ดูบน Earthquakes Canada",
     "expired": "หมดอายุ",
     "timeAgo": {
-      "s": "{{count}}s ago",
-      "m": "{{count}}m ago",
-      "h": "{{count}}h ago",
-      "d": "{{count}}d ago"
+      "s": "{{count}} วินาทีที่แล้ว",
+      "m": "{{count}} นาทีที่แล้ว",
+      "h": "{{count}} ชม. ที่แล้ว",
+      "d": "{{count}} วันที่แล้ว"
     },
     "cableAdvisory": {
       "reported": "รายงานแล้ว",
@@ -3206,6 +3463,28 @@
       "readReport": "อ่านรายงานฉบับเต็ม"
     },
     "datacenter": {
+      "details": {
+        "more": "รายละเอียดเพิ่มเติม",
+        "owner": "เจ้าของ / ผู้ให้บริการคลัสเตอร์ (ชุดข้อมูล)",
+        "power": "ค่ากำลังไฟฟ้าในชุดข้อมูล",
+        "powerCaveat": "ความจุกำลังไฟฟ้าอาจเป็นค่าที่รายงานหรือค่าประมาณ ไม่ใช่การวัดการใช้ไฟฟ้าในปัจจุบัน",
+        "powerBasis": "ที่มาของค่ากำลังไฟฟ้า",
+        "reported": "ค่าที่รายงาน",
+        "estimated": "ค่าประมาณ",
+        "notAvailable": "ไม่มีข้อมูล",
+        "location": "ความแม่นยำของตำแหน่ง",
+        "locationUnknown": "จุดบนแผนที่ที่ยังไม่ยืนยัน ห้ามใช้เป็นที่อยู่ที่แน่นอนของสถานที่",
+        "site": "สถานที่ (ยืนยันโดยแหล่งข้อมูล)",
+        "city": "เฉพาะเมือง",
+        "region": "เฉพาะภูมิภาค",
+        "country": "เฉพาะประเทศ",
+        "dataset": "ชุดข้อมูลคลัสเตอร์ GPU ของ Epoch AI",
+        "evidence": "แหล่งข้อมูลสนับสนุน",
+        "sourceDate": "วันที่เผยแพร่แหล่งข้อมูล",
+        "metadataReviewedAt": "วันที่ตรวจสอบเมทาดาทา",
+        "firstOperationalDate": "วันที่เริ่มดำเนินงาน (ชุดข้อมูล)",
+        "freshness": "ภาพรวมชุดข้อมูลที่บันทึกไว้ สถานะและข้อมูลจำเพาะปัจจุบันอาจเปลี่ยนแปลงไปแล้ว"
+      },
       "status": {
         "existing": "ดำเนินการอยู่",
         "planned": "วางแผนแล้ว",
@@ -3219,13 +3498,18 @@
       "attribution": "ข้อมูล: Epoch AI GPU Clusters",
       "chips": "ชิป",
       "cluster": {
-        "title": "{{count}} Data Centers",
+        "title": "ศูนย์ข้อมูล {{count}} แห่ง",
         "totalChips": "ชิปทั้งหมด",
         "totalPower": "กำลังไฟฟ้าทั้งหมด",
         "operational": "ดำเนินการอยู่",
         "planned": "วางแผนแล้ว",
-        "moreDataCenters": "+ {{count}} more data centers",
-        "sampledSites": "Showing a sampled list of {{count}} sites."
+        "moreDataCenters": "+ ศูนย์ข้อมูลอีก {{count}} แห่ง",
+        "sampledSites": "แสดงรายการตัวอย่าง {{count}} แห่ง"
+      },
+      "sectors": {
+        "private": "เอกชน",
+        "public": "รัฐ",
+        "publicPrivate": "รัฐร่วมเอกชน"
       }
     },
     "startupHub": {
@@ -3264,22 +3548,22 @@
       "days": {
         "today": "วันนี้",
         "tomorrow": "พรุ่งนี้",
-        "inDays": "IN {{count}} DAYS"
+        "inDays": "ในอีก {{count}} วัน"
       },
       "date": "วันที่",
       "moreInformation": "ข้อมูลเพิ่มเติม"
     },
     "techHQCluster": {
-      "companiesCount": "{{count}} COMPANIES",
-      "bigTechCount": "{{count}} Big Tech",
-      "unicornsCount": "{{count}} Unicorns",
-      "publicCount": "{{count}} Public",
-      "sampled": "Showing a sampled list of {{count}} companies."
+      "companiesCount": "{{count}} บริษัท",
+      "bigTechCount": "Big Tech {{count}} แห่ง",
+      "unicornsCount": "ยูนิคอร์น {{count}} แห่ง",
+      "publicCount": "บริษัทมหาชน {{count}} แห่ง",
+      "sampled": "แสดงรายการตัวอย่าง {{count}} บริษัท"
     },
     "techEventCluster": {
-      "eventsCount": "{{count}} EVENTS",
-      "upcomingWithin2Weeks": "{{count}} upcoming within 2 weeks",
-      "sampled": "Showing a sampled list of {{count}} events."
+      "eventsCount": "{{count}} กิจกรรม",
+      "upcomingWithin2Weeks": "{{count}} รายการภายใน 2 สัปดาห์",
+      "sampled": "แสดงรายการตัวอย่าง {{count}} กิจกรรม"
     },
     "militaryFlight": {
       "types": {
@@ -3319,11 +3603,11 @@
       "usniSource": "แหล่งข้อมูล: US Naval Institute News Fleet Tracker",
       "approximatePosition": "ตำแหน่งโดยประมาณ — จากรายงานประจำสัปดาห์ของ US Naval Institute ไม่ใช่การติดตามเรือแบบเรียลไทม์",
       "darkDescription": "⚠ เรือหายตัวไป - สูญเสียสัญญาณการติดตามเรือ อาจบ่งชี้ถึงปฏิบัติการที่ละเอียดอ่อน",
-      "recentTracking": "Recent Tracking",
-      "lastReport": "LATEST",
-      "nearChokepoint": "NEAR CHOKEPOINT",
-      "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN",
+      "recentTracking": "การติดตามล่าสุด",
+      "lastReport": "ล่าสุด",
+      "nearChokepoint": "ใกล้จุดคอขวด",
+      "nearBase": "ใกล้ฐานทัพ",
+      "lastSeen": "พบครั้งล่าสุด",
       "estPosition": "ตำแหน่งคาดการณ์",
       "aisLive": "การติดตามเรือแบบเรียลไทม์"
     },
@@ -3334,8 +3618,8 @@
         "transport": "ปฏิบัติการขนส่ง",
         "unknown": "กิจกรรมทางทหาร"
       },
-      "moreAircraft": "+{{count}} more aircraft",
-      "aircraftCount": "{{count}} AIRCRAFT",
+      "moreAircraft": "+ อากาศยานอีก {{count}} ลำ",
+      "aircraftCount": "อากาศยาน {{count}} ลำ",
       "aircraft": "อากาศยาน",
       "activity": "กิจกรรม",
       "primary": "หลัก",
@@ -3347,17 +3631,18 @@
         "transit": "การเคลื่อนย้ายกองเรือ",
         "unknown": "กิจกรรมทางเรือ"
       },
-      "moreVessels": "+{{count}} more vessels",
-      "vesselsCount": "{{count}} VESSELS",
+      "moreVessels": "+ เรืออีก {{count}} ลำ",
+      "vesselsCount": "เรือ {{count}} ลำ",
       "vessels": "เรือ",
       "trackedVessels": "เรือที่ติดตาม",
-      "showLess": "แสดงน้อยลง"
+      "showLess": "แสดงน้อยลง",
+      "backToGroup": "กลับไปที่กลุ่ม"
     },
     "naturalEvent": {
       "closed": "ปิด",
       "active": "ใช้งานอยู่",
       "reported": "รายงานแล้ว",
-      "viewOnSource": "View on {{source}}",
+      "viewOnSource": "ดูบน {{source}}",
       "attribution": "ข้อมูล: NASA EONET",
       "storm": "พายุ",
       "classification": "การจำแนก",
@@ -3438,6 +3723,423 @@
       "uae_ecsr": "สหรัฐอาหรับเอมิเรตส์/ECSR",
       "venezuela_crisis": "วิกฤตเวเนซุเอลา",
       "yemen_houthis": "เยเมน/ฮูตี"
+    },
+    "upcomingForecast": "พยากรณ์ล่วงหน้า",
+    "currentForecast": "พยากรณ์ที่มีผลในขณะนี้",
+    "expiredForecast": "พยากรณ์ที่หมดอายุ",
+    "validFrom": "มีผลตั้งแต่",
+    "validUntil": "มีผลถึง",
+    "levels": {
+      "extreme": "รุนแรงมาก",
+      "severe": "รุนแรง",
+      "moderate": "ปานกลาง",
+      "minor": "เล็กน้อย",
+      "unknown": "ไม่ทราบ",
+      "critical": "วิกฤต",
+      "high": "สูง",
+      "medium": "ปานกลาง",
+      "low": "ต่ำ",
+      "elevated": "สูงขึ้น",
+      "normal": "ปกติ",
+      "spike": "พุ่งสูง",
+      "watch": "เฝ้าระวัง",
+      "stable": "คงที่"
+    },
+    "statusValues": {
+      "active": "ใช้งานอยู่",
+      "inactive": "ไม่ใช้งาน",
+      "contested": "มีข้อพิพาท",
+      "decommissioned": "ปลดระวางแล้ว",
+      "construction": "กำลังก่อสร้าง",
+      "operating": "เปิดดำเนินการ",
+      "planned": "อยู่ในแผน",
+      "producing": "กำลังผลิต",
+      "development": "กำลังพัฒนา",
+      "exploration": "กำลังสำรวจ",
+      "unknown": "ไม่ทราบ",
+      "deployed": "ประจำการ",
+      "underway": "กำลังเดินทาง",
+      "inPort": "อยู่ในท่าเรือ",
+      "oil": "น้ำมัน",
+      "gas": "ก๊าซ",
+      "products": "ผลิตภัณฑ์",
+      "protest": "การประท้วง",
+      "riot": "การจลาจล",
+      "strike": "การนัดหยุดงาน",
+      "demonstration": "การชุมนุม",
+      "civilUnrest": "ความไม่สงบทางสังคม",
+      "c2Server": "เซิร์ฟเวอร์ C2",
+      "malwareHost": "โฮสต์มัลแวร์",
+      "phishing": "ฟิชชิง",
+      "maliciousUrl": "URL อันตราย",
+      "operational": "ใช้งานอยู่",
+      "reduced": "ลดลง",
+      "offline": "หยุดทำงาน",
+      "disputed": "มีข้อพิพาท"
+    },
+    "aptTactics": {
+      "reconnaissance": "การลาดตระเวน",
+      "resourceDevelopment": "การเตรียมทรัพยากร",
+      "initialAccess": "การเข้าถึงเริ่มต้น",
+      "execution": "การเรียกใช้",
+      "persistence": "การคงอยู่",
+      "privilegeEscalation": "การยกระดับสิทธิ์",
+      "defenseEvasion": "การหลบเลี่ยงการป้องกัน",
+      "credentialAccess": "การเข้าถึงข้อมูลรับรอง",
+      "discovery": "การสำรวจระบบ",
+      "lateralMovement": "การเคลื่อนที่ด้านข้าง",
+      "collection": "การรวบรวมข้อมูล",
+      "commandAndControl": "การสั่งการและควบคุม",
+      "exfiltration": "การลักลอบนำข้อมูลออก",
+      "impact": "ผลกระทบ"
+    },
+    "aptSectors": {
+      "government": "รัฐบาล",
+      "finance": "การเงิน",
+      "defense": "กลาโหม",
+      "healthcare": "การสาธารณสุข",
+      "military": "กองทัพ",
+      "technology": "เทคโนโลยี",
+      "manufacturing": "การผลิต",
+      "energy": "พลังงาน",
+      "telecommunications": "โทรคมนาคม",
+      "media": "สื่อ",
+      "ngo": "องค์กรพัฒนาเอกชน",
+      "diplomatic": "การทูต",
+      "criticalInfrastructure": "โครงสร้างพื้นฐานสำคัญ",
+      "research": "การวิจัย",
+      "banking": "การธนาคาร",
+      "aerospace": "การบินและอวกาศ",
+      "civilSociety": "ภาคประชาสังคม",
+      "aviation": "การบิน",
+      "hospitality": "การบริการและโรงแรม",
+      "cryptocurrency": "คริปโทเคอร์เรนซี",
+      "retail": "ค้าปลีก",
+      "thinkTanks": "คลังสมอง",
+      "education": "การศึกษา",
+      "telecoms": "ผู้ให้บริการโทรคมนาคม",
+      "oilAndGas": "น้ำมันและก๊าซ",
+      "academia": "แวดวงวิชาการ",
+      "transportation": "การขนส่ง",
+      "humanRights": "สิทธิมนุษยชน",
+      "pharmaceutical": "เภสัชกรรม",
+      "dissidents": "ผู้เห็นต่าง",
+      "journalists": "นักข่าว",
+      "business": "ธุรกิจ",
+      "engineering": "วิศวกรรม",
+      "utilities": "สาธารณูปโภค",
+      "gaming": "เกม",
+      "embassies": "สถานทูต",
+      "legal": "กฎหมาย",
+      "construction": "การก่อสร้าง",
+      "mining": "เหมืองแร่",
+      "petroleum": "ปิโตรเลียม",
+      "insurance": "ประกันภัย",
+      "travel": "การท่องเที่ยว",
+      "maritime": "การเดินเรือ",
+      "chemical": "เคมีภัณฑ์",
+      "financial": "บริการทางการเงิน",
+      "lawEnforcement": "หน่วยบังคับใช้กฎหมาย",
+      "electricUtilities": "บริษัทไฟฟ้า",
+      "managedServiceProviders": "ผู้ให้บริการแบบมีการจัดการ",
+      "satellite": "ดาวเทียม",
+      "lawFirms": "สำนักงานกฎหมาย",
+      "navalDefense": "การป้องกันทางทะเล",
+      "defenseContractors": "ผู้รับเหมาด้านกลาโหม",
+      "water": "น้ำประปา",
+      "religious": "กลุ่มศาสนา",
+      "unBodies": "หน่วยงานสหประชาชาติ",
+      "supplyChain": "ห่วงโซ่อุปทาน",
+      "itServices": "บริการไอที",
+      "electronics": "อิเล็กทรอนิกส์",
+      "biotechnology": "เทคโนโลยีชีวภาพ",
+      "industrialChemistry": "เคมีอุตสาหกรรม",
+      "digitalCertificates": "ใบรับรองดิจิทัล",
+      "semiconductor": "เซมิคอนดักเตอร์",
+      "airline": "สายการบิน",
+      "gambling": "การพนัน",
+      "tradePolicy": "นโยบายการค้า",
+      "foreignAffairs": "การต่างประเทศ",
+      "automobile": "รถยนต์",
+      "politicalOrganizations": "องค์กรการเมือง",
+      "cloud": "คลาวด์",
+      "general": "ทั่วไป",
+      "minorityGroups": "กลุ่มชนกลุ่มน้อย",
+      "nuclearResearch": "การวิจัยนิวเคลียร์",
+      "defectors": "ผู้แปรพักตร์",
+      "financialInstitutions": "สถาบันการเงิน",
+      "swiftNetwork": "เครือข่าย SWIFT",
+      "petrochemical": "ปิโตรเคมี",
+      "airlines": "สายการบินต่างๆ",
+      "politicalOpposition": "ฝ่ายค้านทางการเมือง",
+      "activists": "นักเคลื่อนไหว",
+      "police": "ตำรวจ",
+      "intelligence": "หน่วยข่าวกรอง",
+      "businessExecutives": "ผู้บริหารธุรกิจ",
+      "automotive": "ยานยนต์",
+      "restaurant": "ร้านอาหาร",
+      "paymentSystems": "ระบบชำระเงิน",
+      "cardProcessing": "การประมวลผลบัตร",
+      "remoteBanking": "ธนาคารทางไกล",
+      "naturalResources": "ทรัพยากรธรรมชาติ",
+      "industrial": "อุตสาหกรรม",
+      "cybersecurity": "ความมั่นคงปลอดภัยไซเบอร์",
+      "fintech": "ฟินเทค",
+      "investment": "การลงทุน",
+      "containerInfrastructure": "โครงสร้างพื้นฐานคอนเทนเนอร์"
+    },
+    "compass": {
+      "n": "ทางเหนือ",
+      "ne": "ทางตะวันออกเฉียงเหนือ",
+      "e": "ทางตะวันออก",
+      "se": "ทางตะวันออกเฉียงใต้",
+      "s": "ทางใต้",
+      "sw": "ทางตะวันตกเฉียงใต้",
+      "w": "ทางตะวันตก",
+      "nw": "ทางตะวันตกเฉียงเหนือ",
+      "nne": "ทางเหนือค่อนตะวันออกเฉียงเหนือ",
+      "ene": "ทางตะวันออกค่อนตะวันออกเฉียงเหนือ",
+      "ese": "ทางตะวันออกค่อนตะวันออกเฉียงใต้",
+      "sse": "ทางใต้ค่อนตะวันออกเฉียงใต้",
+      "ssw": "ทางใต้ค่อนตะวันตกเฉียงใต้",
+      "wsw": "ทางตะวันตกค่อนตะวันตกเฉียงใต้",
+      "wnw": "ทางตะวันตกค่อนตะวันตกเฉียงเหนือ",
+      "nnw": "ทางเหนือค่อนตะวันตกเฉียงเหนือ"
+    },
+    "mapPopup": {
+      "noSectorData": "ไม่มีข้อมูลภาคส่วน",
+      "disruption": "การหยุดชะงัก",
+      "warRisk": "ความเสี่ยงสงคราม",
+      "warZone": "เขตสงคราม",
+      "historicalProfile": "ประวัติโดยย่อ",
+      "noData": "ไม่มีข้อมูล",
+      "coverageUnavailable": "ไม่มีข้อมูลครอบคลุม",
+      "targets": "เป้าหมาย",
+      "listSeparator": ", ",
+      "radiation": {
+        "confirmed": "ยืนยันแล้ว",
+        "conflictingSources": "แหล่งข้อมูลขัดแย้งกัน",
+        "cpmDerived": "ส่วนที่คำนวณจาก CPM",
+        "reading": "ค่าที่วัดได้",
+        "baseline": "ค่าฐาน",
+        "delta": "ส่วนต่าง",
+        "confidence": "ความเชื่อมั่น",
+        "sources": "แหล่งข้อมูล",
+        "sourceCount": "จำนวนแหล่งข้อมูล"
+      },
+      "history": {
+        "conflictSince": "ความขัดแย้งตั้งแต่",
+        "peaceAgreements": "ข้อตกลงสันติภาพ",
+        "recordedFatalities": "ผู้เสียชีวิตที่บันทึกไว้",
+        "totalFatalities": "ผู้เสียชีวิตทั้งหมด",
+        "operationalSince": "เปิดดำเนินการตั้งแต่",
+        "treaties": "สนธิสัญญา",
+        "iaeaStatus": "สถานะ IAEA",
+        "keyEvents": "เหตุการณ์สำคัญ"
+      },
+      "flight": {
+        "departure": "ออก",
+        "arrival": "ถึง",
+        "bookRoute": "จองเส้นทางนี้",
+        "registration": "ทะเบียน",
+        "model": "รุ่น",
+        "operator": "ผู้ให้บริการ",
+        "climb": "อัตราไต่",
+        "liveData": "ข้อมูลสด",
+        "loadingWingbits": "กำลังโหลดข้อมูลสดจาก Wingbits…"
+      },
+      "base": {
+        "airForce": "กองทัพอากาศ",
+        "naval": "กองทัพเรือ",
+        "nuclear": "นิวเคลียร์",
+        "space": "อวกาศ",
+        "training": "การฝึก",
+        "branch": "เหล่าทัพ",
+        "categories": "หมวดหมู่"
+      },
+      "waterway": {
+        "tradeSectorMix": "สัดส่วนภาคการค้า",
+        "sectorExposure": "ความเสี่ยงรายภาคส่วน",
+        "transitHistory": "ประวัติการผ่าน",
+        "sectorBreakdown": "รายละเอียดรายภาคส่วน"
+      },
+      "natural": {
+        "minuteMean": "ค่าเฉลี่ย {{count}} นาที",
+        "windNotReported": "ไม่มีรายงานลม",
+        "windAverage": "ค่าเฉลี่ยลม",
+        "canonicalMatch": "การจับคู่มาตรฐาน",
+        "agencyIdentifier": "รหัสหน่วยงาน",
+        "agencyObservations": "การสังเกตของหน่วยงาน"
+      },
+      "placeReports_other": "{{place}} ({{count}} รายงาน)",
+      "issuedBy": "ออกโดย"
+    },
+    "weatherEvents": {
+      "911TelephoneOutage": "หมายเลขฉุกเฉิน 911 ขัดข้อง",
+      "administrativeMessage": "ข้อความด้านการบริหาร",
+      "airQualityAlert": "การแจ้งเตือนคุณภาพอากาศ",
+      "airStagnationAdvisory": "คำแนะนำเรื่องอากาศนิ่ง",
+      "ashfallAdvisory": "คำแนะนำเรื่องเถ้าภูเขาไฟตก",
+      "ashfallWarning": "คำเตือนเถ้าภูเขาไฟตก",
+      "avalancheAdvisory": "คำแนะนำเรื่องหิมะถล่ม",
+      "avalancheWarning": "คำเตือนหิมะถล่ม",
+      "avalancheWatch": "เฝ้าระวังหิมะถล่ม",
+      "beachHazardsStatement": "แถลงการณ์อันตรายชายหาด",
+      "blizzardWarning": "คำเตือนพายุหิมะ",
+      "blowingDustAdvisory": "คำแนะนำเรื่องฝุ่นปลิว",
+      "blowingDustWarning": "คำเตือนฝุ่นปลิว",
+      "blueAlert": "บลูอะเลิร์ต (ตำรวจตามหา)",
+      "briskWindAdvisory": "คำแนะนำเรื่องลมแรงปานกลาง",
+      "childAbductionEmergency": "เหตุฉุกเฉิน: ลักพาตัวเด็ก",
+      "civilDangerWarning": "คำเตือนภัยพลเรือน",
+      "civilEmergencyMessage": "ข้อความฉุกเฉินพลเรือน",
+      "coastalFloodAdvisory": "คำแนะนำเรื่องน้ำท่วมชายฝั่ง",
+      "coastalFloodStatement": "แถลงการณ์น้ำท่วมชายฝั่ง",
+      "coastalFloodWarning": "คำเตือนน้ำท่วมชายฝั่ง",
+      "coastalFloodWatch": "เฝ้าระวังน้ำท่วมชายฝั่ง",
+      "coldWeatherAdvisory": "คำแนะนำเรื่องอากาศหนาว",
+      "denseFogAdvisory": "คำแนะนำเรื่องหมอกหนา",
+      "denseSmokeAdvisory": "คำแนะนำเรื่องควันหนา",
+      "dustAdvisory": "คำแนะนำเรื่องฝุ่น",
+      "dustStormWarning": "คำเตือนพายุฝุ่น",
+      "earthquakeWarning": "คำเตือนแผ่นดินไหว",
+      "evacuationImmediate": "อพยพทันที",
+      "extremeHeatWarning": "คำเตือนความร้อนจัด",
+      "extremeHeatWatch": "เฝ้าระวังความร้อนจัด",
+      "extremeColdWarning": "คำเตือนอากาศหนาวจัด",
+      "extremeColdWatch": "เฝ้าระวังอากาศหนาวจัด",
+      "extremeFireDanger": "อันตรายจากไฟรุนแรงมาก",
+      "extremeWindWarning": "คำเตือนลมแรงจัด",
+      "fireWarning": "คำเตือนไฟไหม้",
+      "fireWeatherWatch": "เฝ้าระวังสภาพอากาศเสี่ยงไฟ",
+      "flashFloodStatement": "แถลงการณ์น้ำป่าไหลหลาก",
+      "flashFloodWarning": "คำเตือนน้ำป่าไหลหลาก",
+      "flashFloodWatch": "เฝ้าระวังน้ำป่าไหลหลาก",
+      "floodAdvisory": "คำแนะนำเรื่องน้ำท่วม",
+      "floodStatement": "แถลงการณ์น้ำท่วม",
+      "floodWarning": "คำเตือนน้ำท่วม",
+      "floodWatch": "เฝ้าระวังน้ำท่วม",
+      "freezeWarning": "คำเตือนน้ำแข็งจับตัว",
+      "freezeWatch": "เฝ้าระวังน้ำแข็งจับตัว",
+      "freezingFogAdvisory": "คำแนะนำเรื่องหมอกเยือกแข็ง",
+      "freezingSprayAdvisory": "คำแนะนำเรื่องละอองทะเลเยือกแข็ง",
+      "frostAdvisory": "คำแนะนำเรื่องน้ำค้างแข็ง",
+      "galeWarning": "คำเตือนลมพายุ",
+      "galeWatch": "เฝ้าระวังลมพายุ",
+      "hazardousMaterialsWarning": "คำเตือนวัตถุอันตราย",
+      "hazardousSeasWarning": "คำเตือนทะเลอันตราย",
+      "hazardousSeasWatch": "เฝ้าระวังทะเลอันตราย",
+      "hazardousWeatherOutlook": "แนวโน้มสภาพอากาศอันตราย",
+      "heatAdvisory": "คำแนะนำเรื่องอากาศร้อน",
+      "heavyFreezingSprayWarning": "คำเตือนละอองทะเลเยือกแข็งรุนแรง",
+      "heavyFreezingSprayWatch": "เฝ้าระวังละอองทะเลเยือกแข็งรุนแรง",
+      "highSurfAdvisory": "คำแนะนำเรื่องคลื่นสูง",
+      "highSurfWarning": "คำเตือนคลื่นสูง",
+      "highWindWarning": "คำเตือนลมแรง",
+      "highWindWatch": "เฝ้าระวังลมแรง",
+      "hurricaneForceWindWarning": "คำเตือนลมแรงระดับเฮอริเคน",
+      "hurricaneForceWindWatch": "เฝ้าระวังลมแรงระดับเฮอริเคน",
+      "hurricaneWarning": "คำเตือนพายุเฮอริเคน",
+      "hurricaneWatch": "เฝ้าระวังพายุเฮอริเคน",
+      "hydrologicOutlook": "แนวโน้มด้านอุทกวิทยา",
+      "iceStormWarning": "คำเตือนพายุน้ำแข็ง",
+      "lakeEffectSnowWarning": "คำเตือนหิมะจากผลของทะเลสาบ",
+      "lakeWindAdvisory": "คำแนะนำเรื่องลมบนทะเลสาบ",
+      "lakeshoreFloodAdvisory": "คำแนะนำเรื่องน้ำท่วมริมทะเลสาบ",
+      "lakeshoreFloodStatement": "แถลงการณ์น้ำท่วมริมทะเลสาบ",
+      "lakeshoreFloodWarning": "คำเตือนน้ำท่วมริมทะเลสาบ",
+      "lakeshoreFloodWatch": "เฝ้าระวังน้ำท่วมริมทะเลสาบ",
+      "lawEnforcementWarning": "คำเตือนจากตำรวจ",
+      "localAreaEmergency": "เหตุฉุกเฉินในพื้นที่",
+      "lowWaterAdvisory": "คำแนะนำเรื่องระดับน้ำต่ำ",
+      "marineWeatherStatement": "แถลงการณ์สภาพอากาศทางทะเล",
+      "nuclearPowerPlantWarning": "คำเตือนโรงไฟฟ้านิวเคลียร์",
+      "radiologicalHazardWarning": "คำเตือนอันตรายจากรังสี",
+      "redFlagWarning": "คำเตือนความเสี่ยงไฟไหม้สูง",
+      "ripCurrentStatement": "แถลงการณ์กระแสน้ำย้อนกลับ",
+      "severeThunderstormWarning": "คำเตือนพายุฝนฟ้าคะนองรุนแรง",
+      "severeThunderstormWatch": "เฝ้าระวังพายุฝนฟ้าคะนองรุนแรง",
+      "severeWeatherStatement": "แถลงการณ์สภาพอากาศรุนแรง",
+      "shelterInPlaceWarning": "คำเตือน: หลบภัยอยู่กับที่",
+      "shortTermForecast": "พยากรณ์ระยะสั้น",
+      "smallCraftAdvisory": "คำแนะนำสำหรับเรือเล็ก",
+      "snowSquallWarning": "คำเตือนหิมะพัดกระโชก",
+      "specialMarineWarning": "คำเตือนพิเศษทางทะเล",
+      "specialWeatherStatement": "แถลงการณ์สภาพอากาศพิเศษ",
+      "stormSurgeWarning": "คำเตือนคลื่นพายุซัดฝั่ง",
+      "stormSurgeWatch": "เฝ้าระวังคลื่นพายุซัดฝั่ง",
+      "stormWarning": "คำเตือนพายุ",
+      "stormWatch": "เฝ้าระวังพายุ",
+      "test": "ทดสอบ",
+      "tornadoWarning": "คำเตือนพายุทอร์นาโด",
+      "tornadoWatch": "เฝ้าระวังพายุทอร์นาโด",
+      "tropicalCycloneLocalStatement": "แถลงการณ์ท้องถิ่นเรื่องพายุหมุนเขตร้อน",
+      "tropicalStormWarning": "คำเตือนพายุโซนร้อน",
+      "tropicalStormWatch": "เฝ้าระวังพายุโซนร้อน",
+      "tsunamiAdvisory": "คำแนะนำเรื่องสึนามิ",
+      "tsunamiWarning": "คำเตือนสึนามิ",
+      "tsunamiWatch": "เฝ้าระวังสึนามิ",
+      "typhoonWarning": "คำเตือนพายุไต้ฝุ่น",
+      "typhoonWatch": "เฝ้าระวังพายุไต้ฝุ่น",
+      "volcanoWarning": "คำเตือนภูเขาไฟ",
+      "windAdvisory": "คำแนะนำเรื่องลม",
+      "winterStormWarning": "คำเตือนพายุฤดูหนาว",
+      "winterStormWatch": "เฝ้าระวังพายุฤดูหนาว",
+      "winterWeatherAdvisory": "คำแนะนำเรื่องสภาพอากาศฤดูหนาว",
+      "arcticOutflowWarning": "คำเตือนมวลอากาศอาร์กติกไหลออก",
+      "blowingSnowAdvisory": "คำแนะนำเรื่องหิมะปลิว",
+      "flashFreezeWarning": "คำเตือนการเยือกแข็งฉับพลัน",
+      "fogAdvisory": "คำแนะนำเรื่องหมอก",
+      "freezingDrizzleAdvisory": "คำแนะนำเรื่องฝนละอองเยือกแข็ง",
+      "freezingRainWarning": "คำเตือนฝนเยือกแข็ง",
+      "heatWarning": "คำเตือนความร้อน",
+      "airQualityWarning": "คำเตือนคุณภาพอากาศ",
+      "airQualityAdvisory": "คำแนะนำเรื่องคุณภาพอากาศ",
+      "specialAirQualityStatement": "แถลงการณ์พิเศษเรื่องคุณภาพอากาศ",
+      "rainfallWarning": "คำเตือนฝนตกหนัก",
+      "snowfallWarning": "คำเตือนหิมะตก",
+      "snowSquallWatch": "เฝ้าระวังหิมะพัดกระโชก",
+      "squallWarning": "คำเตือนลมกระโชก",
+      "weatherAdvisory": "คำแนะนำด้านสภาพอากาศ",
+      "weatherWarning": "คำเตือนด้านสภาพอากาศ",
+      "windWarning": "คำเตือนลม",
+      "imdCoastalBulletin": "ประกาศชายฝั่ง IMD",
+      "imdSeaAreaBulletin": "ประกาศพื้นที่ทะเล IMD",
+      "forestFire": "ไฟป่า",
+      "forestFireWarning": "คำเตือนไฟป่า",
+      "gale": "ลมพายุ",
+      "wind": "ลม",
+      "fog": "หมอก",
+      "denseFog": "หมอกหนา",
+      "roadIceAndSnow": "น้ำแข็งและหิมะบนถนน",
+      "riverineFlood": "น้ำท่วมจากแม่น้ำ",
+      "thunderstorm": "พายุฝนฟ้าคะนอง",
+      "severeThunderstorms": "พายุฝนฟ้าคะนองรุนแรง",
+      "otherDangers": "อันตรายอื่นๆ",
+      "freezingRainIcing": "ฝนเยือกแข็ง น้ำแข็งเกาะ",
+      "freezingRain": "ฝนเยือกแข็ง",
+      "landslideWarning": "คำเตือนดินถล่ม",
+      "rain": "ฝน",
+      "lightRain": "ฝนเล็กน้อย",
+      "heavyRain": "ฝนตกหนัก",
+      "moderateRainWarning": "คำเตือนฝนปานกลาง",
+      "severeRainWarning": "คำเตือนฝนรุนแรง",
+      "moderateThunderstormWarning": "คำเตือนพายุฝนฟ้าคะนองปานกลาง",
+      "yellowWindWarning": "คำเตือนระดับเหลือง: ลม",
+      "orangeWindWarning": "คำเตือนระดับส้ม: ลม",
+      "yellowThunderstormWarning": "คำเตือนระดับเหลือง: พายุฝนฟ้าคะนอง",
+      "yellowRainWarning": "คำเตือนระดับเหลือง: ฝน",
+      "orangeRainWarning": "คำเตือนระดับส้ม: ฝน",
+      "extremeHeat": "ความร้อนจัด",
+      "icyRoad": "ถนนเป็นน้ำแข็ง",
+      "drought": "ภัยแล้ง",
+      "snow": "หิมะ",
+      "haze": "หมอกควัน",
+      "rainstorm": "พายุฝน",
+      "severeWeatherWarning": "คำเตือนสภาพอากาศรุนแรง",
+      "yellowWarning": "คำเตือนระดับเหลือง",
+      "orangeWarning": "คำเตือนระดับส้ม",
+      "redWarning": "คำเตือนระดับแดง"
     }
   },
   "signals": {
@@ -3618,7 +4320,7 @@
     "refresh": "รีเฟรช",
     "all": "ทั้งหมด",
     "cancel": "ยกเลิก",
-    "dismiss": "Dismiss"
+    "dismiss": "ปิด"
   },
   "preferences": {
     "display": "การแสดงผล",
@@ -3642,7 +4344,48 @@
     "fontMono": "Monospace",
     "fontSystem": "ค่าเริ่มต้นของระบบ",
     "panelFontScale": "ขนาดข้อความ",
-    "followGlobalFontScale": "ใช้การตั้งค่าทั่วโลก"
+    "followGlobalFontScale": "ใช้การตั้งค่าทั่วโลก",
+    "selfHostKey": {
+      "heading": "กุญแจเดสก์ทอป",
+      "description": "ปลดล็อก Pro บนแดชบอร์ดนี้ด้วยกุญแจเดสก์ทอปของคุณเอง สร้างกุญแจได้ที่ worldmonitor.app ใน Settings → API Keys → Create desktop key",
+      "relay": "กุญแจจะไปยังเซิร์ฟเวอร์ของการติดตั้งนี้ ซึ่งจะส่งต่อคำขอ Pro ของคุณไปยัง World Monitor การใช้งานจะนับไปยังโควต้ากุญแจเดสก์ทอปของบัญชีคุณ เหมือนกับแอปเดสก์ทอป",
+      "trust": "หากมีคนอื่นใช้งานการติดตั้งนี้ ให้สร้างกุญแจเดสก์ทอปแยกต่างหากสำหรับการติดตั้งนั้น คุณสามารถเพิกถอนได้ที่ worldmonitor.app ได้ตลอดเวลา",
+      "inputLabel": "กุญแจเดสก์ทอป",
+      "placeholder": "wm_…",
+      "save": "บันทึกกุญแจ",
+      "saving": "กำลังตรวจสอบ…",
+      "remove": "ลบกุญแจ",
+      "removing": "กำลังลบ…",
+      "empty": "ป้อนกุญแจเดสก์ทอป",
+      "saveFailed": "ไม่สามารถบันทึกกุญแจได้ ลองอีกครั้ง",
+      "removeFailed": "ไม่สามารถลบกุญแจได้ ลองอีกครั้ง",
+      "rateLimited": "พยายามหลายครั้งเกินไป ลองอีกครั้งใน {{seconds}} วินาที",
+      "rateLimitedSoon": "พยายามหลายครั้งเกินไป ลองอีกครั้งในอีกนาที",
+      "insecure": "หน้านี้ไม่ได้ใช้ HTTPS จึงกุญแจของคุณจะส่งผ่านเครือข่ายแบบไม่เข้ารหัส",
+      "insecureConfirm": "หน้านี้ไม่ได้ใช้ HTTPS จึงกุญแจของคุณจะส่งผ่านเครือข่ายแบบไม่เข้ารหัส ส่งกุญแจเฉพาะบนเครือข่ายที่คุณเชื่อถือ",
+      "insecureConfirmButton": "ส่งกุญแจ",
+      "staleNote": "ไม่สามารถเชื่อมต่อ World Monitor ในการตรวจสอบล่าสุด",
+      "disabled": "ผู้ดำเนินการของการติดตั้งนี้ได้ปิดกำหนดกุญแจเดสก์ทอป",
+      "state": {
+        "none": "ไม่มีกุญแจ",
+        "active": "ใช้งานอยู่",
+        "invalid": "ไม่ถูกต้อง",
+        "not_desktop_key": "ไม่ใช่กุญแจเดสก์ทอป",
+        "over_cap": "เกินขีดจำกัดกุญแจ",
+        "lapsed": "แผนไม่ใช้งาน",
+        "unavailable": "ไม่สามารถยืนยันได้",
+        "disabled": "ปิดแล้ว"
+      },
+      "detail": {
+        "none": "ไม่มีกุญแจที่บันทึกไว้ในเบราว์เซอร์นี้",
+        "active": "Pro ปลดล็อกแล้วในเบราว์เซอร์นี้",
+        "invalid": "กุญแจนี้ไม่ถูกต้องหรือถูกเพิกถอนแล้ว",
+        "not_desktop_key": "นี่คือ API key ให้ใช้กุญแจเดสก์ทอปแทน",
+        "over_cap": "บัญชีมีกุญแจเดสก์ทอปมากกว่าที่แผนอนุญาต เพิกถอนอันใดอันหนึ่งที่ worldmonitor.app",
+        "lapsed": "แผน Pro ของบัญชีไม่ใช้งาน",
+        "unavailable": "ไม่สามารถเชื่อมต่อ World Monitor เพื่อตรวจสอบกุญแจนี้ ลองอีกครั้งในภายหลัง"
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "เปิดภาพรวมประเทศ",
@@ -3741,6 +4484,7 @@
   "auth": {
     "signIn": "ลงชื่อเข้าใช้",
     "createAccount": "สร้างบัญชี",
+    "freeReason": "ฟรี: บันทึกเลย์เอาต์ ติดตามประเทศ รับการแจ้งเตือน",
     "settings": "การตั้งค่า",
     "passkeyOffer": {}
   },
@@ -3750,7 +4494,7 @@
     "serverUrl": "URL เซิร์ฟเวอร์",
     "authHeader": "ส่วนหัว Auth",
     "optional": "ไม่บังคับ",
-    "apiKey": "API Key",
+    "apiKey": "คีย์ API",
     "apiKeyPlaceholder": "วางคีย์ API ของคุณ",
     "useCustomHeaders": "ขั้นสูง: ใช้ส่วนหัวที่กำหนดเอง ↓",
     "useApiKey": "← ใช้ API Key",
@@ -3759,9 +4503,9 @@
     "foundTools": "พบเครื่องมือ {{count}} อัน",
     "connectFailed": "การเชื่อมต่อล้มเหลว",
     "selectTool": "เลือกเครื่องมือ",
-    "toolArgs": "Arguments (JSON)",
+    "toolArgs": "อาร์กิวเมนต์ (JSON)",
     "panelTitle": "ชื่อแผง",
-    "panelTitlePlaceholder": "My MCP Panel",
+    "panelTitlePlaceholder": "แผง MCP ของฉัน",
     "refreshEvery": "รีเฟรชทุก ๆ",
     "seconds": "วินาที",
     "addPanel": "เพิ่มแผง",
@@ -3785,7 +4529,17 @@
     "renameHint": "{{name}} — ดับเบิลคลิกเพื่อเปลี่ยนชื่อ",
     "deleteTab": "ลบแท็บ",
     "deleteTabAria": "ลบแท็บ {{name}}",
-    "tabNameAria": "ชื่อแท็บ"
+    "tabNameAria": "ชื่อแท็บ",
+    "addTabTitleSaved": "แท็บใหม่ (เริ่มต้นด้วยแผงที่คุณบันทึกไว้)",
+    "newTabOptions": "ตัวเลือกแท็บใหม่",
+    "newTabStartsDefault": "แท็บใหม่เริ่มต้นด้วยแผงเริ่มต้น",
+    "newTabStartsSaved": "แท็บใหม่เริ่มต้นด้วยแผงที่คุณบันทึกไว้",
+    "newTabOptionsHint": "แท็บที่คุณมีอยู่แล้วจะไม่เปลี่ยนแปลง",
+    "useThisTabPanels": "ใช้แผงของแท็บนี้",
+    "useDefaultPanels": "ใช้แผงเริ่มต้น",
+    "newTabPanelsNotSaved": "ไม่สามารถบันทึกได้ เบราว์เซอร์นี้กำลังบล็อกการจัดเก็บข้อมูลของไซต์",
+    "team": "ทีม",
+    "teamDashboards": "แดชบอร์ดของทีม"
   },
   "theaterPresets": {
     "label": "พรีเซ็ตการครอบคลุม",
@@ -3834,5 +4588,495 @@
     "noEvents": "ไม่มีพาดหัวข่าวที่เลือกบันทึกไว้ในวันนี้ ไม่ได้พิสูจน์ว่าไม่มีเหตุการณ์เกิดขึ้น",
     "unlock90": "ปลดล็อก 90 วันด้วย Pro",
     "unlock365": "ปลดล็อก 365 วันด้วยแผน API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "แหล่งที่มา",
+      "freshness": "ความสดใหม่",
+      "confidence": "ความเชื่อมั่น",
+      "limitations": "ข้อจำกัด",
+      "related": "ที่เกี่ยวข้อง",
+      "groundedIn": "อ้างอิงจาก",
+      "curated": "คัดสรร v1",
+      "fallback": "สำรอง",
+      "layerGuide": "คู่มือเลเยอร์"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "ข่าว / จุดร้อน",
+        "purpose": "แสดงจุดร้อนภูมิรัฐศาสตร์ที่เฝ้าดู และยกระดับเมื่อข่าวที่เกี่ยวข้องกับสัญญาณการยกระดับมาบรรจบกัน",
+        "source": "ทะเบียนจุดร้อนของ WorldMonitor ข่าวกรอง RSS/GDELT การให้คะแนนการยกระดับของจุดร้อน กิจกรรมทางทหาร และบริบทความไม่มั่นคงของประเทศ",
+        "freshness": "ตำแหน่งจุดร้อนถูกคัดสรรและคงที่ ความสดใหม่ของฟีดข่าวถูกติดตามแยก ระดับจุดร้อนถูกคำนวณใหม่เมื่อฟีดข่าวของแผงควบคุมรีเฟรช ห่างกันประมาณ 10 นาที เกณฑ์เวลาของข้อมูลตั้งต้นและแคชสำหรับข่าวกรอง GDELT ยาวกว่านั้น",
+        "confidence": "ใช้เป็นสัญญาณช่วยคัดลำดับได้ หากยังไม่เปิดข่าวต้นทางและบริบทของประเทศ ข้อนี้ยังไม่ใช่ข้อสรุปที่อ้างอิงได้",
+        "limitations": {
+          "0": "ปริมาณข่าวและการจับคู่คำสำคัญอาจทำให้ภูมิภาคที่ได้รับการนำเสนอมากดูใหญ่เกินจริง",
+          "1": "เหตุการณ์ที่ได้รับความสนใจน้อยอาจตกหล่นเมื่อการครอบคลุมของ RSS/GDELT บางหรือล่าช้า"
+        },
+        "related": {
+          "0": "แผงข่าวสด",
+          "1": "แผงภาพรวมความเสี่ยงเชิงยุทธศาสตร์",
+          "2": "ภาพรวมประเทศ",
+          "3": "ป๊อปอัปจุดร้อน"
+        }
+      },
+      "no2Activity": {
+        "category": "เศรษฐกิจ",
+        "purpose": "ระบายสีประเทศและกลุ่มอุตสาหกรรมตามทิศทางของ NO2 ชั้นโทรโพสเฟียร์จาก Sentinel-5P ซึ่งเป็นร่องรอยการเผาไหม้ ในช่วง 56 วันล่าสุดเทียบกับวันที่เดียวกันในปีก่อนหน้า",
+        "source": "NO2 จาก Copernicus Sentinel-5P TROPOMI ผ่าน CDSE Sentinel Hub Statistical API รวบรวมรายวันต่อภูมิภาคโดยบริการ seed-no2-activity มีข้อมูล Copernicus Sentinel ที่ผ่านการดัดแปลง",
+        "freshness": "ป้อนข้อมูลทุก 24 ชั่วโมง ช่วงเวลาสิ้นสุด 3 วันก่อนการรันเพื่อให้ข้อมูลที่มาช้าทันเข้ามา โดยมีงบความสดใหม่ 72 ชั่วโมง",
+        "confidence": "ภูมิภาคจะได้ค่าอ่านเฉพาะเมื่อมีวันที่ใช้ได้อย่างน้อย 14 วันและปีฐาน 2 ปี เมฆเป็นสัญญาณรบกวนหลัก ช่วงที่ข้อมูลน้อยจึงปฏิเสธการอ่านแทนการเดา",
+        "limitations": {
+          "0": "\"ฐานรอดำเนินการ\" เป็นสถานะที่คาดไว้นานหลายสัปดาห์หลังเพิ่มภูมิภาค ระหว่างที่ยังดึงช่วงเวลาของปีก่อนหน้า",
+          "1": "NO2 ติดตามการเผาไหม้ ดังนั้นการผลิตไฟฟ้าหรือยานพาหนะที่สะอาดขึ้นจะอ่านเป็นกิจกรรมที่อ่อนตัวลง"
+        },
+        "related": {
+          "0": "นาวแคสต์กิจกรรมของจีน",
+          "1": "สรุปข้อมูลประเทศ"
+        }
+      },
+      "reservoirLevels": {
+        "category": "ภูมิอากาศ",
+        "purpose": "แสดงอ่างเก็บน้ำและทะเลสาบเชิงยุทธศาสตร์ตามระดับผิวน้ำเมื่อเทียบกับระดับปกติในช่วงเวลาเดียวกันของปี และความเร็วของการเปลี่ยนแปลง",
+        "source": "ความสูงผิวน้ำภายในแผ่นดินจาก NASA ICESat-2 ATL13 ผ่าน NSIDC ประมวลผลด้วย SlideRule Earth และรวมต่อการโคจรผ่านแต่ละครั้งโดยบริการ seed-reservoir-levels",
+        "freshness": "อัปเดตทุกวัน NASA เผยแพร่การโคจรผ่านแต่ละครั้ง 50 ถึง 70 วันหลังการวัด และแต่ละอ่างเก็บน้ำจะถูกวัดซ้ำทุกไม่กี่วันจนถึงประมาณหนึ่งเดือน",
+        "confidence": "การโคจรผ่านจะนับเฉพาะเมื่อส่วนผิวน้ำอย่างน้อย 5 ส่วนตรงกันภายใน 0.25 ม. การเทียบตามฤดูกาลต้องมีการโคจรผ่านจากอย่างน้อย 3 ปีก่อนหน้าในช่วงเวลาเดียวกันของปี",
+        "limitations": {
+          "0": "เฉพาะระดับ ไม่ใช่ปริมาตร: การลดลงเท่ากันหมายถึงการสูญเสียปริมาณกักเก็บที่ต่างกันในแต่ละอ่าง",
+          "1": "แหล่งน้ำที่ไม่มีการโคจรผ่านใน 150 วันจะถูกระบุว่าไม่มีการโคจรผ่านล่าสุด แต่ยังแสดงค่าล่าสุด การเปลี่ยนแปลง และวันที่"
+        },
+        "related": {
+          "0": "แผงระดับน้ำเชิงยุทธศาสตร์",
+          "1": "ความผิดปกติของภูมิอากาศ"
+        }
+      },
+      "conflicts": {
+        "category": "ความขัดแย้ง",
+        "purpose": "แสดงเขตความขัดแย้งที่คัดสรรและการซ้อนทับของขอบเขตภูมิรัฐศาสตร์ เพื่อวางสัญญาณสดเทียบกับสมรภูมิที่ทราบแล้ว",
+        "source": "ทะเบียนเขตความขัดแย้งของ WorldMonitor บริบทความขัดแย้ง UCDP/ACLED และข้อมูลกำกับของขอบเขตที่มีเอกสาร เช่น DMZ เกาหลี",
+        "freshness": "เขตฐานถูกคัดสรรและคงที่ ข้อมูลเหตุการณ์ความขัดแย้งที่เปลี่ยนตามเวลาถูกติดตามแยกผ่านฟีด ACLED/UCDP และสัญญาณสถานะระบบ",
+        "confidence": "เหมาะสำหรับวางทิศทางทางภูมิศาสตร์ ข้อนี้โดยลำพังไม่ยืนยันว่าเหตุการณ์กำลังเกิดตามเวลาจริง",
+        "limitations": {
+          "0": "เขตแบบคงที่อาจตามการเปลี่ยนแปลงทางยุทธวิธีที่รวดเร็วไม่ทัน",
+          "1": "หลักฐานความขัดแย้งบางส่วนปรากฏในเหตุการณ์ความขัดแย้ง ความไม่มั่นคงของประเทศ หรือแผงที่เกี่ยวข้อง ไม่ได้ปรากฏเป็นรูปหลายเหลี่ยมของเขตความขัดแย้ง"
+        },
+        "related": {
+          "0": "เหตุการณ์ UCDP",
+          "1": "แผงความไม่มั่นคงของประเทศ",
+          "2": "ภาพรวมความเสี่ยงเชิงยุทธศาสตร์",
+          "3": "ภาพรวมประเทศ"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "การบิน",
+        "purpose": "แสดงรหัสทรานสปอนเดอร์ที่ได้รับรายงาน 7500, 7600 และ 7700 โดยไม่ขึ้นกับการจำแนกทางทหาร",
+        "source": "การสอบถามรหัสสคว็อกแบบตรงไปยัง adsb.lol รายละเอียดอากาศยานใช้ช่องข้อมูลของผู้ให้บริการ การระบุที่มาคือ ODbL",
+        "freshness": "ตรวจทุกนาทีขณะที่มองเห็น ข้อความล่าสุดต้องมีอายุไม่เกิน 120 วินาที ตำแหน่งบนแผนที่ต้องมีอายุไม่เกิน 90 วินาที รายงานที่ไม่ทราบจะหมดอายุหลัง 15 นาที",
+        "confidence": "สัญญาณทรานสปอนเดอร์ที่ได้รับรายงานไม่ยืนยันเหตุการณ์ สาเหตุ การลงจอด หรือการคลี่คลาย",
+        "limitations": {
+          "0": "การครอบคลุมของเครื่องรับไม่ครบ",
+          "1": "เวลาของข้อความล่าสุดไม่ใช่เวลาที่เลือกรหัสสคว็อก",
+          "2": "อากาศยานที่ไม่มีตำแหน่งใหม่จะปรากฏเฉพาะในรายการรายละเอียด",
+          "3": "ข้อมูลที่ขัดกันและการสูญเสียการรับสัญญาณจะกลายเป็นไม่ทราบ"
+        },
+        "related": {
+          "0": "รายละเอียดอากาศยาน"
+        }
+      },
+      "ais": {
+        "category": "การเดินเรือ",
+        "purpose": "แสดงความหนาแน่นของเรือและสัญญาณการขาดช่วงของ AIS รอบน่านน้ำยุทธศาสตร์และจุดคอขวด",
+        "source": "สแนปชอตจากรีเลย์ของ AISStream บริการการเดินเรือของ WorldMonitor และตัวจำแนกการหยุดชะงักของจุดคอขวด",
+        "freshness": "สแนปชอตรีเลย์ของ AIS ถูกสร้างใหม่ทุก 5 วินาทีเป็นค่าเริ่มต้น เซิร์ฟเวอร์อาจเก็บสแนปชอตความหนาแน่นฐานไว้ในแคช 5 นาที เลเยอร์จะถูกปิดหรือล้าสมัยเมื่อใช้ข้อมูลรับรองหรือการเชื่อมต่อของรีเลย์ไม่ได้",
+        "confidence": "ใช้คัดกรองความผิดปกติทางทะเลได้ AIS เป็นข้อมูลที่เรือรายงานเอง และเรืออาจดับสัญญาณ",
+        "limitations": {
+          "0": "การครอบคลุม AIS ภาคพื้นดินไม่สม่ำเสมอ มีบันทึกว่าการมองเห็นในตะวันออกกลาง เอเชีย และมหาสมุทรเปิดอ่อนกว่า",
+          "1": "การเดินเรือแบบดับสัญญาณอนุมานจากช่องว่างและรูปแบบความแออัด ไม่ใช่หลักฐานตรงของเจตนา"
+        },
+        "related": {
+          "0": "แผงห่วงโซ่อุปทาน",
+          "1": "แถบจุดคอขวด",
+          "2": "เรือทหาร",
+          "3": "สัญญาณ AIS ในภาพรวมประเทศ"
+        }
+      },
+      "tradeRoutes": {
+        "category": "การเดินเรือ",
+        "purpose": "วาดเส้นทางตู้คอนเทนเนอร์ พลังงาน และสินค้าเทกองหลักที่ผ่านจุดคอขวดยุทธศาสตร์ เพื่อดูว่าการหยุดชะงักจะเดินทางไปตามเส้นทางใด",
+        "source": "ทะเบียนเส้นทางการค้าของ WorldMonitor พร้อมสถานะจุดคอขวดของห่วงโซ่อุปทานและบทสรุปการผ่าน",
+        "freshness": "รูปทรงของเส้นทางคงที่ สถานะจุดคอขวดถูกเรียกเพื่ออุ่นแคชทุก 6 นาที บทสรุปการผ่านรีเฟรชทุก 10 นาทีผ่านแคชของห่วงโซ่อุปทานและเส้นทางรีเลย์",
+        "confidence": "เหมาะเป็นบริบทการเปิดรับในระดับเส้นทาง ไม่ใช่ชุดข้อมูลกำหนดเส้นทางรายลำ",
+        "limitations": {
+          "0": "เส้นทางเป็นทางเดินที่จำลองไว้ และอาจไม่ตรงกับแผนเดินเรือลำใดลำหนึ่ง",
+          "1": "การซ้อนทับการหยุดชะงักขึ้นกับสภาพปัจจุบันของจุดคอขวดและ AIS"
+        },
+        "related": {
+          "0": "แผงห่วงโซ่อุปทาน",
+          "1": "ตัวสำรวจเส้นทาง",
+          "2": "เครื่องมือสถานการณ์",
+          "3": "เลเยอร์เส้นทางน้ำยุทธศาสตร์"
+        }
+      },
+      "flights": {
+        "category": "การบิน",
+        "purpose": "เน้นการหยุดชะงักของสนามบินและการปิดตาม NOTAM รวมถึง NOTAM น่านฟ้าที่มีผลอยู่ตอนนี้หรือจะเริ่มภายใน 24 ชั่วโมง (ข้อจำกัดการบินชั่วคราว พื้นที่จำกัด พื้นที่อันตราย พื้นที่ห้าม พื้นที่ปฏิบัติการทางทหาร การจองน่านฟ้าและการปิดน่านฟ้า) และตำแหน่งอากาศยานสดเมื่อติดตามได้",
+        "source": "FAA ASWS, AviationStack, บริการจัดการ NOTAM ของ FAA (NMS-API) และ NOTAM ของ ICAO, adsb.lol (ODbL), Wingbits, การกู้บริการ OpenSky รุ่นเก่า, การเติมช่องว่างแบบไม่เชิงพาณิชย์ที่เลือกได้จาก airplanes.live/adsb.fi และบริการการบิน NOTAM น่านฟ้าถูกวาดเป็นรูปหลายเหลี่ยมเมื่อ NMS ให้รูป เป็นวงกลมเมื่อ NOTAM ให้รัศมีสูงสุด 250 ไมล์ทะเล และเป็นหมุดในกรณีอื่น",
+        "freshness": "ข้อมูลตั้งต้นของการหยุดชะงักสนามบินทำงานเป็นจังหวะ 30 นาที NOTAM น่านฟ้าถูกเติมทุก 5 นาทีจากการดึงรายการเปลี่ยนแปลงของ NMS พร้อมการทำให้ตรงทั้งชุดวันละครั้ง โดยเทียบกับเกณฑ์ความสดใหม่ 20 นาที แผงการบินยังรีเฟรชมุมมองปฏิบัติการตามรอบการสอบถามทุก 5 นาที",
+        "confidence": "เหมาะที่สุดสำหรับการคัดการหยุดชะงัก การครอบคลุมอากาศยานสดแต่ละลำขึ้นกับความพร้อมของ ADS-B และผู้ให้ข้อมูลที่ตั้งค่าไว้ ข้อความ NOTAM มีผลตามที่ FAA แจกจ่าย",
+        "limitations": {
+          "0": "เมื่อไม่มีกุญแจ API อาจปรากฏข้อมูลสาธิตจำลองที่อิง AviationStack",
+          "1": "ตำแหน่งอากาศยานสดอาจล่าช้าหรือหายไปในที่ที่การครอบคลุม ADS-B อ่อนหรือถูกบัง",
+          "2": "พื้นที่ NOTAM น่านฟ้าถูกวาดบนแผนที่ deck.gl เท่านั้น แผนที่ SVG และลูกโลกแสดงหมุดสนามบิน",
+          "3": "TFR ของสหรัฐส่วนใหญ่บรรยายรูปไว้ในข้อความเท่านั้น จึงปรากฏเป็นหมุดที่ตำแหน่ง NOTAM ไม่ใช่รูปของพื้นที่จำกัด",
+          "4": "ตารางเวลาภายในช่วงมีผลของ NOTAM (เช่น ชั่วโมงในแต่ละวัน) แสดงในทูลทิป แต่ไม่ถูกใช้ตัดสินว่าจะมองเห็นหรือไม่"
+        },
+        "related": {
+          "0": "แผงข่าวกรรมการสายการบิน",
+          "1": "แถบคำสั่งการบิน",
+          "2": "สัญญาณการบินในภาพรวมประเทศ",
+          "3": "เหตุฉุกเฉินอากาศยาน",
+          "4": "การรบกวนการนำทาง"
+        }
+      },
+      "ucdpEvents": {
+        "category": "ความขัดแย้ง",
+        "purpose": "ลงจุดบันทึกความขัดแย้งด้วยอาวุธในระดับเหตุการณ์ พร้อมประเทศ ผู้กระทำ วันที่ และช่วงจำนวนผู้เสียชีวิต",
+        "source": "GED API ของโปรแกรมข้อมูลความขัดแย้งอุปซอลา ผ่านบริการความขัดแย้งและข้อมูลตั้งต้นเหตุการณ์ UCDP",
+        "freshness": "ถูกเติมทุก 6 ชั่วโมงเมื่อข้อมูลตั้งต้น UCDP สมบูรณ์",
+        "confidence": "ความสม่ำเสมอเชิงบรรณาธิการสูงกว่าฟีดข่าวด่วนที่ยังไม่ผ่านการกลั่น แต่ตั้งใจให้ล่าช้า และไม่ใช่ฟีดจากสนามรบสด",
+        "limitations": {
+          "0": "จังหวะการเผยแพร่รายปีที่เน้นงานวิจัยอาจพลาดเหตุการณ์ที่ใหม่มาก",
+          "1": "ช่วงจำนวนผู้เสียชีวิตเป็นค่าประมาณ ควรอ่านเป็นช่วง ไม่ใช่จำนวนที่แน่นอน"
+        },
+        "related": {
+          "0": "แผงเหตุการณ์ความขัดแย้ง UCDP",
+          "1": "องค์ประกอบความขัดแย้งของดัชนีความไม่มั่นคงของประเทศ",
+          "2": "ไทม์ไลน์ประเทศ"
+        }
+      },
+      "weather": {
+        "category": "สภาพอากาศ",
+        "purpose": "แสดงประกาศเตือนสภาพอากาศรุนแรงอย่างเป็นทางการที่ยังมีผล จากหน่วยงานอุตุนิยมวิทยาแห่งชาติ รวมเป็นฟีด weather:alerts:v1 เดียว",
+        "source": "กรมอุตุนิยมวิทยาแห่งชาติสหรัฐ (NWS) กระทรวงสิ่งแวดล้อมและการเปลี่ยนแปลงสภาพภูมิอากาศแคนาดา (ECCC) และการรวม CAP ของศูนย์ข้อมูลสภาพอากาศรุนแรงของ WMO (SWIC) ถูกเติมผ่านรีเลย์ของ WorldMonitor",
+        "freshness": "ประกาศของ NWS, ECCC และ SWIC ถูกเติมโดยรีเลย์ทุก 15 นาที และถูกเฝ้าเทียบกับเกณฑ์ความสดใหม่ 45 นาที",
+        "confidence": "มีผลสำหรับประกาศที่หน่วยงานแห่งชาติซึ่งร่วมให้ข้อมูลเป็นผู้ออก โดยขึ้นกับจังหวะการเผยแพร่ต้นทาง NWS และ ECCC ถูกวาดเป็นรูปหลายเหลี่ยม ประกาศ SWIC ที่มีพิกัดถูกวาดที่จุดเซนทรอยด์ของประเทศของหน่วยงานผู้ออก พร้อมหมุดที่ระบุความละเอียดอย่างชัดเจน",
+        "limitations": {
+          "0": "สมาชิก SWIC ส่วนใหญ่เผยแพร่พิกัด ไม่ใช่รูปหลายเหลี่ยม ประกาศเหล่านั้นปรากฏเป็นจุดระดับประเทศ พร้อมคำบรรยายพื้นที่ตามต้นฉบับ ไม่ใช่การซ้อนทับของพื้นที่ที่ถูกเตือน",
+          "1": "การครอบคลุมของ SWIC ขึ้นกับว่าสมาชิก WMO รายใดกำลังเผยแพร่เข้าตัวรวบรวม ความหนาแน่นต่างกันตามภูมิภาค",
+          "2": "แถว SWIC ของสหรัฐและแคนาดาถูกข้าม เพราะ NWS และ ECCC ให้การครอบคลุมระดับรูปหลายเหลี่ยมแก่ประเทศเหล่านั้นอยู่แล้ว"
+        },
+        "related": {
+          "0": "เลเยอร์เหตุการณ์ธรรมชาติ",
+          "1": "ป๊อปอัปการแจ้งเตือนสภาพอากาศ",
+          "2": "สถานะความสดใหม่ของข้อมูล"
+        }
+      },
+      "canadaRoads": {
+        "category": "การขนส่ง",
+        "purpose": "แสดงเหตุการณ์บนถนน ประกาศเตือน สภาพถนน การปิด การก่อสร้าง และอันตรายอย่างเป็นทางการ ในเขตอำนาจของแคนาดาที่รองรับ",
+        "source": "ฟีดระดับจังหวัดของออนแทรีโอ 511 แอลเบอร์ตา 511 และแมนิโทบา 511 ข้อจำกัดถนนของนครโตรอนโต และ DriveBC Open511 ถูกเติมผ่าน WorldMonitor",
+        "freshness": "ออนแทรีโอ แอลเบอร์ตา และแมนิโทบา 511 ถูกเติมทุก 15 นาที และถูกเฝ้าเทียบกับเกณฑ์ความสดใหม่ 45 นาที ข้อจำกัดของโตรอนโตถูกเติมทุก 2 ชั่วโมง DriveBC Open511 ถูกเติมทุก 30 นาที",
+        "confidence": "มีผลสำหรับผู้เผยแพร่ระดับจังหวัดและเทศบาลที่รองรับ โดยขึ้นกับจังหวะการเผยแพร่ต้นทางและรูปทรงที่วางบนแผนที่",
+        "limitations": {
+          "0": "ไม่ได้นำเข้า roadconditions ของแอลเบอร์ตา 511 (จุดปลายทางของผู้ให้บริการตอบ 404) การวาดสดของแอลเบอร์ตามีเพียงเหตุการณ์และประกาศเตือน",
+          "1": "ประกาศระดับจังหวัดที่ไม่มีพิกัดไม่ปรากฏเป็นจุดบนแผนที่",
+          "2": "เส้นหลายจุดของสภาพถนนอาจย่อรูปทรงทางหลวงที่ซับซ้อน"
+        },
+        "related": {
+          "0": "การแจ้งเตือนสภาพอากาศ",
+          "1": "สถานะความสดใหม่ของข้อมูล"
+        }
+      },
+      "canadaAlerts": {
+        "category": "การแจ้งเตือนฉุกเฉิน",
+        "purpose": "แสดงคำเตือนความปลอดภัยสาธารณะที่ยังมีผลของแอลเบอร์ตา บริติชโคลัมเบีย และซัสแคตเชวัน เป็นจุดบนแผนที่ เคียงกับสภาพอากาศ NWS ของสหรัฐ",
+        "source": "Atom ของการแจ้งเตือนฉุกเฉินแอลเบอร์ตา เลเยอร์ GeoJSON ของคำสั่งและประกาศอพยพ OGL-BC และฟีด JSON สาธารณะของ SaskAlert พร้อมรายละเอียด CAP 1.2 บนโฮสต์เดียวกัน ถูกปรับเป็นชุดรวม canadaAlerts เดียว รูปหลายเหลี่ยม CAP/GeoRSS รูปหลายเหลี่ยมอพยพของบริติชโคลัมเบีย และรูปหลายเหลี่ยม CAP ของ SaskAlert กลายเป็นจุดเซนทรอยด์ รายการที่ไม่มีรูปทรงใช้จุดเซนทรอยด์ของจังหวัดต้นทาง",
+        "freshness": "แหล่งระดับจังหวัดถูกเติมทุก 15 นาที และชุดรวมถูกเฝ้าเทียบกับเกณฑ์ความสดใหม่ 45 นาที ฟีดว่าง (ไม่มีประกาศที่ยังมีผล) เป็นความสำเร็จที่ถูกต้องแม้ไม่มีรายการ",
+        "confidence": "มีผลสำหรับประกาศที่การแจ้งเตือนฉุกเฉินแอลเบอร์ตา คำสั่งและประกาศอพยพของบริติชโคลัมเบีย และ SaskAlert เป็นผู้เผยแพร่ โดยขึ้นกับจังหวะการเผยแพร่ต้นทางและรูปทรงประกาศที่วางบนแผนที่",
+        "limitations": {
+          "0": "การครอบคลุมจำกัดอยู่ที่แอลเบอร์ตา บริติชโคลัมเบีย และซัสแคตเชวัน ออนแทรีโอไม่มีฟีดที่เครื่องอ่านได้ซึ่งจังหวัดเป็นผู้ดำเนินการและเข้าเกณฑ์ นอกเหนือจาก NAAD ที่ถูกตัดออก",
+          "1": "ไม่ได้ใช้แทนประกาศสภาพอากาศ NWS ของสหรัฐ หรือเลเยอร์ถนนของออนแทรีโอและโตรอนโต",
+          "2": "รายการที่ไม่มีระดับความรุนแรงซึ่งวางบนแผนที่ได้ (ความหมายของ CAP และสีของแอลเบอร์ตา สถานะการอพยพของบริติชโคลัมเบีย หรือระดับความรุนแรง CAP ของ SaskAlert) ถูกทิ้ง และไม่ถูกแต่งขึ้น สีหรือระดับในบทสรุปของ SaskAlert ไม่ถูกถือเป็นระดับความรุนแรงของ CAP"
+        },
+        "related": {
+          "0": "การแจ้งเตือนสภาพอากาศ",
+          "1": "เลเยอร์เหตุการณ์ธรรมชาติ",
+          "2": "สถานะความสดใหม่ของข้อมูล"
+        }
+      },
+      "cyberThreats": {
+        "category": "ไซเบอร์",
+        "purpose": "วางตัวชี้วัดการบุกรุกที่เติมข้อมูลภูมิศาสตร์บนแผนที่ เช่น เซิร์ฟเวอร์ C2 เครื่องที่ให้บริการมัลแวร์ ฟิชชิง URL ที่เป็นอันตราย และโครงสร้างพื้นฐานแรนซัมแวร์",
+        "source": "Feodo Tracker และ URLhaus ของ abuse.ch, C2IntelFeeds, AlienVault OTX, AbuseIPDB, ฟีด RSS และข่าวของ ransomware.live พร้อมการเติมตำแหน่งทางภูมิศาสตร์ของ IP",
+        "freshness": "ข้อมูลตั้งต้นของภัยไซเบอร์ทำงานทุก 2 ชั่วโมง IOC ที่แสดงใช้หน้าต่างเลื่อน 14 วัน และถูกจำกัดจำนวนเพื่อให้แผนที่ทำงานได้",
+        "confidence": "เหมาะสำหรับมองโครงสร้างพื้นฐาน แต่การระบุแหล่งที่มาและการหาที่ตั้งของ IP อาจมีสัญญาณรบกวน",
+        "limitations": {
+          "0": "การหาที่ตั้งของ IP อาจชี้ไปที่โครงสร้างที่รับฝากข้อมูล ไม่ใช่ผู้ดำเนินการหรือผู้เสียหาย",
+          "1": "ความพร้อมของฟีด กุญแจ API และรายงานการใช้ในทางที่ผิดของแต่ละฟีด อาจทำให้การครอบคลุมเอนเอียง"
+        },
+        "related": {
+          "0": "ป๊อปอัปแผนที่ภัยคุกคามไซเบอร์",
+          "1": "ส่วนไซเบอร์ที่ส่งผลต่อความไม่มั่นคงของประเทศ",
+          "2": "สถานะความสดใหม่ของข้อมูล"
+        }
+      },
+      "natural": {
+        "category": "ภัยธรรมชาติ",
+        "purpose": "แสดงแผ่นดินไหว ประกาศภัยพิบัติรุนแรง และเหตุการณ์สังเกตการณ์โลกที่ยังดำเนินอยู่ เพื่อรับรู้สถานการณ์",
+        "source": "แผ่นดินไหวของ USGS ประกาศของ GDACS และเหตุการณ์ของ NASA EONET รวมเข้าบริการเหตุการณ์ธรรมชาติ",
+        "freshness": "เหตุการณ์ธรรมชาติถูกเติมทุก 30 นาที ความคาดหมายของแผ่นดินไหว USGS ถูกบันทึกไว้ว่าแหล่งข้อมูลมีจังหวะประมาณ 5 นาที",
+        "confidence": "แข็งแรงสำหรับสัญญาณภัยพิบัติสาธารณะที่ตรวจพบแล้ว ความเชื่อมั่นต่างกันตามชนิดของภัยและความล่าช้าของการรายงานต้นทาง",
+        "limitations": {
+          "0": "ประกาศ GDACS ที่ความรุนแรงต่ำถูกกรองออก เพื่อให้แผนที่อ่านได้",
+          "1": "ไฟป่าของ EONET ถูกกรองตามความสดใหม่ ดังนั้นเหตุการณ์ที่ยังเปิดอยู่แต่เริ่มมานานอาจไม่ปรากฏเป็นจุดบนแผนที่ที่ยังทำงาน"
+        },
+        "related": {
+          "0": "ป๊อปอัปเลเยอร์เหตุการณ์ธรรมชาติ",
+          "1": "การแจ้งเตือนสภาพอากาศ",
+          "2": "สัญญาณธรรมชาติในภาพรวมประเทศ"
+        }
+      },
+      "waterways": {
+        "category": "การเดินเรือ",
+        "purpose": "ทำเครื่องหมายเส้นทางน้ำยุทธศาสตร์และจุดคอขวด เพื่ออ่านสัญญาณการหยุดชะงักเทียบกับภูมิศาสตร์ทางทะเลที่คงที่",
+        "source": "ทะเบียนเส้นทางน้ำยุทธศาสตร์ของ WorldMonitor พร้อมการซ้อนสถานะจุดคอขวดของห่วงโซ่อุปทานจาก AIS คำเตือนของ NGA และฟีดที่ได้จาก PortWatch",
+        "freshness": "ตำแหน่งเส้นทางน้ำคงที่ สถานะจุดคอขวดแบบสดถูกเรียกเพื่ออุ่นแคชทุก 6 นาที บทสรุปการผ่านรีเฟรชทุก 10 นาทีเมื่อเส้นทางของรีเลย์และ PortWatch สมบูรณ์",
+        "confidence": "สูงสำหรับภูมิศาสตร์ที่คงที่ ความเชื่อมั่นของการหยุดชะงักแบบสดขึ้นกับฟีดที่มาคู่กัน คือ AIS, NGA และ PortWatch",
+        "limitations": {
+          "0": "หมุดจุดคอขวดที่มองเห็นไม่ได้หมายความว่ามีการหยุดชะงักกำลังเกิดอยู่",
+          "1": "รั้วภูมิศาสตร์ของพื้นที่และเส้นทางที่จำลองไว้อาจย่อรูปแบบการจราจรที่ซับซ้อน"
+        },
+        "related": {
+          "0": "แผงห่วงโซ่อุปทาน",
+          "1": "เลเยอร์เส้นทางการค้า",
+          "2": "ตัวสำรวจเส้นทาง",
+          "3": "เครื่องมือสถานการณ์"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "ความเสี่ยงของประเทศ",
+        "purpose": "ระบายสีประเทศตามคะแนนปัจจุบันของดัชนีความไม่มั่นคงของประเทศ เพื่อคัดความเสี่ยงเชิงยุทธศาสตร์อย่างกว้าง",
+        "source": "บริการให้คะแนนดัชนีความไม่มั่นคงของประเทศของ WorldMonitor ใช้สัญญาณความขัดแย้ง ความไม่สงบ คำแนะนำ ไซเบอร์ การติดตามเรือ การบิน เหตุการณ์ธรรมชาติ และข่าว",
+        "freshness": "แคชของคะแนนความเสี่ยงถูกเรียกเพื่ออุ่นแคชทุก 8 นาที seed-meta และ health.riskScores แสดงสถานะสด ล้าสมัย บางส่วน หรือเสื่อมสภาพ เทียบกับเกณฑ์ความสดใหม่ 30 นาที",
+        "confidence": "เป็นสัญญาณของแบบจำลองประกอบ ไม่ใช่การจัดอันดับประเทศอย่างเป็นทางการ และไม่ใช่การพยากรณ์ความน่าจะเป็น",
+        "limitations": {
+          "0": "กลุ่มแหล่งข้อมูลที่บางหรือเสื่อมสภาพอาจลดความเชื่อมั่น แม้ประเทศนั้นยังมีคะแนน",
+          "1": "สีในระดับประเทศอาจซ่อนความต่างภายในประเทศ และควรตรวจกับแผงก่อนนำไปอ้างอิง"
+        },
+        "related": {
+          "0": "แผงความไม่มั่นคงของประเทศ",
+          "1": "แผงภาพรวมความเสี่ยงเชิงยุทธศาสตร์",
+          "2": "สถานะความสดใหม่ของข้อมูล",
+          "3": "ภาพรวมประเทศ"
+        }
+      }
+    },
+    "fallback": {
+      "category": "เลเยอร์",
+      "purpose": "เลเยอร์นี้เปิดและปิดบนแผนที่ได้ แต่ยังไม่มีการ์ดแหล่งที่มาและความเชื่อมั่นที่ผ่านการคัดสรร",
+      "source": "ยังไม่ถูกคัดสรรในชุดคำอธิบายเลเยอร์ของ v1",
+      "freshness": "ที่นี่ไม่มีการประกาศข้อกำหนดความสดใหม่ในระดับเลเยอร์ ให้ตรวจป้ายสถานะของแผงที่มองเห็น ป๊อปอัป หรือสถานะความสดใหม่ของข้อมูลเมื่อมี",
+      "confidence": "ยังไม่ทราบ จนกว่าจะเพิ่มข้อมูลกำกับที่เจาะจงตามแหล่ง",
+      "limitations": {
+        "0": "การไม่มีการ์ดที่คัดสรรไม่ได้หมายความว่าเลเยอร์ไม่ได้รับการรองรับ",
+        "1": "ใช้ป๊อปอัปของเลเยอร์และแผงที่เกี่ยวข้องเพื่อดูบริบทที่เจาะจงตามแหล่ง"
+      },
+      "related": {
+        "0": "คู่มือเลเยอร์"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "ไม่สามารถใช้ข้อมูล UKMTO ได้",
+    "empty": "UKMTO ไม่ได้ส่งคืนเหตุการณ์",
+    "stale": "ข้อมูลแหล่งที่มาล้าสมัย ตรวจสอบล่าสุด",
+    "current": "ตรวจสอบแหล่งที่มาแล้ว",
+    "reportedClaims": "รายงานจากผู้เผยแพร่ ข้อกล่าวอ้างอาจยังอยู่ระหว่างการสอบสวน",
+    "occurred": "เหตุการณ์",
+    "reported": "เผยแพร่"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "แผนที่ตลาดโลก",
+      "liveNews": "ข่าวตลาดหลัก",
+      "insights": "ข้อมูลเชิงลึกตลาด AI"
+    },
+    "tech": {
+      "map": "แผนที่เทคโนโลยีโลก",
+      "liveNews": "ข่าวเทคโนโลยี"
+    },
+    "commodity": {
+      "map": "แผนที่สินค้าโภคภัณฑ์",
+      "liveNews": "ข่าวสินค้าโภคภัณฑ์",
+      "insights": "ข้อมูลเชิงลึกสินค้าโภคภัณฑ์ AI"
+    },
+    "energy": {
+      "map": "แผนที่พลังงาน",
+      "liveNews": "ข่าวพลังงาน",
+      "insights": "ข้อมูลเชิงลึกพลังงาน AI"
+    },
+    "happy": {
+      "map": "แผนที่ข่าวดี"
+    }
+  },
+  "pwaInstall": {
+    "title": "ติดตั้งแอป",
+    "share": "ใน Safari ให้แตะแชร์ (สี่เหลี่ยมที่มีลูกศรชี้ขึ้น) คุณอาจต้องเปิดเมนูเพิ่มเติมก่อน",
+    "add": "เลือกเพิ่มไปยังหน้าจอโฮม",
+    "confirm": "แตะเพิ่ม แล้วเปิด World Monitor จากหน้าจอโฮม",
+    "close": "ปิด",
+    "alertsHint": "ติดตั้ง World Monitor บนหน้าจอโฮมเพื่อรับการแจ้งเตือนบน iPhone หรือ iPad เครื่องนี้",
+    "how": "วิธีติดตั้ง"
+  },
+  "teamDashboards": {
+    "desc": "แดชบอร์ดที่ทีมของคุณแชร์ไว้ เปิดเพื่อเพิ่มเป็นแท็บใหม่",
+    "empty": "ทีมของคุณยังไม่ได้แชร์แดชบอร์ดใด ๆ แชร์แท็บนี้เพื่อให้สมาชิกทุกคนในทีมได้รับแผง ขนาด และแผนที่",
+    "open": "เปิด {{name}} เป็นแท็บใหม่",
+    "stopSharing": "หยุดแชร์ {{name}}",
+    "confirmStop": "หยุดแชร์ {{name}} กับทีมของคุณ? แท็บที่สมาชิกเปิดไปแล้วจะคงเดิม",
+    "shareTab": "แชร์แท็บนี้กับทีมของคุณ",
+    "shareChanges": "แชร์การเปลี่ยนแปลงของแท็บนี้กับทีมของคุณ",
+    "behind": "ทีมของคุณเปลี่ยนแปลงแดชบอร์ดนี้หลังจากที่คุณเปิดไว้",
+    "getLatest": "ดึงเวอร์ชันล่าสุด",
+    "opened": "เปิด {{name}} จากทีมของคุณ",
+    "shared": "แชร์ {{name}} กับทีมของคุณ",
+    "updated": "แท็บนี้มีเวอร์ชันล่าสุดของทีมของคุณแล้ว",
+    "stopped": "หยุดแชร์ {{name}}",
+    "failed": "ไม่สามารถเข้าถึงแดชบอร์ดของทีมได้ ลองใหม่",
+    "limit": "ทีมของคุณแชร์แดชบอร์ด {{limit}} แห่งแล้ว หยุดแชร์อันใดอันหนึ่งก่อน",
+    "focusNotEntitled": "แผนของคุณไม่รวมการแชร์แดชบอร์ดที่มีโฟกัส ล้างโฟกัสแท็บนี้เพื่อแชร์พैนเนลต่างๆ",
+    "focusUnreadable": "{{name}} มีโฟกัสที่เวอร์ชันนี้ไม่สามารถแสดงได้ โหลดใหม่เพื่ออัปเดต แล้วเปิดอีกครั้ง"
+  },
+  "focus": {
+    "barLabel": "โฟกัส",
+    "summary": "โฟกัสที่ {{countries}}",
+    "neighboursOff": "ไม่รวมประเทศเพื่อนบ้าน",
+    "chosenLabel": "เลือก",
+    "neighboursLabel": "ประเทศเพื่อนบ้าน",
+    "neighbourItem": "ประเทศเพื่อนบ้าน: {{name}}",
+    "range": "{{start}} ถึง {{end}}",
+    "windowEnded": "หน้าต่างสิ้นสุดเมื่อ {{date}}",
+    "windowStarts": "เริ่มต้น {{date}}",
+    "windowUntil": "จนถึง {{date}}",
+    "windowFrom": "ตั้งแต่ {{date}}",
+    "edit": "แก้ไข",
+    "clear": "ล้าง",
+    "clearAria": "ล้างโฟกัสและแสดงโลกทั้งหมด",
+    "clearFocus": "ล้างโฟกัส",
+    "notFiltered": "ไม่ได้กรอง",
+    "notFilteredGlobal": "ข้อมูลทั่วโลก: ไม่ได้กรองตามประเทศ",
+    "notFilteredYet": "ยังไม่ได้กรองตามประเทศ",
+    "gateSignedOutDesc": "ลงชื่อเข้าใช้เพื่อโฟกัสแท็บแดชบอร์ดบนประเทศที่คุณติดตาม",
+    "gateUpgradeDesc": "การโฟกัสแท็บบนประเทศที่เลือกมาพร้อมกับ Pro Business, API Business และ Enterprise",
+    "gateUpgradeCta": "อัปเกรด",
+    "tabButton": "โฟกัส",
+    "tabButtonTitle": "โฟกัสแท็บนี้บนประเทศที่เลือก",
+    "tabButtonTitleActive": "แก้ไขโฟกัสของแท็บนี้",
+    "newTitle": "โฟกัสแท็บนี้",
+    "editTitle": "แก้ไขโฟกัส",
+    "intro": "พैนเนลที่สามารถกรองตามประเทศจะแสดงเฉพาะประเทศเหล่านี้ ส่วนอื่นๆ จะแสดง \"ไม่ได้กรอง\"",
+    "countriesLabel": "ประเทศ",
+    "count": "{{n}} จาก {{max}}",
+    "searchPlaceholder": "ค้นหาประเทศ",
+    "resultsLabel": "ประเทศที่ตรงกัน",
+    "limitReached": "คุณเลือกประเทศ {{max}} แล้ว ซึ่งเป็นจำนวนสูงสุดที่โฟกัสสามารถจุได้",
+    "removeCountry": "นำ {{name}} ออก",
+    "includeNeighbours": "รวมประเทศเพื่อนบ้าน",
+    "neighboursHint": "ความเสี่ยงข้ามพรมแดน ประเทศเพื่อนบ้านมีการทำเครื่องหมายเป็นเช่นนั้นและไม่นับรวมในจำนวน {{max}}",
+    "startLabel": "ตั้งแต่ (ไม่จำเป็น)",
+    "endLabel": "ถึง (ไม่จำเป็น)",
+    "datesHint": "สำหรับการเดินทางหรืองาน เมื่อหน้าต่างสิ้นสุด โฟกัสจะยังคงอยู่และแถบจะแสดงเช่นนั้น",
+    "errorNoCountries": "เลือกประเทศอย่างน้อยหนึ่งประเทศ",
+    "errorTooMany": "โฟกัสสามารถจุประเทศได้ถึง {{max}} ประเทศ",
+    "errorDates": "วันที่สิ้นสุดอยู่ก่อนวันที่เริ่มต้น",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "saved": "แท็บนี้โฟกัสที่ {{countries}}",
+    "cleared": "ล้างโฟกัสแล้ว แท็บนี้แสดงโลกทั้งหมด",
+    "notSaved": "ไม่สามารถบันทึกได้ เบราว์เซอร์นี้กำลังปิดกั้นการจัดเก็บไซต์",
+    "plusNeighbours_other": "+ ประเทศเพื่อนบ้าน {{count}}",
+    "filter": {
+      "showing": "แสดง {{countries}}",
+      "showingNeighbours": "แสดง {{countries}} + ประเทศเพื่อนบ้าน",
+      "showAll": "แสดงทั้งหมด",
+      "focusOff": "ปิดการโฟกัสในแผงนี้: แสดงทุกอย่าง",
+      "applyFocus": "ใช้การโฟกัส",
+      "applyFocusAria": "กรองแผงนี้ตามการโฟกัสอีกครั้ง",
+      "show": "แสดง",
+      "hide": "ซ่อน",
+      "noCountryTag": "ไม่มีประเทศ",
+      "emptyHint": "ส่วนที่เหลือจะนับด้านบน",
+      "emptyNews": "ไม่มีข่าวจากประเทศเหล่านี้ในหัวข้อปัจจุบัน",
+      "emptyAdvisories": "ไม่มีคำแนะนำการเดินทางสำหรับประเทศเหล่านี้",
+      "emptyConflict": "ไม่มีเหตุการณ์ความขัดแย้ง UCDP สำหรับประเทศเหล่านี้",
+      "emptyConflictPartial": "ไม่มีเหตุการณ์ความขัดแย้งสำหรับประเทศเหล่านี้ในเหตุการณ์ล่าสุด รายการเต็มไม่ได้โหลด",
+      "loadingConflict": "กำลังโหลดเหตุการณ์ความขัดแย้งทั้งหมดสำหรับประเทศเหล่านี้…",
+      "emptyAirports": "ไม่มีสนามบินที่คุณติดตามอยู่ในประเทศเหล่านี้",
+      "emptyFlights": "ไม่มีเที่ยวบินจากหรือไปยังประเทศเหล่านี้บนบอร์ดนี้",
+      "emptyAviationNews": "ไม่มีข่าวการบินสำหรับประเทศเหล่านี้ใน 24 ชั่วโมงที่ผ่านมา",
+      "tabNotFiltered": "แท็บนี้ไม่ได้กรองตามประเทศ",
+      "hidden_other": "{{count}} รายการที่ซ่อนโดยการโฟกัส",
+      "showAllAria_other": "แสดงทุกอย่างในแผงนี้ รวมถึง {{count}} รายการนอกการโฟกัส",
+      "unattributed_other": "{{count}} รายการที่ไม่มีประเทศ",
+      "showUnattributedAria_other": "แสดง {{count}} รายการที่ไม่มีประเทศ",
+      "hideUnattributedAria_other": "ซ่อน {{count}} รายการที่ไม่มีประเทศ",
+      "partialConflict": "แสดงเหตุการณ์ความขัดแย้งจาก 150 รายการล่าสุดเท่านั้น ไม่สามารถโหลดรายการทั้งหมดได้",
+      "partialConflictLoading": "กำลังแสดงเหตุการณ์ความขัดแย้ง 150 รายการล่าสุดขณะที่รายการทั้งหมดกำลังโหลด",
+      "emptyInstability": "ไม่มีคะแนนความไม่เสถียรสำหรับประเทศเหล่านี้",
+      "emptyOutbreaks": "ไม่มีการระบาดของโรคสำหรับประเทศเหล่านี้",
+      "emptyOutages": "ไม่มีการหยุดชะงักของอินเทอร์เน็ตสำหรับประเทศเหล่านี้",
+      "emptyRadiation": "ไม่มีการอ่านค่ารังสีสำหรับประเทศเหล่านี้",
+      "emptyFuelShortages": "ไม่มีการขาดแคลนเชื้อเพลิงสำหรับประเทศเหล่านี้",
+      "emptyEnergyDisruptions": "ไม่มีการหยุดชะงักของพลังงานสำหรับประเทศเหล่านี้",
+      "emptyDisplacement": "ไม่มีข้อมูลการอพยพสำหรับประเทศเหล่านี้",
+      "emptyCorrelation": "ไม่มีสัญญาณสำหรับประเทศเหล่านี้"
+    },
+    "draftAssessment": "ร่างการประเมิน",
+    "draftAssessmentAria": "เปิดการประเมินการเดินทาง ที่เต็มไปด้วยข้อมูลนี้แล้ว",
+    "draftCopied": "คัดลอกคำขอแล้ว วางลงในผู้ช่วย AI ของคุณ",
+    "draftCopiedPartial": "คำขอที่คัดลอกสำหรับ {{count}} ประเทศแรก การประเมินครอบคลุมได้สูงสุด {{max}} ประเทศ ประเทศที่ไม่รวม: {{omitted}}",
+    "draftCopyFailed": "ไม่สามารถคัดลอกคำขอได้"
+  },
+  "tripAssessment": {
+    "heading": "การประเมินการเดินทาง",
+    "intro": "ร่างแรกที่มีแหล่งที่มาของการประเมินความเสี่ยงในการเดินทาง สำหรับนักวิเคราะห์ที่จะสรุปเสร็จสิ้น โดยรายงานข้อมูลที่มีอยู่ และไม่ให้คำแนะนำ",
+    "privacy": "ประเทศ เมือง และวันที่เท่านั้น อย่าป้อนชื่อผู้เดินทาง โรงแรม หรือที่อยู่บนถนน ข้อมูลที่คุณป้อนจะไม่ถูกเก็บไว้",
+    "taskLabel": "ป้ายกำกับงาน (ไม่บังคับ)",
+    "taskLabelPlaceholder": "การเยี่ยมชมไซต์ระดับภูมิภาค",
+    "windowStart": "การเดินทางเริ่มต้น",
+    "windowEnd": "การเดินทางสิ้นสุด",
+    "countriesLabel": "ประเทศ ตามลำดับการเดินทาง",
+    "count": "{{n}} จาก {{max}}",
+    "searchPlaceholder": "เพิ่มประเทศ",
+    "addCountry": "เพิ่มประเทศไปยังการเดินทาง",
+    "limit": "การเดินทางครอบคลุมประเทศได้สูงสุด {{max}} ประเทศ",
+    "omitted": "ละไว้เพราะการเดินทางครอบคลุมประเทศได้สูงสุด {{max}} ประเทศ: {{names}}",
+    "cities": "เมือง คั่นด้วยเครื่องหมายจุลภาค (สูงสุด {{max}})",
+    "arrive": "มาถึง",
+    "depart": "ออกเดินทาง",
+    "moveEarlier": "ย้าย {{name}} ให้เร็วขึ้นในการเดินทาง",
+    "moveLater": "ย้าย {{name}} ให้ช้าลงในการเดินทาง",
+    "remove": "ลบ {{name}} ออกจากการเดินทาง",
+    "downloadMarkdown": "ดาวน์โหลด Markdown",
+    "downloadWord": "ดาวน์โหลดสำหรับ Word",
+    "print": "พิมพ์หรือบันทึกเป็น PDF",
+    "copyRequest": "คัดลอกคำขอสำหรับผู้ช่วย AI",
+    "close": "ปิด",
+    "building": "กำลังสร้างร่างจากข้อมูลล่าสุด…",
+    "downloaded": "ดาวน์โหลด {{file}} แล้ว การดาวน์โหลดแต่ละครั้งจะถูกสร้างใหม่และมีการประทับเวลาจับภาพ",
+    "printOpened": "เปิดกล่องโต้ตอบพิมพ์แล้ว เลือก Save as PDF เพื่อเก็บสำเนา",
+    "errNoCountries": "เพิ่มประเทศอย่างน้อยหนึ่งประเทศ",
+    "errTooMany": "การเดินทางครอบคลุมประเทศได้สูงสุด {{max}} ประเทศ",
+    "errWindow": "การเดินทางต้องสิ้นสุดในวันเดียวกันหรือหลังจากวันที่เริ่มต้น",
+    "errCities": "{{name}}: ระบุได้สูงสุด {{max}} เมือง",
+    "errCountryDates": "{{name}}: วันที่ออกเดินทางต้องเป็นวันเดียวกันหรือหลังจากวันที่มาถึง",
+    "errOutsideWindow": "{{name}}: วันที่ต้องอยู่ภายในช่วงเวลาการเดินทาง",
+    "errInvalid": "ไม่สามารถสร้างร่างจากการเดินทางนี้:",
+    "errAuth": "ลงชื่อเข้าอีกครั้งเพื่อสร้างร่าง",
+    "errUpgrade": "การประเมินการเดินทางรวมอยู่ในแผน Pro Business, API Business และ Enterprise",
+    "errBusy": "มีการร้องขออย่างมากเกินไป ลองใหม่ในอีกหนึ่งนาที",
+    "errUnavailable": "ข้อมูลเบื้องหลังร่างไม่พร้อมใช้งานในขณะนี้ ลองใหม่ในอีกหนึ่งนาที",
+    "errGeneric": "ไม่สามารถสร้างร่างได้ ลองใหม่",
+    "errDownload": "ไม่สามารถดาวน์โหลดไฟล์ที่นี่ได้ ใช้พิมพ์หรือบันทึกเป็น PDF แทน",
+    "errLoad": "ไม่สามารถเปิดการประเมินการเดินทางได้ รีโหลดหน้าและลองอีกครั้ง"
   }
 }

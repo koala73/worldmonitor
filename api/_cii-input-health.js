@@ -13,9 +13,17 @@
 //   fallback        some or all of the scored levels came from the last good
 //                   snapshot (`snapshotAt` is its producer clock, `filled` the
 //                   countries taken from it): the read was missing or stale, or
-//                   lost countries. Scores hold, but the input is dead.
+//                   lost countries with a register gone. Scores hold, but the
+//                   input is dead.
 // A report may also carry `sourcesMissing` (a live read lacked one of its
-// sources: dead) and `snapshotReadFailed` (shown, not dead on its own).
+// sources: dead), `filled` on a live state (countries a read with every
+// register reporting no longer lists, scored from the snapshot),
+// `droppedCountries` (countries no read has listed for longer than the snapshot
+// may stand in, now absent) and `snapshotReadFailed`. Only `sourcesMissing` is
+// dead on its own: a register can stop listing a country, and a live input that
+// merely lost one is a `warnings` entry, visible beside the states without
+// raising the verdict. The others ride on a dead entry when the input is dead
+// for another reason.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
 // An unreadable key rejects the whole build, so it surfaces as a stale
@@ -78,6 +86,7 @@ function provenanceDetail(report) {
   const detail = {};
   if (Array.isArray(report?.filled) && report.filled.length) detail.filled = report.filled.map(String);
   if (Array.isArray(report?.sourcesMissing) && report.sourcesMissing.length) detail.sourcesMissing = report.sourcesMissing.map(String);
+  if (Array.isArray(report?.droppedCountries) && report.droppedCountries.length) detail.droppedCountries = report.droppedCountries.map(String);
   if (report?.snapshotReadFailed === true) detail.snapshotReadFailed = true;
   return detail;
 }
@@ -94,6 +103,7 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     : null;
   const states = {};
   const dead = [];
+  const warnings = [];
   const notConfigured = [];
   const healthy = new Set();
 
@@ -135,11 +145,20 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     } else {
       healthy.add(id);
     }
+    // A country delisted at the source while the input is otherwise healthy.
+    if (healthy.has(id) && (detail.filled || detail.droppedCountries)) {
+      warnings.push({
+        id,
+        state,
+        ...(detail.filled ? { filled: detail.filled } : {}),
+        ...(detail.droppedCountries ? { droppedCountries: detail.droppedCountries } : {}),
+      });
+    }
   }
 
   const unfedFamilies = Object.entries(CII_INPUT_POLICY.families)
     .filter(([, members]) => !members.some((id) => healthy.has(id)))
     .map(([family]) => family);
 
-  return { valid: reported !== null, states, dead, notConfigured, unfedFamilies };
+  return { valid: reported !== null, states, dead, warnings, notConfigured, unfedFamilies };
 }

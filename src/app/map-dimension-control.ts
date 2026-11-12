@@ -1,6 +1,7 @@
 import type { AppContext } from './app-context';
 import { STORAGE_KEYS, type MapModePreference } from '@/config/variants/base';
 import { isQuotaError, markStorageQuotaExceeded } from '@/utils/storage-quota';
+import { safeStorageHandle } from '@/utils/safe-storage';
 import type { DashboardMapMode } from '../../shared/agent-bus-contract';
 
 export interface MapDimensionLayerAdjustment {
@@ -55,9 +56,12 @@ function persistJson(key: string, value: unknown): boolean {
   // reads Vite's `import.meta.env.DEV` at import time and cannot run under tsx.
   // Import quota helpers from `storage-quota` directly so a full origin still
   // stops later persistent-cache writes, matching `saveToStorage()`.
-  if (typeof localStorage === 'undefined') return false;
+  // `typeof localStorage` is no guard: with site data blocked the getter
+  // throws SecurityError, so take the handle through the guarded accessor.
+  const store = safeStorageHandle();
+  if (store === null) return false;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    store.setItem(key, JSON.stringify(value));
     return true;
   } catch (error) {
     if (isQuotaError(error)) {

@@ -232,9 +232,9 @@ export function listAllConvexFunctionExports(convexRoot) {
     }
   }
   out.sort((a, b) => {
-    const byModule = a.moduleRef.localeCompare(b.moduleRef);
+    const byModule = a.moduleRef.localeCompare(b.moduleRef, 'en-US');
     if (byModule !== 0) return byModule;
-    return a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name, 'en-US');
   });
   return out;
 }

@@ -23,15 +23,17 @@ const DATASETS = {
 type MacroData = GetUsCpiMonthlyResponse | GetUsInterestRatesResponse
   | GetUsTreasuryParYieldCurveResponse | GetWorldCpiMonthlyResponse | GetGovernmentYieldCurveResponse;
 
-const PERCENT_CHANGE_SCHEMA = { type: 'object', properties: { percent: { type: 'number' } } };
+const percentChange = (description: string) => ({ type: 'object', description, properties: { percent: { type: 'number', description: 'Change, percent.' } } });
 const CPI_READING_SCHEMA = {
   type: 'object',
+  description: 'One CPI component; absent when not reported for the month.',
   properties: {
-    index: { type: 'number' },
-    monthOverMonth: PERCENT_CHANGE_SCHEMA,
-    yearOverYear: PERCENT_CHANGE_SCHEMA,
+    index: { type: 'number', description: 'Index level.' },
+    monthOverMonth: percentChange('Change from the previous month; absent when unknown.'),
+    yearOverYear: percentChange('Change from the same month a year earlier; absent when unknown.'),
   },
 };
+const yieldPercent = (tenor: string) => ({ type: 'number', description: `${tenor} yield, percent; absent when not quoted.` });
 
 function macroCountry(params: Record<string, unknown>): string | undefined {
   if (params.dataset === 'world-cpi' || params.dataset === 'government-yields') {
@@ -52,48 +54,53 @@ export const MACRO_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      dataset: { type: 'string', enum: Object.keys(DATASETS), description: 'Choose US CPI, US interest rates, US Treasury par yields, country CPI, or sovereign yields.' },
-      country: { type: 'string', description: `Required for world-cpi and government-yields. Omit for US-only datasets. ${COUNTRY_ARG_HINT}` },
-      history: { type: 'boolean', default: true, description: 'True returns bounded history; false requests the latest available snapshot.' },
-      limit: { type: 'integer', minimum: 1, maximum: 365, default: DEFAULT_LIST_LIMIT, description: 'Maximum newest observations per series, in chronological order.' },
+      dataset: { type: 'string', enum: Object.keys(DATASETS), description: 'Series family: us-cpi (US CPI by component), us-interest-rates (Fed funds, Treasury constant-maturity and SOFR rates), us-treasury-yields (US Treasury par yield curve), world-cpi (one country\'s CPI) or government-yields (one country\'s sovereign yield curve).' },
+      country: { type: 'string', description: `Country whose CPI or yield curve to read. Required for world-cpi and government-yields; the US datasets reject it. ${COUNTRY_ARG_HINT}` },
+      history: { type: 'boolean', default: true, description: 'Whether to return a time series (up to limit observations per series) or only the latest available observation.' },
+      limit: { type: 'integer', minimum: 1, maximum: 365, default: DEFAULT_LIST_LIMIT, description: 'Number of newest observations kept in each series, returned oldest first. Older observations are dropped and truncated is set.' },
     },
     required: ['dataset'],
   },
   outputSchema: {
     type: 'object', required: ['dataset', 'history', 'truncated', 'data'],
     properties: {
-      dataset: { type: 'string', enum: Object.keys(DATASETS) },
-      history: { type: 'boolean' },
+      dataset: { type: 'string', enum: Object.keys(DATASETS), description: 'Dataset read.' },
+      history: { type: 'boolean', description: 'Whether a time series (true) or the latest observation (false) was requested.' },
       truncated: { type: 'boolean', description: 'True if any series had older observations removed by the requested limit.' },
       data: {
         type: 'object', required: ['unavailable'],
         properties: {
-          unavailable: { type: 'boolean' },
-          country: { type: 'string' }, source: { type: 'string' }, measure: { type: 'string' },
-          months: { type: 'array', items: { type: 'object', properties: {
-            month: { type: 'integer' },
+          unavailable: { type: 'boolean', description: 'True when the dataset could not be read; the arrays are then empty. Not a zero reading.' },
+          country: { type: 'string', description: 'government-yields: ISO alpha-2 country read.' },
+          source: { type: 'string', description: 'government-yields: source id of the curve, such as jp-mof-cmt.' },
+          measure: { type: 'string', description: 'government-yields: yield measure (par, spot or benchmark), or monthly-10y for the monthly 10-year fallback.' },
+          months: { type: 'array', description: 'us-cpi: monthly readings, oldest first.', items: { type: 'object', properties: {
+            month: { type: 'integer', description: 'First day of the month, Unix epoch milliseconds.' },
             headline: CPI_READING_SCHEMA, core: CPI_READING_SCHEMA, food: CPI_READING_SCHEMA,
             energy: CPI_READING_SCHEMA, shelter: CPI_READING_SCHEMA, services: CPI_READING_SCHEMA,
           } } },
-          series: { type: 'array', items: { type: 'object', properties: {
-            id: { type: 'string' },
-            points: { type: 'array', items: { type: 'object', properties: { date: { type: 'integer' }, percent: { type: 'number' } } } },
+          series: { type: 'array', description: 'us-interest-rates: one entry per rate.', items: { type: 'object', properties: {
+            id: { type: 'string', description: 'Rate id, such as fedFundsEffective, treasuryTenYear or sofr.' },
+            points: { type: 'array', description: 'Observations, oldest first.', items: { type: 'object', properties: { date: { type: 'integer', description: 'Observation date, Unix epoch milliseconds.' }, percent: { type: 'number', description: 'Rate, percent.' } } } },
           } } },
-          curves: { type: 'array', items: { type: 'object', properties: {
-            date: { type: 'integer' },
-            tenors: { type: 'object', additionalProperties: { type: 'number' } },
-            oneMonth: { type: 'number' }, oneAndAHalfMonth: { type: 'number' }, twoMonth: { type: 'number' },
-            threeMonth: { type: 'number' }, fourMonth: { type: 'number' }, sixMonth: { type: 'number' },
-            oneYear: { type: 'number' }, twoYear: { type: 'number' }, threeYear: { type: 'number' },
-            fiveYear: { type: 'number' }, sevenYear: { type: 'number' }, tenYear: { type: 'number' },
-            twentyYear: { type: 'number' }, thirtyYear: { type: 'number' },
+          curves: { type: 'array', description: 'us-treasury-yields and government-yields: one yield curve per date, oldest first.', items: { type: 'object', properties: {
+            date: { type: 'integer', description: 'Curve date, Unix epoch milliseconds.' },
+            tenors: { type: 'object', additionalProperties: { type: 'number' }, description: 'government-yields: yield in percent keyed by tenor label, such as 10Y.' },
+            oneMonth: yieldPercent('1-month'), oneAndAHalfMonth: yieldPercent('6-week'), twoMonth: yieldPercent('2-month'),
+            threeMonth: yieldPercent('3-month'), fourMonth: yieldPercent('4-month'), sixMonth: yieldPercent('6-month'),
+            oneYear: yieldPercent('1-year'), twoYear: yieldPercent('2-year'), threeYear: yieldPercent('3-year'),
+            fiveYear: yieldPercent('5-year'), sevenYear: yieldPercent('7-year'), tenYear: yieldPercent('10-year'),
+            twentyYear: yieldPercent('20-year'), thirtyYear: yieldPercent('30-year'),
           } } },
-          countries: { type: 'array', items: { type: 'object', properties: {
-            country: { type: 'string' }, source: { type: 'string' }, frequency: { type: 'string' }, indexBase: { type: 'string' },
-            periods: { type: 'array', items: { type: 'object', properties: {
-              period: { type: 'integer' },
-              reading: { type: 'object', properties: { index: { type: 'number' },
-                periodOverPeriod: PERCENT_CHANGE_SCHEMA, yearOverYear: PERCENT_CHANGE_SCHEMA,
+          countries: { type: 'array', description: 'world-cpi: the requested country\'s CPI series.', items: { type: 'object', properties: {
+            country: { type: 'string', description: 'ISO alpha-2 country code.' },
+            source: { type: 'string', description: 'Source id of the series, such as eurostat-hicp.' },
+            frequency: { type: 'string', description: 'Reporting frequency of the series.' },
+            indexBase: { type: 'string', description: 'Base period of the index (where it equals 100).' },
+            periods: { type: 'array', description: 'Readings, oldest first.', items: { type: 'object', properties: {
+              period: { type: 'integer', description: 'Start of the period, Unix epoch milliseconds.' },
+              reading: { type: 'object', properties: { index: { type: 'number', description: 'Index level.' },
+                periodOverPeriod: percentChange('Change from the previous period; absent when unknown.'), yearOverYear: percentChange('Change from the same period a year earlier; absent when unknown.'),
               } },
             } } },
           } } },

@@ -21,7 +21,14 @@ import {
   trimMirrorReporters,
   assembleCountry,
   validate,
+  CRUDE_ORIGIN_GULF_PARTNERS,
+  crudeImportOriginPeriods,
+  buildCrudeImportOrigin,
+  crudeImportOriginSection,
+  fetchCrudeImportOriginRows,
 } from '../scripts/seed-oil-trade-series.mjs';
+import { GULF_PARTNER_CODES } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
+import { PRE_CRISIS_WINDOW } from '../shared/hormuz-crisis.js';
 
 const NOW = Date.parse('2026-10-18T12:00:00Z');
 
@@ -418,5 +425,170 @@ describe('review findings, round 2 (#9393)', () => {
 describe('publish gate', () => {
   it('refuses a payload with too few countries carrying any declared source', () => {
     assert.equal(validate({ countries: {} }), false);
+  });
+});
+
+// ── Importer-declared crude origin (pre-crisis and current-flows baselines) ──
+
+// Two keyed Comtrade calls recorded 2026-10-28 (HS 2709 imports from World and
+// the seven Hormuz-loading exporters, every reporter); JPN, IND, USA and KOR rows.
+const CRUDE_ORIGIN_FIXTURE = JSON.parse(readFileSync(new URL('./fixtures/energy-shock/comtrade-crude-origin-2026-10-28.json', import.meta.url), 'utf8'));
+const ORIGIN_NOW = Date.parse('2026-10-28T12:00:00Z');
+
+const windowShare = (importer, months, from, to) => {
+  let gulf = 0;
+  let world = 0;
+  months.forEach((m, i) => {
+    if (m < from || m > to || importer.worldUsdM[i] == null) return;
+    gulf += importer.gulfUsdM[i];
+    world += importer.worldUsdM[i];
+  });
+  return gulf / world;
+};
+
+describe('crude import origin (importer-declared Comtrade monthly)', () => {
+  it('uses the same seven Gulf partners as the shock model', () => {
+    assert.deepEqual(CRUDE_ORIGIN_GULF_PARTNERS.map((c) => String(c).padStart(3, '0')).sort(), [...GULF_PARTNER_CODES].sort());
+  });
+
+  it('requests the fixed pre-crisis window and the recent months after it: two calls', () => {
+    const periods = crudeImportOriginPeriods(ORIGIN_NOW);
+    assert.equal(periods.length, 2);
+    assert.deepEqual(periods[0], monthRange(PRE_CRISIS_WINDOW.startMonth, PRE_CRISIS_WINDOW.endMonth));
+    assert.deepEqual(periods[1], monthRange('2026-02', '2026-09'));
+    // A year on, the recent call still spans at most 12 months.
+    const later = crudeImportOriginPeriods(Date.parse('2027-08-15T00:00:00Z'));
+    assert.deepEqual(later[1], monthRange('2026-08', '2027-07'));
+    assert.ok(later.every((p) => p.length <= 12));
+  });
+
+  it('builds per-importer value columns from the recorded rows: Japan 92.7% pre-crisis, 60.5% in Jun-Aug 2026', () => {
+    const months = crudeImportOriginPeriods(ORIGIN_NOW).flat();
+    const importers = buildCrudeImportOrigin(CRUDE_ORIGIN_FIXTURE.rows, months);
+    assert.deepEqual(Object.keys(importers).sort(), ['IN', 'JP', 'KR', 'US']);
+    const jp = importers.JP;
+    assert.equal(jp.worldUsdM.length, months.length);
+    assert.ok(Math.abs(windowShare(jp, months, '2025-02', '2026-01') - 0.927) < 0.001);
+    assert.ok(Math.abs(windowShare(jp, months, '2026-06', '2026-08') - 0.605) < 0.001);
+    assert.ok(Math.abs(windowShare(importers.IN, months, '2025-02', '2026-01') - 0.482) < 0.001);
+    assert.ok(Math.abs(windowShare(importers.US, months, '2025-02', '2026-01') - 0.089) < 0.001);
+    // Korea files nothing after 2025-12, and Japan nothing for 2026-09 yet:
+    // those months are null, never zero.
+    assert.equal(importers.KR.worldUsdM[months.indexOf('2026-01')], null);
+    assert.equal(importers.KR.gulfUsdM[months.indexOf('2026-03')], null);
+    assert.equal(jp.worldUsdM[months.indexOf('2026-09')], null);
+  });
+
+  it('a filed month without Gulf rows is a Gulf value of 0; a month without a World row is not an observation', () => {
+    const months = ['2025-02', '2025-03', '2025-04'];
+    const rows = [
+      { reporterISO: 'DEU', partnerCode: 0, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 2e9 },
+      { reporterISO: 'DEU', partnerCode: 0, period: '202503', cmdCode: '2709', flowCode: 'M', primaryValue: 2e9 },
+      { reporterISO: 'DEU', partnerCode: 682, period: '202503', cmdCode: '2709', flowCode: 'M', primaryValue: 5e8 },
+      // Partner rows with no World total for the month.
+      { reporterISO: 'DEU', partnerCode: 784, period: '202504', cmdCode: '2709', flowCode: 'M', primaryValue: 1e8 },
+      // Not crude, not an import, not a Gulf partner: ignored.
+      { reporterISO: 'DEU', partnerCode: 682, period: '202502', cmdCode: '2710', flowCode: 'M', primaryValue: 9e9 },
+      { reporterISO: 'DEU', partnerCode: 682, period: '202502', cmdCode: '2709', flowCode: 'X', primaryValue: 9e9 },
+      { reporterISO: 'DEU', partnerCode: 512, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 9e8 },
+    ];
+    const { DE } = buildCrudeImportOrigin(rows, months);
+    assert.deepEqual(DE.worldUsdM, [2000, 2000, null]);
+    assert.deepEqual(DE.gulfUsdM, [0, 500, null]);
+  });
+
+  it('drops a month whose Gulf rows exceed the World total (a filing error)', () => {
+    const rows = [
+      { reporterISO: 'THA', partnerCode: 0, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 },
+      { reporterISO: 'THA', partnerCode: 784, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 3e9 },
+    ];
+    assert.deepEqual(buildCrudeImportOrigin(rows, ['2025-02']).TH, undefined, 'no observed month, no importer row');
+  });
+
+  it('a failed fetch carries the previous section forward instead of publishing an empty one', () => {
+    const months = ['2025-02'];
+    const ok = crudeImportOriginSection({
+      months,
+      rows: [{ reporterISO: 'JPN', partnerCode: 0, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 }],
+      fetchedAt: '2026-10-21T03:00:00.000Z',
+    });
+    assert.equal(ok.status, 'ok');
+    assert.deepEqual(ok.months, months);
+    assert.deepEqual(ok.importers.JP.worldUsdM, [1000]);
+    assert.match(ok.source, /UN Comtrade/);
+
+    const failed = crudeImportOriginSection({ months, error: new Error('Comtrade HTTP 503'), fetchedAt: '2026-10-28T03:00:00.000Z', previous: ok });
+    assert.equal(failed.status, 'unavailable');
+    assert.equal(failed.carriedForward, true);
+    assert.equal(failed.fetchedAt, '2026-10-21T03:00:00.000Z', 'the carried data keeps the date it was fetched');
+    assert.deepEqual(failed.importers, ok.importers);
+
+    // A requested window that comes back empty would silently drop its baseline
+    // (pre-crisis or current) for every importer: keep the previous section.
+    const emptyWindow = crudeImportOriginSection({
+      months,
+      rows: [{ reporterISO: 'JPN', partnerCode: 0, period: '202502', cmdCode: '2709', flowCode: 'M', primaryValue: 2e9 }],
+      windowRowCounts: [1, 0],
+      fetchedAt: '2026-10-28T03:00:00.000Z',
+      previous: ok,
+    });
+    assert.equal(emptyWindow.status, 'unavailable');
+    assert.equal(emptyWindow.carriedForward, true);
+    assert.deepEqual(emptyWindow.importers, ok.importers);
+
+    const none = crudeImportOriginSection({ months, error: new Error('Comtrade HTTP 503'), fetchedAt: '2026-10-28T03:00:00.000Z' });
+    assert.equal(none.status, 'unavailable');
+    assert.deepEqual(none.importers, {});
+    assert.equal(none.carriedForward, undefined);
+  });
+});
+
+describe('crude import origin fetch', () => {
+  it('fails over to the next configured Comtrade key when one key fails', async () => {
+    const calls = [];
+    const fetchJson = async (url, key) => {
+      calls.push(key);
+      if (key === 'revoked') throw new Error('Comtrade HTTP 401');
+      return [{ reporterISO: 'JPN', partnerCode: 0, period: new URL(url).searchParams.get('period').split(',')[0], cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 }];
+    };
+    const { rows, windowRowCounts } = await fetchCrudeImportOriginRows([['2025-02'], ['2026-03']], ['revoked', 'good'], { fetchJson, retries: 0 });
+    assert.deepEqual(windowRowCounts, [1, 1]);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(calls, ['revoked', 'good', 'revoked', 'good']);
+  });
+
+  it('throws only when every key fails', async () => {
+    const fetchJson = async () => { throw new Error('Comtrade rate limited (429)'); };
+    await assert.rejects(fetchCrudeImportOriginRows([['2025-02']], ['a', 'b'], { fetchJson, retries: 0 }), /429/);
+  });
+
+  it('moves to the next key at once on HTTP 401 or 403, and still retries a 5xx on the same key', async () => {
+    const saved = process.env.WM_SEED_RETRY_DELAY_MS;
+    process.env.WM_SEED_RETRY_DELAY_MS = '0';
+    try {
+      const row = (url) => [{ reporterISO: 'JPN', partnerCode: 0, period: new URL(url).searchParams.get('period').split(',')[0], cmdCode: '2709', flowCode: 'M', primaryValue: 1e9 }];
+      const calls = [];
+      const rejected = async (url, key) => {
+        calls.push(key);
+        if (key === 'revoked') throw new Error('Comtrade HTTP 401');
+        if (key === 'forbidden') throw new Error('Comtrade HTTP 403');
+        return row(url);
+      };
+      await fetchCrudeImportOriginRows([['2025-02'], ['2026-03']], ['revoked', 'forbidden', 'good'], { fetchJson: rejected, retries: 3 });
+      assert.deepEqual(calls, ['revoked', 'forbidden', 'good', 'revoked', 'forbidden', 'good']);
+
+      let attempts = 0;
+      const flaky = async (url) => {
+        attempts += 1;
+        if (attempts < 3) throw new Error('Comtrade HTTP 503');
+        return row(url);
+      };
+      const { windowRowCounts } = await fetchCrudeImportOriginRows([['2025-02']], ['only'], { fetchJson: flaky, retries: 3 });
+      assert.equal(attempts, 3);
+      assert.deepEqual(windowRowCounts, [1]);
+    } finally {
+      if (saved === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
+      else process.env.WM_SEED_RETRY_DELAY_MS = saved;
+    }
   });
 });

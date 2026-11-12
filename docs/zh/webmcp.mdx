@@ -51,7 +51,7 @@ Origin Trial 令牌有时限。发布检查必须验证实际部署的响应头�
 1. 打开 `chrome://flags/#enable-webmcp-testing`。
 2. 将 **WebMCP for testing** 设为 **Enabled**。
 3. 完全重新启动 Chrome。
-4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含三十三个工具的仪表板；不要使用 `/embed`。若要检查含两个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
+4. 本地启动 WorldMonitor。打开 `/dashboard` 检查含三十三个工具的仪表板；不要使用 `/embed`。若要检查含四个工具的静态首页，请先运行 `npm run build:pro`，再打开 `/pro/welcome.html`。本地 Vite 的 `/` 会加载仪表板 SPA，只有生产环境才把 `/` 重写到欢迎页。
 5. 在 DevTools 中确认特性检测：
 
 ```js
@@ -66,7 +66,7 @@ Boolean(document.modelContext?.registerTool)
 
 1. 更新 ChatGPT 桌面应用，并选择当前支持站点工具的模型和工作区。
 2. 在内置浏览器中打开 `https://www.worldmonitor.app/`。测试仪表板清单时请使用 `/dashboard`。
-3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出两个命令式工具，仪表板列出三十三个。
+3. 在浏览器地址栏中选择 **Site tools**，再选择 **Available site tools**。首页列出四个命令式工具，仪表板列出三十三个。
 4. 保持该页面打开，并要求 ChatGPT Work 或 Codex 使用 WorldMonitor 工具。
 5. 如果没有显示工具，请在内置浏览器中重新加载页面，再次检查 **Available site tools**。
 
@@ -108,12 +108,14 @@ Chrome 149–151 虽已暴露 `registerTool()`，但调用已注册回调时只�
 
 ### 首页工具
 
-静态 `https://www.worldmonitor.app/` 欢迎页会在仪表板 SPA 加载前注册两个命令式工具：
+静态 `https://www.worldmonitor.app/` 欢迎页会在仪表板 SPA 加载前注册四个命令式工具：
 
 | 工具 | 输入 schema | 行为 |
 |---|---|---|
-| `launchWorldMonitor` | 对象，可选字符串 `monitor`；枚举 `world`、`tech`、`finance`、`commodity`、`energy`、`happy`；不允许其他属性。默认为 `world`。 | 将当前标签页导航到选定的实时仪表板。 |
+| `openDashboard` | 对象，可选字符串 `monitor`；枚举 `world`、`tech`、`finance`、`commodity`、`energy`、`happy`；不允许其他属性。默认为 `world`。 | 将当前标签页导航到选定的实时仪表板。 |
 | `getWorldMonitorMcpEndpoint` | 空对象；不允许其他属性。 | 只读返回 `https://worldmonitor.app/mcp`、服务器卡片、Streamable HTTP 传输和认证模式。 |
+| `listCountryScorecards` | 对象，可选 `countryCodes`（最多 15 个 ISO 3166-1 alpha-2 代码）、可选整数 `offset`（最小 0）和可选整数 `limit`（1 到 15，默认 15）；不允许其他属性。 | 只读返回一页五要素评分卡：每个国家各支柱的 1-5 分，数据不足时为 `null`，并附 `total` 和 `nextOffset` 用于翻页。读取公开的 `list-five-factor-scorecards` 路由，无需账户。 |
+| `getCountryScorecard` | 对象，必填字符串 `countryCode`（ISO 3166-1 alpha-2）；不允许其他属性。 | 只读返回单个国家评分卡摘要：各支柱的分数、等级、输入覆盖率和简短的数据来源列表，以及完整 JSON 的 `evidenceUrl`。读取公开的 `get-five-factor-scorecard` 路由，无需账户。 |
 
 ### 仪表板命令式工具
 
@@ -352,7 +354,7 @@ Inspector 的自然语言工作流默认会把提示词发送给外部 Gemini �
 |---|---|---|
 | `document.modelContext` 不存在 | 浏览器未实现 WebMCP、本地测试 flag 未启用、Origin Trial 不可用，或该路由被有意排除 | 确认 Chrome 版本和 flag，然后使用已注册的顶层首页或仪表板路由。预览、文档、`/?mode=agent` 和 embed 路由不是 WebMCP 接口。 |
 | `getTools()` 一直等待，或 Origin Trial 页面最终没有清单 | 页面可能在注册完成前访问了 provider | 重新加载页面，等待文档加载和 WorldMonitor 注册完成，然后只读取一次清单。不要轮询 `document.modelContext`。 |
-| 只能看到首页工具清单 | 智能体位于静态首页 | 调用 `launchWorldMonitor`，或导航到 `/dashboard` 以使用命令式仪表板清单。 |
+| 只能看到首页工具清单 | 智能体位于静态首页 | 调用 `openDashboard`，或导航到 `/dashboard` 以使用命令式仪表板清单。 |
 | 能看到命令式仪表板清单，但没有 `search_procurement` | 宿主不支持声明式工具，或条件式表单当前不符合条件 | 在 ChatGPT 内置浏览器中，这是预期行为。在 Chrome 中，请打开并启用全球采购面板，满足权益要求，等待数据稳定，并确保表单可见且空闲。 |
 | 调用返回 `target_cancellation_unsupported` | 浏览器接受了 WebMCP，但没有把调用的 `AbortSignal` 交给页面 | 使用只读工具或可逆视图状态工具。不得绕过 `openCountryBrief`、`switch_monitor`、`set_panel_enabled`、`set_panel_collapsed`、`move_panel`、`set_map_layers`、`set_map_mode`、`apply_mission_preset`、`set_country_followed` 或仪表板标签页变更的拒绝。对于 `open_search_result`，请选择视图状态结果，或等待能够取消持久化工作的宿主。 |
 | 面板或图层被拒绝 | 当前页面状态未通过实时变体、渲染器、启用状态或权益检查 | 读取 `reason` 和每个目标状态。通过正常可见控件改变状态，或询问用户；不得强制走隐藏路径。 |

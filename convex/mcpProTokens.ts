@@ -35,9 +35,9 @@ const MAX_TOKENS_PER_USER = 5;
  * `userId`. Verifies active Pro MCP entitlement defensively; the edge checks
  * too, but this mutation is the authoritative row-insertion gate.
  *
- * Per-user 5-row cap with silent oldest rotation: if the user already has
- * 5 active rows we revoke the oldest (by createdAt) before inserting the
- * new one — never delete (preserves audit trail).
+ * Per-user 5-row cap with silent rotation: if the user already has 5 active
+ * rows we revoke the least recently used (lastUsedAt, else createdAt) before
+ * inserting the new one — never delete (preserves audit trail).
  */
 export const issueProMcpToken = internalMutation({
   args: {
@@ -106,39 +106,39 @@ export const issueProMcpToken = internalMutation({
       throw new ConvexError("PRO_REQUIRED");
     }
 
-    // Enforce per-user cap with silent oldest rotation. Match the pattern
-    // used by createApiKey at convex/apiKeys.ts:62 — count only non-revoked
-    // rows, but unlike apiKeys we silently rotate instead of throwing.
+    // Enforce per-user cap with silent rotation. Match the pattern used by
+    // createApiKey at convex/apiKeys.ts:62 — count only non-revoked rows, but
+    // unlike apiKeys we silently rotate instead of throwing.
     //
-    // F5 (U7+U8 review pass): "exactly oldest" rotation has a race —
-    // two concurrent issue calls can both observe `active.length === 4`,
-    // both insert, and produce 6 active rows. Convex doesn't serialise
-    // mutations across the entire table; per-userId concurrency is real.
-    // To converge back to the cap even after a brief race window, revoke
-    // ALL rows beyond `MAX_TOKENS_PER_USER - 1` (sorted by createdAt).
-    // This makes the cap "eventually MAX" rather than "atomically MAX":
-    // the next issue call's check trims any temporary overshoot.
-    // Read at most MAX+1 active rows per query. If an old race left more than
-    // that, continue in bounded batches instead of scanning revoked history or
-    // assuming six is the largest possible anomaly.
-    while (true) {
-      const active = await ctx.db
-        .query("mcpProTokens")
-        .withIndex("by_userId_revokedAt_createdAt", (q) => q
-          .eq("userId", args.userId)
-          .eq("revokedAt", undefined))
-        .order("asc")
-        .take(MAX_TOKENS_PER_USER + 1);
-      if (active.length < MAX_TOKENS_PER_USER) break;
-
-      // Leave MAX-1 active rows before insertion. A full batch may mean more
-      // active rows remain, so query again; a short batch was the whole set.
-      const toRevoke = active.slice(0, active.length - (MAX_TOKENS_PER_USER - 1));
+    // Rotation revokes the grants unused for longest (lastUsedAt, else
+    // createdAt), not the oldest-created. On 2026-11-07 two Claude reconnects
+    // revoked a Glama health-check grant used one minute earlier, because it
+    // was created first, while grants idle since October survived.
+    //
+    // F5 (U7+U8 review pass): two concurrent issue calls can both observe
+    // `active.length === 4`, both insert, and produce 6 active rows. Convex
+    // doesn't serialise mutations across the entire table; per-userId
+    // concurrency is real. To converge back to the cap after a race, revoke
+    // ALL rows beyond `MAX_TOKENS_PER_USER - 1`. The cap is "eventually MAX"
+    // rather than "atomically MAX": the next issue call trims any overshoot.
+    // The index reads active rows only, so revoked history is never scanned,
+    // and the active set is bounded by the cap plus any race overshoot.
+    const active = await ctx.db
+      .query("mcpProTokens")
+      .withIndex("by_userId_revokedAt_createdAt", (q) => q
+        .eq("userId", args.userId)
+        .eq("revokedAt", undefined))
+      .collect();
+    if (active.length >= MAX_TOKENS_PER_USER) {
+      const lastActivity = (row: { lastUsedAt?: number; createdAt: number }) =>
+        row.lastUsedAt ?? row.createdAt;
+      const toRevoke = active
+        .sort((a, b) => lastActivity(a) - lastActivity(b) || a.createdAt - b.createdAt)
+        .slice(0, active.length - (MAX_TOKENS_PER_USER - 1));
       const now = Date.now();
       for (const row of toRevoke) {
         await ctx.db.patch(row._id, { revokedAt: now });
       }
-      if (active.length < MAX_TOKENS_PER_USER + 1) break;
     }
 
     // The edge names the row with mcpGrantName(client_name), so the bucket is

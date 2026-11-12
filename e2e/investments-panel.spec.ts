@@ -24,11 +24,8 @@ test.describe('GCC investments coverage', () => {
       const mapLayers = { gulfInvestments: false };
 
       focusInvestmentOnMap(
-        map as unknown as {
-          enableLayer: (layer: 'gulfInvestments') => void;
-          setCenter: (lat: number, lon: number, zoom: number) => void;
-        },
-        mapLayers as unknown as { gulfInvestments: boolean } & Record<string, boolean>,
+        map as unknown as Parameters<typeof focusInvestmentOnMap>[0],
+        mapLayers as unknown as Parameters<typeof focusInvestmentOnMap>[1],
         24.4667,
         54.3667
       );

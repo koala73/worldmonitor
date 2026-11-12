@@ -88,9 +88,10 @@ export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionCl
 /** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
 export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
   if (claim.inProgress !== true) return released;
-  // Otherwise `next: "v14"` would make the released v14 table writable.
-  if (claim.next === released) {
-    throw new Error(`cii-next.json marks ${claim.next} in progress but names the released ${released}; an in-progress version must be unreleased`);
+  // Otherwise `next: "v14"` or `next: "v13"` would make a released table writable.
+  const versionNumber = (version: string) => (/^v\d+$/.test(version) ? Number(version.slice(1)) : Number.NaN);
+  if (!(versionNumber(claim.next) > versionNumber(released))) {
+    throw new Error(`cii-next.json marks ${claim.next} in progress, but ${claim.next} is not after the released ${released}; an in-progress version must be unreleased`);
   }
   return claim.next;
 }
@@ -235,7 +236,8 @@ function trimStrikeTally(raw: unknown): unknown {
 /**
  * Tier-1 levels, `fetchedAt` (the producer clock the advisory age gate reads)
  * and, from the stored item list, one levelled `{ sourceCountry, country, level }`
- * item per source: the scorer reads which travel registers are present.
+ * item per source, plus the seeder's `registersPresent`: the scorer reads which
+ * travel registers are present.
  */
 function trimAdvisories(v: any): Obj {
   if (!isObj(v.byCountry)) return {};
@@ -247,7 +249,9 @@ function trimAdvisories(v: any): Obj {
   return {
     byCountry: tier1Entries(v.byCountry),
     ...(v.fetchedAt != null ? { fetchedAt: v.fetchedAt } : {}),
+    ...(isObj(v.seenAt) ? { seenAt: tier1Entries(v.seenAt) } : {}),
     ...(items ? { advisories: items } : {}),
+    ...(Array.isArray(v.registersPresent) ? { registersPresent: v.registersPresent } : {}),
   };
 }
 

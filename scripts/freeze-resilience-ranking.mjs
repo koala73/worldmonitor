@@ -211,6 +211,7 @@ function getRedisClient() {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required');
   redisClient = new Redis({
+    retry: { retries: 2, backoff: (attempt) => Math.round(Math.min(1_000, 100 * 2 ** attempt) * (0.5 + Math.random() * 0.5)) },
     url,
     token,
     signal: () => AbortSignal.timeout(HTTP_TIMEOUT_MS),

@@ -3,6 +3,8 @@ import { afterEach, before, it, mock } from 'node:test';
 import { build } from 'esbuild';
 import { Window } from 'happy-dom';
 
+const SITE_DATA_BLOCKED_MESSAGE = 'Your browser is blocking cookies and site data for worldmonitor.app. Allow them for this site, then try again.';
+
 let moduleUrl: string;
 let browser: Window;
 const originalGlobals = new Map<string, PropertyDescriptor | undefined>();
@@ -15,8 +17,11 @@ before(async () => {
       builder.onResolve({ filter: /^(\.\/clerk|@sentry\/react)$/ }, args => ({ path: args.path, namespace: 'fixture' }));
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, args => ({
         contents: args.path === './clerk'
-          ? 'export const ensureClerk = () => globalThis.__checkoutFixture.clerk();'
-          : 'export const captureException = () => {}; export const captureMessage = () => {};',
+          ? `export class SiteDataBlockedError extends Error { name = 'SiteDataBlockedError'; }
+             export const SITE_DATA_BLOCKED_MESSAGE = ${JSON.stringify(SITE_DATA_BLOCKED_MESSAGE)};
+             export const ensureClerk = () => globalThis.__checkoutFixture.clerk({ SiteDataBlockedError });`
+          : `export const captureException = (...args) => { globalThis.__checkoutFixture.captures.push(args); };
+             export const captureMessage = () => {};`,
       }));
     } }],
   });
@@ -34,21 +39,32 @@ afterEach(async () => {
 });
 
 async function fixture(options: {
-  clerkError?: boolean; signInError?: boolean; signedOut?: boolean; missingToken?: boolean;
+  clerkError?: boolean; siteDataBlocked?: boolean; signInError?: boolean; signedOut?: boolean; missingToken?: boolean;
   response?: () => Promise<Response>;
 } = {}) {
   mock.method(console, 'error', () => {});
   browser = new Window({ url: 'https://www.worldmonitor.app/pro#pricing' });
   const navigations: string[] = [];
   const signIns: unknown[] = [];
+  const pageListeners = new Map<string, Set<(event: { persisted: boolean }) => void>>();
+  const captures: unknown[][] = [];
+  const analyticsEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
   let requests = 0;
   const globals: Record<string, unknown> = {
     document: browser.document,
     requestAnimationFrame: (callback: () => void) => { callback(); return 1; },
     window: {
+      innerWidth: 1000,
+      addEventListener: (type: string, fn: (event: { persisted: boolean }) => void) => {
+        if (!pageListeners.has(type)) pageListeners.set(type, new Set());
+        pageListeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: (event: { persisted: boolean }) => void) => {
+        pageListeners.get(type)?.delete(fn);
+      },
       location: { href: browser.location.href, assign: (url: string) => navigations.push(url) },
       sessionStorage: browser.sessionStorage,
-      umami: { track() {} },
+      umami: { track: (event: string, data?: Record<string, unknown>) => analyticsEvents.push({ event, data }) },
       setTimeout: browser.setTimeout.bind(browser), clearTimeout: browser.clearTimeout.bind(browser),
       setInterval: browser.setInterval.bind(browser), clearInterval: browser.clearInterval.bind(browser),
     },
@@ -56,7 +72,8 @@ async function fixture(options: {
       requests++;
       return options.response?.() ?? Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
     },
-    __checkoutFixture: { clerk: async () => {
+    __checkoutFixture: { captures, clerk: async ({ SiteDataBlockedError }: { SiteDataBlockedError: new (message: string) => Error }) => {
+      if (options.siteDataBlocked) throw new SiteDataBlockedError('localStorage is not readable');
       if (options.clerkError) throw new Error('Synthetic auth failure');
       return {
         user: options.signedOut ? null : { id: 'user_test' },
@@ -75,7 +92,10 @@ async function fixture(options: {
   const checkout = await import(`${moduleUrl}#${Math.random()}`);
   const phases: Array<{ kind: string; productId?: string }> = [];
   checkout.subscribeCheckoutPhase((phase: { kind: string }) => phases.push(phase));
-  return { checkout, phases, navigations, signIns, requests: () => requests, options };
+  const firePageShow = (persisted: boolean) => {
+    for (const fn of [...(pageListeners.get('pageshow') ?? [])]) fn({ persisted });
+  };
+  return { checkout, phases, navigations, signIns, captures, analyticsEvents, requests: () => requests, options, firePageShow };
 }
 
 for (const [name, options] of [
@@ -97,6 +117,22 @@ for (const [name, options] of [
   });
 }
 
+it('tells the buyer to allow site data, without paging Sentry, when the browser blocks it', async () => {
+  const f = await fixture({ siteDataBlocked: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  assert.equal(document.querySelector('[role="alert"]')?.textContent, SITE_DATA_BLOCKED_MESSAGE);
+  assert.deepEqual(f.captures, []);
+  assert.equal(f.phases.at(-1)?.kind, 'idle');
+});
+
+it('keeps the retry toast and the Sentry report for any other auth load failure', async () => {
+  const f = await fixture({ clerkError: true });
+  assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+  assert.equal(document.querySelector('[role="alert"]')?.textContent, 'Sign-in could not load. Please try again.');
+  assert.equal(f.captures.length, 1);
+  assert.deepEqual(f.captures[0]?.[1], { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
+});
+
 it('shows loading before auth resolves and leaves dismissed sign-in retryable', async () => {
   const f = await fixture({ signedOut: true });
   const attempt = f.checkout.startCheckout('synthetic-product');
@@ -115,7 +151,64 @@ it('clears the old error and redirects when a later attempt succeeds', async () 
   assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
   assert.ok(document.querySelector('[role="alert"]'));
   f.options.response = async () => Response.json({ checkout_url: 'https://checkout.dodopayments.com/test' });
-  assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
-  assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
-  assert.equal(document.querySelector('[role="alert"]'), null);
+  // The redirect hold arms a timer that must not outlive the test.
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
+    assert.equal(f.analyticsEvents.find(item => item.event === 'checkout-start')?.data?.vw, 'narrow-split');
+    assert.equal(document.querySelector('[role="alert"]'), null);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+// `location.assign` only starts navigation: this page stays clickable until
+// Dodo's page loads. Releasing the guard on return let a second click create a
+// second Dodo session (same-account pairs 1-3 s apart in checkoutSessionEvents).
+it('refuses a second checkout while the redirect to Dodo is in progress', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+    assert.equal(await f.checkout.startCheckout('other-product'), false);
+    assert.equal(f.requests(), 1);
+    assert.deepEqual(f.navigations, ['https://checkout.dodopayments.com/test']);
+    assert.equal(f.phases.at(-1)?.kind, 'creating_checkout');
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+it('re-enables checkout when the buyer comes back from Dodo through the back-forward cache', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    f.firePageShow(false);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false, 'a non-restored pageshow is the first load, not a return');
+    f.firePageShow(true);
+    assert.equal(f.phases.at(-1)?.kind, 'idle');
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(f.requests(), 2);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+it('releases checkout when the redirect never leaves the page', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const f = await fixture();
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    mock.timers.tick(14_999);
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), false);
+    mock.timers.tick(1);
+    assert.equal(f.phases.at(-1)?.kind, 'idle');
+    assert.equal(await f.checkout.startCheckout('synthetic-product'), true);
+    assert.equal(f.requests(), 2);
+  } finally {
+    mock.timers.reset();
+  }
 });

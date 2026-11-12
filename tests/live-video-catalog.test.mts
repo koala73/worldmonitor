@@ -173,4 +173,16 @@ describe('live video catalog', () => {
       assert.ok(parsed.ok && parsed.candidate.kind === 'channel', `${entry} must be a channel URL`);
     }
   });
+
+  it('keeps the Fox News preview and lists LiveNOW from FOX as its own channel', () => {
+    assert.deepEqual([...LIVE_NEWS_SOURCES['fox-news']], [
+      'https://247preview.foxnews.com/hls/live/2020027/fncv3preview/primary.m3u8',
+    ]);
+    assert.deepEqual([...LIVE_NEWS_SOURCES['livenow-fox']], [
+      'https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg00488-foxdigital-livenowbyfox-lgus/playlist.m3u8',
+    ]);
+    const parsed = parseSourceEntry(LIVE_NEWS_SOURCES['livenow-fox'][0]);
+    assert.ok(parsed.ok && parsed.candidate.kind === 'hls', 'LiveNOW from FOX must be an HLS candidate');
+    assert.match(newsChannels, /id:\s*'livenow-fox',\s*name:\s*'LiveNOW from FOX'/);
+  });
 });

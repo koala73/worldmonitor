@@ -90,7 +90,7 @@ export {
 // references all *_FEEDS consts, so unlike FEEDS it is NOT tree-shaken per
 // variant (~10KB gz). Required so a panel customized in from another variant
 // can resolve its feeds. See src/config/feed-resolution.ts.
-export { CANONICAL_FEEDS } from './feeds';
+export { CANONICAL_FEEDS, digestEditionsFor } from './feeds';
 
 // MILITARY_BASES moved to the lazy military-bases chunk (#4478) — import it
 // directly from '@/config/military-bases', not via this barrel, so the ~48KB
@@ -125,6 +125,10 @@ export {
   COUNTRY_REGULATION_PROFILES,
   getUpcomingDeadlines,
   getRecentActions,
+  getLatestActions,
+  getDeadlinesOutsideWindow,
+  getLaterDeadlines,
+  daysFromToday,
 } from './ai-regulations';
 // Value re-exports of the tech-geo tables are intentionally NOT on the eager
 // @/config barrel — they pull the ~62KB tech-geo chunk onto the dashboard

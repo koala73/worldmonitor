@@ -1,7 +1,8 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { isWebPushConfigured } from '@/config/push';
+import { needsIosInstall, openIosInstallSheet } from '@/services/pwa-install';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
-import { checkoutConsentHtml } from '@/utils/legal-links';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -111,8 +112,21 @@ function browserPushBlockedMessage(): string {
   });
 }
 
+function needsIosAlertsInstall(): boolean {
+  const version = /Version\/(\d+)(?:\.(\d+))?/.exec(navigator.userAgent);
+  return isWebPushConfigured() && needsIosInstall() && version !== null
+    && (Number(version[1]) > 16 || (Number(version[1]) === 16 && Number(version[2] ?? 0) >= 4));
+}
+
 function browserPushUnsupportedMessage(): string {
+  if (needsIosAlertsInstall()) return t('pwaInstall.alertsHint');
   return 'This browser or in-app webview does not support web push notifications.';
+}
+
+function iosInstallLink(): string {
+  return needsIosAlertsInstall()
+    ? `<button type="button" class="us-notif-ch-btn" data-ios-install>${escapeHtml(t('pwaInstall.how'))}</button>`
+    : '';
 }
 
 // User-Agent is long and ugly. Surface a short label only: "Chrome",
@@ -124,6 +138,7 @@ function webPushDeviceLabel(channel: NotificationChannel): string {
 }
 
 async function readWebPushSettingsState(): Promise<WebPushSettingsState> {
+  if (needsIosInstall()) return 'unsupported';
   try {
     const { getPushPermission, isWebPushSupported } = await import('@/services/push-notifications');
     if (!isWebPushSupported()) return 'unsupported';
@@ -184,6 +199,15 @@ function showWebPushUnsupportedState(rowEl: HTMLElement): void {
     'us-notif-ch-badge',
     WEB_PUSH_UNSUPPORTED_BADGE,
   );
+  if (needsIosAlertsInstall()) {
+    rowEl.querySelector('.us-notif-ch-badge')?.remove();
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'us-notif-ch-btn';
+    button.dataset.iosInstall = '';
+    button.textContent = t('pwaInstall.how');
+    rowEl.querySelector('.us-notif-ch-actions')?.append(button);
+  }
 }
 
 function getTelegramBotUsername(): string {
@@ -194,6 +218,11 @@ function getTelegramBotUsername(): string {
   }
 }
 
+/**
+ * Settings → Notifications: channel and alert-rule controls for signed-in Pro
+ * users, otherwise an "Upgrade to Pro" prompt that opens the /pro plan picker.
+ * `attach` wires the rendered markup and returns its cleanup function.
+ */
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
@@ -205,12 +234,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
     html += `<div class="us-notif-content" id="usNotifContent" style="display:none"></div>`;
     html += `</div>`;
   } else {
-    html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
-    html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
-    // Assent above the CTA (#6976) — this button starts checkout for a signed-in
-    // free user, so the Terms are presented before the jump to Dodo.
-    html += checkoutConsentHtml(WEB_APP_ORIGIN);
-    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
+    html += `<div class="wm-pref-group-content wm-notif-tab-content panel-locked-state settings-access-gate">`;
+    html += `<h3>Intelligence alerts</h3>`;
+    html += `<p class="panel-locked-desc">Get alerts in Telegram, Slack, Discord or email. Choose your sensitivity, quiet hours and digest schedule.</p>`;
+    html += `<p class="panel-locked-desc">${host.isSignedIn ? 'Notifications require Pro.' : 'Sign in to configure notifications. Notifications require Pro.'}</p>`;
+    html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">${host.isSignedIn ? 'Upgrade to Pro' : 'Sign In'}</button>`;
     html += `</div>`;
   }
 
@@ -230,7 +258,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               });
               return;
             }
-            import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
+            import('@/services/upgrade-flow').then(m => m.openUpgradePlans()).catch(() => {
               void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
             });
           }, { signal });
@@ -310,6 +338,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (channel?.verified) {
           let sub: string;
           let manageLink = '';
+          let installHint = '';
           if (type === 'telegram') {
             sub = `@${escapeHtml(channel.chatId ?? 'connected')}`;
           } else if (type === 'email') {
@@ -326,6 +355,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               : `${label} · <span class="us-notif-ch-sub-warn" title="Remove this webhook and add it again to get a signing secret.">Unsigned, re-add to sign</span>`;
           } else if (type === 'web_push') {
             sub = escapeHtml(webPushDeviceLabel(channel));
+            if (needsIosInstall()) {
+              installHint = `<div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>`;
+              manageLink = iosInstallLink();
+            }
           } else {
             const rawCh = channel.slackChannelName ?? '';
             const ch = rawCh ? `#${escapeHtml(rawCh.startsWith('#') ? rawCh.slice(1) : rawCh)}` : 'connected';
@@ -340,6 +373,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             <div class="us-notif-ch-body">
               <div class="us-notif-ch-name">${name}</div>
               <div class="us-notif-ch-sub">${sub}</div>
+              ${installHint}
             </div>
             <div class="us-notif-ch-actions">
               <span class="us-notif-ch-badge">Connected</span>
@@ -442,7 +476,8 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="us-notif-ch-sub us-notif-ch-sub-wrap">${escapeHtml(browserPushUnsupportedMessage())}</div>
               </div>
               <div class="us-notif-ch-actions">
-                <span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>
+                ${needsIosAlertsInstall() ? '' : `<span class="us-notif-ch-badge">${WEB_PUSH_UNSUPPORTED_BADGE}</span>`}
+                ${iosInstallLink()}
               </div>
             </div>`;
           }
@@ -1097,6 +1132,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
       container.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
+
+        if (target.closest('[data-ios-install]')) {
+          openIosInstallSheet();
+          return;
+        }
 
         const chokepointChip = target.closest<HTMLElement>('#usChokepointScope [data-chokepoint-id]');
         if (chokepointChip) {

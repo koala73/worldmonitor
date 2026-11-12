@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.feedback.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/feedback/v1/submit_report.proto";
+
+// FeedbackService lets agents report a bug, a missing capability, bad data, or a security concern to the WorldMonitor owner.
+service FeedbackService {
+  option (sebuf.http.service_config) = {base_path: "/api/feedback/v1"};
+
+  // SubmitReport stores one structured report for human review and returns its id. Anonymous, tightly rate-limited, never acted on automatically.
+  rpc SubmitReport(SubmitReportRequest) returns (SubmitReportResponse) {
+    option (sebuf.http.config) = {path: "/submit-report", method: HTTP_METHOD_POST};
+  }
+}

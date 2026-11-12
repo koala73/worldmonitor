@@ -9,8 +9,10 @@ import type { SiteVariant } from './variant';
  * while the entitled, visible panel has settled data.
  */
 export const WEBMCP_HOMEPAGE_TOOL_NAMES = [
-  'launchWorldMonitor',
+  'openDashboard',
   'getWorldMonitorMcpEndpoint',
+  'listCountryScorecards',
+  'getCountryScorecard',
 ] as const;
 
 export const WEBMCP_SPA_TOOL = Object.freeze({

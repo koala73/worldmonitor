@@ -333,6 +333,7 @@ export interface OilAnalytics {
 
 function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
   const change = proto.change;
+  const priceDate = new Date(proto.priceAt);
   return {
     id: proto.commodity,
     name: proto.name,
@@ -342,7 +343,7 @@ function protoEnergyToOilMetric(proto: ProtoEnergyPrice): OilMetric {
     changePct: Math.round(change * 10) / 10,
     unit: proto.unit,
     trend: change > 0.5 ? 'up' : change < -0.5 ? 'down' : 'stable',
-    lastUpdated: proto.priceAt ? new Date(proto.priceAt).toISOString() : new Date().toISOString(),
+    lastUpdated: proto.priceAt > 0 && Number.isFinite(priceDate.getTime()) ? priceDate.toISOString() : '',
   };
 }
 
@@ -639,8 +640,9 @@ export const INDICATOR_PRESETS = {
 export interface TechReadinessScore {
   country: string;
   countryName: string;
-  score: number;
-  rank: number;
+  score: number | null;
+  rank: number | null;
+  componentCount: number;
   components: {
     internet: number | null;
     mobile: number | null;
@@ -649,13 +651,36 @@ export interface TechReadinessScore {
   };
 }
 
+// Keep the dashboard safe while cached rows predate the World Bank seed rule.
+export const TECH_READINESS_MIN_COMPONENTS = 3;
+type CachedTechReadinessScore = Omit<TechReadinessScore, 'componentCount'>;
+
+function applyTechReadinessCoverage(
+  entries: CachedTechReadinessScore[],
+  countries?: string[],
+): TechReadinessScore[] {
+  const ranked: TechReadinessScore[] = [];
+  const unranked: TechReadinessScore[] = [];
+  for (const entry of entries) {
+    const componentCount = Object.values(entry.components)
+      .filter(value => value !== null && Number.isFinite(value) && value >= 0).length;
+    if (componentCount >= TECH_READINESS_MIN_COMPONENTS && entry.score !== null) {
+      ranked.push({ ...entry, componentCount, rank: ranked.length + 1 });
+    } else {
+      unranked.push({ ...entry, componentCount, score: null, rank: null });
+    }
+  }
+  const list = [...ranked, ...unranked];
+  return countries ? list.filter(entry => countries.includes(entry.country)) : list;
+}
+
 export async function getTechReadinessRankings(
   countries?: string[],
 ): Promise<TechReadinessScore[]> {
   // Fast path: bootstrap-hydrated data available on first page load
-  const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
+  const hydrated = getHydratedData('techReadiness') as CachedTechReadinessScore[] | undefined;
   if (hydrated?.length) {
-    return countries ? hydrated.filter(s => countries.includes(s.country)) : hydrated;
+    return applyTechReadinessCoverage(hydrated, countries);
   }
 
   // Fallback: fetch the pre-computed seed key directly from the bootstrap
@@ -675,9 +700,8 @@ export async function getTechReadinessRankings(
   if (!resp.ok) {
     throw new Error(`tech-readiness bootstrap HTTP ${resp.status}`);
   }
-  const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
-  const list = data.techReadiness ?? [];
-  return countries ? list.filter(s => countries.includes(s.country)) : list;
+  const { data } = (await resp.json()) as { data: { techReadiness?: CachedTechReadinessScore[] } };
+  return applyTechReadinessCoverage(data.techReadiness ?? [], countries);
 }
 
 export async function getCountryComparison(

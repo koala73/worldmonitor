@@ -187,6 +187,16 @@ describe('API-key consent POST requires the binding', () => {
     assert.equal(res.status, 400);
     assert.equal([...store.keys()].some((k) => k.startsWith('oauth:code:')), false);
   });
+
+  it('refuses a nonce stored without a binding hash', async () => {
+    installRedisStub();
+    const { nonce, nonceData, cookie } = await startFlow();
+    const { bind_hash: _bound, ...unbound } = nonceData;
+    store.set(`oauth:nonce:${nonce}`, JSON.stringify(unbound));
+    const res = await submitConsent(nonce, cookie);
+    assert.equal(res.status, 400);
+    assert.equal([...store.keys()].some((k) => k.startsWith('oauth:code:')), false);
+  });
 });
 
 describe('Pro grant bridge requires the binding', () => {
@@ -195,7 +205,13 @@ describe('Pro grant bridge requires the binding', () => {
 
   async function bridgeDeps() {
     return {
+      // Shared by the mint and context handlers: context resolves the userId
+      // alone; mint takes the locally verified session and injects the limiter
+      // and live-session check as pass-throughs.
       resolveUserId: async () => 'user_victim',
+      resolveSession: async () => ({ userId: 'user_victim', orgId: null, role: 'pro', sessionId: 'sess_victim' }),
+      rateLimit: async () => null,
+      verifySession: async () => 'active',
       redisGet: async (key) => {
         const raw = store.get(key);
         return raw == null ? null : JSON.parse(raw);

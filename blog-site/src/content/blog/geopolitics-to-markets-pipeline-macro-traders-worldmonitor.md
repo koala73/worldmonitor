@@ -40,7 +40,7 @@ Do not skip this step. Many bad macro takes start by mapping an event directly t
 
 Once the path is clear, build a narrow watchlist.
 
-For an energy chokepoint event, that might include crude oil, natural gas, tanker equities, shipping rates, Gulf markets, currencies of importers, inflation breakevens, and airline-sensitive equities.
+For an energy [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) event, that might include crude oil, natural gas, tanker equities, shipping rates, Gulf markets, currencies of importers, inflation breakevens, and airline-sensitive equities.
 
 For a tariff shock, it might include affected HS chapters, importers, exporters, customs revenue, sector ETFs, consumer-price baskets, and FX pairs tied to trade exposure.
 

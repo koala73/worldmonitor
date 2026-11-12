@@ -58,7 +58,7 @@ export const SECTION_INTERVAL_MS = 30 * DAY_MS;
 const VALIDATION_BATCH_SIZE = 500;
 const USER_AGENT = 'worldmonitor-military-bases-seeder/1.0';
 
-const PUBLISH_ACTIVE_AND_META_SCRIPT = `
+export const PUBLISH_ACTIVE_AND_META_SCRIPT = `
 local current = redis.call('GET', KEYS[1])
 if (current or '') ~= ARGV[3] then
   return {0, current or ''}
@@ -74,7 +74,7 @@ redis.call('SET', KEYS[2], ARGV[2])
 return {1, ARGV[1], current or ''}
 `.trim();
 
-const ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT = `
+export const ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT = `
 local active = redis.call('GET', KEYS[1])
 if active == ARGV[1] then
   return {0, 'active', active}
@@ -87,7 +87,7 @@ local armed = redis.call('EXPIRE', KEYS[2], ARGV[2])
 return {armed, 'armed', active or ''}
 `.trim();
 
-const ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT = `
+export const ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT = `
 local active = redis.call('GET', KEYS[1])
 if active == ARGV[1] then
   return 0
@@ -95,7 +95,7 @@ end
 return redis.call('EXPIRE', KEYS[2], ARGV[2])
 `.trim();
 
-const BACKFILL_META_IF_ACTIVE_SCRIPT = `
+export const BACKFILL_META_IF_ACTIVE_SCRIPT = `
 local current = redis.call('GET', KEYS[1])
 if current ~= ARGV[1] then
   return {0, current or ''}

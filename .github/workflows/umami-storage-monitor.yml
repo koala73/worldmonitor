@@ -20,10 +20,12 @@ jobs:
   monitor:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
     runs-on: ubuntu-latest
-    # Two ~100 s volume attempts plus a retention read that can also run into
-    # the CLI's ~90 s timeout must fit, or the retention alarm never prints.
-    # Still under the 15-minute cadence, so runs do not overlap.
-    timeout-minutes: 8
+    # The step-bounded CLI install (GitHub release downloads can 502) and
+    # history restore, two ~100 s volume attempts, and a retention read that
+    # can also run into the CLI's ~90 s timeout must fit, or the retention
+    # alarm never prints. Still under the 15-minute cadence, so runs do not
+    # overlap.
+    timeout-minutes: 12
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -34,8 +36,11 @@ jobs:
         with:
           node-version: '24'
 
+      # The runner kills the whole process tree at this bound, including a
+      # postinstall download that outlives npm's own per-attempt timeout.
       - name: Install pinned Railway CLI
-        run: npm install --global @railway/cli@5.30.1
+        timeout-minutes: 4
+        run: node scripts/install-railway-cli.mjs
 
       # The history travels as an artifact, not an Actions cache entry. The
       # repository cache sits at its 10 GB cap, and GitHub evicted this history
@@ -43,6 +48,12 @@ jobs:
       # the newest of this workflow's recent runs on the same branch that
       # uploaded one; cancelled runs upload nothing, so fall through to older.
       - name: Restore bounded storage history
+        id: restore
+        # A slow artifact listing or download must not block the capacity
+        # check, so a timed-out restore continues. It never loaded the history,
+        # so the upload below skips rather than replace the stored trend.
+        timeout-minutes: 1
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
@@ -56,7 +67,8 @@ jobs:
           if ! run_ids=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/umami-storage-monitor.yml/runs" \
             -f "branch=$BRANCH" -F per_page=20 \
             --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id"); then
-            echo "::warning::Could not list earlier monitor runs; the growth trend starts over."
+            echo "::warning::Could not list earlier monitor runs; this run keeps the stored trend and does not replace it."
+            echo "complete=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           for run_id in $run_ids; do
@@ -65,6 +77,18 @@ jobs:
               exit 0
             fi
           done
+          # Every download failing is not proof the history is gone. Start a
+          # new trend only when the listing shows no live history on this
+          # branch; otherwise keep the stored artifact for the next run.
+          # A 15-minute cadence keeps ~670 live artifacts, so read every page.
+          if ! live=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts" \
+            -f "name=umami-storage-state" -F per_page=100 \
+            --jq '.artifacts[] | select(.expired == false and .workflow_run.head_branch == $ENV.BRANCH) | .id') \
+            || [ -n "$live" ]; then
+            echo "::warning::Stored Umami storage history could not be downloaded; this run keeps the stored trend and does not replace it."
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "::warning::No stored Umami storage history found; the growth trend starts over."
 
       # No `railway status` precheck: it loads the whole project graph and took
@@ -105,9 +129,10 @@ jobs:
       # only then sets a non-zero exit code, so this saves the newest sample
       # even on a critical-capacity run. That state already carries the whole
       # trend window, so the artifact only has to outlive the gap until the
-      # next successful run.
+      # next successful run. A run whose restore did not complete holds only
+      # its own sample, so it uploads nothing and the stored trend survives.
       - name: Persist bounded storage history
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.restore.outcome == 'success' && steps.restore.outputs.complete != 'false' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: umami-storage-state

@@ -88,7 +88,7 @@ export class SocialVelocityPanel extends Panel {
     }).join('');
 
     this.setSafeContent(unsafeRawHtml(`
-      <div style="overflow-y:auto;max-height:440px">
+      <div>
         ${rows || '<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">No signals</div>'}
       </div>
       <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit · velocity = recency × score × ratio</div>

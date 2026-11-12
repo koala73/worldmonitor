@@ -15,6 +15,9 @@ import {
 } from '@/shared/disruption-timeline';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
+import { t } from '@/services/i18n';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -34,9 +37,9 @@ const EVENT_GLYPH: Record<string, string> = {
 };
 
 const STATUS_COLOR: Record<DisruptionStatus, string> = {
-  ongoing:  '#e74c3c',
-  resolved: '#7f8c8d',
-  unknown:  '#95a5a6',
+  ongoing:  '#c0392b',
+  resolved: '#5d6d7e',
+  unknown:  '#6b7280',
 };
 
 const EVENT_TYPE_FILTERS: Array<{ key: string; label: string }> = [
@@ -51,6 +54,14 @@ const EVENT_TYPE_FILTERS: Array<{ key: string; label: string }> = [
   { key: 'other',       label: 'Other' },
 ];
 
+// Window and offline values may wrap between their parts ("2025-08-14 →
+// 2025-08-18", "15.0 bcm/yr · 1.60 mb/d") but never inside one.
+function wholeParts(text: string): string {
+  return text.split(/ ([→·]) /)
+    .map((part, i) => (i % 2 ? ` ${escapeHtml(part)} ` : `<span class="ed-val">${escapeHtml(part)}</span>`))
+    .join('');
+}
+
 function statusChip(status: DisruptionStatus): string {
   const color = STATUS_COLOR[status] ?? STATUS_COLOR.unknown;
   const label = status.charAt(0).toUpperCase() + status.slice(1);
@@ -64,15 +75,19 @@ function statusChip(status: DisruptionStatus): string {
  * each render an *asset-scoped* slice of the same events in their drawer,
  * but neither lists the global log.
  *
- * Click-through dispatches the same events those panels already listen
- * for (`energy:open-pipeline-detail` / `energy:open-storage-facility-detail`),
- * so the event-routing contract stays the same as CountryDeepDivePanel's
- * disruption row — no new panel-open protocol introduced.
+ * Click-through dispatches `energy:open-pipeline-detail` for pipelines
+ * (PipelineStatusPanel listens) and `wm:open-storage-atlas` for storage,
+ * which opens the Strategic Storage Atlas on that facility even when the
+ * panel is closed or not yet mounted (see EventHandlerManager and
+ * PanelLayoutManager.focusStorageFacility).
  */
 export class EnergyDisruptionsPanel extends Panel {
   private data: ListEnergyDisruptionsResponse | null = null;
   private activeTypeFilter = '';
   private ongoingOnly = false;
+  // Dashboard focus (#10453): each event carries the ISO codes of the
+  // countries it touches; events from before that field existed have none.
+  private readonly scopeFilter: PanelScopeFilter;
 
   constructor() {
     super({
@@ -86,6 +101,7 @@ export class EnergyDisruptionsPanel extends Panel {
         'click a row to jump to the pipeline / storage panel with that event ' +
         'highlighted. See /docs/methodology/disruptions for the schema.',
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
 
     // Event delegation on the persistent `content` element. Panel.setContent
     // debounces the DOM write by 150ms (see Panel.ts:1025), so attaching
@@ -156,6 +172,22 @@ export class EnergyDisruptionsPanel extends Panel {
     }
   }
 
+  public override applyScope(scope: ResolvedScope | null): void {
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure.
+    if (this.scopeFilter.setScope(scope) && !this.showingLoadFailure) this.render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   private setTypeFilter(type: string): void {
     this.activeTypeFilter = type;
     this.render();
@@ -166,30 +198,39 @@ export class EnergyDisruptionsPanel extends Panel {
     this.render();
   }
 
-  private filterEvents(): EnergyDisruptionEntry[] {
-    if (!this.data) return [];
-    let events = this.data.events;
+  private filterEvents(scoped: EnergyDisruptionEntry[]): EnergyDisruptionEntry[] {
+    let events = scoped;
     if (this.activeTypeFilter) {
       events = events.filter(e => e.eventType === this.activeTypeFilter);
     }
     if (this.ongoingOnly) {
       events = events.filter(e => !e.endAt);
     }
-    // Newest first. Server already sorts by startAt DESC but defensive
-    // sort keeps the UI stable when filters reshuffle.
-    return [...events].sort((a, b) => b.startAt.localeCompare(a.startAt));
+    return events;
   }
 
   private render(): void {
     if (!this.data) return;
 
+    // Newest first. Server already sorts by startAt DESC but defensive
+    // sort keeps the UI stable when filters reshuffle. Sorted before the
+    // focus so chosen-country events stay above neighbour events.
+    const sorted = [...this.data.events].sort((a, b) => b.startAt.localeCompare(a.startAt));
+    // The focus narrows first; the type and ongoing filters work within it,
+    // and the header counts describe the focused set.
+    const view = this.scopeFilter.view(sorted, (e) => e.countries);
+    if (sorted.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
+    const rowFor = new Map<EnergyDisruptionEntry, ScopeRow<EnergyDisruptionEntry>>(view.rows.map((row) => [row.item, row]));
+
     // Compute once — previously filterEvents() ran twice per render, once
     // for the row HTML and again for filteredCount. Trivial for 52 events
     // but the redundant sort on every render was noise. Codex P2.
-    const filtered = this.filterEvents();
-    const rows = filtered.map(e => this.renderRow(e)).join('');
-    const totalCount = this.data.events.length;
-    const ongoingCount = this.data.events.filter(e => !e.endAt).length;
+    const filtered = this.filterEvents(scoped);
+    const rows = filtered.map(e => this.renderRow(e, rowFor.get(e))).join('');
+    const totalCount = scoped.length;
+    const ongoingCount = scoped.filter(e => !e.endAt).length;
     const filteredCount = filtered.length;
     const summary = this.activeTypeFilter || this.ongoingOnly
       ? `${filteredCount} shown · ${totalCount} total · ${ongoingCount} ongoing`
@@ -217,40 +258,59 @@ export class EnergyDisruptionsPanel extends Panel {
       <div class="ed-wrap">
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
-        <table class="ed-table">
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">Asset</th>
-              <th scope="col">Window</th>
-              <th scope="col">Offline</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>${rows || `<tr><td colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
-        </table>
+        ${view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyEnergyDisruptions')) : `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table ed-table" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" role="columnheader">Event</th>
+                <th scope="col" role="columnheader">Asset</th>
+                <th scope="col" role="columnheader">Window</th>
+                <th scope="col" role="columnheader">Offline</th>
+                <th scope="col" role="columnheader">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">${rows || `<tr role="row"><td role="cell" colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
+          </table>
+        </div>`}
         ${attribution}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .ed-wrap { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .ed-wrap { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: ed-wrap / inline-size; }
         .ed-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
         .ed-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
         .ed-chip { background: rgba(255,255,255,0.04); color: var(--text-dim, #aaa); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 2px 8px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); cursor: pointer; }
         .ed-chip:hover { background: rgba(255,255,255,0.08); color: var(--text, #eee); }
         .ed-chip-active { background: #2980b9; border-color: #2980b9; color: #fff; }
         .ed-chip-active:hover { background: #2471a3; }
-        .ed-table { width: 100%; border-collapse: collapse; }
-        .ed-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .ed-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
+        .ed-table td { vertical-align: top; }
         .ed-row { cursor: pointer; }
         .ed-row:hover td { background: rgba(255,255,255,0.03); }
         .ed-event { font-weight: 600; color: var(--text, #eee); }
-        .ed-sub { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
-        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
+        .ed-sub { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: break-word; }
+        .ed-desc { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: none; letter-spacing: normal; margin: 2px 0; }
+        .ed-asset-id { overflow-wrap: break-word; }
+        .ed-table .ed-val { white-space: nowrap; }
+        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-secondary); margin-right: 4px; }
         .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        /* Five columns cannot fit a narrow column without splitting values, so
+           each row stacks: the event and the asset take the full width, and the
+           window, offline capacity and status share a line below. The
+           breakpoint is in em of the scaled wrap text (50em is 550px at 100%),
+           so a larger font-size setting stacks the rows in a wider column too. */
+        @container ed-wrap (max-width: 50em) {
+          .ed-table, .ed-table tbody { display: block; }
+          .ed-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+          .ed-table tr.ed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
+          .ed-table tr.ed-row td { padding: 0; border: 0; }
+          .ed-table tr.ed-row td:first-child, .ed-table tr.ed-row td.ed-asset { flex: 1 0 100%; }
+          .ed-table tr.ed-row td:last-child { margin-inline-start: auto; }
+          .ed-table tr.ed-row:hover { background: rgba(255,255,255,0.03); }
+          .ed-table tr.ed-row:hover td { background: none; }
+          .ed-table td[data-label]::before { content: attr(data-label) ' '; color: var(--text-dim, #888); }
+        }
       </style>
     `, 'legacy Panel.setContent() migration'));
 
@@ -262,24 +322,26 @@ export class EnergyDisruptionsPanel extends Panel {
 
   private dispatchOpenAsset(_eventId: string, assetId: string, assetType: string): void {
     // Dispatch only the {pipelineId, facilityId} field the receiving
-    // drawers actually consume today (see PipelineStatusPanel and
-    // StorageFacilityMapPanel `openDetailHandler`). The row click
-    // jumps the user to the asset — they see the full disruption
-    // timeline for that asset and can locate the specific event
-    // visually. A future PR can add a `highlightEventId` contract
-    // with matching drawer-side rendering (scroll-into-view + visual
-    // emphasis); until then, emitting an unread field was a misleading
-    // API surface (Codex P2).
-    const detail = assetType === 'storage'
-      ? { facilityId: assetId }
-      : { pipelineId: assetId };
-    const eventName = assetType === 'storage'
-      ? 'energy:open-storage-facility-detail'
-      : 'energy:open-pipeline-detail';
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    // drawers actually consume today. The row click jumps the user to the
+    // asset — they see the full disruption timeline for that asset and can
+    // locate the specific event visually. A future PR can add a
+    // `highlightEventId` contract with matching drawer-side rendering
+    // (scroll-into-view + visual emphasis); until then, emitting an unread
+    // field was a misleading API surface (Codex P2).
+    //
+    // Storage goes through 'wm:open-storage-atlas' (the same route as the
+    // map popup's "Open in Storage Atlas"): the atlas only claims a direct
+    // 'energy:open-storage-facility-detail' while the user can see it, so a
+    // closed, collapsed or deferred atlas would otherwise drop this click.
+    // The open-atlas route enables, mounts, reveals and then delivers it.
+    if (assetType === 'storage') {
+      window.dispatchEvent(new CustomEvent('wm:open-storage-atlas', { detail: { facilityId: assetId } }));
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('energy:open-pipeline-detail', { detail: { pipelineId: assetId } }));
   }
 
-  private renderRow(e: EnergyDisruptionEntry): string {
+  private renderRow(e: EnergyDisruptionEntry, row?: ScopeRow<EnergyDisruptionEntry>): string {
     const glyph = EVENT_GLYPH[e.eventType] ?? '•';
     const status = statusForEvent({ startAt: e.startAt, endAt: e.endAt || undefined });
     const eventWindow = formatEventWindow(e.startAt, e.endAt || undefined);
@@ -287,22 +349,22 @@ export class EnergyDisruptionsPanel extends Panel {
     const causeChain = e.causeChain.join(' → ') || '—';
 
     return `
-      <tr class="ed-row" tabindex="0"
+      <tr class="ed-row" role="row" tabindex="0"
           data-event-id="${escapeHtml(e.id)}"
           data-asset-id="${escapeHtml(e.assetId)}"
           data-asset-type="${escapeHtml(e.assetType)}">
-        <td>
-          <div class="ed-event">${glyph} ${escapeHtml(e.eventType)}</div>
-          <div class="ed-sub">${escapeHtml(e.shortDescription)}</div>
+        <td role="cell">
+          <div class="ed-event">${glyph} ${escapeHtml(e.eventType)} ${scopeTagHtml(row)}</div>
+          <div class="ed-sub ed-desc">${escapeHtml(e.shortDescription)}</div>
           <div class="ed-sub">${escapeHtml(causeChain)}</div>
         </td>
-        <td>
+        <td role="cell" class="ed-asset">
           <span class="ed-asset-type">${escapeHtml(e.assetType)}</span>
           <span class="ed-asset-id">${escapeHtml(e.assetId)}</span>
         </td>
-        <td>${escapeHtml(eventWindow)}</td>
-        <td><span class="ed-offline">${escapeHtml(offline || '—')}</span></td>
-        <td>${statusChip(status)}</td>
+        <td role="cell">${wholeParts(eventWindow)}</td>
+        <td role="cell" data-label="Offline"><span class="ed-offline">${wholeParts(offline || '—')}</span></td>
+        <td role="cell">${statusChip(status)}</td>
       </tr>`;
   }
 }

@@ -238,12 +238,15 @@ describe('overlay reload-contract gate', () => {
     assert.deepEqual(scan.safeDeclarations, [
       'src/app/event-handlers.ts :: dialog',
       'src/app/event-handlers.ts :: popover',
+      // Every answer saves on tap; the optional free text saves on blur.
+      'src/components/AboutYouCard.ts :: root',
       'src/components/IntelligenceGapBadge.ts :: overlay',
       'src/components/MobileWarningModal.ts :: this.element',
       'src/components/RouteExplorer/KeyboardHelp.ts :: this.element',
       'src/components/SignalModal.ts :: this.element',
       'src/components/StoryModal.ts :: modalEl',
       'src/components/market-chart-modal.ts :: modalEl',
+      'src/services/pwa-install.ts :: sheet',
     ]);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(el, { reload: 'blocking' })"), []);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(root.querySelector('.x')!, { reload: 'safe' })"), ["root.querySelector('.x')!"]);

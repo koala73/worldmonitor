@@ -13,6 +13,36 @@ const tender = (id: string, overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+test('Pakistan cross-feed duplicates collapse after filtering and before pagination', () => {
+  const records = [
+    tender('epads', { source: 'pakistan-epads', countryCode: 'PK', buyer: 'Public Agency', title: 'Cloud & data platform' }),
+    tender('ppra', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'PUBLIC  AGENCY', title: 'Cloud & Data Platform.' }),
+    tender('other', { source: 'pakistan-ppra', countryCode: 'PK', buyer: 'Other Agency', title: 'Cloud & data platform' }),
+    tender('unknown', { source: 'pakistan-ppra', countryCode: 'PK', buyer: '', title: 'Cloud & data platform' }),
+  ];
+  const request = { country: 'PK', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 1, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
+  const first = filterAndPaginateTenders(records, request);
+  assert.equal(first.total, 3);
+  const pages = [first.tenders[0].id];
+  let cursor = first.nextCursor;
+  while (cursor) {
+    const page = filterAndPaginateTenders(records, { ...request, cursor });
+    pages.push(...page.tenders.map((record) => record.id));
+    cursor = page.nextCursor;
+  }
+  assert.deepEqual(pages, ['epads', 'other', 'unknown']);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-ppra' }).total, 3);
+  assert.equal(filterAndPaginateTenders(records, { ...request, source: 'pakistan-epads' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records, { ...request, buyer: 'other agency' }).total, 1);
+  assert.equal(filterAndPaginateTenders(records.map((record) => ({ ...record, source: 'sam' })), request).total, 4);
+  const pair = records.slice(0, 2);
+  const distinct = tender('different-deadline', { ...pair[1], id: 'different-deadline', deadline: '2099-02-02T12:00:00Z' });
+  assert.equal(filterAndPaginateTenders([...pair, distinct], { ...request, country: '' }).total, 2);
+  const ambiguous = { ...pair[1], id: 'another-ppra' };
+  assert.equal(filterAndPaginateTenders([...pair, ambiguous], request).total, 3);
+  assert.equal(filterAndPaginateTenders(pair.map((record) => ({ ...record, deadline: '' })), request).total, 2);
+});
+
 test('filters by country, query, category, money and deadline without treating missing values as matches', () => {
   const result = filterAndPaginateTenders([
     tender('a'),
@@ -105,4 +135,37 @@ test('marks retained snapshots and source statuses stale after the freshness bud
   assert.equal(snapshot.dataAvailable, true);
   assert.equal(snapshot.sourceStatuses?.[0]?.state, 'stale');
   assert.equal(snapshot.sourceStatuses?.[0]?.stale, true);
+});
+
+test('new provider records pass through the canonical snapshot and existing country/source/value filters', async () => {
+  const { fetchBrazil, fetchKenya } = await import('../scripts/_global-tender-feeds.mjs');
+  const { fetchGlobalTenders, sourceHealthMeta } = await import('../scripts/seed-global-tenders.mjs');
+  const now = Date.parse('2026-10-29T12:00:00Z');
+  const snapshot = await fetchGlobalTenders({ now, adapters: [
+    ['brazil-pncp', () => fetchBrazil({ now, fetchJsonFn: async () => ({ data: [{
+      numeroControlePNCP: '12345678000190-1-000001/2026', objetoCompra: 'Cloud software',
+      orgaoEntidade: { cnpj: '12345678000190', razaoSocial: 'Public agency' }, anoCompra: 2026, sequencialCompra: 1,
+      situacaoCompraId: 1, dataEncerramentoProposta: '2026-11-09T10:00:00', valorTotalEstimado: 42000,
+    }] }) })],
+    ['kenya-ppip', () => fetchKenya({ now, fetchJsonFn: async () => ({ data: [{
+      id: 1, title: 'Water supply', status_id: 1, terminated: 0, published: 1, close_at: '2026-11-10 10:00:00',
+    }] }) })],
+  ] });
+  const request = { country: 'BR', countries: [], region: '', source: 'brazil-pncp', status: '', deadlineFrom: '', deadlineTo: '',
+    minValue: 1000, maxValue: 50000, currency: 'BRL', category: '', query: 'software', pageSize: 20, cursor: '',
+    sort: 'closing_soon', buyer: 'Public agency', publishedFrom: '', publishedTo: '', minAutomationScore: 30 };
+  const result = filterAndPaginateTenders(snapshot.tenders, request);
+  assert.equal(result.total, 1);
+  assert.equal(result.countryCoverage, 'observed');
+  assert.equal(result.tenders[0]?.source, 'brazil-pncp');
+  assert.equal(result.tenders[0]?.money?.amount, 42000);
+  assert.equal(result.tenders[0]?.deadline, '2026-11-09T13:00:00.000Z');
+  assert.equal(snapshot.availability, 'available');
+  const status = snapshot.sourceStatuses.find((source: { source: string }) => source.source === 'brazil-pncp');
+  assert.equal(sourceHealthMeta(status).fetchedAt, now);
+  const failed = await fetchGlobalTenders({ now: now + 24 * 60 * 60_000, previousSnapshot: snapshot,
+    adapters: [['brazil-pncp', async () => { throw new Error('HTTP 503'); }]] });
+  assert.equal(failed.tenders.length, 0);
+  assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).fetchedAt, now);
+  assert.equal(sourceHealthMeta(failed.sourceStatuses[0]).sourceState, 'error');
 });
