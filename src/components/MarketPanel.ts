@@ -916,15 +916,17 @@ export class CommoditiesPanel extends Panel {
     }
 
     const grid = '<div class="commodities-grid">' +
-      validData.map(c => `
+      validData.map(c => {
+        const chart = miniSparkline(c.sparkline, c.change, 60, 18);
+        return `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
-          ${miniSparkline(c.sparkline, c.change, 60, 18)}
-          ${sparklineSpanHtml(c)}
+          ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
           <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `).join('') + '</div>';
+      `;
+      }).join('') + '</div>';
 
     this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }
