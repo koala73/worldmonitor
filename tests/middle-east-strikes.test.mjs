@@ -265,6 +265,18 @@ describe('corroboration rule', () => {
 });
 
 describe('dedupe and window', () => {
+  it('bounds fuzzy matching work at the full candidate-store size', () => {
+    const reports = Array.from({ length: 4000 }, (_, i) => candidate('SaudiDCD', cls({
+      place: createHash('sha256').update(String(i)).digest('hex').slice(0, 36),
+    })));
+    assert.ok(reports.every((report) => report.placeKey.startsWith('SA:*:')));
+    const start = performance.now();
+    const result = strikes.deriveStrikeEvents(reports, NOW);
+    assert.ok(performance.now() - start < 2000, 'an unlisted-name flood must not block the relay for seconds');
+    assert.equal(result.length, strikes.MAX_EVENTS, 'the bounded fuzzy pass still publishes independent reports up to the normal output cap');
+    assert.equal(reports.length, 4000, 'the input store is not truncated by the fuzzy pass');
+  });
+
   it('merges reports of one place inside one incident into one stable event', () => {
     const a = candidate('SaudiDCD', cls(), 12 * MIN);
     const b = candidate('OSINTdefender', cls(), 11 * MIN);
