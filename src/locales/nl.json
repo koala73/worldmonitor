@@ -5061,7 +5061,7 @@
     "draftAssessment": "Conceptbeoordeling",
     "draftAssessmentAria": "Open de risicoanalyse reisroute, vooringevuld met deze focus",
     "draftCopied": "Verzoek gekopieerd. Plak het in uw AI-assistent.",
-    "draftCopiedPartial": "Verzoek gekopieerd voor de eerste {{count}} landen. Een beoordeling omvat maximaal {{max}} landen.",
+    "draftCopiedPartial": "Verzoek gekopieerd voor de eerste {{count}} landen. Een beoordeling omvat maximaal {{max}} landen. Weggelaten: {{omitted}}.",
     "draftCopyFailed": "Kon het verzoek niet kopiëren."
   },
   "tripAssessment": {

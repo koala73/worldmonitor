@@ -5117,7 +5117,7 @@
     "draftAssessment": "Szkic oceny",
     "draftAssessmentAria": "Otwórz ocenę podróży, wstępnie wypełnioną tym fokusem",
     "draftCopied": "Prośba skopiowana. Wklej ją do swojego asystenta AI.",
-    "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów.",
+    "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów. Pominięte kraje: {{omitted}}.",
     "draftCopyFailed": "Nie udało się skopiować prośby."
   },
   "tripAssessment": {

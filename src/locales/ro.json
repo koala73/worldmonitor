@@ -5089,7 +5089,7 @@
     "draftAssessment": "Ciornă de evaluare",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",
     "draftCopied": "Cerere copiată. Lipește-o în asistentul tău AI.",
-    "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări.",
+    "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări. Țări omise: {{omitted}}.",
     "draftCopyFailed": "Nu s-a putut copia cererea."
   },
   "tripAssessment": {

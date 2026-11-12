@@ -2289,7 +2289,7 @@
   "focus.draftAssessment": "Draft assessment",
   "focus.draftAssessmentAria": "Open the trip assessment, prefilled with this focus",
   "focus.draftCopied": "Request copied. Paste it into your AI assistant.",
-  "focus.draftCopiedPartial": "Request copied for the first {{count}} countries. An assessment covers at most {{max}} countries.",
+  "focus.draftCopiedPartial": "Request copied for the first {{count}} countries. An assessment covers at most {{max}} countries. Left out: {{omitted}}.",
   "focus.draftCopyFailed": "Could not copy the request.",
   "focus.edit": "Edit",
   "focus.editTitle": "Edit focus",

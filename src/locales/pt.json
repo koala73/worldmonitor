@@ -5089,7 +5089,7 @@
     "draftAssessment": "Rascunho de avaliação",
     "draftAssessmentAria": "Abrir a avaliação de viagem, preenchida com este foco",
     "draftCopied": "Solicitação copiada. Cole-a no seu assistente de IA.",
-    "draftCopiedPartial": "Solicitação copiada para os primeiros {{count}} países. Uma avaliação abrange no máximo {{max}} países.",
+    "draftCopiedPartial": "Solicitação copiada para os primeiros {{count}} países. Uma avaliação abrange no máximo {{max}} países. Países excluídos: {{omitted}}.",
     "draftCopyFailed": "Não foi possível copiar a solicitação."
   },
   "tripAssessment": {
