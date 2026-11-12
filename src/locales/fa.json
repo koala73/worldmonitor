@@ -5057,10 +5057,10 @@
       "emptyEnergyDisruptions": "بدون اختلال انرژی برای این کشورها",
       "emptyDisplacement": "بدون داده‌های جابه‌جایی برای این کشورها",
       "emptyCorrelation": "بدون سیگنال برای این کشورها",
-      "emptyExposure": "No population exposure locations for these countries",
-      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
-      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
-      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
+      "emptyExposure": "برای این کشورها مکانی با جمعیت در معرض خطر وجود ندارد",
+      "emptyExposurePartial": "در داده‌های موجود، مکانی برای جمعیت در معرض خطر این کشورها وجود ندارد. پوشش کامل UCDP در انتظار است.",
+      "partialExposureLoading": "در حال بارگیری همه مکان‌های UCDP پیش از فیلتر کردن جمعیت در معرض خطر. شمارش پوشش فقط شامل ناآرامی‌ها است.",
+      "partialExposure": "همه مکان‌های UCDP بارگیری نشدند. داده‌های جمعیت در معرض خطر ناقص است؛ شمارش پوشش فقط شامل ناآرامی‌ها است."
     },
     "draftAssessment": "ارزیابی پیش‌نویس",
     "draftAssessmentAria": "باز کردن ارزیابی سفر، از قبل پر‌شده با این تمرکز",

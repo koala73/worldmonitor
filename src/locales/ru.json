@@ -5113,10 +5113,10 @@
       "emptyEnergyDisruptions": "Нет данных о сбоях в энергоснабжении для этих стран",
       "emptyDisplacement": "Нет данных о миграции для этих стран",
       "emptyCorrelation": "Нет сигналов для этих стран",
-      "emptyExposure": "No population exposure locations for these countries",
-      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
-      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
-      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
+      "emptyExposure": "Нет мест воздействия на население для этих стран",
+      "emptyExposurePartial": "В доступных данных нет мест воздействия для этих стран. Ожидается полное покрытие UCDP.",
+      "partialExposureLoading": "Перед фильтрацией воздействия загружаются все места UCDP. В подсчёте охвата учитываются только беспорядки.",
+      "partialExposure": "Не удалось загрузить все места UCDP. Данные о воздействии неполны; в подсчёте охвата учитываются только беспорядки."
     },
     "draftAssessment": "Черновой анализ",
     "draftAssessmentAria": "Открыть оценку поездки, предварительно заполненную этим фокусом",

@@ -14,10 +14,11 @@ const event = (id: string, country = 'Yemen', lat = 13.58, lon = 44.02): EventFo
 });
 const bulk = Array.from({ length: 12 }, (_, i) => event(`ukraine-${i}`, 'Ukraine', 48 + i / 20, 30));
 let panel: PopulationExposurePanel;
-let loadFullSet: ReturnType<typeof vi.fn<() => Promise<EventForExposure[] | null>>>;
+type FullSet = { events: EventForExposure[]; fromCache: boolean };
+let loadFullSet: ReturnType<typeof vi.fn<() => Promise<FullSet | null>>>;
 beforeEach(() => {
   vi.useFakeTimers();
-  loadFullSet = vi.fn(async () => [event('full-yemen')]);
+  loadFullSet = vi.fn(async () => ({ events: [event('full-yemen')], fromCache: false }));
   panel = new PopulationExposurePanel({ loadFullSet });
   document.body.append(panel.getElement());
 });
@@ -64,19 +65,24 @@ describe('population exposure focus before source limits', () => {
   });
 
   it('loads full UCDP once for a projection, reuses it and ignores superseded requests', async () => {
-    let resolve!: (events: EventForExposure[]) => void;
+    let resolve!: (result: FullSet) => void;
     loadFullSet.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
     const projection = { unrest: [], ucdp: bulk.slice(0, 10), ucdpIsProjection: true };
     deliver(projection); panel.applyScope(focus(['YE'])); await flush();
     expect(text()).toContain('Loading full UCDP locations');
-    resolve([event('full-yemen')]); await flush(); expect(cards()[0]).toContain('full-yemen');
+    resolve({ events: [event('full-yemen')], fromCache: true }); await flush();
+    expect(cards()[0]).toContain('full-yemen');
+    expect(panel.getElement().querySelector('.panel-data-badge.cached')?.textContent).toContain('UCDP');
+    panel.applyScope(null); await flush();
+    expect(panel.getElement().querySelector<HTMLElement>('.panel-data-badge')?.style.display).toBe('none');
     panel.applyScope(focus(['UA'])); await flush(); panel.applyScope(focus(['YE'])); await flush();
     expect(loadFullSet).toHaveBeenCalledTimes(1);
     loadFullSet.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
     deliver(projection); await flush();
     deliver({ unrest: [event('fresh')], ucdp: [], ucdpIsProjection: false });
-    resolve([event('obsolete')]); await flush();
+    resolve({ events: [event('obsolete')], fromCache: true }); await flush();
     expect(cards().join('')).toContain('fresh'); expect(text()).not.toContain('obsolete');
+    expect(panel.getElement().querySelector<HTMLElement>('.panel-data-badge')?.style.display).toBe('none');
   });
 
   it('keeps projection failures explicitly incomplete and retries on a new focus', async () => {

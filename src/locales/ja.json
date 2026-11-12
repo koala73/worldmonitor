@@ -5029,10 +5029,10 @@
       "emptyEnergyDisruptions": "これらの国のエネルギー供給障害はありません",
       "emptyDisplacement": "これらの国の難民データはありません",
       "emptyCorrelation": "これらの国のシグナルはありません",
-      "emptyExposure": "No population exposure locations for these countries",
-      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
-      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
-      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
+      "emptyExposure": "これらの国には人口曝露地点がありません",
+      "emptyExposurePartial": "利用可能なデータにこれらの国の曝露地点はありません。UCDPの全データの取得を待っています。",
+      "partialExposureLoading": "曝露を絞り込む前にUCDPの全地点を読み込んでいます。カバレッジの集計には騒乱のみが含まれます。",
+      "partialExposure": "UCDPの全地点を読み込めませんでした。曝露データは不完全です。カバレッジの集計には騒乱のみが含まれます。"
     },
     "draftAssessment": "ドラフト評価",
     "draftAssessmentAria": "旅行リスク評価を開く（このフォーカスで事前入力）",

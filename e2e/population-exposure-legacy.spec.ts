@@ -100,12 +100,15 @@ test('population exposure keeps Eilat and Gaza densities without borrowing for n
 test('focused exposure loads beyond the worldwide cut and Show all restores other countries', async ({ page }, testInfo) => {
   const settings = { 'population-exposure': { name: 'Population Exposure', enabled: true, priority: 0 } };
   const tabId = 'tab-exposure-focus';
-  await seedAnonymousDashboard(page, 'full', { localStorage: {
-    'worldmonitor-panels': JSON.stringify(settings),
-    'worldmonitor-tabs-v1:full': JSON.stringify({ activeTabId: tabId, tabs: [{
-      id: tabId, name: 'Yemen exposure', panelSettings: settings, panelOrder: ['population-exposure'], bottomSet: [],
-      scope: { countries: ['YE'], neighbours: false },
-    }] }),
+  await seedAnonymousDashboard(page, 'full', { initializeOnce: {
+    sessionKey: 'population-exposure-focus-seeded',
+    localStorage: {
+      'worldmonitor-panels': JSON.stringify(settings),
+      'worldmonitor-tabs-v1:full': JSON.stringify({ activeTabId: tabId, tabs: [{
+        id: tabId, name: 'Yemen exposure', panelSettings: settings, panelOrder: ['population-exposure'], bottomSet: [],
+        scope: { countries: ['YE'], neighbours: false },
+      }] }),
+    },
   } });
   await page.route(/^https?:\/\/(?!(127\.0\.0\.1:\d+|localhost:\d+)(?:\/|$)).*/i, route => route.abort());
   await page.route('**/api/**', route => route.fulfill({ json: {} }));

@@ -5113,10 +5113,10 @@
       "emptyEnergyDisruptions": "Žádné přerušení energetiky pro tyto země",
       "emptyDisplacement": "Žádné údaje o vysídlení pro tyto země",
       "emptyCorrelation": "Žádné signály pro tyto země",
-      "emptyExposure": "No population exposure locations for these countries",
-      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
-      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
-      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
+      "emptyExposure": "Pro tyto země nejsou k dispozici místa ohrožení obyvatelstva",
+      "emptyExposurePartial": "V dostupných datech nejsou místa ohrožení pro tyto země. Čeká se na úplné pokrytí UCDP.",
+      "partialExposureLoading": "Před filtrováním ohrožení se načítají všechna místa UCDP. Počty pokrytí zahrnují pouze nepokoje.",
+      "partialExposure": "Všechna místa UCDP se nepodařilo načíst. Údaje o ohrožení jsou neúplné; počty pokrytí zahrnují pouze nepokoje."
     },
     "draftAssessment": "Návrh posouzení",
     "draftAssessmentAria": "Otevřít posouzení cesty, předvyplněné touto zaměřením",

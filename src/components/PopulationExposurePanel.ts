@@ -10,10 +10,11 @@ import type { ResolvedScope } from '@/services/tab-focus';
 import { fetchUcdpEvents } from '@/services/conflict';
 import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
-type FullSetLoader = () => Promise<EventForExposure[] | null>;
+type FullSet = { events: EventForExposure[]; fromCache: boolean };
+type FullSetLoader = () => Promise<FullSet | null>;
 const loadFullSet: FullSetLoader = async () => {
   const result = await fetchUcdpEvents();
-  return result.success ? ucdpExposureEvents(result.exposure.events) : null;
+  return result.success ? { events: ucdpExposureEvents(result.exposure.events), fromCache: result.fromCache } : null;
 };
 
 export class PopulationExposurePanel extends Panel {
@@ -23,7 +24,8 @@ export class PopulationExposurePanel extends Panel {
   private exposures: PopulationExposure[] = [];
   private coverage?: ExposureCoverage;
   private hasData = false;
-  private fullEvents: EventForExposure[] | null = null;
+  private hasCachedUcdp = false;
+  private fullSet: FullSet | null = null;
   private fullSetState: 'idle' | 'loading' | 'failed' = 'idle';
   private request = 0;
 
@@ -41,16 +43,12 @@ export class PopulationExposurePanel extends Panel {
   }
 
   public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false, coverage?: ExposureCoverage, sources?: ExposureSources): void {
-    if (hasCachedUcdp) {
-      this.setDataBadge('cached', 'UCDP');
-    } else {
-      this.clearDataBadge();
-    }
+    this.hasCachedUcdp = hasCachedUcdp;
     this.exposures = exposures;
     this.coverage = coverage;
     this.sources = sources;
     this.hasData = true;
-    this.fullEvents = null;
+    this.fullSet = null;
     this.fullSetState = 'idle';
     this.request++;
     this.ensureFullSet();
@@ -75,13 +73,13 @@ export class PopulationExposurePanel extends Panel {
   }
 
   private ensureFullSet(): void {
-    if (!this.scopeFilter.scope || !this.sources?.ucdpIsProjection || this.fullEvents || this.fullSetState !== 'idle') return;
+    if (!this.scopeFilter.scope || !this.sources?.ucdpIsProjection || this.fullSet || this.fullSetState !== 'idle') return;
     this.fullSetState = 'loading';
     const request = ++this.request;
-    Promise.resolve().then(() => this.loadFullSet()).then(events => {
+    Promise.resolve().then(() => this.loadFullSet()).then(result => {
       if (request !== this.request) return;
-      this.fullEvents = events;
-      this.fullSetState = events ? 'idle' : 'failed';
+      this.fullSet = result;
+      this.fullSetState = result ? 'idle' : 'failed';
       if (!this.showingLoadFailure) this.render();
     }, () => {
       if (request !== this.request) return;
@@ -91,6 +89,9 @@ export class PopulationExposurePanel extends Panel {
   }
 
   private render(): void {
+    const fromCache = this.scopeFilter.scope && this.fullSet ? this.fullSet.fromCache : this.hasCachedUcdp;
+    if (fromCache) this.setDataBadge('cached', 'UCDP');
+    else this.clearDataBadge();
     let exposures = this.exposures;
     let coverage = this.coverage;
     const tags = new Map<PopulationExposure, ScopeRow<unknown>>();
@@ -99,10 +100,10 @@ export class PopulationExposurePanel extends Panel {
     if (this.scopeFilter.scope && this.sources) {
       const events = [
         ...this.sources.unrest.map(event => ({ event, source: 'unrest' as const })),
-        ...(this.fullEvents ?? this.sources.ucdp).map(event => ({ event, source: 'ucdp' as const })),
+        ...(this.fullSet?.events ?? this.sources.ucdp).map(event => ({ event, source: 'ucdp' as const })),
       ];
       const view = this.scopeFilter.view(events, row => exposureEventCountry(row.event));
-      partial = this.sources.ucdpIsProjection && !this.fullEvents;
+      partial = this.sources.ucdpIsProjection && !this.fullSet;
       this.scopeFilter.renderStrip(view, undefined, partial
         ? t(this.fullSetState === 'loading' ? 'focus.filter.partialExposureLoading' : 'focus.filter.partialExposure')
         : undefined);
@@ -159,6 +160,7 @@ export class PopulationExposurePanel extends Panel {
 
   public override destroy(): void {
     this.request++;
+    this.scopeFilter.destroy();
     super.destroy();
   }
 

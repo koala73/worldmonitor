@@ -21,7 +21,7 @@ async function loadPopulationExposurePanel() {
       if (key === 'components.populationExposure.coverageLeftOut') return 'Left out: ' + params.imprecise + '/' + params.noEstimate + '/' + params.otherPlaces;
       return key;
     }`],
-    ['scope-filter-stub', `export class PanelScopeFilter { scope = null; constructor() {} hideStrip() {} } export function scopeTagHtml() { return ''; } export function focusedEmptyHtml() { return ''; }`],
+    ['scope-filter-stub', `export class PanelScopeFilter { scope = null; constructor() {} hideStrip() {} destroy() {} } export function scopeTagHtml() { return ''; } export function focusedEmptyHtml() { return ''; }`],
     ['conflict-stub', `export async function fetchUcdpEvents() { return { success: false }; }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],

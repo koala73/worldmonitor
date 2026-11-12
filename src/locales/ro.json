@@ -5085,10 +5085,10 @@
       "emptyEnergyDisruptions": "Nicio întrerupere de energie pentru aceste țări",
       "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
       "emptyCorrelation": "Niciun semnal pentru aceste țări",
-      "emptyExposure": "No population exposure locations for these countries",
-      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
-      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
-      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
+      "emptyExposure": "Nu există locații de expunere a populației pentru aceste țări",
+      "emptyExposurePartial": "Datele disponibile nu conțin locații de expunere pentru aceste țări. Acoperirea completă UCDP este în așteptare.",
+      "partialExposureLoading": "Se încarcă toate locațiile UCDP înainte de filtrarea expunerii. Numărătorile de acoperire includ doar tulburările.",
+      "partialExposure": "Nu s-au putut încărca toate locațiile UCDP. Datele de expunere sunt incomplete; numărătorile de acoperire includ doar tulburările."
     },
     "draftAssessment": "Ciornă de evaluare",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",
