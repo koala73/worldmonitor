@@ -43,6 +43,7 @@ it('English exposure tooltip explains precision and separate source rows', () =>
   const en = JSON.parse(readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
   const text = en.components.populationExposure.infoTooltip;
   assert.match(text, /unrest.*precise location/i);
-  assert.match(text, /UCDP.*imprecise/i);
+  assert.match(text, /UCDP marked imprecise is excluded/i);
+  assert.match(text, /unknown is pending/i);
   assert.match(text, /two sources.*two rows/i);
 });

@@ -17,8 +17,8 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 | Name | Type | Description |
 |------|------|-------------|
 | `panel_request` | string | Signed owner-bound chokepoint reader token from a paid opening. Covers only this tool and its existing filters; cannot be combined with refresh. |
-| `refresh` | boolean | Paid allowance only: explicitly request a new panel allocation. Supply a request_id UUID. |
-| `request_id` | string | UUID for an explicit paid refresh; retry the same UUID to reuse that allocation. |
+| `refresh` | boolean | True spends one new paid chokepoint panel allocation; omitted or false reuses the current one. Paid plans only. Needs request_id and cannot be combined with panel_request. |
+| `request_id` | string | Client-generated UUID that names one refresh. Retrying with the same UUID reuses that allocation. |
 | `chokepoint` | string | Filter to one chokepoint — matches by case-insensitive substring in transit-summaries, chokepoint_transits, chokepoint-baselines and chokepoint-flows (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz"). ref and _countries are not filtered by it. |
 | `dataset` | `array<string: transit-summaries / chokepoint_transits / _countries / chokepoint-baselines / ref / chokepoint-flows>` | Restrict the response to one or more sub-datasets. Omit for the full bundle. |
 | `limit` | number | Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped; the `chokepoint` filter narrows all of them except ref. |
@@ -96,16 +96,16 @@ Returns the reviewed commodity-vulnerability portfolio for one country. Every ro
 
 ### `get_supply_chain_data`
 
-Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 19 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans. dataset selects shipping_stress, customs-revenue, flows, freight-rates or gscpi; commodity and reporter filter flows. limit caps lists, with newest GSCPI months kept chronological (default 30, 0 for no cap).
+Return seeded supply-chain pressure and trade data: freight-rate indices, the NY Fed GSCPI, a BDRY and carrier-equity shipping-stress proxy, monthly customs revenue and UN COMTRADE flows. Freight includes FRED levels and history, plus SSE change percentages, direction and z-scores against stored prior observations, with at least 12 baseline points. SSE raw levels and Baltic indices are excluded. GSCPI is monthly, in standard deviations, and subject to revision. Customs revenue is stale after 2 days; freight after 19 hours; GSCPI after 2 days. Requires a paid plan; no live fetch, weight 1 on API plans.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: shipping_stress / customs-revenue / flows / freight-rates / gscpi>` | Restrict the response to one or more sub-datasets (equity shipping-stress proxy, customs revenue, COMTRADE flows, freight rates, GSCPI). Omit for all. |
+| `dataset` | `array<string: shipping_stress / customs-revenue / flows / freight-rates / gscpi>` | Sub-datasets to return: shipping_stress (BDRY and carrier-equity stress proxy), customs-revenue (monthly customs revenue), flows (UN COMTRADE trade flows), freight-rates (freight indices) or gscpi (NY Fed supply-chain pressure index). Omit for all. |
 | `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
-| `reporter` | string | Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China"). |
-| `limit` | number | Cap each list dataset (carriers, months, flows, freight indices and GSCPI observations) to at most this many items (default 30, pass 0 for no cap). |
+| `reporter` | string | Reporting (declaring) country of COMTRADE flows: its numeric Comtrade reporter code, matched exactly (e.g. "156" for China), or text contained in its name, ignoring case (e.g. "China"). Applies to flows only. |
+| `limit` | number | Maximum items per list (carriers, months, flows, freight indices and GSCPI observations); GSCPI keeps its newest months in chronological order. Omitted keeps 30; 0 keeps every item. |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`, `GET /api/supply-chain/v1/get-shipping-rates`
 - **Access:** `subscription`. Requires a Pro subscription because the bundle includes Pro-only COMTRADE flows. Accepts the universal `summary` argument.

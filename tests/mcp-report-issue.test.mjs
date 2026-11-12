@@ -347,3 +347,17 @@ describe('error guidance', () => {
     assert.equal(invalid.error.data?.reportWith, undefined);
   });
 });
+
+describe('report_issue output status', () => {
+  // A retry within the window returns the stored row's CURRENT status, and an
+  // operator can move a row to any stored state before the retry arrives
+  // (PR #10504 review). The advertised enum must cover every stored state, or
+  // a schema-checking client rejects a valid retry result.
+  it('advertises every status the feedback table can store', async () => {
+    const { agentFeedbackStatusValidator } = await import('../convex/lib/agentFeedbackValidators.ts');
+    const { FEEDBACK_TOOLS } = await import('../api/mcp/registry/feedback-tools.ts');
+    const stored = agentFeedbackStatusValidator.members.map((member) => member.value).sort();
+    const advertised = [...FEEDBACK_TOOLS[0].outputSchema.properties.status.enum].sort();
+    assert.deepEqual(advertised, stored);
+  });
+});

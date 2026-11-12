@@ -1659,7 +1659,7 @@
       "estimateWithin": "Přibližně {{count}} lidí v okruhu {{km}} km",
       "method": "Odhady vycházejí z průměrné hustoty zalidnění dané země.",
       "empty": "Žádné vhodné lokality událostí",
-      "infoTooltip": "Zobrazují se události s údaji o hustotě obyvatelstva země. Polohy ze starších dat bez údajů o přesnosti jsou označeny jako čekající na aktualizaci. Odhadované oblasti se mohou překrývat. Nepokoje vyžadují přesnou polohu; události UCDP označené jako nepřesné se nezobrazují. Jedno místo ze dvou zdrojů (nepokoje a UCDP) se zobrazí ve dvou řádcích.",
+      "infoTooltip": "Zobrazují se události s údaji o hustotě obyvatelstva země. Polohy událostí UCDP bez údajů o přesnosti jsou označeny jako čekající na aktualizaci. Odhadované oblasti se mohou překrývat. Nepokoje vyžadují přesnou polohu; události UCDP označené jako nepřesné se nezobrazují. Jedno místo ze dvou zdrojů (nepokoje a UCDP) se zobrazí ve dvou řádcích.",
       "eventCount_one": "{{count}} událost",
       "eventCount_few": "{{count}} události",
       "eventCount_many": "{{count}} událostí",

@@ -93,8 +93,8 @@ The result reports `found`, `state` (the coverage verdict; `not-found` when the 
 
 | Name | Type | Description |
 |------|------|-------------|
-| `claim` | string | The claim or headline to check, up to 300 characters. Required. |
-| `variant` | `string: full / tech` | Headline digest variant to search. Defaults to full. |
+| `claim` | string | The claim or headline to check, as one statement, up to 300 characters. Its numbers and dates are checked against matched headlines in `figures`. Required. |
+| `variant` | `string: full / tech` | Headlines to search: `full` searches every fresh headline in the English full-edition feed caches (the full digest when that search is unavailable), `tech` the Tech dashboard digest. Omitted means `full`. |
 
 - **API endpoints:** `GET /api/news/v1/list-feed-digest`, `GET /api/news/v1/search-fact-checks`, `GET /api/news/v1/search-claim-headlines`
 - **Access:** `subscription` — requires a Pro subscription.
@@ -156,8 +156,8 @@ The 30 posts from r/worldnews and r/geopolitics with the highest `velocityScore`
 
 | Name | Type | Description |
 |------|------|-------------|
-| `subreddit` | string | Keep one subreddit: "worldnews" or "geopolitics". |
-| `limit` | number | Cap the post list to at most this many items (default 30, pass 0 for no cap). |
+| `subreddit` | string | Subreddit name without the r/ prefix, matched exactly, ignoring case: "worldnews" or "geopolitics". Omit for both. |
+| `limit` | number | Maximum posts to return, highest velocityScore first. Omitted keeps 30; 0 keeps every post in the snapshot. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -187,9 +187,9 @@ Curated public news-account posts from monitored X accounts. Returns permalink p
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `limit` | number | no | Maximum posts to return (1-200, default 50) |
-| `topic` | string | no | Optional topic filter such as breaking, conflict, geopolitics, cyber |
-| `account` | string | no | Optional account handle without @ |
+| `limit` | number | no | Maximum posts to return; values are clamped to 1-200 and 50 is used when omitted. |
+| `topic` | string | no | Curated topic bucket to keep, such as breaking, conflict, geopolitics or cyber. Omit for every topic. |
+| `account` | string | no | Handle of one monitored account; a leading @ is removed. Omit for every account. |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-x-feed`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -220,8 +220,8 @@ Temporal anomaly watch: current event counts vs day-of-week and seasonal baselin
 | Name | Type | Description |
 |------|------|-------------|
 | `type` | string | Filter to one tracked stream type (e.g. "news", "satellite_fires"); see trackedTypes in the response for what is currently baselined. |
-| `region` | string | Filter to one region label (case-insensitive exact match). |
-| `min_severity` | string: medium / high / critical | Drop anomalies below this severity band. |
+| `region` | string | Region label to keep, matched exactly, ignoring case. Baselines are currently kept for the whole world only, so every anomaly is labelled "global". |
+| `min_severity` | string: medium / high / critical | Lowest severity band to keep: medium is a z-score of at least 1.5, high at least 2, critical at least 3. |
 | `limit` | number | Cap the anomaly list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only; the REST baseline endpoints are write-through and excluded from parity).

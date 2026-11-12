@@ -10,15 +10,15 @@ The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replac
 
 ### `get_aviation_status`
 
-Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and FAA NMS and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring, iata selects one airport, limit caps the list (default 30, 0 for no cap).
+Return the seeded airport disruption snapshot: one alert row per monitored airport (about 85 major airports worldwide) with iata, name, country and severity, built from AviationStack delay aggregates for international hubs, FAA ASWS delays for US airports and FAA NMS and ICAO NOTAM closures. Seeded about every 30 minutes and flagged stale after 90. The snapshot holds every monitored airport, so most rows are severity "normal" unless disrupted_only=true, and the default limit of 30 returns only part of it (0 for the whole list). Airport-level status only; no fares, schedules or flight tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `disrupted_only` | boolean | Drop airports with severity "normal" — keep only airports actually experiencing delays/closures. The bootstrap lists every monitored airport, so most rows are non-events without this. |
-| `country` | string | Filter to one country by name (case-insensitive substring, e.g. "united states"). |
-| `iata` | string | Filter to a single airport by IATA code (e.g. "JFK"). |
+| `country` | string | Country as the airport registry names it (e.g. "USA", "UK", "China", "Saudi Arabia"). Keeps airports whose country contains this text, ignoring case. |
+| `iata` | string | Three-letter IATA airport code (e.g. "JFK"). Keeps that airport only, ignoring case. |
 | `limit` | number | Cap the alert list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
@@ -50,7 +50,7 @@ Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code (e.g. "AE", "US", "GB", "JP") |
-| `type` | string (all / civilian / military) | no | Filter: all flights (default), civilian only, or military only |
+| `type` | string (all / civilian / military) | no | Which aircraft lists to fetch; all when omitted. civilian or military skips the other source and omits its list. |
 
 - **API endpoints:** `GET /api/aviation/v1/track-aircraft`, `GET /api/military/v1/list-military-flights`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -73,7 +73,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_maritime_activity`
 
-Return country-scoped maritime activity. view=traffic (default) returns live AIS density_zones (intensity, ships_per_day, delta_pct), disruptions (dark-ship events and chokepoint congestion), snapshot_at and bounding_box, filtered to the country box with a 3-degree pad. A missing traffic bounding box returns an error. view=ports returns port activity with a 25-result cap, including 30-day tanker calls, import/export tanker deadweight tonnage and change against the prior 30 days; trend_delta_pct is null when prior calls are zero or unknown. PortWatch port data is scheduled, can lag real time, and returns available=false for uncovered or expired data. fetched_at is the retrieval time. Requires a paid plan; one downstream fetch for either view, weight 2 on API plans. country_code accepts alpha-2, alpha-3 or an English name. Read-only.
+Return country-scoped maritime activity. view=traffic (default) returns live AIS density_zones (intensity, ships_per_day, delta_pct), disruptions (dark-ship events and chokepoint congestion), snapshot_at and bounding_box, filtered to the country box with a 3-degree pad. A missing traffic bounding box returns an error. view=ports returns port activity with a 25-result cap, including 30-day tanker calls, import/export tanker deadweight tonnage and change against the prior 30 days; trend_delta_pct is null when prior calls are zero or unknown. PortWatch port data is scheduled, can lag real time, and returns available=false for uncovered or expired data. fetched_at is the retrieval time. Requires a paid plan; one downstream fetch for either view, weight 2 on API plans. Read-only.
 
 **Parameters:**
 
@@ -111,12 +111,12 @@ Live Google Flights itineraries between two airports on one date, read from the 
 |------|------|---------:|-------------|
 | `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
 | `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `departure_date` | string | **yes** | Departure date in YYYY-MM-DD format |
-| `return_date` | string | no | Return date in YYYY-MM-DD format for round trips (optional) |
-| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy) |
-| `max_stops` | string | no | Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional) |
-| `passengers` | number | no | Number of passengers (1-9, default 1) |
-| `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional) |
+| `departure_date` | string | **yes** | Outbound travel date, YYYY-MM-DD. |
+| `return_date` | string | no | Return travel date, YYYY-MM-DD, on or after departure_date. Set it to price a round trip; omit for one-way. |
+| `cabin_class` | string | no | Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted. |
+| `max_stops` | string | no | Most stops allowed: "0" or "non_stop" for nonstop only, "1" or "one_stop" for at most one stop. Omit to allow any number. |
+| `passengers` | number | no | Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted. |
+| `sort_by` | string | no | Ordering: "price" (cheapest first), "duration", "departure" or "arrival" time. Omit for the provider's default order. |
 
 - **API endpoints:** `GET /api/aviation/v1/search-google-flights`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -147,12 +147,12 @@ Return the cheapest Google Flights fare for each departure date between two airp
 |------|------|---------:|-------------|
 | `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
 | `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
-| `start_date` | string | **yes** | Start of the date range in YYYY-MM-DD format |
-| `end_date` | string | **yes** | End of the date range in YYYY-MM-DD format, at most 30 days after start_date |
+| `start_date` | string | **yes** | First departure date to price, YYYY-MM-DD. |
+| `end_date` | string | **yes** | Last departure date to price, YYYY-MM-DD, inclusive; at most 30 days after start_date. |
 | `is_round_trip` | boolean | no | Whether to search round-trip prices (default false). Requires trip_duration when true. |
 | `trip_duration` | number | no | Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip) |
-| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional) |
-| `passengers` | number | no | Number of passengers (1-9, default 1) |
+| `cabin_class` | string | no | Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted. |
+| `passengers` | number | no | Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted. |
 | `sort_by_price` | boolean | no | Sort results by price ascending (default false, sorts by date) |
 
 - **API endpoints:** `GET /api/aviation/v1/search-google-dates`
@@ -226,16 +226,16 @@ Keep **“Webcams provided by [Windy.com](https://www.windy.com/) — [add a web
 
 ### `get_infrastructure_status`
 
-Seeded Cloudflare Radar Internet snapshot in three datasets: `outages` (national and regional outages with start time, severity and cause, plus cloud and Internet service status), `traffic` (traffic anomalies) and `ddos` (the global DDoS protocol, vector and target-country summary). Physical infrastructure is not covered.
+Seeded Cloudflare Radar Internet snapshot in three datasets: `outages` (national and regional outages with start time, severity and cause), `traffic` (traffic anomalies) and `ddos` (the global DDoS protocol, vector and target-country summary). Physical infrastructure is not covered.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: outages / traffic / ddos>` | Restrict the response to outages, traffic anomalies or the DDoS summary. Omit for all three. |
+| `dataset` | `array<string: outages / traffic / ddos>` | Datasets to return: outages (Cloudflare Radar outage reports), traffic (traffic anomalies) or ddos (global DDoS protocol, vector and target summary). Omit for all three. |
 | `country` | string | Filter outages and traffic anomalies to one country. Pass an ISO 3166-1 alpha-2 code (e.g. "IQ"), an alpha-3 code ("IRQ"), or a country name in any supported dashboard locale (e.g. English "Iraq", Arabic "العراق", German "Deutschland", Chinese "中国"). Unresolved inputs return Invalid params. DDoS summaries are global, so a DDoS-only call with country returns Invalid params. |
-| `severity` | string | Filter to one outage severity (case-insensitive substring). |
-| `limit` | integer | Cap each list (outages, anomalies, DDoS protocols, vectors and target countries) to at most this many items (default 30, pass 0 for no cap). |
+| `severity` | string | Outage severity to keep, matched as a case-insensitive substring of OUTAGE_SEVERITY_TOTAL (nationwide), _MAJOR (regional) or _PARTIAL (other scopes), e.g. "total". Applies to outages only. |
+| `limit` | integer | Maximum items per list (outages, anomalies, DDoS protocols, vectors and target countries). Omitted keeps 30; 0 keeps every item. |
 
 Traffic anomalies carry epoch-millisecond `startDate` and `endDate`; `endDate: 0` means ongoing. `totalCount` is the global anomaly count before the country filter and the limit, not the number of rows shown. The DDoS summary keeps `dateRangeStart` and `dateRangeEnd`. A valid empty list means no recorded rows; a missing cache surfaces as a null dataset.
 

@@ -38,12 +38,26 @@ describe('Skills Over MCP extension', () => {
     assert.match(initBody.result.instructions, /skills\/list/);
     assert.match(initBody.result.instructions, /resources\/read/);
 
-    const listed = await handler(request('skills/list'));
-    const body = await listed.json() as any;
-    assert.equal(listed.status, 200);
-    assert.equal(body.result.resultType, 'complete');
-    assert.ok(body.result.skills.length > 0);
-    for (const skill of body.result.skills) {
+    const skills: any[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    do {
+      const listed = await handler(request('skills/list', cursor === undefined ? {} : { cursor }));
+      const body = await listed.json() as any;
+      assert.equal(listed.status, 200);
+      assert.equal(body.result.resultType, 'complete');
+      const names = new Set(body.result.skills.map((skill: any) => skill.frontmatter.name));
+      assert.ok(names.size > 0 && names.size <= 5, `page ${pages} carries ${names.size} skill names`);
+      skills.push(...body.result.skills);
+      cursor = body.result.nextCursor;
+      pages += 1;
+      assert.ok(pages < 100, 'skills/list pagination must terminate');
+    } while (cursor !== undefined);
+    assert.ok(pages > 1, 'the catalog spans several pages');
+    assert.equal(new Set(skills.map((skill) => skill.uri)).size, skills.length, 'no skill repeats across pages');
+    const { SKILL_ENTRIES } = await import('../api/mcp/skill-extension/generated.ts');
+    assert.equal(skills.length, SKILL_ENTRIES.length, 'paging walks the whole catalog');
+    for (const skill of skills) {
       assert.equal(skill.uri, `skill://${skill.frontmatter.name}/SKILL.md`);
       assert.ok(skill.resources.some((resource: any) => resource.uri === skill.uri));
       for (const resource of skill.resources) {
@@ -78,9 +92,11 @@ describe('Skills Over MCP extension', () => {
     assert.match(readBody.result.contents[0].text, /^---\nname: check-country-risk\n/);
   });
 
-  it('rejects cursors and unknown skill URIs with Invalid params', async () => {
-    const cursor = await handler(request('skills/list', { cursor: 'done' }));
-    assert.equal((await cursor.json() as any).error.code, -32602);
+  it('rejects unknown cursors and unknown skill URIs with Invalid params', async () => {
+    for (const bad of ['done', 'skills:0', 'skills:3', 'skills:99999', 42]) {
+      const cursor = await handler(request('skills/list', { cursor: bad }));
+      assert.equal((await cursor.json() as any).error.code, -32602, `cursor ${String(bad)}`);
+    }
     const missing = await handler(request('skills/get', { uri: 'skill://missing/SKILL.md' }));
     assert.equal((await missing.json() as any).error.code, -32602);
   });

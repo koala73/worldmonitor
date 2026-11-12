@@ -23,11 +23,11 @@ Futures quotes use a 30-minute bound during normal NYMEX trading. The daily brea
 | Name | Type | Description |
 |------|------|-------------|
 | `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
-| `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
+| `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Datasets to keep: equity (stock quotes), commodity (commodity quotes, physical premiums and divergence), crypto, sectors (sector performance), etf (ETF flows), gulf (Gulf-market quotes), sentiment (Fear & Greed). Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 | `refresh` | boolean | Reload the curated snapshot with one new paid panel allocation. Default false reuses the current market panel. Requires request_id; omit panel_request when refreshing. |
-| `request_id` | string | Stable refresh ID. Retries with the same ID reuse one paid allocation and its original expiry. |
-| `panel_request` | string | Server-issued market-panel receipt token for bounded curated reads. API allowances do not accept receipts. |
+| `request_id` | string | Client-generated UUID that names one refresh. Retries with the same ID reuse one paid allocation and its original expiry. |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Reads the same curated panel with new filters without another allocation. API allowances do not accept it. |
 
 - **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
@@ -93,14 +93,14 @@ Per-company corporate intelligence from SEC EDGAR and market data (#5695). Compa
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | `string: enrichment / signals / filings-search / material-events` | Defaults to `enrichment`. |
+| `view` | `string: enrichment / signals / filings-search / material-events` | Which dataset to return: one company's profile (`enrichment`), its classified events (`signals`), EDGAR full-text search (`filings-search`) or the market-wide 8-K stream (`material-events`). Omitted: `enrichment`. |
 | `ticker` | string | Exchange ticker symbol, such as `AAPL`. Preferred company key for `enrichment` and `signals`. |
 | `name` | string | Company name fallback when no ticker is known; case-insensitive exact SEC title only, and only when that title maps to a single CIK. Prefer ticker. |
 | `query` | string | `filings-search` only: full-text query. Required for that view. |
 | `forms` | string | `filings-search` only: comma-separated form filter, such as `8-K` or `10-K,10-Q`. |
 | `start_date` / `end_date` | string | `filings-search` only: filing-date range (YYYY-MM-DD). |
-| `item_code` | string | `material-events` only: filter to one 8-K item code, such as `5.02`. |
-| `limit` | integer | Result cap: up to 25 for `filings-search`, up to 100 for `material-events`. A value above the view's own maximum is rejected rather than silently clamped. Ignored by `enrichment` and `signals`. |
+| `item_code` | string | `material-events` only: keep filings that report this 8-K item number, written N.NN as in `items[].code` of returned events, such as `5.02` (officer departures and appointments) or `1.01` (material agreements). Omitted: all items. |
+| `limit` | integer | Number of results to return. `filings-search` accepts at most 25 (omitted: 10); `material-events` accepts up to 100 (omitted: 25). Above 25 on `filings-search` returns error `limit_out_of_range`. Ignored by `enrichment` and `signals`. |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-company-enrichment`, `GET /api/intelligence/v1/list-company-signals`, `GET /api/intelligence/v1/search-sec-filings`, `GET /api/intelligence/v1/list-material-events`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -124,21 +124,21 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_prediction_markets`
 
-Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. query matches titles case-insensitively; limit caps each bucket (default 30, 0 for no cap). Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.
+Return seeded prediction-market contracts from multiple venues with current probabilities, grouped into three buckets: geopolitical (including elections), tech (AI, crypto, science) and finance (economics, plus the untagged fallback for non-geopolitical records). Flagged stale when the seed is older than 90 minutes. Kalshi currently supplies no classifier tags, so source=kalshi with category=tech returns no records and other non-geopolitical Kalshi records fall back to finance. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. Dedicated paid connections reuse one panel allocation across openings and filters; refresh with a request_id starts a new one and the same ID retries it. API allowances retain per-tool billing. change24h/change7d are percentage-point moves (7d: Polymarket only); sort=move_24h|move_7d ranks by absolute move.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `category` | string: geopolitical / tech / finance | Restrict to one market category bucket. Omit for all three. Finance also owns untagged non-geopolitical records. |
+| `category` | string: geopolitical / tech / finance | Bucket to return: geopolitical (including elections), tech (AI, crypto, science) or finance (economics). Finance also owns untagged non-geopolitical records. Omit for all three. |
 | `query` | string | Keep only markets whose title contains this text (case-insensitive). |
-| `source` | string: kalshi / polymarket | Filter to one prediction-market source. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
+| `source` | string: kalshi / polymarket | Venue whose contracts to keep. Kalshi currently provides no classifier tags, so source=kalshi with category=tech returns no records. |
 | `sort` | string: rank / move_24h / move_7d | Order each bucket by seed rank or absolute 24h/7d move before limiting. Missing moves go last. |
 | `min_liquidity` | number | Keep only markets whose liquidity (resting order-book depth in USD) is at least this value, applied before limit. Markets without a liquidity value, such as a Kalshi market whose order book could not be fetched, are dropped when this is above 0. |
 | `limit` | number | Cap each category bucket to at most this many markets (default 30, pass 0 for no cap). |
-| `panel_request` | string | Paid prediction panel receipt. Reuse for internal curated reads without another daily allocation. |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Re-reads that prediction panel with new filters without another daily allocation. |
 | `refresh` | boolean | Paid panel only. Start a new allocation with request_id; retry the same ID to reuse it. |
-| `request_id` | string | Paid refresh identifier. Required when refresh is true. |
+| `request_id` | string | Client-generated UUID that names one refresh; needed when refresh is true. Retrying with the same ID reuses that allocation. |
 
 - **Price moves:** Optional `change24h` and `change7d` are percentage-point changes on the `yesPrice` 0–100 scale. Missing upstream values are absent; zero means no change. Kalshi supplies only 24h changes. REST returns `yesPriceChange24h` and `yesPriceChange7d` on the 0–1 probability scale.
 - **Liquidity:** Optional `liquidity` is resting order-book depth in USD, measured per venue. Polymarket records use Gamma's CLOB liquidity (`liquidity`, equal to `liquidityClob`): event-level on bucket records, contract-level on country records. Kalshi records sum price times size over every yes and no bid in the contract's order book. The venues compute depth differently, so compare thresholds within one source. The field is absent when the venue reports nothing or the order book could not be fetched. REST accepts the same filter as `min_liquidity`.
