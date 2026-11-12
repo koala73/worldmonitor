@@ -564,7 +564,7 @@ export class GlobeMap {
   private clusterMarkers: ClusterMarker[] = [];
   private clusterData: Map<string, MilitaryVesselCluster> = new Map();
   private popup: MapPopup | null = null;
-  // Bumped by every reservoir reveal and every marker click, so a delayed reveal from a
+  // Bumped by every reservoir reveal, marker click and drag start, so a delayed reveal from a
   // panel row cannot replace a popup the user opened after it.
   private reservoirRevealSeq = 0;
   private weatherMarkers: WeatherMarker[] = [];
@@ -772,6 +772,7 @@ export class GlobeMap {
     controls.enableDamping = !desktop;
 
     this.controlsStartHandler = () => {
+      this.reservoirRevealSeq++;
       if (this.viewportTarget) this.settleViewportMovement(false);
     };
     controls.addEventListener('start', this.controlsStartHandler);
@@ -3604,14 +3605,17 @@ export class GlobeMap {
     const current = () => seq === this.reservoirRevealSeq;
     const reveal = () => {
       if (this.destroyed || !this.globe || !current()) return;
+      // An open marker tooltip's dismissal timer would also hide the popup we open.
+      this.hideTooltip();
       this.setCenter(reservoir.lat, reservoir.lon, 5);
       const rect = this.container.getBoundingClientRect();
       const x = rect.width / 2;
       const y = rect.height / 2;
-      window.setTimeout(() => {
-        if (this.destroyed || !this.popup || !current()) return;
+      // Settles false when a drag or a later camera command interrupts the turn.
+      void this.whenViewportSettled().then((completed) => {
+        if (!completed || this.destroyed || !this.popup || !current()) return;
         this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
-      }, SET_CENTER_ROTATION_MS);
+      });
     };
     if (this.globe) reveal();
     else void this.whenReady().then(reveal).catch(() => {});

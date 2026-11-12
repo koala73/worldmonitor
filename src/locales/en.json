@@ -4702,7 +4702,7 @@
         "confidence": "A pass counts only when at least 5 water segments agree within 0.25 m. A seasonal reading needs passes from at least 3 earlier years at the same time of year.",
         "limitations": {
           "0": "Level only, not volume: the same drop means a different loss of storage in each reservoir.",
-          "1": "A water body with no pass in 150 days shows as having no recent pass instead of an old reading."
+          "1": "A water body with no pass in 150 days is marked as having no recent pass; its last reading, changes and date are still shown."
         },
         "related": {
           "0": "Strategic Water Levels panel",

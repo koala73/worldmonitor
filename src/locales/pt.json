@@ -4684,7 +4684,7 @@
         "confidence": "Uma passagem só conta quando pelo menos 5 segmentos de água concordam dentro de 0,25 m. A comparação sazonal exige passagens de pelo menos 3 anos anteriores na mesma época do ano.",
         "limitations": {
           "0": "Apenas nível, não volume: a mesma queda representa uma perda de reserva diferente em cada reservatório.",
-          "1": "Um corpo d’água sem passagem há 150 dias aparece sem passagem recente em vez de com uma leitura antiga."
+          "1": "Um corpo d’água sem passagem há 150 dias é marcado como sem passagem recente; a última leitura, as variações e a data continuam visíveis."
         },
         "related": {
           "0": "Painel Níveis de água estratégicos",

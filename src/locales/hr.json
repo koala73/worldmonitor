@@ -4695,7 +4695,7 @@
         "confidence": "Prelet se računa samo ako se barem 5 vodenih segmenata slaže unutar 0,25 m. Sezonska usporedba traži prelete iz barem 3 prethodne godine u isto doba godine.",
         "limitations": {
           "0": "Samo razina, ne volumen: isti pad znači različit gubitak zalihe u svakoj akumulaciji.",
-          "1": "Vodno tijelo bez preleta 150 dana prikazuje se bez nedavnog preleta umjesto sa starim očitanjem."
+          "1": "Vodno tijelo bez preleta 150 dana označava se kao bez nedavnog preleta; posljednje očitanje, promjene i datum i dalje se prikazuju."
         },
         "related": {
           "0": "Ploča Strateški vodostaji",

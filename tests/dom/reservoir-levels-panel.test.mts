@@ -5,7 +5,8 @@ vi.mock('@/components/Panel', () => ({ Panel: class {
   count = -1;
   setCount(n: number) { this.count = n; }
   showError(message: string) { this.content.textContent = `error:${message}`; }
-  setSafeContent(value: unknown) { this.content.innerHTML = String(value); }
+  // Like Panel, runs afterUpdate only once the (debounced) DOM swap has happened.
+  setSafeContent(value: unknown, afterUpdate?: () => void) { this.content.innerHTML = String(value); afterUpdate?.(); }
 } }));
 vi.mock('@/services/i18n', () => ({
   getLocale: () => 'en',
@@ -62,6 +63,27 @@ it('sorts attention first, filters, and hands the clicked reservoir to the map',
   panel.setSelectHandler(select);
   document.querySelector<HTMLElement>('[data-reservoir-id="calm"] .wl-name')!.click();
   expect(select).toHaveBeenCalledWith(expect.objectContaining({ id: 'calm' }));
+});
+
+it('keeps keyboard focus on the filter the user just activated', () => {
+  const panel = new ReservoirLevelsPanel();
+  panel.setResult(ok([reservoir('calm'), reservoir('mead', { status: 'record_low', seasonalZ: -2.4 })]));
+  const chip = document.querySelector<HTMLButtonElement>('button[data-wl-filter="attention"]')!;
+  chip.focus();
+  chip.click();
+  const active = document.activeElement as HTMLElement | null;
+  expect(active?.dataset.wlFilter).toBe('attention');
+  expect(active?.isConnected).toBe(true);
+  expect(rowIds()).toEqual(['mead']);
+});
+
+it('does not steal focus when a render happens while focus is outside the filters', () => {
+  const panel = new ReservoirLevelsPanel();
+  const outside = document.body.appendChild(document.createElement('input'));
+  outside.focus();
+  panel.setResult(ok([reservoir('calm')]));
+  panel.setFilter('attention');
+  expect(document.activeElement).toBe(outside);
 });
 
 it('tells an empty dataset from a failed request and keeps rows through a later failure', () => {

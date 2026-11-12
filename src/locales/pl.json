@@ -4706,7 +4706,7 @@
         "confidence": "Przelot liczy się tylko wtedy, gdy co najmniej 5 odcinków wody zgadza się z dokładnością do 0,25 m. Porównanie sezonowe wymaga przelotów z co najmniej 3 wcześniejszych lat o tej samej porze roku.",
         "limitations": {
           "0": "Tylko poziom, nie objętość: ten sam spadek oznacza w każdym zbiorniku inną utratę zapasu.",
-          "1": "Akwen bez przelotu od 150 dni jest pokazywany jako bez niedawnego przelotu zamiast ze starym odczytem."
+          "1": "Akwen bez przelotu od 150 dni jest oznaczany jako bez niedawnego przelotu; jego ostatni odczyt, zmiany i data są nadal pokazywane."
         },
         "related": {
           "0": "Panel Strategiczne poziomy wód",

@@ -103,11 +103,18 @@ export class ReservoirLevelsPanel extends Panel {
       ? safeHtml`<ul class="wl-list">${joinSafeHtml(visible.map((r) => this.row(r, ctx)))}</ul>`
       : safeHtml`<div class="panel-empty wl-empty">${t('components.reservoirLevels.filterEmpty')}</div>`;
 
+    // The swap replaces the filter buttons; a keyboard user who just activated one
+    // would lose focus, so put it back on the active filter once the DOM is written.
+    const refocusFilter = this.content.querySelector('.wl-filters')?.contains(document.activeElement) ?? false;
+    const restoreFocus = refocusFilter
+      ? () => this.content.querySelector<HTMLButtonElement>(`button[data-wl-filter="${this.filter}"]`)?.focus()
+      : undefined;
+
     this.setSafeContent(safeHtml`<div class="wl-panel">
       <div class="panel-tabs wl-filters" role="group" aria-label="${t('components.reservoirLevels.filterLabel')}">${chips}</div>
       ${rows}
       ${this.footer()}
-    </div>`);
+    </div>`, restoreFocus);
   }
 
   private row(r: ReservoirLevel, ctx: ReservoirFormatContext): SafeHtml {

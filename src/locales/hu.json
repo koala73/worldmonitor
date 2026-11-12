@@ -4662,7 +4662,7 @@
         "confidence": "Egy áthaladás csak akkor számít, ha legalább 5 vízszakasz 0,25 m-en belül egyezik. Az évszakos összevetéshez legalább 3 korábbi év azonos időszakából kellenek áthaladások.",
         "limitations": {
           "0": "Csak vízszint, nem térfogat: ugyanaz a csökkenés minden tározóban más készletveszteséget jelent.",
-          "1": "Ha egy víztestnél 150 napja nem volt áthaladás, régi érték helyett „nincs friss áthaladás” jelenik meg."
+          "1": "Ha egy víztestnél 150 napja nem volt áthaladás, „nincs friss áthaladás” jelölést kap; az utolsó értéke, a változások és a dátum továbbra is látszanak."
         },
         "related": {
           "0": "Stratégiai vízszintek panel",

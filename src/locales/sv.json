@@ -4662,7 +4662,7 @@
         "confidence": "En passage räknas bara när minst 5 vattensegment stämmer överens inom 0,25 m. En säsongsjämförelse kräver passager från minst 3 tidigare år vid samma tid på året.",
         "limitations": {
           "0": "Endast nivå, inte volym: samma sänkning innebär olika förlust av lagrat vatten i varje magasin.",
-          "1": "Ett vatten utan passage på 150 dagar visas som utan ny passage i stället för med ett gammalt värde."
+          "1": "Ett vatten utan passage på 150 dagar markeras som utan ny passage; dess senaste värde, förändringar och datum visas fortfarande."
         },
         "related": {
           "0": "Panelen Strategiska vattennivåer",

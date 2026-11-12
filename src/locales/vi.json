@@ -4640,7 +4640,7 @@
         "confidence": "Một lượt quét chỉ được tính khi ít nhất 5 đoạn mặt nước khớp nhau trong phạm vi 0,25 m. So sánh theo mùa cần lượt quét từ ít nhất 3 năm trước vào cùng thời điểm trong năm.",
         "limitations": {
           "0": "Chỉ là mực nước, không phải thể tích: cùng một mức giảm nghĩa là lượng trữ mất đi khác nhau ở mỗi hồ chứa.",
-          "1": "Vùng nước không có lượt quét trong 150 ngày được hiển thị là không có lượt quét gần đây thay vì một số đo cũ."
+          "1": "Vùng nước không có lượt quét trong 150 ngày được đánh dấu là không có lượt quét gần đây; số đo cuối cùng, các thay đổi và ngày đo vẫn được hiển thị."
         },
         "related": {
           "0": "Bảng Mực nước chiến lược",

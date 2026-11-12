@@ -4662,7 +4662,7 @@
         "confidence": "Bir geçiş yalnızca en az 5 su segmenti 0,25 m içinde uyuştuğunda sayılır. Mevsimsel karşılaştırma, yılın aynı dönemine ait en az 3 önceki yıldan geçiş gerektirir.",
         "limitations": {
           "0": "Yalnızca seviye, hacim değil: aynı düşüş her baraj gölünde farklı bir depolama kaybı anlamına gelir.",
-          "1": "150 gündür geçişi olmayan bir su kütlesi, eski bir okuma yerine yakın tarihli geçiş yok olarak gösterilir."
+          "1": "150 gündür geçişi olmayan bir su kütlesi yakın tarihli geçiş yok olarak işaretlenir; son ölçümü, değişimleri ve tarihi yine gösterilir."
         },
         "related": {
           "0": "Stratejik Su Seviyeleri paneli",

@@ -4684,7 +4684,7 @@
         "confidence": "Un passage ne compte que si au moins 5 segments d’eau concordent à 0,25 m près. Une comparaison saisonnière exige des passages d’au moins 3 années antérieures à la même période de l’année.",
         "limitations": {
           "0": "Niveau seulement, pas volume : une même baisse représente une perte de stock différente dans chaque réservoir.",
-          "1": "Un plan d’eau sans passage depuis 150 jours apparaît sans passage récent plutôt qu’avec une ancienne mesure."
+          "1": "Un plan d’eau sans passage depuis 150 jours est signalé sans passage récent ; sa dernière mesure, ses variations et sa date restent affichées."
         },
         "related": {
           "0": "Panneau Niveaux d’eau stratégiques",

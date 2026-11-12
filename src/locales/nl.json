@@ -4662,7 +4662,7 @@
         "confidence": "Een overkomst telt alleen als minstens 5 watersegmenten binnen 0,25 m overeenkomen. Een seizoensvergelijking vraagt overkomsten uit minstens 3 eerdere jaren in dezelfde tijd van het jaar.",
         "limitations": {
           "0": "Alleen niveau, geen volume: dezelfde daling betekent in elk stuwmeer een ander voorraadverlies.",
-          "1": "Een waterlichaam zonder overkomst in 150 dagen staat als zonder recente overkomst in plaats van met een oude meting."
+          "1": "Een waterlichaam zonder overkomst in 150 dagen wordt gemarkeerd als zonder recente overkomst; de laatste meting, de veranderingen en de datum blijven zichtbaar."
         },
         "related": {
           "0": "Paneel Strategische waterstanden",

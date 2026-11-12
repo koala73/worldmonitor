@@ -4684,7 +4684,7 @@
         "confidence": "Un passaggio conta solo se almeno 5 segmenti d’acqua concordano entro 0,25 m. Il confronto stagionale richiede passaggi di almeno 3 anni precedenti nello stesso periodo dell’anno.",
         "limitations": {
           "0": "Solo livello, non volume: lo stesso calo indica una perdita di riserva diversa in ogni bacino.",
-          "1": "Un corpo idrico senza passaggi da 150 giorni appare senza passaggio recente invece che con una lettura vecchia."
+          "1": "Un corpo idrico senza passaggi da 150 giorni viene segnato come senza passaggio recente; l’ultima lettura, le variazioni e la data restano visibili."
         },
         "related": {
           "0": "Pannello Livelli idrici strategici",

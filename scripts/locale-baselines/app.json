@@ -2504,7 +2504,7 @@
   "layerExplanation.layers.reservoirLevels.confidence": "A pass counts only when at least 5 water segments agree within 0.25 m. A seasonal reading needs passes from at least 3 earlier years at the same time of year.",
   "layerExplanation.layers.reservoirLevels.freshness": "Seeded daily. NASA publishes each pass 50 to 70 days after it is measured, and a reservoir is revisited every few days to about a month.",
   "layerExplanation.layers.reservoirLevels.limitations.0": "Level only, not volume: the same drop means a different loss of storage in each reservoir.",
-  "layerExplanation.layers.reservoirLevels.limitations.1": "A water body with no pass in 150 days shows as having no recent pass instead of an old reading.",
+  "layerExplanation.layers.reservoirLevels.limitations.1": "A water body with no pass in 150 days is marked as having no recent pass; its last reading, changes and date are still shown.",
   "layerExplanation.layers.reservoirLevels.purpose": "Marks strategic reservoirs and lakes by how their water-surface level compares with the usual level for the time of year, and by how fast it is changing.",
   "layerExplanation.layers.reservoirLevels.related.0": "Strategic Water Levels panel",
   "layerExplanation.layers.reservoirLevels.related.1": "Climate anomalies",

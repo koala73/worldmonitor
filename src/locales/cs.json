@@ -4706,7 +4706,7 @@
         "confidence": "Přelet se započítá jen tehdy, když se alespoň 5 vodních segmentů shoduje v rozmezí 0,25 m. Sezónní srovnání vyžaduje přelety z alespoň 3 předchozích let ve stejném ročním období.",
         "limitations": {
           "0": "Pouze hladina, ne objem: stejný pokles znamená v každé nádrži jinou ztrátu zásoby.",
-          "1": "Vodní plocha bez přeletu za 150 dní se zobrazí jako bez nedávného přeletu místo starého údaje."
+          "1": "Vodní plocha bez přeletu za 150 dní je označena jako bez nedávného přeletu; její poslední údaj, změny a datum se dál zobrazují."
         },
         "related": {
           "0": "Panel Strategické vodní hladiny",

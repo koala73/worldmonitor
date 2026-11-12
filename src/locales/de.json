@@ -4662,7 +4662,7 @@
         "confidence": "Ein Überflug zählt nur, wenn mindestens 5 Wassersegmente innerhalb von 0,25 m übereinstimmen. Ein saisonaler Vergleich braucht Überflüge aus mindestens 3 früheren Jahren zur selben Jahreszeit.",
         "limitations": {
           "0": "Nur Wasserstand, kein Volumen: Derselbe Rückgang bedeutet in jedem Stausee einen anderen Speicherverlust.",
-          "1": "Ein Gewässer ohne Überflug seit 150 Tagen erscheint als ohne aktuellen Überflug statt mit einem alten Wert."
+          "1": "Ein Gewässer ohne Überflug seit 150 Tagen wird als ohne aktuellen Überflug markiert; sein letzter Wert, die Veränderungen und das Datum werden weiter angezeigt."
         },
         "related": {
           "0": "Panel „Strategische Wasserstände“",

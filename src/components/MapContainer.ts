@@ -212,6 +212,7 @@ export class MapContainer {
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
   private pendingChokepointOpen: string | null = null;
+  private pendingReservoirOpen: ReservoirLevel | null = null;
   private hiddenLayerToggles = new Set<keyof MapLayers>();
   private layerLoadingState = new Map<keyof MapLayers, boolean>();
   private layerReadyState = new Map<keyof MapLayers, boolean>();
@@ -462,6 +463,7 @@ export class MapContainer {
     // observe settlement attach to the transition that was actually started.
     this.replayPendingViewportActions();
     this.replayPendingChokepointOpen();
+    this.replayPendingReservoirOpen();
     const waiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();
     for (const waiter of waiters) waiter.resolve();
@@ -472,6 +474,13 @@ export class MapContainer {
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
     this.openChokepoint(pendingChokepointOpen);
+  }
+
+  private replayPendingReservoirOpen(): void {
+    if (this.pendingReservoirOpen === null) return;
+    const pendingReservoirOpen = this.pendingReservoirOpen;
+    this.pendingReservoirOpen = null;
+    this.openReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -1502,7 +1511,13 @@ export class MapContainer {
 
   /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
   public openReservoir(reservoir: ReservoirLevel): void {
-    if (!this.hasActiveRenderer()) return;
+    // A renderer switch clears the renderer before its async init finishes; keep the
+    // latest selection and replay it on readiness, as openChokepoint does.
+    if (!this.isChokepointRendererReady()) {
+      this.pendingReservoirOpen = reservoir;
+      return;
+    }
+    this.pendingReservoirOpen = null;
     if (this.useGlobe) this.globeMap?.openReservoir(reservoir);
     else if (this.useDeckGL) this.deckGLMap?.openReservoir(reservoir);
     else this.svgMap?.openReservoir(reservoir);
@@ -2015,6 +2030,7 @@ export class MapContainer {
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;
+    this.pendingReservoirOpen = null;
     this.hiddenLayerToggles.clear();
     this.layerLoadingState.clear();
     this.layerReadyState.clear();

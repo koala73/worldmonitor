@@ -4684,7 +4684,7 @@
         "confidence": "Una pasada solo cuenta si al menos 5 segmentos de agua coinciden dentro de 0,25 m. La comparación estacional necesita pasadas de al menos 3 años anteriores en la misma época del año.",
         "limitations": {
           "0": "Solo nivel, no volumen: la misma bajada supone una pérdida de reserva distinta en cada embalse.",
-          "1": "Una masa de agua sin pasadas en 150 días aparece sin pasada reciente en lugar de con una lectura antigua."
+          "1": "Una masa de agua sin pasadas en 150 días se marca sin pasada reciente; su última lectura, sus variaciones y su fecha se siguen mostrando."
         },
         "related": {
           "0": "Panel Niveles de agua estratégicos",
