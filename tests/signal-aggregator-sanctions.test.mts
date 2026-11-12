@@ -34,7 +34,7 @@ for (const addedIds of [0, 1, 5]) {
     signalAggregator.ingestSanctionsPressure(countries);
     const summary = signalAggregator.getSummary();
     const signals = summary.topCountries[0].signals;
-    const expected = '25 sanctions designations tied to China (OFAC / Canada SEMA)';
+    const expected = '25 sanctions designations tied to China (OFAC)';
     assert.equal(signals[0].title, expected);
     assert.equal(summary.totalSignals, 1);
     assert.equal(summary.byType.sanctions_pressure, 1);

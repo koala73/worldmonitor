@@ -2745,7 +2745,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "Seznamy OFAC SDN a konsolidované seznamy spolu s kanadskými sankcemi SEMA/JVCFOA. Řádky zemí používají přímé vazby. Vlajky plavidel a registrace letadel se počítají odděleně v registrech; nulový počet aktiv u země neznamená, že neexistují sankcionovaná aktiva. Země mateřských subjektů jsou odděleny od údajů o adrese a nevstupují do skóre rizika.",
+      "infoTooltip": "Seznamy OFAC SDN a konsolidované seznamy spolu s kanadskými sankcemi SEMA/JVCFOA. Řádky zemí používají přímé vazby. Vlajky plavidel a registrace letadel se počítají odděleně v registrech; nulový počet aktiv u země neznamená, že neexistují sankcionovaná aktiva.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {

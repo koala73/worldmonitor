@@ -2734,7 +2734,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions et désignations",
-      "infoTooltip": "Listes OFAC SDN et consolidées, ainsi que les désignations SEMA/JVCFOA du Canada. Les lignes des pays utilisent les liens directs. Les pavillons des navires et les immatriculations des aéronefs sont comptés séparément dans les registres ; un nombre nul pour un pays ne signifie pas une absence d’actifs sanctionnés. Les pays des entités mères sont distincts des preuves d’adresse et exclus des scores de risque.",
+      "infoTooltip": "Listes OFAC SDN et consolidées, ainsi que les désignations SEMA/JVCFOA du Canada. Les lignes des pays utilisent les liens directs. Les pavillons des navires et les immatriculations des aéronefs sont comptés séparément dans les registres ; un nombre nul pour un pays ne signifie pas une absence d’actifs sanctionnés.",
       "loading": "Chargement des données de sanctions...",
       "unavailable": "Données de sanctions indisponibles.",
       "summary": {

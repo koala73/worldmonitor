@@ -2792,7 +2792,7 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "OFAC SDN és összevont listák, valamint Kanada SEMA/JVCFOA szankciói. Az országok sorai közvetlen kapcsolatokat használnak. A hajólobogók és a repülőgép-lajstromok külön szerepelnek a nyilvántartásokban; egy ország nulla eszközszáma nem jelenti a szankcionált eszközök hiányát. Az anyaszervezetek országai elkülönülnek a címadatoktól, és nem számítanak bele a kockázati pontszámokba.",
+      "infoTooltip": "OFAC SDN és összevont listák, valamint Kanada SEMA/JVCFOA szankciói. Az országok sorai közvetlen kapcsolatokat használnak. A hajólobogók és a repülőgép-lajstromok külön szerepelnek a nyilvántartásokban; egy ország nulla eszközszáma nem jelenti a szankcionált eszközök hiányát.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {
