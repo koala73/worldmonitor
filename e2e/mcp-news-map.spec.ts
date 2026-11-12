@@ -65,9 +65,9 @@ test.describe('2D basemap with enforced CSP', () => {
       catch { return route.abort(); }
     });
     const domains = NEWS_DASHBOARD_META.ui.csp;
-    // deck.gl loads its data: SVG marker icons with fetch, which CSP checks as connect-src.
-    // Claude's sandbox allows those fetches (bases render there), so the fixture policy does too.
-    const csp = `default-src 'none'; script-src 'unsafe-inline' ${origin} data:; worker-src blob:; style-src 'unsafe-inline' ${origin}; font-src ${origin} data:; img-src ${origin} ${domains.resourceDomains.join(' ')}; connect-src ${origin} data: ${domains.connectDomains.join(' ')}; base-uri ${origin}`;
+    // connect-src lists only the declared connectDomains, as the MCP Apps reference host builds it,
+    // so a data: fetch (deck.gl loading a data: URL icon atlas) counts as a violation.
+    const csp = `default-src 'none'; script-src 'unsafe-inline' ${origin} data:; worker-src blob:; style-src 'unsafe-inline' ${origin}; font-src ${origin} data:; img-src ${origin} ${domains.resourceDomains.join(' ')}; connect-src ${origin} ${domains.connectDomains.join(' ')}; base-uri ${origin}`;
     const strictHtml = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${csp}"><script>(() => {
       const createObjectURL = URL.createObjectURL;
       URL.createObjectURL = function (blob) {
