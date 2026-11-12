@@ -195,7 +195,7 @@ async function main() {
   // The annual release's part of the trailing window, by date: its pages are
   // not in date order, so "the newest pages" never meant the newest events.
   const annual = await fetchAnnualWindow(fetchWindowPage, version, { nowMs });
-  const annualIds = new Set(annual.events.map((event) => String(event.id)));
+  const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
   const allEvents = [...annual.events];
   const failedPages = annual.failedPages;
   let latestDatasetMs = getMaxDateMs(annual.events);

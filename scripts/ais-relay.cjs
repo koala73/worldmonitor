@@ -3146,7 +3146,7 @@ async function seedUcdpEvents() {
       throw err;
     });
     const annual = await ucdpFetchAnnualWindow(fetchLogged, version, { nowMs });
-    const annualIds = new Set(annual.events.map((event) => String(event.id)));
+    const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
     const allEvents = [...annual.events];
     const failedPages = annual.failedPages;
     let latestMs = NaN;
