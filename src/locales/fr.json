@@ -5086,7 +5086,7 @@
       "emptyDisplacement": "Aucune donnée de déplacement pour ces pays",
       "emptyCorrelation": "Aucun signal pour ces pays"
     },
-    "draftAssessment": "Brouillon d'évaluation",
+    "draftAssessment": "Évaluation de voyage",
     "draftAssessmentAria": "Ouvrir l'évaluation de voyage, préremplie avec ce focus",
     "draftCopied": "Demande copiée. Collez-la dans votre assistant IA.",
     "draftCopiedPartial": "Demande copiée pour les {{count}} premiers pays. Une évaluation couvre au maximum {{max}} pays. Pays exclus : {{omitted}}.",

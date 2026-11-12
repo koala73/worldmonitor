@@ -241,7 +241,7 @@ describe('FocusBar', () => {
     it('is a labelled button for an account that may, and calls back once per click', () => {
       const onDraft = vi.fn();
       barWith(() => true, onDraft).render(resolved(SEA));
-      expect(draft()!.textContent).toBe('Draft assessment');
+      expect(draft()!.textContent).toBe('Trip assessment');
       expect(draft()!.getAttribute('aria-label')).toBe('Open the trip assessment, prefilled with this focus');
       draft()!.click();
       expect(onDraft).toHaveBeenCalledTimes(1);

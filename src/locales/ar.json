@@ -5170,7 +5170,7 @@
       "emptyDisplacement": "لا توجد بيانات نزوح لهذه الدول",
       "emptyCorrelation": "لا توجد إشارات لهذه الدول"
     },
-    "draftAssessment": "صياغة تقييم",
+    "draftAssessment": "تقييم الرحلة",
     "draftAssessmentAria": "فتح تقييم الرحلة، معبأ مسبقاً بهذا التركيز",
     "draftCopied": "تم نسخ الطلب. الصقه في مساعدك الذكي.",
     "draftCopiedPartial": "تم نسخ الطلب لأول {{count}} دول. يغطي التقييم {{max}} دول كحد أقصى. الدول المستبعدة: {{omitted}}.",

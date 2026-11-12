@@ -5030,7 +5030,7 @@
       "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
       "emptyCorrelation": "Không có tín hiệu cho các quốc gia này"
     },
-    "draftAssessment": "Bản đánh giá dự thảo",
+    "draftAssessment": "Đánh giá chuyến đi",
     "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",
     "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
     "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia. Các quốc gia bị bỏ qua: {{omitted}}.",
