@@ -83,6 +83,21 @@ const MAX_VIOLATION_DESCRIPTION_LEN = 200;
 const SAFE_VIOLATION_FIELD = /^[A-Za-z_][A-Za-z0-9_.]{0,63}$/;
 const UNSAFE_VIOLATION_DESCRIPTION = /[<>]|authorization\s*:|bearer\s/i;
 
+/**
+ * A non-ok gateway response with no richer classification. The message keeps
+ * the `<label> HTTP <status>` shape that mcpErrorFingerprint groups on; the
+ * typed status lets dispatch tell an upstream outage from a server bug.
+ */
+export class UpstreamHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'UpstreamHttpError';
+    this.status = status;
+  }
+}
+
 export class RpcValidationError extends Error {
   readonly operation: string;
   readonly status: number;
@@ -224,5 +239,5 @@ export async function assertToolFetchOk(
       throw new RpcValidationError(label, violations);
     }
   }
-  throw new Error(`${label} HTTP ${response.status}`);
+  throw new UpstreamHttpError(`${label} HTTP ${response.status}`, response.status);
 }

@@ -54,7 +54,8 @@ export async function acknowledgePlanLimitNotice(noticeId: string): Promise<void
   const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
   if (!client || !api) throw new Error('Convex unavailable');
   if (!await waitForConvexAuthForUser(userId)) {
-    throw new Error('Account changed while acknowledging the API plan-limit notice. Try again.');
+    assertAccountStillCurrent(userId, 'acknowledging the API plan-limit notice');
+    throw new Error('Authentication unavailable while acknowledging the API plan-limit notice. Try again.');
   }
   await settleAccountOperation(
     userId,

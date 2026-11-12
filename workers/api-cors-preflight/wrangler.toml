@@ -6,6 +6,7 @@
 name = "api-cors-preflight"
 main = "src/index.js"
 compatibility_date = "2025-05-01"
+compatibility_flags = ["enable_request_signal"]
 
 # Bind to api.worldmonitor.app/*. The route is the load-bearing config:
 # without it the Worker is uploaded but receives no traffic.

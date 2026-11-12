@@ -1,6 +1,5 @@
 import {
   DEFAULT_CII_BASELINE_RISK,
-  DEFAULT_CII_EVENT_MULTIPLIER,
   getCiiCountryWeight,
 } from '../../shared/cii-weights';
 import type { CiiCountryCode } from '../../shared/cii-weights';
@@ -10,10 +9,9 @@ export interface CuratedCountryConfig {
   scoringKeywords: string[];
   searchAliases: string[];
   baselineRisk: number;
-  eventMultiplier: number;
 }
 
-function ciiWeights(code: CiiCountryCode): Pick<CuratedCountryConfig, 'baselineRisk' | 'eventMultiplier'> {
+function ciiWeights(code: CiiCountryCode): Pick<CuratedCountryConfig, 'baselineRisk'> {
   return getCiiCountryWeight(code);
 }
 
@@ -241,4 +239,3 @@ export const TIER1_COUNTRIES: Record<string, string> = {
 };
 
 export const DEFAULT_BASELINE_RISK = DEFAULT_CII_BASELINE_RISK;
-export const DEFAULT_EVENT_MULTIPLIER = DEFAULT_CII_EVENT_MULTIPLIER;

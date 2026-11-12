@@ -236,8 +236,11 @@ describe('runFeedAttemptBatches (#7083)', () => {
       },
       (() => { let tick = 0; return () => tick++ * 10; })(),
     );
-    await Promise.resolve();
-    assert.deepEqual(calls, ['slow:1', 'fast:1'], 'the slow first-wave entry must not prevent fast-category start');
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    // The slot fast:1 freed goes to slow:2 while slow:1 is still pending: a
+    // slow feed holds one slot, not every later feed (full:th left its last
+    // 44 feeds not-started when whole waves waited on their slowest member).
+    assert.deepEqual(calls, ['slow:1', 'fast:1', 'slow:2'], 'a slow feed must not hold back later feeds');
     releaseSlow();
     const result = await running;
     assert.deepEqual(calls, ['slow:1', 'fast:1', 'slow:2']);

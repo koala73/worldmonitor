@@ -45,16 +45,19 @@
 export const CII_FORMULA_VERSION = 'v14';
 
 /**
- * Conflict event activity log curve used before fatality/civilian/strike boosts.
- * Raw activity is weighted by event type and eventMultiplier, then mapped to
- * this cap with `log1p(raw) / log1p(pivot) * cap`.
+ * ACLED Conflict activity log curve, used before the fatality and civilian
+ * boosts where a deployment holds an ACLED licence. Raw activity is weighted
+ * by event type (battles 3, explosions/remote violence 4, violence against
+ * civilians 5), then mapped to this cap with
+ * `log1p(raw) / log1p(pivot) * cap`. No per-country multiplier is applied.
  */
 export const CII_CONFLICT_ACTIVITY_CAP = 70;
 export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
 
 /**
- * GDELT escalation terms inside Conflict and Unrest, used only while the ACLED
- * API returns no events (WorldMonitor has no ACLED access). Input per country
+ * GDELT escalation terms inside Conflict and Unrest, scored for every country.
+ * A country with ACLED rows (licence holders only; WorldMonitor has none) takes
+ * the larger of its ACLED and GDELT term, never the sum. Input per country
  * and signal, from gdelt:bulk:country-events:v1: `current`, the last 24h of
  * distinct articles reporting events located there (Conflict: CAMEO 18/19/20
  * material conflict; Unrest: CAMEO 14 protest), and `baselineMedian`, the
@@ -71,12 +74,12 @@ export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
  * their median. Calibrated on replayed Sep 10 - Oct 19 2026 exports (all
  * Tier-1 countries, 16 days): the Oct 11-12 Riyadh strikes score 61-68 on
  * Conflict, the week before 0, France's Oct 19 riots 70 on Unrest, and US/GB
- * stay at 0-1 on Conflict and 0-10 on Unrest. eventMultiplier is not applied
- * (it is reserved for verified events). A war or protest movement at its usual
+ * stay at 0-1 on Conflict and 0-10 on Unrest. No per-country multiplier is
+ * applied. A war or protest movement at its usual
  * tempo scores 0 on escalation by design; the sustained level below reads it.
  *
  * CAP is shared with the level term. v10 used 50; v11 uses 70, the cap of the
- * ACLED activity term (CII_CONFLICT_ACTIVITY_CAP) these terms stand in for.
+ * ACLED activity term (CII_CONFLICT_ACTIVITY_CAP), so the two compare on one scale.
  * Replayed on Oct 5, 12, 14 and 19, the US, GB, China, Korea, Taiwan, Qatar and
  * the UAE score identically under 70 and 50; the largest difference is +4
  * (France's riots, Yemen), and Germany, Japan, Egypt and Poland move by at most
@@ -132,13 +135,16 @@ export const CII_GDELT_LEVEL_PROTEST_SATURATION = 0.08;
  * once the strikes stop P halves every three days and is under 4% of its peak
  * after two weeks.
  *
- * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, two reporters):
+ * ACLED explosions/remote violence are not read here: a licensed deployment
+ * scores them once, in the ACLED Conflict term.
+ *
+ * x_d = max(confirmed_d, gdelt_d), never the sum (one strike, several
+ * reporters):
  *  - confirmed_d, from the Middle East strike feed (conflict:strike-pressure:v1,
  *    and the 72h conflict:iran-events:v1 window it is built from), is each
  *    incident weighted by severity (SEVERITY_WEIGHTS).
- *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1, only while ACLED is
- *    dark), is CAMEO 194/195 coverage of strikes on the country as a share of
- *    its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
+ *  - gdelt_d, worldwide (gdelt:bulk:country-events:v1), is CAMEO 194/195
+ *    coverage of strikes on the country as a share of its coverage that day: GDELT_SCALE * max(0, s / (a + GDELT_SMOOTHING) -
  *    GDELT_NOISE_FLOOR). Absolute counts are media-volume biased (Oct 5-18
  *    2026: the US 12.9 strike-coded articles a day, Ukraine 11.1); the share
  *    is not (US 0.03%, Ukraine 1.2%, Saudi Arabia 5.5%). GDELT alone counts
@@ -171,6 +177,14 @@ export const CII_STRIKE_SEVERITY_WEIGHTS = { critical: 4, high: 2, elevated: 1, 
  * minutes) the tally is ignored and GDELT alone carries every country.
  */
 export const CII_STRIKE_CONFIRMED_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+/**
+ * The relay tally version the scorer reads (conflict:strike-pressure:v1
+ * `version`). v2 counts only deduplicated, current strikes that landed in the
+ * country (CII v15 B3); a v1 tally counted retrospective posts, duplicates and
+ * interceptions, so it is rejected as unusable, never read as calm. Pinned to
+ * the relay's PRESSURE_VERSION by tests/cii-strike-pressure.test.mts.
+ */
+export const CII_STRIKE_TALLY_VERSION = 2;
 export const CII_STRIKE_GDELT_SMOOTHING = 50;
 export const CII_STRIKE_GDELT_NOISE_FLOOR = 0.005;
 export const CII_STRIKE_GDELT_SCALE = 300;
@@ -263,6 +277,129 @@ export const CII_POPULATION_MILLIONS: Readonly<Record<string, number>> = {
 };
 
 /**
+ * Internet outages (Cloudflare Radar outage annotations, `infra:outages:v1`).
+ * Only causes that measure instability on the country's own territory score:
+ * a state cutting its own population off, and military action against the
+ * country's networks. Power cuts, cable cuts, maintenance, weather and natural
+ * disasters are infrastructure faults, not instability. Radar's `outageCause`
+ * values are upper snake case.
+ */
+export const CII_OUTAGE_SCORED_CAUSES: ReadonlySet<string> = new Set(['GOVERNMENT_DIRECTED', 'MILITARY_ACTION']);
+/**
+ * An outage scores while it is ongoing or ended less than this long ago, the
+ * same 7 days that weight ACLED events in full. The seeder keeps 28 days of
+ * annotations, so without this window a shutdown kept scoring for four weeks
+ * after it ended.
+ */
+export const CII_OUTAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * An outage Radar files against networks (ASNs) rather than a country counts
+ * for the country Radar places those ASNs in only when it disrupted MORE than
+ * this fraction of that country's Internet (owner ruling, 2026-10-24). A
+ * regional ISP, a data centre or a cloud region going dark is not national
+ * instability unless the country loses that much. The impact is measured by
+ * scripts/lib/radar-asn-impact.mjs (traffic share x traffic drop, structured
+ * Radar data). An impact that could not be measured never counts as above.
+ */
+export const CII_OUTAGE_ASN_NATIONAL_SHARE = 0.4;
+/**
+ * A record's weight falls linearly from 1 to 0 over this last part of
+ * CII_OUTAGE_WINDOW_MS, measured from when it was last active. Without the
+ * fade a 50-point outage term left the score in one step on the day it aged
+ * out, 7.5 final points against P3's limit of 5. 50 raw points over 24 hours
+ * is at most about 0.3 final points an hour.
+ */
+export const CII_OUTAGE_FADE_MS = 24 * 60 * 60 * 1000;
+/**
+ * A record's start time may run this far ahead of the scorer's clock (producer
+ * and scorer clocks differ), the same 5 minutes the strike feed allows.
+ */
+export const CII_OUTAGE_FUTURE_SKEW_MS = 5 * 60 * 1000;
+/**
+ * Exam shutdowns never score. States cut the Internet during national exams
+ * on a published calendar (Iraq, Syria, Algeria, Sudan, Iran and others), so
+ * these shutdowns say nothing about instability. They made up 35 of the 42
+ * GOVERNMENT_DIRECTED Radar annotations in the year to 2026-10-23.
+ *
+ * Radar has no structured marker for them. Its tags, scope, eventType,
+ * outageType, entities and linkedUrl are empty or generic, and only the
+ * free-text description says "exam". The match is therefore LEXICAL, on the
+ * record's description and title:
+ *  - the text is lower-cased and stripped of diacritics ("exámenes" reads
+ *    "examenes", "baccalauréat" reads "baccalaureat");
+ *  - Latin-script terms must equal a whole word or a run of whole words
+ *    ("secondary certificate", "grade 12"), so "example", "bacteria" and
+ *    "grade 120" do not match;
+ *  - Arabic-script terms may sit inside a word, because Arabic and Kurdish
+ *    attach articles and prepositions ("الامتحانات").
+ * Terms cover English, French, Spanish, Arabic, Kurdish (Sorani) and the
+ * national names of exams: "bac" and "BEM" (Algeria), "secondary certificate"
+ * (Syria), "konkur" (Iran), "grade 12". "exame" is Radar's own misspelling on
+ * a 2026-08-30 Iraq exam shutdown.
+ *
+ * Exam wording alone is not enough: see CII_OUTAGE_UNREST_TERMS.
+ */
+export const CII_OUTAGE_EXAM_TERMS: readonly string[] = [
+  'exam', 'exams', 'exame', 'examination', 'examinations', 'examen', 'examens', 'examenes',
+  'baccalaureate', 'baccalaureat', 'bac', 'bem', 'secondary certificate', 'konkur', 'grade 12',
+  'امتحان', 'امتحانات', 'بكالوريا', 'تاقیکردنەوە',
+];
+/**
+ * Unrest, election, conflict or military wording that keeps an exam-related
+ * shutdown scoring. "Internet cut after protests following exam results leak"
+ * is a protest shutdown, not a routine exam one, so a record is excluded as an
+ * exam shutdown only when it carries none of these terms. Matched the same
+ * LEXICAL way as CII_OUTAGE_EXAM_TERMS. English, French, Spanish, Arabic and
+ * Kurdish (Sorani).
+ */
+export const CII_OUTAGE_UNREST_TERMS: readonly string[] = [
+  'protest', 'protests', 'protesters', 'protestors', 'riot', 'riots', 'unrest', 'demonstration', 'demonstrations',
+  'demonstrators', 'election', 'elections', 'electoral', 'vote', 'votes', 'voting', 'conflict', 'fighting', 'clashes',
+  'military', 'curfew', 'coup',
+  'manifestation', 'manifestations', 'manifestants', 'emeute', 'emeutes', 'conflit', 'combats', 'militaire',
+  'militaires', 'couvre feu',
+  // Round-2 review: a strike here is a labour action; whole words only, so "airstrike" does not match.
+  'protested', 'strike', 'strikes', 'rally', 'rallies', 'militant', 'militants', 'violence', 'security operation',
+  'war', 'wars', 'attack', 'attacks', 'armed', 'insurgent', 'insurgents', 'insurgency', 'offensive', 'crackdown', 'crackdowns',
+  'protesta', 'protestas', 'disturbios', 'elecciones', 'toque de queda', 'golpe de estado',
+  'احتجاج', 'مظاهرات', 'تظاهرات', 'اضطرابات', 'انتخابات', 'اشتباكات', 'قتال', 'عسكري', 'حظر التجول', 'حظر تجول', 'انقلاب', 'نزاع',
+  'خۆپیشاندان', 'ئاژاوە', 'هەڵبژاردن', 'شەڕ', 'سەربازی', 'کودەتا',
+];
+/**
+ * A negation cancels the exam or unrest term in its own noun phrase: "Exam
+ * season shutdown, no protests reported" is still a routine exam shutdown,
+ * and "Shutdown, not related to exams" is not one. Only the next word, or
+ * CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS, may sit between the negation and the
+ * term, so a clause boundary (punctuation, "but", "mais", "pero", "لكن") or
+ * any other word ends its reach: in "without warning as protests spread" the
+ * protests are not negated. A miss keeps a real shutdown scoring, the safer
+ * error. Matched LEXICALLY like the terms above: Latin-script entries must
+ * equal a word (or run of words); Arabic-script entries must equal a word or
+ * follow the conjunction "و" attached to it ("ولا"). English, French,
+ * Spanish, Arabic and Kurdish (Sorani).
+ */
+export const CII_OUTAGE_NEGATION_TERMS: readonly string[] = [
+  'no', 'not', 'without', 'never', 'lack of', 'none', 'unrelated',
+  'pas', 'sans', 'aucun', 'aucune', 'jamais', 'ni',
+  'sin', 'ningun', 'ninguna', 'nunca',
+  'لا', 'دون', 'بدون', 'بلا', 'لم', 'ليس', 'لن', 'عدم', 'غياب',
+  'بێ', 'بەبێ', 'نە', 'هیچ',
+];
+/** Words that may sit between a negation and the term it cancels: determiners, modifiers and "related to" links. */
+export const CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS: readonly string[] = [
+  'a', 'an', 'any', 'the', 'even', 'single', 'major', 'large', 'scale', 'significant', 'further', 'new', 'violent',
+  'mass', 'widespread', 'national', 'reported', 'report', 'reports', 'sign', 'signs', 'evidence', 'of',
+  'related', 'linked', 'connected', 'due', 'to', 'caused', 'by', 'because', 'for',
+  'de', 'd', 'des', 'du', 'la', 'le', 'les', 'eu', 'un', 'une',
+  'hubo', 'se', 'el', 'los', 'las', 'una', 'registraron', 'reportaron',
+  'توجد', 'يوجد', 'وجود', 'أي', 'تسجل', 'تسجيل',
+];
+/** "no protests or riots": a coordinator carries a negation across one more unrest term. */
+export const CII_OUTAGE_NEGATION_COORDINATORS: readonly string[] = ['or', 'nor', 'ou', 'o', 'أو'];
+/** At most this many words may sit between a negation and the term it cancels. */
+export const CII_OUTAGE_NEGATION_WINDOW_WORDS = 3;
+
+/**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)
  * is `1 - i * STRATEGIC_RISK_POSITIONAL_DECAY`. With the current value of 0.15
  * and a top-5 window, weights are [1.00, 0.85, 0.70, 0.55, 0.40].
@@ -299,3 +436,14 @@ export const STRATEGIC_RISK_SCALE_FACTOR = 0.7;
  * roll-up reflects the "very top" of the dashboard rather than a long tail.
  */
 export const STRATEGIC_RISK_TOP_N = 5;
+
+/**
+ * The oldest travel-advisory snapshot the CII will score, measured from the
+ * seeder's own `fetchedAt`. A failed or stale live read is unknown: the last
+ * good live snapshot stands in until it is this old, and then the advisory
+ * terms are absent. Levels change over weeks, so three days of seeder outage
+ * keep the table steady; health raises the input from the first failed read
+ * (api/_cii-input-health.js), so the stand-in never hides an outage. There is
+ * no embedded fallback table (removed in v15: it disagreed with the live feed).
+ */
+export const CII_ADVISORY_MAX_AGE_MS = 72 * 60 * 60 * 1000;

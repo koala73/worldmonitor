@@ -3,6 +3,7 @@ import { Nav } from './welcome/Nav';
 import { Hero } from './welcome/Hero';
 import { TaskRoutes } from './welcome/TaskRoutes';
 import { LiveStrip } from './welcome/LiveStrip';
+import { Voices } from './welcome/Voices';
 import { WhatsNew } from './components/WhatsNew';
 import { Moments } from './welcome/Moments';
 import { FirstFive } from './welcome/FirstFive';
@@ -30,7 +31,7 @@ export default function WelcomeApp() {
   }, []);
 
   return (
-    <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
+    <div className="welcome-page min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-sm focus:bg-wm-green focus:px-4 focus:py-2 focus:font-mono focus:text-xs focus:font-bold focus:uppercase focus:tracking-wider focus:text-wm-bg"
@@ -42,6 +43,7 @@ export default function WelcomeApp() {
         <Hero />
         <TaskRoutes />
         <LiveStrip />
+        <Voices />
         <WhatsNew />
         <Moments />
         <FirstFive />
@@ -51,7 +53,7 @@ export default function WelcomeApp() {
         <FAQ />
         <FinalCta />
       </main>
-      <Footer />
+      <Footer disclaimer={false} />
     </div>
   );
 }

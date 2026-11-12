@@ -188,7 +188,10 @@ surface.**
   including bidi overrides, isolates, and zero-width characters. Every surface
   below reads the sanitized text.
 - **Email.** The owner notification carries only the report id, `kind`, and the
-  received time. It carries no `surface` label, summary, or body. The Convex
+  received time. It carries no `surface` label, summary, or body. The daily
+  feedback digest (Decision 12) carries only counts by `kind` and by surface
+  type. It names no surface: the REST door stores any tool-shaped name without
+  checking the registry, so a stored name is reporter-written text. The Convex
   action escapes those values with the escaper its own module defines, as
   `convex/payments/unattributedPayments.ts` does.
 - **Terminal.** The triage script prints any character outside printable ASCII
@@ -276,8 +279,9 @@ and increments the daily email counter, and, if a slot is free, sets
 `recordUnattributedEvent` does, means a retry cannot send a second email and
 two concurrent reports cannot both take the last slot. The email action sets
 `notifiedAt` only after Resend accepts the message. Scheduling and delivery are
-separate fields, so a failed send is visible. Only security rows send email.
-No other kind notifies anyone.
+separate fields, so a failed send is visible. Only security rows send a
+per-report email. Other kinds are announced in aggregate by the daily feedback
+digest (Decision 12).
 
 **Decision 12. Emails are capped at 20 per UTC day, and every security report
 is eventually announced.** Past the cap, the row is stored with
@@ -286,6 +290,16 @@ every security row with `notifiedAt` unset that is either held back or was
 scheduled more than an hour earlier. That covers both the cap and failed
 sends. The digest does not wait for a new report to arrive. The digest's own
 send sets `notifiedAt` on the rows it lists only after Resend accepts it.
+
+A second daily cron sends the feedback digest for `bug`, `missing_capability`,
+and `data_quality` rows that are still `received` with `notifiedAt` unset. It
+pages through them oldest first, up to 5,000 rows per run, which is above the
+edge's daily ceiling of about 2,900, so a sustained flood cannot outrun the
+drain. Past that cap the email tells the owner to triage by hand. It sends
+nothing on a day with no new rows, and it sets `notifiedAt` on the listed rows
+after Resend accepts it. Any triage transition out of `received` also sets
+`notifiedAt`, so rows the owner has already seen leave the digest index
+instead of accumulating there.
 
 **Decision 13. The private disclosure path never depends on this channel
 admitting the report.** The advisory URL
@@ -316,7 +330,7 @@ are far smaller.
 |---|---|---|
 | Convex writes | 2,930 rows | 100 × 24 anonymous + 500 keyed + 30 security |
 | Convex storage | about 56 MB per day at the ceiling, bounded to about 1.8 GB | 2,900 non-security rows at up to about 19 KB each (18 KB of text plus row overhead), kept 30 days, is about 1.65 GB. Security rows add 30 × 19 KB × 180 days, about 0.1 GB. Decision 10 makes both bounds absolute. |
-| Resend emails | 21 | 20 notifications plus 1 digest (Decision 12) |
+| Resend emails | 22 | 20 notifications, 1 security digest, and 1 feedback digest (Decision 12) |
 | LLM spend | 0 | Decision 5 |
 | Upstream fetches | 0 | The tool reads nothing external |
 

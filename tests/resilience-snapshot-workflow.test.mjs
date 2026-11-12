@@ -9,7 +9,7 @@ import { parse } from 'yaml';
 const workflow = parse(readFileSync(new URL('../.github/workflows/resilience-snapshot-refresh.yml', import.meta.url), 'utf8'));
 const step = (name) => workflow.jobs.refresh.steps.find((entry) => entry.name === name);
 
-function execute(name, { policy = '', existingPr = '', existingBranch = false } = {}) {
+function execute(name, { policy = '', existingPr = '', existingBranch = false, armable = 'true' } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'wm-snapshot-workflow-'));
   try {
     const gh = join(root, 'gh');
@@ -21,6 +21,8 @@ if [[ "$*" == 'pr create '* ]]; then
   if [[ -n "$POLICY_ERROR" ]]; then printf '%s\\n' "$POLICY_ERROR" >&2; exit 1; fi
   printf '%s\\n' 'https://github.com/fixture/repo/pull/1'; exit 0
 fi
+if [[ "$*" == 'pr view '* ]]; then printf '%s' "$EXISTING_PR_ARMABLE"; exit 0; fi
+if [[ "$*" == 'pr merge '* ]]; then exit 0; fi
 exit 2
 `);
     writeFileSync(git, `#!/bin/bash
@@ -43,6 +45,7 @@ esac
         GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'fixture/repo',
         BRANCH_NAME: 'automation/resilience-snapshot-2026-09', CALLS: join(root, 'calls'),
         POLICY_ERROR: policy, EXISTING_PR: existingPr, EXISTING_BRANCH: String(existingBranch),
+        EXISTING_PR_ARMABLE: armable,
       },
     });
     return {
@@ -63,6 +66,7 @@ it('hands off a reviewable patch when repository policy blocks bot PR creation',
   assert.match(result.summary, /Maintainer action required/);
   assert.match(result.summary, /compare\/main\.\.\.automation\/resilience-snapshot-2026-09/);
   assert.match(result.calls, /diff --binary/);
+  assert.doesNotMatch(result.calls, /pr merge/);
   const upload = step('Retain the monthly snapshot handoff');
   assert.match(upload.if, /steps\.delivery\.outputs\.manual == 'true'/);
   assert.match(upload.with.path, /resilience-snapshot\.patch/);
@@ -74,6 +78,7 @@ it('records normal PR delivery and keeps unexpected failures fatal', () => {
   assert.equal(success.status, 0, success.stderr);
   assert.match(success.summary, /https:\/\/github.com\/fixture\/repo\/pull\/1/);
   assert.doesNotMatch(success.output, /manual=true/);
+  assert.match(success.calls, /pr merge --auto --squash https:\/\/github\.com\/fixture\/repo\/pull\/1/);
   const failed = execute('Open the monthly snapshot PR', { policy: 'Bad credentials' });
   assert.notEqual(failed.status, 0);
   assert.doesNotMatch(failed.output, /manual=true/);
@@ -88,5 +93,9 @@ it('reuses a branch without recapturing, and skips a month already represented b
   const pr = execute('Reconcile the monthly review branch', { existingPr: '42' });
   assert.equal(pr.status, 0, pr.stderr);
   assert.match(pr.output, /existing_pr=true/);
+  assert.match(pr.calls, /pr merge --auto --squash 42/, 'a rerun re-arms auto-merge on an open PR');
+  const merged = execute('Reconcile the monthly review branch', { existingPr: '42', armable: 'false' });
+  assert.equal(merged.status, 0, merged.stderr);
+  assert.doesNotMatch(merged.calls, /pr merge/, 'a merged, closed or draft PR is left alone');
   assert.match(step('Open the monthly snapshot PR').if, /steps\.reconcile\.outputs\.existing_pr != 'true'/);
 });

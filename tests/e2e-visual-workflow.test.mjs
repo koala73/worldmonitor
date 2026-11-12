@@ -68,15 +68,12 @@ describe('E2E visual workflow contract', () => {
     }
   });
 
-  it('keeps goldens off the main-push hot path and on nightly / map PRs', () => {
-    const goldens = visual.jobs['visual-goldens'];
-    assert.ok(goldens, 'visual-goldens job must exist');
-    assert.match(
-      String(goldens.if),
-      /github\.event_name != 'push'/,
-      'visual-goldens must skip ordinary main pushes',
-    );
-    assert.ok(visual.on.schedule, 'nightly schedule must exist');
+  it('runs on map PRs, nightly and manual dispatch, never on main pushes', () => {
+    assert.ok(visual.jobs['visual-goldens'], 'visual-goldens job must exist');
+    assert.ok(visual.jobs['chrome-gallery'], 'chrome-gallery job must exist');
+    assert.equal('push' in visual.on, false, 'main gets the nightly run, not one per merge');
+    assert.ok(visual.on.pull_request?.paths?.length, 'PR runs must stay path-filtered');
+    assert.deepEqual(visual.on.schedule.map((entry) => entry.cron), ['17 3 * * *']);
     assert.ok(visual.on.workflow_dispatch, 'manual dispatch must exist');
   });
 
@@ -171,17 +168,17 @@ describe('E2E visual workflow contract', () => {
       head_repository: { full_name: 'koala73/worldmonitor' },
       head_branch: 'main',
       path: '.github/workflows/e2e-visual.yml',
-      event: 'push',
+      event: 'schedule',
       conclusion: 'success',
     };
     const cases = [
-      ...['push', 'schedule', 'workflow_dispatch'].map((event) => ({ event, allowed: true })),
+      ...['schedule', 'workflow_dispatch'].map((event) => ({ event, allowed: true })),
       { conclusion: 'failure', allowed: true },
       { head_repository: { full_name: 'attacker/worldmonitor' }, allowed: false },
       { head_repository: {}, allowed: false },
       { head_branch: 'feature', allowed: false },
       { path: '.github/workflows/attacker.yml', allowed: false },
-      ...['pull_request', 'pull_request_review', 'pull_request_review_comment', 'repository_dispatch', ''].map(
+      ...['push', 'pull_request', 'pull_request_review', 'pull_request_review_comment', 'repository_dispatch', ''].map(
         (event) => ({ event, allowed: false }),
       ),
       { conclusion: 'cancelled', allowed: false },

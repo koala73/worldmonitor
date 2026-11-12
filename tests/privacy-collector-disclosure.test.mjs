@@ -1,3 +1,9 @@
+// This compares declared telemetry script hosts with provider names in policy
+// text and checks the DebugBear sampling rate (#8690, section 2). Source and
+// policy text define this parity check without loading third-party scripts; it
+// does not observe beacon destinations or verify that the policy names those
+// hosts.
+//
 /**
  * The privacy policy claims its subprocessor list is complete ("listed in full
  * below"). This asserts that the claim survives contact with the code.
@@ -51,7 +57,7 @@ function collectorHosts() {
   const hosts = new Set();
   for (const relativePath of COLLECTOR_CALL_SITES) {
     const text = read(relativePath);
-    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9]+\.js)/g)) {
+    for (const [, host] of text.matchAll(/https:\/\/([a-z0-9.-]+)\/(?:script\.js|[A-Za-z0-9][A-Za-z0-9.-]*\.js)/g)) {
       hosts.add(host);
     }
   }

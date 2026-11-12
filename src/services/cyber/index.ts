@@ -53,6 +53,8 @@ const SEVERITY_REVERSE: Record<string, CyberThreatSeverity> = {
 // ---- Adapter: proto CyberThreat -> legacy CyberThreat ----
 
 function toCyberThreat(proto: ProtoCyberThreat): CyberThreat {
+  // Older URLhaus snapshots stored r.threat (a classification) as a family.
+  const legacyClassification = proto.source === 'CYBER_THREAT_SOURCE_URLHAUS' ? proto.malwareFamily : '';
   return {
     id: proto.id,
     type: THREAT_TYPE_REVERSE[proto.type] || 'malicious_url',
@@ -63,8 +65,8 @@ function toCyberThreat(proto: ProtoCyberThreat): CyberThreat {
     lon: proto.location?.longitude ?? 0,
     country: proto.country || undefined,
     severity: SEVERITY_REVERSE[proto.severity] || 'low',
-    malwareFamily: proto.malwareFamily || undefined,
-    tags: proto.tags,
+    malwareFamily: legacyClassification ? undefined : proto.malwareFamily || undefined,
+    tags: legacyClassification ? [...new Set([...proto.tags, legacyClassification])] : proto.tags,
     firstSeen: proto.firstSeenAt ? new Date(proto.firstSeenAt).toISOString() : undefined,
     lastSeen: proto.lastSeenAt ? new Date(proto.lastSeenAt).toISOString() : undefined,
   };

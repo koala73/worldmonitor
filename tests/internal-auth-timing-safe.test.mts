@@ -83,4 +83,25 @@ describe('internal auth timing-safe comparison (#4679)', () => {
       );
     });
   });
+
+  it('rejects literal missing-secret bearer values before comparing credentials', async () => {
+    const previous = process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+    try {
+      for (const value of [undefined, '']) {
+        if (value === undefined) delete process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+        else process.env.WM_TEST_INTERNAL_AUTH_SECRET = value;
+        await withDigestSpy(async (calls) => {
+          const response = await authenticateInternalRequest(new Request('https://worldmonitor.app/api/test', {
+            headers: { Authorization: `Bearer ${value}` },
+          }), 'WM_TEST_INTERNAL_AUTH_SECRET');
+          assert.equal(response?.status, 401);
+          assert.deepEqual(await response?.json(), { error: 'Unauthorized' });
+          assert.deepEqual(calls, [], 'unconfigured auth must fail before hashing');
+        });
+      }
+    } finally {
+      if (previous === undefined) delete process.env.WM_TEST_INTERNAL_AUTH_SECRET;
+      else process.env.WM_TEST_INTERNAL_AUTH_SECRET = previous;
+    }
+  });
 });

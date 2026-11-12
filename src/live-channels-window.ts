@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Standalone channel management window (LIVE panel: add/remove/reorder channels).
  * Loaded when the app is opened with ?live-channels=1 (e.g. from "Manage channels" button).
@@ -567,7 +568,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
       }
       // Name the video through our oEmbed proxy (YouTube oEmbed has no CORS)
       try {
-        const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(candidate.videoId)}`));
+        const res = await fetch(toApiUrl(`/api/youtube/live?videoId=${encodeURIComponent(candidate.videoId)}`), { signal: createTimeoutSignal(15_000) });
         if (res.ok) {
           const data = await res.json();
           resolvedName = data.channelName || data.title || '';

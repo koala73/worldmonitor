@@ -47,7 +47,7 @@ export interface RemoveChildPolicyEvent extends EventContext {
 const DETACHED_REMOVE_CHILD_MESSAGE = /the node to be removed is not a child of this node/i;
 const CLERK_LOCALIZATION_SELECTOR = '[data-localization-key]';
 const TRANSLATOR_HTML_CLASS = /^(?:translated|goog-te|skiptranslate)/i;
-const SAFE_PRO_ROUTE_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
+const SAFE_PRO_ROUTE_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact|plan-proBusiness)$/i;
 const DETACHED_NODE_GUARD = Symbol.for('wm.detached-node-guards');
 
 type GuardedHost = DetachedNodeHost & { [DETACHED_NODE_GUARD]?: () => void };

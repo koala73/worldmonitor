@@ -184,7 +184,7 @@ for (const [name, iso2] of Object.entries(COUNTRY_NAME_TO_ISO2)) {
 
 // Sort keys alphabetically
 const sorted = Object.fromEntries(
-  Object.entries(result).sort(([a], [b]) => a.localeCompare(b))
+  Object.entries(result).sort(([a], [b]) => a.localeCompare(b, 'en-US'))
 );
 
 fs.writeFileSync(existingPath, JSON.stringify(sorted, null, 2) + '\n');

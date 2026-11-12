@@ -1,6 +1,6 @@
 ---
 title: "Pro Intelligence Suite"
-description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, supply vulnerability, and the five-factor scorecard — with each dataset's REST route, seed cadence, and MCP surface where one exists."
+description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, and supply vulnerability — with each dataset's REST route, seed cadence, and MCP surface where one exists. The five-factor scorecard REST routes are free; see the Access section."
 ---
 
 A family of derived datasets ships behind the Pro tier. Each one answers a question the raw feeds cannot: not *what is the gold price* but *is the physical premium abnormal for gold right now*; not *where is cobalt* but *who refines it, and how concentrated is that*.
@@ -9,7 +9,11 @@ They share a read-only contract, not one pipeline. Seed cadence and surfaces dif
 
 ## Access
 
-Every route below requires **tier 1 (Pro) or higher**. There is no anonymous or free-account read.
+Every route below requires **tier 1 (Pro) or higher**, with one exception: the
+[five-factor country scorecard](#five-factor-country-scorecard) REST routes are
+free, including for anonymous callers — its MCP tools still require a
+subscription. There is no anonymous or free-account read of anything else on
+this page.
 
 | Caller | How to authenticate |
 | --- | --- |
@@ -20,7 +24,7 @@ Every route below requires **tier 1 (Pro) or higher**. There is no anonymous or 
 REST and SDK callers use the HTTP envelope. An unauthenticated call returns `401` with `{"error":"Pro authentication required"}`. A signed-in free account returns `403` with a top-level payload such as `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`. MCP callers use the JSON-RPC envelope instead: the same entitlement denial appears under `error.data.reason = "upgrade-required"` and can include an `upgradeUrl`. Both denial types are final answers, not transient failures — do not retry them. A `503` carrying `X-Billing-Verification` *is* retryable; honor `Retry-After`. See [Usage errors](/usage-errors).
 
 <Note>
-One narrow exception, deliberate: the `get_market_data` MCP tool is a cache-backed bundle available to signed-in free accounts within their small daily allowance, and two of its datasets (`physical-premium`, `physical-divergence`) overlap the metals routes below. The dedicated REST routes and every tool in this page's tables stay Pro-only.
+The `get_market_data` MCP tool is a cache-backed bundle open to signed-in free accounts within their small daily allowance. Two of its datasets (`physical-premium`, `physical-divergence`) are the metals data below, so a free account receives them as `locked`, with an `upgradeUrl`, and only subscribers receive the data. The dedicated REST routes and every tool in this page's tables stay Pro-only.
 </Note>
 
 ## Physical vs paper precious metals
@@ -171,6 +175,12 @@ See [Supply vulnerability methodology](/methodology/supply-vulnerability).
 ## Five-factor country scorecard
 
 A per-country read, a bloc read, and a cohort list. The first two share one MCP tool.
+
+**Free, unlike every other dataset on this page.** The three REST routes below
+return 200 for anonymous callers — no API key or subscription needed. The MCP
+tools `get_five_factor_scorecard` and `list_five_factor_scorecards` still
+require a WorldMonitor subscription, since MCP tool calls authenticate
+separately from the REST API.
 
 | Route | MCP tool | Returns |
 | --- | --- | --- |

@@ -207,12 +207,14 @@ describe('CII UCDP read-time window check (P9)', () => {
     const windows = assessCiiInputWindows(aux, f.nowMs);
     assert.equal(windows.ucdp?.honest, false);
     const states = Object.fromEntries(CII_HEALTH_INPUT_IDS.map((id) => [id, 'live'])) as any;
-    const reports = withCiiInputQuietClocks(states, null, f.nowMs, windows);
+    const reports = withCiiInputQuietClocks(states, null, f.nowMs, { windows, details: { advisories: { snapshotAt: f.nowMs } }, exclusions: { outages: { examShutdown: { count: 1, samples: [] } } } });
     assert.deepEqual(reports.ucdp.window, windows.ucdp);
+    assert.equal(reports.advisories.snapshotAt, f.nowMs);
+    assert.equal(reports.outages.excluded?.examShutdown.count, 1);
     const verdict = assessCiiInputs({ inputs: reports }, f.nowMs);
     assert.equal(verdict.states.ucdp, 'short_window');
     assert.ok(verdict.dead.some((d: any) => d.id === 'ucdp' && d.state === 'short_window' && d.window.gapMonths.length === 8));
-    const honest = withCiiInputQuietClocks(states, null, f.nowMs, { ucdp: { ...windows.ucdp!, honest: true, gapMonths: [] } });
+    const honest = withCiiInputQuietClocks(states, null, f.nowMs, { windows: { ucdp: { ...windows.ucdp!, honest: true, gapMonths: [] } } });
     assert.equal(assessCiiInputs({ inputs: honest }, f.nowMs).states.ucdp, 'live');
   });
 });

@@ -703,7 +703,7 @@ test('malformed Telegram startup delay keeps the safe default', async () => {
 
 // Mock Upstash REST endpoint: records every command, acknowledges writes, and
 // can return a deterministic response sequence for a specific Redis key.
-async function createUpstashMock({ setResponses = {} } = {}) {
+async function createUpstashMock({ setResponses = {}, getValues = {} } = {}) {
   const commands = [];
   const responseQueues = new Map(Object.entries(setResponses).map(([key, responses]) => [
     key,
@@ -717,6 +717,11 @@ async function createUpstashMock({ setResponses = {} } = {}) {
       try { command = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* non-JSON body */ }
       commands.push({ path: req.url, command });
       res.setHeader('Content-Type', 'application/json');
+      if (req.url.startsWith('/get/')) {
+        const value = getValues[decodeURIComponent(req.url.slice('/get/'.length))];
+        res.end(JSON.stringify({ result: value === undefined ? null : JSON.stringify(value) }));
+        return;
+      }
       if (req.url === '/pipeline') {
         res.end(JSON.stringify((Array.isArray(command) ? command : []).map(() => ({ result: null }))));
         return;
@@ -1431,5 +1436,129 @@ test('Google Flights pages or rows in an unexpected shape fail instead of readin
     }
   } finally {
     await stop(child);
+  }
+});
+
+// A relay deploy starts with an empty in-memory feed and waits
+// TELEGRAM_STARTUP_DELAY_MS before its first poll. On 2026-10-27 that left
+// /telegram/feed answering `enabled: true, items: []` for 3 minutes, and every
+// open dashboard replaced 50 posts with "No messages available" on its next
+// refresh. The last good poll is snapshotted to Redis and served until the new
+// container polls.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+
+test('a restarted relay serves the last Telegram snapshot before its first poll', async () => {
+  const savedAt = new Date(Date.now() - 90_000).toISOString();
+  const snapshotItems = [
+    { id: 'clashreport:41', source: 'telegram', channel: 'clashreport', channelTitle: 'Clash Report', text: 'Tanker on fire near Hormuz', ts: savedAt, topic: 'conflict', tags: [], earlySignal: true, mediaUrls: [] },
+    { id: 'witness:7', source: 'telegram', channel: 'witness', channelTitle: 'Witness', text: 'Second post', ts: savedAt, topic: 'breaking', tags: [], earlySignal: true, mediaUrls: [] },
+  ];
+  const upstash = await createUpstashMock({
+    getValues: { [TELEGRAM_ITEMS_SNAPSHOT_KEY]: { savedAt, items: snapshotItems } },
+  });
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '600000',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    ...upstash.env,
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    let feed = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      feed = JSON.parse((await get(port, '/telegram/feed?limit=50')).body);
+      if (feed.items.length) break;
+      await sleep(100);
+    }
+    assert.deepEqual(feed.items.map(item => item.id), ['clashreport:41', 'witness:7']);
+    assert.equal(feed.enabled, true);
+    // updatedAt is when those posts were last polled, not the restart time.
+    assert.equal(feed.updatedAt, savedAt);
+    assert.doesNotMatch(relay.getOutput(), /Telegram poll loop started/, 'the snapshot must arrive before any poll');
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('a restored Telegram snapshot drops entries that are not feed items', async () => {
+  const savedAt = new Date(Date.now() - 90_000).toISOString();
+  const upstash = await createUpstashMock({
+    getValues: {
+      [TELEGRAM_ITEMS_SNAPSHOT_KEY]: {
+        savedAt,
+        items: [
+          null,
+          { text: 'no id' },
+          { id: 'clashreport:41', source: 'telegram', channel: 'clashreport', channelTitle: 'Clash Report', text: 'Tanker on fire near Hormuz', ts: savedAt, topic: 'conflict', tags: [], earlySignal: true, mediaUrls: [] },
+        ],
+      },
+    },
+  });
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '600000',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    ...upstash.env,
+  });
+  const { child, port } = await relay.ready;
+
+  try {
+    let feed = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      feed = JSON.parse((await get(port, '/telegram/feed?limit=50')).body);
+      if (feed.items.length) break;
+      await sleep(100);
+    }
+    assert.deepEqual(feed.items.map(item => item.id), ['clashreport:41']);
+    // A null entry used to reach the topic filter and fail the request.
+    const filtered = await get(port, '/telegram/feed?limit=50&topic=conflict');
+    assert.equal(filtered.status, 200);
+    assert.deepEqual(JSON.parse(filtered.body).items.map(item => item.id), ['clashreport:41']);
+  } finally {
+    await stop(child);
+    await upstash.close();
+  }
+});
+
+test('a successful Telegram poll snapshots its items to Redis', async () => {
+  const upstash = await createUpstashMock();
+  const relay = spawnRelay({
+    TELEGRAM_API_ID: '123',
+    TELEGRAM_API_HASH: 'test-hash',
+    TELEGRAM_SESSION: 'test-session',
+    TELEGRAM_STARTUP_DELAY_MS: '0',
+    RELAY_TEST_TELEGRAM: 'true',
+    RELAY_TEST_TELEGRAM_POLL: 'true',
+    RELAY_TEST_TELEGRAM_MESSAGES: JSON.stringify([{ id: 9, message: 'Strait of Hormuz update', date: Math.floor(Date.now() / 1000) }]),
+    ...upstash.env,
+  });
+  const { child } = await relay.ready;
+
+  try {
+    let sets = [];
+    for (let attempt = 0; attempt < 200; attempt++) {
+      sets = upstash.setsFor(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+      if (sets.length) break;
+      await sleep(100);
+    }
+    assert.ok(sets.length, 'the poll must write the items snapshot');
+    const [, , value, ex, ttl] = sets[0].command;
+    const snapshot = JSON.parse(value);
+    assert.ok(snapshot.items.length > 0);
+    assert.ok(snapshot.items.every(item => item.text === 'Strait of Hormuz update'));
+    assert.ok(Number.isFinite(Date.parse(snapshot.savedAt)));
+    assert.equal(ex, 'EX');
+    assert.ok(Number(ttl) > 0);
+  } finally {
+    await stop(child);
+    await upstash.close();
   }
 });

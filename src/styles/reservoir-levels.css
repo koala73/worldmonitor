@@ -1,0 +1,288 @@
+/* ----------------------------------------------------------
+   Strategic Water Levels: panel rows, map popup and SVG marker.
+   One tone class per status family sets the colour pair; fills and
+   borders read --wl-tone, text reads --wl-tone-text (the light theme
+   defines darker -text shades of the semantic colours).
+   ---------------------------------------------------------- */
+.wl-tone-record-low {
+  --wl-tone: var(--semantic-critical);
+  --wl-tone-text: var(--semantic-critical-text, var(--semantic-critical));
+}
+.wl-tone-falling {
+  --wl-tone: var(--semantic-high);
+  --wl-tone-text: var(--semantic-high-text, var(--semantic-high));
+}
+.wl-tone-low {
+  --wl-tone: var(--semantic-elevated);
+  --wl-tone-text: var(--semantic-elevated-text, var(--semantic-elevated));
+}
+.wl-tone-rising {
+  --wl-tone: var(--semantic-low);
+  --wl-tone-text: var(--semantic-low-text, var(--semantic-low));
+}
+.wl-tone-normal {
+  --wl-tone: var(--text-dim);
+  --wl-tone-text: var(--text-secondary);
+}
+.wl-tone-muted {
+  --wl-tone: var(--text-muted);
+  --wl-tone-text: var(--text-muted);
+}
+
+.wl-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Three short chips: wrap them instead of hiding the last one behind the
+   shared tab strip's horizontal scroll and edge fade. */
+.wl-panel .wl-filters {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.wl-panel .wl-filter-count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-panel .wl-filter.active .wl-filter-count {
+  color: inherit;
+}
+
+.wl-panel .wl-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wl-panel .wl-list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.wl-panel .wl-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "id chip"
+    "headline spark"
+    "detail detail";
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 8px 6px;
+  padding-inline-start: 8px;
+  border: 0;
+  border-inline-start: 2px solid transparent;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.35;
+  text-align: start;
+  cursor: pointer;
+}
+
+.wl-panel .wl-row:is(.wl-tone-record-low, .wl-tone-falling, .wl-tone-low, .wl-tone-rising) {
+  border-inline-start-color: var(--wl-tone);
+}
+
+.wl-panel .wl-row:hover {
+  background: var(--overlay-subtle);
+}
+
+.wl-panel .wl-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.wl-panel .wl-id {
+  grid-area: id;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wl-panel .wl-name,
+.wl-panel .wl-place {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wl-panel .wl-name {
+  font-weight: 600;
+}
+
+.wl-panel .wl-place {
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
+.wl-chip {
+  grid-area: chip;
+  align-self: start;
+  justify-self: end;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--wl-tone) 45%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--wl-tone) 14%, transparent);
+  color: var(--wl-tone-text);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wl-tone-normal .wl-chip,
+.wl-tone-muted .wl-chip {
+  background: transparent;
+  font-weight: 500;
+}
+
+.wl-tone-muted .wl-chip {
+  border-style: dashed;
+}
+
+.wl-panel .wl-headline {
+  grid-area: headline;
+  min-width: 0;
+  color: var(--wl-tone-text);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-panel :is(.wl-tone-normal, .wl-tone-muted) .wl-headline {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wl-panel .wl-spark {
+  grid-area: spark;
+  display: flex;
+  justify-content: flex-end;
+  line-height: 0;
+}
+
+.wl-panel .wl-detail {
+  grid-area: detail;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-panel .wl-empty {
+  margin: 12px 0;
+}
+
+.wl-panel .wl-footer {
+  margin-top: 6px;
+  padding: 8px 2px 2px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+}
+
+.wl-panel .wl-footer p {
+  margin: 0 0 4px;
+}
+
+.wl-footer a,
+.wl-popup .wl-popup-source a {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Map popup. The shared title is one red ellipsized line; reservoir names run
+   long ("Grand Ethiopian Renaissance Dam reservoir") and the status chip carries
+   the colour, so the title wraps in body text. */
+.wl-popup .popup-header .wl-popup-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.wl-popup .wl-popup-place {
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-weight: 400;
+  text-transform: none;
+}
+
+.wl-popup .wl-popup-why {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* The shared popup paints values in the accent colour, which reads as "good";
+   a fall in water level must not look positive, so values use body text. */
+.wl-popup .popup-body .stat-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.wl-popup .popup-body .wl-popup-anomaly {
+  color: var(--wl-tone-text);
+  font-weight: 600;
+}
+
+.wl-popup .wl-popup-spark {
+  margin: 8px 0 4px;
+  line-height: 0;
+}
+
+.wl-popup .wl-popup-spark .mini-sparkline {
+  max-width: 100%;
+  height: auto;
+}
+
+.wl-popup .wl-popup-source {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+}
+
+/* SVG/mobile map marker */
+.wl-marker {
+  position: absolute;
+  transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
+  transform-origin: center;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--bg);
+  border-radius: 50%;
+  background: var(--wl-tone);
+  z-index: 52;
+  cursor: pointer;
+}
+
+.wl-marker.wl-tone-muted {
+  border: 2px solid var(--wl-tone);
+  background: transparent;
+}
+
+/* Globe marker (inside the globe's 20px hit target) */
+.wl-globe-dot {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--bg);
+  border-radius: 50%;
+  background: var(--wl-tone);
+}
+
+.wl-globe-dot.wl-tone-muted {
+  border: 2px solid var(--wl-tone);
+  background: transparent;
+}

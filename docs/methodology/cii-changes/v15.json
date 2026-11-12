@@ -1,4 +1,562 @@
 {
+  "version": "v15",
+  "note": "Every country that moves by 3 or more points on a committed fixture, per Stage B/C topic, with the property or input that moved it (docs/methodology/cii-change-brief.md section 3). Each topic appends only its own key.",
+  "topics": {
+    "b4-remove-off-construct-inputs": {
+      "rule": "I1: an input scores only if it measures an event or condition inside the country that affects its order",
+      "removed": [
+        "sanctions entry counts",
+        "climate anomalies",
+        "FIRMS fires",
+        "foreign military flights",
+        "foreign military vessels",
+        "GPS jamming",
+        "aviation delay alerts",
+        "earthquakes (context)",
+        "AIS disruptions (context)"
+      ],
+      "base": "fix/cii-b2-advisory-fallback (#9590), whose fixture scores equal origin/cii-v15",
+      "note": "Contributions are each input's term in the base blend (Security parts at 0.20 x 0.6, before the component cap). Where a floor now binds, the final score falls by less than the blend.",
+      "fixtures": {
+        "2026-10-21T0628Z": {
+          "CN": {
+            "from": 51,
+            "to": 22,
+            "delta": -29,
+            "blend": {
+              "from": 51.5,
+              "to": 22.2
+            },
+            "cause": "Removed inputs (rule I1): climate −15, sanctions −8, aviationDelays −4.8, fires −1.5."
+          },
+          "CU": {
+            "from": 36,
+            "to": 31,
+            "delta": -5,
+            "blend": {
+              "from": 36.5,
+              "to": 31.5
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5."
+          },
+          "DE": {
+            "from": 20,
+            "to": 7,
+            "delta": -13,
+            "blend": {
+              "from": 20,
+              "to": 7.2
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, foreignMilitaryVessels −3.6, aviationDelays −3, foreignMilitaryFlights −0.7, gpsJamming −0.5."
+          },
+          "EG": {
+            "from": 23,
+            "to": 17,
+            "delta": -6,
+            "blend": {
+              "from": 23.4,
+              "to": 17
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −3.4, sanctions −3."
+          },
+          "FR": {
+            "from": 28,
+            "to": 20,
+            "delta": -8,
+            "blend": {
+              "from": 27.9,
+              "to": 19.5
+            },
+            "cause": "Removed inputs (rule I1): foreignMilitaryVessels −3.6, sanctions −3, aviationDelays −1.8."
+          },
+          "GB": {
+            "from": 20,
+            "to": 7,
+            "delta": -13,
+            "blend": {
+              "from": 20.4,
+              "to": 7
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, foreignMilitaryVessels −3.6, aisDisruptions −2.5, gpsJamming −1, foreignMilitaryFlights −0.7, aviationDelays −0.6."
+          },
+          "IR": {
+            "from": 65,
+            "to": 60,
+            "delta": -5,
+            "blend": {
+              "from": 65,
+              "to": 44.8
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −8, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 44.8)."
+          },
+          "JP": {
+            "from": 25,
+            "to": 2,
+            "delta": -23,
+            "blend": {
+              "from": 24.7,
+              "to": 2
+            },
+            "cause": "Removed inputs (rule I1): climate −15, sanctions −3, foreignMilitaryFlights −2.9, aviationDelays −1.8."
+          },
+          "KR": {
+            "from": 27,
+            "to": 6,
+            "delta": -21,
+            "blend": {
+              "from": 26.8,
+              "to": 6
+            },
+            "cause": "Removed inputs (rule I1): climate −15, sanctions −3, foreignMilitaryFlights −2.2, aviationDelays −0.6."
+          },
+          "PL": {
+            "from": 15,
+            "to": 4,
+            "delta": -11,
+            "blend": {
+              "from": 14.7,
+              "to": 4
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, sanctions −3, foreignMilitaryVessels −2.4, aviationDelays −0.6, fires −0.5."
+          },
+          "RU": {
+            "from": 68,
+            "to": 60,
+            "delta": -8,
+            "blend": {
+              "from": 68.1,
+              "to": 38.9
+            },
+            "cause": "Removed inputs (rule I1): sanctions −12, fires −8, earthquakes −5, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 38.9)."
+          },
+          "SY": {
+            "from": 73,
+            "to": 60,
+            "delta": -13,
+            "blend": {
+              "from": 73.3,
+              "to": 59.1
+            },
+            "cause": "Removed inputs (rule I1): fires −5, sanctions −5, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 59.1)."
+          },
+          "TR": {
+            "from": 40,
+            "to": 22,
+            "delta": -18,
+            "blend": {
+              "from": 40.4,
+              "to": 22
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −5, gpsJamming −4.2, foreignMilitaryVessels −1.2."
+          },
+          "TW": {
+            "from": 35,
+            "to": 12,
+            "delta": -23,
+            "blend": {
+              "from": 35.5,
+              "to": 12
+            },
+            "cause": "Removed inputs (rule I1): climate −15, fires −5, sanctions −3, gpsJamming −0.5."
+          },
+          "UA": {
+            "from": 73,
+            "to": 70,
+            "delta": -3,
+            "blend": {
+              "from": 73.2,
+              "to": 60
+            },
+            "cause": "Removed inputs (rule I1): fires −5, sanctions −5, gpsJamming −3.2. UCDP floor 70 now sets the score (blend 60)."
+          },
+          "US": {
+            "from": 21,
+            "to": 4,
+            "delta": -17,
+            "blend": {
+              "from": 21.3,
+              "to": 4.3
+            },
+            "cause": "Removed inputs (rule I1): aviationDelays −4.8, gpsJamming −4.2, foreignMilitaryVessels −3.6, sanctions −3, earthquakes −2."
+          },
+          "YE": {
+            "from": 80,
+            "to": 75,
+            "delta": -5,
+            "blend": {
+              "from": 80.2,
+              "to": 74.9
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, fires −0.3."
+          }
+        },
+        "2026-10-23T0756Z": {
+          "CN": {
+            "from": 55,
+            "to": 24,
+            "delta": -31,
+            "blend": {
+              "from": 55.1,
+              "to": 24.3
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −8, fires −5, earthquakes −5, aviationDelays −4.8."
+          },
+          "CU": {
+            "from": 36,
+            "to": 31,
+            "delta": -5,
+            "blend": {
+              "from": 36.3,
+              "to": 31.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5."
+          },
+          "DE": {
+            "from": 21,
+            "to": 8,
+            "delta": -13,
+            "blend": {
+              "from": 21.4,
+              "to": 7.6
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, foreignMilitaryVessels −3.6, foreignMilitaryFlights −2.9, aviationDelays −1.8, gpsJamming −0.5."
+          },
+          "EG": {
+            "from": 21,
+            "to": 17,
+            "delta": -4,
+            "blend": {
+              "from": 21.1,
+              "to": 16.7
+            },
+            "cause": "Removed inputs (rule I1): sanctions −3, gpsJamming −1.4."
+          },
+          "FR": {
+            "from": 27,
+            "to": 20,
+            "delta": -7,
+            "blend": {
+              "from": 26.6,
+              "to": 19.9
+            },
+            "cause": "Removed inputs (rule I1): sanctions −3, aviationDelays −1.8, foreignMilitaryVessels −1.2, foreignMilitaryFlights −0.7."
+          },
+          "GB": {
+            "from": 21,
+            "to": 7,
+            "delta": -14,
+            "blend": {
+              "from": 21.3,
+              "to": 7.2
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, foreignMilitaryVessels −3.6, aisDisruptions −2.5, foreignMilitaryFlights −2.2, aviationDelays −0.6, gpsJamming −0.2."
+          },
+          "IR": {
+            "from": 66,
+            "to": 60,
+            "delta": -6,
+            "blend": {
+              "from": 66.4,
+              "to": 46.2
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −8, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 46.2)."
+          },
+          "JP": {
+            "from": 18,
+            "to": 2,
+            "delta": -16,
+            "blend": {
+              "from": 17.7,
+              "to": 2.3
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −3, foreignMilitaryFlights −2.2, aviationDelays −1.8, gpsJamming −0.5."
+          },
+          "KR": {
+            "from": 22,
+            "to": 6,
+            "delta": -16,
+            "blend": {
+              "from": 22.2,
+              "to": 6.2
+            },
+            "cause": "Removed inputs (rule I1): climate −8, fires −5, sanctions −3."
+          },
+          "PL": {
+            "from": 15,
+            "to": 4,
+            "delta": -11,
+            "blend": {
+              "from": 15.4,
+              "to": 4
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, sanctions −3, fires −1.8, aviationDelays −1.2, foreignMilitaryVessels −1.2."
+          },
+          "RU": {
+            "from": 63,
+            "to": 60,
+            "delta": -3,
+            "blend": {
+              "from": 62.7,
+              "to": 37.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −12, fires −8, gpsJamming −4.2, foreignMilitaryVessels −1.2. Advisory floor 60 now sets the score (blend 37.3)."
+          },
+          "SY": {
+            "from": 74,
+            "to": 60,
+            "delta": -14,
+            "blend": {
+              "from": 74.4,
+              "to": 58.7
+            },
+            "cause": "Removed inputs (rule I1): fires −6.5, sanctions −5, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 58.7)."
+          },
+          "TR": {
+            "from": 41,
+            "to": 22,
+            "delta": -19,
+            "blend": {
+              "from": 41,
+              "to": 22
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −5, gpsJamming −4.2, aviationDelays −1.8."
+          },
+          "TW": {
+            "from": 29,
+            "to": 14,
+            "delta": -15,
+            "blend": {
+              "from": 28.7,
+              "to": 13.5
+            },
+            "cause": "Removed inputs (rule I1): climate −8, fires −3, sanctions −3, aviationDelays −1.2."
+          },
+          "UA": {
+            "from": 81,
+            "to": 70,
+            "delta": -11,
+            "blend": {
+              "from": 80.7,
+              "to": 60.4
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −5, fires −4, gpsJamming −3.2. UCDP floor 70 now sets the score (blend 60.4)."
+          },
+          "US": {
+            "from": 19,
+            "to": 5,
+            "delta": -14,
+            "blend": {
+              "from": 18.6,
+              "to": 5.4
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, aviationDelays −3.6, sanctions −3, foreignMilitaryVessels −2.4."
+          },
+          "YE": {
+            "from": 79,
+            "to": 74,
+            "delta": -5,
+            "blend": {
+              "from": 79.3,
+              "to": 74.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5."
+          }
+        },
+        "2026-10-23T0946Z": {
+          "CN": {
+            "from": 54,
+            "to": 23,
+            "delta": -31,
+            "blend": {
+              "from": 53.6,
+              "to": 22.5
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −8, fires −5, earthquakes −5, aviationDelays −4.8, gpsJamming −0.2."
+          },
+          "CU": {
+            "from": 36,
+            "to": 31,
+            "delta": -5,
+            "blend": {
+              "from": 36.3,
+              "to": 31.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5."
+          },
+          "DE": {
+            "from": 21,
+            "to": 8,
+            "delta": -13,
+            "blend": {
+              "from": 20.9,
+              "to": 7.8
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, aviationDelays −3.6, foreignMilitaryVessels −3.6, foreignMilitaryFlights −0.7, gpsJamming −0.2."
+          },
+          "EG": {
+            "from": 24,
+            "to": 17,
+            "delta": -7,
+            "blend": {
+              "from": 23.9,
+              "to": 16.7
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, sanctions −3."
+          },
+          "FR": {
+            "from": 28,
+            "to": 20,
+            "delta": -8,
+            "blend": {
+              "from": 28.2,
+              "to": 20.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −3, foreignMilitaryVessels −2.4, aviationDelays −1.8, foreignMilitaryFlights −0.7."
+          },
+          "GB": {
+            "from": 20,
+            "to": 7,
+            "delta": -13,
+            "blend": {
+              "from": 20,
+              "to": 7.3
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5, aisDisruptions −2.5, foreignMilitaryVessels −2.4, aviationDelays −1.8, foreignMilitaryFlights −0.7, gpsJamming −0.2."
+          },
+          "IR": {
+            "from": 66,
+            "to": 60,
+            "delta": -6,
+            "blend": {
+              "from": 65.8,
+              "to": 45.6
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −8, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 45.6)."
+          },
+          "JP": {
+            "from": 17,
+            "to": 2,
+            "delta": -15,
+            "blend": {
+              "from": 16.9,
+              "to": 2.2
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −3, aviationDelays −1.8, foreignMilitaryVessels −1.2, foreignMilitaryFlights −0.7."
+          },
+          "KR": {
+            "from": 23,
+            "to": 6,
+            "delta": -17,
+            "blend": {
+              "from": 23.2,
+              "to": 6
+            },
+            "cause": "Removed inputs (rule I1): climate −8, fires −5, sanctions −3, aviationDelays −1.2."
+          },
+          "PL": {
+            "from": 17,
+            "to": 4,
+            "delta": -13,
+            "blend": {
+              "from": 16.7,
+              "to": 4
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, sanctions −3, foreignMilitaryVessels −2.4, fires −1.8, foreignMilitaryFlights −0.7, aviationDelays −0.6."
+          },
+          "SY": {
+            "from": 74,
+            "to": 60,
+            "delta": -14,
+            "blend": {
+              "from": 74.4,
+              "to": 58.7
+            },
+            "cause": "Removed inputs (rule I1): fires −6.5, sanctions −5, gpsJamming −4.2. Advisory floor 60 now sets the score (blend 58.7)."
+          },
+          "TR": {
+            "from": 42,
+            "to": 22,
+            "delta": -20,
+            "blend": {
+              "from": 42.2,
+              "to": 22
+            },
+            "cause": "Removed inputs (rule I1): fires −8, sanctions −5, gpsJamming −4.2, aviationDelays −1.8, foreignMilitaryVessels −1.2."
+          },
+          "TW": {
+            "from": 29,
+            "to": 14,
+            "delta": -15,
+            "blend": {
+              "from": 28.9,
+              "to": 13.5
+            },
+            "cause": "Removed inputs (rule I1): climate −8, fires −3, sanctions −3, aviationDelays −1.2, gpsJamming −0.2."
+          },
+          "UA": {
+            "from": 82,
+            "to": 70,
+            "delta": -12,
+            "blend": {
+              "from": 81.8,
+              "to": 60.6
+            },
+            "cause": "Removed inputs (rule I1): climate −8, sanctions −5, gpsJamming −4.2, fires −4. UCDP floor 70 now sets the score (blend 60.6)."
+          },
+          "US": {
+            "from": 16,
+            "to": 4,
+            "delta": -12,
+            "blend": {
+              "from": 16.4,
+              "to": 4.4
+            },
+            "cause": "Removed inputs (rule I1): gpsJamming −4.2, aviationDelays −3.6, sanctions −3, foreignMilitaryVessels −1.2."
+          },
+          "YE": {
+            "from": 79,
+            "to": 74,
+            "delta": -5,
+            "blend": {
+              "from": 79.1,
+              "to": 74.1
+            },
+            "cause": "Removed inputs (rule I1): sanctions −5."
+          }
+        }
+      }
+    }
+  },
+  "b1-outages": {
+    "rule": "Every internet-outage record maps to an ISO2 code through shared/country-code-resolve.ts; only GOVERNMENT_DIRECTED and MILITARY_ACTION outages active in the last 7 days score, and exam shutdowns (GOVERNMENT_DIRECTED records matched lexically on description and title, CII_OUTAGE_EXAM_TERMS, with negation bound to its own noun phrase) never do; overlapping records of one country count once, at the highest severity, and a record fades linearly to 0 over the last 24 hours of the window; a reader that maps 0 of N records reports unusable (P7b).",
+    "fixtureMovers": [],
+    "note": "No fixture country moves: the committed fixtures were trimmed before cause and times were kept, so none of their outage records can score under the new rule, as none could before (0 of 15 mapped). Replaying the 2026-10-23T0946Z fixture with the untrimmed production outage records moves only RU, 62 to 63 (an ongoing MILITARY_ACTION partial outage since 2026-10-07)."
+  },
+  "b8-asn-outages": {
+    "rule": "An outage Radar files against networks (ASNs) and no country counts for the country Radar places the ASNs in only when its measured national impact (the ASNs' share of the country's NetFlows traffic in the week before x their traffic drop during the outage) exceeds CII_OUTAGE_ASN_NATIONAL_SHARE = 0.40; below it, or unmeasurable, it is excluded and reported (asnBelowNationalShare, asnImpactUnknown).",
+    "fixtureMovers": [],
+    "note": "No fixture carries asnOutages, so no fixture country moves. Over the year to 2026-10-23, no ASN outage cleared 40%: the four MILITARY_ACTION ones (DON-FTTH in RU three times, the VKontakte SPB data centre) measured 0.1% each and are excluded; the largest impact was 20.9% (Digicel Haiti, cause UNKNOWN). Live scores are unchanged. Sensitivity: any threshold from 0.30 to 0.50 gives the same verdicts on the year, because no ASN outage of any cause measured between 0.209 and 0.50."
+  },
+  "b3-strike-precision": {
+    "rule": "One physical incident counts once, on the country hit, dated to its first report: the strike feed drops retrospective posts, interceptions and ships at sea, merges every report of one incident, and the scorer reads only the v2 strike tally (CII_STRIKE_TALLY_VERSION) that the fixed relay writes.",
+    "fixtureMovers": [],
+    "note": "No fixture country moves by 3 or more. The fixtures hold the relay's output, so the relay change cannot show in them. Rejecting their v1 tally moves IR 66 to 65 on 2026-10-23T0946Z and lowers blends by under 1 point elsewhere (IR, LB, SA, SY). A counterfactual on 2026-10-23T0946Z that swaps the production 72h window for the fixed relay's replay of the same posts moves SA 70 to 66 and IR 66 to 62 (PR #9592).",
+    "knownGaps": [
+      {
+        "id": "strike-memory-dip",
+        "what": "After deploy the scorer rejects the v1 tally and the relay starts a new v2 tally, so confirmed strike memory is the 72h window, not 21 days, until the v2 tally refills. GDELT's strike counter, merged by per-day max, keeps its own 21 days.",
+        "measured": "On the committed fixtures (a v1 tally of 3 to 5 days, feed live since 2026-10-19): strike pressure P falls 19% for IR (18.6 to 15.2) and LB (24.3 to 19.6), 3% for SA (GDELT dominates), and SY 1.2 to 0; final scores move by at most 1.",
+        "modelled": "For a steady campaign the 72h window holds 50% of the decayed 21-day pressure. The share held rises to 76% three days after deploy, 91% after a week and 99% after two weeks, and the gap closes at 21 days; the 30-day tally keeps days the scorer no longer weighs.",
+        "duration": "up to 21 days after the relay deploy (the tally keeps 30 days, the scorer weighs 21)"
+      },
+      {
+        "id": "strike-feed-precision",
+        "what": "Strict precision of counted strike events is below the I8 target of 80%, so the feed must not set a floor (Stage C).",
+        "measured": "Production window 2026-10-20..23: 25% strict, 37% lenient (counting unexplained explosions). Same 311 posts through one model (gpt-oss-120b): base 31% / 43%, head 55-59% / 79-81%.",
+        "duration": "until residual duplicates (one village under two spellings), undated claim footage and unexplained explosions are handled"
+      }
+    ]
+  },
   "b6-ucdp": {
     "rule": "UCDP organised violence enters Conflict as a continuous, decayed, per-capita term (CII_UCDP_* in _risk-config.ts) instead of the v8-v14 war (70) and minor (50) class floors, which were step functions on event counts (P3, forbidden move \"no step functions on event counts\"). The read-time window check (P9) reports the cache window in input health.",
     "fixtureCaveat": "The fixtures hold the truncated 2026-10 cache (about five weeks: December 2025 tail, September 2026, January-August missing). Their UCDP terms are lower bounds. With the full 365-day window the fixed writers fetch (dry run against the live UCDP API, 2026-10-23, events attributed where they happened), the 2026-10-23T0946Z fixture would read (family max): UA 94, SY 80, YE 79, IR 78, MM 69, LB 64, AF 63, IL 50 (advisory floor; UCDP term 19), PK 50 (advisory floor), MX 47, IN 38, BR 23.",
@@ -119,89 +677,61 @@
     "fixtureMovers": [
       {
         "country": "BR",
-        "reason": "v14 UCDP \"minor\" floor (50, from 35 gang events) removed; 0.47 UCDP deaths per million a year give a Conflict term of 5, about 1 point of score.",
+        "reason": "UCDP class floors removed; continuous decayed deaths per capita enter the Conflict source maximum. Existing advisory or strike floors can still bind.",
         "moves": {
           "2026-10-21T0628Z": [
             50,
-            23
+            17
           ],
           "2026-10-23T0756Z": [
             50,
-            26
+            17
           ],
           "2026-10-23T0946Z": [
             50,
-            22
-          ]
-        }
-      },
-      {
-        "country": "IL",
-        "reason": "v14 UCDP \"minor\" and reconsider advisory floors (both 50) stop binding. Fixture replay only: the legacy rows carry no location, so Gaza still counts as Israel (31 deaths per million a year, term 52 as the family maximum): 50-53. Located production gives 50 on the advisory floor; see knownDivergence.",
-        "moves": {
-          "2026-10-23T0946Z": [
-            50,
-            53
+            17
           ]
         }
       },
       {
         "country": "IN",
-        "reason": "v14 UCDP \"minor\" floor (50, from 19 events) removed; 0.04 UCDP deaths per million a year (1.48 billion people) give a Conflict term of 0.6.",
+        "reason": "UCDP class floors removed; continuous decayed deaths per capita enter the Conflict source maximum. Existing advisory or strike floors can still bind.",
         "moves": {
           "2026-10-21T0628Z": [
             50,
-            38
+            27
           ],
           "2026-10-23T0756Z": [
             50,
-            37
+            25
           ],
           "2026-10-23T0946Z": [
             50,
-            37
-          ]
-        }
-      },
-      {
-        "country": "MM",
-        "reason": "Sat on its advisory floor (60) with a blend of 60.2 in v14. 7.6 UCDP deaths per million a year give a Conflict term of 31 with no GDELT conflict term, about 5.6 points.",
-        "moves": {
-          "2026-10-21T0628Z": [
-            60,
-            66
-          ],
-          "2026-10-23T0756Z": [
-            60,
-            66
-          ],
-          "2026-10-23T0946Z": [
-            60,
-            66
+            25
           ]
         }
       },
       {
         "country": "MX",
-        "reason": "v14 UCDP \"war\" floor (70, from 280 cartel events in about five weeks of cache) removed; 5.5 UCDP deaths per million a year give a Conflict term of 27, the family maximum, so the score is its evidence-backed blend.",
+        "reason": "UCDP class floors removed; continuous decayed deaths per capita enter the Conflict source maximum. Existing advisory or strike floors can still bind.",
         "moves": {
           "2026-10-21T0628Z": [
             70,
-            44
+            34
           ],
           "2026-10-23T0756Z": [
             70,
-            43
+            34
           ],
           "2026-10-23T0946Z": [
             70,
-            44
+            34
           ]
         }
       },
       {
         "country": "PK",
-        "reason": "v14 UCDP \"war\" floor (70) removed; the UCDP term (6.1-6.2 deaths per million a year, 28) is the family maximum in Conflict and lifts the blend about 5 points; the reconsider advisory floor (50) now binds. Stage C removes that floor.",
+        "reason": "UCDP class floors removed; continuous decayed deaths per capita enter the Conflict source maximum. Existing advisory or strike floors can still bind.",
         "moves": {
           "2026-10-21T0628Z": [
             70,
@@ -219,22 +749,19 @@
       },
       {
         "country": "UA",
-        "reason": "Above every floor in v14. The UCDP term saturates (319-324 deaths per million a year, above the World Bank high-intensity threshold of 100) at 70 and becomes the family maximum over GDELT conflict coverage, which read 0-8 for Ukraine (own-norm escalation and the 0.14 level floor): Conflict 70 instead of 0-8, about +11 to +12 points.",
+        "reason": "UCDP class floors removed; continuous decayed deaths per capita enter the Conflict source maximum. Existing advisory or strike floors can still bind.",
         "moves": {
-          "2026-10-21T0628Z": [
-            73,
-            84
-          ],
           "2026-10-23T0756Z": [
-            81,
-            93
+            70,
+            73
           ],
           "2026-10-23T0946Z": [
-            82,
-            94
+            70,
+            73
           ]
         }
       }
-    ]
+    ],
+    "comparisonBase": "B3 reconciled integration head; freshly measured 2026-11-12. Historical 2026-10-23 production previews below predate B4/B5 integration and need a new located-payload replay before release."
   }
 }

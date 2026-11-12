@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 // Client referral service (Phase 9 / Todo #223).
 //
 // Thin wrapper around /api/referral/me + the Web Share API.
@@ -72,6 +73,7 @@ export async function getReferralProfile(): Promise<ReferralProfile | null> {
   if (!token) return null;
   try {
     const res = await fetch('/api/referral/me', {
+      signal: createTimeoutSignal(15_000),
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });

@@ -1,3 +1,8 @@
+// Build-contract check by design (#8690, section 2): this suite pins
+// installer settings, bundled resources, package commands, and About text.
+// These declarations require source checks; the notices generator runs for
+// real below, but does not verify its own build configuration.
+//
 /**
  * The desktop bundle must carry its licence and its third-party notices (#6977).
  *
@@ -61,7 +66,7 @@ describe('desktop bundle ships its licence', () => {
   });
 
   it('the copyright in the About dialog matches LICENSE', () => {
-    const licenseYears = read('LICENSE').match(/Copyright \(C\) (\d{4}-\d{4}) Elie Habib/)?.[1];
+    const licenseYears = read('LICENSE').match(/Copyright \(C\) (\d{4}(?:-\d{4})?) Elie Habib/)?.[1];
     assert.ok(licenseYears, 'LICENSE must carry the project copyright line');
     assert.match(
       read('src-tauri/src/main.rs'),

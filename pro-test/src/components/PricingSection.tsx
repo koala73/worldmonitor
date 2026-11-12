@@ -6,6 +6,7 @@ import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
 import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
+import type { DesktopCheckoutHandoff } from '../../../shared/desktop-checkout-handoff';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -264,7 +265,7 @@ export function PricingSection({
   refCode?: string;
   attributionSource?: string;
   checkoutAttribution?: CheckoutAttribution;
-  desktopHandoff?: boolean;
+  desktopHandoff?: DesktopCheckoutHandoff;
 }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
@@ -374,6 +375,13 @@ export function PricingSection({
               </span>
             </button>
           </motion.div>
+
+          {/* Cancellation terms follow the EULA: cancelling stops future
+              renewals and access runs to the end of the paid period. No
+              partial-period refund is offered, so the note promises none. */}
+          <p className="text-xs text-wm-muted font-mono mt-4">
+            {t('pricing.cancelAnytime')}
+          </p>
         </div>
 
         {/* Tier cards grid */}
@@ -415,6 +423,7 @@ export function PricingSection({
             return (
               <motion.div
                 key={tier.name}
+                id={`plan-${tierKey(tier)}`}
                 className={`relative bg-zinc-900 rounded-lg p-6 flex flex-col ${
                   tier.highlighted
                     ? 'border-2 border-wm-green shadow-lg shadow-wm-green/10'
@@ -498,6 +507,7 @@ export function PricingSection({
 
           return (
             <motion.div
+              id={`plan-${tierKey(bandTier)}`}
               data-tier-band={BAND_TIER_KEY}
               className="mt-6 bg-zinc-900 border border-wm-border rounded-lg p-6 md:p-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:gap-10"
               initial={{ opacity: 0, y: 30 }}

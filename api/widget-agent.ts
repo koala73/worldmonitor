@@ -27,6 +27,8 @@ import { isSessionTokenShape } from './_session.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
+import { hasCurrentEntitlementCoverage } from '../server/_shared/entitlement-coverage';
+import { allowsProvider, getAiRoutingDecisionForUser } from '../server/_shared/ai-routing-policy';
 // @ts-expect-error — JS module, no declaration file
 import { checkRateLimit } from './_rate-limit.js';
 // @ts-expect-error — JS module, no declaration file
@@ -352,7 +354,7 @@ async function proxyWidgetAgent(
         ent = await getEntitlements(session.userId);
         entitlementChecked = true;
         entitlementTier = ent ? ent.features.tier : null;
-        allowed = !!ent && ent.features.tier >= 1;
+        allowed = hasCurrentEntitlementCoverage(ent) && ent.features.tier >= 1;
       }
       if (!allowed) {
         // #4771: a paying user whose local renewal state is stale gets the
@@ -401,6 +403,12 @@ async function proxyWidgetAgent(
       if (!session.userId) {
         return json({ error: 'Invalid or expired session' }, 401, corsHeaders);
       }
+      if (req.method === 'POST') {
+        const routing = await getAiRoutingDecisionForUser(session.userId);
+        if (!allowsProvider(routing, 'anthropic')) {
+          return json({ error: 'Widget provider is unavailable under your AI routing policy' }, routing.kind === 'unavailable' ? 503 : 403, corsHeaders);
+        }
+      }
       isPro = true;
       spendId = `user:${session.userId}`;
       quotaUserId = session.userId;
@@ -414,13 +422,17 @@ async function proxyWidgetAgent(
       // Legacy tester key path (wm-widget-key / wm-pro-key)
       const widgetKey = req.headers.get('X-Widget-Key') || (explicitWorldMonitorKey ? '' : widgetCookie);
       const proKey = req.headers.get('X-Pro-Key') || (explicitWorldMonitorKey ? '' : proCookie);
-      const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
-      const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
-      if (!hasWidgetKey && !hasProKey) {
+      // Both comparisons are independent fixed-cost digests; run them together
+      // rather than serializing two awaits on the legacy-key auth path.
+      const [widgetKeyOk, proKeyOk] = await Promise.all([
+        timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY),
+        timingSafeEqualSecret(proKey, PRO_WIDGET_KEY),
+      ]);
+      if (!widgetKeyOk && !proKeyOk) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }
-      isPro = hasProKey;
-      spendId = hasProKey ? 'legacy-pro-key' : 'legacy-widget-key';
+      isPro = proKeyOk;
+      spendId = proKeyOk ? 'legacy-pro-key' : 'legacy-widget-key';
       quotaUserId = spendId;
       directLlmDailyLimit = DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
     }
@@ -458,7 +470,7 @@ async function proxyWidgetAgent(
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+    return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, POST, OPTIONS' });
   }
 
   if (!spendId || !quotaUserId) {
@@ -496,13 +508,23 @@ async function proxyWidgetAgent(
 
   // Normalise tier in body to match the server-validated isPro flag.
   // Prevents the relay from seeing tier:pro without the matching X-Pro-Key.
+  // Valid JSON that is not an object (null, an array, a number, a string) is
+  // refused here: reading .tier off null used to throw into the catch and
+  // forward the raw body to the relay.
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(rawBody) as Record<string, unknown>;
-    const expectedTier = isPro ? 'pro' : 'basic';
-    if (parsed.tier !== expectedTier) {
-      rawBody = JSON.stringify({ ...parsed, tier: expectedTier });
-    }
+    parsed = JSON.parse(rawBody);
   } catch { /* malformed body — relay will return 400 */ }
+  if (parsed !== undefined) {
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return json({ error: 'Request body must be a JSON object' }, 400, corsHeaders);
+    }
+    const body = parsed as Record<string, unknown>;
+    const expectedTier = isPro ? 'pro' : 'basic';
+    if (body.tier !== expectedTier) {
+      rawBody = JSON.stringify({ ...body, tier: expectedTier });
+    }
+  }
 
   // Reserve against the same daily meter as chat-analyst / gateway LLM routes
   // before any upstream call. Unlimited (null) entitlements stay metered by

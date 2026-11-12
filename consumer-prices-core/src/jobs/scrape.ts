@@ -315,7 +315,7 @@ export async function scrapeRetailer(slug: string) {
           }
         }
 
-        const parsed = parseSize(product.rawSizeText);
+        const parsed = product.normalizedSize ?? parseSize(product.rawSizeText);
         const up = parsed ? calcUnitPrice(product.price, parsed) : null;
         const observation = {
           retailerProductId: productId,

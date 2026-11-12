@@ -20,7 +20,7 @@ You need an API key (`X-WorldMonitor-Key`, issued with [Pro or API plans](https:
 Three signals, three endpoints:
 
 1. **Lane exposure:** which chokepoints does each of my trade lanes depend on? (`/api/v2/shipping/route-intelligence`)
-2. **Live disruption:** push notification when a chokepoint's disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
+2. **Live disruption:** push notification when a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/)'s disruption score crosses my threshold (`/api/v2/shipping/webhooks`)
 3. **Country context:** structural resilience of origin and destination countries (`/api/resilience/v1/get-resilience-score`)
 
 A small receiver service glues them together and posts to Slack.
@@ -174,7 +174,7 @@ Validate trade signals against primary datasets such as the [WTO API portal](htt
 
 **Which chokepoints can I monitor?**
 
-Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/), Taiwan Strait, Bosporus, [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/), and the Cape of Good Hope bypass corridor.
+Every strategic waterway in World Monitor's canonical registry, including the Strait of Hormuz, Suez Canal, Bab el-Mandeb, Strait of Malacca, [Panama Canal](https://www.worldmonitor.app/chokepoints/panama-canal/), [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/), Bosporus, [Kerch Strait](https://www.worldmonitor.app/chokepoints/kerch-strait/), and the Cape of Good Hope bypass corridor.
 
 **How fresh is the disruption data?**
 

@@ -455,6 +455,13 @@ function summarizeUcdpWindow(mappedEvents, { startMs, endMs }) {
   };
 }
 
+function hasPreciseUcdpLocation(event) {
+  return Number(event.where_prec) === 1 && [event.latitude, event.longitude].every(
+    (coordinate) => (typeof coordinate === 'number' || (typeof coordinate === 'string' && coordinate.trim() !== ''))
+      && Number.isFinite(Number(coordinate)),
+  );
+}
+
 module.exports = {
   CANDIDATE_MAX_PAGES,
   CANDIDATE_DISCOVER_TIMEOUT_MS,
@@ -475,4 +482,5 @@ module.exports = {
   keepLastGoodUcdpWindow,
   summarizeUcdpWindow,
   ucdpLocatedCountry,
+  hasPreciseUcdpLocation,
 };

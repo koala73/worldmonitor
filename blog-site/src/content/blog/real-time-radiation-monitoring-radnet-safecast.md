@@ -52,7 +52,7 @@ The `get_radiation_data` MCP tool returns current observation levels from the mo
 
 ## Limits
 
-Sensor coverage is uneven: dense in the US, Japan, and Europe, sparse exactly where geopolitical radiation risk is highest — active conflict zones rarely host functioning public sensor networks. Citizen sensors vary in calibration and siting. A quiet map in an uninstrumented region means "no data," never "no radiation." And a dashboard is not a civil-defense system: in a genuine emergency, official local guidance wins.
+Sensor coverage is uneven: dense in the US, Japan, and Europe, sparse exactly where geopolitical radiation risk is highest — active [conflict zones](/blog/posts/track-global-conflicts-in-real-time/) rarely host functioning public sensor networks. Citizen sensors vary in calibration and siting. A quiet map in an uninstrumented region means "no data," never "no radiation." And a dashboard is not a civil-defense system: in a genuine emergency, official local guidance wins.
 
 ## Primary data sources
 

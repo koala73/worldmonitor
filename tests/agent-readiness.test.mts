@@ -131,9 +131,12 @@ describe('agent homepage routing', () => {
       'text/markdown;q=0.2, */*;q=0.9',
       '*/*;q=0.9, text/markdown;q=0.2',
     ]) {
-      assert.equal(await middleware(new Request('https://www.worldmonitor.app/', {
+      const response = await middleware(new Request('https://www.worldmonitor.app/', {
         headers: { 'User-Agent': 'Mozilla/5.0', Accept: accept },
-      })), undefined);
+      }));
+      // An HTML navigation may carry the first-touch cookie, but must pass through unrewritten.
+      assert.ok(!response || response.headers.get('x-middleware-next') === '1', accept);
+      assert.equal(response?.headers.get('x-middleware-rewrite') ?? null, null, accept);
     }
   });
 

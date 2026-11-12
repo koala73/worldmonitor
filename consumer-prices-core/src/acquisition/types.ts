@@ -64,6 +64,9 @@ export interface ExtractResult<T = Record<string, unknown>> {
    * ground truth to verify an extracted price actually appears on the page
    * (price-evidence.ts, #6182). Absent = verification cannot run. */
   pageContent?: string;
+  /** The product title the page declares about itself (og:title or
+   * twitter:title). Category listings and SPA shells declare none. */
+  pageTitle?: string;
 }
 
 export interface AcquisitionProvider {

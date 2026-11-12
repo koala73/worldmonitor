@@ -684,7 +684,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetShippingStress
-            description: GetShippingStress returns carrier market data and a composite stress index.
+            description: GetShippingStress returns Yahoo Finance quotes for the BDRY dry bulk ETF and four shipping carriers, plus a 0-100 stress score from their average daily move.
             operationId: GetShippingStress
             parameters:
                 - name: jmespath
@@ -938,7 +938,7 @@ paths:
             tags:
                 - SupplyChainService
             summary: GetBypassOptions
-            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated. Requires entitlement tier >= 1.
+            description: GetBypassOptions ranks a chokepoint's bypass corridors for a cargo type and closure share by cost and waypoint risk. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetBypassOptions
             security:
                 - WorldMonitorKey: []
@@ -5154,7 +5154,7 @@ components:
                 officialLatestDate:
                     type: string
                     description: |-
-                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                        IMF PortWatch latest published day, YYYY-MM-DD (lag of several days); empty means
                          withhold official_latest_total and official_avg_7d (absent below 7 days).
                 officialLatestTotal:
                     type: integer
@@ -5264,6 +5264,9 @@ components:
                     description: |-
                         Name of the nearest active GDACS hazard event within the configured
                          radius, or empty string when no nearby alert applies.
+                latestDate:
+                    type: string
+                    description: Last PortWatch day behind flow_ratio, YYYY-MM-DD; may be empty.
         GetChokepointHistoryRequest:
             type: object
             properties:
@@ -5678,7 +5681,7 @@ components:
                 supplyDeficitPct:
                     type: number
                     format: double
-                    description: Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                    description: Average refined-product supply deficit % under full closure at the pre-crisis Gulf crude share, after bypass rerouting for Hormuz when per-exporter shares exist (average over the products among Gasoline/Diesel/Jet fuel/LPG/Naphtha with recorded positive demand; HS 27 only)
                 coverageDays:
                     type: integer
                     format: int32

@@ -13,5 +13,9 @@ import webp1280 from './worldmonitor-7-mar-2026-1280.webp';
 export const DASHBOARD_SCREENSHOT_JPG = dashboardScreenshotJpg;
 export const DASHBOARD_SCREENSHOT_WIDTH = 1280;
 export const DASHBOARD_SCREENSHOT_HEIGHT = 832;
+// The 640w variants alone, for phone-only <source>s: the frame there is under
+// 640 CSS px wide, so 640w is still about 1.7x density at 18KB (AVIF).
+export const DASHBOARD_SCREENSHOT_AVIF_640 = avif640;
+export const DASHBOARD_SCREENSHOT_WEBP_640 = webp640;
 export const DASHBOARD_SCREENSHOT_AVIF_SRCSET = `${avif640} 640w, ${avif960} 960w, ${avif1280} 1280w`;
 export const DASHBOARD_SCREENSHOT_WEBP_SRCSET = `${webp640} 640w, ${webp960} 960w, ${webp1280} 1280w`;

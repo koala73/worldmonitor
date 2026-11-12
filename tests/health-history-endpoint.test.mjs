@@ -145,6 +145,24 @@ describe('api/health diagnostic incident persistence', () => {
     assert.deepEqual(sigKeys, []);
     assert.equal(persistencePlan({ diagnostics: { problemKeys, sigKeys } }).action, 'clear');
   });
+
+  // A feed whose producer has not published since its registration deployed
+  // reads ROLLOUT_PENDING only inside its window; past the deadline the same
+  // absence reads EMPTY. Paging inside the window opened one Sentry issue per
+  // new feed on every rollout batch (nine on 2026-11-02, all recovered on the
+  // first producer run), so only the post-deadline verdict is an incident.
+  it('does not open an incident for a rollout still inside its window', () => {
+    const { sigKeys } = __testing__.collectFailureLogProblems({
+      regionalEnergyZera: {
+        status: 'ROLLOUT_PENDING',
+        records: 0,
+        rolloutPendingUntil: new Date(NOW + 60_000).toISOString(),
+      },
+      regionalEnergyNpa: { status: 'EMPTY', records: 0 },
+    }, NOW);
+
+    assert.deepEqual(sigKeys, ['regionalEnergyNpa:EMPTY']);
+  });
 });
 
 describe('api/health ?history=1', () => {

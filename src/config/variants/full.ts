@@ -70,6 +70,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   nuclear: true,
   irradiators: false,
   sanctions: true,
+  reservoirLevels: false,
   weather: true,
   // Opt-in: all five road feeds are on-demand bootstrap keys. Default-on made
   // every visitor fetch them, which is exactly what the on-demand tier is meant
@@ -116,6 +117,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,
@@ -140,6 +142,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   nuclear: false,
   irradiators: false,
   sanctions: true,
+  reservoirLevels: false,
   weather: true,
   canadaRoads: false,
   canadaAlerts: false,
@@ -180,6 +183,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   iranAttacks: true,
   ciiChoropleth: false,
   resilienceScore: false,
+  no2Activity: false,
   dayNight: false,
   // Commodity variant layers (disabled in full variant)
   miningSites: false,

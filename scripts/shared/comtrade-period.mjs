@@ -45,6 +45,11 @@ export function candidatePeriods(now = new Date()) {
 /**
  * Comma-joined multi-year window for endpoints that accept a period LIST.
  *
+ * It starts at y-1, not recentPeriod's y-2: by mid-year most major reporters
+ * have filed the previous year (99 reporters had 2025 HS 2709 imports in
+ * October 2026), and consumers keep each reporter's newest filed year, so a
+ * late filer still resolves to an older year in the same request.
+ *
  * Costs the same single request as one period but still lands a row for a
  * reporter that files late — the failure mode documented in
  * scripts/seed-recovery-import-hhi.mjs (UAE, Oman, Bahrain publish 1-2y behind
@@ -56,7 +61,7 @@ export function candidatePeriods(now = new Date()) {
  * verified by live probe 2026-07-26: `period=2024` -> 200 (31 rows),
  * `period=2024,2023` -> 400. Use recentPeriod()/candidatePeriods() there.
  */
-export function periodWindow(now = new Date(), { from = 2, to = 5 } = {}) {
+export function periodWindow(now = new Date(), { from = 1, to = 5 } = {}) {
   const years = [];
   for (let lag = from; lag <= to; lag++) years.push(recentPeriod(now, lag));
   return years.join(',');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext, type ReactElement, type ReactNode } from 'react';
+import { Component, useState, useEffect, useRef, createContext, useContext, lazy, Suspense, type ReactElement, type ReactNode } from 'react';
 import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
@@ -11,11 +11,11 @@ import {
   Cable, Wifi, MapPin, TrendingUp,
   Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
-  Landmark, Fuel
+  Landmark, Fuel, Compass, Bot
 } from 'lucide-react';
 import { t } from './i18n';
-import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
-import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
+import { ensureClerk, showCheckoutErrorToast, tryResumeCheckoutFromUrl } from './services/checkout';
+import { scheduleClerkLoad, SITE_DATA_BLOCKED_MESSAGE, SiteDataBlockedError, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
@@ -30,7 +30,19 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
 import { ensureTurnstileScript } from './turnstile';
-import wiredLogo from './assets/wired-logo.svg';
+import { VoiceCards } from './components/Voices';
+// Below the fold: loaded on demand so the published-pulse JSON, the live
+// feed client and the plan table stay out of the initial /pro chunk.
+const LiveBriefCard = lazy(() => import('./components/LiveBriefCard').then((m) => ({ default: m.LiveBriefCard })));
+// A failed lazy import (stale deploy hash, flaky network) must not unmount the
+// whole page with its pricing cards and checkout; the section just goes missing.
+class LazySectionBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  declare props: { children: ReactNode };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? null : this.props.children; }
+}
+const PlanComparisonTable = lazy(() => import('./components/PlanComparisonTable').then((m) => ({ default: m.PlanComparisonTable })));
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
   DASHBOARD_PATH,
@@ -40,12 +52,10 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
-import { PressFooterNav } from './components/PressFooterNav';
+import { PressNav } from './components/PressNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
-import {
-  isDesktopCheckoutHandoff,
-  parseMissionPreviewAttributionFromSearch,
-} from '../../shared/checkout-attribution';
+import { parseMissionPreviewAttributionFromSearch } from '../../shared/checkout-attribution';
+import { parseDesktopCheckoutHandoff } from '../../shared/desktop-checkout-handoff';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -144,6 +154,10 @@ function appendRefToUrl(url: string, refCode: string | undefined): string {
 
 function openSignIn(): void {
   ensureClerk().then(c => c.openSignIn()).catch((err) => {
+    if (err instanceof SiteDataBlockedError) {
+      showCheckoutErrorToast(SITE_DATA_BLOCKED_MESSAGE);
+      return;
+    }
     console.error('[auth] Failed to open sign in:', err);
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'open-sign-in' } });
   });
@@ -172,7 +186,9 @@ function useClerkUser(): ClerkUserState {
       scheduleClerkLoad,
       onLoadError(err) {
         console.error('[auth] Failed to load Clerk for nav auth state:', err);
-        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        if (!(err instanceof SiteDataBlockedError)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
+        }
         setState({ user: null, isLoaded: true, signedIn: false });
       },
     });
@@ -329,10 +345,10 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
-          <a href="#tiers" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
-          <a href="#pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
-          <a href="#api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
-          <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
+          <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-nav-free" className="hover:text-wm-text transition-colors">{t('nav.free')}</a>
+          <a href="#pro" data-umami-event="pro-cta" data-umami-event-target="pro-nav-pro" className="hover:text-wm-green transition-colors">{t('nav.pro')}</a>
+          <a href="#api" data-umami-event="pro-cta" data-umami-event-target="pro-nav-api" className="hover:text-wm-text transition-colors">{t('nav.api')}</a>
+          <a href="#enterprise" data-umami-event="pro-cta" data-umami-event-target="pro-nav-enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
         </div>
         <div className="flex items-center gap-2">
           {isLoaded && (signedIn
@@ -349,12 +365,14 @@ const Navbar = () => {
           {showGoToDashboard ? (
             <a
               href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
+              data-umami-event="pro-cta"
+              data-umami-event-target="pro-nav-dashboard"
               className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
             >
               {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           ) : (
-            <a href="#pricing" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+            <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-nav-upgrade" className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
               {t('nav.upgradeToPro')}
             </a>
           )}
@@ -449,10 +467,8 @@ const SignalBars = () => {
 const Hero = ({ srLead }: { srLead?: string }) => {
   const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
-  // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
-  // Hide it once auth state confirms; falls back to just the "Choose Plan"
-  // CTA which is the relevant action for returning users anyway.
-  const showSignIn = isLoaded && !signedIn;
+  // Sign-in lives in the nav. Repeating it here made two sign-in controls
+  // on the first screen, beside the plan CTA it competed with.
   // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
   // is already Pro — same reasoning as the nav swap, and also removes
   // the #pricing anchor jump which is actively misleading for a paying
@@ -488,23 +504,18 @@ const Hero = ({ srLead }: { srLead?: string }) => {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
             {showGoToDashboard ? (
-              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} data-umami-event="pro-cta" data-umami-event-target="pro-hero-dashboard" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             ) : (
-              <a href="#pricing" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href="#pricing" data-umami-event="pro-cta" data-umami-event-target="pro-hero-choose-plan" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.choosePlan')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
-            )}
-            {showSignIn && (
-              <button type="button" onClick={openSignIn} className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-text transition-colors">
-                {t('hero.signIn')}
-              </button>
             )}
           </div>
 
           <div className="flex items-center justify-center mt-4">
-            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} data-umami-event="pro-cta" data-umami-event-target="pro-hero-try-free" className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
               {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           </div>
@@ -531,58 +542,9 @@ const SocialProof = () => (
           </div>
         ))}
       </div>
-      <blockquote className="max-w-3xl mx-auto text-center">
-        <p className="text-lg md:text-xl text-wm-muted italic leading-relaxed">
-          "{t('socialProof.quote')}"
-        </p>
-        <footer className="mt-6 flex items-center justify-center gap-3">
-          <a href="https://www.wired.com/story/world-monitor-elie-habib/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
-          </a>
-        </footer>
-      </blockquote>
-    </div>
-  </section>
-);
-
-/* ─── 3. Two-path split (new — from draft) ─── */
-const TwoPathSplit = () => (
-  <section className="py-24 px-6 max-w-5xl mx-auto" id="tiers">
-    <h2 className="sr-only">Plans</h2>
-    <div className="grid md:grid-cols-2 gap-8">
-      <div className="bg-wm-card border border-wm-green p-8 relative border-glow">
-        <div className="absolute top-0 left-0 w-full h-1 bg-wm-green" />
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#pricing" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold bg-wm-green text-wm-bg hover:bg-green-400 transition-colors">
-          {t('twoPath.choosePlan')}
-        </a>
-      </div>
-
-      <div className="bg-wm-card border border-wm-border p-8">
-        <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.entTitle')}</h3>
-        <p className="text-sm text-wm-muted mb-6">{t('twoPath.entDesc')}</p>
-        <ul className="space-y-3 mb-8">
-          <li className="text-xs font-mono text-wm-green uppercase tracking-wider mb-1">{t('twoPath.entF1')}</li>
-          {[t('twoPath.entF2'), t('twoPath.entF3'), t('twoPath.entF4'), t('twoPath.entF5'), t('twoPath.entF6'), t('twoPath.entF7'), t('twoPath.entF8'), t('twoPath.entF9'), t('twoPath.entF10'), t('twoPath.entF11')].map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-muted" aria-hidden="true" />
-              <span className="text-wm-muted">{f}</span>
-            </li>
-          ))}
-        </ul>
-        <a href="#enterprise" className="block text-center py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text transition-colors">
-          {t('twoPath.entCta')}
-        </a>
-      </div>
+      <h2 className="text-2xl md:text-3xl font-display font-bold mb-8 text-center">{t('welcome.voices.title')}</h2>
+      <VoiceCards />
+      <PressNav className="mt-6" />
     </div>
   </section>
 );
@@ -681,6 +643,8 @@ const LivePreview = () => (
             href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
             target="_blank"
             rel="noreferrer"
+            data-umami-event="pro-cta"
+            data-umami-event-target="pro-preview-fullscreen"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
           >
             {t('livePreview.openFullScreen')} <ExternalLink className="w-3 h-3" aria-hidden="true" />
@@ -717,6 +681,8 @@ const LivePreview = () => (
               href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               target="_blank"
               rel="noreferrer"
+              data-umami-event="pro-cta"
+              data-umami-event-target="pro-preview-try-live"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
             >
               {t('livePreview.tryLiveDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
@@ -735,17 +701,20 @@ const LivePreview = () => (
 const SourceMarquee = () => {
   const sources = [
     "Finnhub", "FRED", "Bloomberg", "CNBC", "Nikkei", "CoinGecko", "Polymarket",
-    "Reuters", "ACLED", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
-    "Cloudflare Radar", "BGPStream", "GPSJam", "NOAA", "Copernicus", "IAEA",
+    "Reuters", "UCDP", "GDELT", "NASA FIRMS", "USGS", "OpenSky", "AISStream",
+    "Cloudflare Radar", "GPSJam", "NOAA", "Copernicus", "IAEA",
     "Al Jazeera", "Sky News", "Euronews", "DW News", "France 24",
-    "OilPrice", "Rigzone", "Maritime Executive", "Hellenic Shipping News",
+    "OilPrice", "Rigzone",
     "Defense One", "Jane's", "The War Zone",
     "TechCrunch", "Ars Technica", "The Verge", "Wired",
-    "Krebs on Security", "BleepingComputer", "The Record",
+    "Krebs on Security",
   ];
   const items = sources.join(" · ");
   return (
-    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label="Data sources">
+    <section className="border-y border-wm-border bg-wm-card/20 overflow-hidden py-4" aria-label={t('sourceMarquee.label')}>
+      <a href="/sources/" className="block w-fit mx-auto mb-3 px-4 font-mono text-xs text-wm-green hover:underline">
+        {t('sourceMarquee.label')} →
+      </a>
       <div className="marquee-track whitespace-nowrap font-mono text-xs text-wm-muted uppercase tracking-widest">
         <span className="inline-block px-4">{items} · </span>
         <span className="inline-block px-4">{items} · </span>
@@ -840,46 +809,7 @@ const ProShowcase = () => (
         </div>
       </div>
 
-      <div className="bg-[#1a1d21] rounded-lg border border-[#35373b] overflow-hidden shadow-2xl sticky top-24">
-        <div className="bg-[#222529] px-4 py-3 border-b border-[#35373b] flex items-center gap-3">
-          <div className="w-3 h-3 rounded-full bg-red-500" />
-          <div className="w-3 h-3 rounded-full bg-yellow-500" />
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-          <span className="ml-2 font-mono text-xs text-gray-400">#world-monitor-alerts</span>
-        </div>
-        <div className="p-6 space-y-6 font-sans text-sm">
-          <div className="flex gap-4">
-            <div className="w-10 h-10 rounded bg-wm-green/20 flex items-center justify-center shrink-0">
-              <Globe className="w-6 h-6 text-wm-green" aria-hidden="true" />
-            </div>
-            <div>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="font-bold text-gray-200">World Monitor</span>
-                <span className="text-xs text-gray-500 bg-gray-800 px-1 rounded">APP</span>
-                <span className="text-xs text-gray-500">8:00 AM</span>
-              </div>
-              <p className="text-gray-300 font-bold mb-3">{t('slackMock.morningBrief')} &middot; Mar 6</p>
-
-              <div className="space-y-3">
-                <div className="pl-3 border-l-2 border-blue-500">
-                  <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.markets')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.marketsText')}</p>
-                </div>
-
-                <div className="pl-3 border-l-2 border-orange-500">
-                  <span className="text-orange-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.elevated')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.elevatedText')}</p>
-                </div>
-
-                <div className="pl-3 border-l-2 border-yellow-500">
-                  <span className="text-yellow-400 font-bold text-xs uppercase tracking-wider">{t('slackMock.watch')}</span>
-                  <p className="text-gray-300 mt-1">{t('slackMock.watchText')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <LazySectionBoundary><Suspense fallback={<div className="min-h-[460px]" aria-hidden="true" />}><LiveBriefCard /></Suspense></LazySectionBoundary>
     </div>
   </section>
 );
@@ -892,14 +822,16 @@ const AudiencePersonas = () => {
     { icon: <Search className="w-6 h-6" aria-hidden="true" />, title: t('audience.researchersTitle'), desc: t('audience.researchersDesc') },
     { icon: <Globe className="w-6 h-6" aria-hidden="true" />, title: t('audience.journalistsTitle'), desc: t('audience.journalistsDesc') },
     { icon: <Landmark className="w-6 h-6" aria-hidden="true" />, title: t('audience.govTitle'), desc: t('audience.govDesc') },
+    { icon: <Compass className="w-6 h-6" aria-hidden="true" />, title: t('audience.strategyTitle'), desc: t('audience.strategyDesc') },
+    { icon: <Bot className="w-6 h-6" aria-hidden="true" />, title: t('audience.aiTeamsTitle'), desc: t('audience.aiTeamsDesc') },
     { icon: <Building2 className="w-6 h-6" aria-hidden="true" />, title: t('audience.teamsTitle'), desc: t('audience.teamsDesc') },
   ];
 
   return (
     <section className="py-24 px-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <h2 className="text-3xl md:text-5xl font-display font-bold mb-16 text-center">{t('audience.title')}</h2>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {personas.map((p, i) => (
             <div key={i} className="bg-wm-card border border-wm-border p-6 hover:border-wm-green/30 transition-colors">
               <div className="text-wm-green mb-4">{p.icon}</div>
@@ -1073,6 +1005,8 @@ const EnterpriseShowcase = () => (
       <div className="text-center mt-12">
         <a
           href="#enterprise-contact"
+          data-umami-event="pro-cta"
+          data-umami-event-target="pro-enterprise-talk-to-sales"
           aria-label="Talk to sales about Enterprise plans"
           className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
         >
@@ -1082,68 +1016,6 @@ const EnterpriseShowcase = () => (
     </div>
   </section>
 );
-
-/* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
-const PricingTable = () => {
-  const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
-    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
-    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
-    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
-    { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
-    { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
-    { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
-    { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
-    { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
-    { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
-    { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },
-    { feature: t('pricingTable.securityRow'), free: t('pricingTable.fStandard'), pro: t('pricingTable.fStandard'), api: t('pricingTable.fKeyAuth'), ent: t('pricingTable.fSsoMfa') },
-  ];
-
-  return (
-    <section className="py-24 px-6 max-w-7xl mx-auto">
-      <div className="text-center mb-16">
-        <h2 className="text-3xl md:text-5xl font-display font-bold mb-6">{t('pricingTable.title')}</h2>
-      </div>
-      <div className="hidden md:block">
-        <div className="grid grid-cols-5 gap-4 mb-4 pb-4 border-b border-wm-border font-mono text-xs uppercase tracking-widest text-wm-muted">
-          <div>{t('pricingTable.feature')}</div>
-          <div>{t('pricingTable.freeHeader')}</div>
-          <div className="text-wm-green">{t('pricingTable.proHeader')}</div>
-          <div>{t('pricingTable.apiHeader')}</div>
-          <div>{t('pricingTable.entHeader')}</div>
-        </div>
-        {rows.map((row, i) => (
-          <div key={i} className="grid grid-cols-5 gap-4 py-4 border-b border-wm-border/50 text-sm hover:bg-wm-card/50 transition-colors">
-            <div className="font-medium">{row.feature}</div>
-            <div className="text-wm-muted">{row.free}</div>
-            <div className="text-wm-green">{row.pro}</div>
-            <div className="text-wm-muted">{row.api}</div>
-            <div className="text-wm-muted">{row.ent}</div>
-          </div>
-        ))}
-      </div>
-      <div className="md:hidden space-y-4">
-        {rows.map((row, i) => (
-          <div key={i} className="bg-wm-card border border-wm-border p-4 rounded-sm">
-            <p className="font-medium text-sm mb-3">{row.feature}</p>
-            <div className="grid grid-cols-2 gap-2 text-xs break-words">
-              <div><span className="text-wm-muted">{t('tiers.free')}:</span> {row.free}</div>
-              <div><span className="text-wm-green">{t('tiers.pro')}:</span> <span className="text-wm-green">{row.pro}</span></div>
-              <div><span className="text-wm-muted">{t('nav.api')}:</span> {row.api}</div>
-              <div><span className="text-wm-muted">{t('tiers.enterprise')}:</span> {row.ent}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="text-center text-sm text-wm-muted mt-8">
-        {t('pricingTable.noteBelow')}
-      </p>
-    </section>
-  );
-};
 
 /* ─── 12. FAQ (draft copy — warmer tone) ─── */
 const FAQ = () => {
@@ -1192,9 +1064,9 @@ const EnterprisePage = () => (
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="#enterprise" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
-          <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-green transition-colors">{t('enterpriseShowcase.talkToSales')}</a>
+          <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-nav-talk" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-green transition-colors">{t('enterpriseShowcase.talkToSales')}</a>
         </div>
-        <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+        <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-nav-cta" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
           {t('enterpriseShowcase.talkToSales')}
         </a>
       </div>
@@ -1211,7 +1083,7 @@ const EnterprisePage = () => (
           <p className="text-lg text-wm-muted max-w-2xl mx-auto mb-10">
             {t('enterpriseShowcase.subtitle')}
           </p>
-          <a href="#enterprise-contact" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
+          <a href="#enterprise-contact" data-umami-event="pro-cta" data-umami-event-target="pro-enterprise-hero-talk" onClick={(e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); }} className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-8 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors">
             {t('enterpriseShowcase.talkToSales')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </a>
         </div>
@@ -1314,6 +1186,7 @@ const EnterprisePage = () => (
             }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
+                signal: createTimeoutSignal(60_000),
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1360,7 +1233,7 @@ const EnterprisePage = () => (
             <span data-form-error className="hidden text-red-400 text-xs font-mono block" />
             <div className="grid grid-cols-2 gap-4">
               <input type="text" name="organization" placeholder={t('enterpriseShowcase.orgPlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
-              <input type="tel" name="phone" placeholder={t('enterpriseShowcase.phonePlaceholder')} required className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
+              <input type="tel" name="phone" autoComplete="tel" placeholder={t('enterpriseShowcase.phonePlaceholder')} className="bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono" />
             </div>
             <textarea name="message" placeholder={t('enterpriseShowcase.messagePlaceholder')} rows={4} className="w-full bg-wm-bg border border-wm-border rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-wm-green transition-colors font-mono resize-none" />
             <div className="cf-turnstile mx-auto" />
@@ -1386,11 +1259,11 @@ const EnterprisePage = () => (
           <a href="https://www.worldmonitor.app/docs/documentation" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+          <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X (Twitter)</a>
         </div>
-        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
+        <span className="text-xs opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} World Monitor</span>
       </div>
-      <PressFooterNav />
+      <PressNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1422,6 +1295,9 @@ export const ProHomeShell = ({ heroSrLead, footer, children }: {
 
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
+  // Section to scroll to once the home view has rendered after leaving the
+  // Enterprise view; its sections do not exist until then.
+  const pendingHomeTarget = useRef<string | null>(null);
 
   // Resume a checkout the buyer started before signing in.
   //
@@ -1447,6 +1323,11 @@ export default function App() {
       const wasEnterprise = page === 'enterprise';
       setPage(next);
       if (next === 'enterprise' && !wasEnterprise) window.scrollTo(0, 0);
+      // The removed #tiers section has no element for native fragment
+      // navigation; send history or same-page jumps to the price cards.
+      const homeTarget = hash === '#tiers' ? 'pricing' : hash.slice(1);
+      if (next === 'home' && wasEnterprise && homeTarget) pendingHomeTarget.current = homeTarget;
+      else if (hash === '#tiers') document.getElementById('pricing')?.scrollIntoView();
       if (hash === '#enterprise-contact') {
         setTimeout(() => {
           document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' });
@@ -1456,6 +1337,31 @@ export default function App() {
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [page]);
+
+  useEffect(() => {
+    const target = pendingHomeTarget.current;
+    if (page !== 'home' || !target) return;
+    pendingHomeTarget.current = null;
+    const frame = requestAnimationFrame(() => { document.getElementById(target)?.scrollIntoView(); });
+    return () => cancelAnimationFrame(frame);
+  }, [page]);
+
+  // Deep links into the home page (/pro#pricing from every dashboard
+  // "Upgrade to Pro" CTA) target React-only sections that are absent from the
+  // prerendered HTML, so the browser's native fragment scroll runs before the
+  // target exists and leaves the buyer at the top of the page. Scroll once
+  // the section has mounted. The rAF lets layout settle first.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.length < 2 || hash.startsWith('#enterprise')) return;
+    // #tiers was a Plans section without prices, removed in favour of the
+    // price cards; saved links to it still land on the plans.
+    const target = hash === '#tiers' ? 'pricing' : hash.slice(1);
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (page === 'enterprise' && window.location.hash === '#enterprise-contact') {
@@ -1473,20 +1379,19 @@ export default function App() {
         <SourceMarquee />
         <Pillars />
         <WhyUpgrade />
-        <TwoPathSplit />
+        <SocialProof />
         <ProShowcase />
         <DeliveryDesk />
         <AudiencePersonas />
-        <SocialProof />
         <LivePreview />
         <WhatsNew />
         <PricingSection
           refCode={getRefCode()}
           attributionSource={getMcpAttributionSource()}
           checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
-          desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+          desktopHandoff={parseDesktopCheckoutHandoff(window.location.search) ?? undefined}
         />
-        <PricingTable />
+        <LazySectionBoundary><Suspense fallback={null}><PlanComparisonTable /></Suspense></LazySectionBoundary>
         <ApiSection />
         <EnterpriseShowcase />
         <FAQ />

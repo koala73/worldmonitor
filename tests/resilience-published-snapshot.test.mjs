@@ -145,9 +145,28 @@ describe('published resilience snapshot freshness', () => {
     assert.match(workflow, /gh pr list --state all/);
     assert.match(workflow, /gh pr create/);
     assert.doesNotMatch(workflow, /push --force/);
-    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
-
     const parsed = YAML.parse(workflow);
+    const verify = parsed.jobs.refresh.steps.find((step) => step.name === 'Rebuild and verify published artifacts');
+    const consumers = new RegExp(verify.env.SNAPSHOT_CONSUMERS);
+    for (const suite of [
+      'crawlable-corpus.test.mjs',
+      'seo-geo-residue.test.mjs',
+      'sitemap-generation.test.mjs',
+      'resilience-ranking-snapshot.test.mts',
+      'ai-search-product-facts.test.mjs',
+      'country-corpus-slugs-freshness.test.mjs',
+      'public-product-facts.test.mjs',
+      'seo-landing-metadata.test.mjs',
+    ]) {
+      assert.match(readFileSync(join(repoRoot, 'tests', suite), 'utf8'), consumers, `the refresh must verify ${suite}`);
+    }
+    assert.match(verify.run, /grep -lE "\$SNAPSHOT_CONSUMERS" tests\/\*\.test\.mjs tests\/\*\.test\.mts/);
+    // The job never builds, so a built-output filter would drop whole suites
+    // whose committed-source checks still apply.
+    assert.match(verify.run, /^node scripts\/run-data-tests\.mjs "\$\{suites\[@\]\}"$/m);
+    assert.doesNotMatch(verify.run, /--built-output/);
+    assert.doesNotMatch(JSON.stringify(verify.env), /WM_EXPECT_BUILT_OUTPUT/);
+
     const checkout = parsed.jobs.refresh.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.equal(
       checkout?.with?.ref,

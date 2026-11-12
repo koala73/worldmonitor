@@ -164,7 +164,7 @@ export function buildWelcomeTeasers(snapshot, snapshotPath) {
       trend: trendDirection(row?.trend),
     }))
     .filter((row) => Number.isFinite(row.combinedScore))
-    .sort((a, b) => b.combinedScore - a.combinedScore || a.region.localeCompare(b.region))
+    .sort((a, b) => b.combinedScore - a.combinedScore || a.region.localeCompare(b.region, 'en-US'))
     .slice(0, CII_ROWS);
 
   const chokepointRows = Object.entries(snapshot.chokepoints).map(([slug, row]) => {
@@ -202,7 +202,7 @@ export function buildWelcomeTeasers(snapshot, snapshotPath) {
     headlines: headlines.slice(0, HEADLINE_ROWS).map(headlineRow),
     cii,
     chokepoints: [...chokepointRows]
-      .sort((a, b) => b.disruptionScore - a.disruptionScore || a.name.localeCompare(b.name))
+      .sort((a, b) => b.disruptionScore - a.disruptionScore || a.name.localeCompare(b.name, 'en-US'))
       .slice(0, CHOKEPOINT_ROWS),
     // Both halves of "N of M disrupted" are counted across every captured
     // chokepoint. Deriving the numerator in the client from the five rendered

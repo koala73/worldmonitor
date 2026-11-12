@@ -147,7 +147,7 @@ describe('risk-scores build with failed Redis reads', () => {
   });
 
   it('publishes nothing when a single non-count source read errors', async () => {
-    stubRedis({ failing: ['intelligence:gpsjam:v2'] });
+    stubRedis({ failing: ['infra:outages:v1'] });
     await getRiskScores({} as never, {} as never);
     assert.deepEqual(published(), [], 'every Redis input is load-bearing, not only the count families');
   });
@@ -174,7 +174,7 @@ describe('risk-scores build with failed Redis reads', () => {
     stubRedis({
       failing: ['news:insights:v1'],
       stored: {
-        'wildfire:fires-summary:v1': `{"byCountry":[${marker}`,
+        'relay:oref:history:v1': `{"activeAlertCount":[${marker}`,
         'conflict:ucdp-events:v1': JSON.stringify({ events: [{ country: 'Ukraine', note: marker }] }),
       },
     });
@@ -186,12 +186,12 @@ describe('risk-scores build with failed Redis reads', () => {
       [...record.failedReads].sort((a, b) => a.key.localeCompare(b.key)),
       [
         { key: 'news:insights:v1', failure: 'timeout' },
-        { key: 'wildfire:fires-summary:v1', failure: 'parse' },
+        { key: 'relay:oref:history:v1', failure: 'parse' },
       ],
     );
     assert.ok(!rejectionRecord()[0]!.value.includes(marker), 'the record must not carry stored payload bytes');
     assert.equal(errorLogs.length, 1, 'one rejection log line');
-    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('wildfire:fires-summary:v1'), 'the log names the failed keys');
+    assert.ok(errorLogs[0]!.includes('news:insights:v1') && errorLogs[0]!.includes('relay:oref:history:v1'), 'the log names the failed keys');
     assert.ok(!errorLogs[0]!.includes(marker), 'the log must not carry stored payload bytes');
   });
 

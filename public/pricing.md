@@ -53,11 +53,11 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual savings: 3 months free versus monthly billing
 - Best for: Consultants, agencies and independent analysts who use the Pro dashboard for client work, internal tools or reporting
 - Seats: 1 named user — a seat is one person, not a shared login
-- Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports)
+- Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports) and travel risk assessment drafts in the dashboard and over MCP
 - License: Commercial license included — use WorldMonitor for client work, internal tools and reporting
 - Limits: 25 custom dashboards, 2,500 dashboard-AI requests/day, MCP + SDK 250 calls/day
 - Support: Priority support
-- Note: Pro and Pro Business are separate products, not a self-serve plan change. To move up, cancel Pro in the billing portal and start the Pro Business checkout; your Pro access runs to the end of the term you already paid for.
+- Upgrading from Pro: an active Pro subscription that is not set to cancel upgrades in place. Choose Pro Business while signed in at https://www.worldmonitor.app/pro or in the dashboard. The existing subscription moves to Pro Business: you see today's charge before you confirm, and the billing period restarts on the upgrade day. If that payment fails, it stays on Pro. A Pro subscription set to cancel must be resumed in the billing portal first; if the in-place preview is unavailable, checkout shows the cancel-then-subscribe steps instead.
 
 ## API Starter
 
@@ -65,7 +65,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $899.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
-- Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
+- Includes: the full Pro dashboard for one named user, REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
 - License: Commercial license for your organization — build internal tools and reporting on the data; redistributing it to your own customers requires API Business
 - Starter limit: 1,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Starter webhooks: 5 webhook rules
@@ -76,7 +76,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $2,699.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
-- Includes: Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 5 Pro licenses — invite users at any corporate email domain and priority support
+- Includes: Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 5 Pro licenses — invite users at any corporate email domain, shared team dashboards, travel risk assessment drafts in the dashboard and over MCP and priority support
 - License: Commercial license for your customers — redistribute R1–R3 outputs in customer-facing products; OpenSky is excluded; the 5 bundled Pro seats may be assigned to users at any corporate email domain
 - Limits: 300 requests/minute, 10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://www.worldmonitor.app/pro
@@ -86,9 +86,23 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: Custom
 - Contact: enterprise@worldmonitor.app
 - Best for: Governments, institutions, trading desks, SOCs, risk consultancies and organizations that need shared monitoring or deployment control
-- Includes: Everything in Pro and API, team workspaces, SSO/MFA/RBAC, dedicated support, white-label and embeddable panels, Android TV app, SIEM/connectors, bulk export and managed deployment options
+- Includes: Everything in Pro and API, shared team dashboards, team workspaces, dedicated support, travel risk assessment drafts in the dashboard and over MCP, white-label and embeddable panels, bulk export and managed deployment options
+- By contract: SLA guarantee, SAML SSO and SCIM, SSO/MFA/RBAC, an Android TV app, and SIEM and data connectors
 - Deployment options: Cloud, dedicated cloud tenant, on-premises or air-gapped
 - Security: AES-256 encrypted notification channels, audit trail, private MCP options and organization controls
+
+## Dashboard sharing
+
+Map links share the map position and layers. Team dashboards share panel layouts and map settings within an API Business or Enterprise team.
+
+- API Business includes team dashboards for the subscription owner and accepted Pro-seat members.
+- Enterprise includes team dashboards for active account members with a current contract.
+- Only one team is available at a time. An eligible Enterprise account takes priority, followed by your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
+- Standalone Pro, Pro Business, and API Starter subscriptions do not create a team. Pro Business's 25 custom dashboards are personal tabs.
+- Each team can share up to 25 dashboards per dashboard variant. Each member's personal tab limit still applies when opening a shared dashboard.
+- Every member can publish, update, or stop sharing a team dashboard. Custom widgets and MCP panels are excluded. Existing tabs remain when sharing stops.
+
+Instructions and limits: https://www.worldmonitor.app/docs/features#team-dashboards
 
 ## Limits & Overage
 
@@ -148,7 +162,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "25 custom dashboards",
         "2,500 dashboard-AI requests/day",
         "250 MCP calls/day",
-        "priority support"
+        "priority support",
+        "travel risk assessment drafts in the dashboard and over MCP"
       ]
     },
     {
@@ -156,6 +171,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price_usd_monthly": 99.99,
       "price_usd_yearly": 899.99,
       "features": [
+        "full Pro dashboard (1 named user)",
         "REST API",
         "license / API key included",
         "1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)",
@@ -163,7 +179,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "webhooks",
         "structured JSON",
         "OpenAPI docs",
-        "commercial license — for your organization"
+        "commercial license — internal use in your organization, not customer-facing products"
       ]
     },
     {
@@ -176,8 +192,10 @@ These subscription licenses cover the hosted Service and its outputs. They are s
         "10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)",
         "10,000 dashboard-AI requests/day",
         "5 Pro licenses — invite users at any corporate email domain",
+        "team dashboards (up to 25 per variant)",
         "commercial license — for your customers",
-        "priority support"
+        "priority support",
+        "travel risk assessment drafts in the dashboard and over MCP"
       ]
     },
     {
@@ -185,12 +203,14 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price": "Custom",
       "contact": "enterprise@worldmonitor.app",
       "features": [
-        "SSO/MFA/RBAC",
+        "team dashboards (up to 25 per variant)",
         "team workspaces",
         "white-label",
         "on-premises",
         "air-gapped",
-        "dedicated support"
+        "dedicated support",
+        "SSO/MFA/RBAC (by contract)",
+        "travel risk assessment drafts in the dashboard and over MCP"
       ]
     }
   ]
