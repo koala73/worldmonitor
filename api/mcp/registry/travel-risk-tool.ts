@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { applyRedisKeyPrefix, readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { readCountryCiiHistory } from '../_cii-history';
