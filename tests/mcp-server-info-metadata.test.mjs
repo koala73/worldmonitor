@@ -36,4 +36,19 @@ describe('MCP serverInfo metadata', () => {
     for (const k of ['name', 'version', 'title', 'websiteUrl']) assert.equal(card.serverInfo[k], SERVER_INFO[k], k);
     assert.deepEqual(card.serverInfo.icons, SERVER_INFO.icons);
   });
+
+  // The cards' own icon fields are fetched by the same cross-origin pages, so
+  // they need the exempt path too, and the file has to exist.
+  it('every card icon field points at a hotlink-ok file that exists', () => {
+    const files = {
+      'public/.well-known/mcp/server-card.json': 'icon',
+      'public/.well-known/mcp/docs-server-card.json': 'icon',
+      'public/.well-known/agent-card.json': 'iconUrl',
+    };
+    for (const [file, key] of Object.entries(files)) {
+      const json = JSON.parse(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'));
+      assert.match(json[key], /^https:\/\/worldmonitor\.app\/\.well-known\/mcp\/hotlink-ok\/[\w.-]+$/, `${file} ${key}`);
+      assert.ok(existsSync(new URL(`../public${new URL(json[key]).pathname}`, import.meta.url)), `${file} ${key} file`);
+    }
+  });
 });
