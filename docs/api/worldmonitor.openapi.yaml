@@ -2711,6 +2711,129 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/climate/v1/list-reservoir-levels:
+        get:
+            tags:
+                - ClimateService
+            summary: ListReservoirLevels
+            description: ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes. Passes typically publish 50 to 70 days after overpass; see latest.ageDays.
+            operationId: ListReservoirLevels
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1790812800000
+                                "reservoirs":
+                                    - "change90dM": -2.893
+                                      "id": "mead"
+                                      "lat": 36.13
+                                      "latest":
+                                          "ageDays": 24
+                                          "date": "2026-09-06"
+                                          "levelM": 316.757
+                                      "lon": -114.45
+                                      "name": "Lake Mead"
+                                      "status": "record_low"
+                                "source":
+                                    "name": "NASA ICESat-2 ATL13"
+                                    "product": "ATL13 v007"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_climate_v1_ListReservoirLevelsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/climate/v1/list-climate-news:
         get:
             tags:
@@ -42201,6 +42324,142 @@ components:
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 source:
+                    type: string
+        worldmonitor_climate_v1_ListReservoirLevelsRequest:
+            type: object
+        worldmonitor_climate_v1_ListReservoirLevelsResponse:
+            type: object
+            properties:
+                reservoirs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevel'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch ms; 0 when the snapshot is unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataAvailable:
+                    type: boolean
+                source:
+                    $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevelsSource'
+                methodology:
+                    type: string
+        worldmonitor_climate_v1_ReservoirLevel:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                country:
+                    type: string
+                riparians:
+                    type: array
+                    items:
+                        type: string
+                river:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tags:
+                    type: array
+                    items:
+                        type: string
+                why:
+                    type: string
+                latest:
+                    $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLatestPass'
+                prevDate:
+                    type: string
+                changePrevM:
+                    type: number
+                    format: double
+                change30dM:
+                    type: number
+                    format: double
+                    description: Changes are interpolated between overpasses, never extrapolated.
+                change90dM:
+                    type: number
+                    format: double
+                change365dM:
+                    type: number
+                    format: double
+                seasonalAnomalyM:
+                    type: number
+                    format: double
+                    description: Against the same time of year in at least three prior years.
+                seasonalZ:
+                    type: number
+                    format: double
+                recordMinM:
+                    type: number
+                    format: double
+                recordMaxM:
+                    type: number
+                    format: double
+                recordStart:
+                    type: string
+                percentOfRange:
+                    type: number
+                    format: double
+                recordLow:
+                    type: boolean
+                recordHigh:
+                    type: boolean
+                status:
+                    type: string
+                    description: |-
+                        no_recent_data, record_low, record_high, falling_fast, rising_fast,
+                         low, high, normal or insufficient_history.
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevelPoint'
+                okPassCount:
+                    type: integer
+                    format: int32
+            description: |-
+                ReservoirLevel is the ICESat-2 water-surface level of one reservoir or
+                 lake, metres above the EGM2008 geoid. Not a storage volume.
+        worldmonitor_climate_v1_ReservoirLatestPass:
+            type: object
+            properties:
+                date:
+                    type: string
+                levelM:
+                    type: number
+                    format: double
+                madM:
+                    type: number
+                    format: double
+                segmentCount:
+                    type: integer
+                    format: int32
+                ageDays:
+                    type: integer
+                    format: int32
+        worldmonitor_climate_v1_ReservoirLevelPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                levelM:
+                    type: number
+                    format: double
+        worldmonitor_climate_v1_ReservoirLevelsSource:
+            type: object
+            properties:
+                name:
+                    type: string
+                product:
+                    type: string
+                url:
+                    type: string
+                processing:
                     type: string
         worldmonitor_climate_v1_ListClimateNewsRequest:
             type: object
