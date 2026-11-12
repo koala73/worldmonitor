@@ -9,11 +9,19 @@ const mocks = vi.hoisted(() => ({
   clusterNews: vi.fn(),
   analyzeCorrelations: vi.fn(),
   enqueueSentryCall: vi.fn(),
+  track: vi.fn(),
+  isAnalyticsHost: vi.fn(() => true),
 }));
 
 vi.mock('@/bootstrap/sentry-defer', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/bootstrap/sentry-defer')>(),
   enqueueSentryCall: mocks.enqueueSentryCall,
+}));
+
+vi.mock('@/services/analytics', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/analytics')>(),
+  track: mocks.track,
+  isAnalyticsHost: mocks.isAnalyticsHost,
 }));
 
 vi.mock('@/services/breaking-news-alerts', async (importOriginal) => ({
@@ -146,6 +154,9 @@ describe('digest coverage follows the selected browser response', () => {
     mocks.clusterNews.mockReset();
     mocks.analyzeCorrelations.mockReset();
     mocks.enqueueSentryCall.mockReset();
+    mocks.track.mockReset();
+    mocks.isAnalyticsHost.mockReset();
+    mocks.isAnalyticsHost.mockReturnValue(true);
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -437,11 +448,13 @@ describe('digest coverage follows the selected browser response', () => {
       });
     }
 
-    it('reports a timed-out request with its failure kind and fallback', async () => {
+    it('reports a failure that left the panels empty with its kind, fallback and fingerprint', async () => {
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';
-      internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
-      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+      // Both attempts stall and there is no copy to show.
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+        .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
 
       await internal.tryFetchDigest();
 
@@ -449,8 +462,151 @@ describe('digest coverage follows the selected browser response', () => {
       expect(events).toHaveLength(1);
       expect(events[0]!.message).toBe('News digest fetch failed');
       expect(events[0]!.ctx.level).toBe('warning');
-      expect(events[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'retained' });
+      expect(events[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'none', 'digest.retry': 'failed' });
       expect(events[0]!.ctx.fingerprint).toEqual(['news-digest-fetch', 'timeout']);
+      expect(mocks.track).not.toHaveBeenCalled();
+    });
+
+    // Sentry WORLDMONITOR-1D4: 94% of its events had news on screen. Those are
+    // a rate, so they are counted in analytics and never open a Sentry issue.
+    describe('a failure with news still on screen is counted, not reported', () => {
+      it('a retained copy', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+        await internal.tryFetchDigest();
+
+        expect(captured()).toHaveLength(0);
+        expect(mocks.track).toHaveBeenCalledOnce();
+        expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', {
+          outcome: 'retained',
+          failure: 'timeout',
+          variant: expect.any(String),
+        });
+      });
+
+      it('a saved copy', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        internal.loadPersistedDigest = vi.fn().mockResolvedValue(digest('complete', 3));
+        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+        await internal.tryFetchDigest();
+
+        expect(captured()).toHaveLength(0);
+        expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'saved', failure: 'network' }));
+      });
+
+      it('a retry that recovered', async () => {
+        const { internal } = await makeLoader();
+        internal.digestCacheKey = () => 'digest:current';
+        vi.mocked(globalThis.fetch)
+          .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+          .mockResolvedValueOnce(new Response(JSON.stringify(digest('complete', 3))));
+
+        await internal.tryFetchDigest();
+
+        expect(captured()).toHaveLength(0);
+        expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'recovered', failure: 'timeout' }));
+      });
+    });
+
+    // Codex review: the tracker disables itself on tech, commodity, energy and
+    // self-hosted origins, so a count sent there is dropped. Keep Sentry.
+    it('keeps reporting to Sentry on a host the analytics tracker is disabled on', async () => {
+      mocks.isAnalyticsHost.mockReturnValue(false);
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'retained' });
+    });
+
+    // Greptile review: a copy with no stories puts nothing on screen.
+    it('treats a retained or saved copy with no stories as empty panels', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      internal.lastGoodDigest = { key: 'digest:current', data: { ...digest('complete', 3), categories: { world: { items: [] } } } };
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.fallback': 'none' });
+    });
+
+    // CodeRabbit review: a recovered stall counted in analytics must not use up
+    // the Sentry slot for a later failure of the same kind that blanks the panels.
+    it('a counted degradation does not suppress a later empty-panel report of the same kind', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(new Response(JSON.stringify(digest('complete', 3))));
+      await internal.tryFetchDigest();
+      expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'recovered', failure: 'network' }));
+      expect(captured()).toHaveLength(0);
+
+      // The user switches to a language with no saved copy, and both requests fail.
+      internal.digestCacheKey = () => 'digest:other-language';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await internal.tryFetchDigest();
+
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'network', 'digest.fallback': 'none', 'digest.retry': 'failed' });
+    });
+
+    // CodeRabbit review: the zero-category check counts keys, so a retry can
+    // succeed with categories that hold no stories. Panels stay empty.
+    it('a retry that answers with no stories is reported as failed, not recovered', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ...digest('complete', 3), categories: { world: { items: [] } } })));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'none', 'digest.retry': 'failed' });
+    });
+
+    it('knows which hosts the analytics tracker runs on', async () => {
+      const actual = await vi.importActual<typeof import('@/services/analytics')>('@/services/analytics');
+      for (const host of ['worldmonitor.app', 'www.worldmonitor.app', 'happy.worldmonitor.app', 'finance.worldmonitor.app']) {
+        expect(actual.isAnalyticsHost(host), host).toBe(true);
+      }
+      for (const host of ['tech.worldmonitor.app', 'commodity.worldmonitor.app', 'energy.worldmonitor.app', 'self-host.example', '']) {
+        expect(actual.isAnalyticsHost(host), host).toBe(false);
+      }
+    });
+
+    it('reads whether a digest carries a story', async () => {
+      const { digestHasItems } = await import('@/app/data-loader');
+      expect(digestHasItems(null)).toBe(false);
+      expect(digestHasItems({ ...digest('complete', 3), categories: {} })).toBe(false);
+      expect(digestHasItems({ ...digest('complete', 3), categories: { world: { items: [] } } })).toBe(false);
+      expect(digestHasItems(digest('complete', 3))).toBe(true);
+    });
+
+    it('classifies the outcome from what was left on screen', async () => {
+      const { digestFailureOutcome } = await import('@/app/data-loader');
+      expect(digestFailureOutcome('retained', 'none')).toBe('retained');
+      expect(digestFailureOutcome('saved', 'failed')).toBe('saved');
+      expect(digestFailureOutcome('none', 'recovered')).toBe('recovered');
+      expect(digestFailureOutcome('none', 'failed')).toBe('empty');
+      expect(digestFailureOutcome('none', 'none')).toBe('empty');
     });
 
     it('waits as long as the server is allowed to take (Sentry WORLDMONITOR-1D4)', async () => {
@@ -496,10 +652,12 @@ describe('digest coverage follows the selected browser response', () => {
       // name alone filed one condition under two Sentry issues.
       const { internal } = await makeLoader();
       internal.digestCacheKey = () => 'digest:current';
-      internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
       const expired = AbortSignal.abort(new DOMException('signal timed out', 'TimeoutError'));
       const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(expired);
-      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('Fetch is aborted', 'AbortError'));
+      // No copy to show, so the retry runs too and the failure is an incident.
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new DOMException('Fetch is aborted', 'AbortError'))
+        .mockRejectedValueOnce(new DOMException('Fetch is aborted', 'AbortError'));
 
       try {
         await internal.tryFetchDigest();
@@ -601,8 +759,9 @@ describe('digest coverage follows the selected browser response', () => {
       it('leaves both tags off a failure that had no response', async () => {
         const { internal } = await makeLoader();
         internal.digestCacheKey = () => 'digest:current';
-        internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
-        vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        vi.mocked(globalThis.fetch)
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'));
         await internal.tryFetchDigest();
         const tags = captured()[0]!.ctx.tags;
         expect(tags['digest.failure']).toBe('network');
@@ -622,8 +781,9 @@ describe('digest coverage follows the selected browser response', () => {
       await internal.tryFetchDigest();
       await internal.tryFetchDigest();
 
-      expect(captured()).toHaveLength(1);
-      expect(captured()[0]!.ctx.tags['digest.failure']).toBe('network');
+      expect(captured()).toHaveLength(0);
+      expect(mocks.track).toHaveBeenCalledOnce();
+      expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ failure: 'network' }));
     });
 
     // Sentry WORLDMONITOR-1D4 after the 25 s deadline shipped: the server had
@@ -646,15 +806,12 @@ describe('digest coverage follows the selected browser response', () => {
         expect(result).toEqual({ digest: fresh, servedStale: false });
         expect(internal.persistDigest).toHaveBeenCalledWith('digest:current', fresh);
         expect(internal.digestBreaker).toMatchObject({ state: 'closed', failures: 0 });
-        // The stall still happened, so it is still reported, marked as recovered.
-        const events = captured();
-        expect(events).toHaveLength(1);
-        expect(events[0]!.ctx.tags).toMatchObject({
-          'digest.failure': 'timeout',
-          'digest.fallback': 'none',
-          'digest.retry': 'recovered',
-        });
-        expect(events[0]!.ctx.tags).not.toHaveProperty('digest.retry.failure');
+        // The stall still happened, so it is counted, but news rendered: no Sentry issue.
+        expect(captured()).toHaveLength(0);
+        expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({
+          outcome: 'recovered',
+          failure: 'timeout',
+        }));
       });
 
       it('gives up after the retry fails and reports both attempts as one event', async () => {
@@ -700,7 +857,7 @@ describe('digest coverage follows the selected browser response', () => {
         await internal.tryFetchDigest();
 
         expect(globalThis.fetch).toHaveBeenCalledOnce();
-        expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.fallback': 'retained', 'digest.retry': 'none' });
+        expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'retained' }));
       });
 
       it('does not retry when a saved copy exists', async () => {

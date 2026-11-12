@@ -77,6 +77,16 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // tolerate collector failures. tech/commodity stay out until #4183 ships.
 const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
+
+/**
+ * Whether the tracker is enabled on this host. It disables itself on any host
+ * outside UMAMI_DOMAINS, so an event sent from tech, commodity, energy or a
+ * self-hosted origin is dropped. Callers that move a signal from Sentry to
+ * analytics use this to keep Sentry on the hosts analytics cannot see.
+ */
+export function isAnalyticsHost(hostname: string = typeof location === 'undefined' ? '' : location.hostname): boolean {
+  return UMAMI_DOMAINS.split(',').includes(hostname);
+}
 const UMAMI_BEFORE_SEND_HOOK = '__wmUmamiBeforeSend';
 
 const LANDING_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
@@ -340,6 +350,10 @@ const EVENTS = {
   'about-you-shown': true,
   'about-you-answered': true,
   'about-you-skipped': true,
+  // A digest request failed but news was still on screen (retained or saved
+  // copy, or a retry that recovered). Carries outcome, failure kind and
+  // variant only. A failure that left empty panels goes to Sentry instead.
+  'news-digest-degraded': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
