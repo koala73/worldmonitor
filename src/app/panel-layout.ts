@@ -1684,7 +1684,7 @@ export class PanelLayoutManager implements AppModule {
         canDraftAssessment: () => hasTravelRiskAssessmentForAccount(),
         onDraftAssessment: () => {
           const scope = getActiveScope();
-          if (scope) void ui.copyAssessmentRequest(scope);
+          if (scope) void ui.openTripAssessmentForScope(scope);
         },
       });
       // Above the map and the grid, so it reads as a statement about the

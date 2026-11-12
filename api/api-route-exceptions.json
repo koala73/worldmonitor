@@ -640,6 +640,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/travel-risk-assessment.ts",
+      "category": "non-json",
+      "reason": "Serves the plan-gated travel risk assessment draft as a downloadable file: text/markdown or text/html with Content-Disposition: attachment. The body is a document, not an RPC envelope. Errors are small JSON bodies; success is never JSON.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/download.js",
       "category": "non-json",
       "reason": "Binary file download (zip/csv/xlsx). Content-Type is not application/json.",

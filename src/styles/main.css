@@ -30024,6 +30024,138 @@ body.map-width-resizing {
   color: var(--red-text, var(--red));
 }
 
+/* Trip assessment dialog (#10451, phase 2). Reuses the focus editor's
+   overlay, inputs, results and footer; only the per-country rows are new. */
+.trip-assessment {
+  width: min(580px, calc(100vw - 32px));
+  overflow-y: auto;
+}
+
+.trip-assessment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trip-assessment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trip-assessment-list[hidden],
+.trip-assessment-violations[hidden] {
+  display: none;
+}
+
+.trip-assessment-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.trip-assessment-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip-assessment-row-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.trip-assessment-row-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.trip-assessment-row-btn {
+  min-width: 28px;
+  min-height: 28px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.trip-assessment-row-btn:hover:not(:disabled),
+.trip-assessment-row-btn:focus-visible {
+  border-color: var(--green);
+  color: var(--green-text, var(--green));
+}
+
+.trip-assessment-row-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.trip-assessment-row-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.trip-assessment-cities-wrap {
+  grid-column: 1 / -1;
+}
+
+.trip-assessment-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+}
+
+.trip-assessment-input:focus-visible {
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 1px;
+  border-color: var(--green);
+}
+
+.trip-assessment-violations {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--red-text, var(--red));
+}
+
+.trip-assessment-status {
+  min-height: 1.45em;
+}
+
+.trip-assessment-copy {
+  margin-right: auto;
+}
+
+.trip-assessment-print-frame {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .trip-assessment-row-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──
    Rendered by the in-dashboard UnifiedSettings modal (notifications-settings.ts), so these
    rules + the --settings-* tokens they use must live on the dashboard entry, not in the
