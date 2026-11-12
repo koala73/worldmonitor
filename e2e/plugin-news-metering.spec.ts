@@ -107,6 +107,8 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   await page.route('**/plugin/plugin.html', route => route.fulfill({ path: join(process.cwd(), 'dist/plugin/plugin.html'), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/*.geojson', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/data/countries-*m.json', route => route.fulfill({ path: join(process.cwd(), 'public/data', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
+  // The view loads globe textures from the bundle's origin, so serve them locally too.
+  await page.route('**/textures/*', route => route.fulfill({ path: join(process.cwd(), 'public/textures', new URL(route.request().url()).pathname.split('/').at(-1)!), headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
   await page.exposeFunction('newsHost', async (method: string, params: HostCall) => {
     methods.push(method);

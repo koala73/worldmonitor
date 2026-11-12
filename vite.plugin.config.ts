@@ -20,6 +20,14 @@ export default defineConfig({
     __CLERK_JS_VERSION__: JSON.stringify(pkg.dependencies['@clerk/clerk-js'].replace(/^[\^~>=<\s]*/, '')),
   },
   worker: { format: 'es' },
+  // The views run in a host sandbox on another origin, and Claude's sandbox
+  // blocks <base>. Assets loaded from JS (CSS preloads, workers, images) resolve
+  // against the chunk's own URL instead of the document, so they keep coming
+  // from the WorldMonitor origin. The HTML entry keeps its /plugin/ paths,
+  // which the MCP shell validates and loads by absolute URL.
+  experimental: {
+    renderBuiltUrl: (_filename, { hostType }) => (hostType === 'js' ? { relative: true } : undefined),
+  },
   build: {
     outDir: 'dist/plugin',
     copyPublicDir: false,
