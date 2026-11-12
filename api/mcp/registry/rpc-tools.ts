@@ -1173,6 +1173,26 @@ const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
     } },
   },
 };
+const MINERAL_STAGE_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    year: { type: 'number', description: 'Production year for this stage.' },
+    unit: { type: 'string', description: 'Unit used for output and worldTotal.' },
+    countries: { type: 'array', items: { type: 'object', properties: {
+      iso2: { type: 'string', description: 'Producer country code; may be empty for a residual row.' },
+      country: { type: 'string', description: 'Producer country or residual group label.' },
+      output: { type: 'number', description: 'Production in the stage unit; omitted when unpublished or unavailable.' },
+      share: { type: 'number', description: 'Percent of quantified production across source rows; omitted when unavailable.' },
+      withheld: { type: 'boolean', description: 'Whether output was withheld by the source.' },
+      estimated: { type: 'boolean', description: 'Whether output is an estimate.' },
+      residual: { type: 'boolean', description: 'Whether this row represents Other countries.' },
+    } } },
+    hhi: { type: 'number', description: 'Herfindahl-Hirschman concentration index on the 0–10,000 scale over named producers with published shares, excluding Other countries; unchanged by country filtering.' },
+    worldTotal: { type: 'number', description: 'World production in the stage unit; omitted when unavailable.' },
+    withheldCount: { type: 'number', description: 'Number of source rows with withheld output, before country filtering.' },
+  },
+};
+
 export const RPC_TOOLS: ToolDef[] = [
   NO2_ACTIVITY_TOOL,
   {
@@ -3393,16 +3413,34 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         commodity: { type: 'string', description: 'Commodity to return, matched case-insensitively against its id or label, e.g. "cobalt", "lithium", "ree" (rare earths). Omit for every commodity.' },
         iso2: { type: 'string', description: `Producer country: keeps only that country's rows and adds its holdings under countries. Omit for every producer. ${COUNTRY_ARG_HINT}` },
-        stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Production stage: mine output, or refinery (smelter) output. Omit for both.' },
+        stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Restrict results to extraction or refining/smelting output. Omit to include both stages where available.' },
       },
       required: [],
     },
     outputSchema: {
       type: 'object',
       properties: {
-        commodities: { type: 'array', description: 'One record per commodity: commodityId, commodity, year, unit, sources, and mine and refinery stage snapshots (each omitted when filtered out or absent). A snapshot lists countries with output, share as a percent of the world total, withheld (output not published), estimated and residual ("Other countries") flags, plus hhi on the 0-10,000 scale, worldTotal and withheldCount.' },
-        countries: { type: 'array', description: 'Empty unless iso2 is set; then that country\'s holdings across commodities and stages, each with output and share percent.' },
-        fetchedAt: { type: 'string', description: 'When the seeded data was retrieved, ISO-8601.' },
+        commodities: { type: 'array', description: 'Matching commodities. Stage snapshots are omitted when absent or excluded by the filters.', items: { type: 'object', properties: {
+          commodityId: { type: 'string', description: 'Commodity identifier.' },
+          commodity: { type: 'string', description: 'Commodity label.' },
+          year: { type: 'number', description: 'Production year.' },
+          unit: { type: 'string', description: 'Commodity production unit.' },
+          sources: { type: 'array', items: { type: 'string' }, description: 'Source identifiers recorded in the seed.' },
+          mine: MINERAL_STAGE_OUTPUT_SCHEMA,
+          refinery: MINERAL_STAGE_OUTPUT_SCHEMA,
+        } } },
+        countries: { type: 'array', description: 'Producer portfolio when iso2 is set and matching holdings exist; otherwise empty.', items: { type: 'object', properties: {
+          iso2: { type: 'string', description: 'Producer country code.' },
+          holdings: { type: 'array', items: { type: 'object', properties: {
+            commodityId: { type: 'string', description: 'Commodity identifier.' },
+            commodity: { type: 'string', description: 'Commodity label.' },
+            stage: { type: 'string', description: 'Production stage of this holding.' },
+            output: { type: 'number', description: 'Production in the corresponding stage unit; omitted when unpublished or unavailable.' },
+            share: { type: 'number', description: 'Percent of quantified production across source rows; omitted when unavailable.' },
+            withheld: { type: 'boolean', description: 'Whether output was withheld by the source.' },
+          } } },
+        } } },
+        fetchedAt: { type: 'string', description: 'Seed retrieval timestamp, or empty when absent. On a cache read error, the handler supplies the error-time timestamp instead.' },
         upstreamUnavailable: { type: 'boolean', description: 'True when the seeded data could not be read; empty lists then mean unknown, not zero.' },
         dataYear: { type: 'number', description: 'Data year of the seeded snapshot; 0 when unknown.' },
       },
