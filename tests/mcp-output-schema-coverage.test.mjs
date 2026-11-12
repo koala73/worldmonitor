@@ -673,13 +673,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // different one, and stay "justified" — shipping new fiction on a tool the
   // guard nominally covers. Movement in either direction reds instead, so an
   // entry cannot rot into a blanket exemption.
-  const KNOWN_DRIFT = new Map([
-    ['analyze_situation', {
-      why: 'DeductSituationResponse is {analysis, model, provider}',
-      names: ['deduction', 'confidence', 'signals', 'framework', 'generatedAt'],
-      types: [],
-    }],
-  ]);
+  const KNOWN_DRIFT = new Map([]);
 
   function loadOpenApiOperations() {
     const specsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'api');
@@ -919,8 +913,8 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // absent from the wire, so they are subtracted before comparing.
   const SPREAD_PASSTHROUGH_TOOLS = new Map([
     ['open_news_dashboard', { adds: ['requestedView', 'panelRequest'] }],
-    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance'] }],
-    ['get_country_risk', { adds: ['ciiHistory'] }],
+    ['get_country_brief', { adds: ['digestCoverage', 'groundingStories', 'sources[].sourceProvenance', 'panelRequest'] }],
+    ['get_country_risk', { adds: ['ciiHistory', 'panelRequest'] }],
     // The live tariff tools add what answered and where it stops (buildCoverage).
     ['get_bilateral_tariff', { adds: ['coverage'] }],
     ['get_tariff_averages', { adds: ['coverage'] }],

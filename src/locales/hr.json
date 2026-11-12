@@ -1831,7 +1831,7 @@
       "estimateWithin": "Oko {{count}} ljudi u krugu od {{km}} km",
       "method": "Procjene se temelje na prosječnoj gustoći stanovništva države.",
       "empty": "Nema odgovarajućih lokacija događaja",
-      "infoTooltip": "Prikazuju se događaji s podacima o gustoći stanovništva zemlje. Lokacije iz starijih podataka bez informacija o preciznosti označene su kao one koje čekaju ažuriranje. Procijenjena područja mogu se preklapati. Nemiri zahtijevaju preciznu lokaciju; UCDP događaji označeni kao neprecizni se isključuju. Jedno mjesto iz dva izvora (nemiri i UCDP) prikazuje se u dva retka.",
+      "infoTooltip": "Prikazuju se događaji s podacima o gustoći stanovništva zemlje. Lokacije UCDP događaja bez informacija o preciznosti označene su kao one koje čekaju ažuriranje. Procijenjena područja mogu se preklapati. Nemiri zahtijevaju preciznu lokaciju; UCDP događaji označeni kao neprecizni se isključuju. Jedno mjesto iz dva izvora (nemiri i UCDP) prikazuje se u dva retka.",
       "eventCount_one": "{{count}} događaj",
       "eventCount_few": "{{count}} događaja",
       "eventCount_other": "{{count}} događaja",

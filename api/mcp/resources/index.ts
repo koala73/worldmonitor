@@ -37,7 +37,8 @@
 // resources/read response shape (per MCP spec):
 //   { contents: [{ uri, mimeType, text }] }
 // where `text` is the JSON-stringified payload INCLUDING `cached_at` and
-// `stale`. mimeType is `application/json` for every resource here.
+// `stale`. mimeType is `application/json` for every data resource here; the
+// static agent guide is `text/markdown`.
 
 import type {
   McpAccessClass,
@@ -56,6 +57,7 @@ import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
+import { AGENT_GUIDE, AGENT_GUIDE_RESOURCE_URI } from '../constants';
 
 // ---------------------------------------------------------------------------
 // Public resource freshness reader
@@ -88,6 +90,15 @@ export const PUBLIC_RESOURCE_REGISTRY: PublicResourceDef[] = [
     description: 'Write-age probe for the high-cadence stock market-data bootstrap pipeline. Returns ONLY the envelope (cached_at + stale) — no quote payload, no auth, no quota. It does not certify sector valuation completeness; use get_market_data for valuationCoverage, source status, and route diagnostics.',
     mimeType: 'application/json',
     read: readMarketFreshness,
+  },
+  {
+    // The full agent guide behind the 2 KB server instructions (see
+    // SERVER_INSTRUCTIONS_MAX_BYTES). Static documentation: no data, no auth.
+    uri: AGENT_GUIDE_RESOURCE_URI,
+    name: 'Agent Guide',
+    description: 'Full usage guide for this server: which tool fits which question, availability flags, access and weight metering, JMESPath limits, webcam and market-data semantics, and content-safety rules. Static text, anonymous and quota-free.',
+    mimeType: 'text/markdown',
+    read: async () => AGENT_GUIDE,
   },
 ];
 

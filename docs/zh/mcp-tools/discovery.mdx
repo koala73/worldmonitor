@@ -92,6 +92,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
     "countryCode": { "type": "string" },
     "countryName": { "type": "string" },
     "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
+    "panelRequest": { "type": "object", "description": "仅限专用付费套餐：本次调用新开或复用的同国家付费请求。" },
     "cii": {
       "type": ["object", "null"],
       "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
@@ -140,6 +141,8 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 type CountryRisk = {
   countryCode: string;
   countryName: string;
+  // 仅限专用付费套餐：本次调用新开或复用的同国家付费请求。
+  panelRequest?: { token: string; expiresAt: string; reused: boolean; countryCode: string; usage: { used: number; limit: number | null; remaining: number | null; resetsAt: string; unit: "requests" } };
   ciiHistory?: {
     methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
     points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;

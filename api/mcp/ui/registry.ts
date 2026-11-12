@@ -95,7 +95,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (cii.combinedScore, 0-100), its four contributing components labelled by meaning (domestic unrest, armed conflict, security and mobility, information environment), the government travel-advisory level, OFAC sanctions exposure, and score trend. Shows an explicit degraded banner when upstreamUnavailable is set, so an outage cannot read as a calm country. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows one country's Composite Instability Index with its four components, travel-advisory level, sanctions exposure and score trend, plus a degraded banner when upstream data is unavailable."),
     html: COUNTRY_RISK_APP_HTML,
   },
   {
@@ -104,7 +104,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_world_brief: renders the AI-summarised global intelligence brief as readable paragraphs, the grounding headlines, and the source feed articles. Linked from the get_world_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows the AI-summarised global intelligence brief with its grounding headlines and source articles."),
     html: WORLD_BRIEF_APP_HTML,
   },
   {
@@ -113,7 +113,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the grounding sources, and cited WorldMonitor data. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows the AI-synthesised intelligence brief for one country with its grounding sources and cited WorldMonitor data."),
     html: COUNTRY_BRIEF_APP_HTML,
   },
   {
@@ -131,7 +131,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_chokepoint_status: renders per-chokepoint rolling transit summaries (today\'s transit count, week-over-week change, tanker split) with a risk-level badge. Linked from the get_chokepoint_status tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows each maritime chokepoint's transit count today, week-over-week change, tanker share and risk level."),
     html: CHOKEPOINT_MONITOR_APP_HTML,
   },
   {
@@ -140,7 +140,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, source) from WorldMonitor\'s intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows AI-classified top stories with category, alert flag, country and source."),
     html: NEWS_INTELLIGENCE_APP_HTML,
   },
   {
@@ -149,7 +149,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows active armed-conflict events from UCDP with belligerents, violence type, country, fatalities and date."),
     html: CONFLICT_EVENTS_APP_HTML,
   },
   {
@@ -158,7 +158,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_natural_disasters: groups recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS). Linked from the get_natural_disasters tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows recent M4.5+ earthquakes and active wildfires with magnitude, place, time and source."),
     html: NATURAL_DISASTERS_APP_HTML,
   },
   {
@@ -167,7 +167,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_prediction_markets: renders active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Linked from the get_prediction_markets tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows active prediction-market odds grouped by category, with a probability bar per market."),
     html: PREDICTION_MARKETS_APP_HTML,
   },
   {
@@ -176,7 +176,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor\'s AI-generated forecasts with local domain/region filters and original case analysis. Analysis expansion loads original cases; Active theaters loads latest original theater summaries under the same signed forecast panel allocation, with independent run/time and completion coverage. Provided full cases and loaded theater details expand locally. Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: buildUiMeta(),
+    _meta: buildUiMeta("Shows WorldMonitor's published AI forecasts with domain and region filters, expandable case analysis and active theater summaries."),
     html: FORECASTS_APP_HTML,
   },
 ];

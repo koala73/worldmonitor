@@ -13,6 +13,8 @@ describe('MCP view metadata', () => {
     const [domain] = domains;
     assert.equal(new URL(domain).origin, domain, 'must be an origin with no path');
     assert.equal(new URL(domain).protocol, 'https:');
+    // The apex root 301s to www; a view domain must answer without a redirect.
+    assert.equal(domain, 'https://www.worldmonitor.app');
   });
 
   it('every tool that renders a view carries present-tense openai/toolInvocation labels', () => {

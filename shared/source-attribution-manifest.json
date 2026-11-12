@@ -11270,9 +11270,6 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
-          "path": "api/mcp/ui/shell.ts"
-        },
-        {
           "path": "api/miit-news.js"
         },
         {
@@ -15545,10 +15542,16 @@
           "path": "api/mcp/auth.ts"
         },
         {
+          "path": "api/mcp/handler.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/mcp/ui/news-dashboard-app.ts"
+        },
+        {
+          "path": "api/mcp/ui/shell.ts"
         },
         {
           "path": "api/not-found.ts"

@@ -523,6 +523,9 @@ describe('get_country_brief_section reader count', () => {
     const tool = TOOL_REGISTRY.find((entry) => entry.name === 'get_country_brief_section');
     const count = Object.keys(COUNTRY_READERS).length;
     assert.match(tool.description, new RegExp(`\\b${count} readers selected by section\\b`));
-    assert.match(tool.inputSchema.properties.section.description, new RegExp(`\\bWhich of the ${count} fixed readers\\b`));
+    // The section field leaves the count to its enum; if it ever states one, it must be current.
+    const stated = tool.inputSchema.properties.section.description.match(/\b(\d+) (?:fixed )?readers\b/);
+    if (stated) assert.equal(Number(stated[1]), count);
+    assert.equal(tool.inputSchema.properties.section.enum.length, count);
   });
 });
