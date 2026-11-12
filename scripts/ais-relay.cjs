@@ -3146,6 +3146,7 @@ async function seedUcdpEvents() {
       throw err;
     });
     const annual = await ucdpFetchAnnualWindow(fetchLogged, version, { nowMs });
+    const annualIds = new Set(annual.events.map((event) => String(event.id)));
     const allEvents = [...annual.events];
     const failedPages = annual.failedPages;
     let latestMs = NaN;
@@ -3244,7 +3245,7 @@ async function seedUcdpEvents() {
     })).sort((a, b) => b.dateStart - a.dateStart);
 
     // Keep the newest candidate release and the annual conflict history.
-    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS, undefined, (e) => annualIds.has(e.id));
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
     if (capped.length === 0) {
@@ -5866,7 +5867,7 @@ async function seedMiddleEastStrikes() {
       writeCache: (key, value, ttl) => upstashSet(key, value, ttl),
       classify: (texts) => classifyFetchLlm(texts, middleEastStrikes.CLASSIFY_MAX_TEXT_CHARS, {
         systemPrompt: middleEastStrikes.STRIKE_CLASSIFIER_PROMPT,
-        maxTokensPerItem: middleEastStrikes.CLASSIFY_MAX_TOKENS_PER_ITEM,
+        maxTokensPerItem: 60,
         label: 'MiddleEastStrikes',
       }),
       loadGdelt: loadMiddleEastStrikeGdelt,

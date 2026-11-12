@@ -114,19 +114,19 @@ async function fetchCandidatePages(fetchPage, candidate) {
 
 // Preserve candidate releases as a whole because period-start rows can contain
 // monthly death aggregates. The annual floor must not displace those rows.
-function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFloor = CANDIDATE_ANNUAL_FLOOR) {
+function capWithAnnualFloor(sortedNewestFirst, isCandidate, maxEvents, annualFloor = CANDIDATE_ANNUAL_FLOOR, isAnnual = (event) => !isCandidate(event)) {
   if (sortedNewestFirst.length <= maxEvents) return sortedNewestFirst;
   const candidateEvents = [];
   const annualEvents = [];
+  const otherEvents = [];
   for (const event of sortedNewestFirst) {
-    (isCandidate(event) ? candidateEvents : annualEvents).push(event);
+    (isCandidate(event) ? candidateEvents : isAnnual(event) ? annualEvents : otherEvents).push(event);
   }
   const annualReserved = Math.min(annualEvents.length, annualFloor);
   const capacity = Math.max(maxEvents, candidateEvents.length + annualReserved);
-  const picked = [
-    ...candidateEvents,
-    ...annualEvents.slice(0, capacity - candidateEvents.length),
-  ];
+  const reserved = annualEvents.slice(0, annualReserved);
+  const remainder = [...annualEvents.slice(annualReserved), ...otherEvents].sort((a, b) => b.dateStart - a.dateStart);
+  const picked = [...candidateEvents, ...reserved, ...remainder.slice(0, capacity - candidateEvents.length - reserved.length)];
   return picked.sort((a, b) => b.dateStart - a.dateStart);
 }
 
@@ -227,6 +227,23 @@ async function mapWithConcurrency(items, limit, fn) {
   return results;
 }
 
+// One budget for discovery and all pages, leaving a minute of the backup
+// bundle's 300s section for last-good preservation and Redis publication.
+function withUcdpFetchDeadline(fetchPage, { budgetMs = 240_000, now = Date.now } = {}) {
+  const deadline = now() + budgetMs;
+  const expired = () => Object.assign(new Error('UCDP fetch deadline exhausted'), { code: 'UCDP_FETCH_DEADLINE' });
+  return async (version, page, timeoutMs = 90_000, query = {}) => {
+    const remaining = deadline - now();
+    if (remaining <= 0) throw expired();
+    try {
+      return await fetchPage(version, page, Math.min(timeoutMs, remaining), query);
+    } catch (error) {
+      if (now() >= deadline) throw expired();
+      throw error;
+    }
+  };
+}
+
 /**
  * The annual release's part of the window, by date. `fetchPage(version, page,
  * timeoutMs, query)` passes `query` as URL parameters. A first page that fails
@@ -254,10 +271,10 @@ async function fetchAnnualWindow(fetchPage, version, { nowMs = Date.now() } = {}
     (page) => fetchPage(version, page, undefined, query).catch(() => FAILED),
   );
   const events = Array.isArray(first?.Result) ? [...first.Result] : [];
-  let failedPages = 0;
+  let failedPages = Array.isArray(first?.Result) ? 0 : 1;
   for (const page of rest) {
-    if (page === FAILED) { failedPages++; continue; }
-    if (Array.isArray(page?.Result)) events.push(...page.Result);
+    if (page === FAILED || !Array.isArray(page?.Result)) { failedPages++; continue; }
+    events.push(...page.Result);
   }
   return { events, failedPages, totalPages, truncated: totalPages > ANNUAL_WINDOW_MAX_PAGES, startDate: query.StartDate, endDate: query.EndDate };
 }
@@ -463,6 +480,7 @@ function hasPreciseUcdpLocation(event) {
 }
 
 module.exports = {
+  withUcdpFetchDeadline,
   CANDIDATE_MAX_PAGES,
   CANDIDATE_DISCOVER_TIMEOUT_MS,
   CANDIDATE_ANNUAL_FLOOR,
