@@ -763,5 +763,69 @@
       }
     ],
     "comparisonBase": "B3 reconciled integration head; freshly measured 2026-11-12. Historical 2026-10-23 production previews below predate B4/B5 integration and need a new located-payload replay before release."
+  },
+  "b7-palestine": {
+    "rule": "An event scores the place where it happens (owner ruling, 2026-10-23): Gaza and West Bank events count for Palestine (PS), not Israel (IL). PS is not one of the 31 scored countries, so they score no row. v14 folded PS into IL in four places, all removed here: the border file merged the PS polygon into Israel's (ATTRIBUTED_TERRITORIES in scripts/generate-cii-country-borders.mjs), so every coordinate input did; ciiCountryForIso2 mapped a PS-coded strike event and the strike tally's PS days to IL; COUNTRY_KEYWORDS.IL held 'gaza'; and the strike feed's gazetteer filed GeoNames' 'Judea and Samaria Area' (the West Bank) under IL. A strike event without a country code whose coordinates are on land is now placed by them, never by its text, as earthquakes already were: the text names the attacker as often as the place.",
+    "movers": [],
+    "moversNote": "Fresh comparison against reconciled B6 on 2026-11-12: no final score or blend changes on any committed fixture. B4 already removed the GPS input that moved the original standalone B7 preview.",
+    "israelBeforeAfter": {
+      "2026-10-21T0628Z": {
+        "blended": [
+          38.5202,
+          38.5202
+        ],
+        "final": [
+          50,
+          50
+        ],
+        "cause": "No scored territorial evidence in this fixture changes under B7 after B4."
+      },
+      "2026-10-23T0756Z": {
+        "blended": [
+          38.4672,
+          38.4672
+        ],
+        "final": [
+          50,
+          50
+        ],
+        "cause": "No scored territorial evidence in this fixture changes under B7 after B4."
+      },
+      "2026-10-23T0946Z": {
+        "blended": [
+          38.6022,
+          38.6022
+        ],
+        "final": [
+          50,
+          50
+        ],
+        "cause": "No scored territorial evidence in this fixture changes under B7 after B4."
+      }
+    },
+    "floorBinding": {
+      "2026-10-21T0628Z": {
+        "before": 13,
+        "after": 13
+      },
+      "2026-10-23T0756Z": {
+        "before": 14,
+        "after": 14
+      },
+      "2026-10-23T0946Z": {
+        "before": 14,
+        "after": 14
+      }
+    },
+    "coordinateInputsAfterB4": "The remaining CII coordinate path is a strike event without a country code. Earthquakes, fires, GPS jamming, climate and military movements are absent from the scorer after B4. Separate map and display consumers retain their own inputs.",
+    "productionSnapshot": "Historical, not refreshed: In the 2026-10-23 GET-only Redis snapshot of the review, no strike event carried countryCode PS, the strike tally had no PS day, no top story named a Palestinian place, and 6 GPS hexes lay in Gaza or West Bank boxes. The live effect of this change is the GPS hexes, until B4.",
+    "fixtureCaveat": "The capture trim rewrites each strike event's countryCode to the row it scored (scripts/lib/cii-fixtures.mts trimCiiRawInputs), and the fires summary is bucketed by country in production, so a Gaza strike or fire captured before this change would read as IL in a fixture. The 2026-10-23 snapshot above shows none for strikes; fires cannot be checked from the fixtures.",
+    "protocolHash": "The v15 protocol snapshot hash changed (COUNTRY_KEYWORDS.IL lost 'gaza').",
+    "foundNotFixed": [
+      "News actor attribution (P11a): seed-insights credits every country a headline names, so 'Israeli strike kills 10 in Gaza' carries countryCodes [IL, PS] and still raises IL; 'idf', 'israeli' and 'netanyahu' stay IL keywords for the title fallback. This is the global actor-versus-location defect of the news input, not a Palestine fold.",
+      "GDELT strike backstop (scripts/lib/middle-east-strikes.cjs): Gaza is dropped by bounding box and '(general)' centroids are dropped, but a West Bank city GDELT codes with FIPS IS would still be filed IL. Not observed; unverified.",
+      "Jerusalem: GeoNames' Jerusalem and West Jerusalem points (31.77-31.78 N, 35.22 E) fall on the West Bank side of the 1:50m Green Line, so a coordinate-only event there scores no country; strike-feed events there carry countryCode IL and still score IL. The feed cannot tell East from West Jerusalem by name.",
+      "Display only: src/config/countries.ts IL scoringKeywords and searchAliases include 'gaza' and 'west bank' (country-instability.ts conflict grouping, story matching, search); src/services/conflict/ucdp-classify.ts groups Gaza under Israel on the UCDP panel."
+    ]
   }
 }

@@ -13,7 +13,7 @@ import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
-import { ciiCountryAt, ciiCountryForIso2 } from '../../../../scripts/shared/cii-country-borders.mjs';
+import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
@@ -109,7 +109,8 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   CN: ['china', 'chinese', 'beijing', 'xi jinping', 'prc'],
   UA: ['ukraine', 'ukrainian', 'kyiv', 'zelensky', 'donbas'],
   IR: ['iran', 'iranian', 'tehran', 'khamenei', 'irgc'],
-  IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
+  // No Palestinian place: an event in Gaza or the West Bank scores Palestine, which has no row.
+  IL: ['israel', 'israeli', 'tel aviv', 'netanyahu', 'idf'],
   TW: ['taiwan', 'taiwanese', 'taipei'],
   KP: ['north korea', 'north korean', 'pyongyang', 'kim jong'],
   SA: ['saudi arabia', 'saudi', 'riyadh'],
@@ -491,7 +492,11 @@ export function strikeEventCountry(s: any): string | null {
   }
   const lat = safeNum(s?.lat || s?.latitude);
   const lon = safeNum(s?.lon || s?.longitude);
-  return geoToCountry(lat, lon) || normalizeCountryName(s?.title || s?.location || '');
+  // Coordinates on land decide, as for earthquakes: the text names the
+  // attacker as often as the place ("Israeli strike on Gaza").
+  const code = geoToCountry(lat, lon);
+  if (code || ciiIsLand(lat, lon)) return code;
+  return normalizeCountryName(s?.title || s?.location || '');
 }
 
 function safeNum(v: unknown): number {
@@ -1043,8 +1048,7 @@ function strikeTallyWeight(tally: unknown): number | null {
  * 30-day tally (conflict:strike-pressure:v1), or null when it is missing,
  * malformed, of another version than CII_STRIKE_TALLY_VERSION, or older than
  * CII_STRIKE_CONFIRMED_MAX_AGE_MS (the 72h window and GDELT then carry every
- * country). Countries map like every strike input
- * (Gaza to Israel); a non-Tier-1 country scores nowhere.
+ * country). A non-Tier-1 country or territory (PS, Gaza and the West Bank) scores nowhere.
  */
 export function confirmedStrikeDaysFromSeed(raw: unknown, nowMs: number): Record<string, StrikeDays> | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -1917,7 +1921,9 @@ export function computeCIIScores(
     const weight = NEWS_THREAT_WEIGHT[story.threatLevel] ?? 0;
     if (weight === 0) continue;
     const tracked = newsStoryCountries(story).filter((code) => data[code]);
-    if (tracked.length === 0) {
+    // A coded story is placed by its codes, even when none has a Tier-1 row: the
+    // title may name the actor rather than the place ("IDF raid in Jenin", coded PS).
+    if (!newsStoryCountries(story).length) {
       const titleCode = normalizeCountryName(story.primaryTitle);
       if (titleCode && data[titleCode]) tracked.push(titleCode);
     }
@@ -2242,10 +2248,8 @@ export function countCiiRealtimeSignalDensityCoverage(
   for (const story of aux?.newsTopStories ?? []) {
     const weight = NEWS_THREAT_WEIGHT[String(story.threatLevel || '').toLowerCase()] ?? 0;
     if (weight <= 0) continue;
-    if (
-      newsStoryCountries(story).some(isTier1CountryCode)
-      || isTier1CountryCode(normalizeCountryName(story.primaryTitle))
-    ) {
+    const codes = newsStoryCountries(story);
+    if (codes.length ? codes.some(isTier1CountryCode) : isTier1CountryCode(normalizeCountryName(story.primaryTitle))) {
       coveredFamilies.add('news');
       break;
     }

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
 import { isLevelledAdvisoryItem } from '../shared/advisory-registers.mjs';
-import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
+import { ciiCountryForIso2, ciiIsLand } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
   assessCiiInputAvailability,
@@ -298,7 +298,9 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
       hexes: rows(v, 'hexes').flatMap((h) => {
         const lat = num(h.lat || h.latitude);
         const lon = num(h.lon || h.longitude);
-        return geoToCountry(lat, lon) ? [{ lat, lon, level: h.level }] : [];
+        // Land in the border file stays too: a border change (Gaza and the West
+        // Bank leaving Israel in v15) must not turn a recorded hex into an untrimmed one.
+        return geoToCountry(lat, lon) || ciiIsLand(lat, lon) ? [{ lat, lon, level: h.level }] : [];
       }),
     })),
     iranEvents: nullable(raw.iranEvents, (v) => ({
