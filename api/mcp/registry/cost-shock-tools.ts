@@ -40,15 +40,15 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'get_supply_chain_cost_shock',
   _validateArgs: params => { costShockCountry(params); },
   title: 'Chokepoint closure cost shock',
-  description: 'Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. hasEnergyModel and unavailableReason mark missing models or imports, which are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
+  description: 'Model country energy exposure or multi-sector import costs for a chokepoint closure. Returns {mode, data}: energy data contains refined-product supply deficit and IEA stock cover; multi-sector data contains sector cost estimates and totalAddedCost over closure_days. Energy models cover only supported chokepoints and HS 27 mineral fuels. Read unavailableReason for missing models, imports or individual energy metrics; hasEnergyModel is true only when both energy metrics are modelled. Unavailable values are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
     properties: {
       mode: { type: 'string', enum: Object.keys(MODES), description: 'Which model: energy returns the refined-product supply deficit and stock cover for one HS2 chapter; multi-sector returns added import costs across seeded HS2 sectors over closure_days.' },
       country: { type: 'string', description: `Importing country. ${COUNTRY_ARG_HINT}` },
-      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.map(point => point.id), description: 'Chokepoint modelled as closed.' },
-      hs2: { type: 'string', pattern: '^\\d{1,2}$', default: '27', description: 'Energy mode only: HS2 chapter of the goods modelled. Only 27 (mineral fuels) has an energy model; other chapters return hasEnergyModel false with unavailableReason.' },
+      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.map(point => point.id), description: 'Maritime chokepoint assumed closed when modelling the importing country\'s exposure or bypass freight and insurance costs.' },
+      hs2: { type: 'string', pattern: '^\\d{1,2}$', default: '27', description: 'Energy mode only: Harmonized System goods chapter to assess. The energy model covers mineral fuels (27); other chapters return hasEnergyModel false with unavailableReason.' },
       closure_days: { type: 'integer', minimum: 1, maximum: 365, default: 30, description: 'Multi-sector mode only: days the chokepoint stays closed; scales totalCostShock and totalAddedCost.' },
     },
     required: ['mode', 'country', 'chokepoint_id'],
@@ -57,16 +57,16 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
     type: 'object', required: ['mode', 'data'],
     properties: {
       mode: { type: 'string', enum: Object.keys(MODES), description: 'Model that ran.' },
-      data: { type: 'object', description: 'Model result; energy fields appear in energy mode, closureDays, totalAddedCost and sectors in multi-sector mode.', properties: {
+      data: { type: 'object', description: 'Source model result. Both modes return iso2, chokepointId, warRiskTier, unavailableReason and fetchedAt. Energy adds hs2, supplyDeficitPct, coverageDays, warRiskPremiumBps and hasEnergyModel. Multi-sector adds closureDays, totalAddedCost and sectors.', properties: {
         iso2: d('string', 'ISO alpha-2 importing country.'), chokepointId: d('string', 'Chokepoint modelled.'), hs2: d('string', 'Energy mode: HS2 chapter modelled.'),
-        supplyDeficitPct: d('number', 'Energy mode: average refined-product supply deficit under full closure, percent; meaningful only when hasEnergyModel is true.'),
-        coverageDays: d('number', 'Energy mode: days of IEA stockpile cover; 0 for non-energy chapters or net exporters.'),
-        warRiskPremiumBps: d('number', GBP), warRiskTier: d('string', TIER),
-        hasEnergyModel: d('boolean', 'Whether supplyDeficitPct and coverageDays are modelled; false means unavailable, not zero impact.'),
-        unavailableReason: d('string', 'Why the model or import data is missing; empty when available.'),
-        fetchedAt: d('string', 'When the inputs were read.'),
+        supplyDeficitPct: d('number', 'Energy mode: average deficit across refined products with demand observations under full closure, percent. Unmodelled values stay 0; read unavailableReason for metric-specific gaps even when hasEnergyModel is false.'),
+        coverageDays: d('number', 'Energy mode: IEA stock cover under the modelled loss, days. Stays 0 without an IEA stock observation or usable model, for non-energy chapters, or when import cover is inapplicable to a net exporter; read unavailableReason.'),
+        warRiskPremiumBps: d('number', `Energy mode: ${GBP}`), warRiskTier: d('string', TIER),
+        hasEnergyModel: d('boolean', 'Energy mode: whether both supplyDeficitPct and coverageDays are modelled. False can accompany one modelled metric; read unavailableReason rather than interpreting unavailable values as zero impact.'),
+        unavailableReason: d('string', 'Explanation of missing models, imports or individual energy metrics, including inapplicable net-exporter cover; empty when no gap is reported.'),
+        fetchedAt: d('string', 'Response construction time, as an ISO timestamp; not the observation date of the seeded inputs.'),
         closureDays: d('number', 'Multi-sector mode: closure duration used.'), totalAddedCost: d('number', 'Multi-sector mode: sum of totalCostShock across sectors, USD.'),
-        sectors: { type: 'array', description: 'Multi-sector mode: one entry per seeded HS2 sector, largest daily cost first.', items: { type: 'object', properties: {
+        sectors: { type: 'array', description: 'Multi-sector mode: seeded HS2 sector estimates, largest daily cost first when imports are available. Missing imports yield zero-valued sector placeholders with unavailableReason; access denial can yield an empty array.', items: { type: 'object', properties: {
           hs2: d('string', 'HS2 chapter code.'), hs2Label: d('string', 'Sector name.'), importValueAnnual: d('number', 'Annual import value, USD.'),
           freightAddedPctPerTon: d('number', 'Freight uplift on the bypass route as a fraction per ton (0.10 is +10%).'), warRiskPremiumBps: d('number', GBP),
           addedTransitDays: d('number', 'Extra transit days on the bypass route.'),
