@@ -2,6 +2,7 @@
 
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import { decodeHtmlEntities } from './_html-entities.mjs';
+import { isLevelledAdvisoryItem } from './shared/advisory-registers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -24,7 +25,8 @@ export const MAX_ADVISORY_FEED_BYTES = 2 * 1024 * 1024;
 
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
-const ADVISORY_FEEDS = [
+// Exported for the CII scorer's level-source pin (tests/cii-advisory-provenance.test.mts).
+export const ADVISORY_FEEDS = [
   { name: 'US State Dept', sourceCountry: 'US', sourceCategory: 'travel-advisory', url: 'https://travel.state.gov/_res/rss/TAsTWs.xml', levelParser: 'us' },
   { name: 'Australia DFAT Smartraveller', sourceCountry: 'AU', sourceCategory: 'travel-advisory', url: 'https://www.smartraveller.gov.au/countries/documents/index.rss', levelParser: 'au' },
   { name: 'UK FCDO', sourceCountry: 'UK', sourceCategory: 'travel-advisory', url: 'https://www.gov.uk/foreign-travel-advice.atom', register: 'uk' },
@@ -555,17 +557,22 @@ export const ADVISORY_SOURCE_HEALTH_FIELD = '_sourceHealth';
 // publishes while the other register clears MIN_ADVISORY_COUNTRY_COVERAGE, so
 // this is what keeps a one-register index from reading as healthy.
 function summarizeSourceHealth(feeds, itemsByFeed, ukRows) {
-  const missingRegisters = [];
+  const registers = new Set();
+  const missing = new Set();
   const emptyFeeds = [];
   feeds.forEach((feed, i) => {
     const items = itemsByFeed[i];
     if (items.length === 0) emptyFeeds.push(feed.name);
-    if (feed.levelParser && !items.some((a) => a.country && a.level && a.level !== 'info')) {
-      missingRegisters.push(feed.sourceCountry);
-    }
-    if (feed.register === 'uk' && ukRows.length === 0) missingRegisters.push(feed.sourceCountry);
+    if (feed.register === 'uk' && ukRows.length === 0) missing.add(feed.sourceCountry);
+    if (!feed.levelParser) return;
+    registers.add(feed.sourceCountry);
+    if (!items.some(isLevelledAdvisoryItem)) missing.add(feed.sourceCountry);
   });
-  return { missingRegisters: [...new Set(missingRegisters)].sort(), emptyFeeds };
+  return {
+    missingRegisters: [...missing].sort(),
+    registersPresent: [...registers].filter((register) => !missing.has(register)).sort(),
+    emptyFeeds,
+  };
 }
 
 export function advisoryPublishTransform(data) {
@@ -644,6 +651,9 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch, fetchD
       ...cdcRegisterRows(feeds.flatMap((feed, i) => (feed.register === 'cdc' ? itemsByFeed[i] : []))),
     ],
     advisories,
+    // From the full fetch: `advisories` above is a capped slice and cannot say
+    // whether a register contributed. The CII scorer reads this.
+    registersPresent: sourceHealth.registersPresent,
     fetchedAt: new Date().toISOString(),
     [ADVISORY_SOURCE_HEALTH_FIELD]: sourceHealth,
   };

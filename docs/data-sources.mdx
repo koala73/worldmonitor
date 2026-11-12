@@ -110,23 +110,21 @@ Government travel advisories serve as expert risk assessments from national inte
 **Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches the complete advisory feed registry hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
 **CII integration** — the server-side CII scorer reads the seeded advisory
-`byCountry` level when available and otherwise may use an embedded State
-Department fallback table for selected countries. Each emitted `CiiScore`
-exposes `advisoryLevel` and `advisoryProvenance` (`live`, `fallback`, or
-`absent`) so downstream users can tell whether the score used the live feed,
-fallback table, or no advisory input. Advisories feed into instability scores
-through two mechanisms:
+`byCountry` level. When that read is missing or more than 72 hours old, it uses
+the last good snapshot of that feed, up to 72 hours old, and otherwise no level
+at all. Each emitted `CiiScore` exposes `advisoryLevel` and
+`advisoryProvenance` (`live`, `fallback`, or `absent`) so downstream users can
+tell whether the score used this build's read, the last good snapshot, or no
+advisory input. Advisories feed into instability scores through two
+mechanisms:
 
-- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5. The server scorer uses the live `byCountry` level when present; if live data is missing for selected Tier-1 countries, it falls back to the published CII advisory table rather than adding a separate multi-source agreement boost.
-- **Score floor**: Do-Not-Travel forces a minimum CII score of 60; Reconsider forces minimum 50. This prevents a country with low event data but active or curated advisory risk from showing an artificially calm score.
+- **Score boost**: Do-Not-Travel → +15 points, Reconsider → +10, Caution → +5, from the `byCountry` level only; there is no separate multi-source agreement boost.
+- **Score floor**: Do-Not-Travel forces a minimum CII score of 60; Reconsider forces minimum 50.
 
-**CII advisory fallback**: The score-shifting fallback table is intentionally
-small and versioned with the CII methodology. It currently covers AF, MM, SY,
-UA, and YE as Do-Not-Travel; CU, IL, IQ, IR, LB, MX, PK, and VE as Reconsider;
-and RU and TR as Caution. Live advisory feed values override the fallback for
-the same country. See
-[CII Risk Scoring Methodology](/methodology/cii-risk-scores#advisory-fallback-table)
-for the rationale and per-country score effects.
+**Missing advisory data**: there is no embedded fallback table. It was
+removed because it disagreed with the live feed. A failed advisory read flags
+the `riskScores` health check from the first build. See
+[CII Risk Scoring Methodology](/methodology/cii-risk-scores#missing-advisory-data).
 
 The Security Advisories panel displays advisories with colored level badges and source country flags, filterable by severity (Critical, All) and issuing source group (US, AU, UK, Health).
 

@@ -7576,14 +7576,14 @@ components:
                     type: string
                     description: |-
                         Travel advisory level used by the score, when any advisory input applies.
-                         Empty means no live or fallback advisory level affected boosts/floors.
+                         Empty means no advisory level affected boosts/floors.
                 advisoryProvenance:
                     type: string
                     pattern: ^(live|fallback|absent)$
                     description: |-
-                        Provenance for advisory_level: "live" when sourced from the Redis advisory
-                         feed, "fallback" when using the embedded State Department fallback table,
-                         and "absent" when no advisory input affected this score.
+                        advisory_level source: "live" for this build's Redis feed read; "fallback"
+                         for its last good snapshot (at most 72 hours old) if missing or stale;
+                         "absent" when no advisory input affected this score.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         CiiComponents:
             type: object

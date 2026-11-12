@@ -221,3 +221,14 @@ export const STRATEGIC_RISK_SCALE_FACTOR = 0.7;
  * roll-up reflects the "very top" of the dashboard rather than a long tail.
  */
 export const STRATEGIC_RISK_TOP_N = 5;
+
+/**
+ * The oldest travel-advisory snapshot the CII will score, measured from the
+ * seeder's own `fetchedAt`. A failed or stale live read is unknown: the last
+ * good live snapshot stands in until it is this old, and then the advisory
+ * terms are absent. Levels change over weeks, so three days of seeder outage
+ * keep the table steady; health raises the input from the first failed read
+ * (api/_cii-input-health.js), so the stand-in never hides an outage. There is
+ * no embedded fallback table (removed in v15: it disagreed with the live feed).
+ */
+export const CII_ADVISORY_MAX_AGE_MS = 72 * 60 * 60 * 1000;
