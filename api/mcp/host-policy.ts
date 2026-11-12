@@ -78,17 +78,33 @@ export function connectInstruction(req: Request): string | null {
  * client-asserted, which is safe here: the value is the public site origin, and
  * a client that claims it only gets a field that Claude's renderer would reject
  * for itself.
+ *
+ * A 2025 session-protocol client names itself only in `initialize`; its later
+ * requests carry just the Mcp-Session-Id the server minted. The leaderboard
+ * review connects that way. Such a session id gets a fixed prefix, so the
+ * marker travels with the client's own header and needs no server state.
  */
 const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud', 'mcp-use-probe']);
 const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
+const VIEW_DOMAIN_SESSION_PREFIX = 'wmvd-';
+
+const isViewDomainClientName = (name: unknown): boolean =>
+  typeof name === 'string' && VIEW_DOMAIN_CLIENT_NAMES.has(name);
+
+/** Session id for an `initialize` request: prefixed when the client is one that keeps the view domain. */
+export function mintSessionId(clientName: unknown): string {
+  const id = crypto.randomUUID();
+  return isViewDomainClientName(clientName) ? `${VIEW_DOMAIN_SESSION_PREFIX}${id}` : id;
+}
 
 function wantsViewDomain(req: Request, body: unknown): boolean {
   if (isChatGptHost(req)) return true;
+  if (req.headers.get('Mcp-Session-Id')?.startsWith(VIEW_DOMAIN_SESSION_PREFIX)) return true;
   const params = body && typeof body === 'object' ? (body as { params?: unknown }).params : undefined;
   const meta = params && typeof params === 'object' ? (params as { _meta?: unknown })._meta : undefined;
   const info = meta && typeof meta === 'object' ? (meta as Record<string, unknown>)[CLIENT_INFO_META_KEY] : undefined;
   const name = info && typeof info === 'object' ? (info as { name?: unknown }).name : undefined;
-  return typeof name === 'string' && VIEW_DOMAIN_CLIENT_NAMES.has(name);
+  return isViewDomainClientName(name);
 }
 
 const VIEW_DOMAIN_METHODS: ReadonlySet<string> = new Set(['resources/list', 'resources/templates/list', 'resources/read']);

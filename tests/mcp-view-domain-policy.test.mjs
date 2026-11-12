@@ -99,6 +99,55 @@ describe('view domain per host', () => {
       }
     }
 
+    // The leaderboard review speaks the 2025 session protocol: its clientInfo
+    // name arrives only on `initialize`, and later requests carry just the
+    // Mcp-Session-Id the server minted (seen 2026-11-12 14:53 UTC: initialize,
+    // notifications/initialized, two POSTs, DELETE, all Bun/1.4.4).
+    async function initialize(clientName) {
+      const body = {
+        jsonrpc: '2.0', id: 1, method: 'initialize',
+        params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: clientName, version: '1' } },
+      };
+      const req = proReq('POST', body, { Accept: 'application/json', 'User-Agent': 'Bun/1.4.4' });
+      const response = await mcpHandler(req, makeProDeps().deps);
+      assert.equal(response.status, 200);
+      const sessionId = response.headers.get('Mcp-Session-Id');
+      assert.ok(sessionId, 'initialize mints a session id');
+      return sessionId;
+    }
+    async function sessionRpc(method, params, sessionId) {
+      const body = { jsonrpc: '2.0', id: 2, method, params };
+      const headers = { Accept: 'application/json', 'User-Agent': 'Bun/1.4.4', 'Mcp-Session-Id': sessionId, 'MCP-Protocol-Version': '2025-06-18' };
+      const req = proReq('POST', body, headers);
+      const response = await mcpHandler(req, makeProDeps().deps);
+      assert.equal(response.status, 200, `${method} status`);
+      return (await response.json()).result;
+    }
+
+    // Session initialize requires sign-in (anonymous initialize is 401), and the
+    // leaderboard review signs in, so only the signed-in path is exercised.
+    for (const clientName of ['Manufact Cloud', 'mcp-use-probe']) {
+      it(`${clientName} named only at initialize keeps the domain for its session`, async () => {
+        const sessionId = await initialize(clientName);
+        const list = await sessionRpc('resources/list', {}, sessionId);
+        const domains = viewDomains(list.resources);
+        assert.ok(domains.length >= 12);
+        assert.deepEqual([...new Set(domains)], ['https://www.worldmonitor.app']);
+        const read = await sessionRpc('resources/read', { uri: SHELL_VIEW.uri }, sessionId);
+        assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
+      });
+    }
+
+    for (const clientName of ['claude-ai', 'Claude Code', 'Cursor', undefined]) {
+      it(`a session started by ${clientName ?? 'a nameless client'} gets views without ui.domain`, async () => {
+        const sessionId = await initialize(clientName);
+        const list = await sessionRpc('resources/list', {}, sessionId);
+        const views = list.resources.filter((r) => r.uri.startsWith('ui://'));
+        assert.ok(views.length >= 12);
+        for (const view of views) assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
+      });
+    }
+
     it('a browser with another client name still gets views without ui.domain', async () => {
       const list = await rpc('resources/list', meta('Claude'), { userAgent: BROWSER_UA });
       for (const view of list.resources.filter((r) => r.uri.startsWith('ui://'))) {

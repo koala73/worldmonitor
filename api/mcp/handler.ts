@@ -28,7 +28,7 @@ import {
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
 import { CHATGPT_TOOL_LIST_RESPONSE, FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TRAVEL_RISK_TOOL_NAMES } from './registry/index';
-import { applyChatGptCommercePolicy, applyViewDomainPolicy, isChatGptHost } from './host-policy';
+import { applyChatGptCommercePolicy, applyViewDomainPolicy, isChatGptHost, mintSessionId } from './host-policy';
 import {
   ACCOUNT_RESOURCE_LIST_RESPONSE,
   buildAccountAllowanceResourceResponse,
@@ -1435,7 +1435,7 @@ async function mcpHandlerInner(
   // Dispatch
   switch (method) {
     case 'initialize': {
-      const sessionId = crypto.randomUUID();
+      const sessionId = mintSessionId((body.params as { clientInfo?: { name?: unknown } } | null | undefined)?.clientInfo?.name);
       // Bind the server-minted session before content negotiation can return a
       // JSON response. Otherwise a different principal that learns the session
       // id can make the first SSE write and claim the replay bucket.
