@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 
 import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
-import { loadCiiFixtures, pairsOrderedAgainstBlend, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
+import { ciiScoredVersion, loadCiiFixtures, pairsOrderedAgainstBlend, readCiiVersionClaim, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
 import {
   assessCiiInputAvailability,
   buildCiiAuxiliarySources,
@@ -25,17 +25,26 @@ import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_ris
 import { TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 
 /**
- * Properties the formula named by CII_FORMULA_VERSION is known to fail. Shrink
- * it; never grow it to pass CI. A new formula version starts with no entry,
- * so every property asserts until its PR lists, with measured values, the
- * gaps it still has.
+ * Properties each formula version is known to fail, keyed like the fixture
+ * tables (ciiScoredVersion: the in-progress next version on an integration
+ * branch, else CII_FORMULA_VERSION). Shrink it; never grow it to pass CI. A
+ * released version's entry is a record and does not change. A new formula
+ * version starts with no entry, so every property asserts until its PR lists,
+ * with measured values, the gaps it still has. v15 starts from v14's list
+ * because the cii-v15 integration branch began at the v14 formula.
  */
 const KNOWN_GAPS: Record<string, ReadonlySet<string>> = {
   v14: new Set([
     'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
     'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
+  v15: new Set([
+    'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
+    'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
+  ]),
 };
+const CLAIM = readCiiVersionClaim();
+const SCORED = ciiScoredVersion(CLAIM);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -600,19 +609,19 @@ const NOT_COMPUTABLE: Array<{ id: string; title: string; reason: string }> = [
   { id: 'P16', title: 'benchmark agreement ρ ≥ 0.75 vs GPI/FSI/INFORM/ACLED', reason: 'needs external benchmark tables; measure with the methodology review, not CI' },
 ];
 
-const gaps = KNOWN_GAPS[CII_FORMULA_VERSION] ?? new Set<string>();
+const gaps = KNOWN_GAPS[SCORED] ?? new Set<string>();
 const results = PROPERTIES.map((p) => ({ ...p, ...p.measure(), known: gaps.has(p.id) }));
 
-describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`, () => {
+describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
   it('runs on at least three committed fixture dates', () => {
     assert.ok(FIXTURES.length >= 3, `found ${FIXTURES.length} fixtures in tests/fixtures/cii/`);
   });
 
   for (const r of results) {
-    const name = `${r.id} ${r.title} [${CII_FORMULA_VERSION}: ${r.value}]`;
+    const name = `${r.id} ${r.title} [${SCORED}: ${r.value}]`;
     // A known gap was measured above and its value is in the name; the ratchet
     // below fails once it passes, so its body has nothing left to assert.
-    if (r.known) it(name, { todo: `known ${CII_FORMULA_VERSION} gap` }, () => {});
+    if (r.known) it(name, { todo: `known ${SCORED} gap` }, () => {});
     else it(name, () => assert.ok(r.pass, r.value));
   }
   for (const p of NOT_COMPUTABLE) it(`${p.id} ${p.title}`, { todo: `not computable in CI: ${p.reason}` });
@@ -625,9 +634,53 @@ describe(`CII invariants (${CII_FORMULA_VERSION}, ${FIXTURES.length} fixtures)`,
   });
 });
 
+// ------------------------------------------------------------------------
+// The release gate (docs/methodology/cii-change-brief.md section 3). An
+// integration branch scores `next` under the released CII_FORMULA_VERSION, so
+// its tables are checked under `next`. If that reached main unchanged,
+// production would serve next's scores labelled with the old version and every
+// fixture check would stay green. Main and PRs into main must therefore carry
+// no in-progress version, and a released tree must name its own version.
+// ------------------------------------------------------------------------
+
+const versionNumber = (v: string) => Number(v.slice(1));
+/** CI on main, a PR into main, or a merge-queue run for main. */
+function ciiTargetsMain(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.GITHUB_BASE_REF) return env.GITHUB_BASE_REF === 'main';
+  const ref = env.GITHUB_REF ?? '';
+  return ref === 'refs/heads/main' || ref.startsWith('refs/heads/gh-readonly-queue/main/');
+}
+
+describe('CII release gate', () => {
+  it('main carries no in-progress CII version', {
+    skip: ciiTargetsMain() ? false : 'runs in CI on main and on PRs into main (GITHUB_BASE_REF / GITHUB_REF); this run targets neither',
+  }, () => {
+    assert.notEqual(CLAIM.inProgress, true,
+      `cii-next.json marks ${CLAIM.next} in progress on ${CLAIM.branch}. Before it merges to main: bump CII_FORMULA_VERSION to ${CLAIM.next}, clear inProgress, move the claim on, and freeze the ${CLAIM.next} hash.`);
+  });
+
+  it('a released tree names its own version: CII_FORMULA_VERSION is next, or the claim has moved on to the version after, and it has a KNOWN_GAPS entry', {
+    skip: CLAIM.inProgress === true ? `${CLAIM.next} is in progress on ${CLAIM.branch}; checked once it is cleared` : false,
+  }, () => {
+    const gap = versionNumber(CLAIM.next) - versionNumber(CII_FORMULA_VERSION);
+    assert.ok(gap === 0 || gap === 1,
+      `cii-next.json names ${CLAIM.next} while CII_FORMULA_VERSION is ${CII_FORMULA_VERSION}: a shipped version must bump CII_FORMULA_VERSION and move the claim on by one`);
+    assert.ok(KNOWN_GAPS[CII_FORMULA_VERSION], `KNOWN_GAPS has no ${CII_FORMULA_VERSION} entry; a released version lists its gaps, or an empty set`);
+  });
+
+  it('recognises the CI runs that target main', () => {
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'main', GITHUB_REF: 'refs/pull/1/merge' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'cii-v15', GITHUB_REF: 'refs/pull/1/merge' }), false);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/main' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-1-abc' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/cii-v15' }), false);
+    assert.equal(ciiTargetsMain({}), false);
+  });
+});
+
 after(() => {
   const lines = [
-    `CII invariants, ${CII_FORMULA_VERSION}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
+    `CII invariants, ${SCORED}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
     ...results.map((r) => `${r.id.padEnd(5)} ${(r.pass ? 'pass' : r.known ? 'todo' : 'FAIL').padEnd(5)} ${r.value}`),
     ...NOT_COMPUTABLE.map((p) => `${p.id.padEnd(5)} todo  not computable: ${p.reason}`),
     `pass ${results.filter((r) => r.pass).length}, todo ${results.filter((r) => !r.pass && r.known).length + NOT_COMPUTABLE.length}, fail ${results.filter((r) => !r.pass && !r.known).length}`,
