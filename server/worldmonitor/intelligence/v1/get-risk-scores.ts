@@ -1921,7 +1921,9 @@ export function computeCIIScores(
     const weight = NEWS_THREAT_WEIGHT[story.threatLevel] ?? 0;
     if (weight === 0) continue;
     const tracked = newsStoryCountries(story).filter((code) => data[code]);
-    if (tracked.length === 0) {
+    // A coded story is placed by its codes, even when none has a Tier-1 row: the
+    // title may name the actor rather than the place ("IDF raid in Jenin", coded PS).
+    if (!newsStoryCountries(story).length) {
       const titleCode = normalizeCountryName(story.primaryTitle);
       if (titleCode && data[titleCode]) tracked.push(titleCode);
     }
@@ -2246,10 +2248,8 @@ export function countCiiRealtimeSignalDensityCoverage(
   for (const story of aux?.newsTopStories ?? []) {
     const weight = NEWS_THREAT_WEIGHT[String(story.threatLevel || '').toLowerCase()] ?? 0;
     if (weight <= 0) continue;
-    if (
-      newsStoryCountries(story).some(isTier1CountryCode)
-      || isTier1CountryCode(normalizeCountryName(story.primaryTitle))
-    ) {
+    const codes = newsStoryCountries(story);
+    if (codes.length ? codes.some(isTier1CountryCode) : isTier1CountryCode(normalizeCountryName(story.primaryTitle))) {
       coveredFamilies.add('news');
       break;
     }
