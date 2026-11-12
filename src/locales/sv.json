@@ -5058,7 +5058,7 @@
       "emptyDisplacement": "Ingen förflyttningsdata för dessa länder",
       "emptyCorrelation": "Inga signaler för dessa länder"
     },
-    "draftAssessment": "Utkast till bedömning",
+    "draftAssessment": "Resebedömning",
     "draftAssessmentAria": "Öppna resebedömningen, förifylld med denna fokusering",
     "draftCopied": "Förfrågan kopierad. Klistra in den i din AI-assistent.",
     "draftCopiedPartial": "Begäran kopierad för de första {{count}} länderna. En bedömning omfattar högst {{max}} länder. Utelämnade: {{omitted}}.",

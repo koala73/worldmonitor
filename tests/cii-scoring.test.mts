@@ -623,8 +623,9 @@ it('keeps SEMA regulation targets separate and all sanctions counts out of CII',
     sanctionsCountryCounts: producer.buildCountryCounts(entries),
   };
   const terms: Record<string, any> = {};
-  const scores = computeCIIScores([], aux, {}, terms);
-  assert.deepEqual(scores, computeCIIScores([], emptyAux()), 'sanctions are excluded from CII in v15');
+  const options = { nowMs: Date.parse('2026-10-23T09:46:00Z') };
+  const scores = computeCIIScores([], aux, options, terms);
+  assert.deepEqual(scores, computeCIIScores([], emptyAux(), options), 'sanctions are excluded from CII in v15');
   assert.equal(terms.IR.boosts.sanctions, undefined);
   assert.equal(aux.sanctionsCountryCounts?.IR, 100);
   assert.equal(producer.buildRegulationTargets(entries)[0].entryCount, 500);

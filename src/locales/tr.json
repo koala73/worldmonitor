@@ -5058,7 +5058,7 @@
       "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
       "emptyCorrelation": "Bu ülkeler için sinyal yok"
     },
-    "draftAssessment": "Taslak değerlendirme",
+    "draftAssessment": "Seyahat değerlendirmesi",
     "draftAssessmentAria": "Seyahat değerlendirmesini açın, bu odak noktasıyla önceden doldurulmuş",
     "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
     "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar. Dışarıda bırakılan ülkeler: {{omitted}}.",

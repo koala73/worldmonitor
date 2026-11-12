@@ -5086,7 +5086,7 @@
       "emptyDisplacement": "Nessun dato di sfollamento per questi paesi",
       "emptyCorrelation": "Nessun segnale per questi paesi"
     },
-    "draftAssessment": "Bozza di valutazione",
+    "draftAssessment": "Valutazione del viaggio",
     "draftAssessmentAria": "Apri la valutazione del viaggio, precompilata con questo focus",
     "draftCopied": "Richiesta copiata. Incollala nel tuo assistente AI.",
     "draftCopiedPartial": "Richiesta copiata per i primi {{count}} paesi. Una valutazione copre al massimo {{max}} paesi. Paesi esclusi: {{omitted}}.",

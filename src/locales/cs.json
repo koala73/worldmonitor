@@ -5114,7 +5114,7 @@
       "emptyDisplacement": "Žádné údaje o vysídlení pro tyto země",
       "emptyCorrelation": "Žádné signály pro tyto země"
     },
-    "draftAssessment": "Návrh posouzení",
+    "draftAssessment": "Posouzení cesty",
     "draftAssessmentAria": "Otevřít posouzení cesty, předvyplněné touto zaměřením",
     "draftCopied": "Požadavek zkopírován. Vložte jej do vašeho AI asistenta.",
     "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí. Vynecháno: {{omitted}}.",
