@@ -8,6 +8,7 @@ import { checkBootstrapUserApiKeyRateLimit, validateBootstrapUserApiKey } from '
 import { redirectDisplayHost } from './_redirect-uri.js';
 import { clientAllowsRedirectUri, clientDisplayInfo, describeClientFailure, isClientMetadataDocumentId, resolveOAuthClient } from './_client-metadata.js';
 import { isHostedAppOrigin } from '../_cors.js';
+import { oauthRateLimitHeaders } from './_rate-limit-headers.js';
 import {
   hashOAuthBindValue,
   OAUTH_BIND_COOKIE,
@@ -287,9 +288,12 @@ export default async function handler(req) {
     const rl = await getRatelimit();
     if (rl) {
       try {
-        const { success } = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
-        if (!success) {
-          return new Response('Too Many Requests', { status: 429 });
+        const decision = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
+        if (!decision.success) {
+          return new Response('Too Many Requests', {
+            status: 429,
+            headers: { ...oauthRateLimitHeaders(decision), 'Cache-Control': 'no-store' },
+          });
         }
       } catch { /* graceful degradation */ }
     }
