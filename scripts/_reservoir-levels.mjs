@@ -7,8 +7,8 @@
 // Data path (keyless):
 //   1. NASA CMR lists ATL13 (or ATL06) v007 granules that intersect a reservoir's core box.
 //   2. The public SlideRule Earth cluster subsets those granules to the core polygon
-//      (POST /source/atl13x or /source/atl06x) and streams the segments back as a CSV
-//      inside native records.
+//      (POST /source/atl13x or /source/atl06x): ATL13 native dataframe columns preserve
+//      segment RGT; ATL06 uses CSV output inside native records.
 //   3. Segments are reduced to one robust level per overpass (UTC date + reference ground
 //      track), filtered, despiked, and turned into change metrics.
 //
@@ -27,7 +27,9 @@ export const SLIDERULE_ATL06_URL = 'https://sliderule.slideruleearth.io/source/a
 export const MISSION_START_ISO = '2018-10-01';
 export const ATL13_VERSION = '007';
 export const ATL06_VERSION = '007';
-export const SLIDERULE_BATCH_SIZE = 20;
+// Single-resource responses keep segment columns separate from granule metadata.
+// The v5.8 proxy cannot merge an ancillary rgt column with its metadata rgt.
+export const SLIDERULE_BATCH_SIZE = 1;
 // ATL06 returns every land segment in the box as well as the water: about 10x the rows of
 // ATL13 for the same box. Smaller batches bound the per-batch row buffer.
 export const SLIDERULE_ATL06_BATCH_SIZE = 5;
@@ -178,13 +180,12 @@ export const PRODUCTS = Object.freeze({
     version: ATL13_VERSION,
     url: SLIDERULE_ATL13_URL,
     batchSize: SLIDERULE_BATCH_SIZE,
-    parms: (poly, resources, { ancFields = ['atl13refid'] } = {}) => ({
-      poly,
-      resources,
-      atl13: { anc_fields: ancFields },
-      output: { path: 'atl13.csv', format: 'csv', open_on_complete: false },
+    parms: (poly, resources) => ({
+      resource: resources[0],
+      key_space: 0,
+      parms: { poly, atl13: { anc_fields: ['atl13refid', 'rgt'] } },
     }),
-    slim: (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid }),
+    slim: (r) => ({ time_ns: r.time_ns, rgt: r.rgt, gt: r.gt, ht_ortho: r.ht_ortho, atl13refid: r.atl13refid, sourceRgt: r.sourceRgt }),
     height: (r) => csvNumber(r.ht_ortho),
   }),
   atl06: Object.freeze({
@@ -473,6 +474,86 @@ export async function streamSlideRuleRequest(url, parms, onRow, fetchImpl, { tim
   return { rows, fileSize, csvBytes, gotEof, events };
 }
 
+/** Read ATL13's segment RGT without the v5.8 proxy's metadata/column collision.
+ * Wire layout: SlideRule GeoDataFrame.h, geodataframe record, 160-byte header.
+ * Only the four required columns and beam metadata are retained. No rows escape
+ * until all six beam EOFs and the complete native record stream are verified.
+ */
+export async function streamAtl13Request(poly, resource, onRow, fetchImpl, { timeoutMs = SLIDERULE_BATCH_TIMEOUT_MS } = {}) {
+  const res = await fetchImpl(SLIDERULE_ATL13_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(PRODUCTS.atl13.parms(poly, [resource])),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw new Error(`SlideRule HTTP ${res.status}`);
+  const ctype = res.headers?.get('content-type');
+  if (ctype && !ctype.startsWith('application/octet-stream')) throw new Error(`SlideRule unexpected content-type ${ctype}`);
+  const frames = new Map();
+  const events = [];
+  const columns = {
+    time_ns: [11, 8, (b, i) => b.readBigInt64LE(i).toString()],
+    rgt: [1, 2, (b, i) => b.readInt16LE(i)],
+    ht_ortho: [9, 4, (b, i) => b.readFloatLE(i)],
+    atl13refid: [3, 8, (b, i) => b.readBigInt64LE(i).toString()],
+  };
+  const parser = createRecordParser((type, d) => {
+    if (type !== 'geodataframe') {
+      const ev = decodeEventRecord(type, d);
+      if (ev) events.push(ev);
+      return;
+    }
+    if (d.length < 160) throw new Error('short ATL13 dataframe header');
+    const key = d.readBigUInt64LE(0).toString();
+    let f = frames.get(key);
+    if (!f) frames.set(key, (f = { columns: {}, done: false }));
+    if (f.done) throw new Error('ATL13 data after beam EOF');
+    const kind = d.readUInt32LE(16);
+    const size = d.readUInt32LE(20);
+    const encoding = d.readUInt32LE(24) & 0xFFFF;
+    const n = d.readUInt32LE(28);
+    const name = cstr(d.subarray(32, 160));
+    if (kind === 3) {
+      // EOF appends a uint32 column count after the header, with size still zero.
+      if (size !== 0 || d.length !== 164) throw new Error('invalid ATL13 beam EOF');
+      f.done = true;
+      f.n = n;
+      return;
+    }
+    if (kind === 0 && Object.hasOwn(columns, name)) {
+      const [code, width, read] = columns[name];
+      if (encoding !== code || size !== n * width || d.length !== 160 + size || f.columns[name]) throw new Error(`invalid ATL13 column ${name}`);
+      f.columns[name] = Array.from({ length: n }, (_, i) => read(d, 160 + i * width));
+    } else if (kind === 1 && name === 'gt') {
+      if (encoding !== 4 || size !== 1 || d.length !== 161) throw new Error('invalid ATL13 beam');
+      f.gt = d.readUInt8(160);
+    }
+  });
+  for await (const chunk of res.body) parser.push(chunk);
+  parser.end();
+  // A readable stream can report a source-granule failure. Keep that distinct
+  // from a transport/protocol outage so the seeder can persist its retry count.
+  if (failedGranulesFromEvents(events).includes(resource)) return { rows: 0, fileSize: 0, csvBytes: 0, gotEof: true, events };
+  if (frames.size !== 6 || [...frames.values()].some(f => !f.done)) throw new Error('incomplete ATL13 beam response');
+  const error = events.find(e => e.level >= EVENT_ERROR_LEVEL || e.code < 0);
+  if (error) throw new Error(error.msg);
+  for (const f of frames.values()) {
+    if (Object.values(f.columns).some(values => values.length !== f.n)) throw new Error('invalid ATL13 beam row count');
+    if (!f.n) continue;
+    if (f.gt == null || Object.keys(columns).some(name => !f.columns[name])) throw new Error('missing ATL13 segment column');
+    if (f.columns.rgt.some(rgt => rgt < 1 || rgt > 1387)) throw new Error('invalid ATL13 segment RGT');
+  }
+  const sourceRgt = granuleRgt(resource);
+  let rows = 0;
+  for (const f of frames.values()) {
+    for (let i = 0; i < f.n; i++) {
+      onRow({ time_ns: f.columns.time_ns[i], rgt: f.columns.rgt[i], gt: f.gt, ht_ortho: f.columns.ht_ortho[i], atl13refid: f.columns.atl13refid[i], sourceRgt });
+      rows++;
+    }
+  }
+  return { rows, fileSize: 0, csvBytes: 0, gotEof: true, events };
+}
+
 const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|produced an empty dataframe|invalid dataframe/i;
 
 /**
@@ -490,12 +571,12 @@ const EMPTY_SELECTION_RE = /no resources to process|received 0 x 0 dataframe|pro
 export async function fetchSegments(poly, granules, onRow, fetchImpl = (...a) => globalThis.fetch(...a), opts = {}) {
   const prod = productOf(opts.product ?? DEFAULT_PRODUCT);
   const {
-    batchSize = prod.batchSize,
+    batchSize: requestedBatchSize = prod.batchSize,
     timeoutMs = SLIDERULE_BATCH_TIMEOUT_MS,
     deadlineAtMs = Infinity,
-    ancFields = ['atl13refid'],
     log = () => {},
   } = opts;
+  const batchSize = prod.id === 'atl13' ? 1 : requestedBatchSize;
   const processed = [];
   const failed = [];
   const skipped = [];
@@ -508,17 +589,20 @@ export async function fetchSegments(poly, granules, onRow, fetchImpl = (...a) =>
     // so the next run picks them up.
     const remainingMs = deadlineAtMs - Date.now();
     if (remainingMs <= 0) { skipped.push(...granules.slice(i)); break; }
-    const parms = prod.parms(poly, batch, { ancFields });
     // Rows are buffered per batch so a batch that dies mid-stream contributes nothing:
     // a half-delivered pass would otherwise be stored as if complete.
     const batchRows = [];
     try {
-      const r = await streamSlideRuleRequest(prod.url, parms, (row) => {
+      const collect = (row) => {
         const slim = prod.slim(row);
         if (slim) batchRows.push(slim);
-      }, fetchImpl, {
+      };
+      const streamOpts = {
         timeoutMs: Math.max(30_000, Math.min(timeoutMs, remainingMs)),
-      });
+      };
+      const r = prod.id === 'atl13'
+        ? await streamAtl13Request(poly, batch[0], collect, fetchImpl, streamOpts)
+        : await streamSlideRuleRequest(prod.url, prod.parms(poly, batch), collect, fetchImpl, streamOpts);
       const empty = r.fileSize == null && r.csvBytes === 0 && r.events.some((e) => EMPTY_SELECTION_RE.test(e.msg));
       // The server announces the file size in arrowrec.meta; arrowrec.eof is not always
       // sent (atl13x on server v5.8 ends the stream without it), so the byte count is the
@@ -676,8 +760,8 @@ function comparePasses(a, b) {
 }
 
 // Compact tuple storage: [timeIso, rgt, levelM, madM, n, beamSpreadM|null, revision?].
-// The granule release revision is stored only when above 1, so revision-1 tuples (the
-// whole committed baseline) keep their six-element form.
+// The complete day's candidate-orbit revision sum is stored only when above 1, so the
+// committed baseline keeps its six-element form.
 export function passToTuple(p) {
   const t = [p.time, p.rgt, p.levelM, p.madM, p.n, p.beamSpreadM ?? null];
   if ((p.revision ?? 1) > 1) t.push(p.revision);
@@ -692,10 +776,10 @@ export function tupleToPass(t) {
 }
 
 /**
- * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher granule
- * release revision always wins: NASA reprocesses a granule to correct it, so its values
- * replace the earlier ones whatever their segment count. Within one revision (the same
- * granule re-processed, or a pass split across granules) the record with more segments
+ * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher complete-day
+ * revision sum always wins: NASA reprocesses granules to correct them, so their values
+ * replace the earlier ones whatever their segment count. Within one revision sum (the same
+ * complete day re-processed) the record with more segments
  * wins, then lower deviation, then lower height, so merging is idempotent and
  * order-independent.
  */

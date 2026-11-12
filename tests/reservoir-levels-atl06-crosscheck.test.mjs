@@ -2,11 +2,9 @@
 // core boxes, for the whole mission, must match the committed ATL13 baseline pass for pass
 // and (Mead) the USBR daily gauge.
 //
-// Passes are matched by overpass time (within 15 minutes), not by UTC date + RGT: ATL13
-// rows carry the RGT of the full-orbit granule they sit in, which is 1-3 lower than the
-// track actually flown for most of these passes (Mead 85 of 156 matches, Tharthar 69 of
-// 92, Ataturk 50 of 98), while ATL06 granules cover a fraction of an orbit and carry the
-// flown track. The fixture holds the raw ATL06 per-pass statistics
+// Passes are matched by UTC date + flown RGT. A separate time-based assertion checks
+// the identity independently: ATL13 must use segment RGT, not granule metadata RGT.
+// The fixture holds the raw ATL06 per-pass statistics
 // built by scripts/backfill-reservoir-levels.mjs with product "atl06" (no segments). The
 // lowest-cluster rule and ATL06_MAX_SLOPE in scripts/_reservoir-levels.mjs were set on this
 // comparison; changing them means rebuilding the fixture and keeping these numbers.
@@ -73,8 +71,7 @@ function vsAtl13(id) {
   const atl13 = okPasses(baseline.reservoirs[id].passes);
   const pairs = [];
   for (const p of okPasses(fixture.reservoirs[id].passes)) {
-    const t = Date.parse(p.time);
-    const q = atl13.find((x) => Math.abs(Date.parse(x.time) - t) <= MATCH_WINDOW_MS);
+    const q = atl13.find((x) => x.time.slice(0, 10) === p.time.slice(0, 10) && x.rgt === p.rgt);
     if (q) pairs.push([p.levelM, q.levelM]);
   }
   return compare(pairs);
@@ -93,6 +90,18 @@ describe('ATL06 cross-check against ATL13 and the Lake Mead gauge', () => {
   });
 
   for (const id of ['mead', 'tharthar', 'ataturk']) {
+    it(`${id}: time-matched ATL06 and ATL13 passes agree on flown RGT`, () => {
+      const atl13 = okPasses(baseline.reservoirs[id].passes);
+      let matched = 0;
+      for (const p of okPasses(fixture.reservoirs[id].passes)) {
+        const q = atl13.find(x => Math.abs(Date.parse(x.time) - Date.parse(p.time)) <= MATCH_WINDOW_MS);
+        if (!q) continue;
+        assert.equal(q.rgt, p.rgt, `${p.time}: ATL13/ATL06 track`);
+        matched++;
+      }
+      assert.ok(matched >= 80, `matched ${matched}`);
+    });
+
     it(`${id}: ATL06 matches ATL13 within the gate, pass for pass`, () => {
       const m = vsAtl13(id);
       assert.ok(m.n >= 80, `matched ${m.n}`);

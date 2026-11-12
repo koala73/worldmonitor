@@ -100,8 +100,9 @@ function loadScratch(dir, entry) {
   const f = scratchFile(dir, entry.id);
   const product = productOf(entry).id;
   const levelWindowM = entry.levelWindowM ?? null;
-  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, levelWindowM, granules: null, processed: [], failures: {}, passes: [], done: false };
+  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, levelWindowM, passKeyVersion: 2, granules: null, processed: [], failures: {}, passes: [], done: false };
   const s = JSON.parse(readFileSync(f, 'utf8'));
+  if (product === 'atl13' && s.passKeyVersion !== 2) throw new Error(`${entry.id}: scratch uses granule RGT pass keys; run --reset ${entry.id}`);
   if (s.id !== entry.id) throw new Error(`${entry.id}: scratch file is labelled ${JSON.stringify(s.id)}; run --reset ${entry.id}`);
   if (JSON.stringify(s.core) !== JSON.stringify(entry.core) || (s.refid ?? null) !== (entry.refid ?? null)
     || (s.product ?? DEFAULT_PRODUCT) !== product || JSON.stringify(s.levelWindowM ?? null) !== JSON.stringify(levelWindowM)) {
@@ -180,7 +181,7 @@ export function assembleBaseline(watchlist, dir, nowIso = new Date().toISOString
     };
     if (s.processedThrough && (!through || s.processedThrough > through)) through = s.processedThrough;
   }
-  return { generatedAt: nowIso, through, reservoirs };
+  return { generatedAt: nowIso, through, passKeyVersion: 2, reservoirs };
 }
 
 export function reportRows(watchlist, baseline) {
