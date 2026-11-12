@@ -357,9 +357,13 @@ describe('withCiiInputQuietClocks options', () => {
   const t = table(f, { ...f.inputs, advisories: null, advisoriesLastGood: snapshot(f, HOUR_MS) });
   const states = assessCiiInputAvailability([], t.aux, f.nowMs, false);
 
-  it('takes its details as a named option', () => {
-    const reports = withCiiInputQuietClocks(states, null, f.nowMs, { details: ciiInputDetails(t.aux) });
+  it('keeps named advisory details and outage exclusions together', () => {
+    const examShutdown = { count: 1, samples: [] };
+    const reports = withCiiInputQuietClocks(states, null, f.nowMs, {
+      details: ciiInputDetails(t.aux), exclusions: { outages: { examShutdown } },
+    });
     assert.equal(reports.advisories.snapshotAt, f.nowMs - HOUR_MS);
+    assert.deepEqual(reports.outages.excluded, { examShutdown });
   });
 
   it('throws when an object is passed in the old positional slot, instead of misreading it', () => {
@@ -367,7 +371,7 @@ describe('withCiiInputQuietClocks options', () => {
     // positional argument (an exclusion list), must not be read as options.
     assert.throws(() => withCiiInputQuietClocks(states, null, f.nowMs, ciiInputDetails(t.aux) as never), /unknown option\(s\) advisories/);
     assert.throws(() => withCiiInputQuietClocks(states, null, f.nowMs, ['fires'] as never), /unknown option/);
-    assert.throws(() => withCiiInputQuietClocks(states, null, f.nowMs, { details: {}, exclusions: {} } as never), /unknown option\(s\) exclusions/);
+    assert.throws(() => withCiiInputQuietClocks(states, null, f.nowMs, { details: {}, unknown: {} } as never), /unknown option\(s\) unknown/);
   });
 });
 

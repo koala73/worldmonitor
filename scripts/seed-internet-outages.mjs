@@ -128,6 +128,9 @@ async function fetchOutages() {
       link: raw.linkedUrl || 'https://radar.cloudflare.com/outage-center',
       description: raw.description ?? '',
       detectedAt: toEpochMs(raw.startDate),
+      // ISO 3166-1 alpha-2 from Radar. Readers that place an outage by country
+      // (CII, resilience) key on this; `country` is the display name.
+      countryCode,
       country: countryName,
       region: '',
       location: { latitude: coords[0], longitude: coords[1] },

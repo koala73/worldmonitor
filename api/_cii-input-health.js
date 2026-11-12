@@ -9,7 +9,8 @@
 //   quiet           present and accepted, but moved no Tier-1 score
 //                   (`quietSince` is when that started)
 //   missing         the Redis key was absent
-//   unusable        present, but the scorer rejected it (too old or malformed)
+//   unusable        present, but the scorer rejected it (too old or malformed,
+//                   or none of its records map to a country)
 //   fallback        some or all of the scored levels came from the last good
 //                   snapshot (`snapshotAt` is its producer clock, `filled` the
 //                   countries taken from it): the read was missing or stale, or

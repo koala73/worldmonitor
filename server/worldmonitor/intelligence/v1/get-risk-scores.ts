@@ -33,6 +33,16 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_OUTAGE_EXAM_TERMS,
+  CII_OUTAGE_FADE_MS,
+  CII_OUTAGE_FUTURE_SKEW_MS,
+  CII_OUTAGE_NEGATION_COORDINATORS,
+  CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS,
+  CII_OUTAGE_NEGATION_TERMS,
+  CII_OUTAGE_NEGATION_WINDOW_WORDS,
+  CII_OUTAGE_SCORED_CAUSES,
+  CII_OUTAGE_UNREST_TERMS,
+  CII_OUTAGE_WINDOW_MS,
   CII_STRIKE_BOOST_CAP,
   CII_STRIKE_BOOST_PER_DOUBLING,
   CII_STRIKE_BOOST_PIVOT,
@@ -61,6 +71,7 @@ import {
   DEFAULT_CII_BASELINE_RISK,
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../../../../shared/cii-weights';
+import { isAssignedCountryCode, resolveCountryCode } from '../../../../shared/country-code-resolve';
 
 // ========================================================================
 // Country risk baselines and multipliers
@@ -275,6 +286,174 @@ export function normalizeCountryName(text: string): string | null {
   return null;
 }
 
+/**
+ * The ISO2 country of one internet-outage record, or null. The seeder writes
+ * Cloudflare Radar's location code as `countryCode`; records published before
+ * it did carry only the display name in `country` (the scorer read
+ * `countryCode` alone, so no record mapped). Every form goes through the
+ * shared resolver, and the code wins because the name is display text.
+ */
+export function outageCountryCode(outage: any): string | null {
+  for (const value of [outage?.countryCode, outage?.country_code, outage?.country]) {
+    const code = resolveCountryCode(value);
+    if (code && isAssignedCountryCode(code)) return code;
+  }
+  return null;
+}
+
+const foldOutageText = (text: unknown) => String(text ?? '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+const LATIN_TERM = /^[a-z0-9 ]+$/;
+
+/** The words of outage text and, as their own tokens, the punctuation between them. A hyphen or apostrophe inside a word only splits it. */
+const outageTokens = (text: string): string[] => text.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}\s'’-]+/gu) ?? [];
+const foldedTerms = (terms: readonly string[]) => terms.map((term) => outageTokens(foldOutageText(term)));
+const EXAM_TERMS = foldedTerms(CII_OUTAGE_EXAM_TERMS);
+const UNREST_TERMS = foldedTerms(CII_OUTAGE_UNREST_TERMS);
+const NEGATIONS = foldedTerms(CII_OUTAGE_NEGATION_TERMS);
+const NEGATION_NOUN_PHRASE_WORDS = new Set(CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS.map(foldOutageText));
+const NEGATION_COORDINATORS = new Set(CII_OUTAGE_NEGATION_COORDINATORS.map(foldOutageText));
+
+/** Whether `term` (as words) sits at token `i`: Latin words exactly, Arabic-script words inside the word. */
+function termAt(tokens: string[], i: number, term: string[]): boolean {
+  return term.every((part, k) => {
+    const word = tokens[i + k];
+    if (word == null) return false;
+    return LATIN_TERM.test(part) ? word === part : word.includes(part);
+  });
+}
+
+/** Whether a negation's last word is token `last`. */
+function negationEndsAt(tokens: string[], last: number): boolean {
+  return NEGATIONS.some((negation) => {
+    const start = last - negation.length + 1;
+    if (start < 0) return false;
+    return negation.every((part, k) => {
+      const word = tokens[start + k]!;
+      return word === part || (!LATIN_TERM.test(part) && word === `و${part}`);
+    });
+  });
+}
+
+/**
+ * Whether a negation governs the term at token `i`. Walks back through the
+ * term's own noun phrase, at most CII_OUTAGE_NEGATION_WINDOW_WORDS words;
+ * anything else (punctuation, "but", a verb, an unrelated noun) ends the walk.
+ */
+function negatedAt(tokens: string[], i: number): boolean {
+  let j = i - 1;
+  let bridged = 0;
+  while (j >= 0 && bridged <= CII_OUTAGE_NEGATION_WINDOW_WORDS) {
+    if (negationEndsAt(tokens, j)) return true;
+    if (NEGATION_NOUN_PHRASE_WORDS.has(tokens[j]!)) {
+      j -= 1;
+      bridged += 1;
+    } else if (NEGATION_COORDINATORS.has(tokens[j]!) && UNREST_TERMS.some((term) => term.length === 1 && termAt(tokens, j - 1, term))) {
+      j -= 2;
+      bridged += 2;
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Whether the tokens carry one of `terms` that no negation cancels (see CII_OUTAGE_NEGATION_TERMS). */
+function namesTerm(tokens: string[], terms: string[][]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    if (terms.some((term) => termAt(tokens, i, term)) && !negatedAt(tokens, i)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the record is a routine exam shutdown: its description or title
+ * names an exam, not negated, and carries no unrest, election, conflict or
+ * military wording (lexical; see CII_OUTAGE_EXAM_TERMS and
+ * CII_OUTAGE_UNREST_TERMS). The "." keeps a negation at the end of the
+ * description from reaching into the title.
+ */
+export function isExamShutdown(outage: any): boolean {
+  const tokens = outageTokens(foldOutageText(`${outage?.description ?? ''} . ${outage?.title ?? ''}`));
+  return namesTerm(tokens, EXAM_TERMS) && !namesTerm(tokens, UNREST_TERMS);
+}
+
+/** When the outage was last active: its end, or now while ongoing (`endedAt` 0). */
+function outageLastActive(outage: any, nowMs: number): number {
+  const end = Number(outage?.endedAt);
+  return Number.isFinite(end) && end > 0 ? Math.min(end, nowMs) : nowMs;
+}
+
+/**
+ * Why an outage does or does not score now. It scores when its cause is in
+ * construct (CII_OUTAGE_SCORED_CAUSES), it was active at some point in the
+ * last CII_OUTAGE_WINDOW_MS, and it is not an exam shutdown. Only a
+ * government-directed shutdown can be one: a military strike on an exam
+ * ministry is not a routine exam cut. `endedAt` 0 means ongoing. A record
+ * with no start time cannot be placed in the window, and one starting more
+ * than CII_OUTAGE_FUTURE_SKEW_MS ahead has not begun.
+ */
+export function outageVerdict(outage: any, nowMs: number): 'scored' | 'cause' | 'window' | 'exam' {
+  const cause = String(outage?.cause || '').toUpperCase();
+  if (!CII_OUTAGE_SCORED_CAUSES.has(cause)) return 'cause';
+  const start = Number(outage?.detectedAt);
+  if (!Number.isFinite(start) || start <= 0 || start > nowMs + CII_OUTAGE_FUTURE_SKEW_MS) return 'window';
+  if (outageLastActive(outage, nowMs) < nowMs - CII_OUTAGE_WINDOW_MS) return 'window';
+  return cause === 'GOVERNMENT_DIRECTED' && isExamShutdown(outage) ? 'exam' : 'scored';
+}
+
+export function isScoredOutage(outage: any, nowMs: number): boolean {
+  return outageVerdict(outage, nowMs) === 'scored';
+}
+
+function outageSeverityPoints(outage: any): number {
+  const sev = String(outage?.severity || '').toUpperCase();
+  if (sev.includes('TOTAL') || sev === 'NATIONWIDE') return 30;
+  if (sev.includes('MAJOR') || sev === 'REGIONAL') return 15;
+  if (sev.includes('PARTIAL') || sev.includes('LOCAL') || sev.includes('MINOR')) return 5;
+  return 0;
+}
+
+/** A record's weight: 1 until the last CII_OUTAGE_FADE_MS of the window, then linear to 0 (P3). */
+function outageFade(outage: any, nowMs: number): number {
+  const remaining = CII_OUTAGE_WINDOW_MS - (nowMs - outageLastActive(outage, nowMs));
+  return Math.max(0, Math.min(1, remaining / CII_OUTAGE_FADE_MS));
+}
+
+/**
+ * Raw outage points per country, uncapped. Records of one country whose
+ * intervals overlap (transitively) are one shutdown filed several times, so
+ * they count once, at their highest faded severity (P6). The maximum of
+ * continuous fades has no step (P3).
+ */
+function outagePointsByCountry(outages: any[], nowMs: number): Map<string, number> {
+  const scored = new Map<string, any[]>();
+  for (const outage of outages) {
+    const code = outageCountryCode(outage);
+    if (!code || !isScoredOutage(outage, nowMs)) continue;
+    const records = scored.get(code);
+    if (records) records.push(outage);
+    else scored.set(code, [outage]);
+  }
+  const points = new Map<string, number>();
+  for (const [code, records] of scored) {
+    records.sort((a, b) => Number(a.detectedAt) - Number(b.detectedAt));
+    let total = 0;
+    let shutdownEnd = -Infinity;
+    let shutdownPeak = 0;
+    for (const record of records) {
+      if (Number(record.detectedAt) > shutdownEnd) {
+        total += shutdownPeak;
+        shutdownPeak = 0;
+        shutdownEnd = -Infinity;
+      }
+      shutdownEnd = Math.max(shutdownEnd, outageLastActive(record, nowMs));
+      shutdownPeak = Math.max(shutdownPeak, outageSeverityPoints(record) * outageFade(record, nowMs));
+    }
+    points.set(code, total + shutdownPeak);
+  }
+  return points;
+}
+
 // Real borders (scripts/shared/cii-country-borders.mjs, generated from the
 // Natural Earth 1:50m map). Points on non-Tier-1 land, or more than 12 nautical
 // miles offshore, are null.
@@ -462,9 +641,8 @@ interface CountrySignals {
   gdeltUnrestEscalation: number;
   ucdpWar: boolean;
   ucdpMinor: boolean;
-  outageTotalCount: number;
-  outageMajorCount: number;
-  outagePartialCount: number;
+  /** Raw outage points before the cap of 50. */
+  outagePoints: number;
   /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
   strikePressure: number;
   orefAlertCount: number;
@@ -489,7 +667,7 @@ function emptySignals(): CountrySignals {
     gdeltConflictEscalation: 0,
     gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
-    outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
+    outagePoints: 0,
     strikePressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
@@ -1119,6 +1297,16 @@ export function buildCiiAuxiliarySources(
     return a.length > maxLen ? a.slice(0, maxLen) : a;
   };
 
+  // Each outage record carries its resolved ISO2 code; one that resolves to no
+  // country is dropped. A payload whose records all fail to map is unusable,
+  // not quiet: that is how the countryCode/name mismatch hid for months (P7b).
+  const outageRecords = arr(outagesRaw, 'outages');
+  const outages = outageRecords.flatMap((o) => {
+    const countryCode = outageCountryCode(o);
+    return countryCode ? [{ ...o, countryCode }] : [];
+  });
+  if (outagesRaw != null && outageRecords.length > 0 && outages.length === 0) inputReads.outages = 'unusable';
+
   let orefData: AuxiliarySources['orefData'] = null;
   if (orefRaw && typeof orefRaw === 'object') {
     const alertCount = safeNonNegativeNum((orefRaw as any).activeAlertCount);
@@ -1160,7 +1348,7 @@ export function buildCiiAuxiliarySources(
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
-    outages: arr(outagesRaw, 'outages'),
+    outages,
     iranEvents: arr(iranRaw, 'events'),
     orefData,
     advisories,
@@ -1196,7 +1384,7 @@ export const CII_HEALTH_INPUT_IDS = [
   'crossBorder', 'newsInsights', 'threatSummary',
 ] as const;
 export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
-type CiiInputRead = 'present' | 'missing' | 'not_configured';
+type CiiInputRead = 'present' | 'unusable' | 'missing' | 'not_configured';
 /** `fallback`: the last good snapshot was scored because this build's read was missing or stale, or filled countries a read lost with a register gone. */
 export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured' | 'fallback';
 /**
@@ -1206,6 +1394,7 @@ export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_con
  * lacked. `snapshotReadFailed`: the snapshot could not be read.
  */
 export interface CiiInputReport {
+  excluded?: Record<string, CiiInputExclusion>;
   state: CiiInputState;
   quietSince?: number;
   snapshotAt?: number;
@@ -1215,6 +1404,11 @@ export interface CiiInputReport {
   droppedCountries?: string[];
   snapshotReadFailed?: boolean;
 }
+/** Records one construct rule removed from scoring: how many, and up to 5 to audit. */
+export interface CiiInputExclusion { count: number; samples: Array<{ id: string; title: string; description: string }> }
+export type CiiInputExclusions = Partial<Record<CiiInputId, Record<string, CiiInputExclusion>>>;
+const CII_EXCLUSION_SAMPLES = 5;
+const CII_EXCLUSION_TEXT_MAX = 200;
 
 const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
   ucdp: 'ucdpEvents',
@@ -1277,6 +1471,19 @@ export function assessCiiInputAvailability(
   return states;
 }
 
+/**
+ * Records a construct rule removed from scoring, reported on input health so
+ * an exclusion is never silent. `examShutdown` counts outages that pass the
+ * cause and window rules but are exam shutdowns (CII_OUTAGE_EXAM_TERMS).
+ */
+export function ciiInputExclusions(aux: AuxiliarySources, nowMs: number): CiiInputExclusions {
+  const exams = aux.outages.filter((o) => outageVerdict(o, nowMs) === 'exam');
+  if (exams.length === 0) return {};
+  const text = (v: unknown) => String(v ?? '').slice(0, CII_EXCLUSION_TEXT_MAX);
+  const samples = exams.slice(0, CII_EXCLUSION_SAMPLES).map((o) => ({ id: text(o.id), title: text(o.title), description: text(o.description) }));
+  return { outages: { examShutdown: { count: exams.length, samples } } };
+}
+
 /** What a per-input report adds beyond the state. Only advisories carries any. */
 export type CiiInputDetail = Pick<CiiInputReport, 'snapshotAt' | 'filled' | 'sourcesMissing' | 'droppedCountries' | 'snapshotReadFailed'>;
 
@@ -1297,8 +1504,9 @@ export function ciiInputDetails(aux: AuxiliarySources): Partial<Record<CiiInputI
 export interface CiiInputReportOptions {
   /** ciiInputDetails output. */
   details?: Partial<Record<CiiInputId, CiiInputDetail>>;
+  exclusions?: CiiInputExclusions;
 }
-const CII_INPUT_REPORT_OPTION_KEYS = new Set<string>(['details']);
+const CII_INPUT_REPORT_OPTION_KEYS = new Set<string>(['details', 'exclusions']);
 
 /**
  * Attaches `quietSince`, carried from the previous report while the input
@@ -1323,7 +1531,7 @@ export function withCiiInputQuietClocks(
   const reports = {} as Record<CiiInputId, CiiInputReport>;
   for (const id of CII_HEALTH_INPUT_IDS) {
     const state = states[id];
-    const detail = details[id] ?? {};
+    const detail = { ...details[id], ...(options.exclusions?.[id] ? { excluded: options.exclusions[id] } : {}) };
     if (state !== 'quiet') {
       reports[id] = { state, ...detail };
       continue;
@@ -1446,13 +1654,9 @@ export function computeCIIScores(
   }
 
   // --- Outages (string enum severity) ---
-  for (const o of aux.outages) {
-    const code = (o.countryCode || o.country_code || '').toUpperCase();
-    if (!data[code]) continue;
-    const sev = String(o.severity || '').toUpperCase();
-    if (sev.includes('TOTAL') || sev === 'NATIONWIDE') data[code].outageTotalCount++;
-    else if (sev.includes('MAJOR') || sev === 'REGIONAL') data[code].outageMajorCount++;
-    else if (sev.includes('PARTIAL') || sev.includes('LOCAL') || sev.includes('MINOR')) data[code].outagePartialCount++;
+  // Only government-directed and military-action outages active inside the window.
+  for (const [code, points] of outagePointsByCountry(aux.outages, computedAt)) {
+    if (data[code]) data[code].outagePoints = points;
   }
 
   // Not read, because they do not measure instability inside the country
@@ -1544,7 +1748,7 @@ export function computeCIIScores(
     const unrestFatalityBoost = Math.min(30, d.protestFatalities * 5 * multiplier);
     // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
     const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
-    const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
+    const outageBoost = Math.min(50, d.outagePoints);
     const unrest = Math.min(100, Math.round(
       unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost + d.gdeltUnrestEscalation,
     ));
@@ -2101,6 +2305,7 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
 /** What a build hands to persistence besides the response. */
 interface RiskScoresBuildSide {
   realtimeSignalDensityCoverageCount: number;
+  ciiInputExclusions: CiiInputExclusions;
   ciiInputs: Record<CiiInputId, CiiInputState> | null;
   ciiInputDetails: Partial<Record<CiiInputId, CiiInputDetail>>;
   /** The next last-good snapshot: Tier-1 levels (`normal` included), the seeder clock, and each country's last live sighting. */
@@ -2157,6 +2362,7 @@ async function buildRiskScoresPayload(): Promise<RiskScoresBuildSide & { respons
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
     ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
+    ciiInputExclusions: ciiInputExclusions(aux, nowMs),
     ciiInputDetails: ciiInputDetails(aux),
     advisoriesLastGood: ciiAdvisoryLastGoodSnapshot(aux, nowMs),
   };
@@ -2175,7 +2381,7 @@ async function persistFreshRiskScorePayload(
   // restarts the clocks, which can only delay a quiet-too-long verdict.
   const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
   const inputs = ciiInputs
-    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { details: side.ciiInputDetails })
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { details: side.ciiInputDetails, exclusions: side.ciiInputExclusions })
     : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
@@ -2206,7 +2412,7 @@ export async function getRiskScores(
 ): Promise<GetRiskScoresResponse> {
   try {
     let side: RiskScoresBuildSide = {
-      realtimeSignalDensityCoverageCount: 0, ciiInputs: null, ciiInputDetails: {}, advisoriesLastGood: null,
+      realtimeSignalDensityCoverageCount: 0, ciiInputs: null, ciiInputDetails: {}, ciiInputExclusions: {}, advisoriesLastGood: null,
     };
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,

@@ -263,9 +263,12 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
         .filter((e) => nameCode(e?.country || e?.location))
         .map((e) => pick(e, e?.country ? ['country', 'dateStart', 'deathsBest'] : ['location', 'dateStart', 'deathsBest'])),
     })),
-    // `country` is not scored; it shows which records the countryCode reader fails to map.
+    // `country` places records published before the seeder wrote countryCode;
+    // cause, the start and end times and the exam wording of description and
+    // title decide whether a record scores. Fixtures captured before those
+    // fields were kept hold none of them.
     outages: nullable(raw.outages, (v) => ({
-      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country'])),
+      outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country', 'cause', 'detectedAt', 'endedAt', 'description', 'title'])),
     })),
     climate: nullable(raw.climate, (v) => ({
       anomalies: rows(v, 'anomalies').map((a) => pick(a, ['zone', 'region', 'severity', 'score', 'location', 'lat', 'lon', 'latitude', 'longitude', 'lng'])),

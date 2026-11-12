@@ -185,6 +185,119 @@ export const CII_STRIKE_BOOST_PER_DOUBLING = 2.5;
 export const CII_STRIKE_BOOST_CAP = 10;
 
 /**
+ * Internet outages (Cloudflare Radar outage annotations, `infra:outages:v1`).
+ * Only causes that measure instability on the country's own territory score:
+ * a state cutting its own population off, and military action against the
+ * country's networks. Power cuts, cable cuts, maintenance, weather and natural
+ * disasters are infrastructure faults, not instability. Radar's `outageCause`
+ * values are upper snake case.
+ */
+export const CII_OUTAGE_SCORED_CAUSES: ReadonlySet<string> = new Set(['GOVERNMENT_DIRECTED', 'MILITARY_ACTION']);
+/**
+ * An outage scores while it is ongoing or ended less than this long ago, the
+ * same 7 days that weight ACLED events in full. The seeder keeps 28 days of
+ * annotations, so without this window a shutdown kept scoring for four weeks
+ * after it ended.
+ */
+export const CII_OUTAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * A record's weight falls linearly from 1 to 0 over this last part of
+ * CII_OUTAGE_WINDOW_MS, measured from when it was last active. Without the
+ * fade a 50-point outage term left the score in one step on the day it aged
+ * out, 7.5 final points against P3's limit of 5. 50 raw points over 24 hours
+ * is at most about 0.3 final points an hour.
+ */
+export const CII_OUTAGE_FADE_MS = 24 * 60 * 60 * 1000;
+/**
+ * A record's start time may run this far ahead of the scorer's clock (producer
+ * and scorer clocks differ), the same 5 minutes the strike feed allows.
+ */
+export const CII_OUTAGE_FUTURE_SKEW_MS = 5 * 60 * 1000;
+/**
+ * Exam shutdowns never score. States cut the Internet during national exams
+ * on a published calendar (Iraq, Syria, Algeria, Sudan, Iran and others), so
+ * these shutdowns say nothing about instability. They made up 35 of the 42
+ * GOVERNMENT_DIRECTED Radar annotations in the year to 2026-10-23.
+ *
+ * Radar has no structured marker for them. Its tags, scope, eventType,
+ * outageType, entities and linkedUrl are empty or generic, and only the
+ * free-text description says "exam". The match is therefore LEXICAL, on the
+ * record's description and title:
+ *  - the text is lower-cased and stripped of diacritics ("exámenes" reads
+ *    "examenes", "baccalauréat" reads "baccalaureat");
+ *  - Latin-script terms must equal a whole word or a run of whole words
+ *    ("secondary certificate", "grade 12"), so "example", "bacteria" and
+ *    "grade 120" do not match;
+ *  - Arabic-script terms may sit inside a word, because Arabic and Kurdish
+ *    attach articles and prepositions ("الامتحانات").
+ * Terms cover English, French, Spanish, Arabic, Kurdish (Sorani) and the
+ * national names of exams: "bac" and "BEM" (Algeria), "secondary certificate"
+ * (Syria), "konkur" (Iran), "grade 12". "exame" is Radar's own misspelling on
+ * a 2026-08-30 Iraq exam shutdown.
+ *
+ * Exam wording alone is not enough: see CII_OUTAGE_UNREST_TERMS.
+ */
+export const CII_OUTAGE_EXAM_TERMS: readonly string[] = [
+  'exam', 'exams', 'exame', 'examination', 'examinations', 'examen', 'examens', 'examenes',
+  'baccalaureate', 'baccalaureat', 'bac', 'bem', 'secondary certificate', 'konkur', 'grade 12',
+  'امتحان', 'امتحانات', 'بكالوريا', 'تاقیکردنەوە',
+];
+/**
+ * Unrest, election, conflict or military wording that keeps an exam-related
+ * shutdown scoring. "Internet cut after protests following exam results leak"
+ * is a protest shutdown, not a routine exam one, so a record is excluded as an
+ * exam shutdown only when it carries none of these terms. Matched the same
+ * LEXICAL way as CII_OUTAGE_EXAM_TERMS. English, French, Spanish, Arabic and
+ * Kurdish (Sorani).
+ */
+export const CII_OUTAGE_UNREST_TERMS: readonly string[] = [
+  'protest', 'protests', 'protesters', 'protestors', 'riot', 'riots', 'unrest', 'demonstration', 'demonstrations',
+  'demonstrators', 'election', 'elections', 'electoral', 'vote', 'votes', 'voting', 'conflict', 'fighting', 'clashes',
+  'military', 'curfew', 'coup',
+  'manifestation', 'manifestations', 'manifestants', 'emeute', 'emeutes', 'conflit', 'combats', 'militaire',
+  'militaires', 'couvre feu',
+  // Round-2 review: a strike here is a labour action; whole words only, so "airstrike" does not match.
+  'protested', 'strike', 'strikes', 'rally', 'rallies', 'militant', 'militants', 'violence', 'security operation',
+  'war', 'wars', 'attack', 'attacks', 'armed', 'insurgent', 'insurgents', 'insurgency', 'offensive', 'crackdown', 'crackdowns',
+  'protesta', 'protestas', 'disturbios', 'elecciones', 'toque de queda', 'golpe de estado',
+  'احتجاج', 'مظاهرات', 'تظاهرات', 'اضطرابات', 'انتخابات', 'اشتباكات', 'قتال', 'عسكري', 'حظر التجول', 'حظر تجول', 'انقلاب', 'نزاع',
+  'خۆپیشاندان', 'ئاژاوە', 'هەڵبژاردن', 'شەڕ', 'سەربازی', 'کودەتا',
+];
+/**
+ * A negation cancels the exam or unrest term in its own noun phrase: "Exam
+ * season shutdown, no protests reported" is still a routine exam shutdown,
+ * and "Shutdown, not related to exams" is not one. Only the next word, or
+ * CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS, may sit between the negation and the
+ * term, so a clause boundary (punctuation, "but", "mais", "pero", "لكن") or
+ * any other word ends its reach: in "without warning as protests spread" the
+ * protests are not negated. A miss keeps a real shutdown scoring, the safer
+ * error. Matched LEXICALLY like the terms above: Latin-script entries must
+ * equal a word (or run of words); Arabic-script entries must equal a word or
+ * follow the conjunction "و" attached to it ("ولا"). English, French,
+ * Spanish, Arabic and Kurdish (Sorani).
+ */
+export const CII_OUTAGE_NEGATION_TERMS: readonly string[] = [
+  'no', 'not', 'without', 'never', 'lack of', 'none', 'unrelated',
+  'pas', 'sans', 'aucun', 'aucune', 'jamais', 'ni',
+  'sin', 'ningun', 'ninguna', 'nunca',
+  'لا', 'دون', 'بدون', 'بلا', 'لم', 'ليس', 'لن', 'عدم', 'غياب',
+  'بێ', 'بەبێ', 'نە', 'هیچ',
+];
+/** Words that may sit between a negation and the term it cancels: determiners, modifiers and "related to" links. */
+export const CII_OUTAGE_NEGATION_NOUN_PHRASE_WORDS: readonly string[] = [
+  'a', 'an', 'any', 'the', 'even', 'single', 'major', 'large', 'scale', 'significant', 'further', 'new', 'violent',
+  'mass', 'widespread', 'national', 'reported', 'report', 'reports', 'sign', 'signs', 'evidence', 'of',
+  'related', 'linked', 'connected', 'due', 'to', 'caused', 'by', 'because', 'for',
+  'de', 'd', 'des', 'du', 'la', 'le', 'les', 'eu', 'un', 'une',
+  'hubo', 'se', 'el', 'los', 'las', 'una', 'registraron', 'reportaron',
+  'توجد', 'يوجد', 'وجود', 'أي', 'تسجل', 'تسجيل',
+];
+/** "no protests or riots": a coordinator carries a negation across one more unrest term. */
+export const CII_OUTAGE_NEGATION_COORDINATORS: readonly string[] = ['or', 'nor', 'ou', 'o', 'أو'];
+/** At most this many words may sit between a negation and the term it cancels. */
+export const CII_OUTAGE_NEGATION_WINDOW_WORDS = 3;
+
+/**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)
  * is `1 - i * STRATEGIC_RISK_POSITIONAL_DECAY`. With the current value of 0.15
  * and a top-5 window, weights are [1.00, 0.85, 0.70, 0.55, 0.40].
