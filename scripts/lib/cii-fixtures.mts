@@ -14,6 +14,7 @@ import {
   assessCiiInputAvailability,
   computeCiiScoreTable,
   geoToCountry,
+  isInterceptStrikeEvent,
   normalizeCountryName,
   strikeEventCountry,
   type CiiRawInputs,
@@ -292,7 +293,7 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
       events: rows(v, 'events').flatMap((e) => {
         const severity = String(e?.severity ?? '').toLowerCase();
         const code = strikeEventCountry(e);
-        return code && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
+        return code && !isInterceptStrikeEvent(e) && typeof e?.timestamp === 'number' && Number.isFinite(e.timestamp)
           ? [{ severity, timestamp: e.timestamp, countryCode: code }]
           : [];
       }),

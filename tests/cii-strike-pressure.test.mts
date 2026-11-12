@@ -21,14 +21,18 @@ import {
   CII_STRIKE_GDELT_SUSTAINED_DAYS,
   CII_STRIKE_HALF_LIFE_DAYS,
   CII_STRIKE_SEVERITY_WEIGHTS,
+  CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import {
+  assessCiiInputAvailability,
+  buildCiiAuxiliarySources,
   computeCIIScores,
   confirmedStrikeDaysFromEvents,
   confirmedStrikeDaysFromSeed,
   gdeltCountryEventsFromSeed,
   gdeltStrikeDays,
+  strikeEventCountry,
   strikePressure,
   strikePressureBoost,
   strikePressureFloor,
@@ -64,7 +68,7 @@ function score(a: any, code: string, acled: any[] = []) {
 
 /** A relay tally snapshot: { date: { CC: [critical, high, elevated, moderate] } }. */
 function tally(days: Record<string, Record<string, [number, number, number, number]>>, updatedAt = NOW - 10 * 60_000) {
-  return { version: 1, days, events: {}, updatedAt };
+  return { version: 2, days, events: {}, updatedAt };
 }
 
 describe('strike pressure decay', () => {
@@ -141,6 +145,21 @@ describe('confirmed strike days', () => {
     assert.equal(days.KW, undefined, 'a non-Tier-1 country scores nowhere');
   });
 
+  it('reads only the tally version the relay writes; a v1 tally is unknown, not calm', () => {
+    const require = createRequire(import.meta.url);
+    const strikes = require('../scripts/lib/middle-east-strikes.cjs');
+    assert.equal(strikes.PRESSURE_VERSION, CII_STRIKE_TALLY_VERSION, 'the scorer reads the version the relay writes');
+    // A v1 tally counted retrospective posts, duplicates and interceptions.
+    const v1 = { ...tally({ [daysAgo(1)]: { SA: [3, 4, 2, 0] } }), version: 1 };
+    assert.equal(confirmedStrikeDaysFromSeed(v1, NOW), null);
+    assert.equal(confirmedStrikeDaysFromSeed({ ...v1, version: undefined }, NOW), null);
+    assert.ok(confirmedStrikeDaysFromSeed({ ...v1, version: 2 }, NOW));
+    const raw = { strikePressure: v1, iranEvents: { events: [] } };
+    const parsed = buildCiiAuxiliarySources(raw as any, NOW, { iranEventsEnabled: true });
+    assert.equal(parsed.confirmedStrikes, null);
+    assert.equal(assessCiiInputAvailability([], parsed, NOW).strikePressure, 'unusable', 'health must not read a rejected tally as quiet');
+  });
+
   it('ignores a stale or malformed tally (the relay stopped), instead of freezing it', () => {
     const fresh = tally({ [daysAgo(0)]: { SA: [0, 1, 0, 0] } });
     assert.ok(confirmedStrikeDaysFromSeed(fresh, NOW));
@@ -160,6 +179,18 @@ describe('confirmed strike days', () => {
       { id: 'd', countryCode: 'YE', severity: 'moderate', timestamp: 'yesterday' },
     ], NOW);
     assert.deepEqual(days, { SA: { [daysAgo(0)]: CII_STRIKE_SEVERITY_WEIGHTS.high, [daysAgo(1)]: CII_STRIKE_SEVERITY_WEIGHTS.critical } });
+  });
+  it('skips interceptions and ships at sea in the window, as the relay tally does', () => {
+    const days = confirmedStrikeDaysFromEvents([
+      { id: 'a', countryCode: 'SA', severity: 'high', timestamp: NOW - 2 * HOUR, category: 'airstrike' },
+      { id: 'b', countryCode: 'SA', severity: 'elevated', timestamp: NOW - 2 * HOUR, category: 'defense' },
+      // A tanker hit off southern Iran: the feed sends countryCode '' with a map
+      // point inside Iran's box; the coordinates must not claim it for Iran.
+      { id: 'c', countryCode: '', severity: 'critical', timestamp: NOW - 2 * HOUR, category: 'airstrike', latitude: 27.0, longitude: 56.3 },
+    ], NOW);
+    assert.deepEqual(days, { SA: { [daysAgo(0)]: CII_STRIKE_SEVERITY_WEIGHTS.high } });
+    assert.equal(strikeEventCountry({ countryCode: '', latitude: 27.0, longitude: 56.3 }), null);
+    assert.equal(strikeEventCountry({ latitude: 27.0, longitude: 56.3 }), 'IR', 'an event without the field still falls back to its coordinates');
   });
 });
 

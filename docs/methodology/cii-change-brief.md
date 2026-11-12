@@ -158,7 +158,7 @@ WM_SEED_ENV_FILE=/path/to/.env.local node --import tsx scripts/cii-capture-fixtu
 
 `--wait-for-rebuild` polls the stored table and reads the inputs the moment production rebuilds it. A table minutes old no longer matches inputs that have since moved.
 
-The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
+The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel; interceptions and ships at sea, which the scorer skips, are dropped. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
 
 ### Whole-table diff
 

@@ -149,8 +149,26 @@ Component details that are easy to miss:
     `moderate 0.5`). The relay keeps 30 days of per-country counts by the UTC
     day each incident happened (`conflict:strike-pressure:v1`); the 72h
     window it is built from (`conflict:iran-events:v1`) is read too, and the
-    larger per day wins.
-  - **GDELT strikes**, worldwide: articles reporting CAMEO 194 (artillery, tanks) or 195 (aerial weapons:
+    larger per day wins. Only a tally of the current version (`version: 2`)
+    is read; an older one is reported unusable, not calm, and the window alone
+    carries the feed until the relay's new tally refills.
+    One physical incident counts once, on the country hit, and is dated to
+    its first report: the feed merges every report of one place within 3 hours
+    of the first (a late update, such as a death toll or an official
+    confirmation, within 24 hours), and folds GDELT articles that arrive up to
+    a day later into it. A report that names no particular place joins the
+    nearest named incident in its country within 3 hours, and two spellings of
+    one unlisted place count as one. An incident keeps the date of its first
+    report, and a late update with no earlier report is not counted, because
+    its attack time is unknown. A ship hit off a town and a strike on the town
+    are two incidents when Telegram reports both; GDELT cannot tell sea from
+    land, so its articles fold into either. It drops retrospective posts (old footage, leaked
+    images, accounts of an earlier attack), and a report with no recency
+    signal needs an independent second report. Interceptions are mapped but
+    not counted, a ship hit at sea counts for no country, and a launch is not
+    a strike on the launch site.
+  - **GDELT strikes**, worldwide:
+    articles reporting CAMEO 194 (artillery, tanks) or 195 (aerial weapons:
     air, drone and missile strikes) located in the country **and** aimed at it
     (the event's target, Actor2, is that country), as a share of the country's
     articles that day: `300 * max(0, strikes / (articles + 50) - 0.005)`. The
