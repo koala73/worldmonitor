@@ -3187,7 +3187,9 @@
         "high": "Ridicat pentru sezon",
         "normal": "Obișnuit",
         "insufficient_history": "Istoric insuficient",
-        "no_recent_data": "Nicio trecere recentă"
+        "no_recent_data": "Nicio trecere recentă",
+        "lowInRange": "Scăzut în intervalul său",
+        "highInRange": "Ridicat în intervalul său"
       },
       "vsUsual": "{{value}} față de obișnuit în {{month}}",
       "in12Months": "{{value}} în 12 luni",

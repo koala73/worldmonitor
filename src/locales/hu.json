@@ -3235,7 +3235,9 @@
         "high": "Magas az évszakhoz",
         "normal": "Szokásos",
         "insufficient_history": "Túl rövid előzmény",
-        "no_recent_data": "Nincs friss áthaladás"
+        "no_recent_data": "Nincs friss áthaladás",
+        "lowInRange": "Alacsony a tartományában",
+        "highInRange": "Magas a tartományában"
       },
       "vsUsual": "{{value}} a szokásoshoz képest ({{month}})",
       "in12Months": "{{value}} 12 hónap alatt",

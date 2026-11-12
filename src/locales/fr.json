@@ -3187,7 +3187,9 @@
         "high": "Haut pour la saison",
         "normal": "Habituel",
         "insufficient_history": "Historique insuffisant",
-        "no_recent_data": "Aucun passage récent"
+        "no_recent_data": "Aucun passage récent",
+        "lowInRange": "Bas dans sa plage",
+        "highInRange": "Haut dans sa plage"
       },
       "vsUsual": "{{value}} par rapport à l’habituel en {{month}}",
       "in12Months": "{{value}} sur 12 mois",

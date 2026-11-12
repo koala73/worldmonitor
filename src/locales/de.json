@@ -3166,7 +3166,9 @@
         "high": "Hoch für die Jahreszeit",
         "normal": "Im üblichen Bereich",
         "insufficient_history": "Zu kurze Messreihe",
-        "no_recent_data": "Kein aktueller Überflug"
+        "no_recent_data": "Kein aktueller Überflug",
+        "lowInRange": "Niedrig in seiner Spanne",
+        "highInRange": "Hoch in seiner Spanne"
       },
       "vsUsual": "{{value}} gegenüber üblich im {{month}}",
       "in12Months": "{{value}} in 12 Monaten",

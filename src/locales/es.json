@@ -3187,7 +3187,9 @@
         "high": "Alto para la época",
         "normal": "Habitual",
         "insufficient_history": "Historial insuficiente",
-        "no_recent_data": "Sin pasada reciente"
+        "no_recent_data": "Sin pasada reciente",
+        "lowInRange": "Bajo en su rango",
+        "highInRange": "Alto en su rango"
       },
       "vsUsual": "{{value}} frente a lo habitual en {{month}}",
       "in12Months": "{{value}} en 12 meses",

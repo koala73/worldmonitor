@@ -5509,7 +5509,7 @@ export class DeckGLMap {
       case 'reservoir-levels-layer': {
         const r = obj as ReservoirLevel;
         const headline = reservoirHeadline(r, { t, locale: getLocale(), nowMs: Date.now() });
-        return { html: `<div class="deckgl-tooltip"><strong>${text(r.name)}</strong><br/>${text(reservoirStatusLabel(r.status, t))} · ${text(headline)}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(r.name)}</strong><br/>${text(reservoirStatusLabel(r, t))} · ${text(headline)}</div>` };
       }
       case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
