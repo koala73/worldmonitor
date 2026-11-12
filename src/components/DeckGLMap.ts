@@ -9,6 +9,7 @@ import { createTimeoutSignal } from '@/services/timeout-signal';
 import { MapLibreOverlay } from '@deck.gl/maplibre';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
+import type { IconLayerProps } from '@deck.gl/layers';
 import * as maplibregl from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { StyleSpecification } from 'maplibre-gl';
@@ -413,23 +414,41 @@ function getOverlayColors() {
 // Initialize and refresh on every buildLayers() call
 let COLORS = getOverlayColors();
 
-// SVG icons as data URLs for different marker shapes
-const MARKER_ICONS = {
-  // Square - for datacenters
-  square: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="3" fill="white"/></svg>`),
-  // Diamond - for hotspots
-  diamond: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,16 16,30 2,16" fill="white"/></svg>`),
-  // Triangle up - for military bases
-  triangleUp: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 30,28 2,28" fill="white"/></svg>`),
-  // Hexagon - for nuclear
-  hexagon: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="white"/></svg>`),
-  // Circle - fallback
-  circle: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="white"/></svg>`),
-  // Star - for special markers
-  star: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><polygon points="16,2 20,12 30,12 22,19 25,30 16,23 7,30 10,19 2,12 12,12" fill="white"/></svg>`),
-  // Airplane silhouette - top-down with wings and tail (pointing north, rotated by trackDeg)
-  plane: 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M16 2 L17.5 10 L17 12 L27 17 L27 19 L17 16 L17 24 L20 26.5 L20 28 L16 27 L12 28 L12 26.5 L15 24 L15 16 L5 19 L5 17 L15 12 L14.5 10 Z" fill="white"/></svg>`),
-};
+// Marker shapes in a 32×32 box, drawn white so the icon layers tint them (mask: true).
+// deck.gl fetches an icon atlas given as a URL, and CSP checks that fetch as
+// connect-src. MCP Apps hosts allow data: images but not data: fetches, so the
+// atlases are canvases, which deck.gl uploads without a request.
+const MARKER_SHAPES = {
+  square: 'M5 2H27A3 3 0 0 1 30 5V27A3 3 0 0 1 27 30H5A3 3 0 0 1 2 27V5A3 3 0 0 1 5 2Z',
+  triangleUp: 'M16 2L30 28H2Z',
+  hexagon: 'M16 2L28 9V23L16 30L4 23V9Z',
+  plane: 'M16 2 L17.5 10 L17 12 L27 17 L27 19 L17 16 L17 24 L20 26.5 L20 28 L16 27 L12 28 L12 26.5 L15 24 L15 16 L5 19 L5 17 L15 12 L14.5 10 Z',
+} as const;
+const markerIconCanvases = new Map<keyof typeof MARKER_SHAPES, HTMLCanvasElement>();
+
+/**
+ * deck.gl's image props upload any browser image object, a canvas included
+ * (createTexture in @deck.gl/core), but IconLayer types iconAtlas as string | Texture.
+ */
+function canvasAtlas(canvas: HTMLCanvasElement): IconLayerProps['iconAtlas'] {
+  return canvas as unknown as IconLayerProps['iconAtlas'];
+}
+
+function markerIcon(shape: keyof typeof MARKER_SHAPES): IconLayerProps['iconAtlas'] {
+  let canvas = markerIconCanvases.get(shape);
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (ctx && typeof Path2D !== 'undefined') {
+      ctx.fillStyle = 'white';
+      ctx.fill(new Path2D(MARKER_SHAPES[shape]));
+    }
+    markerIconCanvases.set(shape, canvas);
+  }
+  return canvasAtlas(canvas);
+}
 
 const BASES_ICON_MAPPING = { triangleUp: { x: 0, y: 0, width: 32, height: 32, mask: true } };
 const NUCLEAR_ICON_MAPPING = { hexagon: { x: 0, y: 0, width: 32, height: 32, mask: true } };
@@ -2638,7 +2657,7 @@ export class DeckGLMap {
       data,
       getPosition: getPosition as (d: unknown) => [number, number],
       getIcon: () => category,
-      iconAtlas: atlas.url,
+      iconAtlas: canvasAtlas(atlas.image),
       iconMapping: atlas.mapping,
       getSize: size,
       sizeUnits: 'pixels',
@@ -3342,7 +3361,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'triangleUp',
-      iconAtlas: MARKER_ICONS.triangleUp,
+      iconAtlas: markerIcon('triangleUp'),
       iconMapping: BASES_ICON_MAPPING,
       getSize: (d) => highlightedBases.has(d.id) ? 16 : 11,
       getColor: (d) => {
@@ -3406,7 +3425,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'hexagon',
-      iconAtlas: MARKER_ICONS.hexagon,
+      iconAtlas: markerIcon('hexagon'),
       iconMapping: NUCLEAR_ICON_MAPPING,
       getSize: (d) => highlightedNuclear.has(d.id) ? 15 : 11,
       getColor: (d) => {
@@ -3574,7 +3593,7 @@ export class DeckGLMap {
       data: this.aircraftPositions,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'plane',
-      iconAtlas: MARKER_ICONS.plane,
+      iconAtlas: markerIcon('plane'),
       iconMapping: AIRCRAFT_ICON_MAPPING,
       getSize: (d) => d.onGround ? 14 : 18,
       getColor: (d) => {
@@ -3624,7 +3643,7 @@ export class DeckGLMap {
       data,
       getPosition: (d) => [d.lon, d.lat],
       getIcon: () => 'square',
-      iconAtlas: MARKER_ICONS.square,
+      iconAtlas: markerIcon('square'),
       iconMapping: DATACENTER_ICON_MAPPING,
       getSize: (d) => highlightedDC.has(d.id) ? 14 : 10,
       getColor: (d) => {

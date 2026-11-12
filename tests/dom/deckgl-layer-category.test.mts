@@ -14,19 +14,19 @@ import { initTestI18n } from './helpers/i18n.mts';
 beforeAll(initTestI18n);
 // jsdom has no 2D canvas; the glyph atlas only needs one to draw into.
 const realGetContext = HTMLCanvasElement.prototype.getContext;
-const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
 afterAll(() => {
   HTMLCanvasElement.prototype.getContext = realGetContext;
-  HTMLCanvasElement.prototype.toDataURL = realToDataURL;
 });
 beforeAll(() => {
   const noop = () => {};
   const ctx = { beginPath: noop, arc: noop, fill: noop, stroke: noop, fillText: noop } as unknown as CanvasRenderingContext2D;
   HTMLCanvasElement.prototype.getContext = (() => ctx) as unknown as HTMLCanvasElement['getContext'];
-  HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,';
 });
 
 type Host = {
+  createBasesLayer(): { props: Record<string, unknown> };
+  getBasesData(): unknown[];
+  highlightedAssets: { base: Set<string> };
   getCategorizedTooltip(info: unknown): { html: string } | null;
   updateLegend(): void;
   withCategoryGlyphs(built: unknown[]): Array<{ id: string; props: Record<string, unknown> }>;
@@ -105,6 +105,18 @@ describe('legend', () => {
   });
 });
 
+describe('marker icon atlases', () => {
+  it('draws marker shapes on a canvas instead of a data: URL', () => {
+    const map = host();
+    map.maplibreMap = { getZoom: () => 4 };
+    map.highlightedAssets = { base: new Set() };
+    map.getBasesData = () => [];
+    const atlas = map.createBasesLayer().props.iconAtlas;
+    expect(atlas).toBeInstanceOf(HTMLCanvasElement);
+    expect(map.createBasesLayer().props.iconAtlas).toBe(atlas);
+  });
+});
+
 describe('category glyph layers', () => {
   const marker = (id: string, count: number, visible = true) => new ScatterplotLayer<{ p: [number, number] }>({
     id,
@@ -172,6 +184,13 @@ describe('category glyph layers', () => {
 
   it('draws nothing for hidden, empty or ghost layers', () => {
     expect(glyphIds(4, [marker('fires-layer', 5, false), marker('outages-layer', 0), marker('outages-layer-ghost', 3)])).toEqual([]);
+  });
+
+  // deck.gl fetches a URL icon atlas, and CSP checks that fetch as connect-src. MCP Apps hosts
+  // allow data: images but not data: fetches, so a data: URL atlas never loads there.
+  it('hands deck.gl the glyph atlas canvas, not a URL it would fetch', () => {
+    const glyph = withGlyphs(4, [marker('fires-layer', 5)])[1]!;
+    expect(glyph.props.iconAtlas).toBeInstanceOf(HTMLCanvasElement);
   });
 
   it('drops dense layers at world zoom but keeps sparse ones', () => {
