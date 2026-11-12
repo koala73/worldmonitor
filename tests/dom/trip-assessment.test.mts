@@ -375,11 +375,25 @@ describe('opening from a focus', () => {
     const to = document.querySelector<HTMLInputElement>('.trip-assessment-to')!;
     to.value = '2026-12-20';
     to.dispatchEvent(new Event('input'));
+    const type = (selector: string, value: string) => {
+      const input = document.querySelector<HTMLInputElement>(selector)!;
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    };
+    type('.trip-assessment-label', ' Site visit ');
+    type('[data-code="TH"] .trip-assessment-cities', 'Bangkok, Chiang Mai, bangkok');
+    type('[data-code="TH"] .trip-assessment-arrive', '2026-12-02');
+    type('[data-code="ID"] .trip-assessment-depart', '2026-12-12');
     document.querySelector<HTMLButtonElement>('.trip-assessment-copy')!.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
     const text = writeText.mock.calls[0]![0] as string;
     expect(text).toContain('Thailand (TH), Indonesia (ID)');
     expect(text).not.toContain('Vietnam');
     expect(text).toContain('2026-12-01 to 2026-12-20');
+    // What was typed in the dialog reaches the assistant too, or it would be
+    // asked for a different trip than the export builds.
+    expect(text).toContain('Task label: Site visit.');
+    expect(text).toContain('Thailand (TH): cities Bangkok, Chiang Mai; arrive 2026-12-02.');
+    expect(text).toContain('Indonesia (ID): depart 2026-12-12.');
   });
 });

@@ -29,7 +29,7 @@ On a tab with a focus, press **Draft assessment** in the focus bar. The **Trip a
 
 All three give the 9 sections described below, from the same data as the MCP tool. Each download reads the sources again and carries its own capture time, so two downloads taken minutes apart can differ.
 
-The plan is checked on the server, for a signed-in browser session, before any source is read. A request from an account without the plan is refused with HTTP 403 and `UPGRADE_REQUIRED`, whatever the dashboard shows. The export does not accept API keys: API plans use the MCP tool.
+The plan is checked on the server, for a signed-in browser session, before any source is read. A request from an account without the plan is refused with HTTP 403 and `UPGRADE_REQUIRED`, whatever the dashboard shows. The export does not accept API keys: API plans use the MCP tool. When the plan cannot be verified, for example during a billing-provider outage, the answer is HTTP 503 with a `Retry-After` header and never an upgrade message. An account can build 20 drafts a minute.
 
 ## Inputs
 

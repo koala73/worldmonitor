@@ -5,6 +5,7 @@
 // `travelRiskAssessment` flag changes these results.
 
 import { describe, it, afterEach } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 
 import { getEntitlementFeatures } from '../convex/config/productCatalog';
@@ -44,6 +45,7 @@ function harness(overrides: Partial<TravelRiskExportDeps> & { plan?: string | nu
       return plan === null ? null : entitlement(plan);
     },
     rateLimit: async () => null,
+    backendConfigured: () => true,
     build: async () => {
       calls.build += 1;
       return { markdown: MARKDOWN, document: {} as TravelRiskResult['document'] };
@@ -112,6 +114,50 @@ describe('travel risk export route: who gets in', () => {
     assert.equal(res.status, 503);
     assert.equal(calls.build, 0);
     assert.equal(calls.capture, 1);
+  });
+});
+
+describe('travel risk export route: a lookup that could not verify is not "no plan"', () => {
+  // `getEntitlements` does not throw on an outage: it returns a marker row.
+  const marker = (extra: Record<string, unknown>) => async () => ({ ...entitlement('pro_business_monthly'), ...extra }) as never;
+
+  it('answers a retryable 503, not an upgrade 403, for each unverified state', async () => {
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      ['verification unavailable', { verificationUnavailable: true, retryAfterSeconds: 30 }, 'entitlement_verification_unavailable'],
+      ['renewal pending', { billingStatus: 'renewal_verification_pending' }, 'renewal_verification_pending'],
+      ['renewal failed', { billingStatus: 'renewal_verification_failed' }, 'renewal_verification_failed'],
+    ];
+    for (const [label, extra, code] of cases) {
+      const { deps, calls } = harness({ getEntitlements: marker(extra) });
+      const res = await createTravelRiskExportHandler(deps)(post({ ...TRIP, format: 'markdown' }));
+      assert.equal(res.status, 503, label);
+      assert.equal(res.headers.get('X-Billing-Verification'), code, label);
+      assert.ok(Number(res.headers.get('Retry-After')) > 0, label);
+      assert.notEqual(((await res.json()) as { error?: string }).error, 'UPGRADE_REQUIRED', label);
+      assert.equal(calls.build, 0, label);
+    }
+  });
+
+  it('keeps a provider-confirmed lapse a terminal 403 with no retry hint', async () => {
+    const { deps, calls } = harness({ getEntitlements: marker({ billingStatus: 'subscription_lapsed' }) });
+    const res = await createTravelRiskExportHandler(deps)(post({ ...TRIP, format: 'markdown' }));
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.equal(res.headers.get('Retry-After'), null);
+    assert.equal(calls.build, 0);
+  });
+
+  it('treats a missing row as a deploy defect, not a free account, when no backend is configured', async () => {
+    const { deps, calls } = harness({ plan: null, backendConfigured: () => false });
+    const res = await createTravelRiskExportHandler(deps)(post({ ...TRIP, format: 'markdown' }));
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    assert.equal(calls.build, 0);
+  });
+
+  it('still refuses a missing row with 403 when the backend is configured', async () => {
+    const { deps } = harness({ plan: null });
+    assert.equal((await createTravelRiskExportHandler(deps)(post({ ...TRIP, format: 'markdown' }))).status, 403);
   });
 });
 
@@ -305,5 +351,21 @@ describe('travel risk export route: with the real tool behind it', () => {
     const res = await realHandler()(post({ countries: [{ country_code: 'XX' }], format: 'markdown' }));
     assert.equal(res.status, 400);
     assert.equal(fetched, 0);
+  });
+});
+
+describe('travel risk export route: the edge wiring', () => {
+  const source = readFileSync(new URL('../api/travel-risk-assessment.ts', import.meta.url), 'utf8');
+
+  it('applies its own per-account budget on top of the shared one', () => {
+    assert.match(source, /checkRateLimit\(request, cors, \{ principalUserId: userId \}\)/);
+    assert.match(source, /checkScopedRateLimit\(RATE_SCOPE, RATE_LIMIT, RATE_WINDOW, userId\)/);
+    const limit = Number(/const RATE_LIMIT = (\d+);/.exec(source)?.[1]);
+    assert.ok(limit > 0 && limit <= 30, `the per-account cap is a handful a minute, not the shared 600 (got ${limit})`);
+  });
+
+  it('resolves the session without the plan lookup it does not use, and sends the entitlement backend check through', () => {
+    assert.match(source, /validateBearerToken\(token, \{ resolvePlan: false \}\)/);
+    assert.match(source, /backendConfigured: isEntitlementBackendConfigured/);
   });
 });

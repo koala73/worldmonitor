@@ -25,6 +25,11 @@ import { parseTravelRiskArgs } from '../../api/mcp/registry/travel-risk-tool';
 import { McpSourceUnavailableError } from '../../api/mcp/source-unavailable';
 import { hasTravelRiskAssessment, type TravelRiskEntitlement } from '../../shared/travel-risk-access';
 import { hasCurrentEntitlementCoverage } from './entitlement-coverage';
+import {
+  classifyBillingVerification,
+  renderBillingVerificationDenial,
+  unverifiableEntitlementDenial,
+} from './entitlement-check';
 import { renderTravelRiskHtml } from './travel-risk-html';
 
 export const TRAVEL_RISK_EXPORT_MAX_BODY_BYTES = 8_192;
@@ -37,7 +42,14 @@ export interface TravelRiskExportDeps {
   corsHeaders(request: Request): Record<string, string>;
   /** Verifies a Clerk session token. `reason: 'unverifiable'` is an outage, not a bad token. */
   validateBearer(token: string): Promise<{ valid: boolean; userId?: string; reason?: string }>;
-  getEntitlements(userId: string, options: { requireTravelRiskShape: true }): Promise<(TravelRiskEntitlement & { planKey?: string }) | null>;
+  getEntitlements(userId: string, options: { requireTravelRiskShape: true }): Promise<(TravelRiskEntitlement & {
+    planKey?: string;
+    billingStatus?: string;
+    verificationUnavailable?: boolean;
+    retryAfterSeconds?: number;
+  }) | null>;
+  /** False when no entitlement backend is configured: an absent row then says nothing about the account. */
+  backendConfigured(): boolean;
   /** A refusal to return as is, or null to proceed. */
   rateLimit(request: Request, cors: Record<string, string>, userId: string): Promise<Response | null>;
   build(params: Record<string, unknown>): Promise<TravelRiskResult>;
@@ -99,6 +111,14 @@ export function createTravelRiskExportHandler(deps: TravelRiskExportDeps): (requ
       deps.captureError(error, { step: 'entitlement' });
       return json({ error: 'TEMPORARILY_UNAVAILABLE' }, 503, cors, { 'Retry-After': '30' });
     }
+    // A lookup that failed or could not be verified is an answer about the
+    // verification, not about the plan. `getEntitlements` returns that as a
+    // marker rather than throwing, so it must be told apart before the plan is
+    // judged: a paying customer is never shown an upgrade message for an
+    // outage. The one terminal member, a provider-confirmed lapse, stays a 403.
+    const verification = classifyBillingVerification(entitlement as never)
+      ?? (entitlement || deps.backendConfigured() ? null : unverifiableEntitlementDenial());
+    if (verification) return renderBillingVerificationDenial(verification, cors);
     const nowMs = deps.now();
     if (!entitlement || !hasCurrentEntitlementCoverage(entitlement as never, nowMs) || !hasTravelRiskAssessment(entitlement, nowMs)) {
       return json({ error: 'UPGRADE_REQUIRED', message: UPGRADE_MESSAGE }, 403, cors);

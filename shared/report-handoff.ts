@@ -14,12 +14,25 @@ import type { TabScope } from './tab-scope';
 /** Mirrors MAX_TRIP_COUNTRIES in api/mcp/registry/travel-risk-tool.ts. */
 export const REPORT_MAX_COUNTRIES = 6;
 
+/** What the trip assessment dialog adds for one country. */
+export interface ReportHandoffDetail {
+  cities: string[];
+  arrive: string | null;
+  depart: string | null;
+}
+
 export interface ReportHandoff {
   countries: string[];
   /** Chosen countries that did not fit in the report, in focus order. */
   omitted: string[];
   dateFrom: string | null;
   dateTo: string | null;
+  /**
+   * Set only by the trip assessment dialog, from what was typed there. A focus
+   * carries countries and a window and nothing else.
+   */
+  details?: Record<string, ReportHandoffDetail>;
+  taskLabel?: string | null;
 }
 
 export function reportHandoffFromScope(scope: TabScope): ReportHandoff {
@@ -44,6 +57,20 @@ export function assessmentRequestText(handoff: ReportHandoff, nameOf: (code: str
   if (handoff.dateFrom && handoff.dateTo) lines.push(`Date window: ${handoff.dateFrom} to ${handoff.dateTo}.`);
   else if (handoff.dateFrom) lines.push(`From ${handoff.dateFrom}.`);
   else if (handoff.dateTo) lines.push(`Until ${handoff.dateTo}.`);
+  // What the analyst added in the dialog, so the assistant is asked for the
+  // same trip the export builds: the cities mark matching unrest signals and
+  // airports, and the dates scope seasonal hazards.
+  if (handoff.taskLabel) lines.push(`Task label: ${handoff.taskLabel}.`);
+  for (const code of handoff.countries) {
+    const detail = handoff.details?.[code];
+    if (!detail) continue;
+    const parts = [
+      ...(detail.cities.length > 0 ? [`cities ${detail.cities.join(', ')}`] : []),
+      ...(detail.arrive ? [`arrive ${detail.arrive}`] : []),
+      ...(detail.depart ? [`depart ${detail.depart}`] : []),
+    ];
+    if (parts.length > 0) lines.push(`${nameOf(code)} (${code}): ${parts.join('; ')}.`);
+  }
   // Named so the analyst and the assistant both see what was left out; the
   // wording tells the assistant not to add them back.
   if (handoff.omitted.length > 0) {

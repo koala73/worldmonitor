@@ -18,11 +18,15 @@ import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
-import { getEntitlements } from '../server/_shared/entitlement-check';
-import { checkRateLimit } from '../server/_shared/rate-limit';
+import { getEntitlements, isEntitlementBackendConfigured } from '../server/_shared/entitlement-check';
+import { checkRateLimit, checkScopedRateLimit, scopedTooManyRequestsResponse } from '../server/_shared/rate-limit';
 import { createTravelRiskExportHandler } from '../server/_shared/travel-risk-export';
 import { createTravelRiskTool } from './mcp/registry/travel-risk-tool';
 import type { TravelRiskResult } from './mcp/registry/_travel-risk-document';
+
+const RATE_SCOPE = '/api/travel-risk-assessment';
+const RATE_LIMIT = 20;
+const RATE_WINDOW = '60 s';
 
 const tool = createTravelRiskTool();
 
@@ -31,7 +35,16 @@ export default createTravelRiskExportHandler({
   // The role is not used, so skip the plan lookup it would trigger.
   validateBearer: (token) => validateBearerToken(token, { resolvePlan: false }),
   getEntitlements,
-  rateLimit: (request, cors, userId) => checkRateLimit(request, cors, { principalUserId: userId }),
+  backendConfigured: isEntitlementBackendConfigured,
+  rateLimit: async (request, cors, userId) => {
+    const global = await checkRateLimit(request, cors, { principalUserId: userId });
+    if (global) return global;
+    // A build reads about 20 cached sources, so it gets its own, much tighter,
+    // per-account budget than the 600 a minute every route shares. Availability
+    // first on a Redis blip: the route is plan-gated and spends no LLM budget.
+    const scoped = await checkScopedRateLimit(RATE_SCOPE, RATE_LIMIT, RATE_WINDOW, userId);
+    return scoped.allowed ? null : scopedTooManyRequestsResponse(scoped, RATE_WINDOW, cors);
+  },
   build: async (params) => {
     if (!tool._execute) throw new Error('travel risk tool has no executor');
     return await tool._execute(params, '', { kind: 'free' }, undefined as never) as TravelRiskResult;

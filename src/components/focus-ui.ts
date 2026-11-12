@@ -26,7 +26,7 @@ export function applyScopeNotice(key: string, panel: Panel, resolved: ResolvedSc
  * the chunk the focus bar ships in.
  */
 export async function openTripAssessmentForScope(scope: TabScope): Promise<void> {
-  const [{ openTripAssessment }, { draftFromHandoff }, { copyHandoffRequest }, { reportHandoffFromScope }] = await Promise.all([
+  const [{ openTripAssessment }, { draftFromHandoff, parseCities }, { copyHandoffRequest }, { reportHandoffFromScope }] = await Promise.all([
     import('./TripAssessmentDialog'),
     import('@/services/travel-risk-export'),
     import('./focus-handoff'),
@@ -36,13 +36,20 @@ export async function openTripAssessmentForScope(scope: TabScope): Promise<void>
   openTripAssessment({
     initial: draftFromHandoff(handoff),
     omitted: handoff.omitted,
-    // What was typed in the dialog, not the focus it started from.
+    // What was typed in the dialog, not the focus it started from: the same
+    // trip the export builds, cities and dates and label included.
     onCopyRequest: (draft) => {
       void copyHandoffRequest({
         countries: draft.countries.map((c) => c.code),
         omitted: handoff.omitted,
         dateFrom: draft.dateFrom || null,
         dateTo: draft.dateTo || null,
+        taskLabel: draft.taskLabel.trim() || null,
+        details: Object.fromEntries(draft.countries.map((c) => [c.code, {
+          cities: parseCities(c.cities),
+          arrive: c.arrive || null,
+          depart: c.depart || null,
+        }])),
       });
     },
   });
