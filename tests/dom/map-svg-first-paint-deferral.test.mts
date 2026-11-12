@@ -95,6 +95,7 @@ function createMap(): MapHarness {
   document.body.append(container);
 
   Object.assign(map, {
+    controlDisclosureCleanups: [],
     container,
     overlays,
     svg: d3.select(svgNode),

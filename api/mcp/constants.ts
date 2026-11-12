@@ -389,7 +389,9 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.47.0 → 1.48.0 for report_issue (99 → 100 tools, #8721).
 // Bumped 1.48.0 → 1.49.0 for get_fred_series (100 → 101 tools, #5707).
 // Bumped 1.49.0 → 1.50.0 for get_global_air_activity (101 → 102 tools, #7720).
-export const SERVER_VERSION = '1.50.0';
+// Bumped 1.50.0 → 1.51.0 when the news and country views moved to -v4 URIs
+// that ask Claude for its side panel (preferredDisplayMode).
+export const SERVER_VERSION = '1.51.0';
 
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,

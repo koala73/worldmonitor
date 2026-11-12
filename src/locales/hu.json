@@ -4460,6 +4460,7 @@
   "auth": {
     "signIn": "Bejelentkezés",
     "createAccount": "Fiók létrehozása",
+    "freeReason": "Ingyenes: elrendezés mentése, országok követése, riasztások",
     "settings": "Beállítások",
     "passkeyOffer": {}
   },
