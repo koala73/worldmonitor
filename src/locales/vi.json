@@ -5033,7 +5033,7 @@
     "draftAssessment": "Bản đánh giá dự thảo",
     "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",
     "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
-    "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia.",
+    "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia. Các quốc gia bị bỏ qua: {{omitted}}.",
     "draftCopyFailed": "Không thể sao chép yêu cầu."
   },
   "tripAssessment": {
