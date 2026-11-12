@@ -46,6 +46,10 @@ test('Strategic Water Levels lists attention first, filters, and opens the reser
   await expect(mead.locator('.wl-place')).toHaveText('United States · Colorado');
   await expect(mead.locator('svg.mini-sparkline')).toHaveCount(1);
   await expect(panel.locator('.wl-footer a[href="https://nsidc.org/data/atl13"]')).toBeVisible();
+  await expect(panel.locator('.wl-footer a[href="https://nsidc.org/data/atl06"]')).toBeVisible();
+  // GERD has no seasonal baseline, so its "high" is a position in the record range, not a seasonal comparison.
+  await expect(panel.locator('button.wl-row[data-reservoir-id="gerd"] .wl-chip')).toHaveText('High in its range');
+  await expect(panel.locator('button.wl-row[data-reservoir-id="ataturk"] .wl-chip')).toHaveText('High for season');
 
   await panel.locator('button[data-wl-filter="attention"]').click();
   await expect(panel.locator('button[data-wl-filter="attention"]')).toHaveAttribute('aria-pressed', 'true');
