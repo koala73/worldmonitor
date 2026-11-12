@@ -490,7 +490,8 @@
     "marketBreadth": "시장 폭",
     "climateNews": "기후 뉴스",
     "fx": "외환 환율",
-    "ukmtoIncidents": "UKMTO 사건"
+    "ukmtoIncidents": "UKMTO 사건",
+    "reservoirLevels": "전략 수위"
   },
   "commands": {
     "prefixes": {
@@ -1307,7 +1308,8 @@
         "canadaRoads": "캐나다 도로",
         "canadaAlerts": "캐나다 경보",
         "notamAirspace": "NOTAM 공역 제한",
-        "no2Activity": "산업 활동"
+        "no2Activity": "산업 활동",
+        "reservoirLevels": "수위"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1424,7 +1426,8 @@
           "canadaRoads": "지원되는 캐나다 관할 지역의 공식 도로 사고, 경보, 노면 상태, 통행 차단, 공사 및 위험 정보",
           "canadaAlerts": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, SaskAlert의 주(州) 공공안전 경보",
           "notamAirspace": "FAA NOTAM에서 현재 시행 중이거나 24시간 이내에 시작되는 임시 비행 제한, 제한된 공역, 위험 및 금지 공역",
-          "no2Activity": "167개국과 32개 산업 클러스터에 대한 Sentinel-5P NO2 활동 방향: 최근 56일 창을 이전 연도의 같은 날짜와 비교하고 10% 데드밴드를 적용합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다."
+          "no2Activity": "167개국과 32개 산업 클러스터에 대한 Sentinel-5P NO2 활동 방향: 최근 56일 창을 이전 연도의 같은 날짜와 비교하고 10% 데드밴드를 적용합니다. 수정된 Copernicus Sentinel 데이터를 포함합니다.",
+          "reservoirLevels": "NASA ICESat-2 위성 라이다로 측정한 전략 저수지와 호수의 수면 수위를 해당 월의 평년 수위와 비교합니다. NASA는 각 관측 패스를 측정 후 약 두 달 뒤에 공개합니다."
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -3119,6 +3122,47 @@
       "body": "GitHub에서 스타를 누르면 다른 사람들이 쉽게 찾을 수 있습니다.",
       "star": "GitHub에서 스타 누르기",
       "dismiss": "닫기 및 다시 묻지 않기"
+    },
+    "reservoirLevels": {
+      "note": "NASA ICESat-2 위성 라이다로 측정한 수면 수위입니다. NASA는 각 패스를 측정 후 약 두 달 뒤에 공개하므로, 이 데이터는 일 단위가 아니라 주와 계절 단위의 변화를 추적합니다. 수위만 다루며 저수량은 아닙니다.",
+      "source": "출처:",
+      "processedWith": "처리:",
+      "empty": "아직 측정값이 없습니다",
+      "filterEmpty": "이 필터에 맞는 수역이 없습니다",
+      "unavailable": "현재 수위 데이터를 사용할 수 없습니다",
+      "filterLabel": "수역 필터",
+      "filter": {
+        "all": "전체",
+        "attention": "주의 필요",
+        "transboundary": "국경 간"
+      },
+      "status": {
+        "record_low": "역대 최저",
+        "record_high": "역대 최고",
+        "falling_fast": "빠른 하락",
+        "rising_fast": "빠른 상승",
+        "low": "계절 대비 낮음",
+        "high": "계절 대비 높음",
+        "normal": "평년 수준",
+        "insufficient_history": "이력 부족",
+        "no_recent_data": "최근 패스 없음"
+      },
+      "vsUsual": "{{month}} 평년 대비 {{value}}",
+      "in12Months": "12개월간 {{value}}",
+      "noComparison": "아직 비교 없음",
+      "measured": "{{date}} 측정 ({{age}})",
+      "noPass": "아직 사용할 수 있는 패스 없음",
+      "popup": {
+        "level": "수위",
+        "levelValue": "해발 {{value}} (EGM2008)",
+        "anomaly": "{{month}} 평년 대비",
+        "anomalyPlain": "해당 월 평년 대비",
+        "changePrev": "이전 패스 이후",
+        "change90": "90일간",
+        "change365": "12개월간",
+        "measured": "측정일",
+        "sparkline": "36개월 수위"
+      }
     }
   },
   "popups": {
@@ -4586,6 +4630,21 @@
         "related": {
           "0": "중국 활동 나우캐스트",
           "1": "국가 브리프"
+        }
+      },
+      "reservoirLevels": {
+        "category": "기후",
+        "purpose": "전략 저수지와 호수를 수면 수위가 같은 시기의 평년 수위와 비교해 어떤지, 얼마나 빠르게 변하는지에 따라 표시합니다.",
+        "source": "NSIDC를 통한 NASA ICESat-2 ATL13 내륙 수면 높이로, SlideRule Earth로 처리하고 seed-reservoir-levels 서비스가 위성 패스별로 집계합니다.",
+        "freshness": "매일 갱신됩니다. NASA는 각 패스를 측정 후 50~70일 뒤에 공개하며, 각 저수지는 며칠에서 약 한 달 간격으로 다시 관측됩니다.",
+        "confidence": "패스는 최소 5개의 수면 구간이 0.25 m 이내로 일치할 때만 반영됩니다. 계절 비교에는 같은 시기의 이전 3년 이상 패스가 필요합니다.",
+        "limitations": {
+          "0": "수위만 다루며 저수량은 아닙니다. 같은 하락이라도 저수지마다 줄어드는 저수량은 다릅니다.",
+          "1": "150일 동안 패스가 없는 수역은 최근 패스 없음으로 표시되지만, 마지막 값과 변화, 날짜는 계속 표시됩니다."
+        },
+        "related": {
+          "0": "전략 수위 패널",
+          "1": "기후 이상"
         }
       },
       "conflicts": {

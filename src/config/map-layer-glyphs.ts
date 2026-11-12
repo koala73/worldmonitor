@@ -17,6 +17,7 @@ export const DECK_POINT_LAYER_CATEGORY: Readonly<Record<string, keyof MapLayers>
   'notam-airspace-markers': 'flights',
   'ports-layer': 'ais',
   'ukmto-incidents-layer': 'ais',
+  'reservoir-levels-layer': 'reservoirLevels',
   'ais-disruptions-layer': 'ais',
   'cable-advisories-layer': 'cables',
   'repair-ships-layer': 'cables',
