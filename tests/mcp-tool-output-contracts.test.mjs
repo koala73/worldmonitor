@@ -28,6 +28,8 @@ import Ajv2020 from 'ajv/dist/2020.js';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { assembleRawSignals, failedRawSignal, RAW_SIGNAL_FAMILIES } from '../shared/country-raw-signals.ts';
+import { buildTravelRiskResult, TRAVEL_RISK_FEEDS } from '../api/mcp/registry/_travel-risk-document.ts';
+import { parseTravelRiskArgs } from '../api/mcp/registry/travel-risk-tool.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
   HMAC_SECRET,
@@ -57,6 +59,7 @@ const REQUIRED_ARGS = {
   get_five_factor_scorecard: { country_code: 'US' },
   get_supply_vulnerabilities: { country_code: 'US' },
   get_chokepoint_dependencies: { chokepoint_id: 'suez' },
+  prepare_travel_risk_assessment: { countries: [{ country_code: 'TH' }] },
   verify_claim: { claim: 'A controlled claim for verification.' },
   analyze_news_headlines: { headlines: ['Controlled headline'] },
   get_country_brief_section: { section: 'risk', arguments: { country_code: 'US' } },
@@ -126,6 +129,16 @@ const STUB_FIXTURES = {
   list_five_factor_scorecards: {
     methodologyVersion: '', computedAt: '', scorecards: [], unavailable: true, unavailableReason: 'scorecard-snapshot-unavailable',
   },
+  // The real assembler over all-unavailable sources: every block and the sources table in their degraded form.
+  prepare_travel_risk_assessment: buildTravelRiskResult(
+    parseTravelRiskArgs({ countries: [{ country_code: 'TH', cities: ['Bangkok'] }, { country_code: 'UA' }], date_from: '2026-12-01', date_to: '2026-12-10' }),
+    {
+      feeds: Object.fromEntries(TRAVEL_RISK_FEEDS.map((feed) => [feed.id, { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true }])),
+      hotspots: { status: 'unavailable', value: null, reason: 'Controlled failure', updatedAt: null, stale: true },
+      cii: { UA: { status: 'ok', value: { history: { methodologyVersion: 'v', points: [{ date: '2026-11-09', combinedScore: 61.2 }], change: null, stale: false } }, reason: null, updatedAt: '2026-11-09T00:00:00.000Z', stale: false } },
+    },
+    Date.parse('2026-11-10T12:00:00Z'),
+  ),
 };
 
 // What a strict MCP client does: validate `structuredContent` against the
@@ -212,7 +225,10 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all registry 
       }
 
       let args = REQUIRED_ARGS[name] ?? {};
-      const { deps, pipe } = makeProDeps();
+      // A plan-feature tool is refused before dispatch unless the entitlement carries its flag.
+      const { deps, pipe } = makeProDeps(tool._planFeature ? {
+        getEntitlements: async () => ({ planKey: 'pro_business_monthly', features: { tier: 1, mcpAccess: true, [tool._planFeature]: true }, validUntil: Date.now() + 86_400_000 }),
+      } : {});
       // start_upgrade creates its checkout session in dispatch, before the
       // stubbed _execute; answer the relay so the call reaches the result path.
       if (name === 'start_upgrade') deps.createCheckout = async () => ({ kind: 'created', checkoutUrl: 'https://checkout.example/session' });

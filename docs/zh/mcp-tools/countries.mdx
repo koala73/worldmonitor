@@ -1,7 +1,7 @@
 ---
 title: "MCP 工具：国家情报"
 sidebarTitle: "国家情报"
-description: "World Monitor MCP 工具参考：国家风险、历史、报道与国家简报。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+description: "World Monitor MCP 工具参考：国家风险、历史、报道、国家简报与出行风险草稿。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
 ---
 
 本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
@@ -125,6 +125,42 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_country_brief","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `prepare_travel_risk_assessment`
+
+为最多 6 个国家的行程起草一份出行风险评估，供分析师审阅和完成。草稿有 9 个编号部分。第 1 至 7 部分依次为摘要和评级、政府出行建议、安全、自然灾害、健康、出入境交通和通信。第 8 部分列出没有数据源覆盖的主题，第 9 部分列出各数据源及其采集时间。工具以 Markdown 形式在 `markdown` 中返回草稿，并在 `document` 中返回相同内容的结构化版本。
+
+每条发现都注明来源以及该来源给出的日期。无法读取的来源会标为不可用并说明原因；已读取但对某国没有记录的来源会说明其覆盖的时间窗口。评级取美国国务院和澳大利亚 Smartraveller 两者中较高的级别，两者使用同一套 1 到 4 级的尺度。英国 FCDO 和 CDC 的级别并列报告，不做换算。街头犯罪、医疗设施、当地法律、紧急联系方式和场所风险保留为空标题，标注“Analyst to complete”。草稿本身不提供任何建议。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `countries` | array&lt;object&gt; | **是** | 按行程顺序列出 1 到 6 项，每个国家只出现一次。每项包含 `country_code`（ISO 3166-1 alpha-2）、可选的 `cities`（最多 5 个城市名）以及 `arrive` 和 `depart`（YYYY-MM-DD） |
+| `date_from` | string | 否 | 行程开始日期，YYYY-MM-DD；各国日期必须落在行程窗口内 |
+| `date_to` | string | 否 | 行程结束日期，YYYY-MM-DD，不早于 `date_from` |
+| `task_label` | string | 否 | 印在草稿顶部的标签，最多 120 个字符，不含个人信息 |
+
+未知参数会被拒绝，但 `task_label` 和 `cities` 接受自由文本，请勿在其中填写出行人姓名、联系方式或地址。行程信息不会写入日志、遥测或缓存键。
+
+- **API 端点：** 无；工具直接读取预先填充的缓存。
+- **访问：** `subscription`，且仅限 Pro Business、API Business 和 Enterprise 套餐。其他套餐返回 `-32002`，并带有 `data.reason: "upgrade-required"` 和 `data.planFeature: "travelRiskAssessment"`。在 API 套餐上权重为 2。
+- **类型：** 缓存读取，同时最多 3 个，每个限时 5 秒。某个来源失败只会使其对应部分不可用，草稿其余部分保持完整。只有在所有来源都无法读取时才返回 `-32003`。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"prepare_travel_risk_assessment","arguments":{"countries":[{"country_code":"TH","cities":["Bangkok"],"arrive":"2026-12-01","depart":"2026-12-05"},{"country_code":"VN"}],"date_from":"2026-12-01","date_to":"2026-12-10"}}
   }'
 ```
 

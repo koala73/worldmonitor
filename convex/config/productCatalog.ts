@@ -214,6 +214,19 @@ export type PlanFeatures = {
    * entries below ALWAYS set the field explicitly.
    */
   dataExport?: boolean;
+  /**
+   * Multi-country travel risk assessment drafts (#10451): the
+   * `prepare_travel_risk_assessment` MCP tool. Granted to Pro Business, API
+   * Business and Enterprise. Neither `tier` nor `dataExport` can express that
+   * split: Pro Business shares `tier: 1` with Pro, and API Starter exports
+   * but is not entitled.
+   *
+   * Optional only because rows written before the field existed omit it; the
+   * read-time merge supplies the catalog value. Unlike `dataExport`, consumers
+   * treat `undefined` as **not entitled (fail-CLOSED)** at every tier. Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  travelRiskAssessment?: boolean;
 };
 
 export interface CatalogEntry {
@@ -276,6 +289,7 @@ const FREE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: false,
+  travelRiskAssessment: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -301,6 +315,7 @@ const PRO_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 2,
   dataExport: false,
+  travelRiskAssessment: false,
 };
 
 /**
@@ -337,6 +352,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: true,
   maxDesktopKeys: 3,
   dataExport: true,
+  travelRiskAssessment: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -362,6 +378,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  travelRiskAssessment: false,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -388,6 +405,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  travelRiskAssessment: true,
 };
 
 // Enterprise is sold by contract. These numbers are the contract default —
@@ -424,6 +442,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   desktopKeyAccess: false,
   maxDesktopKeys: 0,
   dataExport: true,
+  travelRiskAssessment: true,
 };
 
 // ---------------------------------------------------------------------------

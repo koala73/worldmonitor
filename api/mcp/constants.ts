@@ -392,7 +392,8 @@ export const SERVER_NAME = 'worldmonitor';
 // Bumped 1.50.0 → 1.51.0 when the news and country views moved to -v4 URIs
 // that ask Claude for its side panel (preferredDisplayMode).
 // Bumped 1.51.0 → 1.52.0 for get_reservoir_levels (102 → 103 tools, #10515).
-export const SERVER_VERSION = '1.52.0';
+// Bumped 1.52.0 → 1.53.0 for prepare_travel_risk_assessment (103 → 104 tools, #10451).
+export const SERVER_VERSION = '1.53.0';
 
 // MCP `Implementation` (initialize serverInfo, and the modern-era
 // _meta["io.modelcontextprotocol/serverInfo"]). `title`, `description`,
@@ -467,13 +468,15 @@ export { MAX_JSON_RPC_BODY_BYTES };
 // can quote it without a temporal-dead-zone error.
 export const TOOL_DESCRIPTION_MAX_BYTES = 1024;
 
-// Total budget for every tools/list description together. 68 KiB is about
-// 17k tokens, roughly a sixth of the tools/list envelope (the input and output
+// Total budget for every tools/list description together. 70 KiB is about
+// 18k tokens, roughly a sixth of the tools/list envelope (the input and output
 // schemas are the rest). The 64 KiB cap was set at ~57 KB (#9302) to leave
 // headroom for a few more tools; the #9357 depth work spent that headroom on
 // existing descriptions, and get_no2_activity (#9722) reached ~66 KB, so the
-// cap moves once to restore room for two more tools. Test-enforced only.
-export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 69632;
+// cap moved to 68 KiB. Tools 97 to 102 left 52 B, less than any useful
+// description, so prepare_travel_risk_assessment (#10451) moves it to 70 KiB
+// rather than cutting other tools' descriptions. Test-enforced only.
+export const TOOL_DESCRIPTIONS_TOTAL_MAX_BYTES = 71680;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;

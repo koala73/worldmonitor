@@ -283,6 +283,14 @@ it('country hooks reject unresolved filters while retaining aliases and Eurostat
     const field = ['country', 'countries', 'country_code'].find(field => tool.inputSchema.properties[field]);
     if (!field) continue;
     const base = tool.name === 'get_macro_history' ? { dataset: 'world-cpi' } : {};
+    if (tool.name === 'prepare_travel_risk_assessment') {
+      // An itinerary of objects, not a country filter: alpha-2 codes only, no aliases.
+      assert.doesNotThrow(() => tool._validateArgs({ [field]: [{ country_code: 'IQ' }] }), tool.name);
+      for (const value of ['IQ', 'Atlantis', [{ country_code: 'IRQ' }], [{ country_code: 'Iraq' }]]) {
+        assert.throws(() => tool._validateArgs({ [field]: value }), RpcValidationError, tool.name);
+      }
+      continue;
+    }
     if (tool.name === 'get_conflict_events') {
       // Conflict country is a free-text name substring; this hook parses only the area and age filters.
       for (const value of ['Atlantis', 'sud', 'IQ']) assert.doesNotThrow(() => tool._validateArgs({ [field]: value }), tool.name);
