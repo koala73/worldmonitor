@@ -2851,12 +2851,12 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     title: 'Refugee and displacement counts',
     _outputBudgetBytes: 131072,
-    description: 'Read UNHCR annual displacement stocks for summary.year: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and top origin-to-asylum flows. Default view annual; the latest published year may be prior; stale after 60 hours. view=movements: dated UNHCR reports, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with per-source health; encounters are events, not people. view=events: IDMC internal displacement, per-country 30-day totals (conflict/disaster), newlyReported7d, surge vs prior 150 days, located figures from 180 days; posted ~3 weeks late. view=regions: IOM DTM latest round per operation: IDPs by cause, first-level region and region-to-region flow. Sources and operations overlap; never sum. events/regions stale after 48 hours. Read-only seeded cache; API weight 1, included in signed-in free allowance.',
+    description: 'Read seeded displacement data; choose the dataset with view. UNHCR annual stocks: global totals, per-country refugees, asylum seekers, IDPs and stateless people by origin, hosted totals and top origin-to-asylum flows. data.summary.year may be a prior year; stale after 60 hours. Movement reports: UNHCR, UK arrivals, CBP encounters, Frontex detections and Panama Darién arrivals with per-source health; encounters are events, not people. IDMC: per-country 30-day internal displacement totals (conflict/disaster), newlyReported7d, surge vs prior 150 days and located figures from 180 days; posted ~3 weeks late. view=regions: IOM DTM latest round per operation, with IDPs by cause, first-level region and region-to-region flow. Sources and operations overlap; never sum. IDMC/DTM stale after 48 hours. Read-only cache; API weight 1, included in signed-in free allowance.',
     inputSchema: {
       type: 'object',
       properties: {
-        view: { type: 'string', enum: ['annual', 'movements', 'events', 'regions'], description: 'Dataset to read: annual (UNHCR yearly stocks and flows; used when omitted), movements (source-dated operational movement reports in crossBorderMovements), events (IDMC internal displacement in iduEvents) or regions (IOM DTM operations in dtmRegions).' },
-        route: { type: 'string', maxLength: 120, description: 'Route or situation ID, as in the route field of a movements row. Keeps only that route; applies to view movements.' },
+        view: { type: 'string', enum: ['annual', 'movements', 'events', 'regions'], description: 'Choose yearly UNHCR stocks and flows (annual, used when omitted), source-dated border reports (movements), IDMC internal displacement (events), or IOM DTM operations (regions). Results appear under data.summary, data.crossBorderMovements, data.iduEvents, or data.dtmRegions, respectively.' },
+        route: { type: 'string', maxLength: 120, description: 'Filter movement reports by the route value returned in a movements row. Matches the exact case after trimming surrounding whitespace; ignored for other views.' },
         countries: {
           type: 'array',
           items: { type: 'string' },
@@ -2920,7 +2920,34 @@ export const CACHE_TOOLS: ToolDef[] = [
           attribution: { type: 'object', properties: { source: { type: 'string' }, sourceUrl: { type: 'string' }, notice: { type: 'string' } } },
         },
       },
-      crossBorderMovements: { type: 'object', description: 'Present with view "movements": source-dated movement reports from each feed. Encounters count events, not people.', properties: { movements: { type: 'array', items: { type: 'object', properties: { id: {type: 'string'}, route: {type: 'string'}, kind: {type: 'string'}, measure: {type: 'string'}, countryCode: {type: 'string'}, originCode: {type: 'string'}, asOf: {type: 'string'}, count: {type: 'number'}, last7Days: {type: 'number'}, last30Days: {type: 'number'}, changePct: {type: 'number'}, stockChange: {type: 'number'}, stockChangeSince: {type: 'string'}, surge: {type: 'boolean'}, stale: {type: 'boolean'}, source: {type: 'string'}, sourceUrl: {type: 'string'}, license: {type: 'string'}, licenseUrl: {type: 'string'}, notice: {type: 'string'} } } }, sources: {type: 'array', items: {type: 'object'}}, dataAvailable: {type: 'boolean'} } },
+      crossBorderMovements: {
+        type: 'object',
+        description: 'Present with view "movements": source-dated movement reports from each feed. Encounters count events, not people. Sources can overlap; do not add their counts.',
+        properties: {
+          movements: { type: 'array', items: { type: 'object', properties: {
+            id: { type: 'string' }, route: { type: 'string' }, name: { type: 'string' },
+            kind: { type: 'string' }, measure: { type: 'string' },
+            countryCode: { type: 'string' }, originCode: { type: 'string' },
+            asOf: { type: 'string', description: 'Source report date.' },
+            period: { type: 'string', description: 'Observation period: a stock date or completed month for ODP, or the period supplied by the border feed.' },
+            count: { type: 'number', description: 'Reported stock or movement count for the observation period; interpret with kind and measure.' },
+            last7Days: { type: 'number' }, last30Days: { type: 'number' }, changePct: { type: 'number' },
+            stockChange: { type: 'number' }, stockChangeSince: { type: 'string' },
+            surge: { type: 'boolean' }, stale: { type: 'boolean' },
+            source: { type: 'string' }, sourceUrl: { type: 'string' },
+            license: { type: 'string' }, licenseUrl: { type: 'string' }, notice: { type: 'string' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+          } } },
+          sources: { type: 'array', description: 'Health of each source before country, route and limit filters; missing data does not mean zero movements.', items: { type: 'object', properties: {
+            id: { type: 'string' }, name: { type: 'string' },
+            status: { type: 'string', description: 'Source health: ok, partial, stale or unavailable.' },
+            fetchedAt: { type: 'number', description: 'Seed fetch time in Unix milliseconds, or zero when absent.' },
+            contentAt: { type: 'number', description: 'Newest accepted report date in Unix milliseconds, or zero when none was accepted.' },
+            maxContentAgeMin: { type: 'number', description: 'Report-age freshness budget in minutes.' },
+          } } },
+          dataAvailable: { type: 'boolean', description: 'Whether any source has a status other than unavailable, before result filters.' },
+        },
+      },
       summary: {
         type: ['object', 'null'],
         description: 'Present with view "annual": UNHCR yearly stocks. Counts are people.',

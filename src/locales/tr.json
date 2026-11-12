@@ -2723,7 +2723,7 @@
     },
     "sanctionsPressure": {
       "title": "Yaptırımlar ve Tanımlamalar",
-      "infoTooltip": "OFAC SDN ve birleştirilmiş listeler ile Kanada SEMA/JVCFOA yaptırımları. Ülke satırları doğrudan bağlantıları kullanır. Gemi bayrakları ve uçak tescilleri sicillerde ayrı sayılır; bir ülkenin varlık sayısının sıfır olması yaptırıma tabi varlık bulunmadığı anlamına gelmez. Ana kuruluşların ülkeleri adres kanıtlarından ayrı tutulur ve risk puanlarına katılmaz.",
+      "infoTooltip": "OFAC SDN ve birleştirilmiş listeler ile Kanada SEMA/JVCFOA yaptırımları. Ülke satırları doğrudan bağlantıları kullanır. Gemi bayrakları ve uçak tescilleri sicillerde ayrı sayılır; bir ülkenin varlık sayısının sıfır olması yaptırıma tabi varlık bulunmadığı anlamına gelmez.",
       "loading": "Yaptırım verileri yükleniyor...",
       "unavailable": "Yaptırım verileri kullanılamıyor.",
       "summary": {

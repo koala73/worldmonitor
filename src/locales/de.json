@@ -2723,7 +2723,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "OFAC-SDN- und konsolidierte Listen sowie kanadische SEMA/JVCFOA-Sanktionen. Länderzeilen verwenden direkte Zuordnungen. Schiffsflaggen und Flugzeugregister werden unter Registern separat gezählt; null Vermögenswerte bei einem Land bedeutet nicht, dass keine sanktionierten Vermögenswerte existieren. Länder übergeordneter Unternehmen bleiben von Adressnachweisen getrennt und fließen nicht in Risikowerte ein.",
+      "infoTooltip": "OFAC-SDN- und konsolidierte Listen sowie kanadische SEMA/JVCFOA-Sanktionen. Länderzeilen verwenden direkte Zuordnungen. Schiffsflaggen und Flugzeugregister werden unter Registern separat gezählt; null Vermögenswerte bei einem Land bedeutet nicht, dass keine sanktionierten Vermögenswerte existieren.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {

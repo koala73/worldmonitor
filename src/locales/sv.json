@@ -2339,7 +2339,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanktioner och beteckningar",
-      "infoTooltip": "OFAC:s SDN- och konsoliderade listor samt Kanadas SEMA/JVCFOA-sanktioner. Landsrader använder direkta kopplingar. Fartygsflaggor och flygplansregistreringar räknas separat under register; noll tillgångar för ett land betyder inte att sanktionerade tillgångar saknas. Moderorganisationers länder hålls åtskilda från adressuppgifter och ingår inte i riskpoäng.",
+      "infoTooltip": "OFAC:s SDN- och konsoliderade listor samt Kanadas SEMA/JVCFOA-sanktioner. Landsrader använder direkta kopplingar. Fartygsflaggor och flygplansregistreringar räknas separat under register; noll tillgångar för ett land betyder inte att sanktionerade tillgångar saknas.",
       "loading": "Läser in sanktionsdata...",
       "unavailable": "Sanktionsdata är inte tillgänglig.",
       "summary": {
