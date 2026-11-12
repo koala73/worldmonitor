@@ -16,6 +16,15 @@ export interface PanelTabBarCallbacks {
   onClearNewTabPanels(): void;
   /** Team dashboards. The "Team" button shows only while `view()` is non-null. */
   team?: TeamDashboardCallbacks;
+  /** Dashboard focus (#10453). The "Focus" button shows when this is set. */
+  focus?: FocusButtonCallbacks;
+}
+
+export interface FocusButtonCallbacks {
+  /** Asked on every render: whether the active tab has a focus. */
+  isFocused(): boolean;
+  /** Start or edit the active tab's focus. The manager decides whether the account may. */
+  onClick(): void;
 }
 
 /** What the team popover lists, computed by the layout manager. */
@@ -39,7 +48,7 @@ export interface TeamDashboardCallbacks {
 }
 
 /** The bar holds one popover at a time; this says which button it belongs to. */
-type NoticeKind = 'cap' | 'options' | 'team';
+type NoticeKind = 'cap' | 'options' | 'team' | 'focus';
 
 /** Locked state of the "+" control while the dashboard tab cap applies (KTD8). */
 export interface TabAddLock {
@@ -101,6 +110,7 @@ export class PanelTabBar {
   // aria-expanded across re-renders.
   private readonly optionsBtn: HTMLButtonElement;
   private readonly teamBtn: HTMLButtonElement;
+  private readonly focusBtn: HTMLButtonElement;
   private readonly liveRegion: HTMLElement;
   private readonly onNoticeOutsideClick: (event: MouseEvent) => void;
   private readonly onNoticeKeyDown: (event: KeyboardEvent) => void;
@@ -144,6 +154,18 @@ export class PanelTabBar {
     this.teamBtn.setAttribute('aria-label', t('dashboardTabs.teamDashboards'));
     this.teamBtn.setAttribute('aria-expanded', 'false');
     this.teamBtn.addEventListener('click', () => this.toggleTeamDashboards());
+
+    this.focusBtn = document.createElement('button');
+    this.focusBtn.type = 'button';
+    this.focusBtn.className = 'dashboard-tab-focus';
+    this.focusBtn.textContent = t('focus.tabButton');
+    this.focusBtn.addEventListener('click', () => {
+      if (this.noticeKind === 'focus') {
+        this.closeNotice();
+        return;
+      }
+      this.callbacks.focus?.onClick();
+    });
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
     // The trailing "+" button is an action, not a tab, so the tablist is an
@@ -227,7 +249,20 @@ export class PanelTabBar {
   showAddLockNotice(): void {
     const lock = this.addLock;
     if (!lock || !this.addBtn) return;
+    this.openGateNotice('cap', lock.copy, lock.onAction);
+  }
 
+  /**
+   * The same anchored notice as a capped "+", under the Focus button: shown
+   * when an account that may not set a focus clicks it.
+   */
+  showFocusGateNotice(copy: GateCopy, onAction: () => void): void {
+    if (!this.callbacks.focus) return;
+    this.openGateNotice('focus', copy, onAction);
+  }
+
+  private openGateNotice(kind: 'cap' | 'focus', copy: GateCopy, onAction: () => void): void {
+    const lock = { copy, onAction };
     const icon = document.createElement('div');
     icon.className = 'tab-cap-notice-icon';
     setTrustedHtml(icon, trustedHtml(lock.copy.icon, 'static inline icon markup'));
@@ -242,7 +277,7 @@ export class PanelTabBar {
     cta.className = 'tab-cap-notice-cta';
     cta.textContent = lock.copy.cta;
     // The reason travels with the focused button, so a screen-reader user who
-    // clicks a locked "+" hears why before the CTA name.
+    // clicks a locked "+" or Focus hears why before the CTA name.
     cta.setAttribute('aria-describedby', desc.id);
     cta.addEventListener('click', () => {
       this.closeNotice();
@@ -253,7 +288,7 @@ export class PanelTabBar {
     notice.className = 'tab-cap-notice';
     notice.append(icon, desc, cta);
 
-    this.openNotice('cap', notice, cta);
+    this.openNotice(kind, notice, cta);
   }
 
   private toggleNewTabOptions(): void {
@@ -396,6 +431,7 @@ export class PanelTabBar {
   private anchorFor(kind: NoticeKind): HTMLButtonElement | null {
     if (kind === 'options') return this.optionsBtn;
     if (kind === 'team') return this.teamBtn;
+    if (kind === 'focus') return this.focusBtn;
     return this.addBtn;
   }
 
@@ -418,7 +454,7 @@ export class PanelTabBar {
 
     this.notice = notice;
     this.noticeKind = kind;
-    if (kind !== 'cap') {
+    if (kind !== 'cap' && kind !== 'focus') {
       anchor.setAttribute('aria-expanded', 'true');
       anchor.setAttribute('aria-controls', notice.id);
     }
@@ -471,9 +507,17 @@ export class PanelTabBar {
     // The tablist owns only tabs; the add, options and team buttons are siblings in the bar.
     const hasTeam = this.callbacks.team?.view() != null;
     const teamBtn = hasTeam ? [this.teamBtn] : [];
+    const focusBtn = this.callbacks.focus ? [this.focusBtn] : [];
+    if (this.callbacks.focus) {
+      const focusedTab = this.callbacks.focus.isFocused();
+      const label = t(focusedTab ? 'focus.tabButtonTitleActive' : 'focus.tabButtonTitle');
+      this.focusBtn.classList.toggle('active', focusedTab);
+      this.focusBtn.title = label;
+      this.focusBtn.setAttribute('aria-label', label);
+    }
     // Re-inserting a focused button blurs it; put keyboard focus back.
-    const focused = [this.optionsBtn, this.teamBtn].find((btn) => btn === document.activeElement);
-    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, this.liveRegion);
+    const focused = [this.optionsBtn, this.teamBtn, this.focusBtn].find((btn) => btn === document.activeElement);
+    this.element.replaceChildren(this.tablistEl, addBtn, this.optionsBtn, ...teamBtn, ...focusBtn, this.liveRegion);
     if (focused?.isConnected) focused.focus();
     // An open team menu follows the list as it loads or changes; it closes if
     // the team goes away (sign-out, seat removed).

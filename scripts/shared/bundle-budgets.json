@@ -7,7 +7,7 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 478771
+    "raw": 481738
   },
   "chunks": {
     "analytics": {
@@ -19,7 +19,7 @@
       "files": 1
     },
     "clerk": {
-      "raw": 22852,
+      "raw": 22893,
       "files": 1
     },
     "convex-client": {
@@ -35,7 +35,7 @@
       "files": 1
     },
     "entitlements": {
-      "raw": 2709,
+      "raw": 2862,
       "files": 1
     },
     "font-settings": {
@@ -83,7 +83,7 @@
       "files": 1
     },
     "tab-store": {
-      "raw": 10341,
+      "raw": 13131,
       "files": 1
     },
     "tauri-bridge": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 72515,
+      "raw": 72498,
       "files": 1
     },
     "theme-manager": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1561216
+      "raw": 1574603
     },
     "chunks": {
       "App": {
-        "raw": 1000344,
+        "raw": 1011371,
         "files": 1
       },
       "ai-flow-settings": {
@@ -173,7 +173,7 @@
         "files": 2
       },
       "layout-batch": {
-        "raw": 988,
+        "raw": 3348,
         "files": 1
       },
       "markets": {

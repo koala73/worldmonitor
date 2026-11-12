@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import type { PanelConfig } from '../src/types/index.ts';
 import { resetMissionPresetState } from '../src/services/mission-presets.ts';
 import {
+  canPublishTeamDashboardScope,
   captureTeamDashboardLayout,
   teamDashboardErrorKind,
+  teamDashboardFailureKey,
   toTeamDashboardTab,
   type TeamDashboardCaptureInput,
   type TeamDashboardLayout,
@@ -180,6 +182,69 @@ describe('toTeamDashboardTab', () => {
     const [a] = realKeys(1) as [string];
     const tab = toTeamDashboardTab({ panels: [{ key: a, on: true, rows: 4, cols: 4 }] }, defaults());
     assert.deepEqual(tab.sizes, [{ key: a, rows: 4, cols: undefined }]);
+  });
+});
+
+describe('focus scope (#10453)', () => {
+  const SEA = { countries: ['TH', 'VN', 'ID'], neighbours: false, start: '2026-11-14', end: '2026-11-18' };
+
+  it('captures the tab scope with the neighbours switch, never an expanded list', () => {
+    const layout = captureTeamDashboardLayout({ ...captureInput(), scope: SEA });
+    assert.deepEqual(layout.scope, SEA);
+    assert.equal(layout.panelFilters, undefined);
+  });
+
+  it('omits absent dates rather than sending undefined fields', () => {
+    const layout = captureTeamDashboardLayout({ ...captureInput(), scope: { countries: ['th'], neighbours: true } });
+    assert.deepEqual(layout.scope, { countries: ['TH'], neighbours: true });
+    assert.deepEqual(Object.keys(layout.scope!).sort(), ['countries', 'neighbours']);
+  });
+
+  it('captures no scope for an unfocused tab or one the server would refuse', () => {
+    assert.equal('scope' in captureTeamDashboardLayout(captureInput()), false);
+    assert.equal('scope' in captureTeamDashboardLayout({ ...captureInput(), scope: null }), false);
+    assert.equal('scope' in captureTeamDashboardLayout({ ...captureInput(), scope: { countries: ['XX'], neighbours: true } }), false);
+  });
+
+  it('round-trips the scope, including neighbours off, into the teammate tab', () => {
+    const tab = toTeamDashboardTab(captureTeamDashboardLayout({ ...captureInput(), scope: SEA }), defaults());
+    assert.deepEqual(tab.scope, SEA);
+    assert.equal(tab.scopeInvalid, false);
+  });
+
+  it('opens an old-shape row with no scope as an unfocused tab', () => {
+    const [a] = realKeys(1) as [string];
+    const tab = toTeamDashboardTab({ panels: [{ key: a, on: true }] }, defaults());
+    assert.equal(tab.scope, null);
+    assert.equal(tab.scopeInvalid, false);
+  });
+
+  it('flags a stored scope this build cannot read instead of opening it as the whole world', () => {
+    const [a] = realKeys(1) as [string];
+    const tab = toTeamDashboardTab({ panels: [{ key: a, on: true }], scope: { countries: ['ZZ'] } }, defaults());
+    assert.equal(tab.scope, null);
+    assert.equal(tab.scopeInvalid, true);
+  });
+
+  it('a stored scope without the neighbours field means neighbours on', () => {
+    const [a] = realKeys(1) as [string];
+    const tab = toTeamDashboardTab({ panels: [{ key: a, on: true }], scope: { countries: ['TH'] } }, defaults());
+    assert.deepEqual(tab.scope, { countries: ['TH'], neighbours: true });
+  });
+
+  it('blocks publishing a focused tab before the server when the team says focus is not allowed', () => {
+    assert.equal(canPublishTeamDashboardScope({ kind: 'business' }, SEA), false);
+    assert.equal(canPublishTeamDashboardScope({ kind: 'business', focus: false }, SEA), false);
+    assert.equal(canPublishTeamDashboardScope({ kind: 'enterprise', focus: true }, SEA), true);
+    assert.equal(canPublishTeamDashboardScope({ kind: 'business', focus: false }, null), true);
+    assert.equal(canPublishTeamDashboardScope({ kind: 'business' }, undefined), true);
+  });
+
+  it('maps FOCUS_NOT_ENTITLED to its own message and leaves the other kinds as they were', () => {
+    assert.equal(teamDashboardFailureKey('FOCUS_NOT_ENTITLED'), 'teamDashboards.focusNotEntitled');
+    assert.equal(teamDashboardFailureKey('TEAM_DASHBOARD_LIMIT'), 'teamDashboards.limit');
+    assert.equal(teamDashboardFailureKey('NOT_ON_A_TEAM'), 'teamDashboards.failed');
+    assert.equal(teamDashboardFailureKey(null), 'teamDashboards.failed');
   });
 });
 
