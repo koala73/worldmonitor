@@ -1404,7 +1404,7 @@ async function mcpHandlerInner(
   const noReplay = method === 'tools/call'
     && TRAVEL_RISK_TOOL_NAMES.has((body.params as { name?: unknown } | undefined)?.name as string);
   const respond = async (response: Response): Promise<Response> => {
-    const shaped = await applyViewDomainPolicy(req, method, response);
+    const shaped = await applyViewDomainPolicy(req, method, response, body);
     return modernEra ? shaped : maybeStreamJsonRpcResponse(req, noReplay ? null : sseOwner, shaped);
   };
 
