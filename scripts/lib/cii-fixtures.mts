@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
-import { resolveCountryCode } from '../../shared/country-code-resolve.ts';
+import { isAssignedCountryCode, resolveCountryCode } from '../../shared/country-code-resolve.ts';
 import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
@@ -51,6 +51,8 @@ export interface CiiFixture {
   acledConfigured: boolean;
   notes: string[];
   inputs: CiiCaptureInputs;
+  /** Omitted for legacy/released-set captures to preserve their bytes. */
+  captureTargets?: string[];
   /** The seam's output per formula version, keyed by CII_FORMULA_VERSION. */
   expected: Record<string, Record<string, CiiFixtureExpectedRow>>;
   /** The table production stored at the same time, when it was captured. */
@@ -183,7 +185,7 @@ function trimStrikeTally(raw: unknown): unknown {
 export function trimCiiRawInputs(raw: CiiCaptureInputs, targetCodes: readonly string[] = [...TIER1]): CiiCaptureInputs {
   const targets = new Set(targetCodes);
   for (const code of targets) {
-    if (resolveCountryCode(code) !== code) throw new Error(`invalid capture target: ${code}`);
+    if (resolveCountryCode(code) !== code || !isAssignedCountryCode(code)) throw new Error(`invalid capture target: ${code}`);
   }
   for (const code of TIER1) {
     if (!targets.has(code)) throw new Error(`capture target omits released country: ${code}`);
@@ -366,6 +368,7 @@ export function buildCiiFixture(raw: CiiCaptureInputs, meta: {
     acledConfigured: false,
     notes: meta.notes,
     inputs,
+    ...(meta.targetCodes ? { captureTargets: [...meta.targetCodes] } : {}),
     expected: { [CII_FORMULA_VERSION]: expectedFromTable(trimmed) },
     production: meta.production,
   };
