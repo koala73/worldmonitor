@@ -16,8 +16,8 @@ WTO merchandise trade flows for one reporting country versus the World, over a c
 
 | Name | Type | Description |
 |------|------|-------------|
-| `reporter` | string | Reporting country as an ISO 3166-1 alpha-2 code ("US") or a 3-digit UN M49 code ("840"); ISO2 is mapped to M49. Defaults to "840" (United States). The only partner served is the World ("000"); any other partner answers `not_covered`. |
-| `years` | integer | Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window. |
+| `reporter` | string | Country whose exports and imports to return: an ISO 3166-1 alpha-2 or alpha-3 code, a country name, or a 3-digit UN M49 code ("840"). Omit for the United States. Flows are always against the World ("000"). A value that resolves to no country returns no flows with unavailableReason `TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST`. |
+| `years` | integer | Years to look back from the most recent published year, counting both ends (10 returns 11 calendar years); 10 when omitted. The maximum, 30, covers the whole seeded window. |
 
 **Response distinctions:** `unavailableReason` is the closed `TradeFlowUnavailableReason` enum from the RPC. `TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer — the combination is simply outside seeded coverage, a retry cannot help. Every other non-UNSPECIFIED reason names a fault (`seed_missing`, `coverage_unknown`, `cache_unavailable`), with `upstreamUnavailable: true`.
 
@@ -56,8 +56,8 @@ Series run from about 1990 to 2023 for most reporters. US preferences are report
 |------|------|-------------|
 | `reporter` | string | Importing country. Defaults to the United States (`840`). A 3-digit code is passed through, so WTO codes (`699` India) and the EU (`918`, or `"EU"`) work. ISO alpha-2, alpha-3 and English names are also accepted; France, Norway, India and Switzerland are sent as their WTO codes (`251`, `579`, `699`, `757`), which key the MFN series. |
 | `partner` | string | Exporting country whose goods are averaged. Omit, or pass `"World"` (`000`), for all partners. The EU is not a partner in this dataset. |
-| `product_group` | string (enum) | A WITS product group: an HS section range such as `84-85_MachElec` or `50-63_TextCloth`, or an aggregate such as `Textiles`, `Food`, `Fuels`, `manuf`. `all` or omitted means every product. |
-| `years` | integer | Years to return, newest kept (0–30). 0 or omitted means the route default (10). |
+| `product_group` | string (enum) | Products to average over, in WITS naming: an HS chapter range (`84-85_MachElec` is machinery and electrical equipment) or an aggregate (`Textiles`, `Food`, `Fuels`, `manuf` for manufactures). `all` or omitted averages every product. Any group other than `all` answers from the WITS applied series rather than WTO MFN. |
+| `years` | integer | Years to look back from the most recent available year, counting both ends (10 returns up to 11 calendar years). 0 or omitted: 10. |
 
 **Response distinctions:** `indicatorCode`, `partnerCountry` and `productSector` on each datapoint say which series answered. `TARIFF_TREND_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer (WITS has no such series). `TARIFF_TREND_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`; retry later.
 
@@ -95,7 +95,7 @@ Schedule rates only: Section 301, 232, anti-dumping and other unilateral duties 
 | `reporter` | string | Importing country (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
 | `partner` | string | Exporting country (required). Same forms. |
 | `hs_code` | string | 6-digit HS code (required), e.g. `870380`. Dots are ignored. |
-| `year` | integer | Tariff year. 0 or omitted means the latest year with data. |
+| `year` | integer | Calendar year of the tariff schedule to read; the `year` field of the answer reports the year used. 0 or omitted: the latest year with data. |
 
 **Response distinctions:** `BILATERAL_TARIFF_UNAVAILABLE_REASON_NOT_COVERED` is a coverage answer. `BILATERAL_TARIFF_UNAVAILABLE_REASON_UPSTREAM_UNAVAILABLE` is a fault, with `upstreamUnavailable: true`.
 
@@ -135,7 +135,7 @@ Current US duty on one product from one country: live HTS rates plus any Section
 
 | Name | Type | Description |
 |------|------|-------------|
-| `hs_code` | string | HTS code of 6, 8 or 10 digits (required), e.g. `870380` or `8703.80.00`. Dots are ignored. |
+| `hs_code` | string | Harmonized Tariff Schedule product code (required). Six digits return every 8-digit US tariff line under that subheading; 8 or 10 digits narrow to the matching line. Dots are ignored, e.g. `8703.80.00`. |
 | `partner` | string | Country of origin (required). 3-digit code, ISO alpha-2 or alpha-3, or English name. |
 
 **Coverage:** every answer except an upstream outage carries a `coverage` object, added by the MCP server. An outage (`upstreamUnavailable: true`) answers nothing, so it carries none. `dataset` names the dataset consulted; check `unavailableReason` before trusting the rates. It is `USITC_HTS` and `rateBasis` is `CURRENT_DUTY`. `includesUnilateralDuties` is `true` only when `additionalDutiesLoaded` is `true`, and `excludedDutyTypes` then lists `IEEPA`, `ANTI_DUMPING` and `COUNTERVAILING`. Otherwise the answer is base rates only: `includesUnilateralDuties` is `false` and `excludedDutyTypes` also lists `SECTION_301` and `SECTION_232`. `asOf` is the HTS release that answered.
@@ -161,13 +161,13 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_consumer_prices`
 
-Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).
+Consumer-prices intelligence for the United Arab Emirates, the only seeded country: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers and source freshness.
 
 **Parameters:**
 
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
-| `country_code` | string | **yes** | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). Currently supported: AE (United Arab Emirates). |
+| `country_code` | string | **yes** | Country to read. Only the United Arab Emirates has data (`AE`, `ARE` or its name in any dashboard locale); any other recognized country returns an `error` field instead of data. |
 
 - **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).

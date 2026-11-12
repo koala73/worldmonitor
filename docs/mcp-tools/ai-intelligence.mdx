@@ -17,9 +17,9 @@ Citation-grounded world intelligence brief from the same precomputed `news:insig
 | Name | Type | Required | Description |
 |------|------|---------:|-------------|
 | `geo_context` | string | no | Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request. |
-| `refresh` | boolean | no | Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id. |
-| `request_id` | string | no | UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation. |
-| `panel_request` | string | no | Signed paid World Brief receipt for loaded reads. Do not combine with refresh. |
+| `refresh` | boolean | no | Dedicated paid MCP allowance only: true opens a new request allocation, keyed by request_id, instead of joining the shared five-minute one. Omitted or false joins the current shared allocation. Neither regenerates the precomputed brief. |
+| `request_id` | string | no | Caller-generated UUID naming one explicit refresh; required with refresh=true. Retrying with the same UUID reuses that allocation instead of opening another. |
+| `panel_request` | string | no | The panelRequest.token returned by an earlier paid call of this tool (or supplied by the embedded view). Rereads the brief inside that allocation without opening a new one. When omitted, the call opens or joins an allocation. Do not combine with refresh. |
 
 - **API endpoints:** `GET /api/infrastructure/v1/get-bootstrap-data` (called with `?keys=insights`) — authenticated gateway read of the same `news:insights:v1` payload used by the dashboard.
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -46,7 +46,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `analyze_situation`
 
-Run an LLM analytical deduction on a free-text geopolitical question and return `{analysis, confidence, signals, provider, model}`: a narrative assessment with a confidence level and the supporting signals the model cited. Each call generates fresh text (non-deterministic, up to 25 s) from the query, optional context and optional framework; it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.
+Run an LLM analytical deduction on a free-text geopolitical question and return `{analysis, provider, model}`: a narrative assessment and the LLM that wrote it. Text is generated from the query, optional context and optional framework (non-deterministic, up to 25 s; identical requests reuse it for an hour); it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.
 
 **Parameters:**
 
@@ -83,13 +83,13 @@ AI-generated geopolitical and economic forecasts from WorldMonitor's predictive 
 
 | Name | Type | Description |
 |------|------|-------------|
-| `domain` | string | Filter to one forecast domain (exact, case-insensitive): conflict, market, supply_chain, political, military, cyber, infrastructure. |
-| `region` | string | Filter to one region/theater (case-insensitive substring). |
-| `limit` | number | Paid interactive panel: integers 1–30, default 30. Ordinary API readers may use 0 for no cap. |
-| `include_history` | boolean | Attach up to 120 probability points per forecast, up to 30 days. Caps rows at 10. Omitted in panel openings. |
+| `domain` | string | Subject area to keep, matched exactly, ignoring case: conflict, market, supply_chain, political, military, cyber or infrastructure. |
+| `region` | string | Region or theater name as forecasts label it. Keeps forecasts whose region contains this text, ignoring case. |
+| `limit` | number | Maximum forecasts to return; omitted returns 30. API readers may pass 0 for every forecast. Paid interactive panels accept whole numbers 1-30. |
+| `include_history` | boolean | True attaches each forecast's probability history (up to 120 [time, probability] points over at most 30 days) and caps the list at 10 rows. Ignored in paid panel openings. |
 | `refresh` | boolean | Request a new paid panel snapshot; requires a fresh request_id. |
-| `request_id` | string | Unique idempotency identifier for an explicit refresh. |
-| `panel_request` | string | Signed forecast panel receipt for a bounded internal list replay. |
+| `request_id` | string | Client-generated UUID for one explicit refresh. A later refresh needs a new ID. |
+| `panel_request` | string | panelRequest.token returned by an earlier paid opening of this tool. Replays that forecast list with new filters without another allocation. |
 
 Rows also carry `firstSeenAt` (ISO time), `firstSeenProbability`, `change24h` and `change7d` (absolute probability changes). Missing or short trails return null. A region change starts a new segment; the first seed backfills only the retained history, so firstSeenAt can postdate the original publication. History points are `[isoTime, probability]` and can have sampling gaps.
 
@@ -122,8 +122,8 @@ Read one unchanged original forecast case for an exact ID and list generation. D
 
 | Name | Type | Description |
 |------|------|-------------|
-| `forecast_id` | string | Exact original forecast ID from the forecast list. |
-| `generated_at` | string | Exact String(generatedAt) of the forecast list the ID came from. |
+| `forecast_id` | string | The id field of a row in a published forecast list, unchanged. |
+| `generated_at` | string | The predictions.generatedAt value of that same forecast list, as a string (e.g. "1762876800000"). A newer generation returns generation_changed. |
 | `panel_request` | string | Signed forecasts panel receipt. Required on dedicated MCP plans; not accepted on API plans. |
 
 - **API endpoints:** `GET /api/forecast/v1/get-forecasts`
@@ -155,12 +155,12 @@ Forecast resolution scorecard with calibration, Brier/log score, domain and gene
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | string: summary / archive | Summary by default, or resolved forecast archive. |
-| `domain` | string | Exact forecast domain for archive rows. |
-| `outcome` | string: YES / NO / VOID | Archive outcome filter. |
-| `forecast_id` | string | Exact family ID; includes its trajectories. |
+| `view` | string: summary / archive | summary (used when omitted) returns the rolling accuracy scorecard and market-alert hit rates; archive returns one page of resolved forecasts, newest resolution first. |
+| `domain` | string | Forecast domain such as conflict or market. Keeps archive rows of that domain, matched exactly, ignoring case. Archive view only. |
+| `outcome` | string: YES / NO / VOID | Resolution to keep in archive rows: YES (it happened), NO (it did not) or VOID (voided; see voidReason). Archive view only. |
+| `forecast_id` | string | forecastId of one forecast family, matched exactly. Keeps its archive rows and adds each row's probability trajectory. Archive view only. |
 | `before` | number / string | Exclusive resolvedAt timestamp in milliseconds, or the nextBefore continuation from the previous page. |
-| `limit` | integer | Maximum archive rows, default 25; output budget may shorten a page. |
+| `limit` | integer | Archive rows per page; omitted returns 25. A page can be shorter to fit the output budget, so follow nextBefore. |
 
 Archive responses carry `underAudit` from the stored scorecard, `archive.stale` from the archive seed-meta (36-hour budget), and `nextBefore` (null at the end). Summary responses retain their original shape. Trajectories appear only with `forecast_id`; missing trajectories are not reconstructed from other subjects. Rows use the public receipt whitelist, with no raw ledger, judge rationale, news archive items or metric paths. Most historical resolutions may be VOID. The archive does not establish forecast skill.
 

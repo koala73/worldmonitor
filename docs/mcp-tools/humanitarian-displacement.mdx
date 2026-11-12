@@ -38,9 +38,9 @@ Use `view: "regions"` for IOM Displacement Tracking Matrix (DTM) data in `dtmReg
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | string: annual / movements / events / regions | Default annual. movements returns source-dated operational movement reports. events returns IDMC internal displacement in iduEvents. regions returns IOM DTM operations in dtmRegions. |
-| `route` | string | Exact route or situation ID in the movements view. |
-| `countries` | `array<string>` | Country names, ISO alpha-2, or alpha-3 codes to keep (e.g. ["Syria","UA","AFG"]). Matches per-country totals, origin/asylum flows, IDMC rows and DTM operations. Omit for all. Unresolved names and alpha-3 codes return Invalid params; an unknown two-letter code matches nothing. |
+| `view` | string: annual / movements / events / regions | Dataset to read: annual (UNHCR yearly stocks and flows; used when omitted), movements (source-dated operational movement reports in crossBorderMovements), events (IDMC internal displacement in iduEvents) or regions (IOM DTM operations in dtmRegions). |
+| `route` | string | Route or situation ID, as in the route field of a movements row. Keeps only that route; applies to view movements. |
+| `countries` | `array<string>` | Countries to keep, as ISO 3166-1 alpha-2 or alpha-3 codes or country names (e.g. ["Syria","UA","AFG"]). Matches per-country totals, flows by origin or asylum country, movement reports, IDMC rows and DTM operations. Omit for all. Names and alpha-3 codes that do not resolve return Invalid params; any two-letter code is used as given and may match nothing. |
 | `limit` | number | Cap the per-country, top-flow, IDMC and DTM operation lists to at most this many items (default 30, pass 0 for no cap; IDMC events stay capped at 100). |
 
 - **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`, `GET /api/displacement/v1/get-cross-border-movements`, `GET /api/displacement/v1/get-internal-displacement`

@@ -23,7 +23,7 @@ import { stringifyWithinBudget } from '../../server/_shared/bounded-json';
 // session, amortised across N tool calls).
 export const JMESPATH_SCHEMA = {
   type: 'string',
-  description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.',
+  description: 'JMESPath expression run server-side on this result to keep only the fields you select; omit for the full result. See initialize.instructions.',
 } as const;
 
 // Defensive snapshot of the top-level keys / shape of an unprojected value.
