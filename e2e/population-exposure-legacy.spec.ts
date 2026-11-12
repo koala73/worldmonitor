@@ -96,3 +96,64 @@ test('population exposure keeps Eilat and Gaza densities without borrowing for n
     await panel.screenshot({ path: testInfo.outputPath(`atlas-regressions-${width}.png`) });
   }
 });
+
+test('focused exposure loads beyond the worldwide cut and Show all restores other countries', async ({ page }, testInfo) => {
+  const settings = { 'population-exposure': { name: 'Population Exposure', enabled: true, priority: 0 } };
+  const tabId = 'tab-exposure-focus';
+  await seedAnonymousDashboard(page, 'full', { initializeOnce: {
+    sessionKey: 'population-exposure-focus-seeded',
+    localStorage: {
+      'worldmonitor-panels': JSON.stringify(settings),
+      'worldmonitor-tabs-v1:full': JSON.stringify({ activeTabId: tabId, tabs: [{
+        id: tabId, name: 'Yemen exposure', panelSettings: settings, panelOrder: ['population-exposure'], bottomSet: [],
+        scope: { countries: ['YE'], neighbours: false },
+      }] }),
+    },
+  } });
+  await page.route(/^https?:\/\/(?!(127\.0\.0\.1:\d+|localhost:\d+)(?:\/|$)).*/i, route => route.abort());
+  await page.route('**/api/**', route => route.fulfill({ json: {} }));
+  const point = {
+    country: 'Ukraine', location: { latitude: 48, longitude: 30 }, hasPreciseLocation: true,
+    dateStart: Date.now(), dateEnd: Date.now(), sideA: 'A', sideB: 'B', deathsBest: 0, deathsLow: 0, deathsHigh: 0,
+    violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', sourceOriginal: 'Test data',
+  };
+  const worldwide = Array.from({ length: 10 }, (_, i) => ({ ...point, id: `ua-${i}`, locationName: `Ukraine location ${i}`, location: { latitude: 48 + i / 10, longitude: 30 } }));
+  const events = [...worldwide, { ...point, id: 'taiz', country: 'Yemen', locationName: 'Taiz', location: { latitude: 13.58, longitude: 44.02 } }];
+  let fullRequests = 0;
+  await page.route('**/api/conflict/v1/list-ucdp-events*', route => {
+    fullRequests++;
+    return route.fulfill({ json: { events } });
+  });
+  await page.route('**/api/bootstrap*', route => route.fulfill({ json: { missing: [], data: {
+    ucdpEvents: { events: worldwide, exposureEvents: worldwide, exposureCoverage: { totalEvents: 11, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 1 } },
+    unrestEvents: { events: [] },
+  } } }));
+  await page.goto('/dashboard?lang=en');
+  const panel = page.locator('#panelsGrid .panel[data-panel="population-exposure"]');
+  await panel.scrollIntoViewIfNeeded();
+  await expect(panel.locator('.popexp-card')).toHaveCount(1);
+  await expect(panel).toContainText('Taiz, Yemen');
+  await expect(panel).toContainText('Events shown: 1 of 1');
+  await expect(panel).toContainText('10 hidden by focus');
+  await expect(panel).not.toContainText('could not load');
+  expect(fullRequests).toBe(1);
+  await panel.locator('.panel-resize-handle').focus();
+  await page.keyboard.press('ArrowDown');
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await panel.scrollIntoViewIfNeeded();
+    expect(await panel.locator('.panel-content').evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    await panel.screenshot({ path: testInfo.outputPath(`exposure-focus-${width}.png`) });
+  }
+  await panel.locator('button[data-scope-action="show-all"]').click();
+  await expect(panel.locator('.popexp-card')).toHaveCount(10);
+  await expect(panel).toContainText('Ukraine location');
+  await panel.screenshot({ path: testInfo.outputPath('exposure-show-all.png') });
+  await panel.locator('button[data-scope-action="apply"]').click();
+  await expect(panel.locator('.popexp-card')).toHaveCount(1);
+  expect(fullRequests).toBe(1);
+  await page.reload();
+  await panel.scrollIntoViewIfNeeded();
+  await expect(panel.locator('.popexp-card')).toHaveCount(1);
+  await expect(panel).toContainText('Taiz, Yemen');
+});

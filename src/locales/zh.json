@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "这些国家没有燃料短缺",
       "emptyEnergyDisruptions": "这些国家没有能源中断",
       "emptyDisplacement": "这些国家没有人口流离失所数据",
-      "emptyCorrelation": "这些国家没有信号"
+      "emptyCorrelation": "这些国家没有信号",
+      "emptyExposure": "这些国家没有人口暴露地点",
+      "emptyExposurePartial": "现有数据中没有这些国家的暴露地点。正在等待完整的 UCDP 覆盖数据。",
+      "partialExposureLoading": "正在加载所有 UCDP 地点，然后筛选暴露数据。覆盖统计仅包含骚乱事件。",
+      "partialExposure": "无法加载所有 UCDP 地点。暴露数据不完整；覆盖统计仅包含骚乱事件。"
     },
     "draftAssessment": "行程评估",
     "draftAssessmentAria": "打开行程评估，使用此焦点预填充",

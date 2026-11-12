@@ -14,13 +14,15 @@ const outfile = join(tempDir, 'PopulationExposurePanel.bundle.mjs');
 
 async function loadPopulationExposurePanel() {
   const stubModules = new Map<string, string>([
-    ['i18n-stub', `export function t(key, params) {
+    ['i18n-stub', `export function getCurrentLanguageTag() { return 'en'; }\nexport function getLocale() { return 'en'; }\nexport function t(key, params) {
       if (key === 'components.populationExposure.estimateWithin') return '~' + params.count + ' people within ' + params.km + ' km';
       if (key === 'components.populationExposure.eventCount') return params.count + ' events';
       if (key === 'components.populationExposure.coverageShown') return 'Shown: ' + params.shown + ' of ' + params.total;
       if (key === 'components.populationExposure.coverageLeftOut') return 'Left out: ' + params.imprecise + '/' + params.noEstimate + '/' + params.otherPlaces;
       return key;
     }`],
+    ['scope-filter-stub', `export class PanelScopeFilter { scope = null; constructor() {} hideStrip() {} destroy() {} } export function scopeTagHtml() { return ''; } export function focusedEmptyHtml() { return ''; }`],
+    ['conflict-stub', `export async function fetchUcdpEvents() { return { success: false }; }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],
     ['analytics-stub', `export function trackLayoutCustomized() {}`],
@@ -107,6 +109,8 @@ async function loadPopulationExposurePanel() {
     ['../services/tauri-bridge', 'tauri-bridge-stub'],
     ['@/services/analytics', 'analytics-stub'],
     ['@/services/ai-flow-settings', 'ai-flow-settings-stub'],
+    ['./panel-scope-filter', 'scope-filter-stub'],
+    ['@/services/conflict', 'conflict-stub'],
     ['@/services/runtime-config', 'runtime-config-stub'],
     ['../utils/dom-utils', 'dom-utils-stub'],
     ['@/utils/dom-utils', 'dom-utils-stub'],

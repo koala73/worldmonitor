@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Inga bränslebrist för dessa länder",
       "emptyEnergyDisruptions": "Inga energistörningar för dessa länder",
       "emptyDisplacement": "Ingen förflyttningsdata för dessa länder",
-      "emptyCorrelation": "Inga signaler för dessa länder"
+      "emptyCorrelation": "Inga signaler för dessa länder",
+      "emptyExposure": "Inga platser med befolkningsexponering för dessa länder",
+      "emptyExposurePartial": "Tillgängliga data innehåller inga exponeringsplatser för dessa länder. Fullständig UCDP-täckning väntar.",
+      "partialExposureLoading": "Läser in alla UCDP-platser innan exponeringen filtreras. Täckningsantalen omfattar endast oroligheter.",
+      "partialExposure": "Alla UCDP-platser kunde inte läsas in. Exponeringsdata är ofullständiga; täckningsantalen omfattar endast oroligheter."
     },
     "draftAssessment": "Resebedömning",
     "draftAssessmentAria": "Öppna resebedömningen, förifylld med denna fokusering",

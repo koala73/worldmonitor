@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "Không có thiếu hụt nhiên liệu cho các quốc gia này",
       "emptyEnergyDisruptions": "Không có gián đoạn năng lượng cho các quốc gia này",
       "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
-      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này"
+      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này",
+      "emptyExposure": "Không có vị trí dân cư chịu ảnh hưởng cho các quốc gia này",
+      "emptyExposurePartial": "Dữ liệu hiện có không có vị trí chịu ảnh hưởng cho các quốc gia này. Đang chờ phạm vi bao phủ UCDP đầy đủ.",
+      "partialExposureLoading": "Đang tải tất cả vị trí UCDP trước khi lọc mức độ ảnh hưởng. Số liệu bao phủ chỉ tính các vụ bất ổn.",
+      "partialExposure": "Không thể tải tất cả vị trí UCDP. Dữ liệu ảnh hưởng chưa đầy đủ; số liệu bao phủ chỉ tính các vụ bất ổn."
     },
     "draftAssessment": "Đánh giá chuyến đi",
     "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",

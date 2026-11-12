@@ -1,7 +1,6 @@
 /**
- * Dashboard focus (#10453): climate anomalies are regional zones and
- * population exposure is a worldwide top-N slice, so neither filters. Under a
- * focus both say "Not filtered" and keep every row.
+ * Climate anomalies remain regional zones. Exposure now filters source
+ * events before its limits and must not retain an unsupported notice.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -47,12 +46,12 @@ describe('panels that do not filter by country', () => {
     panel.destroy();
   });
 
-  it('population exposure shows "Not filtered"', () => {
+  it('population exposure no longer claims it is unsupported', () => {
     const panel = new PopulationExposurePanel();
     document.body.appendChild(panel.getElement());
     panel.setScopeNotice(scopeNoticeFor(getPanelScopeBehaviour('population-exposure'), panel, FOCUS));
-    expect(panel.filtersByScope()).toBe(false);
-    expect(panel.getElement().querySelector<HTMLElement>('.panel-scope-chip')?.dataset.scopeNotice).toBe('unsupported');
+    expect(panel.filtersByScope()).toBe(true);
+    expect(panel.getElement().querySelector('.panel-scope-chip')).toBeNull();
     panel.destroy();
   });
 });
