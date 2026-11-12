@@ -2,6 +2,7 @@
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
 import { orderMacroSections } from './_macro-bundle-order.mjs';
+import { claimBundleTurn, acknowledgeBundleTurn } from './_bundle-turn.mjs';
 import { EDUCATION_SECTION_TIMEOUT_MS } from './seed-education-attainment.mjs';
 import { PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS } from './seed-physical-premiums.mjs';
 
@@ -78,22 +79,78 @@ const MACRO_SECTIONS = [
   { label: 'World-CPI-Eurostat', script: 'seed-world-cpi-eurostat.mjs', seedMetaKey: 'economic:world-cpi-eurostat', canonicalKey: 'economic:world-cpi:eurostat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-eurostat', intervalMs: DAY, timeoutMs: 180_000 },
   { label: 'World-CPI-JP', script: 'seed-world-cpi-estat.mjs', requiredEnv: ['ESTAT_APPID'], seedMetaKey: 'economic:world-cpi-estat', canonicalKey: 'economic:world-cpi:estat:v1', completionMetaKey: 'seed-completion:economic:world-cpi-estat', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'World-CPI-AU', script: 'seed-world-cpi-abs.mjs', seedMetaKey: 'economic:world-cpi-abs', canonicalKey: 'economic:world-cpi:abs:v1', completionMetaKey: 'seed-completion:economic:world-cpi-abs', intervalMs: DAY, timeoutMs: 120_000 },
+  // #9841: independent source jobs retain last-good data on report failures.
+  // Each timeout is the source's fetchBudgetMs plus 15s for the last-good snapshot read
+  // (FOOD_FETCH_MARGIN_MS) plus runSeed's 40s publish reserve, so the section timeout never
+  // cuts the fetch phase short of its own collection budget.
+  { label: 'Food-PIHPS', script: 'seed-food-prices-pihps.mjs', seedMetaKey: 'economic:food-prices-pihps', canonicalKey: 'economic:food-prices:pihps:v1', completionMetaKey: 'seed-completion:economic:food-prices-pihps', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-PBS', script: 'seed-food-prices-pbs.mjs', seedMetaKey: 'economic:food-prices-pbs', canonicalKey: 'economic:food-prices:pbs:v1', completionMetaKey: 'seed-completion:economic:food-prices-pbs', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-DA', script: 'seed-food-prices-da.mjs', seedMetaKey: 'economic:food-prices-da', canonicalKey: 'economic:food-prices:da:v1', completionMetaKey: 'seed-completion:economic:food-prices-da', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-CBSL', script: 'seed-food-prices-cbsl.mjs', seedMetaKey: 'economic:food-prices-cbsl', canonicalKey: 'economic:food-prices:cbsl:v1', completionMetaKey: 'seed-completion:economic:food-prices-cbsl', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-SNIIM', script: 'seed-food-prices-sniim.mjs', seedMetaKey: 'economic:food-prices-sniim', canonicalKey: 'economic:food-prices:sniim:v1', completionMetaKey: 'seed-completion:economic:food-prices-sniim', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-GIEWS', script: 'seed-food-prices-giews.mjs', seedMetaKey: 'economic:food-prices-giews', canonicalKey: 'economic:food-prices:giews:v1', completionMetaKey: 'seed-completion:economic:food-prices-giews', intervalMs: DAY, timeoutMs: 285_000 },
+  { label: 'Food-ONAGRI', script: 'seed-food-prices-onagri.mjs', seedMetaKey: 'economic:food-prices-onagri', canonicalKey: 'economic:food-prices:onagri:v1', completionMetaKey: 'seed-completion:economic:food-prices-onagri', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-NABC', script: 'seed-food-prices-nabc.mjs', seedMetaKey: 'economic:food-prices-nabc', canonicalKey: 'economic:food-prices:nabc:v1', completionMetaKey: 'seed-completion:economic:food-prices-nabc', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-NSCKG', script: 'seed-food-prices-nsckg.mjs', seedMetaKey: 'economic:food-prices-nsckg', canonicalKey: 'economic:food-prices:nsckg:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsckg', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-STATKZ', script: 'seed-food-prices-statkz.mjs', seedMetaKey: 'economic:food-prices-statkz', canonicalKey: 'economic:food-prices:statkz:v1', completionMetaKey: 'seed-completion:economic:food-prices-statkz', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-STATUZ', script: 'seed-food-prices-statuz.mjs', seedMetaKey: 'economic:food-prices-statuz', canonicalKey: 'economic:food-prices:statuz:v1', completionMetaKey: 'seed-completion:economic:food-prices-statuz', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-MAGA', script: 'seed-food-prices-maga.mjs', seedMetaKey: 'economic:food-prices-maga', canonicalKey: 'economic:food-prices:maga:v1', completionMetaKey: 'seed-completion:economic:food-prices-maga', intervalMs: DAY, timeoutMs: 85_000 },
+  { label: 'Food-OCPV', script: 'seed-food-prices-ocpv.mjs', seedMetaKey: 'economic:food-prices-ocpv', canonicalKey: 'economic:food-prices:ocpv:v1', completionMetaKey: 'seed-completion:economic:food-prices-ocpv', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-SIMA', script: 'seed-food-prices-sima.mjs', seedMetaKey: 'economic:food-prices-sima', canonicalKey: 'economic:food-prices:sima:v1', completionMetaKey: 'seed-completion:economic:food-prices-sima', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MIT', script: 'seed-food-prices-mit.mjs', seedMetaKey: 'economic:food-prices-mit', canonicalKey: 'economic:food-prices:mit:v1', completionMetaKey: 'seed-completion:economic:food-prices-mit', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-UCDA', script: 'seed-food-prices-ucda.mjs', seedMetaKey: 'economic:food-prices-ucda', canonicalKey: 'economic:food-prices:ucda:v1', completionMetaKey: 'seed-completion:economic:food-prices-ucda', intervalMs: DAY, timeoutMs: 145_000 },
+  { label: 'Food-AMMAN', script: 'seed-food-prices-amman.mjs', seedMetaKey: 'economic:food-prices-amman', canonicalKey: 'economic:food-prices:amman:v1', completionMetaKey: 'seed-completion:economic:food-prices-amman', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-TCB', script: 'seed-food-prices-tcb.mjs', seedMetaKey: 'economic:food-prices-tcb', canonicalKey: 'economic:food-prices:tcb:v1', completionMetaKey: 'seed-completion:economic:food-prices-tcb', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MADR', script: 'seed-food-prices-madr.mjs', seedMetaKey: 'economic:food-prices-madr', canonicalKey: 'economic:food-prices:madr:v1', completionMetaKey: 'seed-completion:economic:food-prices-madr', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-FEWSSD', script: 'seed-food-prices-fewssd.mjs', seedMetaKey: 'economic:food-prices-fewssd', canonicalKey: 'economic:food-prices:fewssd:v1', completionMetaKey: 'seed-completion:economic:food-prices-fewssd', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-FEWSSS', script: 'seed-food-prices-fewsss.mjs', seedMetaKey: 'economic:food-prices-fewsss', canonicalKey: 'economic:food-prices:fewsss:v1', completionMetaKey: 'seed-completion:economic:food-prices-fewsss', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-FEWSYE', script: 'seed-food-prices-fewsye.mjs', seedMetaKey: 'economic:food-prices-fewsye', canonicalKey: 'economic:food-prices:fewsye:v1', completionMetaKey: 'seed-completion:economic:food-prices-fewsye', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-FEWSHT', script: 'seed-food-prices-fewsht.mjs', seedMetaKey: 'economic:food-prices-fewsht', canonicalKey: 'economic:food-prices:fewsht:v1', completionMetaKey: 'seed-completion:economic:food-prices-fewsht', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-TWMOA', script: 'seed-food-prices-twmoa.mjs', seedMetaKey: 'economic:food-prices-twmoa', canonicalKey: 'economic:food-prices:twmoa:v1', completionMetaKey: 'seed-completion:economic:food-prices-twmoa', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-GEOSTAT', script: 'seed-food-prices-geostat.mjs', seedMetaKey: 'economic:food-prices-geostat', canonicalKey: 'economic:food-prices:geostat:v1', completionMetaKey: 'seed-completion:economic:food-prices-geostat', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-PRICECATCHER', script: 'seed-food-prices-pricecatcher.mjs', seedMetaKey: 'economic:food-prices-pricecatcher', canonicalKey: 'economic:food-prices:pricecatcher:v1', completionMetaKey: 'seed-completion:economic:food-prices-pricecatcher', intervalMs: DAY, timeoutMs: 175_000 },
+  { label: 'Food-MCBA', script: 'seed-food-prices-mcba.mjs', seedMetaKey: 'economic:food-prices-mcba', canonicalKey: 'economic:food-prices:mcba:v1', completionMetaKey: 'seed-completion:economic:food-prices-mcba', intervalMs: DAY, timeoutMs: 175_000 },
+  { label: 'Food-CSO', script: 'seed-food-prices-cso.mjs', seedMetaKey: 'economic:food-prices-cso', canonicalKey: 'economic:food-prices:cso:v1', completionMetaKey: 'seed-completion:economic:food-prices-cso', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-STATEC', script: 'seed-food-prices-statec.mjs', seedMetaKey: 'economic:food-prices-statec', canonicalKey: 'economic:food-prices:statec:v1', completionMetaKey: 'seed-completion:economic:food-prices-statec', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-FOAGFRUIT', script: 'seed-food-prices-foagfruit.mjs', seedMetaKey: 'economic:food-prices-foagfruit', canonicalKey: 'economic:food-prices:foagfruit:v1', completionMetaKey: 'seed-completion:economic:food-prices-foagfruit', intervalMs: DAY, timeoutMs: 175_000 },
+  { label: 'Food-FOAGEGG', script: 'seed-food-prices-foagegg.mjs', seedMetaKey: 'economic:food-prices-foagegg', canonicalKey: 'economic:food-prices:foagegg:v1', completionMetaKey: 'seed-completion:economic:food-prices-foagegg', intervalMs: DAY, timeoutMs: 175_000 },
+  { label: 'Food-FOAGMILK', script: 'seed-food-prices-foagmilk.mjs', seedMetaKey: 'economic:food-prices-foagmilk', canonicalKey: 'economic:food-prices:foagmilk:v1', completionMetaKey: 'seed-completion:economic:food-prices-foagmilk', intervalMs: DAY, timeoutMs: 175_000 },
+  { label: 'Food-CSBLV', script: 'seed-food-prices-csblv.mjs', seedMetaKey: 'economic:food-prices-csblv', canonicalKey: 'economic:food-prices:csblv:v1', completionMetaKey: 'seed-completion:economic:food-prices-csblv', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-MAKSTAT', script: 'seed-food-prices-makstat.mjs', seedMetaKey: 'economic:food-prices-makstat', canonicalKey: 'economic:food-prices:makstat:v1', completionMetaKey: 'seed-completion:economic:food-prices-makstat', intervalMs: DAY, timeoutMs: 115_000 },
+  { label: 'Food-NSOMN', script: 'seed-food-prices-nsomn.mjs', seedMetaKey: 'economic:food-prices-nsomn', canonicalKey: 'economic:food-prices:nsomn:v1', completionMetaKey: 'seed-completion:economic:food-prices-nsomn', intervalMs: DAY, timeoutMs: 85_000 },
+
 ];
 
-// Education is normally last so a persistent failure in the new flag-dark
-// producer cannot starve established production members every day. Give it
-// first priority on the 08:00 Sunday tick. The 09:00 retry always restores
-// Physical to the first slot, even if Education failed and remains due.
+// Education is normally last; give it first priority on the 08:00 Sunday tick.
+// Physical leads the other 08:00 ticks and every 09:00 retry. The 10:00 tick gives a different macro
+// member the first slot on each completed run, followed by Physical. Reuse the
+// leased Redis cursor so failures, restarts and fresh sections cannot keep new
+// food sources permanently behind the same expensive due sections.
+const runAt = new Date();
+const rotates = runAt.getUTCHours() === 10;
+const claim = rotates ? await claimBundleTurn('macro') : null;
+if (rotates && !claim) {
+  console.log('[Bundle:macro] scheduler lease held or Redis unavailable; deferring this tick.');
+  process.exit(0);
+}
 const sections = orderMacroSections(
-  new Date(),
+  runAt,
   EDUCATION_SECTION,
   PHYSICAL_PREMIUM_SECTION,
   MACRO_SECTIONS,
+  claim?.turn ?? null,
 );
 
 await runBundle('macro', sections, {
   // Railway kills cron containers at 10 minutes. Defer sections whose full
   // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
-  // and the terminal reason in logs.
-  maxBundleMs: 570_000,
+  // and the terminal reason in logs. Bounded parallel freshness reads prevent
+  // late per-member Redis reads from consuming the cursor's acknowledgement
+  // window. The 550s budget leaves 50s before Railway's kill, covering the
+  // <=5s lease claim, <=5s acknowledgement and process/module cleanup.
+  maxBundleMs: 550_000,
+  prefetchFreshness: true,
+  onTerminalComplete: claim ? async () => {
+    if (!await acknowledgeBundleTurn('macro', claim)) throw new Error(`could not acknowledge scheduler turn ${claim.turn}`);
+  } : undefined,
 });

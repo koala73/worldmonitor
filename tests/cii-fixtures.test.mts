@@ -115,16 +115,20 @@ describe('CII fixtures', () => {
     assert.deepEqual(fixture.expected.v14, v14, 'writing the in-progress table leaves v14 untouched');
   });
 
-  it('refuse an in-progress claim that names the released version, so it can never make that table writable', () => {
-    const fixture = structuredClone(FIXTURES.at(-1)!);
-    const v14 = structuredClone(fixture.expected.v14!);
-    const moved = structuredClone(v14);
-    moved.US = { ...moved.US!, combinedScore: moved.US!.combinedScore + 1 };
-    const selfClaim = { next: 'v14', claimedBy: 'test', claimedAt: '2026-10-23T00:00:00Z', inProgress: true, branch: 'cii-v15' };
+  it('refuse an in-progress claim that is not after the released version, so no released table becomes writable', () => {
+    for (const next of ['v14', 'v13']) {
+      const fixture = structuredClone(FIXTURES.at(-1)!);
+      const moved = structuredClone(fixture.expected.v14!);
+      moved.US = { ...moved.US!, combinedScore: moved.US!.combinedScore + 1 };
+      fixture.expected[next] = structuredClone(fixture.expected.v14!);
+      const before = structuredClone(fixture.expected);
+      const claim = { next, claimedBy: 'test', claimedAt: '2026-10-23T00:00:00Z', inProgress: true, branch: 'cii-v15' };
 
-    assert.throws(() => ciiScoredVersion(selfClaim, 'v14'), /names the released v14/);
-    assert.throws(() => recordExpectedTable(fixture, moved, selfClaim, 'v14'), /names the released v14/);
-    assert.deepEqual(fixture.expected.v14, v14, 'v14 stays untouched');
+      assert.throws(() => ciiScoredVersion(claim, 'v14'), new RegExp(`${next} is not after the released v14`), next);
+      assert.throws(() => recordExpectedTable(fixture, moved, claim, 'v14'), new RegExp(`${next} is not after the released v14`), next);
+      assert.deepEqual(fixture.expected, before, `${next}: no released table changes`);
+    }
+    assert.equal(ciiScoredVersion({ next: 'v15', claimedBy: 'test', claimedAt: '2026-10-23T00:00:00Z', inProgress: true, branch: 'cii-v15' }, 'v14'), 'v15');
   });
 
   it('refuse a capture on an integration branch, whose scorer is not the released one', {

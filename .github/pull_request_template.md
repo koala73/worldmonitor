@@ -30,7 +30,7 @@
 - [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
 - [ ] No API keys or secrets committed
 - [ ] TypeScript compiles without errors (`npm run typecheck`)
-- [ ] New or repointed health probes have a completed Railway-side pre-seed, a one-way durable activation marker for an intentionally gated producer, or an owner-bound baseline acknowledgement with an entry-level `expiresAt` bounded to the first scheduled cron window (if applicable)
+- [ ] New or repointed health probes have a completed Railway-side pre-seed or a one-way durable activation marker (if applicable)
 
 ## Documentation Alignment Checklist
 
@@ -45,3 +45,7 @@
 ## Screenshots
 
 <!-- If applicable, add screenshots or screen recordings -->
+
+## Bundle budget provenance
+
+<!-- Required when scripts/shared/bundle-budgets.json, scripts/shared/bundle-budgets-pro.json, or scripts/shared/bundle-budgets-embed.json changes: list each raised budget, old/new byte limits, measured growth, and the commit SHA(s) responsible for that growth. Attribute all growth, including growth already on main. Link the responsible commits and explain why their cost is accepted; do not absorb unattributed growth from other PRs. Otherwise write N/A. -->

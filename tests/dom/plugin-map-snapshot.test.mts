@@ -6,6 +6,13 @@ const event = { id: 'storm', title: 'Storm fixture', category: 'severeStorms', c
 const result = (earthquakes: unknown[], events: unknown[] = []) => ({ structuredContent: { data: { earthquakes: { earthquakes }, events: { events, dataAvailable: true } } } });
 
 describe('plugin hazard snapshot boundary', () => {
+  it('accepts USGS earthquakes without the optional NRCan category', () => {
+    const { category: _category, ...usgs } = { ...quake, source: 'usgs' };
+    const snapshot = parsePluginHazardSnapshot(result([usgs]), ['natural']);
+    expect(snapshot.earthquakes).toEqual([{ ...usgs, category: '' }]);
+    expect(snapshot.coverage.earthquakes).toEqual({ accepted: 1, skipped: 0, received: 1 });
+  });
+
   it('keeps supplied zero coordinates and rejects missing, nonfinite or out-of-range positions and dates', () => {
     const snapshot = parsePluginHazardSnapshot(result([quake, { ...quake, location: undefined }, { ...quake, location: { latitude: Infinity, longitude: 10 } }, { ...quake, occurredAt: 1e20 }, { ...quake, location: { latitude: 100, longitude: 10 } }]), ['natural']);
     expect(snapshot.earthquakes).toEqual([quake]);

@@ -6,7 +6,7 @@ keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashb
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
-modifiedDate: "2026-10-18"
+modifiedDate: "2026-10-26"
 ---
 
 > **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
@@ -33,7 +33,7 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 
 ## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
 The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
@@ -98,7 +98,7 @@ When the Strait of Hormuz closes, the trade policy data shows the second-order e
 
 ## Critical Minerals: Concentration Risk
 
-Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the HHI (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
+Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the [HHI](/blog/posts/critical-minerals-hhi-supply-risk-explained/) (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
 
 | Mineral | Top Producer | Share | HHI Score | Risk |
 |---------|-------------|-------|-----------|------|
@@ -135,6 +135,8 @@ Transparency matters. Here is where the data comes from:
 - **Critical minerals**: [USGS](https://www.usgs.gov/centers/national-minerals-information-center) mineral commodity data with HHI calculations
 
 All sources are public. No proprietary data feeds. No paywall.
+
+For vessel-level research, read [how to assess AIS tracking accuracy](/blog/posts/ais-vessel-tracking-accuracy/) before treating a position, destination field or transmission gap as evidence of a port visit.
 
 ## Frequently Asked Questions
 

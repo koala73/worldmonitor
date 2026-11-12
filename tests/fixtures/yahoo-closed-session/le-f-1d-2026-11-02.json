@@ -1,0 +1,77 @@
+{
+ "chart": {
+  "result": [
+   {
+    "meta": {
+     "currency": "USX",
+     "symbol": "LE=F",
+     "exchangeName": "CME",
+     "fullExchangeName": "CME",
+     "instrumentType": "FUTURE",
+     "firstTradeDate": 983422800,
+     "regularMarketTime": 1793383499,
+     "hasPrePostMarketData": false,
+     "gmtoffset": -18000,
+     "timezone": "EST",
+     "exchangeTimezoneName": "America/New_York",
+     "regularMarketPrice": 220.95,
+     "regularMarketChangePercent": -2.364,
+     "fulldayPrice": 220.95,
+     "fulldayChange": -5.35,
+     "fulldayChangePercent": -2.364,
+     "fiftyTwoWeekHigh": 258.725,
+     "fiftyTwoWeekLow": 204.55,
+     "regularMarketDayHigh": 225.75,
+     "regularMarketDayLow": 220.475,
+     "regularMarketVolume": 33760,
+     "shortName": "Live Cattle Futures,Dec-2026",
+     "chartPreviousClose": 220.95,
+     "previousClose": 220.95,
+     "scale": 3,
+     "priceHint": 2,
+     "currentTradingPeriod": {
+      "pre": {
+       "timezone": "EST",
+       "end": 1793595600,
+       "start": 1793595600,
+       "gmtoffset": -18000
+      },
+      "regular": {
+       "timezone": "EST",
+       "end": 1793681940,
+       "start": 1793595600,
+       "gmtoffset": -18000
+      },
+      "post": {
+       "timezone": "EST",
+       "end": 1793681940,
+       "start": 1793681940,
+       "gmtoffset": -18000
+      }
+     },
+     "dataGranularity": "1m",
+     "range": "1d",
+     "validRanges": [
+      "1d",
+      "5d",
+      "1mo",
+      "3mo",
+      "6mo",
+      "1y",
+      "2y",
+      "5y",
+      "10y",
+      "ytd",
+      "max"
+     ]
+    },
+    "indicators": {
+     "quote": [
+      {}
+     ]
+    }
+   }
+  ],
+  "error": null
+ }
+}

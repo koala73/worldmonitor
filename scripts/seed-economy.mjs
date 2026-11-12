@@ -92,14 +92,15 @@ async function fetchEnergyPrices() {
     if (!rows || rows.length === 0) continue;
     const current = rows[0];
     const previous = rows[1];
-    const price = current.value ?? 0;
+    const priceAt = Date.parse(current.period);
+    if (!Number.isFinite(priceAt) || current.value == null || !Number.isFinite(Number(current.value))) continue;
+    const price = Number(current.value);
     const prevPrice = previous?.value ?? price;
     const change = prevPrice !== 0 ? ((price - prevPrice) / prevPrice) * 100 : 0;
-    const priceAt = current.period ? new Date(current.period).getTime() : Date.now();
     prices.push({
       commodity: c.commodity, name: c.name, price, unit: c.unit,
       change: Math.round(change * 10) / 10,
-      priceAt: Number.isFinite(priceAt) ? priceAt : Date.now(),
+      priceAt,
     });
   }
   console.log(`  Energy prices: ${prices.length} commodities`);

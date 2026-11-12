@@ -121,6 +121,32 @@ describe('FirecrawlProvider.extract', () => {
     expect(result.pageContent).toBeUndefined();
   });
 
+  it.each([
+    [{ 'og:title': 'Fresh White Bread 400G', 'twitter:title': 'ignored' }, 'Fresh White Bread 400G'],
+    [{ ogTitle: 'Fresh White Bread 400G' }, 'Fresh White Bread 400G'],
+    [{ 'twitter:title': 'Feinkristallzucker IP Suisse' }, 'Feinkristallzucker IP Suisse'],
+  ])('returns the page-declared product title from metadata %o', async (metadata, expected) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata } }), { status: 200 })),
+    );
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/p/bread', schema);
+    expect(result.pageTitle).toBe(expected);
+  });
+
+  it('omits pageTitle when the page declares only a document title', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: { extract: { price: 4.6 }, metadata: { title: 'Fresh Milk' } } }), { status: 200 }),
+      ),
+    );
+
+    const result = await new FirecrawlProvider('test-key').extract('https://retailer.example/dairy/fresh-milk', schema);
+    expect(result.pageTitle).toBeUndefined();
+  });
+
   // renderWaitMs (#6182): late-hydrating storefronts capture as a breadcrumb
   // shell without a settle delay. The wait must reach the request body AND
   // extend the client abort deadline, or a page using its full wait would be

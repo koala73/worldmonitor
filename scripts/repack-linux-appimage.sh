@@ -7,6 +7,7 @@ if [ "$#" -ne 2 ]; then
 fi
 
 APPIMAGE=$(realpath "$1")
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TOOL_ARCH=$2
 APPIMAGETOOL_VERSION=1.9.1
 APPIMAGETOOL_SHA256_X86_64=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
@@ -81,7 +82,7 @@ fi
 
 TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${TOOL_ARCH}.AppImage"
 TOOL_PATH="$WORK_DIR/appimagetool"
-wget -q "$TOOL_URL" -O "$TOOL_PATH"
+bash "$SCRIPT_DIR/fetch-with-retry.sh" "$TOOL_URL" "$TOOL_PATH"
 ACTUAL_SHA=$(sha256sum "$TOOL_PATH" | awk '{print $1}')
 if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
   echo "::error::appimagetool SHA256 mismatch! Expected: $EXPECTED_SHA Got: $ACTUAL_SHA"

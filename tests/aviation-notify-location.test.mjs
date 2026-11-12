@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { airportNotifyLocation } from '../scripts/lib/airport-notify-location.mjs';
 import { AIRPORTS } from '../scripts/seed-aviation.mjs';
+import countryNameMap from '../scripts/shared/country-name-to-iso2.cjs';
 
 const aviationSrc = readFileSync(
   fileURLToPath(new URL('../scripts/seed-aviation.mjs', import.meta.url)),
@@ -136,6 +137,24 @@ describe('#6626 — the airport registry can locate every closure it can publish
       }
     }
     assert.deepEqual(drift, [], `registry drift: ${drift.join(' | ')}`);
+  });
+
+  it('lists every src/config/airports.ts airport, so production NOTAM checks reach it', () => {
+    // The Railway container ships scripts/ only: an airport missing here gets
+    // no closure check and no NOTAM coverage, and shows "Coverage unavailable".
+    const seederIcaoByIata = new Map(AIRPORTS.map((a) => [a.iata, a.icao]));
+    const missing = [];
+    for (const m of configSrc.matchAll(/\{\s*iata:\s*'([A-Z]{3})'\s*,\s*icao:\s*'([A-Z0-9]{3,4})'/g)) {
+      if (seederIcaoByIata.get(m[1]) !== m[2]) missing.push(`${m[1]}/${m[2]} (seeder: ${seederIcaoByIata.get(m[1]) ?? 'absent'})`);
+    }
+    assert.deepEqual(missing, [], `config airports missing from the seeder registry: ${missing.join(', ')}`);
+  });
+
+  it('resolves a country for every NOTAM-watched airport, so closure notices are country-scoped', () => {
+    const unresolved = AIRPORTS
+      .filter((a) => a.sources.includes('notam') && !countryNameMap.countryNameToIso2(a.country))
+      .map((a) => `${a.icao}/${a.country}`);
+    assert.deepEqual(unresolved, [], `notam_closure would publish unattributed: ${unresolved.join(', ')}`);
   });
 
   it('locates the two airports that appear in no other registry', () => {

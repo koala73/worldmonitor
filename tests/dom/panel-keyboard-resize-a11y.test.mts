@@ -5,6 +5,7 @@ import { unsafeRawHtml } from '@/utils/sanitize';
 import {
   clearPanelColSpans,
   clearPanelSpans,
+  loadPanelSpans,
   savePanelColSpan,
   savePanelSpan,
 } from '@/utils/panel-storage';
@@ -49,6 +50,203 @@ describe('Panel keyboard resize accessibility', () => {
     expect(colHandle?.getAttribute('aria-valuenow')).toBe('2');
 
     panel.destroy();
+  });
+
+  it('synchronizes natural video panel spans after mounting and viewport resize (#8276)', () => {
+    for (const id of ['live-news', 'live-webcams']) {
+      const panel = new Panel({
+        id,
+        title: id,
+        className: 'panel-wide',
+      });
+
+      const element = panel.getElement();
+      const handle = element.querySelector('.panel-resize-handle');
+
+      // Before mounting, the wide-panel fallback is two rows.
+      expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+      // Simulate the natural three-row CSS footprint.
+      element.style.gridRowStart = 'span 3';
+
+      document.body.appendChild(element);
+      panel.notifyConnected();
+
+      expect(getComputedStyle(element).gridRowStart).toBe('span 3');
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+      // Simulate the compact viewport layout.
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+
+      expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+      // Return to the regular desktop layout.
+      element.style.gridRowStart = 'span 3';
+      window.dispatchEvent(new Event('resize'));
+
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+      panel.destroy();
+      element.remove();
+    }
+  });
+
+  it('synchronizes any panel whose natural span comes from CSS, not only the video panels', () => {
+    // The span is owned by a stylesheet rule keyed on the panel id, so the
+    // panel id must not decide whether the separator value tracks it.
+    const panel = new Panel({ id: 'threat-timeline', title: 'Threat timeline' });
+    const element = panel.getElement();
+    const handle = element.querySelector('.panel-resize-handle');
+
+    expect(handle?.getAttribute('aria-valuenow')).toBe('1');
+
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+    element.style.gridRowStart = 'span 2';
+    window.dispatchEvent(new Event('resize'));
+    expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+
+    panel.destroy();
+    element.style.gridRowStart = 'span 4';
+    window.dispatchEvent(new Event('resize'));
+    expect(handle?.getAttribute('aria-valuenow')).toBe('2');
+    element.remove();
+  });
+
+  it.each(['mouse', 'touch'] as const)('keeps a natural span responsive after a no-op %s gesture', (input) => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide' });
+    const element = panel.getElement();
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+    const touch = (type: string, y: number) => new TouchEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      touches: type === 'touchend' ? [] : [{ clientY: y } as Touch],
+    });
+    const start = () => handle.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mousedown', { clientY: 300, bubbles: true })
+      : touch('touchstart', 300));
+    const move = (y: number) => document.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mousemove', { clientY: y, bubbles: true })
+      : touch('touchmove', y));
+    const end = () => document.dispatchEvent(input === 'mouse'
+      ? new MouseEvent('mouseup', { bubbles: true })
+      : touch('touchend', 300));
+
+    try {
+      for (const deltas of [[], [5], [80, 0]]) {
+        start();
+        for (const delta of deltas) move(300 + delta);
+        end();
+        expect(loadPanelSpans()['live-news']).toBeUndefined();
+        expect(element.classList.contains('resized')).toBe(false);
+        expect(element.classList.contains('span-3')).toBe(false);
+      }
+
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+      expect(handle.getAttribute('aria-valuenow')).toBe('2');
+
+      start();
+      move(380);
+      end();
+      expect(loadPanelSpans()['live-news']).toBe(3);
+      expect(element.classList.contains('resized')).toBe(true);
+      expect(element.classList.contains('span-3')).toBe(true);
+
+      start();
+      move(380);
+      move(300);
+      end();
+      expect(loadPanelSpans()['live-news']).toBe(3);
+      expect(element.classList.contains('resized')).toBe(true);
+      expect(element.classList.contains('span-3')).toBe(true);
+    } finally {
+      panel.destroy();
+    }
+  });
+
+  it('updates the separator value when collapsing changes the CSS span', () => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide', collapsible: true });
+    const element = panel.getElement();
+    const handle = element.querySelector('.panel-resize-handle');
+    const collapse = element.querySelector<HTMLButtonElement>('.panel-collapse-btn')!;
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+
+    try {
+      // The stylesheet gives a collapsed natural video panel one row.
+      element.style.gridRowStart = 'span 1';
+      collapse.click();
+      expect(handle?.getAttribute('aria-valuenow')).toBe('1');
+
+      element.style.gridRowStart = 'span 3';
+      collapse.click();
+      expect(handle?.getAttribute('aria-valuenow')).toBe('3');
+    } finally {
+      panel.destroy();
+    }
+  });
+
+  it('does not save a span when a breakpoint changes the natural span mid-drag', () => {
+    const panel = new Panel({ id: 'live-news', title: 'News', className: 'panel-wide' });
+    const element = panel.getElement();
+    element.style.gridRowStart = 'span 3';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+
+    try {
+      handle.dispatchEvent(new MouseEvent('mousedown', { clientY: 300, bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mousemove', { clientY: 380, bubbles: true }));
+      // The viewport crosses the short-desktop breakpoint during the drag.
+      element.style.gridRowStart = 'span 2';
+      window.dispatchEvent(new Event('resize'));
+      // The pointer returns to where the drag started.
+      document.dispatchEvent(new MouseEvent('mousemove', { clientY: 300, bubbles: true }));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+
+      expect(loadPanelSpans()['live-news']).toBeUndefined();
+      expect(element.classList.contains('resized')).toBe(false);
+      expect(handle.getAttribute('aria-valuenow')).toBe('2');
+    } finally {
+      panel.destroy();
+    }
+  });
+
+  it('uses the rendered span when CSS gives a span-2 default more rows', () => {
+    // On desktop the stylesheet gives the CLS-pinned span-2 defaults four rows
+    // (#5332 follow-up). The separator and keyboard resize must start from the
+    // four rows on screen, not the two the class names.
+    const panel = new Panel({ id: 'threat-timeline', title: 'Threat timeline', defaultRowSpan: 2 });
+    const element = panel.getElement();
+    const handle = element.querySelector<HTMLElement>('.panel-resize-handle')!;
+    expect(element.classList.contains('span-2')).toBe(true);
+    element.style.gridRowStart = 'span 4';
+    document.body.appendChild(element);
+    panel.notifyConnected();
+
+    try {
+      expect(handle.getAttribute('aria-valuenow')).toBe('4');
+
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(loadPanelSpans()['threat-timeline']).toBeUndefined();
+      expect(element.classList.contains('span-3')).toBe(false);
+
+      handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+      expect(loadPanelSpans()['threat-timeline']).toBe(3);
+      expect(element.classList.contains('span-3')).toBe(true);
+    } finally {
+      panel.destroy();
+    }
   });
 
   it('updates separator values when saved dimensions are reset', () => {

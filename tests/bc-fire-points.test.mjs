@@ -757,6 +757,62 @@ describe('host allowlist, cache key, transport', () => {
     assert.equal(canadianWildfireAfterPublish(data).freshnessMetaPatch.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
   });
 
+  // BC's GeoServer answers some WFS pages with HTTP 400 NoApplicableCode
+  // carrying a server-side SocketTimeoutException. In production on
+  // 2026-11-08 BC failed this way on every other run and the next run
+  // succeeded, so health flapped to SEED_ERROR (Sentry WORLDMONITOR-1C1).
+  const wfsTimeout = () => new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode">'
+    + '<ows:ExceptionText>java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>'
+    + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+
+  it('retries a WFS page once when the server reports its own timeout', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsCalls === 1 ? wfsTimeout() : new Response(geojson);
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+    assert.equal(result._bcVia, 'wfs');
+    assert.ok(result._bcCount > 0);
+  });
+
+  it('still retries a timeout that the capped diagnostic signal list leaves out', async t => {
+    t.mock.method(console, 'warn', () => {});
+    // Eight ORA codes fill the logged signal cap before 'timeout' is listed.
+    const ora = ['ORA-00904', 'ORA-00942', 'ORA-01017', 'ORA-01031', 'ORA-01722', 'ORA-03113', 'ORA-03114', 'ORA-12154'];
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ nowMs: Date.parse('2026-09-13T02:20:00Z'), wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      if (wfsCalls > 1) return new Response(geojson);
+      return new Response('<ows:ExceptionReport><ows:Exception exceptionCode="NoApplicableCode"><ows:ExceptionText>'
+        + `${ora.join(' ')} java.net.SocketTimeoutException: Read timed out</ows:ExceptionText>`
+        + '</ows:Exception></ows:ExceptionReport>', { status: 400 });
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'ok');
+  });
+
+  it('gives up on a WFS page after one timeout retry and keeps the retained rows', async t => {
+    t.mock.method(console, 'warn', () => {});
+    const now = Date.parse('2026-09-13T02:20:00Z');
+    const rows = parseBcFireGeoJson(geojson).fireDetections;
+    const previousSnapshot = { version: 1, fetchedAt: now - 600_000, fireDetections: rows };
+    let wfsCalls = 0;
+    const result = await fetchBcFirePoints({ previousSnapshot, nowMs: now, wfsRetryDelayMs: 0, fetchFn: async url => {
+      if (new URL(url).pathname.includes('/kml/')) return new Response('<kml/>');
+      wfsCalls++;
+      return wfsTimeout();
+    } });
+    assert.equal(wfsCalls, 2);
+    assert.equal(result._bcState, 'failed');
+    assert.deepEqual(result.fireDetections, rows);
+  });
+
   it('replaces retained BC rows only after complete valid coverage, including a valid empty response', async () => {
     const now = Date.parse('2026-09-13T02:20:00Z');
     const rows = parseBcFireGeoJson(geojson).fireDetections;

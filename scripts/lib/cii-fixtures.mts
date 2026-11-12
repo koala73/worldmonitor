@@ -88,9 +88,10 @@ export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionCl
 /** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
 export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
   if (claim.inProgress !== true) return released;
-  // Otherwise `next: "v14"` would make the released v14 table writable.
-  if (claim.next === released) {
-    throw new Error(`cii-next.json marks ${claim.next} in progress but names the released ${released}; an in-progress version must be unreleased`);
+  // Otherwise `next: "v14"` or `next: "v13"` would make a released table writable.
+  const versionNumber = (version: string) => (/^v\d+$/.test(version) ? Number(version.slice(1)) : Number.NaN);
+  if (!(versionNumber(claim.next) > versionNumber(released))) {
+    throw new Error(`cii-next.json marks ${claim.next} in progress, but ${claim.next} is not after the released ${released}; an in-progress version must be unreleased`);
   }
   return claim.next;
 }

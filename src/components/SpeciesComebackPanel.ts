@@ -31,8 +31,8 @@ function getNumberFormat(): Intl.NumberFormat {
 
 /** SVG placeholder for broken images -- nature leaf icon on soft green bg */
 const FALLBACK_IMAGE_SVG = 'data:image/svg+xml,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="%236B8F5E">' +
-  '<rect width="400" height="300" fill="%23f0f4ed"/>' +
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="#6B8F5E">' +
+  '<rect width="400" height="300" fill="#f0f4ed"/>' +
   '<text x="200" y="160" text-anchor="middle" font-size="64">&#x1F33F;</text>' +
   '</svg>',
 );

@@ -1,10 +1,14 @@
 import { Panel } from './Panel';
-import type { AIRegulation, RegulatoryAction, CountryRegulationProfile } from '@/types';
+import type { AIRegulation, RegulatoryAction, CountryRegulationProfile, RegulationDeadline } from '@/types';
 import {
   AI_REGULATIONS,
   COUNTRY_REGULATION_PROFILES,
   getUpcomingDeadlines,
   getRecentActions,
+  getLatestActions,
+  getDeadlinesOutsideWindow,
+  getLaterDeadlines,
+  daysFromToday,
 } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
@@ -68,19 +72,22 @@ export class RegulationPanel extends Panel {
 
   private renderTimeline(): string {
     const recentActions = getRecentActions(12); // Last 12 months
+    const showingLatest = recentActions.length === 0;
+    const actions = showingLatest ? getLatestActions() : recentActions;
 
-    if (recentActions.length === 0) {
+    if (actions.length === 0) {
       return `<div class="empty-state">${t('components.regulation.emptyActions')}</div>`;
     }
 
     return `
       <div class="timeline-view">
+        ${showingLatest ? `<p class="regulation-note">${t('components.regulation.emptyActions')}</p>` : ''}
         <div class="timeline-header">
-          <h4>${t('components.regulation.recentActions')}</h4>
-          <span class="count">${t('components.regulation.actionsCount', { count: String(recentActions.length) })}</span>
+          <h4>${t(showingLatest ? 'components.regulation.latestActions' : 'components.regulation.recentActions')}</h4>
+          <span class="count">${t('components.regulation.actionsCount', { count: String(actions.length) })}</span>
         </div>
         <div class="timeline-list">
-          ${recentActions.map(action => this.renderTimelineItem(action)).join('')}
+          ${actions.map(action => this.renderTimelineItem(action)).join('')}
         </div>
       </div>
     `;
@@ -91,7 +98,8 @@ export class RegulationPanel extends Panel {
     const formattedDate = date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      timeZone: 'UTC',
     });
 
     const typeIcons: Record<RegulatoryAction['type'], string> = {
@@ -100,12 +108,6 @@ export class RegulationPanel extends Panel {
       'guideline': '📋',
       'enforcement': '⚖️',
       'consultation': '💬',
-    };
-
-    const impactColors: Record<RegulatoryAction['impact'], string> = {
-      high: getCSSColor('--semantic-critical'),
-      medium: getCSSColor('--semantic-elevated'),
-      low: getCSSColor('--semantic-normal'),
     };
 
     return `
@@ -118,11 +120,11 @@ export class RegulationPanel extends Panel {
           <div class="timeline-header-row">
             <span class="timeline-date">${formattedDate}</span>
             <span class="timeline-country">${escapeHtml(action.country)}</span>
-            <span class="timeline-impact" style="color: ${impactColors[action.impact]}">${action.impact.toUpperCase()}</span>
+            <span class="timeline-impact">${action.impact.toUpperCase()}</span>
           </div>
           <h5>${escapeHtml(action.title)}</h5>
           <p>${escapeHtml(action.description)}</p>
-          ${action.source ? `<span class="timeline-source">${t('components.regulation.source')}: ${escapeHtml(action.source)}</span>` : ''}
+          <span class="timeline-source">${t('components.regulation.source')}: ${this.renderSourceLink(action.sourceUrl, action.source ?? action.sourceUrl)}</span>
         </div>
       </div>
     `;
@@ -130,53 +132,63 @@ export class RegulationPanel extends Panel {
 
   private renderDeadlines(): string {
     const upcomingDeadlines = getUpcomingDeadlines();
+    const showingOther = upcomingDeadlines.length === 0;
+    const deadlines = showingOther ? getDeadlinesOutsideWindow() : upcomingDeadlines;
+    const laterDeadlines = showingOther ? [] : getLaterDeadlines();
 
-    if (upcomingDeadlines.length === 0) {
+    if (deadlines.length === 0) {
       return `<div class="empty-state">${t('components.regulation.emptyDeadlines')}</div>`;
     }
 
     return `
       <div class="deadlines-view">
+        ${showingOther ? `<p class="regulation-note">${t('components.regulation.emptyDeadlines')}</p>` : ''}
         <div class="deadlines-header">
-          <h4>${t('components.regulation.upcomingDeadlines')}</h4>
-          <span class="count">${t('components.regulation.deadlinesCount', { count: String(upcomingDeadlines.length) })}</span>
+          <h4>${t(showingOther ? 'components.regulation.otherDeadlines' : 'components.regulation.upcomingDeadlines')}</h4>
+          <span class="count">${t('components.regulation.deadlinesCount', { count: String(deadlines.length) })}</span>
         </div>
         <div class="deadlines-list">
-          ${upcomingDeadlines.map(reg => this.renderDeadlineItem(reg)).join('')}
+          ${deadlines.map(entry => this.renderDeadlineItem(entry)).join('')}
         </div>
+        ${laterDeadlines.length > 0 ? `
+        <div class="deadlines-header">
+          <h4>${t('components.regulation.otherDeadlines')}</h4>
+          <span class="count">${t('components.regulation.deadlinesCount', { count: String(laterDeadlines.length) })}</span>
+        </div>
+        <div class="deadlines-list">
+          ${laterDeadlines.map(entry => this.renderDeadlineItem(entry)).join('')}
+        </div>` : ''}
       </div>
     `;
   }
 
-  private renderDeadlineItem(regulation: AIRegulation): string {
-    const deadline = new Date(regulation.complianceDeadline!);
-    const now = new Date();
-    const daysUntil = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  private renderDeadlineItem({ regulation, deadline }: RegulationDeadline): string {
+    const date = new Date(deadline.date);
+    const daysUntil = daysFromToday(deadline.date);
+    const passed = daysUntil < 0;
 
-    const formattedDate = deadline.toLocaleDateString('en-US', {
+    const formattedDate = date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      timeZone: 'UTC',
     });
 
-    const urgencyClass = daysUntil < 90 ? 'urgent' : daysUntil < 180 ? 'warning' : 'normal';
+    const urgencyClass = passed ? 'passed' : daysUntil < 90 ? 'urgent' : daysUntil < 180 ? 'warning' : 'normal';
 
     return `
       <div class="deadline-item ${urgencyClass}">
         <div class="deadline-countdown">
-          <div class="days-until">${daysUntil}</div>
-          <div class="days-label">${t('components.regulation.days')}</div>
+          <div class="days-until">${Math.abs(daysUntil)}</div>
+          <div class="days-label">${t(passed ? 'components.regulation.daysAgo' : 'components.regulation.days')}</div>
         </div>
         <div class="deadline-content">
           <h5>${escapeHtml(regulation.shortName)}</h5>
-          <p class="deadline-name">${escapeHtml(regulation.name)}</p>
+          <p class="deadline-name">${escapeHtml(deadline.label)}</p>
           <div class="deadline-meta">
             <span class="deadline-date">📅 ${formattedDate}</span>
             <span class="deadline-country">🌍 ${escapeHtml(regulation.country)}</span>
-          </div>
-          ${regulation.penalties ? `<p class="deadline-penalties">⚠️ Penalties: ${escapeHtml(regulation.penalties)}</p>` : ''}
-          <div class="deadline-scope">
-            ${regulation.scope.map(s => `<span class="scope-tag">${escapeHtml(s)}</span>`).join('')}
+            <span class="deadline-source">${this.renderSourceLink(deadline.source, t('components.regulation.source'))}</span>
           </div>
         </div>
       </div>
@@ -186,6 +198,8 @@ export class RegulationPanel extends Panel {
   private renderRegulations(): string {
     const activeRegulations = AI_REGULATIONS.filter(r => r.status === 'active');
     const proposedRegulations = AI_REGULATIONS.filter(r => r.status === 'proposed');
+    const revokedRegulations = AI_REGULATIONS.filter(r => r.status === 'revoked');
+    const lapsedRegulations = AI_REGULATIONS.filter(r => r.status === 'lapsed');
 
     return `
       <div class="regulations-view">
@@ -201,20 +215,33 @@ export class RegulationPanel extends Panel {
             ${proposedRegulations.map(reg => this.renderRegulationCard(reg)).join('')}
           </div>
         </div>
+        ${revokedRegulations.length > 0 ? `
+        <div class="regulations-section">
+          <h4>${t('components.regulation.revokedCount', { count: String(revokedRegulations.length) })}</h4>
+          <div class="regulations-list">
+            ${revokedRegulations.map(reg => this.renderRegulationCard(reg)).join('')}
+          </div>
+        </div>` : ''}
+        ${lapsedRegulations.length > 0 ? `
+        <div class="regulations-section">
+          <h4>${t('components.regulation.lapsedCount', { count: String(lapsedRegulations.length) })}</h4>
+          <div class="regulations-list">
+            ${lapsedRegulations.map(reg => this.renderRegulationCard(reg)).join('')}
+          </div>
+        </div>` : ''}
       </div>
     `;
   }
 
-  private renderRegulationCard(regulation: AIRegulation): string {
-    const typeColors: Record<AIRegulation['type'], string> = {
-      comprehensive: getCSSColor('--semantic-low'),
-      sectoral: getCSSColor('--semantic-high'),
-      voluntary: getCSSColor('--semantic-normal'),
-      proposed: getCSSColor('--semantic-elevated'),
-    };
+  private renderSourceLink(url: string, label: string): string {
+    const href = sanitizeUrl(url);
+    if (!href) return escapeHtml(label);
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+  }
 
+  private renderRegulationCard(regulation: AIRegulation): string {
     const effectiveDate = regulation.effectiveDate
-      ? new Date(regulation.effectiveDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+      ? new Date(regulation.effectiveDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', timeZone: 'UTC' })
       : 'TBD';
     const regulationLink = regulation.link ? sanitizeUrl(regulation.link) : '';
 
@@ -222,7 +249,7 @@ export class RegulationPanel extends Panel {
       <div class="regulation-card">
         <div class="regulation-card-header">
           <h5>${escapeHtml(regulation.shortName)}</h5>
-          <span class="regulation-type" style="background-color: ${typeColors[regulation.type]}">${regulation.type}</span>
+          <span class="regulation-type type-${regulation.type}">${regulation.type}</span>
         </div>
         <p class="regulation-full-name">${escapeHtml(regulation.name)}</p>
         <div class="regulation-meta">
@@ -288,9 +315,9 @@ export class RegulationPanel extends Panel {
 
     return `
       <div class="country-card stance-${profile.stance}">
-        <div class="country-card-header" style="border-left: 4px solid ${stanceColors[profile.stance]}">
+        <div class="country-card-header" style="--stance-color: ${stanceColors[profile.stance]}">
           <h5>${escapeHtml(profile.country)}</h5>
-          <span class="stance-badge" style="background-color: ${stanceColors[profile.stance]}">${profile.stance.toUpperCase()}</span>
+          <span class="stance-badge">${profile.stance.toUpperCase()}</span>
         </div>
         <p class="country-summary">${escapeHtml(profile.summary)}</p>
         <div class="country-stats">
@@ -303,7 +330,7 @@ export class RegulationPanel extends Panel {
             <span class="stat-label">${t('components.regulation.proposed')}</span>
           </div>
           <div class="stat">
-            <span class="stat-value">${new Date(profile.lastUpdated).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+            <span class="stat-value">${new Date(profile.lastUpdated).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })}</span>
             <span class="stat-label">${t('components.regulation.updated')}</span>
           </div>
         </div>

@@ -363,6 +363,13 @@ export const X_ACCOUNT_TRUST: readonly XAccountTrustEntry[] = [
     note: 'Cybersecurity news specialist; not a general wire',
   },
   {
+    sourceName: 'The Iran Watcher',
+    tier: 3,
+    type: 'intel',
+    risk: 'medium',
+    note: 'Iran and Persian Gulf monitor; not a newsroom, wire, or official publisher',
+  },
+  {
     sourceName: 'The War Zone',
     tier: 3,
     type: 'intel',

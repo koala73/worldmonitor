@@ -46,6 +46,7 @@ export const CLOUD_SYNC_KEYS = [
   'wm-map-theme:carto',
   // Live-stream mode
   'wm-live-streams-always-on',
+  'wm-live-news-autoplay',
   'wm-live-media-idle-stop',
   // #4923 read-state: previous-visit timestamp driving "new since you were
   // last here" — synced so a phone visit doesn't re-flag stories already

@@ -1,12 +1,10 @@
 import { Panel } from './Panel';
 import { joinSafeHtml, safeHtml } from '@/utils/sanitize';
-import type { PopulationExposure } from '@/types';
+import type { ExposureCoverage, PopulationExposure } from '@/types';
 import { formatPopulation } from '@/services/population-exposure';
 import { t } from '@/services/i18n';
 
 export class PopulationExposurePanel extends Panel {
-  private exposures: PopulationExposure[] = [];
-
   constructor() {
     super({
       id: 'population-exposure',
@@ -18,41 +16,53 @@ export class PopulationExposurePanel extends Panel {
     this.showLoading(t('common.calculatingExposure'));
   }
 
-  public setExposures(exposures: PopulationExposure[]): void {
-    this.exposures = exposures;
+  public setExposures(exposures: PopulationExposure[], hasCachedUcdp = false, coverage?: ExposureCoverage): void {
+    if (hasCachedUcdp) {
+      this.setDataBadge('cached', 'UCDP');
+    } else {
+      this.clearDataBadge();
+    }
     this.setCount(exposures.length);
-    this.renderContent();
-  }
-
-  private renderContent(): void {
-    if (this.exposures.length === 0) {
-      this.setSafeContent(safeHtml`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+    if (exposures.length === 0) {
+      this.setSafeContent(safeHtml`<div class="panel-empty">${t('components.populationExposure.empty')}</div>${this.renderCoverage(coverage)}`);
       return;
     }
 
-    const totalAffected = this.exposures.reduce((sum, e) => sum + e.exposedPopulation, 0);
-
-    const cards = joinSafeHtml(this.exposures.slice(0, 30).map(e => {
+    const cards = joinSafeHtml(exposures.slice(0, 30).map(e => {
       const typeIcon = this.getTypeIcon(e.eventType);
-      const popClass = e.exposedPopulation >= 1_000_000 ? ' popexp-pop-large' : '';
       return safeHtml`<div class="popexp-card">
         <div class="popexp-card-name">${typeIcon} ${e.eventName}</div>
-        <div class="popexp-card-meta">
-          <span class="popexp-card-pop${popClass}">${t('components.populationExposure.affectedCount', { count: formatPopulation(e.exposedPopulation) })}</span>
-          <span class="popexp-card-radius">${t('components.populationExposure.radiusKm', { km: String(e.exposureRadiusKm) })}</span>
+        <div class="popexp-card-pop">
+          ${t('components.populationExposure.estimateWithin', { count: formatPopulation(e.exposedPopulation), km: e.exposureRadiusKm })}
+          ${e.eventCount > 1 ? `· ${t('components.populationExposure.eventCount', { count: e.eventCount })}` : ''}
+          ${e.locationPending ? `· ${t('components.populationExposure.locationPending')}` : ''}
         </div>
       </div>`;
     }));
 
     this.setSafeContent(safeHtml`
       <div class="popexp-panel-content">
-        <div class="popexp-summary">
-          <span class="popexp-label">${t('components.populationExposure.totalAffected')}</span>
-          <span class="popexp-total">${formatPopulation(totalAffected)}</span>
-        </div>
+        <div class="popexp-method">${t('components.populationExposure.method')}</div>
         <div class="popexp-list">${cards}</div>
+        ${this.renderCoverage(coverage)}
       </div>
     `);
+  }
+
+  private renderCoverage(coverage: ExposureCoverage | undefined) {
+    if (!coverage || (coverage.totalEvents === 0 && !coverage.ucdpPending)) return safeHtml``;
+    const n = (value: number) => value.toLocaleString();
+    const shown = coverage.totalEvents - coverage.withoutPreciseLocation - coverage.withoutEstimate - coverage.atOtherPlaces;
+    return safeHtml`<div class="popexp-coverage">
+      ${coverage.ucdpPending ? safeHtml`<div>${t('components.populationExposure.unrestCoverage')}</div>` : ''}
+      <div>${t('components.populationExposure.coverageShown', { shown: n(shown), total: n(coverage.totalEvents) })}</div>
+      <div>${t('components.populationExposure.coverageLeftOut', {
+        imprecise: n(coverage.withoutPreciseLocation),
+        noEstimate: n(coverage.withoutEstimate),
+        otherPlaces: n(coverage.atOtherPlaces),
+      })}</div>
+      ${coverage.ucdpPending ? safeHtml`<div>${t('components.populationExposure.ucdpPending')}</div>` : ''}
+    </div>`;
   }
 
   private getTypeIcon(type: string): string {

@@ -67,6 +67,11 @@ http {
       # without an explicit index lookup the $uri/ match would 403.
       try_files $uri $uri/ $uri/index.html /dashboard.html;
       add_header Cache-Control "no-cache, no-store, must-revalidate";
+      # Branded page for nginx-generated 5xx on document routes, keeping the
+      # status code. Scoped to this location, not the server: a server-level
+      # error_page is inherited by /api/, where it would replace JSON errors
+      # with HTML and drop the CORS headers that location sets.
+      error_page 500 502 503 504 /500.html;
     }
 
     location ~* ^/(assets|pro/assets|map-styles|data|textures|favico)/ {
@@ -117,6 +122,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
@@ -138,6 +145,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;
@@ -158,6 +167,8 @@ http {
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
+      # The browser's own host:port; the sidecar's plain-HTTP relay origin check.
+      proxy_set_header X-Forwarded-Host $http_host;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
       add_header Access-Control-Allow-Headers "Content-Type, Authorization, X-WorldMonitor-Key" always;

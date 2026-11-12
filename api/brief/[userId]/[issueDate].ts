@@ -25,6 +25,7 @@ import { getCorsHeaders, isDisallowedOrigin } from '../../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../_sentry-edge.js';
 import { renderBriefMagazine } from '../../../server/_shared/brief-render.js';
+import { briefFontPlatform } from '../../../server/_shared/brief-font-platform.js';
 import { readRawJsonFromUpstash, redisPipeline } from '../../_upstash-json.js';
 import { verifyBriefToken, BriefUrlError } from '../../../server/_shared/brief-url';
 import {
@@ -165,7 +166,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return new Response('Method not allowed', { status: 405, headers: cors });
+    return new Response('Method not allowed', { status: 405, headers: { ...cors, Allow: 'GET, HEAD, OPTIONS' } });
   }
 
   const secret = process.env.BRIEF_URL_SIGNING_SECRET ?? '';
@@ -290,7 +291,7 @@ export default async function handler(
   try {
     html = renderBriefMagazine(
       envelope as Parameters<typeof renderBriefMagazine>[0],
-      { shareUrl, followedCountries },
+      { shareUrl, followedCountries, fontPlatform: briefFontPlatform(req.headers.get('user-agent') ?? '') },
     );
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)
@@ -304,5 +305,6 @@ export default async function handler(
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
-  return htmlResponse(req, 200, html);
+  // The page links a different font file set per platform (brief-font-platform.js).
+  return htmlResponse(req, 200, html, { Vary: 'User-Agent' });
 }

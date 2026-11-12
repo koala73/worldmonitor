@@ -243,6 +243,29 @@ describe('renderBriefMagazine — chrome invariants', () => {
     });
   });
 
+  // Layout geometry is asserted in a browser by e2e/brief-magazine.spec.ts
+  // ("chrome stays clear of page content"). That spec is not in a CI
+  // shard, so this pins the CSS it depends on.
+  it('keeps the digest running head and text clear of the counter and pager', () => {
+    const html = renderBriefMagazine(envelope());
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+    // The running-head reservation assumes a 7-character "NN / NN" counter
+    // in the head's own mono face and size, at 0.2em tracking.
+    for (const m of html.matchAll(/<div class="page-number mono">([^<]*)<\/div>/g)) {
+      assert.equal(m[1].length, 7, `counter "${m[1]}" must stay 7 characters`);
+    }
+    assert.match(css, /\.page-number \{\s*position: absolute; top: 5vh; right: 4vw;[\s\S]*?letter-spacing: 0\.2em;/);
+    assert.match(
+      css,
+      /\.digest \.running-head \{[^}]*font-family: 'IBM Plex Mono', monospace; font-size: max\(11px, 0\.85vw\);[^}]*padding-right: calc\(7ch \+ 1\.4em - 2vw \+ 1em\);/,
+    );
+    // Digest copy stops above the fixed pager pill instead of scrolling under it.
+    assert.match(css, /\.digest \{[^}]*border-bottom: var\(--pager-band\) solid transparent;/);
+    assert.match(css, /\.nav-dots \{[^}]*bottom: var\(--pager-bottom\);[^}]*padding: var\(--pager-pad-y\) 1\.4vw;/);
+    // An empty pager (before or without NAV_SCRIPT) is not a bare grey bar.
+    assert.match(css, /\.nav-dots:empty \{ display: none; \}/);
+  });
+
   it('applies .crit highlight to critical and high threat levels only', () => {
     const env = envelope({
       stories: [

@@ -56,8 +56,12 @@ export async function classifyEvent(
 
   // The relay's background classifier writes the shared keys from its own
   // chain; a restricted caller gets a separate namespace (ai-routing-policy.ts).
-  const aiRouting = await resolveAiRouting(ctx.request);
-  const cacheKey = `${await buildClassifyCacheKey(title)}${aiRoutingCacheSuffix(aiRouting)}`;
+  // The title digest does not depend on the routing lookup, so run both together.
+  const [aiRouting, baseCacheKey] = await Promise.all([
+    resolveAiRouting(ctx.request),
+    buildClassifyCacheKey(title),
+  ]);
+  const cacheKey = `${baseCacheKey}${aiRoutingCacheSuffix(aiRouting)}`;
 
   const systemPrompt = `You classify news headlines into threat level and category. Return ONLY valid JSON, no other text.
 

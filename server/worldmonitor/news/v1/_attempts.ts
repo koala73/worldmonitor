@@ -228,31 +228,39 @@ export async function runFeedAttemptBatches<E extends FeedAttemptBatchEntry, T>(
   let firstCompletionMs: number | null = null;
   let finalCompletionMs: number | null = null;
 
-  for (const batch of batches) {
-    if (signal.aborted) break;
-    const settled = await Promise.allSettled(batch.map(async (entry) => {
+  // A pool as wide as the largest batch, fed in batch order: a slow feed
+  // holds one slot instead of making the whole next batch wait for it. With
+  // batch barriers, one 8 s timeout early on pushed full:th's last 44 feeds
+  // past the global deadline as not-started.
+  const queue = batches.flat();
+  const width = Math.min(queue.length, Math.max(0, ...batches.map((batch) => batch.length)));
+  const settledByIndex: Array<{ entry: E; value: T } | undefined> = new Array(queue.length);
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (!signal.aborted && nextIndex < queue.length) {
+      const index = nextIndex++;
+      const entry = queue[index]!;
       startedAttemptIds.add(entry.attemptId);
       attemptCategories.set(entry.attemptId, entry.category);
       if (firstStartMs === null) firstStartMs = now() - startedAt;
       try {
         const execution = await execute(entry);
         attemptOutcomes.set(entry.attemptId, execution.outcome);
-        return { entry, value: execution.value };
-      } catch (error) {
+        settledByIndex[index] = { entry, value: execution.value };
+      } catch {
         attemptOutcomes.set(entry.attemptId, 'other-fetch-failure');
-        throw error;
       } finally {
         const completionMs = now() - startedAt;
         if (firstCompletionMs === null) firstCompletionMs = completionMs;
         finalCompletionMs = completionMs;
       }
-    }));
-
-    for (const result of settled) {
-      if (result.status === 'fulfilled') {
-        fulfilled.push(result.value);
-      }
     }
+  };
+  await Promise.all(Array.from({ length: width }, worker));
+
+  // Keep the schedule order, as the batch loop did, so merging stays deterministic.
+  for (const settled of settledByIndex) {
+    if (settled) fulfilled.push(settled);
   }
 
   for (const entry of allEntries) {
@@ -314,6 +322,9 @@ export interface DigestCoverageBlock {
   attemptedAt: string;
   itemsServed: number;
   publisherCount: number;
+  /** Items that reached ranking before the category cap, and their publishers. */
+  itemsConsidered: number;
+  publishersConsidered: number;
   feedTotal: number;
   feedCompleted: number;
   categoryTotal: number;
@@ -339,6 +350,8 @@ export interface DigestCoverageInput {
   itemsServed: number;
   /** Normalized publisher family of every served item. */
   publisherSources: readonly string[];
+  /** Normalized publisher family of every item that reached ranking. */
+  consideredPublisherSources: readonly string[];
   /** True when the global deadline aborted the build. */
   deadlineAborted: boolean;
   drops: {
@@ -390,6 +403,8 @@ export function buildDigestCoverage(input: DigestCoverageInput): DigestCoverageB
     attemptedAt: new Date(input.buildStartMs).toISOString(),
     itemsServed: input.itemsServed,
     publisherCount: new Set(input.publisherSources).size,
+    itemsConsidered: input.consideredPublisherSources.length,
+    publishersConsidered: new Set(input.consideredPublisherSources).size,
     feedTotal: input.entries.length,
     feedCompleted,
     categoryTotal: configuredCategories.length,

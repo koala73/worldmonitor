@@ -6,6 +6,13 @@ interface LogoProps {
   href?: string;
   /** Intercept the click — e.g. the Enterprise view clearing its hash route. */
   onClick?: MouseEventHandler<HTMLAnchorElement>;
+  /**
+   * Below 375px, show only the glyph. The wordmark stays in the accessibility
+   * tree as the link's name, so the 32px target keeps its label. The lockup
+   * also stops shrinking, so the wordmark never wraps; without this prop it
+   * still gives way to the /pro nav's Sign In and Upgrade buttons at 360px.
+   */
+  compactOnNarrow?: boolean;
 }
 
 /**
@@ -23,11 +30,11 @@ interface LogoProps {
  * too, so unwrapping without forwarding the handler changes where the logo
  * goes.
  */
-export const Logo = ({ href = 'https://worldmonitor.app', onClick }: LogoProps = {}) => (
+export const Logo = ({ href = 'https://worldmonitor.app', onClick, compactOnNarrow = false }: LogoProps = {}) => (
   <a
     href={href}
     onClick={onClick}
-    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+    className={`${compactOnNarrow ? 'shrink-0 ' : ''}flex items-center gap-2 hover:opacity-80 transition-opacity`}
   >
     <span
       className="relative w-8 h-8 rounded-full bg-wm-card border border-wm-border flex items-center justify-center overflow-hidden"
@@ -36,7 +43,7 @@ export const Logo = ({ href = 'https://worldmonitor.app', onClick }: LogoProps =
       <Globe className="w-5 h-5 text-wm-blue opacity-50 absolute" />
       <Activity className="w-6 h-6 text-wm-green absolute z-10" />
     </span>
-    <span className="font-display font-bold text-sm leading-none tracking-tight">
+    <span className={`font-display font-bold text-sm leading-none tracking-tight${compactOnNarrow ? ' sr-only min-[375px]:not-sr-only' : ''}`}>
       WORLD MONITOR
     </span>
   </a>

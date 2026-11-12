@@ -29,6 +29,7 @@ const loadEnv = () => loadEnvFile(import.meta.url, { only: NEEDED });
 
 async function redis(cmd) {
   const res = await fetch(`${process.env.UPSTASH_REDIS_REST_URL}/${cmd.join('/')}`, {
+    signal: AbortSignal.timeout(30_000),
     headers: { Authorization: `Bearer ${process.env.UPSTASH_REDIS_REST_TOKEN}` },
   });
   if (!res.ok) throw new Error(`${cmd[0]} ${res.status}: ${await res.text()}`);

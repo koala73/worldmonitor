@@ -44,7 +44,7 @@ describe('MCP Google Flights passenger validation', () => {
     it(`${name} keeps the existing numeric passenger schema`, () => {
       assert.deepEqual(rpcTool(name).inputSchema.properties.passengers, {
         type: 'number',
-        description: 'Number of passengers (1-9, default 1)',
+        description: 'Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted.',
       });
     });
 

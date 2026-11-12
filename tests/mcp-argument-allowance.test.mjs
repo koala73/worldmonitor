@@ -116,6 +116,11 @@ for (const [name, args, field] of [
   ['get_bilateral_tariff', { reporter: 'US', partner: 'CN', hs_code: 'bad' }, 'hs_code'],
   ['get_us_import_duty', { partner: 'CN', hs_code: 'bad' }, 'hs_code'],
   ['get_food_stocks', { country_code: 'Atlantis' }, 'country_code'],
+  ['get_resilience_indicators', { country_code: 'كوريا' }, 'country_code'],
+  ['get_demographics_capability', { country_code: 'Atlantis' }, 'country_code'],
+  ['get_five_factor_scorecard', { country_code: 'Narnia' }, 'country_code'],
+  ['get_five_factor_scorecard', { members: ['Egypt', 'كوريا'] }, 'members'],
+  ['get_mineral_production', { iso2: 'Atlantis' }, 'iso2'],
   ['get_food_stocks', { country_code: 'EG', commodity: 'potatoes' }, 'commodity'],
   ['get_country_brief_section', { section: 'food', arguments: { countryCode: 'EG', commodity: 'potatoes' } }, 'arguments.commodity'],
   ['search_intel_history', { query: 'shipping', country: 'Atlantis' }, 'country'],
@@ -278,12 +283,20 @@ it('country hooks reject unresolved filters while retaining aliases and Eurostat
     const field = ['country', 'countries', 'country_code'].find(field => tool.inputSchema.properties[field]);
     if (!field) continue;
     const base = tool.name === 'get_macro_history' ? { dataset: 'world-cpi' } : {};
+    if (tool.name === 'prepare_travel_risk_assessment') {
+      // An itinerary of objects, not a country filter: alpha-2 codes only, no aliases.
+      assert.doesNotThrow(() => tool._validateArgs({ [field]: [{ country_code: 'IQ' }] }), tool.name);
+      for (const value of ['IQ', 'Atlantis', [{ country_code: 'IRQ' }], [{ country_code: 'Iraq' }]]) {
+        assert.throws(() => tool._validateArgs({ [field]: value }), RpcValidationError, tool.name);
+      }
+      continue;
+    }
     if (tool.name === 'get_conflict_events') {
       // Conflict country is a free-text name substring; this hook parses only the area and age filters.
       for (const value of ['Atlantis', 'sud', 'IQ']) assert.doesNotThrow(() => tool._validateArgs({ [field]: value }), tool.name);
       continue;
     }
-    if (['get_food_stocks', 'search_intel_history', 'get_intel_timeline', 'get_similar_events', 'open_news_dashboard'].includes(tool.name)) {
+    if (['search_intel_history', 'get_intel_timeline', 'get_similar_events', 'open_news_dashboard'].includes(tool.name)) {
       assert.throws(() => tool._validateArgs({ [field]: 'Atlantis' }), RpcValidationError, tool.name);
       assert.doesNotThrow(() => tool._validateArgs({ [field]: 'IQ' }), tool.name);
       assert.throws(() => tool._validateArgs({ [field]: 'IRQ' }), RpcValidationError, tool.name);

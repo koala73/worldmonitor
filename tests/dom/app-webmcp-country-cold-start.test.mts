@@ -310,6 +310,6 @@ describe('App WebMCP country binding cold start', () => {
     expect(state.countryBriefPage).toBe(page);
     expect(page.isVisible()).toBe(true);
     expect(page.getCode()).toBe('FR');
-    expect(renderPaused).toEqual([true]);
+    expect(renderPaused).toEqual([]);
   });
 });

@@ -73,9 +73,61 @@ const SENTRY_ONERROR_MECHANISM = 'auto.browser.global_handlers.onerror';
 const SENTRY_ONUNHANDLEDREJECTION_MECHANISM = 'auto.browser.global_handlers.onunhandledrejection';
 const UNKNOWN_FUNCTION = '?';
 
+interface PreloadErrorTarget {
+  addEventListener: (type: string, listener: (event: Event) => void) => void;
+  removeEventListener: (type: string, listener: (event: Event) => void) => void;
+}
+
+/**
+ * True when the failure names a hashed Sentry asset. Chrome and Firefox name
+ * the failed module's URL. Safari's `Importing a module script failed.` names
+ * none, so it could be any chunk that fails during the Sentry load (a slow
+ * `import('./App')`, say); it is left to the chunk-reload guard, which spends
+ * at most one reload per build on it.
+ */
+function isSentryChunkFailure(payload: unknown): boolean {
+  const message = payload instanceof Error ? payload.message : String(payload ?? '');
+  const asset = message.match(/\/assets\/([A-Za-z0-9_-]+)-[A-Za-z0-9_-]+\.(?:js|css)\b/);
+  return asset !== null && asset[1]!.startsWith('sentry');
+}
+
+/**
+ * Run `load` with its Sentry chunk failures claimed from the chunk-reload guard.
+ *
+ * An ad blocker or privacy proxy that blocks the Sentry chunks blocks them on
+ * every load, so the failure is not deploy skew and a reload cannot fix it.
+ * Vite dispatches `vite:preloadError` for the failed import; calling
+ * `preventDefault()` on it makes the chunk-reload guard stand down.
+ * It also makes Vite's helper resolve the import to `undefined` instead of
+ * rejecting, so the original error is rethrown here in place of the
+ * TypeError that `undefined` causes downstream.
+ */
+export async function claimSentryPreloadErrors<T>(
+  load: () => Promise<T>,
+  target: PreloadErrorTarget = window,
+): Promise<T> {
+  const claimed: unknown[] = [];
+  const claim = (event: Event): void => {
+    const payload = (event as Event & { payload?: unknown }).payload;
+    if (!isSentryChunkFailure(payload)) return;
+    if (claimed.length === 0) claimed.push(payload);
+    event.preventDefault();
+  };
+  target.addEventListener('vite:preloadError', claim);
+  try {
+    return await load();
+  } catch (error) {
+    throw claimed.length > 0 ? claimed[0] : error;
+  } finally {
+    target.removeEventListener('vite:preloadError', claim);
+  }
+}
+
 async function defaultSentryLoader(): Promise<SentryNs> {
-  const { loadAndInitSentry } = await import('./sentry-init');
-  return loadAndInitSentry();
+  return claimSentryPreloadErrors(async () => {
+    const { loadAndInitSentry } = await import('./sentry-init');
+    return loadAndInitSentry();
+  });
 }
 
 let sentryLoader: SentryLoader = defaultSentryLoader;

@@ -145,6 +145,19 @@ describe('api/telegram-feed relay timeout canary', () => {
       assert.equal(status, 504);
       assert.deepEqual(body, { error: 'Relay timeout' });
     });
+
+    it(`treats an AbortSignal.timeout deadline on the ${mode} relay as a timeout`, async () => {
+      // fetchWithTimeout's AbortSignal.timeout rejects with TimeoutError.
+      const { events, status, body } = await runWithRelayFailure(
+        path,
+        new DOMException('The operation timed out.', 'TimeoutError') as unknown as Error,
+      );
+      assert.equal(events.length, 1);
+      assert.equal(events[0].level, 'warning');
+      assert.equal(events[0].extra?.timeout_ms, timeoutMs);
+      assert.equal(status, 504);
+      assert.deepEqual(body, { error: 'Relay timeout' });
+    });
   }
 
   // Positive control AND the DSN-activation control: a 0-hit here would mean
@@ -254,6 +267,12 @@ describe('relayFailureLevel (WORLDMONITOR-R1)', () => {
 
   it('classifies our own abort budget as routine, whatever its message', () => {
     assert.equal(relayFailureLevel(abortError()), 'warning');
+  });
+
+  it('classifies an AbortSignal.timeout deadline (TimeoutError) as routine too', () => {
+    // fetchWithTimeout in api/_relay.js uses AbortSignal.timeout, which rejects
+    // with DOMException name 'TimeoutError', not 'AbortError'.
+    assert.equal(relayFailureLevel(new DOMException('The operation timed out.', 'TimeoutError')), 'warning');
   });
 
   it('does not let a transient phrase inside a larger defect message win', () => {

@@ -35,10 +35,15 @@ describe("alertRules query visibility (GHSA-r649-4cqj-w93h)", () => {
     expect(fn.isInternal).toBe(true);
   });
 
-  test("getAlertRules stays public but self-scopes to the authenticated caller", () => {
-    // Public is safe here ONLY because the handler gates on getUserIdentity()
-    // and scopes to the `by_user` index — unlike getByEnabled.
-    const fn = alertRules.getAlertRules as unknown as { isPublic?: boolean };
-    expect(fn.isPublic).toBe(true);
+  test("the module exposes no public function at all", () => {
+    // The public setAlertRules / setDigestSettings / setQuietHours mutations
+    // and the getAlertRules query were removed (Strix 2026-10-27): nothing
+    // called them and the mutations had no rate limit. Every client write goes
+    // through /api/notification-channels → the *ForUser internal mutations.
+    const publicExports = Object.entries(alertRules)
+      .filter(([, fn]) => (fn as { isPublic?: boolean })?.isPublic === true)
+      .map(([name]) => name);
+    expect(publicExports).toEqual([]);
+    expect(Object.keys(alertRules)).not.toContain("setAlertRules");
   });
 });

@@ -207,11 +207,15 @@ async function getRequestHashAndRedisKey(
 ): Promise<{ reqHash: string; redisKey: string } | null> {
   try {
     const bodyBuf = await request.clone().arrayBuffer();
-    const reqHash = await sha256Hex(bodyBuf);
     const effectiveScope = scope || anonScope(request);
     // Hash the composite so client-controlled key material never lands in the
-    // Redis keyspace verbatim and delimiter collisions are impossible.
-    const redisKey = `idem:v1:${await sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`)}`;
+    // Redis keyspace verbatim and delimiter collisions are impossible. The two
+    // digests are independent, so they run together.
+    const [reqHash, keyHash] = await Promise.all([
+      sha256Hex(bodyBuf),
+      sha256Hex(`${effectiveScope}\n${pathname}\n${idempotencyKey}`),
+    ]);
+    const redisKey = `idem:v1:${keyHash}`;
     return { reqHash, redisKey };
   } catch {
     // Body unreadable / hashing failed → can't key the request. Fail-open.

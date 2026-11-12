@@ -45,6 +45,7 @@ const REGIONS = [
 
 async function pipelineRequest(commands) {
   const resp = await fetch(`${REDIS_URL}/pipeline`, {
+    signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
@@ -71,6 +72,8 @@ async function fetchRegion(bounds, regionName, depth = 0) {
     url.searchParams.set('offset', String(offset));
 
     const resp = await fetch(url, {
+
+      signal: AbortSignal.timeout(30_000),
       headers: { 'x-windy-api-key': WINDY_API_KEY },
     });
 

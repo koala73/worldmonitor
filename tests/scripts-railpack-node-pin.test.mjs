@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const railpackConfig = JSON.parse(readFileSync(resolve(repoRoot, 'scripts/railpack.json'), 'utf8'));
 
-// Node 24.22.1 fixes CVE-2026-111497 (Brotli decoder RCE). The seeders decode
-// Brotli from third-party servers, so the Railway runtime must not drop below it.
-const SECURITY_FLOOR = [24, 22, 1];
+// The November 2026 security release also updates the bundled HTTP parser,
+// Undici and SQLite. Keep the exact Railway pin at or above that release.
+const SECURITY_FLOOR = [24, 22, 3];
 
 function parseExact(version) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -31,7 +31,7 @@ describe('scripts/railpack.json', () => {
     assert.ok(parseExact(node ?? ''), `expected an exact x.y.z version, got ${JSON.stringify(node)}`);
   });
 
-  it('is at or above the CVE-2026-111497 fixed release on the Node 24 line', () => {
+  it('is at or above the November 2026 security release on the Node 24 line', () => {
     const pinned = parseExact(node ?? '');
     assert.ok(pinned && pinned[0] === SECURITY_FLOOR[0], 'pin must stay on the Node 24 line');
     assert.ok(compare(pinned, SECURITY_FLOOR) >= 0, `pin ${node} is below ${SECURITY_FLOOR.join('.')}`);

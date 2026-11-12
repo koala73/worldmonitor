@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package worldmonitor.feedback.v1;
+
+import "buf/validate/validate.proto";
+
+// SubmitReportRequest is one structured report from an agent. Do not include credentials: they are redacted before storage. For a security report, do not include exploit details; use the private advisory form.
+message SubmitReportRequest {
+  // bug | missing_capability | data_quality | security.
+  string kind = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 32
+  ];
+  // What the report is about: an MCP tool name (get_market_data), an API path (/api/market/v1/list-market-quotes), or a short label. A name that does not exist yet is fine.
+  string surface = 2 [(buf.validate.field).string.max_len = 200];
+  // One-line description of the problem.
+  string summary = 3 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 300
+  ];
+  // What you expected to happen.
+  string expected = 4 [(buf.validate.field).string.max_len = 2000];
+  // What happened instead.
+  string actual = 5 [(buf.validate.field).string.max_len = 2000];
+  // Request id of the failing call (the x-vercel-id response header, or data.requestId in an MCP error), so the report joins to our logs.
+  string request_id = 6 [(buf.validate.field).string.max_len = 128];
+  // Name of the calling client or agent, for display only.
+  string client_name = 7 [(buf.validate.field).string.max_len = 80];
+}
+
+// SubmitReportResponse acknowledges a stored report.
+message SubmitReportResponse {
+  // Report id to quote in any follow-up.
+  string report_id = 1;
+  // received, or private for a security report.
+  string status = 2;
+  // Security reports only: the private advisory form, where exploit details belong.
+  string advisory_url = 3;
+  // Security reports only: a reminder not to send exploit details through this channel.
+  string notice = 4;
+}

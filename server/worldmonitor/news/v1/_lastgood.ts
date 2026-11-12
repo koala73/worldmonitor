@@ -141,6 +141,29 @@ export interface AcceptedSnapshotMeta {
    */
   peakItemCount?: number;
   peakAt?: number;
+  /**
+   * Fingerprint of the feed catalog the snapshot's edition was built from
+   * (digestGateProfile). Absent on rows written before it existed.
+   */
+  catalogFingerprint?: string;
+}
+
+/** A catalog fingerprint is a base-36 hash; anything else is not one. */
+const CATALOG_FINGERPRINT_RE = /^[a-z0-9]{1,32}$/;
+
+/**
+ * True when the incumbent was built from a different feed catalog than the
+ * candidate. Its breadth and its item peak then describe a different set of
+ * feeds: a catalog change that removed feeds would otherwise read as a
+ * regression and hold the old snapshot for up to six hours.
+ */
+export function isCatalogChanged(
+  current: Pick<AcceptedSnapshotMeta, 'catalogFingerprint'>,
+  candidateFingerprint: string | undefined,
+): boolean {
+  return typeof candidateFingerprint === 'string'
+    && typeof current.catalogFingerprint === 'string'
+    && current.catalogFingerprint !== candidateFingerprint;
 }
 
 /**
@@ -172,6 +195,9 @@ export function parseAcceptedMeta(value: unknown): AcceptedSnapshotMeta | null {
     && typeof v.peakAt === 'number' && Number.isFinite(v.peakAt)) {
     meta.peakItemCount = v.peakItemCount;
     meta.peakAt = v.peakAt;
+  }
+  if (typeof v.catalogFingerprint === 'string' && CATALOG_FINGERPRINT_RE.test(v.catalogFingerprint)) {
+    meta.catalogFingerprint = v.catalogFingerprint;
   }
   return meta;
 }
@@ -221,8 +247,9 @@ export function nextPeak(
   candidateAcceptedAt: number,
   nowMs: number,
   measuredCurrentItems?: number,
+  candidateFingerprint?: string,
 ): { peakItemCount: number; peakAt: number } {
-  if (current && isInsideWindow(current.acceptedAt, nowMs)) {
+  if (current && isInsideWindow(current.acceptedAt, nowMs) && !isCatalogChanged(current, candidateFingerprint)) {
     const peak = livePeak(current, measuredCurrentItems ?? current.itemCount, nowMs);
     if (peak.peakItemCount > candidateItems) return peak;
   }
@@ -245,6 +272,7 @@ export function shouldReplaceAccepted(
   candidate: { categoryCount: number; itemCount: number },
   nowMs: number,
   measuredCurrentItems?: number,
+  candidateFingerprint?: string,
 ): { replace: boolean; reason: string } {
   if (!current) return { replace: true, reason: 'no-accepted-snapshot' };
   const ageMs = nowMs - current.acceptedAt;
@@ -254,6 +282,7 @@ export function shouldReplaceAccepted(
   // serve path: anything not provably inside the window cannot veto.
   if (!(ageMs >= 0)) return { replace: true, reason: 'current-corrupt-future' };
   if (ageMs > LASTGOOD_MAX_AGE_MS) return { replace: true, reason: 'current-expired' };
+  if (isCatalogChanged(current, candidateFingerprint)) return { replace: true, reason: 'catalog-changed' };
   // "Materially narrower" is two-dimensional: a candidate must not regress on
   // breadth (categories) OR depth (items). Comparing categories alone let a
   // digest with one item per category replace a live one holding hundreds.

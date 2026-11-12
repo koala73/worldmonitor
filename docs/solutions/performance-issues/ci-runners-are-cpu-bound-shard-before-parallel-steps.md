@@ -53,6 +53,13 @@ PR #8966:
   by recorded file durations, so only the matrix and the `/N` denominator
   changed. The slowest single files (111s, 92s, 81s) set a floor that more
   shards cannot go below.
+- **Five unit shards (October 2026).** Once the slowest files were fixed
+  (the slowest is now 36s), the unit shards were the slowest Test job again at
+  ~207s. Bench run 40083951067 ran `test:data` on the same runners: the slowest
+  shard took 123s at five shards and 138-155s at four. Concurrency 6 or 8
+  inside a shard gave nothing, because the step is CPU-bound. Each file also
+  pays ~0.2-0.3s of import cost that the recorded durations leave out, so the
+  wall time per shard is ~30-40s above the duration estimate.
 - **Parallel setup.** In the smoke shards, `install-root-deps` runs beside the
   apt install of Playwright's OS libraries. The pro-webmcp OS library install
   runs beside the `/pro` build. `node_modules` does not exist yet in the smoke
@@ -163,7 +170,46 @@ same blob at the same moment took 12-62s on PR #9626. The job now sets
 - **Before adding workers or a background service, sample CPU during the
   step.** If the runner is above about 80% busy, add a shard instead.
 - **Rebalance smoke shards from measured durations** when a spec grows. The
-  list reporter's per-test seconds are the input.
+  list reporter's per-test seconds are the input. By October 2026 the four
+  shards measured 218/209/287/277 test-seconds (per-spec medians of three main
+  runs). PR #9658 replaced the fixed 8s settle waits in
+  `dashboard-news-request-budget` with the `wmInitialDataReady` flag plus a
+  1.5s quiet window. Single runs misled: a spec's time moved up to 50%
+  between runs (`country-brief` 151-205s) because each shard gets its own
+  runner, so one run's totals mostly show which runners were fast. The final
+  split uses each spec's median over six runs (three on main, three on the
+  PR): 237/238/238/240 of 953 test-seconds.
+- **The balance drifts as specs grow.** By November 2026 the same split
+  measured 275/262/243/195 of 975 test-seconds (per-spec medians of six runs:
+  three on main, three on PRs). Shard 2 was the last Test job to finish in
+  most runs. The repack keeps shard 3 and moves 7 small specs:
+  244/246/243/245. `country-brief` (207s) and `dashboard-news-request-budget`
+  (191s) are each most of a shard, so the small specs fill the remainder.
+- **It drifted again within weeks.** On 4 November 2026 the split measured
+  268/331/411/287 of 1297 test-seconds (per-spec medians of six main runs),
+  and shard 3 finished last in five of the six. Moving
+  `map-overlay-marker-budget` to shard 1, and `progress-chart-fits` and
+  `variant-live-smoke` to shard 4, gives 326/317/328/326. A greedy search
+  (move the one spec that most lowers the largest shard, repeat) found that
+  three-move split; a hand-picked four-move split only reached 342.
+- **The rebalance is now a script:** `node scripts/balance-smoke-shards.mjs --write`.
+  It reads the shard logs of the six newest successful main runs, takes
+  per-spec medians, and repacks with that greedy search. Specs added by hand
+  had grown the total to 1607 test-seconds and the split to
+  520/231/460/396. The script moved seven specs for 405/398/399/405.
+- **Removing sleeps does not free the seconds they held on CI.** Locally the
+  flag set 0.3-0.6s after the first digest. On a runner each 8s wait saved only
+  1-5s; the flag time there was not logged. The spec's other tests got slower (3.9s to
+  6.5s, 3.6s to 7.6s) because the sleeps had left CPU idle for the second
+  worker. Over six runs the spec's median did not move (162s before, 157-172s
+  after) and the smoke total stayed at about 953 test-seconds. On a
+  CPU-bound runner a sleep overlaps the other worker's work, so removing it
+  saves local time but not CI time. Only balance changes the CI wall here.
+- **Wait on a readiness signal, not a fixed sleep, to prove a negative.**
+  Before shortening a "no second request" wait, find what would cause the
+  second request and whether a flag already marks its end. Then remove the
+  guard (here `shouldHydrateNews` returning true) and confirm the shortened
+  test still fails.
 - **Benchmark changes on a throwaway branch.** Use a push trigger on that
   branch and force `emit_all_true` in `changes`. Suites that inspect
   `.github/workflows` and the health-probe cutover gate go red because of the

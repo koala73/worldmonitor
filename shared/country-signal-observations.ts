@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { resolveCountryCode } from './country-code-resolve';
 import { countryActivityQueries } from './country-activity-query';
 import { COUNTRY_SIGNAL_BYTES, COUNTRY_SIGNAL_FAMILIES, COUNTRY_SIGNAL_WIRE_FAMILIES, type CountrySignalFamily } from './country-signal-contract';

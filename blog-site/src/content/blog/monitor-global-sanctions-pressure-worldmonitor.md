@@ -27,7 +27,7 @@ From those designations WorldMonitor computes a per-country **sanctions pressure
 
 Binary "is this country sanctioned?" answers hide the dynamics that matter. Iran and a country with three targeted designations are both "sanctioned" in a yes/no model. Pressure scoring keeps the gradient: direction and concentration of designations tell you whether a jurisdiction is being progressively isolated — which is exactly the kind of trend that precedes trade rerouting, shadow-fleet activity, and payment-channel shifts.
 
-That makes the sanctions layer useful beyond compliance. Macro traders read it next to the [geopolitics-to-markets pipeline](/blog/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/); supply-chain teams read it next to chokepoint status, because sanctioned trade doesn't disappear — it reroutes, and reroutes show up in maritime data.
+That makes the sanctions layer useful beyond compliance. Macro traders read it next to the [geopolitics-to-markets pipeline](/blog/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/); supply-chain teams read it next to [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/) status, because sanctioned trade doesn't disappear — it reroutes, and reroutes show up in maritime data.
 
 ## For developers and agents
 

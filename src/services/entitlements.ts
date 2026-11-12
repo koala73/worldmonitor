@@ -15,6 +15,8 @@ import {
 } from './convex-client';
 import { getCurrentClerkUser } from './clerk';
 import { hasAccountEmbedAccess } from '../../shared/embed-access';
+import { hasTabFocus } from '../../shared/tab-focus-access';
+import { hasTravelRiskAssessment } from '../../shared/travel-risk-access';
 
 export interface EntitlementState {
   planKey: string;
@@ -62,6 +64,29 @@ export interface EntitlementState {
      * Convex snapshot hydrates.
      */
     embedAccess?: boolean;
+    /**
+     * Desktop-key issuance (plan 2026-10-25-001): Pro and Pro Business may
+     * hold `maxDesktopKeys` desktop keys. The Convex read path merges the
+     * catalog, so both are present on current snapshots; read them through
+     * `hasDesktopKeyAccess` (shared/desktop-key-access.js), which is
+     * fail-closed on `undefined`.
+     */
+    desktopKeyAccess?: boolean;
+    maxDesktopKeys?: number;
+    /**
+     * Dashboard focus (#10453): Pro Business, API Business and Enterprise.
+     * Read it through `hasTabFocusForAccount`, which is fail-closed on
+     * `undefined`. A teammate on an API Business seat holds a Pro snapshot;
+     * whether they may share a focused team dashboard comes from the server
+     * (`team.focus` on the team dashboard list), not from this field.
+     */
+    tabFocus?: boolean;
+    /**
+     * Travel risk assessment drafts (#10451): Pro Business, API Business and
+     * Enterprise. Read it through `hasTravelRiskAssessmentForAccount`, which
+     * is fail-closed on `undefined`. The MCP tool enforces it on the server.
+     */
+    travelRiskAssessment?: boolean;
   };
   validUntil: number;
 }
@@ -87,6 +112,7 @@ let verificationStatus: EntitlementVerificationStatus = 'idle';
 const verificationListeners = new Set<(status: EntitlementVerificationStatus) => void>();
 let initialized = false;
 let unsubscribeFn: (() => void) | null = null;
+let subscriptionGeneration = 0;
 
 function setEntitlementVerificationStatus(status: EntitlementVerificationStatus): void {
   if (verificationStatus === status) return;
@@ -141,13 +167,20 @@ export async function initEntitlementSubscription(
   _userId?: string,
   isCurrent: () => boolean = () => true,
 ): Promise<void> {
+  const generation = subscriptionGeneration;
   const isExpectedAccount = (): boolean => (
-    isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
+    generation === subscriptionGeneration
+    && isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
   );
   if (initialized || !isExpectedAccount()) return;
   if (currentState === null) beginEntitlementVerification();
 
   try {
+    // Start the API chunk now so it loads alongside the client chunk instead
+    // of after it: this subscription gates Pro panels on every signed-in boot.
+    // A failed load is reported below, where it is awaited.
+    const apiLoad = getConvexApi();
+    apiLoad.catch(() => {});
     const client = await getConvexClient();
     if (!client) {
       console.log('[entitlements] No VITE_CONVEX_URL — skipping Convex subscription');
@@ -155,7 +188,7 @@ export async function initEntitlementSubscription(
       return;
     }
 
-    const api = await getConvexApi();
+    const api = await apiLoad;
     if (!api) {
       console.log('[entitlements] Could not load Convex API — skipping subscription');
       if (isExpectedAccount()) markEntitlementVerificationUnavailable();
@@ -176,7 +209,8 @@ export async function initEntitlementSubscription(
       if (isExpectedAccount()) markEntitlementVerificationUnavailable();
       return;
     }
-    if (!isExpectedAccount()) return;
+    // Another initializer can attach while this one awaits authentication.
+    if (initialized || !isExpectedAccount()) return;
 
     const watch = client.onUpdate(
       api.entitlements.getEntitlementsForUser,
@@ -194,6 +228,11 @@ export async function initEntitlementSubscription(
       },
     );
 
+    // onUpdate may synchronously notify a consumer that tears us down.
+    if (!isExpectedAccount()) {
+      watch.unsubscribe();
+      return;
+    }
     unsubscribeFn = watch.unsubscribe;
     initialized = true;
   } catch (err) {
@@ -204,13 +243,16 @@ export async function initEntitlementSubscription(
 }
 
 /**
- * Tears down the entitlement subscription and clears all listeners.
- * Resets initialized flag so a new subscription can be started.
+ * Retire the entitlement transport and pending initialization; retain listeners.
+ * Resets initialized so a new subscription can start. Verification is owned
+ * by the caller: account handoffs stay pending; final teardown marks unavailable.
  * Does NOT null currentState — preserves the last known state across
  * destroy/reinit cycles (e.g. WebSocket reconnects) so paying users don't
  * see locked panels during backoff. Call resetEntitlementState() on sign-out.
  */
 export function destroyEntitlementSubscription(): void {
+  // Retire pending initialization and queued callbacks, including same-account rebinds.
+  subscriptionGeneration += 1;
   if (unsubscribeFn) {
     unsubscribeFn();
     unsubscribeFn = null;
@@ -295,6 +337,24 @@ export function hasFeature(flag: keyof EntitlementState['features']): boolean {
  */
 export function hasEmbedAccessForAccount(role: 'free' | 'pro' | undefined): boolean {
   return hasAccountEmbedAccess(role, currentState, Date.now());
+}
+
+/**
+ * Whether the signed-in account may focus its own dashboard tabs (#10453).
+ * A personal tab's focus filters data the plan already receives, so this is a
+ * presentation gate; the shared-dashboard gate is enforced in Convex.
+ */
+export function hasTabFocusForAccount(): boolean {
+  return hasTabFocus(currentState, Date.now());
+}
+
+/**
+ * Whether the signed-in account holds the travel risk assessment grant
+ * (#10451). A presentation gate for the focus bar's "Draft assessment"; the
+ * MCP tool refuses an account without it on the server.
+ */
+export function hasTravelRiskAssessmentForAccount(): boolean {
+  return hasTravelRiskAssessment(currentState, Date.now());
 }
 
 /**

@@ -3,9 +3,11 @@ import { defaultRedisEval } from '../lib/_upstash-pipeline.mjs';
 
 export const JAPAN_X_MAX_TEXT_LENGTH = 16_000;
 export const JAPAN_X_ACCOUNT_ID = '864751444586397696';
-export const JAPAN_X_POLL_MS = 6 * 60 * 60 * 1000;
+// One read per 12-hour UTC slot; the shared X budget holds a read for each.
+export const JAPAN_X_SLOT_MS = 12 * 60 * 60 * 1000;
 const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-const MAX_POSTS = 25;
+const BUDGET_RETRY_MS = 60 * 60 * 1000;
+const MAX_POSTS = xPostBudget.JAPAN_MOD_X_SLOT_POSTS;
 const MAX_BYTES = 1024 * 1024;
 const MODE = 'official_joint_staff_x_review_candidates';
 
@@ -63,15 +65,20 @@ export async function fetchJapanXOutcome({
   fetchFn = globalThis.fetch,
   budget = xPostBudget.createXPostBudget({
     evalCommand: defaultRedisEval,
-    dailyCoveragePosts: xPostBudget.DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+    ...xPostBudget.X_SHARED_COVERAGE_MODEL,
   }),
 } = {}) {
   const previous = previousSource?.xDiscovery;
-  const age = now - Date.parse(previous?.checkedAt);
+  const slot = Math.floor(now / JAPAN_X_SLOT_MS);
+  const previousSlot = Math.floor(Date.parse(previous?.checkedAt) / JAPAN_X_SLOT_MS);
   const retained = previousSource?.candidates ?? [];
   const base = { transportMode: MODE, transportPath: 'x_api', requestCount: 0,
     candidates: retained, availableDocumentUrls: [], acquiredAt: previousSource?.lastSuccessAt ?? null };
-  if (Number.isFinite(age) && age >= 0 && age < JAPAN_X_POLL_MS) {
+  const budgetRetryDue = previous?.ok === false
+    && previous.errorCodes?.length === 1
+    && previous.errorCodes[0] === 'JMOD_X_BUDGET_UNAVAILABLE'
+    && now - Date.parse(previous.checkedAt) >= BUDGET_RETRY_MS;
+  if (previousSlot === slot && !budgetRetryDue) {
     return { ...base, ok: previous.ok === true, errorCodes: previous.errorCodes ?? [],
       availableDocumentUrls: retained.map(row => row.sourceUrl), xDiscovery: previous };
   }
@@ -86,7 +93,8 @@ export async function fetchJapanXOutcome({
       'tweet.fields': 'created_at,entities,author_id,note_tweet,attachments',
       expansions: 'attachments.media_keys', 'media.fields': 'url,alt_text,type' }).toString();
     const result = await budget.withReturnedPosts({ consumer: 'japan-mod', operation: 'x-candidate-discovery',
-      requestedPosts: MAX_POSTS, execute: async (_, admission) => {
+      requestedPosts: MAX_POSTS, coverageId: `japan-mod:slot-${slot % 2}`, coverageUnitPosts: MAX_POSTS,
+      previousModelCoverageUnit: false, execute: async (_, admission) => {
         xPostBudget.assertXPostBudgetAdmission(url, admission);
         requestCount++;
         const response = await fetchFn(url.href, { redirect: 'error',
