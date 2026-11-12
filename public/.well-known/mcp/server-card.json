@@ -516,7 +516,7 @@
     },
     {
       "name": "get_fred_series",
-      "description": "Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched with requested.",
+      "description": "Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata and observations ordered oldest to newest. Compare fetched with requested to identify missing cached series. An empty result with both counts zero can also indicate a cache-read failure.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"
