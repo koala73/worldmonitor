@@ -516,7 +516,7 @@
     },
     {
       "name": "get_fred_series",
-      "description": "Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata and observations ordered oldest to newest. Compare fetched with requested to identify missing cached series. An empty result with both counts zero can also indicate a cache-read failure.",
+      "description": "Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata and observations ordered oldest to newest. Fewer fetched than requested can mean missing cached series or failed cache reads; the result does not distinguish them. Both counts zero can mean no supported ids were selected or the batch reader caught an exception.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"

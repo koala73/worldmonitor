@@ -2730,8 +2730,9 @@ export const RPC_TOOLS: ToolDef[] = [
     description:
       'Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; ' +
       'no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata ' +
-      'and observations ordered oldest to newest. Compare fetched with requested to identify missing cached series. ' +
-      'An empty result with both counts zero can also indicate a cache-read failure.',
+      'and observations ordered oldest to newest. Fewer fetched than requested can mean missing cached series or ' +
+      'failed cache reads; the result does not distinguish them. Both counts zero can mean no supported ids were ' +
+      'selected or the batch reader caught an exception.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2746,16 +2747,16 @@ export const RPC_TOOLS: ToolDef[] = [
           type: 'integer',
           minimum: 1,
           maximum: 1000,
-          description: 'Size of the recent observation window for each series; 24 when omitted. Observations retain chronological order. Use a smaller window for latest readings; large multi-series histories may be compacted by the output budget.',
+          description: 'Size of the recent observation window for each series; 24 when omitted. Observations retain chronological order. Oversized results are withheld with _budget_exceeded; reduce limit, request fewer series, or use jmespath to select less data.',
         },
       },
       required: ['series_ids'],
     },
     outputSchema: {
       type: 'object',
-      description: 'Cached series and lookup counts. Empty results with both counts zero mean no supported ids were selected or the batch reader failed; the result does not distinguish those cases.',
+      description: 'Cached series and lookup counts. Fewer fetched than requested can mean missing cache entries or failed cache reads, even with requested positive. Both counts zero can mean no supported ids were selected or the batch reader caught an exception. These causes are not distinguished in the result.',
       properties: {
-        results: { type: 'object', description: 'Found cached series keyed by uppercase series id. Unsupported ids and supported ids without cached series are absent.', additionalProperties: { type: 'object', properties: {
+        results: { type: 'object', description: 'Found cached series keyed by uppercase series id. Unsupported ids, missing cache entries, and failed cache reads produce no series entry.', additionalProperties: { type: 'object', properties: {
           seriesId: { type: 'string', description: 'Identifier of the returned macroeconomic series.' }, title: { type: 'string', description: 'FRED series title.' },
           units: { type: 'string', description: 'Unit of the values, as FRED labels it.' }, frequency: { type: 'string', description: 'Observation frequency, such as Monthly or Quarterly.' },
           observations: { type: 'array', description: 'Most recent observation window selected by limit, ordered oldest to newest.', items: { type: 'object', properties: {
@@ -2763,7 +2764,7 @@ export const RPC_TOOLS: ToolDef[] = [
           } } },
         } } },
         fetched: { type: 'number', description: 'Number of series returned in results.' },
-        requested: { type: 'number', description: 'Number of distinct supported ids selected after normalization, filtering, sorting, and the twenty-series cap. Zero if the batch reader fails.' },
+        requested: { type: 'number', description: 'Number of distinct supported ids selected after normalization, filtering, sorting, and the twenty-series cap. Reset to zero when the batch reader catches an exception; cache-read failures can leave it positive.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
