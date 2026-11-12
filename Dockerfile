@@ -8,7 +8,10 @@
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS builder
+# Runs on the build host's own architecture: everything it hands to later stages
+# (dist/, api/, data/, the sidecar) is plain JS and HTML, and npm ci, tsc and
+# vite crash or crawl under QEMU when a multi-platform build targets arm64.
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS builder
 
 WORKDIR /app
 ENV npm_config_install_links=true

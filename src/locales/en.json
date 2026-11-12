@@ -4673,7 +4673,7 @@
     "draftAssessment": "Draft assessment",
     "draftAssessmentAria": "Open the trip assessment, prefilled with this focus",
     "draftCopied": "Request copied. Paste it into your AI assistant.",
-    "draftCopiedPartial": "Request copied for the first {{count}} countries. An assessment covers at most {{max}} countries.",
+    "draftCopiedPartial": "Request copied for the first {{count}} countries. An assessment covers at most {{max}} countries. Left out: {{omitted}}.",
     "draftCopyFailed": "Could not copy the request.",
     "clearFocus": "Clear focus",
     "notFiltered": "Not filtered",

@@ -212,9 +212,17 @@ export class PanelScopeFilter {
       }
     }
     if (warning && !note) parts.push(h('span', { className: 'panel-scope-strip-note panel-scope-strip-warning', role: 'status' }, warning));
+    const active = document.activeElement;
+    const focusedAction = active instanceof HTMLButtonElement && this.strip.contains(active)
+      ? active.dataset.scopeAction : undefined;
     replaceChildren(this.strip, ...parts);
     this.strip.dataset.state = note ? 'note' : this.showAll ? 'all' : 'filtering';
     this.strip.hidden = false;
+    if (focusedAction) {
+      const target = this.strip.querySelector<HTMLButtonElement>(`button[data-scope-action="${focusedAction}"]`)
+        ?? this.strip.querySelector<HTMLButtonElement>('button[data-scope-action]');
+      target?.focus({ preventScroll: true });
+    }
   }
 
   public hideStrip(): void {

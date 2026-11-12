@@ -5100,7 +5100,7 @@
     "draftAssessment": "Nacrt ocjene",
     "draftAssessmentAria": "Otvori procjenu putovanja, unaprijed popunjena s ovim fokusom",
     "draftCopied": "Zahtjev kopiran. Zalijepi ga u svoj AI asistent.",
-    "draftCopiedPartial": "Zahtjev kopiran za prvih {{count}} zemalja. Procjena pokriva najviše {{max}} zemalja.",
+    "draftCopiedPartial": "Zahtjev kopiran za prvih {{count}} zemalja. Procjena pokriva najviše {{max}} zemalja. Izostavljeno: {{omitted}}.",
     "draftCopyFailed": "Nije bilo moguće kopirati zahtjev."
   },
   "tripAssessment": {

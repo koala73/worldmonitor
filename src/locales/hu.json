@@ -5061,7 +5061,7 @@
     "draftAssessment": "Értékelési vázlat",
     "draftAssessmentAria": "Az utazási értékelés megnyitása, amely ezzel a fókusszal van kitöltve",
     "draftCopied": "Kérés másolva. Illessze be az AI asszisztensébe.",
-    "draftCopiedPartial": "A kérés az első {{count}} országra lett másolva. Egy értékelés legfeljebb {{max}} országot fed le.",
+    "draftCopiedPartial": "A kérés az első {{count}} országra lett másolva. Egy értékelés legfeljebb {{max}} országot fed le. Kihagyva: {{omitted}}.",
     "draftCopyFailed": "A kérés másolása nem sikerült."
   },
   "tripAssessment": {

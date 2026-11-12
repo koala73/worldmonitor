@@ -236,7 +236,7 @@ export class MapContainer {
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
   private focusOutline: MapFocusOutline | null = null;
-  /** Bumped by every focus fit request and every clear; a stale fit drops itself. */
+  /** Bumped by fits, clears and chosen-country changes; stale fits drop themselves. */
   private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
   private pendingReservoirOpen: ReservoirLevel | null = null;
@@ -508,14 +508,14 @@ export class MapContainer {
     if (this.pendingChokepointOpen === null) return;
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
-    this.openChokepoint(pendingChokepointOpen);
+    this.showChokepoint(pendingChokepointOpen);
   }
 
   private replayPendingReservoirOpen(): void {
     if (this.pendingReservoirOpen === null) return;
     const pendingReservoirOpen = this.pendingReservoirOpen;
     this.pendingReservoirOpen = null;
-    this.openReservoir(pendingReservoirOpen);
+    this.showReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -1549,6 +1549,11 @@ export class MapContainer {
 
   /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
   public openReservoir(reservoir: ReservoirLevel): void {
+    ++this.viewportActionToken;
+    this.showReservoir(reservoir);
+  }
+
+  private showReservoir(reservoir: ReservoirLevel): void {
     // A renderer switch clears the renderer before its async init finishes; keep the
     // latest selection and replay it on readiness, as openChokepoint does.
     if (!this.isChokepointRendererReady()) {
@@ -1832,6 +1837,11 @@ export class MapContainer {
   // Pan/rotate to a chokepoint and open its waterway popup. Unlike the trigger*
   // clicks above, globe is a real target here (it pans the point to front-centre).
   public openChokepoint(id: string): void {
+    ++this.viewportActionToken;
+    this.showChokepoint(id);
+  }
+
+  private showChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
       this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
@@ -1897,6 +1907,10 @@ export class MapContainer {
    * queues with the other pending viewport commands.
    */
   public setFocusScope(focus: MapFocusOutline | null, options: { fit: boolean }): void {
+    const previousChosen = new Set(this.focusOutline?.chosen ?? []);
+    const nextChosen = new Set(focus?.chosen ?? []);
+    const chosenChanged = previousChosen.size !== nextChosen.size
+      || [...nextChosen].some((code) => !previousChosen.has(code));
     this.focusOutline = focus
       ? { chosen: [...focus.chosen], neighbours: [...focus.neighbours] }
       : null;
@@ -1905,7 +1919,10 @@ export class MapContainer {
       this.focusFitSeq += 1;
       return;
     }
-    if (!options.fit) return;
+    if (!options.fit) {
+      if (chosenChanged) this.focusFitSeq += 1;
+      return;
+    }
     const seq = ++this.focusFitSeq;
     const actionToken = ++this.viewportActionToken;
     const authority = this.humanViewportInteractionToken;

@@ -91,7 +91,7 @@ describe('UcdpEventsPanel under a focus', () => {
     expect(loadFullSet).not.toHaveBeenCalled();
   });
 
-  it('upgrades a bootstrap projection to the full set once, then filters in memory', async () => {
+  it('upgrades each bootstrap projection refresh and reuses the full set across focus changes', async () => {
     panel.setEvents(EVENTS, AGGREGATES);
     await settle();
     expect(loadFullSet).not.toHaveBeenCalled();
@@ -110,11 +110,39 @@ describe('UcdpEventsPanel under a focus', () => {
     await settle();
     // Filtered from the full set held in memory: Myanmar is Thailand's neighbour.
     expect(ids()).toEqual(['th', 'la', 'mm']);
-    // A refresh that delivers the projection again keeps the full set.
+    // A projection refresh invalidates the previous full set and reloads it.
+    loadFullSet.mockResolvedValueOnce([event('fresh', 'Thailand')]);
     panel.setEvents(EVENTS, AGGREGATES);
     await settle();
-    expect(ids()).toEqual(['th', 'la', 'mm']);
-    expect(loadFullSet).toHaveBeenCalledTimes(1);
+    expect(ids()).toEqual(['fresh']);
+    expect(loadFullSet).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows every focused event beyond the unfocused 50-row cap', async () => {
+    const rows = Array.from({ length: 65 }, (_, i) => event(`th-${i}`, 'Thailand'));
+    panel.setEvents(rows);
+    await settle();
+    expect(ids()).toHaveLength(50);
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(ids()).toHaveLength(65);
+    expect(el().querySelector('.panel-more')).toBeNull();
+  });
+
+  it('ignores an upgrade superseded by a newer projection, including while the replacement fails', async () => {
+    let release!: (events: UcdpGeoEvent[]) => void;
+    loadFullSet.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    panel.setEvents(EVENTS, AGGREGATES);
+    panel.applyScope(FOCUS);
+    await settle();
+    loadFullSet.mockResolvedValueOnce(null);
+    panel.setEvents([event('fresh', 'Thailand')], AGGREGATES);
+    await settle();
+    release([...EVENTS, MYANMAR]);
+    await settle();
+    expect(ids()).toEqual(['fresh']);
+    expect(strip()?.textContent).toContain('The full list did not load');
+    expect(loadFullSet).toHaveBeenCalledTimes(2);
   });
 
   it('says the result is partial when the full set fails to load', async () => {

@@ -18,7 +18,7 @@ import {
 import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
 import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 import { getPanelScopeBehaviour } from '@/config/panel-scope';
-import { headlineCountries, withoutOwnSourceSuffix } from '@/services/scope-attribution';
+import { headlineCountries, MAX_ATTRIBUTION_CHARS, withoutOwnSourceSuffix } from '@/services/scope-attribution';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { effectivePubDateMs } from '@/services/feed-date';
 
@@ -511,11 +511,13 @@ export class NewsPanel extends Panel {
     if (!items) return;
     const resolved = this.scopeFilter.scope;
     const candidates = resolved ? [...resolved.chosen, ...resolved.neighbours] : [];
-    const view = this.scopeFilter.view(items, (item) => headlineCountries(
-      `${withoutOwnSourceSuffix(item.title, item.source)} ${item.locationName ?? ''}`,
-      candidates,
-      item.lang,
-    ));
+    const view = this.scopeFilter.view(items, (item) => {
+      // Reserve room for the explicit location so a long feed title cannot
+      // push it past headlineCountries' bounded attribution window.
+      const location = item.locationName ? ` ${item.locationName.slice(0, MAX_ATTRIBUTION_CHARS - 1)}` : '';
+      const title = withoutOwnSourceSuffix(item.title, item.source).slice(0, MAX_ATTRIBUTION_CHARS - location.length);
+      return headlineCountries(`${title}${location}`, candidates, item.lang);
+    });
     this.scopeRows = new Map(view.partition ? view.rows.map((row) => [newsScopeKey(row.item), row]) : []);
     this.scopeFilter.renderStrip(resolved && items.length > 0 ? view : null);
     if (view.emptyByFocus) {

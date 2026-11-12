@@ -998,7 +998,7 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
-        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return 'rgba(0,0,0,0)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
@@ -1007,7 +1007,7 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
         if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
-        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return 'rgba(0,0,0,0)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return '';
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
@@ -1023,9 +1023,9 @@ export class GlobeMap {
       .polygonAltitude((d: GlobePolygon) => {
         if (d._kind === 'cii') return 0.002;
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_ALT[d.intensity!] ?? GlobeMap.CONFLICT_ALT.low;
-        // Just above the CII choropleth, chosen above neighbours.
-        if (d._kind === 'focusChosen') return 0.0035;
-        if (d._kind === 'focusNeighbour') return 0.003;
+        // Above the highest conflict cap (0.006), chosen above neighbours.
+        if (d._kind === 'focusChosen') return 0.008;
+        if (d._kind === 'focusNeighbour') return 0.007;
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
@@ -2479,8 +2479,8 @@ export class GlobeMap {
   private static readonly CONFLICT_STROKE: Record<string, string> = { high: '#ff3030', medium: '#ff8800', low: '#ffcc00' };
   private static readonly CONFLICT_ALT: Record<string, number> = { high: 0.006, medium: 0.004, low: 0.003 };
   // Focus outline (#10453): the focus bar's accent. globe.gl draws polygon
-  // strokes one pixel wide, so the two styles differ by opacity. Caps stay
-  // transparent: an outline only, over whatever choropleth is on.
+  // strokes one pixel wide, so the two styles differ by opacity. Falsy cap
+  // and side colours omit their meshes so focus cannot intercept CII hover.
   private static readonly FOCUS_CHOSEN_STROKE = 'rgba(68,255,136,0.95)';
   private static readonly FOCUS_NEIGHBOUR_STROKE = 'rgba(68,255,136,0.4)';
 
@@ -2536,8 +2536,8 @@ export class GlobeMap {
         if (!geom) continue;
         const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
         const name = (feat.properties?.name as string) ?? code;
-        for (const ring of rings) {
-          polys.push({ coords: ring, name, _kind: 'cii', level: entry.level, score: entry.score });
+        for (let ri = 0; ri < rings.length; ri++) {
+          polys.push({ coords: this.getReversedRing('cii', code, ri, rings[ri] as number[][][]), name, _kind: 'cii', level: entry.level, score: entry.score });
         }
       }
     }

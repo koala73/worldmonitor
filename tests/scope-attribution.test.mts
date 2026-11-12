@@ -98,6 +98,13 @@ describe('airportCountry', () => {
 });
 
 describe('countryCodeFromName', () => {
+  it('resolves every country name in the 2026-11-12 live Cloudflare outage snapshot', () => {
+    for (const [name, code] of Object.entries({
+      Ukraine: 'UA', 'Dominican Republic': 'DO', Peru: 'PE', Guyana: 'GY',
+      Bangladesh: 'BD', Syria: 'SY', 'Sri Lanka': 'LK',
+    })) assert.equal(countryCodeFromName(name), code, name);
+  });
+
   it('resolves UCDP spellings', () => {
     assert.equal(countryCodeFromName('Myanmar (Burma)'), 'MM');
     assert.equal(countryCodeFromName('DR Congo (Zaire)'), 'CD');

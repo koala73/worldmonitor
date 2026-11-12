@@ -5027,13 +5027,13 @@
       "emptyRadiation": "這些國家沒有輻射讀數",
       "emptyFuelShortages": "這些國家沒有燃料短缺",
       "emptyEnergyDisruptions": "這些國家沒有能源中斷",
-      "emptyDisplacement": "這些國家沒有難民安置資料",
+      "emptyDisplacement": "這些國家沒有人口流離失所資料",
       "emptyCorrelation": "這些國家沒有訊號"
     },
     "draftAssessment": "草稿評估",
     "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
     "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
-    "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。",
+    "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。未包含的國家：{{omitted}}。",
     "draftCopyFailed": "無法複製請求。"
   },
   "tripAssessment": {
