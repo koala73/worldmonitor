@@ -5,6 +5,7 @@ import { normalizeFlagRegistries, splitSanctionsAttribution } from '../../../sha
 import type { ListSanctionsPressureResponse } from '../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
 import { COUNTRY_HISTORY_TOOL } from './country-history-tool';
 import { projectSupplyChainData } from './_shipping-freight';
+import { RESERVOIR_LEVELS_LABEL, RESERVOIR_LEVELS_OUTPUT_SCHEMA, RESERVOIR_STATUSES, projectReservoirLevels } from './_reservoir-levels';
 import { CAPITAL_FLOW_PAIR_LEG_SCHEMA, CAPITAL_FLOWS_MAX_COUNTRIES, CAPITAL_FLOWS_PAIRS_LABEL, CAPITAL_FLOWS_SORTS, projectCapitalFlows, type CapitalFlowsSort } from './_capital-flows';
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
 import { MARKET_ASSET_CLASSES } from '../../../shared/panel-admission';
@@ -3513,6 +3514,52 @@ export const CACHE_TOOLS: ToolDef[] = [
       "GET /api/climate/v1/list-climate-anomalies",
       "GET /api/climate/v1/list-climate-disasters",
       "GET /api/climate/v1/list-climate-news",
+    ],
+  },
+  {
+    name: 'get_reservoir_levels',
+    _validateArgs: params => { resolveCountryFilter(params.country, 'country'); },
+    title: 'Strategic reservoir water levels',
+    // 50 reservoirs with {date, levelM} series measured 87 KB in production (2026-11-12,
+    // ~27 points each); series grow toward the full 36-month window, so leave headroom.
+    _outputBudgetBytes: 196608,
+    description: 'Return NASA ICESat-2 lidar water levels for the 50 strategic reservoirs and lakes on the watchlist (GERD, Lake Nasser, Ataturk, Mosul, Tarbela, Three Gorges, Kariba, Lake Mead and others): latest pass level, change since the previous pass and over 30, 90 and 365 days, seasonal anomaly and z-score, record range and a status. Levels are metres above the EGM2008 geoid from ATL13, or ATL06 where ATL13 covers the water poorly; they are lake levels, not storage volumes. Passes publish about 50-70 days after the overpass, so latest.ageDays is normally large. no_recent_data means no qualifying pass in the last 150 days, not a stale tool. stale follows the seed run (3 days) and a full 50-reservoir watchlist, never pass age. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Returns every reservoir without its series by default.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'string',
+          description: 'Keep reservoirs whose country or riparian list includes this country, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params.',
+        },
+        status: {
+          type: 'string',
+          enum: [...RESERVOIR_STATUSES],
+          description: 'Keep reservoirs with this status. record_low and record_high mark the latest pass as the record; falling_fast and rising_fast a 90-day move beyond the seasonal swing; low and high a seasonal z-score of 1.5 or more (percent of range when there is no seasonal baseline); no_recent_data no qualifying pass in 150 days; insufficient_history too short a record to judge.',
+        },
+        id: { type: 'string', description: 'Keep one reservoir by watchlist id, e.g. "gerd", "mead" or "three-gorges".' },
+        include_series: { type: 'boolean', description: 'Also return each reservoir\'s pass series over the 36 months before its latest pass as `{date, levelM}` points. Default false.' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({ [RESERVOIR_LEVELS_LABEL]: RESERVOIR_LEVELS_OUTPUT_SCHEMA }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => ({
+      ...data,
+      [RESERVOIR_LEVELS_LABEL]: projectReservoirLevels(data[RESERVOIR_LEVELS_LABEL], {
+        countries: resolveCountryFilter(params.country, 'country'),
+        status: typeof params.status === 'string' ? params.status : '',
+        id: argStr(params.id),
+        includeSeries: argBool(params.include_series),
+      }),
+    }),
+    _cacheKeys: ['climate:reservoir-levels:v1'], // STANDALONE_KEYS::reservoirLevels
+    _freshnessChecks: [
+      // Seed run age and watchlist coverage, matching api/health.js SEED_META.reservoirLevels.
+      // Pass age (latest.ageDays) is ICESat-2 publication latency and never makes this stale.
+      { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320, minRecordCount: 50 },
+    ],
+    _apiPaths: [
+      "GET /api/climate/v1/list-reservoir-levels",
     ],
   },
   {

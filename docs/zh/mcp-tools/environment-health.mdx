@@ -41,6 +41,39 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_reservoir_levels`
+
+返回战略水库观察名单上 50 座水库和湖泊的 NASA ICESat-2 激光雷达水位(GERD、纳赛尔湖、阿塔图尔克、摩苏尔、塔贝拉、三峡、卡里巴、米德湖等):最新过境水位、与上一次过境相比以及 30、90、365 天的变化、季节距平与 z 分数、历史区间和状态。水位为相对 EGM2008 大地水准面的米数,来自 ATL13,ATL13 覆盖不佳的水体改用 ATL06;它们是湖面水位,不是库容。过境数据在过境后约 50-70 天发布,因此 latest.ageDays 通常较大。no_recent_data 表示过去 150 天内没有合格过境,并不表示工具过期。stale 只看种子运行(3 天)和完整的 50 座观察名单,从不看过境时间。缓存读取:API 套餐权重 1,计入已登录账户的免费额度。默认返回全部水库,不含序列。
+
+**参数(工具专用):**
+
+| 名称 | 类型 | 说明 |
+|------|------|-------------|
+| `country` | string | 保留所在国或共享水域国家列表包含该国的水库,可传 ISO 3166-1 alpha-2、alpha-3 代码或国家名称。无法解析的输入返回 Invalid params。 |
+| `status` | `string: record_low / falling_fast / low / normal / high / rising_fast / record_high / no_recent_data / insufficient_history` | 保留该状态的水库。record_low 和 record_high 表示最新过境创纪录;falling_fast 和 rising_fast 表示 90 天变化超出季节波动;low 和 high 表示季节 z 分数达到 1.5 或以上(无季节基线时看历史区间百分比);no_recent_data 表示 150 天内无合格过境;insufficient_history 表示记录太短无法判断。 |
+| `id` | string | 按观察名单 id 保留一座水库,例如 "gerd"、"mead" 或 "three-gorges"。 |
+| `include_series` | boolean | 同时返回每座水库最新过境前 36 个月的过境序列,格式为 `{date, levelM}` 点。默认 false。 |
+
+- **API 端点:** `GET /api/climate/v1/list-reservoir-levels`
+- **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
+- **类型:** 缓存读取 — 来自 ICESat-2 水库快照的亚秒级响应。
+- **新鲜度预算:** 距上次种子运行最多 **72 小时**;被跟踪的观察名单水库少于 **50** 座时 `stale: true`(与 `/api/health` 中的 `seed-meta:climate:reservoir-levels` 一致)。水库带有水位且过境发现未持续失败才算被跟踪,所以即使 50 座水库仍显示上次的有效水位,`stale` 也可能为 true。过境时间从不算作过期:ICESat-2 过境数据在过境后约 50-70 天发布,所以 `latest.ageDays` 通常较大;`no_recent_data` 表示该水库 150 天内没有合格过境。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_reservoir_levels","arguments":{"country":"EG","include_series":true}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_natural_disasters`
 
 近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。

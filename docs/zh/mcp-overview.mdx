@@ -361,6 +361,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |------|-------------|
 | `get_natural_disasters` | USGS 地震、NASA FIRMS 野火、灾害事件。 |
 | `get_climate_data` | 相对 WMO 常态的气温/降水异常、GDACS/FIRMS 警报、Mauna Loa CO2、OpenAQ PM2.5、海冰、海洋热含量。 |
+| `get_reservoir_levels` | 50 座战略水库和湖泊的 ICESat-2 激光雷达水位(相对 EGM2008 大地水准面的米数);状态、变化窗口、季节距平,可选 36 个月序列。 |
 | `get_radiation_data` | 全球辐射监测站读数 + 异常标记。 |
 | `get_research_signals` | 来自精选研究源的新兴技术事件。 |
 
@@ -426,6 +427,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
 | `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_reservoir_levels` | `GET /api/climate/v1/list-reservoir-levels` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
 | `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |

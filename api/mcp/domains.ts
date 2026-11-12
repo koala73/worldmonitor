@@ -123,6 +123,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   search_flight_prices_by_date: 'movement-infrastructure',
   // Environment & science
   get_climate_data: 'environment-science',
+  get_reservoir_levels: 'environment-science',
   get_imd_cyclone_marine: 'environment-science',
   get_natural_disasters: 'environment-science',
   get_radiation_data: 'environment-science',
