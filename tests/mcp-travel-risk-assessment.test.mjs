@@ -715,6 +715,14 @@ describe('seasonal hazards block', () => {
     assert.equal(unknown.findings.length, 0);
   });
 
+  it('never reads inherited object keys as countries', () => {
+    for (const code of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      const block = seasonalBlock(trip(code, '2026-09-01', '2026-09-05'), open, CALENDAR);
+      assert.equal(block.status, 'unavailable', code);
+      assert.equal(block.findings.length, 0, code);
+    }
+  });
+
   it('uses the shipped calendar for real countries without throwing on any code it holds', () => {
     const block = seasonalBlock(trip('TH', '2026-09-01', '2026-09-30'), open);
     assert.equal(block.status, 'reported');

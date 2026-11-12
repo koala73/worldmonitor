@@ -760,7 +760,7 @@ export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: Sea
   const to = trip.depart ?? input.dateTo;
   const months = tripMonths(from, to);
   if (!months) return unavailableBlock(SEASONAL_TOPIC, SEASONAL_SOURCE, 'the trip has no dates, so a season cannot be matched to it');
-  const hazards = calendar.countries[trip.countryCode];
+  const hazards = Object.hasOwn(calendar.countries, trip.countryCode) ? calendar.countries[trip.countryCode] : undefined;
   if (!hazards) {
     return unavailableBlock(SEASONAL_TOPIC, SEASONAL_SOURCE, `the archive records no tropical cyclone or flood event affecting ${trip.countryName}, so no season can be derived`);
   }
