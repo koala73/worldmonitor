@@ -3419,16 +3419,17 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
   const steps: Array<{ name?: string; id?: string; run?: string; if?: string; parallel?: unknown[] }> = job.steps;
   const flat = steps.flatMap((step) => (step.parallel as typeof steps | undefined) ?? [step]);
 
-  it('splits the job into a webmcp part and a pro-gates part', () => {
+  it('splits the job into webmcp, pro-gates and the two MCP Apps view parts', () => {
     // webmcp first: it is the longer part, so it should take a runner first.
-    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates']);
+    assert.deepEqual(job.strategy.matrix.part, ['webmcp', 'pro-gates', 'plugin-news', 'plugin-country']);
     assert.equal(job.strategy['fail-fast'], false, 'a red half must not cancel the other half\'s evidence');
   });
 
-  it('builds /pro in both parts and runs each suite in exactly one', () => {
+  it('builds /pro in the webmcp and pro-gates parts and runs each suite in exactly one', () => {
     const build = flat.find((step) => step.run === 'npm run build:pro');
     assert.ok(build, 'the job must build /pro');
-    assert.equal(build.if, undefined, 'both parts need /pro: the legacy WebMCP tests load /pro/welcome.html');
+    // The legacy WebMCP tests load /pro/welcome.html; the MCP Apps view parts never read /pro.
+    assert.equal(build.if, "${{ !startsWith(matrix.part, 'plugin-') }}");
     const partOf = (script: string) => {
       const step = flat.find((s) => s.run === `npm run ${script}`);
       assert.ok(step, `the job must run npm run ${script}`);
@@ -3437,6 +3438,23 @@ describe('variant-smoke-pro-webmcp runs the /pro gates and the WebMCP smoke on s
     assert.equal(partOf('test:e2e:webmcp'), "matrix.part == 'webmcp'");
     assert.equal(partOf('test:e2e:prehydration'), "matrix.part == 'pro-gates'");
     assert.equal(partOf('test:e2e:pro-gates'), "matrix.part == 'pro-gates'");
+    const plugin = flat.find((step) => step.id === 'plugin');
+    assert.equal(plugin?.run, 'npm run test:e2e:${{ matrix.part }}');
+    assert.equal(plugin?.if, "startsWith(matrix.part, 'plugin-')");
+  });
+
+  it('runs every MCP Apps view spec in exactly one plugin part, on freshly built views', () => {
+    // No job ran these specs before, so #10494 broke 31 of them and still merged green.
+    const specs = readdirSync(resolve(root, 'e2e')).filter((name) => /^plugin-.*\.spec\.ts$/.test(name)).map((name) => `e2e/${name}`);
+    assert.ok(specs.length > 0);
+    const parts = (job.strategy.matrix.part as string[]).filter((part) => part.startsWith('plugin-'));
+    const covered = parts.flatMap((part) => {
+      const script = packageScripts[`test:e2e:${part}`];
+      assert.ok(script, `package.json must define test:e2e:${part}`);
+      assert.match(script, /^npm run build:plugin && /, `test:e2e:${part} must build dist/plugin before the specs read it`);
+      return script.match(/e2e\/plugin-[\w-]+\.spec\.ts/g) ?? [];
+    });
+    assert.deepEqual([...covered].sort(), [...specs].sort(), 'each e2e/plugin-*.spec.ts must run in exactly one plugin part');
   });
 
   it('keys setup-node\'s npm cache to the only install that reads it', () => {

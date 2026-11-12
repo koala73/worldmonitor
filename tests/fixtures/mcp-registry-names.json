@@ -71,6 +71,7 @@
   "get_procurement_opportunities",
   "get_radiation_data",
   "get_research_signals",
+  "get_reservoir_levels",
   "get_resilience_indicators",
   "get_sanctions_data",
   "get_signal_convergence",

@@ -1,6 +1,6 @@
 import { parseNewsDashboardRequest, NEWS_DASHBOARD_INPUT_SCHEMA } from '../../../shared/plugin-news-view';
 import { newsPanelAdmissionSchema } from '../../../shared/panel-admission';
-import { z } from 'zod';
+import * as z from 'zod';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
