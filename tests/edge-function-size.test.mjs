@@ -5,10 +5,12 @@ import { build } from 'esbuild';
 
 // Run in the normal unit-shards inventory. These reproducible esbuild + gzip-9
 // budgets are an early warning, not a substitute for Vercel's deployed artifact
-// measurement. MCP reserves 24 KiB below the 1 MiB Edge ceiling; displacement
+// measurement. MCP reserves 4 KiB below the 1 MiB Edge ceiling (it was 24 KiB until the
+// travel risk tool, #10451, which adds about 16 KiB gzip; the next addition
+// should move code out of this bundle rather than raise the budget again); displacement
 // gets a separate 300 KiB growth budget even though it has more platform room.
 for (const [entry, budget] of [
-  ['api/mcp.ts', 1024 * 1000],
+  ['api/mcp.ts', 1024 * 1020],
   ['api/displacement/v1/[rpc].ts', 300 * 1024],
 ]) {
   test(`${entry} stays within its compressed function budget`, async (t) => {
