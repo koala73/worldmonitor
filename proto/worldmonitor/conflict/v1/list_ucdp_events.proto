@@ -30,4 +30,6 @@ message ListUcdpEventsResponse {
   repeated UcdpViolenceEvent events = 1;
   // Pagination metadata.
   worldmonitor.core.v1.PaginationResponse pagination = 2;
+  // Monthly candidate release merged in; "+partial" when incomplete, empty when none.
+  string candidate_version = 3;
 }

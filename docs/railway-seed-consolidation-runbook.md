@@ -602,6 +602,11 @@ recurrence alerts again. An unreadable or corrupt record opens nothing and is
 left for the next sweep. `?history=1` keeps the incident log, deduplicated by
 its own signature (`health:failure-log-sig`).
 
+Food-price `STALE_CONTENT` waits 30 days past its content limit before it
+opens a Sentry issue, because government publishers routinely run late
+(`GOVERNMENT_RELEASE_KEYS` in `api/health.js`). It still shows in health and on
+the panel at the limit.
+
 Statuses ending in `_ON_DEMAND`, content-age pre-warnings, and entries inside a
 bounded grace window (`pending`) are not actionable and stay out of both
 `dataStatus` and incidents.
@@ -1284,8 +1289,8 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | Natural Events (3h, EONET/GDACS/NHC/HKO), Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
-| **Note** | Zone-normals runs before anomalies (dependency ordering) |
+| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
+| **Note** | Zone-normals runs before anomalies (dependency ordering). Natural Events left the bundle on 2026-11-07: the standalone `seed-natural-events` service (`*/30`) is its sole producer. |
 
 ### Bundle 7: seed-bundle-energy-sources
 
@@ -1359,12 +1364,12 @@ last-good observations with an unavailable source status.
 |---|---|
 | **Service name** | `seed-bundle-macro` |
 | **Start command** | `node scripts/seed-bundle-macro.mjs` |
-| **Cron schedule** | `0 8,9 * * *` (daily 08:00 and 09:00 UTC) |
+| **Cron schedule** | `0 8,9,10 * * *` (daily 08:00, 09:00 and 10:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
 | **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d), World CPI IMF (daily), World CPI Eurostat (daily), World CPI JP e-Stat (daily), World CPI AU ABS (daily) |
-| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Physical Premiums runs first with 80 seconds of admission headroom. Education gets first priority at 08:00 each Sunday UTC, with Physical second. The 09:00 retry always puts Physical first, so a deferred run has another full admission window even when Education fails. Completed members skip through their interval gates. |
+| **Wall budget** | 550 seconds, with bounded parallel freshness prefetch. The runner defers a section when its timeout plus 10-second kill grace cannot fit, leaving time for the scheduler's bounded acknowledgement before Railway's 600-second limit. Physical Premiums leads 08:00 and 09:00; Education leads Sunday 08:00 with Physical second. At 10:00, one macro member leads according to the persistent `bundle:turn:macro` cursor, followed by Physical and the remaining rotated members. The existing scheduler lease prevents overlapping rotation turns; completed failed runs advance the cursor too. Every macro member, including never-seeded food feeds, therefore receives a first admission slot within one rotation, even if earlier members repeatedly time out. Completed members skip through their interval gates. Apply the updated source-controlled cron only during an approved Railway rollout. |
 
 ### Bundle 9: seed-bundle-health
 
@@ -1647,6 +1652,7 @@ fetch('https://backboard.railway.com/graphql/v2',{method:'POST',
 | seed-live-video-resolved | `node seed-live-video-resolved.mjs` | **`0 */6 * * *` (verified 2026-09-24)** (health budget 1080 min) | The video each catalog YouTube channel has live now, for the Live News and Live Webcams players (#8545); scripts-root service `11581ac4-24ea-4cfc-bf17-471e41305364` (Railpack, `rootDirectory` `scripts`), reads channel `/live` pages through `LIVE_VIDEO_PROXY_URL` or `PROXY_URL` |
 | seed-no2-activity | `node seed-no2-activity.mjs` | **`20 6 * * *` (provisioned 2026-10-27, service `359e5bd7-4160-41d6-8792-f4aff20a3006`)** (health budget 4320 min) | Global Sentinel-5P TROPOMI tropospheric NO2 activity dataset: 199 regions (167 countries from the repository geometry plus 32 industrial clusters), each with a year-over-year direction against the same window in the prior three years; the China activity nowcast reads the four Chinese clusters as its atmosphere family (#9722). 199 CDSE Statistical API refresh requests per run plus up to 90 backfill chunks (about 6,200 requests and 600 PU a month steady state, 1,700 requests and 2,800 PU one-time backfill); needs `CDSE_CLIENT_ID`/`CDSE_CLIENT_SECRET` |
 | seed-imd-cyclone-marine | `node seed-imd-cyclone-marine.mjs` | **`*/15 * * * *` (verified 2026-09-05)** | Official IMD sea-area and coastal marine bulletins from public pages; scripts-root Nixpacks service `5f943d96-5f89-4817-941b-fdc36b71722e` |
+| seed-natural-events | `node seed-natural-events.mjs` | **`*/30 * * * *` (verified 2026-11-07, service `7119c932-05f5-4727-a54f-e4e2de2a907f`)** (health budget 120 min) | EONET, GDACS, NHC, HKO and western-Pacific cyclone events. Sole producer of `natural:events:v1` since 2026-11-07; it also ran as a seed-bundle-climate section until then |
 | seed-notam-nms | `node seed-notam-nms.mjs` | **planned — not provisioned** (registry cron `*/5 * * * *`, health budget 20 min) | FAA NOTAM Management Service: one daily bulk load per classification, then delta pulls; writes `aviation:notam:airspace:v1` and the closures key `seed-aviation` merges. Needs `NOTAM_KEY`/`NOTAM_SECRET` for the production host; scripts-root Nixpacks once provisioned |
 
 The IMD seeder reads public bulletin pages. It needs no IMD account, API key,

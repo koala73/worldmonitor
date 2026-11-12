@@ -51,104 +51,36 @@ const ENGLISH_ALLOWED_KEYS = new Set([
   'nav.enterprise',
   'tiers.pro',
   'tiers.enterprise',
-  'twoPath.entTitle',
-  'twoPath.proTitle',
   'whatsNew.proTag',
   'apiSection.business',
   'apiSection.starter',
-  'pricingTable.apiRow',
-  'pricingTable.apiHeader',
-  'pricingTable.proHeader',
-  'pricingTable.freeHeader',
-  'pricingTable.f3',
-  'pricingTable.f10',
-  'pricingTable.f25',
-  'pricingTable.f40',
-  'pricingTable.f80',
-  'pricingTable.fBYOK',
-  'pricingTable.fSiemMcp',
-  'pricingTable.fWebhook',
-  'pricingTable.fRestWebhook',
-  'pricingTable.ai',
   'welcome.agents.resources.api',
-  'pricing.tiers.enterprise.features[8]',
+  'pricing.tiers.enterprise.features[9]',
   'enterpriseShowcase.soc',
 ]);
 
 // Same-spelling words and product tokens a locale already uses. A global
 // allowlist would let a locale that translates the word fall back to English
 // without a failing test, so the exemption is per locale. #9165.
-// pricingTable.fWhiteLabel is listed only where the catalog still keeps that
-// token in the enterprise sentences. ja, ko, and sw translate it. de spells
-// the cell White-Label, so an exact English copy there still fails.
 const INTENTIONAL_ENGLISH = {
-  ar: ['pricingTable.fWhiteLabel'],
-  bg: ['pricingTable.fWhiteLabel'],
-  cs: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
-    'pricingTable.fCloud', 'pricingTable.fStandard', 'pricingTable.dashboard',
-    'pricingTable.fCloudOnPrem', 'pricingTable.fWhiteLabel',
-  ],
-  de: [
-    'welcome.nav.blog', 'welcome.live.liveBadge', 'pricingTable.fCloud',
-    'pricingTable.fStandard', 'pricingTable.fStandardCadence', 'pricingTable.dashboard',
-    'pricingTable.f50panels', 'hero.signalWord',
-  ],
-  el: ['pricingTable.fWhiteLabel'],
-  es: ['welcome.nav.blog', 'slackMock.elevated', 'pricingTable.fWhiteLabel'],
-  fa: ['pricingTable.fWhiteLabel'],
+  cs: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  de: ['welcome.nav.blog', 'welcome.live.liveBadge', 'hero.signalWord', 'pricingTable.rowSupport'],
+  es: ['welcome.nav.blog'],
   fr: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fCloud',
-    'pricingTable.fStandard', 'pricingTable.fStandardCadence', 'pricingTable.fCloudOnPrem',
-    'slackMock.elevated', 'pricing.axisCommercial', 'welcome.live.trendStable',
+    'welcome.nav.blog', 'welcome.nav.menu', 'pricing.axisCommercial', 'welcome.live.trendStable',
     'welcome.moments.m2.c1', 'welcome.moments.m4.c3', 'welcome.agents.termTitle',
-    'hero.signalWord', 'pricingTable.fWhiteLabel',
+    'hero.signalWord', 'pricingTable.rowSupport',
   ],
-  hi: ['pricingTable.fLiveEdge', 'pricingTable.fWhiteLabel'],
-  hr: [
-    'welcome.nav.blog', 'pricingTable.fStandard', 'pricingTable.fLiveEdge',
-    'hero.signalWord', 'pricingTable.fWhiteLabel',
-  ],
-  hu: [
-    'welcome.nav.blog', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
-    'pricingTable.fLiveEdge', 'pricingTable.fWhiteLabel',
-  ],
-  it: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
-    'pricingTable.fCloud', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
-    'pricingTable.dashboard', 'pricingTable.fCloudOnPrem', 'slackMock.elevated',
-    'pricingTable.fWhiteLabel',
-  ],
-  nl: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge',
-    'pricingTable.fCloud', 'pricingTable.dashboard', 'pricingTable.fCloudOnPrem',
-    'pricingTable.fLiveEdge', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
-  ],
-  pl: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fStandard',
-    'pricingTable.fWhiteLabel',
-  ],
-  pt: [
-    'welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fCloud',
-    'pricingTable.fCloudOnPrem', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
-  ],
-  ro: [
-    'welcome.nav.blog', 'welcome.live.liveBadge', 'pricingTable.fCloud',
-    'pricingTable.fStandard', 'pricingTable.fStandardCadence',
-    'pricingTable.fCloudOnPrem', 'slackMock.elevated', 'pricingTable.fWhiteLabel',
-  ],
-  ru: ['pricingTable.fWhiteLabel'],
-  sv: [
-    'welcome.live.liveBadge', 'pricingTable.fStandard', 'pricingTable.fStandardCadence',
-    'pricingTable.dashboard', 'pricingTable.fLiveEdge', 'welcome.agents.termTitle',
-    'hero.signalWord', 'pricingTable.fWhiteLabel',
-  ],
-  th: ['pricingTable.fWhiteLabel'],
-  tr: ['welcome.nav.blog', 'pricingTable.fWhiteLabel'],
-  uk: ['pricingTable.fWhiteLabel'],
-  vi: ['welcome.nav.blog', 'welcome.nav.menu', 'pricingTable.fWhiteLabel'],
-  zh: ['pricingTable.fWhiteLabel'],
-  'zh-TW': ['pricingTable.fWhiteLabel'],
+  hr: ['welcome.nav.blog', 'hero.signalWord'],
+  hu: ['welcome.nav.blog'],
+  it: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  nl: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  pl: ['welcome.nav.blog', 'welcome.nav.menu'],
+  pt: ['welcome.nav.blog', 'welcome.nav.menu'],
+  ro: ['welcome.nav.blog', 'welcome.live.liveBadge'],
+  sv: ['welcome.live.liveBadge', 'welcome.agents.termTitle', 'hero.signalWord', 'pricingTable.rowSupport'],
+  tr: ['welcome.nav.blog'],
+  vi: ['welcome.nav.blog', 'welcome.nav.menu'],
 };
 
 // No locale gets a count ceiling. A ceiling hides new English copy, which is

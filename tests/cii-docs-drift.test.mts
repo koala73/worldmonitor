@@ -23,7 +23,7 @@ it('current public and translated CII claims use the published formula version',
     'public/ai-search.md', 'public/llms.txt', 'public/llms-full.txt',
     'public/home.md', 'public/agent-view.json', 'docs/PRESS_KIT.md',
     'docs/health-endpoints.mdx', 'docs/zh/health-endpoints.mdx',
-    'docs/zh/algorithms.mdx', 'docs/zh/overview.mdx', 'docs/zh/features.mdx',
+    'docs/zh/algorithms.mdx', 'docs/zh/overview.mdx', 'docs/zh/platform-evaluation.mdx', 'docs/zh/features.mdx',
     'docs/zh/country-instability-index.mdx', 'docs/zh/strategic-risk.mdx',
   ];
   for (const path of paths) {

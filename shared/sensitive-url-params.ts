@@ -1,7 +1,10 @@
 /**
  * The one list of URL params that must never reach a telemetry vendor:
- * checkout/provisioning secrets, the Business Pro invite, referral codes,
- * Clerk handshake/ticket material, and checkout-funnel codes. Vercel
+ * checkout/provisioning secrets, the Business Pro invite, referral and
+ * discount codes (including the /pro `wm_checkout_ref`/`wm_checkout_discount`
+ * return-URL pair),
+ * Clerk handshake/ticket material, checkout-funnel codes, and the desktop
+ * checkout handoff's account fingerprint (a pseudonymous account id). Vercel
  * Analytics (secondary-startup.ts) and Umami (analytics.ts) redact these per
  * event. DebugBear RUM reads `location` directly and has no redaction hook,
  * so it waits until none of them is left in the live URL (debugbear-rum.ts).
@@ -11,7 +14,7 @@
  * stripped from the live URL at boot. STRIPPABLE_AT_BOOT_RE is the subset
  * nobody reads.
  */
-export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
+export const SENSITIVE_URL_PARAM_RE = /^(token|access_token|id_token|refresh_token|auth_token|invite_token|accept-business-invite|email|user_email|customer_email|license_key|licensekey|subscription_id|payment_id|ref|wm_referral|checkoutproduct|checkoutreferral|checkoutdiscount|checkout_product|checkout_referral|checkout_discount|wm_checkout_account|wm_checkout_ref|wm_checkout_discount|__clerk[a-z_]*|affonso_referral|discount|coupon|promo|voucher)$/i;
 
 /**
  * Params safe to strip from the live URL at boot: read by nobody.

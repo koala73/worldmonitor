@@ -174,6 +174,7 @@ const RPCS = [
   { path: "/api/intelligence/v1/list-satellites", group: "Conflict & Security", params: "country (optional)", holds: "~98 military and intelligence satellites: name, country, type (SAR…), TLE orbit lines" },
   { path: "/api/intelligence/v1/list-gps-interference", group: "Conflict & Security", params: "region (optional)", holds: "GPS jamming (gpsjam.org): counts of high/medium interference hexes, hexes with lat/lon and level" },
   { path: "/api/climate/v1/list-air-quality-data", group: "Disasters & Climate", params: "", holds: "~6,300 air quality stations, worst AQI first (OpenAQ): city, country, PM2.5, AQI, risk level" },
+  { path: "/api/climate/v1/list-reservoir-levels", group: "Disasters & Climate", params: "", holds: "Strategic reservoirs and lakes (ICESat-2 ATL13/ATL06 lidar): latest level, 30/90/365-day change, seasonal anomaly, status, 36-month series" },
   { path: "/api/news/v1/list-feed-digest", group: "News & Forecasts", params: "variant (full|tech|finance|happy|commodity), lang (en, fr, ar…)", holds: "Latest headlines grouped by category from the WorldMonitor RSS pool: title, source, link, time" },
   { path: "/api/news/v1/list-country-headlines", group: "News & Forecasts", params: "country_codes (ISO2, required, one per call)", holds: "Up to 5 recent headlines for a country: source, title, link, publish time" },
   { path: "/api/intelligence/v1/search-gdelt-documents", group: "News & Forecasts", params: "query (required), max_records (default 10, max 20)", holds: "GDELT news article search: title, url, source, date, language, tone" },
@@ -224,6 +225,7 @@ const EXCLUDED_BOOTSTRAP_KEYS = {
 };
 
 const EXCLUDED_RPC_ROUTES = {
+  '/api/cyber/v1/get-network-info': 'Opt-in passive lookup for an arbitrary public IP; requires provider authorization and attribution in the Cyber Threat popup',
   '/api/maritime/v1/list-ukmto-incidents': 'Publisher claims requiring source attribution and freshness; use the UKMTO panel',
   "/api/displacement/v1/get-cross-border-movements": "Requires source attribution and per-source freshness; use the cross-border displacement panel",
   "/api/intelligence/v1/get-country-history": "Daily archive is planned and activation-gated; use the country history panel after activation",
@@ -409,7 +411,7 @@ const byGroup = (entries, line) => GROUPS
 const WIDGET_DATA_CATALOG = `## Option 1 — Bootstrap (pre-seeded, instant, matches dashboard panels exactly)
 Use: /api/bootstrap?keys=<key> (comma-separate several keys) — response shape: { data: { <key>: <array or object> } }
 PREFER this over RPCs whenever a key matches the user's topic.
-Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history; for dated daily closes use /api/market/v1/get-price-history (not crypto). Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
+Quote keys (marketQuotes, commodityQuotes, cryptoQuotes, gulfQuotes) hold the current price, change % and a sparkline of recent prices with no dates; its interval varies by source (today's intraday ticks or the last few daily closes), so it is not a dated history; for dated daily closes use /api/market/v1/get-price-history (not crypto). commodityQuotes also carries sparklineStartAt, the first bar's time, and sparklineIntervalSeconds: 300 for the last 24 hours in 5-minute bars, 86400 for daily closes. Add params.symbols (comma-separated) to return only those quotes. commodityQuotes symbols: GC=F gold, SI=F silver, HG=F copper, PL=F platinum, PA=F palladium, CL=F WTI, BZ=F Brent, NG=F natural gas, TTF=F EU gas, ZW=F wheat, ZC=F corn, KC=F coffee, plus FX pairs such as EURUSD=X and USDJPY=X.
 
 ${byGroup(BOOTSTRAP, entry => `- ${entry.key}: ${entry.holds}`)}
 

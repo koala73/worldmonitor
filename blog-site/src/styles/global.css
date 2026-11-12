@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700;800&display=swap');
+/* Self-hosted subsets of Inter, JetBrains Mono and Space Grotesk; see README.md "Web fonts". */
+@import './fonts.generated.css';
 
 :root {
   --wm-bg: #050505;

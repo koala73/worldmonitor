@@ -4,6 +4,9 @@ export interface LiveTopicPage {
   readonly statusPath: string;
   record(payload: unknown, now?: number): object;
   renderSection(reading: object | null, options: { live: boolean }): string;
+  renderFigure?(tools: { worldMapSvg(options: { label: string; className?: string }): string }): string;
+  /** Script source the page builder inlines after the body, outside the live section. */
+  readonly script?: string;
 }
 
 export const LIVE_TOPIC_PAGES: readonly LiveTopicPage[];

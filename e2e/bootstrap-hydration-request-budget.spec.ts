@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Request } from '@playwright/test';
 
 import type { ServerInsights } from '../src/services/insights-loader';
 
@@ -198,12 +198,6 @@ const REPEAT_LOAD_SETTLE_MS = DEFAULT_QUIESCENCE_TIMEOUT_MS;
  * guarded 30-minute data TTL while remaining observable at the network route. */
 const BREAKER_COOLDOWN_ADVANCE_MS = 5 * 60 * 1000 + 1;
 
-/** Past the web fast-tier abort deadline (BOOTSTRAP_TIER_TIMEOUT_MS.web.fast =
- * 1_200). Held as a local literal on purpose: importing the constant would make
- * the abort fixture follow a deadline change instead of failing on it, and R3
- * forbids raising that deadline. */
-const WEB_FAST_TIER_DEADLINE_MS = 1_200;
-
 const HYDRATION_DATASET_KEYS = HYDRATION_DATASETS.map((dataset) => dataset.key);
 
 /** Playwright can throw a GUID bind error synchronously on a dead Route. */
@@ -222,13 +216,14 @@ async function ignoreDeadRoute(work: () => Promise<unknown>): Promise<void> {
 /** Mark App.ts emits from handleViewportPrime — proves the handler was ENTERED. */
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 
+/** Serve isolated hydration fixtures and record fallbacks, inflight work, and actual aborts. */
 async function installHydrationRequestAccounting(
   page: Page,
   options: {
     /** false serves `{ data: {}, missing: [...] }` — the control arm. */
     hydrate?: boolean;
-    /** Delays the fast tier past its abort deadline. */
-    fastTierDelayMs?: number;
+    /** Withhold fast-tier headers until the application aborts the request. */
+    holdFastTierUntilAbort?: boolean;
     /** Extra keys to place in the slow tier, e.g. a pre-#7046 payload still
      * carrying the energy registries during a rolling deploy. */
     extraSlowTierData?: Record<string, unknown>;
@@ -240,9 +235,11 @@ async function installHydrationRequestAccounting(
      */
     uncacheableFallbacks?: boolean;
   } = {},
-): Promise<HydrationRequestLog> {
+): Promise<HydrationRequestLog & { abortedTiers: string[] }> {
   const hydrate = options.hydrate ?? true;
-  const log: HydrationRequestLog = { counts: {}, tiers: [], inflight: 0 };
+  const log: HydrationRequestLog & { abortedTiers: string[] } = {
+    counts: {}, tiers: [], inflight: 0, abortedTiers: [],
+  };
 
   // Catch-all FIRST: later-registered routes win in Playwright, so the specific
   // handlers below still see their traffic. A third-party asset must never
@@ -265,20 +262,24 @@ async function installHydrationRequestAccounting(
 
       if (tier === 'fast' || tier === 'slow') {
         log.tiers.push(tier);
-        if (tier === 'fast' && options.fastTierDelayMs) {
+        if (tier === 'fast' && options.holdFastTierUntilAbort) {
           await new Promise<void>((resolve) => {
-            let settled = false;
             const finish = () => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
+              page.off('requestfailed', onFailure);
               page.off('close', finish);
               resolve();
             };
-            const timer = setTimeout(finish, options.fastTierDelayMs);
+            const onFailure = (request: Request) => {
+              if (request !== route.request()) return;
+              if (request.failure()?.errorText === 'net::ERR_ABORTED') {
+                log.abortedTiers.push(tier);
+              }
+              finish();
+            };
+            page.on('requestfailed', onFailure);
             page.once('close', finish);
           });
-          if (page.isClosed()) return;
+          return;
         }
         const data: Record<string, unknown> = {};
         const missing: string[] = [];
@@ -288,10 +289,6 @@ async function installHydrationRequestAccounting(
           else missing.push(dataset.key);
         }
         if (tier === 'slow') Object.assign(data, options.extraSlowTierData ?? {});
-        // The client aborts the fast tier at its deadline. Fulfill then
-        // throws on a request that no longer exists, either as a rejected
-        // promise or a synchronous Playwright GUID bind error. That IS the
-        // scenario under test, not a spec failure.
         await ignoreDeadRoute(() => route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -635,10 +632,15 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
   });
 
   test('a fast-tier abort keeps its fallback while accepted slow hydration still holds', async ({ page }) => {
+    // Model a cold App chunk: priming starts before this import completes.
+    await page.route('**/src/App.ts', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      await ignoreDeadRoute(() => route.continue());
+    });
     await seedHydrationDashboard(page);
     const log = await installHydrationRequestAccounting(page, {
       hydrate: true,
-      fastTierDelayMs: WEB_FAST_TIER_DEADLINE_MS + 1_500,
+      holdFastTierUntilAbort: true,
     });
 
     await waitForStartup(page);
@@ -656,14 +658,9 @@ test.describe('bootstrap tier failure and rolling-deploy budgets (#7045 U5)', ()
       message: 'abort-path post-trigger traffic did not quiesce',
     });
 
-    // Without this, both assertions below are equally satisfied by a run in
-    // which the fast tier was never requested at all: no fast tier means no
-    // earthquake hydration (so the fallback count rises) while the slow tier
-    // still hydrates (so the slow keys stay at 0). The abort has to be the
-    // reason, not merely a consistent story.
     expect(
-      log.tiers,
-      'the fast tier must have been requested so its abort is the scenario under test',
+      log.abortedTiers,
+      'the application must abort the fast tier, even when its primed request precedes App startup',
     ).toContain('fast');
 
     // The fast tier never delivered, so every consumer must recover through

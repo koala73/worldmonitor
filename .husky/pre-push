@@ -473,6 +473,7 @@ PROTO_INPUTS=(
   scripts/shared/geography.js
   scripts/shared/giving-published-estimate-claims.json
   scripts/shared/iso2-to-region.json
+  server/_shared/account-rate-limit.ts
   server/_shared/api-key-rate-limit.ts
   server/_shared/api-only-paths.ts
   server/_shared/auth-session.ts
@@ -687,6 +688,11 @@ fi
 if changed '^(src/|api/|scripts/enforce-premium-fetch\.mjs$)'; then
   echo "Running premium-fetch parity check..."
   npm run lint:premium-fetch || exit 1
+fi
+
+if changed '^(src/|api/|server/|scripts/|convex/|middleware\.ts$)'; then
+  echo "Running outbound-deadline check (fetch without a signal)..."
+  npm run lint:outbound-deadlines || exit 1
 fi
 
 if changed '^(api/|server/|src/generated/|scripts/check-edge-function-bundles\.mjs$)'; then

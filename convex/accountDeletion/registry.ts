@@ -88,9 +88,21 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   },
   { target: "entitlements", action: "delete", notes: "Access, not invoices" },
   { target: "aiRoutingPolicies", action: "delete", notes: "Per-account AI provider restriction; the edge cache entry expires in 60 s" },
+  {
+    target: "enterpriseMembers",
+    action: "delete",
+    notes: "This user's seats in Enterprise accounts by userId, and invites to their verified email; the account and other members stay",
+  },
+  {
+    target: "enterpriseAccounts",
+    action: "retain",
+    notes: "Contract account (customer company terms); holds no userId, so a member's deletion leaves it",
+  },
+  { target: "enterpriseAccountLocks", action: "skip", notes: "Per-account OCC locks; no userId" },
   { target: "apiUsageRollups", action: "delete", notes: "Usage windows" },
   { target: "apiPlanLimitNotices", action: "delete", notes: "Plan-limit notices" },
   { target: "checkoutAdmissions", action: "delete", notes: "Checkout admission counters" },
+  { target: "proBusinessUpgradeAdmissions", action: "delete", notes: "Pro Business upgrade admission counters" },
   { target: "checkoutSessionEvents", action: "delete", notes: "Checkout funnel session log" },
   {
     target: "proActivationPresentations",
@@ -259,12 +271,14 @@ export const ACCOUNT_DELETION_REGISTRY: readonly RegistryEntry[] = [
   { target: "productPlans", action: "skip", notes: "Global product catalog" },
   { target: "counters", action: "skip", notes: "Global counters" },
   { target: "businessSeatLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "teamDashboards", action: "delete", notes: "API Business team layouts go with the owner (grants phase); Enterprise ones stay with the contract account. Rows hold no user identifier" },
   { target: "broadcastRampConfig", action: "skip", notes: "Global broadcast ramp settings" },
   { target: "broadcastEvents", action: "skip", notes: "Broadcast send log; not the account record" },
   { target: "waveRuns", action: "skip", notes: "Broadcast wave runs; not the account record" },
   { target: "intelHistory", action: "skip", notes: "Global intel corpus, not user-scoped" },
   { target: "intelHistoryRetractions", action: "skip", notes: "Global intel corpus" },
   { target: "intelHistoryAppendLocks", action: "skip", notes: "Global OCC locks" },
+  { target: "proBusinessUpgradeClaims", action: "skip", notes: "Ephemeral change-plan claims keyed by provider subscription id; no userId" },
   // Company Monitoring children follow their account row, which is `delegate`
   // above. markOwnerDeleted / advanceAccountPurge owns their lifecycle; this
   // PR only refactored the entry point into applyOwnerDeletedFence and did not

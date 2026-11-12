@@ -356,6 +356,11 @@ describe('probeYouTubeBatches', () => {
 
 describe('probeHlsCandidate', () => {
   const MEDIA_URL = 'https://cdn.example.com/live/index.m3u8';
+  /** Response headers as `fetch` exposes them; every hop allows any origin unless a test says otherwise. */
+  const headersOf = (fields = {}) => {
+    const all = { 'access-control-allow-origin': '*', ...fields };
+    return { get: (name) => all[name.toLowerCase()] ?? null };
+  };
   const hls = (url = MEDIA_URL) => parsed(url).candidate;
   const playlist = (...lines) => `#EXTM3U\n${lines.join('\n')}\n`;
   const segments = (first, count, name = (n) => `seg${n}.ts`) =>
@@ -374,8 +379,8 @@ describe('probeHlsCandidate', () => {
         requests.push({ url, init });
         const bodies = routes[url] ?? [];
         const body = bodies[Math.min(requests.filter((request) => request.url === url).length, bodies.length) - 1];
-        if (body === undefined) return { ok: false, status: 404, url, text: async () => '' };
-        return { ok: true, status: 200, url, text: async () => body };
+        if (body === undefined) return { ok: false, status: 404, url, headers: headersOf(), text: async () => '' };
+        return { ok: true, status: 200, url, headers: headersOf(), text: async () => body };
       },
       delay: async (ms, signal) => {
         assert.equal(signal, requests[0].init.signal, 'the wait honours the probe deadline signal');
@@ -567,6 +572,7 @@ describe('probeHlsCandidate', () => {
           ok: true,
           status: 200,
           url,
+          headers: headersOf(),
           text: async () => playlist('#EXT-X-STREAM-INF:BANDWIDTH=800000', httpVariant),
         };
       },
@@ -589,7 +595,7 @@ describe('probeHlsCandidate', () => {
           ok: false,
           status: 302,
           url,
-          headers: { get: (name) => (name.toLowerCase() === 'location' ? httpUrl : null) },
+          headers: headersOf({ location: httpUrl }),
           text: async () => '',
         };
       },
@@ -615,17 +621,66 @@ describe('probeHlsCandidate', () => {
             ok: false,
             status: 302,
             url,
-            headers: { get: (name) => (name.toLowerCase() === 'location' ? dest : null) },
+            headers: headersOf({ location: dest }),
             text: async () => '',
           };
         }
         const body = destBodies[Math.min(requests.filter((seen) => seen === dest).length, destBodies.length) - 1];
-        return { ok: true, status: 200, url, text: async () => body };
+        return { ok: true, status: 200, url, headers: headersOf(), text: async () => body };
       },
       delay: async () => {},
     });
     assert.deepEqual(verdict, { verdict: 'live', video: null });
     assert.deepEqual(requests, [front, dest, dest]);
+  });
+
+  // Browsers play HLS through hls.js, which reads the playlist with XHR: every hop, a redirect included, must
+  // allow the dashboard's origin. Bloomberg's apex host 301s to www without the header (2026-11-07), so Chrome
+  // blocked the default Live News channel while this probe, following the redirect, reported it live.
+  it('fails a redirect hop that carries no Access-Control-Allow-Origin, as a browser would', async () => {
+    const front = 'https://example.com/live/front.m3u8';
+    const dest = 'https://www.example.com/live/front.m3u8';
+    const requests = [];
+    const { verdict } = await probeHlsCandidate(hls(front), {
+      fetch: async (url, init) => {
+        requests.push({ url, init });
+        if (url === front) {
+          return { ok: false, status: 301, url, headers: headersOf({ location: dest, 'access-control-allow-origin': null }), text: async () => '' };
+        }
+        return { ok: true, status: 200, url, headers: headersOf(), text: async () => playlist('#EXT-X-TARGETDURATION:6', segments(0, 3)) };
+      },
+      delay: async () => {},
+    });
+    assert.equal(verdict.verdict, 'failed');
+    assert.equal(verdict.outcome.kind, 'hls-fatal');
+    assert.match(verdict.outcome.detail, /redirect.*Access-Control-Allow-Origin/);
+    assert.deepEqual(requests.map((request) => request.url), [front], 'the blocked redirect is not followed');
+  });
+
+  it('fails a playlist response that does not allow the dashboard origin', async () => {
+    for (const acao of [null, 'https://other.example']) {
+      const { verdict } = await probeHlsCandidate(hls(), {
+        fetch: async (url) => ({ ok: true, status: 200, url, headers: headersOf({ 'access-control-allow-origin': acao }), text: async () => playlist('#EXT-X-TARGETDURATION:6', segments(0, 3)) }),
+        delay: async () => {},
+      });
+      assert.equal(verdict.verdict, 'failed', `allow-origin ${acao}`);
+      assert.match(verdict.outcome.detail, /Access-Control-Allow-Origin/);
+    }
+  });
+
+  it('sends the dashboard origin and accepts a response that names it', async () => {
+    const media = (sequence) => playlist('#EXT-X-TARGETDURATION:6', `#EXT-X-MEDIA-SEQUENCE:${sequence}`, segments(sequence, 3));
+    const bodies = [media(10), media(11)];
+    const origins = [];
+    const { verdict } = await probeHlsCandidate(hls(), {
+      fetch: async (url, init) => {
+        origins.push(init.headers.origin);
+        return { ok: true, status: 200, url, headers: headersOf({ 'access-control-allow-origin': 'https://www.worldmonitor.app' }), text: async () => bodies[Math.min(origins.length, 2) - 1] };
+      },
+      delay: async () => {},
+    });
+    assert.deepEqual(verdict, { verdict: 'live', video: null });
+    assert.deepEqual(origins, ['https://www.worldmonitor.app', 'https://www.worldmonitor.app'], 'the first fetch and the reload both send it');
   });
 
   it('names what is wrong with a body that cannot be live', async () => {
@@ -688,6 +743,7 @@ describe('runCheck', () => {
         ok: true,
         status: 200,
         url: 'https://hls.test/live.m3u8',
+        headers: { get: (name) => (name.toLowerCase() === 'access-control-allow-origin' ? '*' : null) },
         text: async () => body,
       };
     };

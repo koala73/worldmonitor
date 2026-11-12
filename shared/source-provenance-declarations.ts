@@ -581,6 +581,8 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "Syria Direct": { risk: 'reviewed', type: 'reviewed' },
   "Ta Nea": { risk: 'unknown', type: 'reviewed' },
   "Tagesschau": { risk: 'unknown', type: 'reviewed' },
+  "Deutschlandfunk": { risk: 'unknown', type: 'reviewed' },
+  "ZDFheute": { risk: 'unknown', type: 'reviewed' },
   "Taipei Times": { risk: 'unknown', type: 'reviewed' },
   "Taiwan News": { risk: 'unknown', type: 'reviewed' },
   "Taiwan Tech": { risk: 'unknown', type: 'unknown' },

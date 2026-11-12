@@ -25,7 +25,7 @@ function loadVariant(url, observedErrors, { timeoutMs, digests = [] } = {}) {
     CLASSIFY_DIGEST_RETRY_DELAYS_MS: [],
     classifyDigestRetryDecision: () => ({ retry: false }),
     CHROME_UA: 'fixture', RELAY_API_KEY: '', console: { log() {}, warn() {} },
-    setTimeout, clearTimeout,
+    AbortSignal, setTimeout, clearTimeout,
     isStaleDigestReplay: () => false,
     xNewsAccounts: { collectXAlertCandidates: () => [] }, xState: { items: [] },
     RELAY_SOURCE_TIERS: {}, buildClassifyCandidateMap: digest => { digests.push(digest); return new Map(); },

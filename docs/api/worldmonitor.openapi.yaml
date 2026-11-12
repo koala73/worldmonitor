@@ -2711,6 +2711,129 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/climate/v1/list-reservoir-levels:
+        get:
+            tags:
+                - ClimateService
+            summary: ListReservoirLevels
+            description: ListReservoirLevels returns ICESat-2 lidar levels and level changes for strategic reservoirs and lakes. Passes typically publish 50 to 70 days after overpass; see latest.ageDays.
+            operationId: ListReservoirLevels
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "dataAvailable": true
+                                "fetchedAt": 1790812800000
+                                "reservoirs":
+                                    - "change90dM": -2.893
+                                      "id": "mead"
+                                      "lat": 36.13
+                                      "latest":
+                                          "ageDays": 24
+                                          "date": "2026-09-06"
+                                          "levelM": 316.757
+                                      "lon": -114.45
+                                      "name": "Lake Mead"
+                                      "status": "record_low"
+                                "source":
+                                    "name": "NASA ICESat-2 ATL13"
+                                    "product": "ATL13 v007"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_climate_v1_ListReservoirLevelsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/climate/v1/list-climate-news:
         get:
             tags:
@@ -4643,6 +4766,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "candidateVersion": "2026-01-15"
                                 "events":
                                     - "country": "US"
                                       "dateEnd": 1717200000000
@@ -6207,6 +6331,128 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/cyber/v1/get-network-info:
+        get:
+            tags:
+                - CyberService
+            summary: GetNetworkInfo
+            description: Look up passive ASN, routing prefix and reverse-DNS context for a public IP on demand. Requires an authorized RIPEstat integration.
+            operationId: GetNetworkInfo
+            parameters:
+                - name: ip
+                  in: query
+                  description: IPv4 or IPv6 indicator.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "asns":
+                                    - "asn": 1
+                                      "holder": "example"
+                                "hostnames":
+                                    - "WorldMonitor Analyst"
+                                "ip": "example"
+                                "isLessSpecific": true
+                                "lookupAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_cyber_v1_GetNetworkInfoResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/cyber/v1/list-cyber-threats:
         get:
             tags:
@@ -6853,7 +7099,7 @@ paths:
             tags:
                 - DisplacementService
             summary: GetPopulationExposure
-            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point from the nearest one's average density.
+            description: GetPopulationExposure lists population and density for 20 priority countries, or estimates people near a point as the average density of the country containing it times the circle area. A point outside those 20 countries gets no exposure.
             operationId: GetPopulationExposure
             parameters:
                 - name: mode
@@ -6910,7 +7156,7 @@ paths:
                                     "densityPerKm2": 1
                                     "exposedPopulation": 1
                                     "exposureRadiusKm": 1.5
-                                    "nearestCountry": "US"
+                                    "nearestCountry": "ISR"
                                 "success": true
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_displacement_v1_GetPopulationExposureResponse'
@@ -7352,10 +7598,10 @@ paths:
                                 "prices":
                                     - "change": 1.5
                                       "commodity": "example"
+                                      "frequency": "example"
                                       "name": "WorldMonitor Analyst"
                                       "price": 75.25
                                       "priceAt": 1717200000000
-                                      "unit": "example"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetEnergyPricesResponse'
                 "400":
@@ -18199,13 +18445,24 @@ paths:
                         application/json:
                             example:
                                 "advisories":
-                                    - "country": "US"
-                                      "level": "example"
-                                      "link": "https://example.com/worldmonitor"
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
                                       "pubDate": "2026-01-15"
-                                      "source": "example"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                                 "byCountry":
-                                    "exampleKey": "example"
+                                    "MX": "caution"
+                                "fetchedAt": 1768478400000
+                                "registerLevels":
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
+                                      "pubDate": "2026-01-15"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse'
                 "400":
@@ -21398,7 +21655,7 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "GC=F"
+                      - "BZ=F"
                   schema:
                     type: array
                     items:
@@ -21418,13 +21675,20 @@ paths:
                         application/json:
                             example:
                                 "quotes":
-                                    - "change": 1.5
-                                      "display": "example"
-                                      "name": "WorldMonitor Analyst"
-                                      "price": 75.25
+                                    - "change": -1.05
+                                      "display": "Brent"
+                                      "name": "Brent Crude Oil"
+                                      "price": 91.6
+                                      "priceAt": 1794291360000
+                                      "priceBasis": "futures"
+                                      "priceSource": "Yahoo Finance"
                                       "sparkline":
-                                          - 1.5
-                                      "symbol": "GC=F"
+                                          - 93
+                                          - 92
+                                          - 91.6
+                                      "sparklineIntervalSeconds": 300
+                                      "sparklineStartAt": 1794290700000
+                                      "symbol": "BZ=F"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_ListCommodityQuotesResponse'
                 "400":
@@ -42061,6 +42325,142 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 source:
                     type: string
+        worldmonitor_climate_v1_ListReservoirLevelsRequest:
+            type: object
+        worldmonitor_climate_v1_ListReservoirLevelsResponse:
+            type: object
+            properties:
+                reservoirs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevel'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch ms; 0 when the snapshot is unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataAvailable:
+                    type: boolean
+                source:
+                    $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevelsSource'
+                methodology:
+                    type: string
+        worldmonitor_climate_v1_ReservoirLevel:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                country:
+                    type: string
+                riparians:
+                    type: array
+                    items:
+                        type: string
+                river:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tags:
+                    type: array
+                    items:
+                        type: string
+                why:
+                    type: string
+                latest:
+                    $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLatestPass'
+                prevDate:
+                    type: string
+                changePrevM:
+                    type: number
+                    format: double
+                change30dM:
+                    type: number
+                    format: double
+                    description: Changes are interpolated between overpasses, never extrapolated.
+                change90dM:
+                    type: number
+                    format: double
+                change365dM:
+                    type: number
+                    format: double
+                seasonalAnomalyM:
+                    type: number
+                    format: double
+                    description: Against the same time of year in at least three prior years.
+                seasonalZ:
+                    type: number
+                    format: double
+                recordMinM:
+                    type: number
+                    format: double
+                recordMaxM:
+                    type: number
+                    format: double
+                recordStart:
+                    type: string
+                percentOfRange:
+                    type: number
+                    format: double
+                recordLow:
+                    type: boolean
+                recordHigh:
+                    type: boolean
+                status:
+                    type: string
+                    description: |-
+                        no_recent_data, record_low, record_high, falling_fast, rising_fast,
+                         low, high, normal or insufficient_history.
+                series:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_climate_v1_ReservoirLevelPoint'
+                okPassCount:
+                    type: integer
+                    format: int32
+            description: |-
+                ReservoirLevel is the ICESat-2 water-surface level of one reservoir or
+                 lake, metres above the EGM2008 geoid. Not a storage volume.
+        worldmonitor_climate_v1_ReservoirLatestPass:
+            type: object
+            properties:
+                date:
+                    type: string
+                levelM:
+                    type: number
+                    format: double
+                madM:
+                    type: number
+                    format: double
+                segmentCount:
+                    type: integer
+                    format: int32
+                ageDays:
+                    type: integer
+                    format: int32
+        worldmonitor_climate_v1_ReservoirLevelPoint:
+            type: object
+            properties:
+                date:
+                    type: string
+                levelM:
+                    type: number
+                    format: double
+        worldmonitor_climate_v1_ReservoirLevelsSource:
+            type: object
+            properties:
+                name:
+                    type: string
+                product:
+                    type: string
+                url:
+                    type: string
+                processing:
+                    type: string
         worldmonitor_climate_v1_ListClimateNewsRequest:
             type: object
         worldmonitor_climate_v1_ListClimateNewsResponse:
@@ -43003,6 +43403,9 @@ components:
                         $ref: '#/components/schemas/worldmonitor_conflict_v1_UcdpViolenceEvent'
                 pagination:
                     $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+                candidateVersion:
+                    type: string
+                    description: Monthly candidate release merged in; "+partial" when incomplete, empty when none.
             description: ListUcdpEventsResponse contains UCDP violence events matching the request.
         worldmonitor_conflict_v1_UcdpViolenceEvent:
             type: object
@@ -43055,6 +43458,12 @@ components:
                 sourceOriginal:
                     type: string
                     description: Original source of the event report.
+                hasPreciseLocation:
+                    type: boolean
+                    description: True when UCDP identifies a specific event location (where_prec 1).
+                locationName:
+                    type: string
+                    description: Name of the location represented by the event coordinates.
             required:
                 - id
             description: UcdpViolenceEvent represents a georeferenced violence event from the UCDP dataset.
@@ -43570,6 +43979,56 @@ components:
                     format: int32
                     description: freshness_min is minutes since last successful observation.
             description: RetailerFreshnessInfo describes the operational health of one retailer feed.
+        worldmonitor_cyber_v1_GetNetworkInfoRequest:
+            type: object
+            properties:
+                ip:
+                    type: string
+                    description: IPv4 or IPv6 indicator.
+            description: GetNetworkInfoRequest selects a literal public IP; domains and URLs are not resolved.
+        worldmonitor_cyber_v1_GetNetworkInfoResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    description: available, partial, no_data, unavailable, disabled, invalid, or rate_limited.
+                ip:
+                    type: string
+                    description: Canonical queried IP address.
+                asns:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_cyber_v1_NetworkAsn'
+                prefix:
+                    type: string
+                    description: Reported routing prefix, not an allocated/registered network.
+                isLessSpecific:
+                    type: boolean
+                    description: True if RIPEstat aligned the result to a broader prefix.
+                hostnames:
+                    type: array
+                    items:
+                        type: string
+                        description: Reverse-DNS hostnames, not proof of ownership.
+                lookupAt:
+                    type: string
+                    description: Time the enrichment was retrieved, ISO 8601; preserved on cache hits.
+                routingAt:
+                    type: string
+                    description: Provider routing-data time, ISO 8601, if supplied.
+            description: GetNetworkInfoResponse separates passive network context from threat observations.
+        worldmonitor_cyber_v1_NetworkAsn:
+            type: object
+            properties:
+                asn:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Autonomous system number.
+                holder:
+                    type: string
+                    description: RIPEstat-reported holder; empty when unavailable.
+            description: NetworkAsn is a routing origin and its reported ASN holder, not an attacker identity.
         worldmonitor_cyber_v1_ListCyberThreatsRequest:
             type: object
             properties:
@@ -44166,12 +44625,15 @@ components:
                     description: Radius used for the estimate in km.
                 nearestCountry:
                     type: string
-                    description: ISO3 code of nearest priority country.
+                    examples:
+                        - ISR
+                    description: ISO3 code of the priority country containing the point, whose density was used.
+                    example: ISR
                 densityPerKm2:
                     type: integer
                     format: int32
                     description: Population density used for the estimate.
-            description: ExposureResult contains the population exposure estimate.
+            description: ExposureResult contains the population exposure estimate. It is absent for a point outside every priority country.
         worldmonitor_economic_v1_GetFredSeriesRequest:
             type: object
             properties:
@@ -44323,7 +44785,7 @@ components:
                 price:
                     type: number
                     format: double
-                    description: Current price in USD.
+                    description: Observed price in USD. Check stale before treating it as current.
                 unit:
                     type: string
                     description: Unit of measurement (e.g., "$/barrel", "$/MMBtu").
@@ -44334,7 +44796,16 @@ components:
                 priceAt:
                     type: integer
                     format: int64
-                    description: 'Price date, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Observation date as Unix epoch milliseconds. For weekly prices, the week ending date.. Warning: Values > 2^53 may lose precision in JavaScript'
+                priceSource:
+                    type: string
+                priceBasis:
+                    type: string
+                frequency:
+                    type: string
+                stale:
+                    type: boolean
+                    description: True when the observation is undated, future-dated, or older than the freshness budget.
             required:
                 - commodity
             description: EnergyPrice represents a current energy commodity price from EIA.
@@ -51189,6 +51660,14 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_intelligence_v1_SecurityAdvisoryItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         worldmonitor_intelligence_v1_ListSecurityAdvisoriesResponse_ByCountryEntry:
             type: object
             properties:
@@ -53013,6 +53492,7 @@ components:
                     type: string
                 phone:
                     type: string
+                    description: 'Optional: an empty phone is accepted; a non-empty one must look like a phone number.'
                 message:
                     type: string
                 source:
@@ -53027,7 +53507,6 @@ components:
                 - email
                 - name
                 - organization
-                - phone
                 - turnstileToken
             description: SubmitContactRequest carries an enterprise contact form submission.
         worldmonitor_leads_v1_SubmitContactResponse:
@@ -53615,10 +54094,30 @@ components:
                     items:
                         type: number
                         format: double
-                        description: Sparkline data points.
+                        description: Sparkline closes, oldest first. Bars with no trades are left out.
+                priceSource:
+                    type: string
+                    description: Observed price provider, when known for Brent and WTI.
+                priceBasis:
+                    type: string
+                    description: '"futures" for a futures quote, "spot" for a daily spot observation.'
+                priceAt:
+                    type: integer
+                    format: int64
+                    description: 'Provider observation time in Unix epoch milliseconds, with daily spot dates represented at midnight UTC. Warning: Values > 2^53 may lose precision in JavaScript'
+                sparklineIntervalSeconds:
+                    type: integer
+                    format: int32
+                    description: 'Width of each sparkline bar in seconds: 300 for the 24-hour intraday series, 86400 for daily closes.'
+                sparklineStartAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Start of the first sparkline bar in Unix epoch milliseconds. Later bars follow in trading order with
+                         closed periods left out, so only the first point's time is defined.. Warning: Values > 2^53 may lose precision in JavaScript
             required:
                 - symbol
-            description: CommodityQuote represents a commodity price quote from Yahoo Finance.
+            description: CommodityQuote represents a commodity price observation.
         worldmonitor_market_v1_GetPhysicalPremiumsRequest:
             type: object
             properties:
@@ -55338,6 +55837,16 @@ components:
                     $ref: '#/components/schemas/worldmonitor_market_v1_GoldEtfFlows'
                 cbReserves:
                     $ref: '#/components/schemas/worldmonitor_market_v1_GoldCbReserves'
+                goldSparklineIntervalSeconds:
+                    type: integer
+                    format: int32
+                    description: 'Width of each gold_sparkline bar in seconds: 300 for the intraday series, 86400 for daily closes.'
+                goldSparklineStartAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Start of the first gold_sparkline bar in Unix epoch milliseconds. Later bars follow in trading order with
+                         closed periods left out, so only the first point's time is defined.. Warning: Values > 2^53 may lose precision in JavaScript
         worldmonitor_market_v1_GoldCrossCurrencyPrice:
             type: object
             properties:
@@ -56835,9 +57344,7 @@ components:
                 publisherCount:
                     type: integer
                     format: int32
-                    description: |-
-                        Distinct publishers among the served items (normalized source labels,
-                         current cycle only — not feed-label counts, not historical sets).
+                    description: Distinct publishers among the served items (normalized, this cycle only).
                 feedTotal:
                     type: integer
                     format: int32
@@ -56877,20 +57384,23 @@ components:
                 servedStale:
                     type: boolean
                     description: |-
-                        Durable last-good serving (#7084): true exactly when accepted older
-                         content is replayed after a failed or gate-held attempt. The content counts
-                         above still describe the served body; attempted_at names that latest
-                         attempt, so it and generated_at diverge on a replay.
+                        True when accepted older content is replayed after a failed or gate-held
+                         attempt (#7084); counts still describe the served body.
                 staleAgeSeconds:
                     type: integer
                     format: int32
-                    description: |-
-                        Age of the served content since acceptance, in seconds (0 when fresh).
-                         Bounded at 21600 (six hours): past that window the service reports
-                         state=unavailable rather than serving older content.
+                    description: Content age since acceptance, seconds (0 when fresh, at most 21600).
                 staleReason:
                     type: string
                     description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
+                itemsConsidered:
+                    type: integer
+                    format: int32
+                    description: Items ranked before the category cap (served count on old replays).
+                publishersConsidered:
+                    type: integer
+                    format: int32
+                    description: Distinct publishers among those ranked items.
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);
@@ -59162,6 +59672,16 @@ components:
                 semaError:
                     type: string
                     description: Present when the SEMA source failed while other sanctions data remained available.
+                unattributed:
+                    $ref: '#/components/schemas/worldmonitor_sanctions_v1_UnattributedSanctionsPressure'
+                flagRegistries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_sanctions_v1_FlagRegistrySanctionsPressure'
+                regulationTargets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_sanctions_v1_CountrySanctionsPressure'
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         worldmonitor_sanctions_v1_SanctionsEntry:
             type: object
@@ -59202,6 +59722,17 @@ components:
                     type: boolean
                 note:
                     type: string
+                parentCountryCodes:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Direct linked-parent countries for addressless entities. These are not
+                             address/nationality evidence and do not feed country risk counts.
+                parentCountryNames:
+                    type: array
+                    items:
+                        type: string
             description: SanctionsEntry is a normalized OFAC sanctions designation.
         worldmonitor_sanctions_v1_CountrySanctionsPressure:
             type: object
@@ -59219,9 +59750,15 @@ components:
                 vesselCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only. Zero does not mean this
+                         country has no sanctioned vessels; flag counts are in flagRegistries.
                 aircraftCount:
                     type: integer
                     format: int32
+                    description: |-
+                        Assets with a direct country association only; registry counts are in
+                         ListSanctionsPressureResponse.flagRegistries, not this field.
             description: CountrySanctionsPressure summarizes designation volume and recent additions by country.
         worldmonitor_sanctions_v1_ProgramSanctionsPressure:
             type: object
@@ -59235,6 +59772,43 @@ components:
                     type: integer
                     format: int32
             description: ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.
+        worldmonitor_sanctions_v1_UnattributedSanctionsPressure:
+            type: object
+            properties:
+                entryCount:
+                    type: integer
+                    format: int32
+                vesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+        worldmonitor_sanctions_v1_FlagRegistrySanctionsPressure:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                countryName:
+                    type: string
+                vesselCount:
+                    type: integer
+                    format: int32
+                newVesselCount:
+                    type: integer
+                    format: int32
+                aircraftCount:
+                    type: integer
+                    format: int32
+                    description: Zero in snapshots written before aircraft registries were counted.
+                newAircraftCount:
+                    type: integer
+                    format: int32
+            description: |-
+                FlagRegistrySanctionsPressure counts sanctioned vessels by flag and sanctioned aircraft
+                 by the state of registry in their tail number. The response lists at most 12 registries,
+                 ordered by new vessels and aircraft, then all vessels and aircraft, so an omitted
+                 registry may still register sanctioned assets. Older snapshots return none.
         worldmonitor_sanctions_v1_LookupSanctionEntityRequest:
             type: object
             properties:
@@ -60556,7 +61130,7 @@ components:
                 officialLatestDate:
                     type: string
                     description: |-
-                        IMF PortWatch latest published day, YYYY-MM-DD (~4-day lag); empty means
+                        IMF PortWatch latest published day, YYYY-MM-DD (lag of several days); empty means
                          withhold official_latest_total and official_avg_7d (absent below 7 days).
                 officialLatestTotal:
                     type: integer
@@ -60666,6 +61240,9 @@ components:
                     description: |-
                         Name of the nearest active GDACS hazard event within the configured
                          radius, or empty string when no nearby alert applies.
+                latestDate:
+                    type: string
+                    description: Last PortWatch day behind flow_ratio, YYYY-MM-DD; may be empty.
         worldmonitor_supply_chain_v1_GetChokepointHistoryRequest:
             type: object
             properties:
@@ -63670,6 +64247,9 @@ components:
                     items:
                         type: string
                         description: Source article URLs, when provided by the upstream feed.
+                hasPreciseLocation:
+                    type: boolean
+                    description: True when the source identifies a specific event location, such as ACLED geo_precision 1.
             required:
                 - id
             description: |-

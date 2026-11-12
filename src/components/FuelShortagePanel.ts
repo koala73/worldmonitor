@@ -1,7 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { iso2ToCountryName } from '@/utils/country-codes';
+import { iso2ToCountryName, toIso2 } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -22,14 +22,17 @@ import {
 } from '@/shared/fuel-shortage-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
+import { t } from '@/services/i18n';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
 }));
 
 const SEVERITY_COLOR: Record<string, string> = {
-  confirmed: '#e74c3c',
-  watch:     '#f39c12',
+  confirmed: '#c0392b',
+  watch:     '#af601a',
 };
 
 // Single unicode glyph per product. Used in the table row so readers can
@@ -48,7 +51,7 @@ const QUALITY_DOT: Record<EvidenceQuality, string> = {
 };
 
 function severityChip(severity: string): string {
-  const color = SEVERITY_COLOR[severity] ?? '#7f8c8d';
+  const color = SEVERITY_COLOR[severity] ?? '#5d6d7e';
   const label = severity.charAt(0).toUpperCase() + severity.slice(1);
   return `<span class="fs-badge" style="background:${color}">${escapeHtml(label)}</span>`;
 }
@@ -130,6 +133,10 @@ export class FuelShortagePanel extends Panel {
   private detail: GetFuelShortageDetailResponse | null = null;
   private detailLoading = false;
   private detailError: string | null = null;
+  // Dashboard focus (#10453): each entry carries the ISO code of its country.
+  private readonly scopeFilter: PanelScopeFilter;
+  /** A refresh is in flight: the loading indicator must stay until data lands. */
+  private refreshing = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ shortageId?: string }>).detail?.shortageId;
     if (!id || !this.element?.isConnected) return;
@@ -147,6 +154,7 @@ export class FuelShortagePanel extends Panel {
         'carries the full evidence source list — see /docs/methodology/shortages for the ' +
         'threshold spec + classifier version.',
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
@@ -172,6 +180,25 @@ export class FuelShortagePanel extends Panel {
       window.removeEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
     super.destroy?.();
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (!this.scopeFilter.setScope(scope)) return;
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure or the loading state.
+    if (this.data && !this.showingLoadFailure && !this.refreshing) this.render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.refreshing = true;
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.refreshing = false;
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
   }
 
   public async fetchData(): Promise<void> {
@@ -252,12 +279,24 @@ export class FuelShortagePanel extends Panel {
 
   private render(): void {
     if (!this.data) return;
+    this.refreshing = false;
+
+    // The focus narrows first (chosen countries, then neighbours); the
+    // summary counts the focused set.
+    const view = this.scopeFilter.view(this.data.shortages, (s) => toIso2(s.country));
+    if (this.data.shortages.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
 
     // Sort confirmed before watch; within each tier, strongest evidence first,
     // then most recently confirmed. Readers scan high-impact + high-trust rows
-    // first — the classifier's confidence ordering is the tie-breaker.
-    const rows = [...this.data.shortages]
-      .sort((a, b) => {
+    // first — the classifier's confidence ordering is the tie-breaker. Under a
+    // focus, chosen countries come before neighbours.
+    const rows = [...view.rows]
+      .sort((rowA, rowB) => {
+        if (rowA.rank !== rowB.rank) return rowA.rank - rowB.rank;
+        const a = rowA.item;
+        const b = rowB.item;
         const aConf = a.severity === 'confirmed' ? 0 : 1;
         const bConf = b.severity === 'confirmed' ? 0 : 1;
         if (aConf !== bConf) return aConf - bConf;
@@ -267,11 +306,11 @@ export class FuelShortagePanel extends Panel {
         if (qualityRank[aQ] !== qualityRank[bQ]) return qualityRank[aQ] - qualityRank[bQ];
         return b.lastConfirmed.localeCompare(a.lastConfirmed);
       })
-      .map(s => this.renderRow(s))
+      .map(row => this.renderRow(row.item, row))
       .join('');
 
-    const confirmed = this.data.shortages.filter(s => s.severity === 'confirmed').length;
-    const watch = this.data.shortages.filter(s => s.severity === 'watch').length;
+    const confirmed = scoped.filter(s => s.severity === 'confirmed').length;
+    const watch = scoped.filter(s => s.severity === 'watch').length;
     const summary = `${confirmed} confirmed · ${watch} watch`;
 
     const attribution = attributionFooterHtml({
@@ -290,8 +329,8 @@ export class FuelShortagePanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
-          <table class="fs-table" role="table">
+        ${view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyFuelShortages')) : `<div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+          <table class="wm-table fs-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" role="columnheader">Country · Product</th>
@@ -302,7 +341,7 @@ export class FuelShortagePanel extends Panel {
             </thead>
             <tbody role="rowgroup">${rows}</tbody>
           </table>
-        </div>
+        </div>`}
         ${attribution}
         ${drawer}
       </div>
@@ -310,9 +349,6 @@ export class FuelShortagePanel extends Panel {
       <style>
         .fs-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: fs-wrap / inline-size; }
         .fs-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
-        .fs-table { width: 100%; border-collapse: collapse; }
-        .fs-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .fs-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .fs-table tr.fs-row { cursor: pointer; }
         .fs-table tr.fs-row:hover td { background: rgba(255,255,255,0.03); }
         .fs-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
@@ -325,7 +361,7 @@ export class FuelShortagePanel extends Panel {
         @container fs-wrap (max-width: 31em) {
           .fs-table, .fs-table tbody { display: block; }
           .fs-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-          .fs-table tr.fs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .fs-table tr.fs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
           .fs-table tr.fs-row td { padding: 0; border: 0; }
           .fs-table tr.fs-row td:first-child { flex: 1 0 100%; }
           .fs-table tr.fs-row td:last-child { margin-left: auto; }
@@ -354,13 +390,13 @@ export class FuelShortagePanel extends Panel {
     else this.setSafeContent(html);
   }
 
-  private renderRow(s: FuelShortageEntry): string {
+  private renderRow(s: FuelShortageEntry, row?: ScopeRow<FuelShortageEntry>): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
       <tr class="fs-row" role="row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td role="cell">
-          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
+          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)} ${scopeTagHtml(row)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
         </td>
         <td role="cell" class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>

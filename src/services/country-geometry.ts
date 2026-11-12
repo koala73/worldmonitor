@@ -1,5 +1,6 @@
 import type { FeatureCollection, Geometry, GeoJsonProperties, Position } from 'geojson';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { staticAssetUrl } from '@/config/static-asset-url';
 
 interface IndexedCountryGeometry {
   code: string;
@@ -298,7 +299,7 @@ async function ensureLoaded(): Promise<void> {
       // the map never renders country boundaries and coordinate lookups
       // silently degrade. The override fetch below already carries a signal;
       // this is the same treatment for the primary asset.
-      const response = await fetch(COUNTRY_GEOJSON_URL, {
+      const response = await fetch(staticAssetUrl(COUNTRY_GEOJSON_URL), {
         signal: makeTimeout(COUNTRY_GEOJSON_TIMEOUT_MS),
       });
       if (!response.ok) {
@@ -316,7 +317,7 @@ async function ensureLoaded(): Promise<void> {
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
       try {
-        const overrideResp = await fetch(COUNTRY_OVERRIDES_URL, {
+        const overrideResp = await fetch(staticAssetUrl(COUNTRY_OVERRIDES_URL), {
           signal: makeTimeout(COUNTRY_OVERRIDE_TIMEOUT_MS),
         });
         if (overrideResp.ok) {

@@ -18,7 +18,7 @@ const env = { WM_API_KEY: 'private-health-key', UPSTASH_REDIS_REST_URL: 'https:/
 const config = {
   yieldCurveAu: ['seed-bundle-yield-curves', '0 10 * * *', 'economic', 'Yield-Curve-AU'],
   wildfires: ['seed-fire-detections', '*/10 * * * *', 'wildfire', ''],
-  physicalDivergence: ['seed-bundle-macro', '0 8,9 * * *', 'market', 'Physical-Premiums'],
+  physicalDivergence: ['seed-bundle-macro', '0 8,9,10 * * *', 'market', 'Physical-Premiums'],
   crossStraitActivityTaiwanMnd: ['seed-bundle-derived-signals', '*/5 * * * *', 'military', 'Cross-Strait-Activity'],
 };
 

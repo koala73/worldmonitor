@@ -516,6 +516,22 @@ describe('open data under /data/v1', () => {
     assert.equal(effectiveCacheControl('/data/countries-50m.json'), 'public, max-age=31536000, immutable');
   });
 
+  it('sends the bare dataset path to the committed datasheet instead of a 404', () => {
+    const datasheet = '/data/v1/chokepoints/README.md';
+    for (const source of ['/data/v1/chokepoints', '/data/v1/chokepoints/']) {
+      const redirect = vercelConfig.redirects.find((entry) => entry.source === source);
+      assert.deepEqual(redirect, { source, destination: datasheet, permanent: false }, `${source} must redirect to the datasheet`);
+    }
+    assert.ok(readFileSync(resolve(__dirname, `../public${datasheet}`), 'utf-8').length > 0);
+    const rewrite = vercelConfig.rewrites.find((entry) => entry.destination.startsWith('/api/open-data-chokepoints?'));
+    const [prefix, pattern] = rewrite.source.split(':file');
+    assert.equal(
+      new RegExp(`^${pattern}$`).test(datasheet.slice(prefix.length)),
+      false,
+      'the datasheet must stay a static file, not a Redis read',
+    );
+  });
+
   const nginxLocation = (prefix) => {
     const match = dockerNginxSource.match(new RegExp(`^ {4}location ${prefix.replace(/\//g, '\\/')} \\{\\n([\\s\\S]*?)^ {4}\\}`, 'm'));
     assert.ok(match, `docker/nginx.conf must declare location ${prefix}`);
@@ -527,6 +543,28 @@ describe('open data under /data/v1', () => {
     assert.match(block, /add_header Cache-Control "public, max-age=3600";/);
     assert.match(block, /add_header Access-Control-Allow-Origin "\*" always;/);
     assert.match(nginxLocation('/data/'), /add_header Cache-Control "public, max-age=31536000, immutable";/);
+  });
+});
+
+describe('self-host installer at /install.sh', () => {
+  const INSTALLER_SOURCE = 'https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/install.sh';
+
+  it('serves the repo installer from www.worldmonitor.app without a redirect', () => {
+    assert.equal(firstRedirectFor({ host: 'www.worldmonitor.app', path: '/install.sh' }), null);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/install.sh' })?.destination, INSTALLER_SOURCE);
+  });
+
+  it('proxies a script that exists, with no public/ copy shadowing the rewrite', () => {
+    assert.equal(existsSync(resolve(__dirname, '..', 'scripts/install.sh')), true);
+    assert.equal(existsSync(resolve(__dirname, '..', 'public/install.sh')), false);
+  });
+
+  it('documents the worldmonitor.app URL wherever the one-liner appears', () => {
+    for (const file of ['README.md', 'SELF_HOSTING.md', 'scripts/install.sh']) {
+      const text = readFileSync(resolve(__dirname, '..', file), 'utf8');
+      assert.match(text, /curl -fsSL https:\/\/www\.worldmonitor\.app\/install\.sh \| bash/, file);
+      assert.doesNotMatch(text, /raw\.githubusercontent\.com\/koala73\/worldmonitor\/main\/scripts\/install\.sh/, file);
+    }
   });
 });
 
@@ -730,6 +768,15 @@ describe('crawlable content corpus deployment contracts', () => {
       'scripts/country-related-links.mjs',
       'scripts/data/country-centroids.json',
       'scripts/related-reading.mjs',
+      'scripts/data/related-reading.json',
+      'scripts/chokepoint-page-content.mjs',
+      'scripts/live-pages/',
+      'scripts/build-live-topic-pages.mjs',
+      'scripts/data/crisis-editorial.json',
+      'scripts/data/search-links/',
+      'scripts/search-links.mjs',
+      'scripts/lib/search-links.mjs',
+      'scripts/lib/main-module.mjs',
     ]) {
       assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
     }
@@ -772,6 +819,15 @@ describe('crawlable content corpus deployment contracts', () => {
         'scripts/country-related-links.mjs',
         'scripts/data/country-centroids.json',
         'scripts/related-reading.mjs',
+        'scripts/data/related-reading.json',
+        'scripts/chokepoint-page-content.mjs',
+        'scripts/live-pages/related-links.mjs',
+        'scripts/build-live-topic-pages.mjs',
+        'scripts/data/crisis-editorial.json',
+        'scripts/data/search-links/countries.json',
+        'scripts/search-links.mjs',
+        'scripts/lib/search-links.mjs',
+        'scripts/lib/main-module.mjs',
       ]) {
         const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
@@ -1434,12 +1490,10 @@ describe('deploy/cache configuration guardrails', () => {
     assert.match(viteConfigSource, /manifestTransforms:\s*\[dashboardPrecache\.manifestTransform\]/);
   });
 
-  it('emits public sourcemaps for preview attribution while production stays opt-in (#7382)', () => {
-    assert.match(
-      viteConfigSource,
-      /const emitPublicSourceMaps = process\.env\.WM_EMIT_SOURCEMAPS === '1'[\s\S]*\|\| process\.env\.VERCEL_ENV === 'preview'/,
-    );
-    assert.match(viteConfigSource, /sourcemap:\s*emitPublicSourceMaps/);
+  it('routes sourcemap output through the policy that keeps production maps Sentry-only (#7382)', () => {
+    assert.match(viteConfigSource, /const emitPublicSourceMaps = shouldEmitPublicSourceMaps\(process\.env\)/);
+    assert.match(viteConfigSource, /sourcemap:\s*viteSourcemapSetting\(process\.env\)/);
+    assert.match(viteConfigSource, /emitPublicSourceMaps \? \[\] : \[stripPrivateSourceMapsPlugin\(\)\]/);
   });
 
 
@@ -2151,11 +2205,10 @@ describe('welcome landing page routing', () => {
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
-      // Exact, not `[href*="moments"]`: since #7608 `main` also carries headline
-      // anchors whose href is a third-party article URL, and a substring match
-      // would paint any story slug containing "moments" as a hero CTA until the
-      // deferred stylesheet lands.
-      'main a[href="#moments"]',
+      // The Pro-price hero CTA, by marker: since #7608 `main` also carries
+      // headline anchors whose href is a third-party article URL, so an href
+      // substring rule could paint a story link as a hero CTA.
+      'main a[data-umami-event-target="welcome-hero-pro"]',
       // The analytics marker, not the aria-label: localized landings
       // translate the label ("Dashboard starten"), so an `aria-label*="Launch"`
       // rule left their Launch button unstyled until the stylesheet landed.
@@ -2569,7 +2622,7 @@ describe('security header guardrails', () => {
       assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
       assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
       assert.equal(
-        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting,WebMCP'),
         entry.expected.testingFlag,
         `${entry.name} testing flag`,
       );
@@ -2701,7 +2754,9 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /process\.env\.WM_WEBMCP_CHROME_EXECUTABLE_PATH/);
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
-    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    // Chrome 157 dropped the WebMCPTesting name for document.modelContext; 156 still
+    // needs it. Both must stay or one runner-image major loses the native provider.
+    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting,WebMCP'/);
     assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
     assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
     assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
@@ -2782,6 +2837,37 @@ describe('security header guardrails', () => {
         /include \/etc\/nginx\/(?:embed_|oauth_authorize_|youtube_embed_)?security_headers\.conf;/,
         `docker/nginx.conf.template ${location} must include an origin-keying header set`,
       );
+    }
+  });
+
+  it('keeps every self-hosted image route out of search indexes', () => {
+    // Self-hosted pages keep www.worldmonitor.app canonicals, so an indexed copy can
+    // only compete with the official page (wm.tanukihitokiri.ru, 2026-11).
+    const noindex = /add_header X-Robots-Tag "noindex, follow" always;/;
+
+    const sidecarLocationBlocks = [...dockerNginxSource.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(sidecarLocationBlocks.length > 0, 'docker/nginx.conf must define route locations');
+    for (const [locationBlock] of sidecarLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      assert.match(locationBlock, noindex, `docker/nginx.conf ${location} must send X-Robots-Tag noindex`);
+    }
+
+    const includedHeaderFiles = {
+      'security_headers.conf': 'docker/nginx-security-headers.conf',
+      'embed_security_headers.conf': 'docker/nginx-embed-security-headers.conf',
+      'oauth_authorize_security_headers.conf': 'docker/nginx-oauth-authorize-security-headers.conf',
+      'youtube_embed_security_headers.conf': 'docker/nginx-youtube-embed-security-headers.conf',
+    };
+    const nginxTemplate = readFileSync(resolve(__dirname, '../docker/nginx.conf.template'), 'utf-8');
+    const frontendLocationBlocks = [...nginxTemplate.matchAll(/^ {4}location [^{]+\{\n([\s\S]*?)^ {4}\}/gm)];
+    assert.ok(frontendLocationBlocks.length > 0, 'docker/nginx.conf.template must define route locations');
+    for (const [locationBlock] of frontendLocationBlocks) {
+      const location = locationBlock.match(/^ {4}location ([^{]+)\{/)?.[1].trim() ?? '<unknown>';
+      const included = locationBlock.match(/include \/etc\/nginx\/(\S+\.conf);/)?.[1];
+      const source = included
+        ? readFileSync(resolve(__dirname, `../${includedHeaderFiles[included]}`), 'utf-8')
+        : locationBlock;
+      assert.match(source, noindex, `docker/nginx.conf.template ${location} must send X-Robots-Tag noindex`);
     }
   });
 
@@ -3183,6 +3269,24 @@ describe('security header guardrails', () => {
       mainSource,
       /import '\.\/bootstrap\/zod-csp';/,
       'main.ts must apply the Zod CSP bootstrap before the app graph'
+    );
+    // Zod v4 runs its `new Function` probe when a z.object() is constructed,
+    // so any script module evaluated before zod-csp could trip the CSP.
+    // Spans lines so `import {\n  a,\n} from 'x';` counts as an import of 'x'.
+    const scriptImportsOf = (source) =>
+      [...source.matchAll(/^import\s(?:[^'";]*?\sfrom\s)?['"]([^'"]+)['"]/gm)]
+        .map((match) => match[1])
+        .filter((specifier) => !specifier.endsWith('.css'));
+    assert.deepEqual(
+      scriptImportsOf("import './a.css';\nimport {\n  one,\n  two,\n} from './early';\nimport type { T } from './t';\nimport './bootstrap/zod-csp';\n"),
+      ['./early', './t', './bootstrap/zod-csp'],
+      'the import scan must see multiline and type-only declarations'
+    );
+    const scriptImports = scriptImportsOf(mainSource);
+    assert.equal(
+      scriptImports[0],
+      './bootstrap/zod-csp',
+      'zod-csp must be the first script import in main.ts so no module graph evaluates before it'
     );
     assert.match(
       zodCspSource,
@@ -3610,6 +3714,25 @@ describe('self-hosted docker nginx SPA entry', () => {
       assert.doesNotMatch(src, /try_files \$uri \$uri\/ \/index\.html;/, `${conf}: must not keep the broken /index.html SPA fallback`);
     }
   });
+
+  it('serves the branded 500 page on document routes only, never on /api/', () => {
+    // A server-level error_page is inherited by every location. On /api/ it
+    // swapped nginx's 502 for the HTML page and dropped the CORS header the
+    // template's /api/ sets with `always` (reproduced in nginx:alpine on #10290).
+    for (const conf of ['docker/nginx.conf', 'docker/nginx.conf.template']) {
+      const src = readFileSync(resolve(__dirname, `../${conf}`), 'utf-8');
+      const blocks = [...src.matchAll(/^ {4}location ([^{]+)\{\n([\s\S]*?)^ {4}\}/gm)]
+        .map(([, location, body]) => ({ location: location.trim(), body }));
+      const outsideLocations = src.replace(/^ {4}location [^{]+\{\n[\s\S]*?^ {4}\}/gm, '');
+      assert.doesNotMatch(outsideLocations, /\berror_page\b/, `${conf}: error_page must not sit at server level, where /api/ inherits it`);
+      const root = blocks.find((b) => b.location === '/');
+      assert.ok(root, `${conf}: must define location /`);
+      assert.match(root.body, /^\s*error_page 500 502 503 504 \/500\.html;/m, `${conf}: location / must serve the branded 500 page`);
+      for (const { location, body } of blocks.filter((b) => b.location.includes('/api'))) {
+        assert.doesNotMatch(body, /\berror_page\b/, `${conf}: ${location} must keep upstream and nginx error bodies`);
+      }
+    }
+  });
 });
 
 // Per-route CSP override for the hosted brief magazine. The renderer
@@ -3652,6 +3775,14 @@ describe('brief magazine CSP override', () => {
       connectSrc.includes('https://cloudflareinsights.com'),
       'brief CSP connect-src must allow cloudflareinsights.com so the CF beacon can POST to /cdn-cgi/rum',
     );
+  });
+
+  it('loads fonts only from the site itself (self-hosted brief fonts, no Google Fonts)', () => {
+    const csp = getBriefCspValue();
+    const styleSrc = csp.match(/style-src\s+([^;]+)/)?.[1] ?? '';
+    const fontSrc = csp.match(/font-src\s+([^;]+)/)?.[1] ?? '';
+    assert.equal(fontSrc.trim(), "'self' data:");
+    assert.doesNotMatch(styleSrc, /googleapis|gstatic/);
   });
 
   it('keeps tight defaults for non-script directives', () => {
@@ -4138,9 +4269,10 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
       // WorkOS auth.md agent_auth discovery block (only `anonymous` is honest —
       // WM has no ID-JAG identity endpoint, so identity_assertion is not advertised).
       assert.ok(json.agent_auth, `agent_auth block present for ${host}`);
-      // Scanners require skill == <issuer>/auth.md. The apex serves it because
-      // /auth.md is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
-      assert.equal(json.agent_auth.skill, `https://${host}/auth.md`, `skill is the issuer's /auth.md for ${host}`);
+      // ora.ai compares skill with the /auth.md published on the scanned domain,
+      // so every host names the apex copy. The apex serves it because /auth.md
+      // is exempt from the Cloudflare apex→www 301 (ARCHITECTURE.md §2).
+      assert.equal(json.agent_auth.skill, 'https://worldmonitor.app/auth.md', `skill is the apex /auth.md for ${host}`);
       assert.equal(json.agent_auth.register_uri, `https://${host}/oauth/register`);
       // auth.md v0.2's identity_endpoint takes {"type":"anonymous"} and returns
       // an identity_assertion; /oauth/register is RFC 7591 DCR, so it must not

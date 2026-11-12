@@ -535,6 +535,20 @@ test.describe('DeckGL map harness', () => {
   test('matches golden screenshots per layer and zoom', async ({ page }) => {
     test.setTimeout(180_000);
 
+    // These are overlay goldens. Live provider tiles/labels made them depend on
+    // network timing (a loaded vector basemap versus the blank reference).
+    await page.addInitScript(() => {
+      localStorage.setItem('wm-map-provider', 'carto');
+      localStorage.setItem('wm-map-theme:carto', 'dark-matter');
+    });
+    await page.route('https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json', route => route.fulfill({
+      json: {
+        version: 8,
+        sources: {},
+        layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#0b100d' } }],
+      },
+    }));
+
     await waitForHarnessReady(page);
 
     await page.evaluate(() => {

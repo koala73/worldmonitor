@@ -32,6 +32,7 @@ import {
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
 import { entitlementFeaturesValidator } from "./lib/entitlementFeaturesValidator";
+import { teamDashboardLayoutValidator } from "./lib/teamDashboardLayout";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -665,6 +666,8 @@ export default defineSchema({
     // Security rows only. Scheduling and delivery are separate so a failed
     // send stays visible to the daily digest (Decisions 11 and 12).
     notifyScheduledAt: v.optional(v.number()),
+    // Set once the owner has been told about the row: by a security notice or
+    // digest, by the daily feedback digest, or by triage.
     notifiedAt: v.optional(v.number()),
   })
     .index("by_fingerprint_received", ["fingerprint", "receivedAt"])
@@ -673,7 +676,10 @@ export default defineSchema({
     .index("by_retryKey_received", ["retryKey", "receivedAt"])
     .index("by_reporter_received", ["reporterKey", "receivedAt"])
     .index("by_principal", ["principalId"])
-    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"]),
+    .index("by_kind_notified_received", ["kind", "notifiedAt", "receivedAt"])
+    // Daily feedback digest: unannounced `received` rows, oldest first across
+    // every kind, so no terminal row enters the scan and no kind starves.
+    .index("by_status_notified_received", ["status", "notifiedAt", "receivedAt"]),
 
   // --- Payment tables (Dodo Payments integration) ---
 
@@ -898,6 +904,10 @@ export default defineSchema({
     // Independent goodwill source; never derive this from a paid effective plan.
     // Legacy rows without it require an audited source before migration.
     compPlanKey: v.optional(v.string()),
+    // Pending recompute at `validUntil` when another source outlives the
+    // winning one. Stored so repeat recomputes reuse one job instead of
+    // scheduling a duplicate per webhook.
+    coverageRecheckJobId: v.optional(v.id("_scheduled_functions")),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
@@ -914,6 +924,68 @@ export default defineSchema({
     reason: v.string(),
     updatedAt: v.number(),
   }).index("by_userId", ["userId"]),
+
+  // Enterprise contract accounts (convex/enterpriseAccounts.ts). One row per
+  // contract customer: its members share one request pool and one AI token
+  // allowance. Not keyed to a Dodo subscription; an operator creates and edits
+  // it. "Ended" is derived (contractEnd <= now), never stored.
+  enterpriseAccounts: defineTable({
+    name: v.string(),
+    contractStart: v.number(),
+    contractEnd: v.number(),
+    dailyRequestAllowance: v.number(),
+    perMinuteBurst: v.number(),
+    monthlyInputTokens: v.number(),
+    monthlyOutputTokens: v.number(),
+    overagePerThousandRequestsUsd: v.number(),
+    overagePerMillionInputTokensUsd: v.number(),
+    overagePerMillionOutputTokensUsd: v.number(),
+    breakerMultiple: v.number(),
+    seatCap: v.number(),
+    // AI routing policy every active member inherits (and keeps after the
+    // contract ends, until removed). Same provider names as aiRoutingPolicies.
+    allowedProviders: v.array(v.string()),
+    // Pending recomputes at contractStart / contractEnd, replaced on edit.
+    contractStartJobId: v.optional(v.id("_scheduled_functions")),
+    contractEndJobId: v.optional(v.id("_scheduled_functions")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  // Membership of an enterprise account. `userId` is optional because a
+  // pending email invite has no account yet; `email` is stored lowercased.
+  // Active rows and unexpired pending rows count against the seat cap. A
+  // pending row past `inviteExpiresAt` frees its seat. Removed rows stay as
+  // history. A membership row, not a comp grant, is the entitlement source.
+  enterpriseMembers: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    userId: v.optional(v.string()),
+    email: v.optional(v.string()),
+    status: v.union(v.literal("active"), v.literal("pending"), v.literal("removed")),
+    role: v.union(v.literal("admin"), v.literal("member")),
+    invitedAt: v.optional(v.number()),
+    // Set on admin email invites (convex/enterpriseSeats.ts); the emailed
+    // token expires at the same time.
+    inviteExpiresAt: v.optional(v.number()),
+    // Set when the invite email could not be sent (no mail key, suppressed
+    // recipient, or a send error); the admin sees it on the roster.
+    inviteEmailFailedAt: v.optional(v.number()),
+    joinedAt: v.optional(v.number()),
+    removedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_accountId", ["accountId"])
+    .index("by_userId", ["userId"])
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  // Per-account serialization row for the seat cap, mirroring
+  // businessSeatLocks: every mutation that changes an account's seats reads
+  // AND writes this row so concurrent adds cannot both pass the cap check.
+  enterpriseAccountLocks: defineTable({
+    accountId: v.id("enterpriseAccounts"),
+    lastTouchedAt: v.number(),
+  }).index("by_accountId", ["accountId"]),
 
   apiUsageRollups: defineTable({
     userId: v.string(),
@@ -1286,6 +1358,15 @@ export default defineSchema({
 
   // One reusable admission counter per account, independent of provider alarms.
   checkoutAdmissions: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Per-account fixed window for the Pro → Pro Business upgrade action. The
+  // /pro edge route has its own Redis limit; the dashboard calls the Convex
+  // action directly, so this row is the limit both paths share.
+  proBusinessUpgradeAdmissions: defineTable({
     userId: v.string(),
     windowStart: v.number(),
     count: v.number(),
@@ -1923,6 +2004,20 @@ export default defineSchema({
     lastTouchedAt: v.number(),
   }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
 
+  // Dashboard layouts a team shares with its members (convex/teamDashboards.ts).
+  // `teamKey` is `business:<dodoSubscriptionId>` or `enterprise:<accountId>`,
+  // always derived from the caller on the server. No user identifier: the
+  // dashboard belongs to the team.
+  teamDashboards: defineTable({
+    teamKey: v.string(),
+    variant: v.string(),
+    name: v.string(),
+    layout: teamDashboardLayoutValidator,
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_team_variant", ["teamKey", "variant"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     // unsubscribe withdraws broadcast and marketing consent. The other
@@ -1997,6 +2092,16 @@ export default defineSchema({
   // so one global serialization point is intentional and keeps the invariant
   // simple. It is seeded by the deploy workflow; append fails loudly if it is
   // absent rather than silently weakening idempotency.
+  // One short-lived claim per Dodo subscription while a Pro → Pro Business
+  // change-plan call is in flight. Two concurrent confirms (two tabs, or the
+  // dashboard and /pro at once) both pass the provider re-read before either
+  // change lands; the serializable claim lets only one call changePlan.
+  // Holds no userId; a claim older than the TTL in billing.ts is reclaimable.
+  proBusinessUpgradeClaims: defineTable({
+    dodoSubscriptionId: v.string(),
+    claimedAt: v.number(),
+  }).index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+
   intelHistoryAppendLocks: defineTable({
     lockKey: v.string(),
     lastTouchedAt: v.number(),
@@ -2040,6 +2145,13 @@ export default defineSchema({
     runId: v.string(),
     dedupeKey: v.string(),
     embedding: v.array(v.float64()),
+    // Which model@dimensions produced `embedding` (#5742). Stamped by `append`
+    // from INTEL_HISTORY_EMBED_MODEL, so a row embedded under a different
+    // model is detectable (`embeddingModelInventory`) and `search` drops it
+    // instead of ranking it on a similarity scale that no longer applies.
+    // Optional only for rows written before the stamp existed; those were all
+    // produced by the one model ever used and read as current.
+    embeddingModel: v.optional(v.string()),
   })
     .index("by_dedupeKey", ["dedupeKey"])
     .index("by_ingestedAt", ["ingestedAt"])

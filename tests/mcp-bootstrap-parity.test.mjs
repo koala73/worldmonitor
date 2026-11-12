@@ -37,6 +37,7 @@ const { TOOL_REGISTRY } = mcpTesting;
 //   - operational:         relay heartbeats and similar — visible via /api/health, not MCP.
 // -----------------------------------------------------------------------------
 const EXCLUDED_FROM_MCP = new Map([
+  ['cyber:cve-reference:v1', 'deferred: standalone CISA KEV reference store; advisory/CVE lookup consumer and bounded MCP query are follow-ups to #6229.'],
   ['maritime:ukmto-incidents:v1', 'UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
   ['risk:scores:history:index',
     'operational: string index for daily CII health; MCP country history and weekly movers read the per-country sorted sets directly.'],
@@ -49,6 +50,8 @@ const EXCLUDED_FROM_MCP = new Map([
   // ===========================================================================
   ['news:feed-health:v1',
     'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['open-data:chokepoints:v1:index',
+    'published file archive: index of the daily CC BY 4.0 chokepoint open dataset served at /data/v1/chokepoints/; the same scores stay queryable through get_chokepoint_status.'],
   ['news:recall-benchmark:v1',
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['health:china-coverage:v1',
@@ -259,6 +262,21 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:food-prices:tcb:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#9892).'],
   ['economic:food-prices:madr:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10050).'],
   ['economic:food-prices:nsomn:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10050).'],
+  ['economic:food-prices:fewssd:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:fewsss:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:fewsye:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:fewsht:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:twmoa:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:geostat:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10112).'],
+  ['economic:food-prices:pricecatcher:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:mcba:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:cso:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:statec:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:foagfruit:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:foagegg:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:foagmilk:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:csblv:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
+  ['economic:food-prices:makstat:v1', 'source cache read by GetFoodPrices, which has no MCP tool yet; it serves dated local market prices and context (#10146).'],
   ['seed-meta:economic:world-cpi-imf',
     'operational: meta-only health probe for the worldwide IMF CPI payload (~1 MB across 190 countries). GetWorldCpiMonthly serves the data; the payload is too large for the composite economic cache tool (#8538).'],
   ['seed-meta:economic:world-cpi-eurostat',

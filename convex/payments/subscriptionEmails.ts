@@ -5,7 +5,7 @@
  * delivery does not block webhook processing.
  */
 
-import { v } from "convex/values";
+import { v, type Infer, type ObjectType } from "convex/values";
 import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -39,6 +39,7 @@ const PLAN_DISPLAY: Record<string, string> = {
   api_starter: "API Starter (Monthly)",
   api_starter_annual: "API Starter (Annual)",
   api_business: "API Business",
+  api_business_annual: "API Business (Annual)",
   enterprise: "Enterprise",
 };
 
@@ -400,25 +401,156 @@ export const canSendBillingEmail = internalQuery({
   handler: async (ctx, args) => !(await billingDeletionForUser(ctx, args.userId)),
 });
 
+/**
+ * Where a new subscriber came from, gathered at the webhook boundary
+ * (`buildConversionContext`) from the checkout's Dodo metadata, the billing
+ * address and the users row. Admin-only: the customer welcome never reads it.
+ * `purchasedAt` is the activation event time, so day counts stay stable no
+ * matter when the scheduled send runs.
+ */
+export const conversionContextValidator = v.object({
+  purchasedAt: v.number(),
+  acquisition: v.optional(v.object({
+    source: v.optional(v.string()),
+    medium: v.optional(v.string()),
+    campaign: v.optional(v.string()),
+    referrer: v.optional(v.string()),
+    landing: v.optional(v.string()),
+    path: v.optional(v.string()),
+    firstSeen: v.optional(v.string()),
+  })),
+  mcpAttribution: v.optional(v.string()),
+  referralCode: v.optional(v.string()),
+  referrerEmail: v.optional(v.string()),
+  billingCountry: v.optional(v.string()),
+  accountFirstSeenAt: v.optional(v.number()),
+});
+export type ConversionContext = Infer<typeof conversionContextValidator>;
+
+function adminRow(label: string, value: string): string {
+  return `<tr><td style="color: #888; padding-right: 16px;">${label}:</td><td style="color: #fff;">${escapeHtml(value)}</td></tr>`;
+}
+
+function utcDay(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** "2026-03-11 (10 days before purchase)", counted in UTC calendar days. */
+function dayBeforePurchase(day: string, purchasedAt: number): string {
+  const days = Math.round((Date.parse(`${utcDay(purchasedAt)}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / DAY_MS);
+  if (!Number.isFinite(days) || days < 0) return day;
+  if (days === 0) return `${day} (same day as purchase)`;
+  return `${day} (${days} day${days === 1 ? "" : "s"} before purchase)`;
+}
+
+// Stored utm_source tokens are dash-normalized (`chatgpt.com` → `chatgpt-com`).
+const AI_ASSISTANT_SOURCES: ReadonlyMap<string, string> = new Map([
+  ["chatgpt-com", "ChatGPT"],
+  ["chat-openai-com", "ChatGPT"],
+  ["openai", "ChatGPT"],
+  ["perplexity", "Perplexity"],
+  ["perplexity-ai", "Perplexity"],
+  ["claude", "Claude"],
+  ["claude-ai", "Claude"],
+  ["anthropic", "Claude"],
+  ["copilot", "Copilot"],
+  ["copilot-com", "Copilot"],
+  ["copilot-microsoft-com", "Copilot"],
+  ["gemini", "Gemini"],
+  ["gemini-google-com", "Gemini"],
+  ["grok", "Grok"],
+  ["grok-com", "Grok"],
+  ["deepseek", "DeepSeek"],
+  ["chat-deepseek-com", "DeepSeek"],
+  ["meta-ai", "Meta AI"],
+  ["poe", "Poe"],
+]);
+
+function sourceLabel(source: string | undefined): string | undefined {
+  const name = source ? AI_ASSISTANT_SOURCES.get(source) : undefined;
+  return name ? `${name} (${source})` : source;
+}
+
+function conversionRowsHtml(conversion: ConversionContext): string {
+  const { acquisition, purchasedAt } = conversion;
+  const rows: string[] = [];
+  const sourceParts = [sourceLabel(acquisition?.source), acquisition?.medium, acquisition?.campaign].filter(Boolean);
+  if (sourceParts.length > 0) rows.push(adminRow("Source", sourceParts.join(" / ")));
+  else if (!acquisition && !conversion.mcpAttribution && !conversion.referralCode) {
+    rows.push(adminRow("Source", "not captured"));
+  }
+  if (acquisition?.referrer) {
+    // ChatGPT tags cited links with utm_source but sends no Referer, so a
+    // tagged first touch records "direct" even though the link named its source.
+    // "direct" also covers a referrer that failed host validation, hence "recorded".
+    const taggedWithoutReferrer = acquisition.referrer === "direct" && Boolean(acquisition.source);
+    rows.push(adminRow("Referrer", taggedWithoutReferrer ? "none recorded (source from utm tag)" : acquisition.referrer));
+  }
+  const landingPage = acquisition?.path && acquisition.landing
+    ? `${acquisition.path} (${acquisition.landing})`
+    : acquisition?.path ?? acquisition?.landing;
+  if (landingPage) rows.push(adminRow("Landing Page", landingPage));
+  if (acquisition?.firstSeen) rows.push(adminRow("First Visit", dayBeforePurchase(acquisition.firstSeen, purchasedAt)));
+  if (conversion.mcpAttribution) rows.push(adminRow("MCP Funnel", conversion.mcpAttribution));
+  if (conversion.referralCode) {
+    rows.push(adminRow(
+      "Referral",
+      conversion.referrerEmail ? `${conversion.referralCode} (${conversion.referrerEmail})` : conversion.referralCode,
+    ));
+  }
+  if (conversion.billingCountry) rows.push(adminRow("Billing Country", conversion.billingCountry));
+  if (typeof conversion.accountFirstSeenAt === "number") {
+    rows.push(adminRow("Account First Seen", dayBeforePurchase(utcDay(conversion.accountFirstSeenAt), purchasedAt)));
+  }
+  return rows.join("");
+}
+
+const sendSubscriptionEmailsArgs = {
+  userEmail: v.string(),
+  planKey: v.string(),
+  userId: v.string(),
+  // Optional: previously rendered as a "Subscription:" row in the admin
+  // email, now dropped (opaque sub_… IDs were never the question being
+  // answered when the email landed). Kept as v.optional so any in-flight
+  // scheduled action enqueued before this deploy still validates on retry.
+  subscriptionId: v.optional(v.string()),
+  recurringPreTaxAmount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  taxInclusive: v.optional(v.boolean()),
+  discountId: v.optional(v.string()),
+  // #6330: set only when the Dodo checkout email differs from the login
+  // email in `userEmail`. Adds the sign-in line to the welcome, a pointer
+  // email to the checkout inbox, and the Billing Email row for admin.
+  checkoutEmail: v.optional(v.string()),
+  // Optional so jobs queued before this field existed still validate.
+  conversion: v.optional(conversionContextValidator),
+};
+
+/** The admin "New Subscription" alert: what was bought, by whom, and from where. */
+export function adminNewSubscriptionHtml(args: ObjectType<typeof sendSubscriptionEmailsArgs>): string {
+  const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
+  const priceRows = buildPriceRowsHtml({
+    planKey: args.planKey,
+    recurringPreTaxAmount: args.recurringPreTaxAmount,
+    currency: args.currency,
+    taxInclusive: args.taxInclusive,
+    discountId: args.discountId,
+  });
+  return `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
+        <p style="color: #4ade80; font-size: 16px; font-weight: bold;">New Subscription</p>
+        <table style="font-size: 14px; line-height: 1.8;">
+          <tr><td style="color: #888; padding-right: 16px;">Plan:</td><td style="color: #fff;">${planName}</td></tr>
+          <tr><td style="color: #888; padding-right: 16px;">Email:</td><td style="color: #fff;">${escapeHtml(args.userEmail)}</td></tr>
+          ${args.checkoutEmail ? `<tr><td style="color: #888; padding-right: 16px;">Billing Email:</td><td style="color: #fff;">${escapeHtml(args.checkoutEmail)}</td></tr>` : ""}
+          ${priceRows}
+          ${args.conversion ? conversionRowsHtml(args.conversion) : ""}
+          <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>
+        </table>
+      </div>`;
+}
+
 export const sendSubscriptionEmails = internalAction({
-  args: {
-    userEmail: v.string(),
-    planKey: v.string(),
-    userId: v.string(),
-    // Optional: previously rendered as a "Subscription:" row in the admin
-    // email, now dropped (opaque sub_… IDs were never the question being
-    // answered when the email landed). Kept as v.optional so any in-flight
-    // scheduled action enqueued before this deploy still validates on retry.
-    subscriptionId: v.optional(v.string()),
-    recurringPreTaxAmount: v.optional(v.number()),
-    currency: v.optional(v.string()),
-    taxInclusive: v.optional(v.boolean()),
-    discountId: v.optional(v.string()),
-    // #6330: set only when the Dodo checkout email differs from the login
-    // email in `userEmail`. Adds the sign-in line to the welcome, a pointer
-    // email to the checkout inbox, and the Billing Email row for admin.
-    checkoutEmail: v.optional(v.string()),
-  },
+  args: sendSubscriptionEmailsArgs,
   handler: async (ctx, args) => {
     const canSend = () => ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId: args.userId });
     if (!await canSend()) return;
@@ -466,29 +598,13 @@ export const sendSubscriptionEmails = internalAction({
     // it compares to list price) instead of the opaque subscription_id, which
     // is rarely the question being asked when this email lands.
     if (!await canSend()) return;
-    const priceRows = buildPriceRowsHtml({
-      planKey: args.planKey,
-      recurringPreTaxAmount: args.recurringPreTaxAmount,
-      currency: args.currency,
-      taxInclusive: args.taxInclusive,
-      discountId: args.discountId,
-    });
     try {
       await sendEmail(
         ctx,
         apiKey,
         ADMIN_EMAIL,
         `[WM] New User Subscribed to ${planName}`,
-        `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
-        <p style="color: #4ade80; font-size: 16px; font-weight: bold;">New Subscription</p>
-        <table style="font-size: 14px; line-height: 1.8;">
-          <tr><td style="color: #888; padding-right: 16px;">Plan:</td><td style="color: #fff;">${planName}</td></tr>
-          <tr><td style="color: #888; padding-right: 16px;">Email:</td><td style="color: #fff;">${escapeHtml(args.userEmail)}</td></tr>
-          ${args.checkoutEmail ? `<tr><td style="color: #888; padding-right: 16px;">Billing Email:</td><td style="color: #fff;">${escapeHtml(args.checkoutEmail)}</td></tr>` : ""}
-          ${priceRows}
-          <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>
-        </table>
-      </div>`,
+        adminNewSubscriptionHtml(args),
         { replyTo: null },
       );
       console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
@@ -497,6 +613,94 @@ export const sendSubscriptionEmails = internalAction({
         `[subscriptionEmails] Admin notification failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  },
+});
+
+const PERIOD_LABEL: Record<string, string> = { monthly: "month", annual: "year" };
+
+function priceWithPeriod(amount: number, currency: string, planKey: string): string {
+  const period = PERIOD_LABEL[PRODUCT_CATALOG[planKey]?.billingPeriod ?? ""];
+  return period ? `${formatMoney(amount, currency)} / ${period}` : formatMoney(amount, currency);
+}
+
+function signedMoney(amountMinor: number, currency: string): string {
+  return `${amountMinor < 0 ? "-" : "+"}${formatMoney(Math.abs(amountMinor), currency)}`;
+}
+
+/**
+ * The price delta, per period when both plans bill on the same period and
+ * annualized otherwise. Null when either price is unknown or the currencies
+ * differ (no meaningful subtraction).
+ */
+function planPriceChange(args: PlanUpgradeEmailArgs): string | null {
+  const { oldAmount, newAmount, oldCurrency, newCurrency } = args;
+  if (typeof oldAmount !== "number" || typeof newAmount !== "number" || !oldCurrency || !newCurrency) return null;
+  if (oldCurrency.toUpperCase() !== newCurrency.toUpperCase()) return null;
+  const fromPeriod = PRODUCT_CATALOG[args.fromPlanKey]?.billingPeriod;
+  const toPeriod = PRODUCT_CATALOG[args.toPlanKey]?.billingPeriod;
+  if (fromPeriod === toPeriod) {
+    const period = PERIOD_LABEL[toPeriod ?? ""];
+    const delta = signedMoney(newAmount - oldAmount, newCurrency);
+    return period ? `${delta} / ${period}` : delta;
+  }
+  const perYear = (amount: number, period: string | undefined) => (period === "monthly" ? amount * 12 : amount);
+  return `${signedMoney(perYear(newAmount, toPeriod) - perYear(oldAmount, fromPeriod), newCurrency)} / year (annualized)`;
+}
+
+const sendPlanUpgradeAdminEmailArgs = {
+  userId: v.string(),
+  userEmail: v.optional(v.string()),
+  fromPlanKey: v.string(),
+  toPlanKey: v.string(),
+  oldAmount: v.optional(v.number()),
+  oldCurrency: v.optional(v.string()),
+  oldIsListPrice: v.optional(v.boolean()),
+  newAmount: v.optional(v.number()),
+  newCurrency: v.optional(v.string()),
+};
+type PlanUpgradeEmailArgs = ObjectType<typeof sendPlanUpgradeAdminEmailArgs>;
+
+export function planUpgradeSubject(args: Pick<PlanUpgradeEmailArgs, "fromPlanKey" | "toPlanKey">): string {
+  const name = (key: string) => PLAN_DISPLAY[key] ?? key;
+  return `[WM] Plan Upgrade: ${name(args.fromPlanKey)} → ${name(args.toPlanKey)}`;
+}
+
+export function adminPlanUpgradeHtml(args: PlanUpgradeEmailArgs): string {
+  const rows = [
+    adminRow("From", PLAN_DISPLAY[args.fromPlanKey] ?? args.fromPlanKey),
+    adminRow("To", PLAN_DISPLAY[args.toPlanKey] ?? args.toPlanKey),
+  ];
+  if (typeof args.oldAmount === "number") {
+    const price = priceWithPeriod(args.oldAmount, args.oldCurrency ?? "USD", args.fromPlanKey);
+    rows.push(adminRow("Old Price", args.oldIsListPrice ? `${price} (list price)` : price));
+  }
+  if (typeof args.newAmount === "number") {
+    rows.push(adminRow("New Price", priceWithPeriod(args.newAmount, args.newCurrency ?? "USD", args.toPlanKey)));
+  }
+  const change = planPriceChange(args);
+  if (change) rows.push(adminRow("Change", change));
+  if (args.userEmail) rows.push(adminRow("Email", args.userEmail));
+  rows.push(`<tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>`);
+  return `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
+        <p style="color: #4ade80; font-size: 16px; font-weight: bold;">Plan Upgrade</p>
+        <table style="font-size: 14px; line-height: 1.8;">
+          ${rows.join("\n          ")}
+        </table>
+      </div>`;
+}
+
+/** Admin-only alert for an existing subscriber moving to a higher plan. */
+export const sendPlanUpgradeAdminEmail = internalAction({
+  args: sendPlanUpgradeAdminEmailArgs,
+  handler: async (ctx, args) => {
+    if (!await ctx.runQuery(internal.payments.subscriptionEmails.canSendBillingEmail, { userId: args.userId })) return;
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[subscriptionEmails] RESEND_API_KEY not set");
+      return;
+    }
+    await sendEmail(ctx, apiKey, ADMIN_EMAIL, planUpgradeSubject(args), adminPlanUpgradeHtml(args), { replyTo: null });
+    console.log(`[subscriptionEmails] Plan upgrade notification sent for ${args.userId}`);
   },
 });
 

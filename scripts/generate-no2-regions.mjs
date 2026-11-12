@@ -131,7 +131,7 @@ export function buildRegistry(geojson = JSON.parse(readFileSync(join(ROOT, COUNT
   }
   const countries = geojson.features
     .filter((feature) => /^[A-Z]{2}$/.test(feature.properties?.['ISO3166-1-Alpha-2'] ?? '') && feature.geometry)
-    .sort((left, right) => left.properties['ISO3166-1-Alpha-2'].localeCompare(right.properties['ISO3166-1-Alpha-2']));
+    .sort((left, right) => left.properties['ISO3166-1-Alpha-2'].localeCompare(right.properties['ISO3166-1-Alpha-2'], 'en-US'));
   for (const feature of countries) {
     const iso2 = feature.properties['ISO3166-1-Alpha-2'];
     if (EXCLUDED_COUNTRIES.has(iso2)) continue;

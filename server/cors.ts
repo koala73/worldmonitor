@@ -51,6 +51,7 @@ const ALLOWED_HEADERS = [
 ].join(', ');
 
 const EXPOSED_HEADERS = [
+  'Allow',
   'Mcp-Session-Id',
   'WWW-Authenticate',
   'Retry-After',

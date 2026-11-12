@@ -113,6 +113,16 @@ crons.daily(
   {},
 );
 
+// Bug, missing-capability, and data-quality reports send no per-report email.
+// This daily digest tells the owner how many arrived, by kind and surface,
+// and sends nothing on a day with no new reports.
+crons.daily(
+  "agent-feedback-digest",
+  { hourUTC: 8, minuteUTC: 20 },
+  internal.agentFeedback.sendFeedbackDigest,
+  {},
+);
+
 crons.daily(
   "email-soft-bounce-prune",
   { hourUTC: 4, minuteUTC: 50 },

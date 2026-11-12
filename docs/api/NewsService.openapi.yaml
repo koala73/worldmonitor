@@ -2186,9 +2186,7 @@ components:
                 publisherCount:
                     type: integer
                     format: int32
-                    description: |-
-                        Distinct publishers among the served items (normalized source labels,
-                         current cycle only — not feed-label counts, not historical sets).
+                    description: Distinct publishers among the served items (normalized, this cycle only).
                 feedTotal:
                     type: integer
                     format: int32
@@ -2228,20 +2226,23 @@ components:
                 servedStale:
                     type: boolean
                     description: |-
-                        Durable last-good serving (#7084): true exactly when accepted older
-                         content is replayed after a failed or gate-held attempt. The content counts
-                         above still describe the served body; attempted_at names that latest
-                         attempt, so it and generated_at diverge on a replay.
+                        True when accepted older content is replayed after a failed or gate-held
+                         attempt (#7084); counts still describe the served body.
                 staleAgeSeconds:
                     type: integer
                     format: int32
-                    description: |-
-                        Age of the served content since acceptance, in seconds (0 when fresh).
-                         Bounded at 21600 (six hours): past that window the service reports
-                         state=unavailable rather than serving older content.
+                    description: Content age since acceptance, seconds (0 when fresh, at most 21600).
                 staleReason:
                     type: string
                     description: 'Closed stale reason: empty-rebuild | build-error | gate-held (empty when fresh).'
+                itemsConsidered:
+                    type: integer
+                    format: int32
+                    description: Items ranked before the category cap (served count on old replays).
+                publishersConsidered:
+                    type: integer
+                    format: int32
+                    description: Distinct publishers among those ranked items.
             description: |-
                 Content vs attempt state for one digest response (#7085). generated_at
                  keeps the CONTENT identity (when the served items were produced);

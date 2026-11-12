@@ -42,6 +42,7 @@ function recordCount(data: unknown): number {
 
 async function upstashCommand(url: string, token: string, command: unknown[]): Promise<unknown> {
   const resp = await fetch(url, {
+    signal: AbortSignal.timeout(10_000),
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(command),

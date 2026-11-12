@@ -45,9 +45,9 @@ const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient
 type RawBootstrapRegistry = RawPipelineRegistry;
 
 const BADGE_COLOR: Record<string, string> = {
-  flowing:  '#2ecc71',
-  reduced:  '#f39c12',
-  offline:  '#e74c3c',
+  flowing:  '#1e8449',
+  reduced:  '#af601a',
+  offline:  '#c0392b',
   disputed: '#9b59b6',
 };
 
@@ -67,7 +67,7 @@ function capacityLabel(p: PipelineEntry): string {
 
 function badgeChip(badge: string | undefined): string {
   const safe = badge && BADGE_COLOR[badge] ? badge : 'disputed';
-  const color = BADGE_COLOR[safe] ?? '#7f8c8d';
+  const color = BADGE_COLOR[safe] ?? '#5d6d7e';
   return `<span class="pp-badge" style="background:${color}">${escapeHtml(badgeLabel(safe))}</span>`;
 }
 
@@ -425,7 +425,7 @@ export class PipelineStatusPanel extends Panel {
       <div class="pp-wrap">
         ${coverageWarning}
         <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
-          <table class="pp-table" role="table">
+          <table class="wm-table pp-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" role="columnheader">Asset</th>
@@ -443,9 +443,6 @@ export class PipelineStatusPanel extends Panel {
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
         .pp-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); container: pp-wrap / inline-size; }
-        .pp-table { width: 100%; border-collapse: collapse; }
-        .pp-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .pp-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pp-table tr.pp-row { cursor: pointer; }
         .pp-table tr.pp-row:hover td { background: rgba(255,255,255,0.03); }
         .pp-name { font-weight: 600; color: var(--text, #eee); overflow-wrap: break-word; }
@@ -458,7 +455,7 @@ export class PipelineStatusPanel extends Panel {
         @container pp-wrap (max-width: 31em) {
           .pp-table, .pp-table tbody { display: block; }
           .pp-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-          .pp-table tr.pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+          .pp-table tr.pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px; border-bottom: 1px solid var(--border-subtle); }
           .pp-table tr.pp-row td { padding: 0; border: 0; }
           .pp-table tr.pp-row td:first-child { flex: 1 0 100%; }
           .pp-table tr.pp-row td:last-child { margin-left: auto; }

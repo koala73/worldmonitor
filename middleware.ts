@@ -10,7 +10,7 @@ import {
 } from './src/config/docs-locale-seo';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 import agentRequestPolicy from './shared/agent-request-policy.json';
-import { isMcpAliasRequest, normalizeMcpHost } from './shared/mcp-host-policy';
+import { isMcpProductionAliasPath, normalizeMcpHost } from './shared/mcp-host-policy';
 import { chokepointStatusViewModel } from './scripts/crawlable-live-tools.mjs';
 import {
   chokepointPulseRecord,
@@ -20,12 +20,21 @@ import {
 import { liveTopicPageForPath, liveTopicReading } from './scripts/live-pages/index.mjs';
 import { replaceLiveSection } from './scripts/live-pages/common.mjs';
 import {
+  PIZZA_INDEX_PAGE_PATH,
+  PIZZA_INDEX_SLUG,
+  PIZZA_INDEX_STATUS_PATH,
+  pizzaIndexReading,
+  renderPizzaIndexSection,
+} from './scripts/live-pages/pentagon-pizza-index.mjs';
+import {
   SITUATION_PAGE_PATH,
   situationMarker,
   situationReading,
   situationSections,
 } from './scripts/situation-page/sections.mjs';
 import { CHOKEPOINT_REGISTRY } from './src/config/chokepoint-registry';
+import { firstTouchSetCookie } from './shared/acquisition-source';
+import { next } from '@vercel/functions/middleware';
 
 type LiveTopicPage = NonNullable<ReturnType<typeof liveTopicPageForPath>>;
 
@@ -213,16 +222,68 @@ function uaConditionedRedirectHeaders(location: URL): Record<string, string> {
   };
 }
 
+/**
+ * A person opening a page, as opposed to a crawler, an API or asset fetch, or
+ * a speculative prefetch the person may never view.
+ */
+function isHumanPageNavigation(request: Request, url: URL): boolean {
+  if (request.method !== 'GET') return false;
+  if (BOT_UA.test(request.headers.get('user-agent') ?? '')) return false;
+  const path = url.pathname;
+  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/')) return false;
+  // The live-page branch's own fetch of the built page carries no visitor
+  // cookies; a cookie set on it would be copied onto the visitor's response.
+  if (url.searchParams.has(BUILT_PAGE_PARAM)) return false;
+  const purpose = `${request.headers.get('sec-purpose') ?? ''} ${request.headers.get('purpose') ?? ''}`;
+  if (/prefetch/i.test(purpose)) return false;
+  const dest = request.headers.get('sec-fetch-dest');
+  if (dest) return dest === 'document';
+  return /text\/html/i.test(request.headers.get('accept') ?? '');
+}
+
+function withSetCookie(response: Response, setCookie: string): Response {
+  // Copied rather than mutated: Response.redirect() and fetch() responses
+  // have immutable headers.
+  const headers = new Headers(response.headers);
+  headers.append('set-cookie', setCookie);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// The static content pages (corpus, blog) run no capture script, and the
+// visit that reaches /pro from one of them would otherwise record /pro and
+// an internal referrer as the first touch. Page-script captures remain as
+// the fallback for desktop and self-hosted builds, which have no middleware.
+// A synchronous routing result stays synchronous.
 export default function middleware(request: Request) {
+  const response = route(request);
+  return response instanceof Promise
+    ? response.then((resolved) => withFirstTouch(request, resolved))
+    : withFirstTouch(request, response);
+}
+
+function withFirstTouch(request: Request, response: Response | undefined): Response | undefined {
+  if (!isHumanPageNavigation(request, new URL(request.url))) return response;
+  const setCookie = firstTouchSetCookie({
+    url: request.url,
+    cookieHeader: request.headers.get('cookie'),
+    referrer: request.headers.get('referer'),
+    now: Date.now(),
+  });
+  if (!setCookie) return response;
+  return response ? withSetCookie(response, setCookie) : next({ headers: { 'set-cookie': setCookie } });
+}
+
+function route(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeMcpHost(request.headers.get('host') ?? url.hostname);
-  const aliasMcpRequest = isMcpAliasRequest(url.hostname, path)
-    || isMcpAliasRequest(request.headers.get('host') ?? '', path);
+  const aliasMcpRequest = isMcpProductionAliasPath(url.hostname, path)
+    || isMcpProductionAliasPath(request.headers.get('host') ?? '', path);
 
-  // Product MCP aliases are migration-only surfaces. Let every policy request
-  // reach the handler so it returns the protocol-shaped response and emits one
+  // Product MCP aliases (retired, or served like api.) are owned by the MCP
+  // handler. Let every policy request reach it so it either serves the
+  // transport or returns the protocol-shaped migration response and emits one
   // bounded migration event. This bypass must precede generic crawler/API bot
   // gates, which otherwise turn direct alias transport calls into a 403.
   // The handler repeats the policy because dotted well-known paths bypass this
@@ -318,6 +379,7 @@ export default function middleware(request: Request) {
     if (isLiveHtmlRequest(request, url)) {
       if (CHOKEPOINT_PAGE_PATH.test(url.pathname)) return liveChokepointPage(url);
       if (url.pathname === SITUATION_PAGE_PATH) return liveSituationPage(url);
+      if (url.pathname === PIZZA_INDEX_PAGE_PATH) return livePizzaIndexPage(url);
       const topic = liveTopicPageForPath(url.pathname);
       if (topic) return liveTopicPage(url, topic);
     }
@@ -535,6 +597,20 @@ function liveTopicPage(url: URL, topic: LiveTopicPage): Promise<Response> {
     // An unpublishable reading (stale, empty) keeps the built page's dated one.
     if (record === null) return null;
     return replaceLiveSection(html, topic.slug, topic.renderSection(record, { live: true }));
+  });
+}
+
+/**
+ * The glossary page's "Current level" section. The blog build ships it in its
+ * browser-loading state; this swaps in the current level so the HTML a crawler
+ * reads states it. No current level (expired seed, closed-only poll) keeps the
+ * built section, which the page's script still fills for visitors.
+ */
+function livePizzaIndexPage(url: URL): Promise<Response> {
+  return liveHtmlPage(url, PIZZA_INDEX_SLUG, async (html) => {
+    const view = pizzaIndexReading(await fetchPublicReading(url, PIZZA_INDEX_STATUS_PATH));
+    if (view === null) return null;
+    return replaceLiveSection(html, PIZZA_INDEX_SLUG, renderPizzaIndexSection(view));
   });
 }
 

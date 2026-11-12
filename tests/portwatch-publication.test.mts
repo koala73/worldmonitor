@@ -3,7 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { createCountryResolvers } from '../scripts/_country-resolver.mjs';
-import { PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES } from '../scripts/_portwatch-content-freshness.mjs';
+import {
+  PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES,
+  PORTWATCH_MAX_CACHE_AGE_MS,
+} from '../scripts/_portwatch-content-freshness.mjs';
 import { __testing__ } from '../api/health.js';
 import { getCountryPortActivity } from '../server/worldmonitor/intelligence/v1/get-country-port-activity';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
@@ -576,12 +579,44 @@ test('a deferred refresh failure cannot be hidden by otherwise complete retained
   assert.equal(failed.redis[META].coverage.published, 174);
   assert.equal(failed.redis[META].sourceState, 'error');
   assert.match(failed.logs, /usable coverage 174\/174; full publication blocked; 1 unresolved refresh failures/);
-  const deferred = runProducer(failed.redis, 'moving', NOW + DAY / 2);
+  // Countries at the cache cliff outrank a failed country, so this cohort
+  // fills every cold-fetch slot and the failure stays deferred.
+  const deferredAt = NOW + DAY / 2;
+  const nearCliff = { ...failed.redis };
+  for (const [, other] of countries.slice(1, 31)) {
+    nearCliff[`${PREFIX}${other}`] = {
+      ...nearCliff[`${PREFIX}${other}`],
+      cacheWrittenAt: deferredAt - (PORTWATCH_MAX_CACHE_AGE_MS - 3_600_000),
+    };
+  }
+  const deferred = runProducer(nearCliff, 'moving', deferredAt);
   assert.equal(deferred.error, null);
   assert.equal(deferred.publishBlocked, true);
   assert.equal(deferred.redis[META].fetchedAt, input[META].fetchedAt);
   assert.ok(deferred.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
   assert.equal(health(deferred.redis, NOW + DAY / 2).status, 'SEED_ERROR');
+});
+
+// 2026-11-10: one ArcGIS `Token Required` window failed a run's countries, and
+// the next run spent its slots elsewhere because those countries had the
+// newest attempt time. The failure must be retried on the next run.
+test('the next run retries a failed country first and publishes once it recovers', () => {
+  const input = fixtures();
+  for (const [, code] of countries) {
+    input[`${PREFIX}${code}`].cacheWrittenAt = NOW - DAY;
+    input[`${PREFIX}${code}`].asof = '2026-09-08';
+  }
+  const code = countries[0][1];
+  input[`${PREFIX}${code}`].refreshAttemptedAt = 1;
+  const failed = runProducer(input, 'activity-page');
+  assert.equal(failed.publishBlocked, true);
+  assert.ok(failed.redis[META].coverage.refreshFailures.some((entry: any) => entry.iso2 === code));
+  const recovered = runProducer(failed.redis, 'moving', NOW + DAY / 2);
+  assert.equal(recovered.error, null);
+  assert.equal(recovered.publishBlocked, false);
+  assert.equal(recovered.redis[`${PREFIX}${code}`].refreshFailure, undefined);
+  assert.deepEqual(recovered.redis[META].coverage.refreshFailures, []);
+  assert.notEqual(recovered.redis[META].fetchedAt, input[META].fetchedAt);
 });
 
 test('unchanged upstream data uses the cache without any activity downloads', () => {

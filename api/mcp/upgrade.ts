@@ -7,7 +7,8 @@
  */
 
 import { MCP_UPGRADE_URL } from '../../shared/mcp-attribution';
-import { recommendedPlanFor, START_UPGRADE_TOOL } from './checkout';
+import { recommendedPlanFor, recommendedPlanForFeature, START_UPGRADE_TOOL } from './checkout';
+import type { McpPlanFeature } from './types';
 
 export {
   MCP_ATTRIBUTION_SOURCE,
@@ -49,15 +50,28 @@ type McpUpgradeableReason = 'allowance-exhausted' | 'upgrade-required' | 'quota-
  * `upgradeFrom` is the caller's current plan key (`'free'` on the free-account
  * allowance). Set it only for a user-bound caller, who can call
  * `start_upgrade`; the denial then names the plan to buy and the tool.
+ *
+ * `planFeature` marks an `upgrade-required` refusal for one tool whose plan
+ * flag the caller lacks (#10451). The reason stays `upgrade-required`, so
+ * clients that branch on it keep working; the copy and the recommended plan
+ * name the plans that carry the flag instead of the next tier up.
  */
 export type McpDenial =
   | { reason: McpStaticDenialReason; upgradeFrom?: string }
+  | { reason: 'upgrade-required'; planFeature: McpPlanFeature; upgradeFrom?: string }
   | {
       reason: 'quota-exceeded';
       /** The daily limit the reservation ENFORCED, so copy and cap agree. */
       limit: number;
       /** True when REST requests spend this same budget. */
       sharedWithRestApi: boolean;
+      /**
+       * Set only for an Enterprise contract account's pool: the contract
+       * allowance, while `limit` is the safety limit (allowance × breaker
+       * multiple) that tripped. A contract has no self-serve step up, so the
+       * denial carries no upgrade advice and ignores `upgradeFrom`.
+       */
+      allowance?: number;
       upgradeFrom?: string;
     };
 
@@ -80,12 +94,14 @@ interface McpCheckoutHint {
  */
 export type McpStructuredDenial =
   | ({ reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string } & McpCheckoutHint)
+  | ({ reason: 'upgrade-required'; nextStep: string; upgradeUrl: string; planFeature: McpPlanFeature } & McpCheckoutHint)
   | ({
       reason: 'quota-exceeded';
       nextStep: string;
       upgradeUrl: string;
       limit: number;
       sharedWithRestApi: boolean;
+      allowance?: number;
     } & McpCheckoutHint);
 
 const UPGRADEABLE_REASONS: ReadonlySet<McpDenial['reason']> = new Set<McpUpgradeableReason>([
@@ -96,7 +112,10 @@ const UPGRADEABLE_REASONS: ReadonlySet<McpDenial['reason']> = new Set<McpUpgrade
 
 function checkoutHint(denial: McpDenial): McpCheckoutHint {
   if (!UPGRADEABLE_REASONS.has(denial.reason) || denial.upgradeFrom === undefined) return {};
-  const recommendedPlan = recommendedPlanFor(denial.upgradeFrom);
+  if (denial.reason === 'quota-exceeded' && denial.allowance !== undefined) return {};
+  const recommendedPlan = 'planFeature' in denial
+    ? recommendedPlanForFeature(denial.upgradeFrom, denial.planFeature)
+    : recommendedPlanFor(denial.upgradeFrom);
   if (recommendedPlan === undefined) return {};
   return denial.upgradeFrom === 'free' ? { recommendedPlan, checkoutTool: START_UPGRADE_TOOL } : { recommendedPlan };
 }
@@ -143,6 +162,48 @@ const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: st
 };
 
 /**
+ * Copy for a plan-feature refusal. The message only states which plans include
+ * the tool, so inform-only hosts keep it; their `nextStep` drops the upgrade.
+ */
+const PLAN_FEATURE_COPY: Record<McpPlanFeature, { message: string; nextStep: string; informOnlyNextStep: string }> = {
+  travelRiskAssessment: {
+    message: 'Travel risk assessment drafts are included in the Pro Business, API Business and Enterprise plans. The current plan does not include them.',
+    nextStep:
+      'Upgrade to Pro Business or API Business at the upgrade URL to use this tool. '
+      + 'Every other tool the current plan includes still works.',
+    informOnlyNextStep:
+      'This tool is not included in the current plan. Every other tool the current plan includes still works. '
+      + 'The upgrade URL describes the plans that include this tool.',
+  },
+};
+
+function isPlanFeature(value: unknown): value is McpPlanFeature {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PLAN_FEATURE_COPY, value);
+}
+
+const PRO_BUSINESS_PLAN_HASH = '#plan-proBusiness';
+
+function planFeatureUpgradeUrl(denial: McpDenial & { planFeature: McpPlanFeature }): string {
+  const recommended = denial.upgradeFrom === undefined
+    ? undefined
+    : recommendedPlanForFeature(denial.upgradeFrom, denial.planFeature);
+  if (recommended === 'pro_business_monthly' || recommended === 'pro_business_annual') {
+    return `${MCP_UPGRADE_URL}${PRO_BUSINESS_PLAN_HASH}`;
+  }
+  return MCP_UPGRADE_URL;
+}
+
+/**
+ * `nextStep` for the anonymous handshake refusal (`initialize` and the GET
+ * discovery probe). A client refused there has no session, so it cannot call
+ * get_sources either; the shared no-account copy above keeps naming it because
+ * a refused `tools/call` can still reach that tool.
+ */
+export const HANDSHAKE_NO_ACCOUNT_NEXT_STEP =
+  'Connect via OAuth (see the WWW-Authenticate header) to sign in with a free account. '
+  + 'Subscribe to Pro at the upgrade URL for the full daily allowance.';
+
+/**
  * Auth-layer messages that carry a call to buy. Exported so auth.ts builds
  * them and host-policy.ts can recognise them on the way out to ChatGPT.
  */
@@ -177,9 +238,22 @@ const INFORM_ONLY_NEXT_STEP: Record<McpStaticDenialReason, string> = {
     + 're-authenticating will not restore access. The upgrade URL describes the plans.',
 };
 
+/**
+ * `nextStep` on a contract account's safety-limit denial. It already promotes
+ * nothing, so inform-only hosts get the same text.
+ */
+const ACCOUNT_SAFETY_LIMIT_NEXT_STEP =
+  "This account's members share one daily budget across REST API requests and MCP calls, "
+  + 'and it reached the safety limit set by the contract. Requests resume at the next UTC day. '
+  + "Contact the account's administrator if the account needs a higher limit.";
+
 /** `nextStep` for an inform-only host, from the denial's own `data`. */
-export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean }): string {
+export function informOnlyNextStep(data: { reason: McpDenialReason; sharedWithRestApi?: boolean; allowance?: unknown; planFeature?: unknown }): string {
+  if (data.reason === 'upgrade-required' && isPlanFeature(data.planFeature)) {
+    return PLAN_FEATURE_COPY[data.planFeature].informOnlyNextStep;
+  }
   if (data.reason !== 'quota-exceeded') return INFORM_ONLY_NEXT_STEP[data.reason];
+  if (typeof data.allowance === 'number') return ACCOUNT_SAFETY_LIMIT_NEXT_STEP;
   return data.sharedWithRestApi
     ? 'This allowance is shared with your REST API requests, so REST traffic spends it too — '
       + 'the exhaustion may not be your tool calls. It resets at the next UTC day; '
@@ -191,6 +265,23 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
   message: string;
   data: McpStructuredDenial;
 } {
+  if (denial.reason === 'quota-exceeded' && denial.allowance !== undefined) {
+    // Same facts as the REST "Daily safety limit reached" 429
+    // (server/_shared/account-rate-limit.ts): `limit` is the safety limit,
+    // `allowance` the contract allowance. `upgradeUrl` stays only because
+    // every structured denial carries it; nothing here points at it.
+    return {
+      message: `This account's daily safety limit was reached (${denial.limit}/day). Resets at next UTC midnight.`,
+      data: {
+        reason: denial.reason,
+        nextStep: ACCOUNT_SAFETY_LIMIT_NEXT_STEP,
+        upgradeUrl: MCP_UPGRADE_URL,
+        limit: denial.limit,
+        allowance: denial.allowance,
+        sharedWithRestApi: denial.sharedWithRestApi,
+      },
+    };
+  }
   if (denial.reason === 'quota-exceeded') {
     return {
       // Byte-identical to the copy this denial has always carried, because
@@ -207,6 +298,19 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
         upgradeUrl: MCP_UPGRADE_URL,
         limit: denial.limit,
         sharedWithRestApi: denial.sharedWithRestApi,
+        ...checkoutHint(denial),
+      },
+    };
+  }
+  if ('planFeature' in denial) {
+    const copy = PLAN_FEATURE_COPY[denial.planFeature];
+    return {
+      message: copy.message,
+      data: {
+        reason: denial.reason,
+        nextStep: copy.nextStep,
+        upgradeUrl: planFeatureUpgradeUrl(denial),
+        planFeature: denial.planFeature,
         ...checkoutHint(denial),
       },
     };

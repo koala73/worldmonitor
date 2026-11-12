@@ -92,7 +92,7 @@ export default async function handler(
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    return jsonError('Method not allowed', 405, cors);
+    return jsonError('Method not allowed', 405, { ...cors, Allow: 'GET, HEAD, OPTIONS' });
   }
 
   const secret = process.env.BRIEF_URL_SIGNING_SECRET ?? '';

@@ -146,14 +146,14 @@ export function buildRegimeBlock(snapshot: RegionalSnapshot): string {
  * Values are already in [0, 1] for axes; net_balance is in [-1, 1] and
  * is rendered separately with a centered zero point.
  */
-function axisRow(label: string, value: number, colorClass: string): string {
+function axisRow(label: string, value: number, color: string): string {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-bottom:4px">
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums">${value.toFixed(2)}</div>
       <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
-        <div style="height:100%;width:${pct.toFixed(1)}%;background:var(${colorClass})"></div>
+        <div style="height:100%;width:${pct.toFixed(1)}%;background:${color}"></div>
       </div>
     </div>
   `;
@@ -164,22 +164,22 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
     return section('Balance Vector', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Unavailable</div>');
   }
   const pressures = [
-    axisRow('Coercive', balance.coercivePressure, '--danger'),
-    axisRow('Fragility', balance.domesticFragility, '--danger'),
-    axisRow('Capital', balance.capitalStress, '--danger'),
-    axisRow('Energy Vuln', balance.energyVulnerability, '--danger'),
+    axisRow('Coercive', balance.coercivePressure, 'var(--semantic-critical)'),
+    axisRow('Fragility', balance.domesticFragility, 'var(--semantic-critical)'),
+    axisRow('Capital', balance.capitalStress, 'var(--semantic-critical)'),
+    axisRow('Energy Vuln', balance.energyVulnerability, 'var(--semantic-critical)'),
   ].join('');
   const buffers = [
-    axisRow('Alliance', balance.allianceCohesion, '--accent'),
-    axisRow('Maritime', balance.maritimeAccess, '--accent'),
-    axisRow('Energy Lev', balance.energyLeverage, '--accent'),
+    axisRow('Alliance', balance.allianceCohesion, 'var(--accent)'),
+    axisRow('Maritime', balance.maritimeAccess, 'var(--accent)'),
+    axisRow('Energy Lev', balance.energyLeverage, 'var(--accent)'),
   ].join('');
 
   const net = balance.netBalance;
   const netPct = Math.max(-1, Math.min(1, net));
   const netFill = Math.abs(netPct) * 50;
   const netSide = netPct >= 0 ? 'right' : 'left';
-  const netColor = netPct >= 0 ? 'var(--accent)' : 'var(--danger)';
+  const netColor = netPct >= 0 ? 'var(--accent)' : 'var(--semantic-critical)';
   const netBar = `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,0.1)">
       <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:600">Net Balance</div>
@@ -191,8 +191,10 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
     </div>
   `;
 
+  // Each half needs its 110px label and 40px value tracks plus a visible
+  // bar, so the halves stack in a narrow sidebar column.
   const body = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
       <div>
         <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Pressures</div>
         ${pressures}
@@ -218,7 +220,7 @@ export function buildActorsBlock(actors: ActorState[]): string {
   const sorted = [...actors].sort((a, b) => (b.leverageScore ?? 0) - (a.leverageScore ?? 0)).slice(0, 5);
   const rows = sorted.map((a) => {
     const deltaText = a.delta > 0 ? `+${a.delta.toFixed(2)}` : a.delta.toFixed(2);
-    const deltaColor = a.delta > 0 ? 'var(--danger)' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
+    const deltaColor = a.delta > 0 ? 'var(--semantic-critical-text, var(--semantic-critical))' : a.delta < 0 ? 'var(--accent)' : 'var(--text-dim)';
     const domains = (a.leverageDomains ?? []).slice(0, 3).join(', ');
     return `
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
@@ -247,9 +249,9 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
   const sorted = [...scenarioSets].sort((a, b) => (order[a.horizon] ?? 99) - (order[b.horizon] ?? 99));
   const laneColor: Record<string, string> = {
     base: 'var(--text-dim)',
-    escalation: 'var(--danger)',
+    escalation: 'var(--semantic-critical)',
     containment: 'var(--accent)',
-    fragmentation: 'var(--warning, #e0a020)',
+    fragmentation: 'var(--semantic-elevated)',
   };
   const cols = sorted.map((set) => {
     const lanes = [...(set.lanes ?? [])].sort((a, b) => b.probability - a.probability);
@@ -258,7 +260,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
       const color = laneColor[l.name] ?? 'var(--text-dim)';
       return `
         <div style="margin-bottom:3px">
-          <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:capitalize">
+          <div style="display:flex;justify-content:space-between;gap:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:capitalize">
             <span>${escapeHtml(l.name)}</span>
             <span style="font-variant-numeric:tabular-nums">${pct}%</span>
           </div>
@@ -275,7 +277,9 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
       </div>
     `;
   }).join('');
-  const body = `<div style="display:grid;grid-template-columns:repeat(${sorted.length},1fr);gap:12px">${cols}</div>`;
+  // A horizon column must fit "fragmentation" and its percentage; narrower
+  // than that, the horizons wrap instead of running past the panel.
+  const body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,calc(120px * var(--wm-panel-effective-scale, 1))),1fr));gap:12px">${cols}</div>`;
   return section('Scenarios', body);
 }
 
@@ -283,11 +287,12 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
 // Transmission paths
 // ────────────────────────────────────────────────────────────────────────────
 
+// Text colour for the severity label.
 function severityColor(severity: string): string {
   switch ((severity ?? '').toLowerCase()) {
-    case 'critical': return 'var(--danger)';
-    case 'high': return 'var(--danger)';
-    case 'medium': return 'var(--warning, #e0a020)';
+    case 'critical': return 'var(--semantic-critical-text, var(--semantic-critical))';
+    case 'high': return 'var(--semantic-critical-text, var(--semantic-critical))';
+    case 'medium': return 'var(--semantic-elevated-text, var(--semantic-elevated))';
     case 'low': return 'var(--text-dim)';
     default: return 'var(--text-dim)';
   }
@@ -325,7 +330,7 @@ export function buildTransmissionBlock(paths: TransmissionPath[]): string {
 export function buildWatchlistBlock(activeTriggers: Trigger[], watchItems: NarrativeSection[]): string {
   const triggerRows = (activeTriggers ?? []).map((t) => `
     <div style="padding:3px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-      <span style="color:var(--danger);font-weight:600">●</span>
+      <span style="color:var(--semantic-critical-text, var(--semantic-critical));font-weight:600">●</span>
       ${escapeHtml(t.id)}${t.description ? ` — <span style="color:var(--text-dim)">${escapeHtml(t.description)}</span>` : ''}
     </div>
   `).join('');
@@ -395,9 +400,9 @@ export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string
     const driver = t.transitionDriver ? ` · ${escapeHtml(t.transitionDriver)}` : '';
     const date = formatDate(t.transitionedAt);
     return `
-      <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
-        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-variant-numeric:tabular-nums">${escapeHtml(date)}</div>
-        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
+      <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap">${escapeHtml(date)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));overflow-wrap:anywhere"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
       </div>
     `;
   }).join('');

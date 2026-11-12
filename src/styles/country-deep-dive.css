@@ -2377,3 +2377,24 @@
 .cdp-regional-energy-detail { color: var(--text-muted); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 2px; }
 .cdp-regional-energy-stale td, .cdp-regional-energy-stale .cdp-regional-energy-value { color: var(--text-muted); }
 .cdp-regional-energy-feed .cdp-economic-source a { color: var(--green-text, var(--green)); text-underline-offset: 3px; }
+
+.cdp-more-actions > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  list-style: none;
+}
+.cdp-more-actions > summary::-webkit-details-marker { display: none; }
+.cdp-more-actions > summary::after { content: '+'; }
+.cdp-more-actions[open] { flex-basis: 100%; }
+.cdp-more-actions[open] > summary::after { content: '\2212'; }
+.cdp-secondary-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 8px; }
+.cdp-more-actions > summary:focus-visible,
+.cdp-secondary-actions .cdp-action-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@container country-brief (max-width: 600px) {
+  .cdp-action-btn, .cdp-maximize-btn { min-height: 44px; min-width: 44px; }
+  .cdp-more-actions > summary { min-width: 112px; }
+  .cdp-header-right { width: 100%; }
+  .cdp-secondary-actions { grid-template-columns: minmax(0, 1fr); }
+}

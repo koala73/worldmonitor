@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 import type { MilitaryFlight, MilitaryFlightCluster, MilitaryAircraftType, MilitaryOperator } from '@/types';
 import { createCircuitBreaker, toUniqueSortedLowercase } from '@/utils';
 import {
@@ -339,17 +340,17 @@ async function fetchQueryRegion(region: QueryRegion): Promise<RegionResult> {
   const query = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
   const urls = [`${OPENSKY_PROXY_URL}?${query}`];
   if (isLocalhostRuntime && DIRECT_OPENSKY_BASE_URL) urls.push(`${DIRECT_OPENSKY_BASE_URL}?${query}`);
-  try {
-    for (const url of urls) {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { signal: createTimeoutSignal(15_000), headers: { 'Accept': 'application/json' } });
       if (!response.ok) continue;
       const data: OpenSkyResponse = await response.json();
       return { name: region.name, flights: parseOpenSkyResponse(data), ok: true };
+    } catch {
+      // A failed proxy still permits the configured localhost relay fallback.
     }
-    return { name: region.name, flights: [], ok: false };
-  } catch {
-    return { name: region.name, flights: [], ok: false };
   }
+  return { name: region.name, flights: [], ok: false };
 }
 
 const STALE_MAX_AGE_MS = 10 * 60 * 1000;

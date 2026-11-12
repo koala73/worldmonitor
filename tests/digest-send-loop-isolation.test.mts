@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
@@ -23,8 +24,9 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map() }: {
+function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map(), issueSlot = '2026-11-05-0800' }: {
   failingUsers: Set<string>;
+  issueSlot?: string;
   rulesResponse?: Response;
   exitError?: Error;
   briefOnlyUserIds?: string[];
@@ -37,12 +39,13 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
   const exits: number[] = [];
   const warnings: string[] = [];
   const lifecycle: string[] = [];
+  const idempotencyKeys: string[] = [];
   const stories = [{
     severity: 'critical', phase: 'developing', title: 'Synthetic alert', description: 'Synthetic details.',
     link: 'https://example.com/1', sources: ['Synthetic wire'],
   }];
   const run = runInNewContext(`${sendEmailSource}\n${mainSource}\nmain`, {
-    Date, Map, Set, AbortSignal, Buffer,
+    Date, Map, Set, AbortSignal, Buffer, createHash,
     process: { env: {}, exit: (code: number) => {
       exits.push(code);
       lifecycle.push('exit');
@@ -84,16 +87,17 @@ function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = 
     formatDigest: () => 'Synthetic digest',
     renderDigestEmailHtml,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
-    subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
+    subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => issueSlot,
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-    sendResendEmail: async (_client: unknown, message: { to: string }) => {
+    sendResendEmail: async (_client: unknown, message: { to: string }, options: { idempotencyKey?: string }) => {
       delivered.push(message.to);
+      idempotencyKeys.push(options.idempotencyKey ?? '');
       lifecycle.push('deliver');
       return { ok: true };
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules };
+  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys };
 }
 
 // A paid user with no digest rule got no brief, and the dashboard said
@@ -196,4 +200,22 @@ test('a clean tick records a healthy run', async () => {
   assert.equal(metadata[0].status, undefined);
   assert.equal(metadata[0].sentCount, 3);
   assert.deepEqual(exits, []);
+});
+
+// Digest bodies carry only the date, so the morning and evening sends of a
+// twice_daily rule can render byte-identical. A payload-only Resend key made
+// the evening send a duplicate of the morning one (#10189 review). Retries in
+// the same scheduled hour must still share a key.
+test('the Resend key separates scheduled occurrences but not retries within an hour', async () => {
+  const keysFor = async (issueSlot: string) => {
+    const { run, idempotencyKeys } = runDigest({ failingUsers: new Set(), issueSlot });
+    await run();
+    return Array.from(idempotencyKeys);
+  };
+  const morning = await keysFor('2026-11-05-0800');
+  const morningRetry = await keysFor('2026-11-05-0814');
+  const evening = await keysFor('2026-11-05-2000');
+  assert.equal(morning.length, 3);
+  assert.deepEqual(morningRetry, morning);
+  for (let i = 0; i < morning.length; i++) assert.notEqual(evening[i], morning[i]);
 });

@@ -98,6 +98,9 @@ export interface McpToolExecutionContext {
 // ---------------------------------------------------------------------------
 // Tool registry types
 // ---------------------------------------------------------------------------
+/** Entitlement flags a single tool can require beyond MCP access (#10451). */
+export type McpPlanFeature = 'travelRiskAssessment';
+
 export interface BaseToolDef {
   // Pure caller-input checks that must run before any allowance reservation.
   _validateArgs?: (params: Record<string, unknown>) => void;
@@ -109,6 +112,7 @@ export interface BaseToolDef {
     properties: Record<string, unknown>;
     required: string[];
     oneOf?: Array<Record<string, unknown>>;
+    additionalProperties?: false;
   };
   // Per-tool output budget. When serialised tool output exceeds this AFTER
   // _postFilter + summary + JMESPath, the server returns a `_budget_exceeded`
@@ -162,6 +166,10 @@ export interface BaseToolDef {
   _freeTier?: true;
   // Cache-backed tools can require the same paid access as their REST route.
   _subscriptionOnly?: true;
+  // A named plan flag the caller's entitlement must carry on top of MCP access
+  // (#10451). Dispatch refuses the call before validation and metering unless
+  // the pre-check read the flag as true; operator keys are exempt.
+  _planFeature?: McpPlanFeature;
   // Budget units this tool charges, overriding the class default in
   // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
   // maximum downstream fan-out differs from its class. A tool that adds a
@@ -414,6 +422,7 @@ export interface PublicToolShape {
     properties: Record<string, unknown>;
     required: string[];
     oneOf?: Array<Record<string, unknown>>;
+    additionalProperties?: false;
   };
   outputSchema: object;
   annotations: {
@@ -444,6 +453,10 @@ export interface PublicToolShape {
     ui?: { resourceUri: string };
     'ui/resourceUri'?: string;
     'openai/ui'?: { entrypoints: Array<{ type: 'global' | 'thread' }> };
+    // Present-tense status labels ChatGPT shows while a UI-rendering tool runs / after it finishes.
+    'openai/toolInvocation'?: { invoking: string; invoked: string };
+    'openai/toolInvocation/invoking'?: string;
+    'openai/toolInvocation/invoked'?: string;
     'worldmonitor/access': McpAccessClass;
     'worldmonitor/weight': number;
   };
@@ -498,11 +511,13 @@ export interface McpHandlerDeps {
     | { ok: 'transient' }
     | null
   >;
-  getEntitlements: (userId: string) => Promise<{
+  getEntitlements: (userId: string, options?: { requireTravelRiskShape?: boolean }) => Promise<{
     planKey?: string;
     features: {
       tier: number;
       mcpAccess?: boolean;
+      // #10451: read only for prepare_travel_risk_assessment; absent is false.
+      travelRiskAssessment?: boolean;
       // Mirrors `CachedEntitlements.features.planLimits`. The MCP daily
       // allowance and the MCP minute burst are read here (plan 2026-07-25-001
       // U3); the siblings are declared so the shape stays recognisable against
@@ -519,6 +534,14 @@ export interface McpHandlerDeps {
       };
     };
     validUntil: number;
+    // Mirrors `CachedEntitlements.account`: present only for an active member
+    // of a live Enterprise contract, whose MCP calls draw on the account pool.
+    account?: {
+      id: string;
+      dailyAllowance: number;
+      perMinuteBurst: number;
+      breakerMultiple: number;
+    };
     billingStatus?: BillingVerificationStatus;
     retryAfterSeconds?: number;
     verificationUnavailable?: boolean;
@@ -586,6 +609,17 @@ export interface McpPreCheckPassed {
    * the plan one step up (#9144). Omitted when the row carries none.
    */
   planKey?: string;
+  /**
+   * The plan includes `prepare_travel_risk_assessment` (#10451), read from the
+   * same entitlement row as `budget`. Never set on the free-account allowance.
+   */
+  travelRiskAssessment?: true;
+}
+
+/** What the caller is about to do, when it changes which entitlement shape a pre-check needs. */
+export interface McpPreCheckOptions {
+  /** Refetch a cached entitlement that predates `travelRiskAssessment` instead of reading it as false. */
+  requireTravelRiskShape?: boolean;
 }
 export interface McpPreCheckRejected {
   ok: false;

@@ -67,6 +67,12 @@ const INTERNATIONAL_HOST_SUFFIXES = [
 // Host → ISO 3166-1 alpha-2, 'EU', or null (international).
 // Only hosts that cannot be inferred from a real ccTLD or government suffix.
 const HOST_ORIGINS = Object.freeze({
+  // RIPE NCC's publishing organization is based in Amsterdam.
+  'stat.ripe.net': 'NL',
+  'fdw.fews.net': 'US',
+  'lindas.cz-aws.net': 'CH',
+  // #6153: Moscow Exchange ISS, the exchange's own market-data API.
+  'iss.moex.com': 'RU',
   'simaniger.net': 'NE',
   'data.1212.mn': 'MN',
   'www.ocpv-ci.com': 'CI',
@@ -297,6 +303,7 @@ const HOST_ORIGINS = Object.freeze({
   'feeds.nbcnews.com': 'US',
   'feeds.news24.com': 'ZA',
   'feeds.npr.org': 'US',
+  'files.ember-energy.org': 'GB',
   'financialpost.com': 'CA',
   'factchecktools.googleapis.com': 'US',
   'finnhub.io': 'US',
@@ -405,7 +412,7 @@ const HOST_ORIGINS = Object.freeze({
   'status.stripe.com': 'US',
   'status.supabase.com': 'US',
   'status.twilio.com': 'US',
-  'storage.googleapis.com': 'GB',
+  'storage.googleapis.com': 'US',
   'stratechery.com': 'US',
   'taskandpurpose.com': 'US',
   'tech.eu': 'EU',
@@ -603,6 +610,10 @@ const HOST_ORIGINS = Object.freeze({
   'middleeasteye.net': 'GB',
   'news.sky.com': 'GB',
   'noaadata.apps.nsidc.org': 'US',
+  'nsidc.org': 'US',
+  'cmr.earthdata.nasa.gov': 'US',
+  'sliderule.slideruleearth.io': 'US',
+  'slideruleearth.io': 'US',
   'nytimes.com': 'US',
   'timesofisrael.com': 'IL',
   'washingtonpost.com': 'US',

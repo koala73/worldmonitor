@@ -294,6 +294,27 @@ jobs:
             echo "SKIP_SIGNING=true" >> $GITHUB_ENV
           fi
 
+      # The bundler downloads its AppImage tools from GitHub with no retry, so
+      # one 504 fails the leg (Desktop Canary run 42567226797). Restore them
+      # from cache and fetch any missing one with retries before building; the
+      # bundler skips tools that already exist. The key rotates monthly so the
+      # tools served from moving `master`/`continuous` URLs are refreshed.
+      - name: AppImage tool cache month
+        id: appimage-tools-month
+        if: contains(matrix.platform, 'ubuntu')
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/tauri
+          key: tauri-appimage-tools-${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}-${{ steps.appimage-tools-month.outputs.month }}-${{ hashFiles('scripts/prefetch-appimage-tools.sh') }}
+
+      - name: Prefetch Tauri AppImage tools
+        if: contains(matrix.platform, 'ubuntu')
+        run: bash scripts/prefetch-appimage-tools.sh ${{ matrix.label == 'Linux-ARM64' && 'aarch64' || 'x86_64' }}
+
       # ── Build with tauri-action ──
       # Signed builds: only when Apple signing secrets are valid and imported
       # Unsigned builds: fallback when no signing (Windows always uses this path)

@@ -859,7 +859,7 @@ describe('ensureInlineTypedInput (fixture)', () => {
     // API contract states on every operation.
     assert.equal(
       restored.description,
-      'JMESPath; 1024 UTF-8 bytes; 256 KB output cap.',
+      '1024 UTF-8 bytes, 256 KB output cap.',
     );
     assert.ok(
       Buffer.byteLength(restored.description, 'utf8') <= INLINE_DESCRIPTION_MAX_BYTES,
@@ -1026,7 +1026,8 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     // the 2 idempotency headers (review is exempt from replay). #8721 adds
     // feedback submit-report, which carries the same 2 headers.
     assert.deepEqual(headerStats, { hoisted: 4, replacedRefs: 43 });
-    assert.equal(int64Stats.replacedRefs, 53);
+    // 54: list-security-advisories fetchedAt (travel advisory map) shares it.
+    assert.equal(int64Stats.replacedRefs, 54);
     // Described int64 fields (own comment + generated warning) keep their
     // comment beside the shared $ref; a regression to zero would silently give
     // back ~4 KB of the scanner budget.
@@ -1164,6 +1165,15 @@ describe('public OpenAPI dedupe (real bundle)', () => {
         'the newest per-op injection instead of raising this budget. ' +
         '`node scripts/openapi-capacity-report.mjs` ranks what is worth collapsing next.',
     );
+  });
+
+  it('keeps popup network enrichment in the full spec while excluding it from the scanner bundle', () => {
+    const path = '/api/cyber/v1/get-network-info';
+    const full = loadUnifiedOpenApiSpec();
+    assert.ok(full.paths[path]?.get, 'the endpoint remains documented in the YAML bundle');
+    const { spec } = buildBundle({ spec: full });
+    assert.equal(spec.paths[path], undefined);
+    assert.ok(spec.paths['/api/cyber/v1/list-cyber-threats']?.get, 'the cyber data API remains discoverable');
   });
 });
 

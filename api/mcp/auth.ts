@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -11,7 +12,8 @@ import { getClientRateLimitKey, hasCloudflareTransitProof } from '../_client-ip.
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { resolveMcpBudget } from './quota';
+import { resolveAccountMcpBudget, resolveMcpBudget, type McpBudget } from './quota';
+import { checkBurst } from '../../server/_shared/api-key-rate-limit';
 import {
   getBillingVerificationDenial,
   getEntitlements,
@@ -38,17 +40,20 @@ import type {
   AuthResolutionRejected,
   McpAuthContext,
   McpHandlerDeps,
+  McpPreCheckOptions,
   McpPreCheckResult,
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
 import {
   API_PLAN_REQUIRED_MESSAGE,
+  HANDSHAKE_NO_ACCOUNT_NEXT_STEP,
   SUBSCRIPTION_LAPSED_MESSAGE,
   buildMcpStructuredDenial,
   type McpStaticDenialReason,
 } from './upgrade';
 import { relayMcpCheckout } from './checkout';
+import { connectInstruction } from './host-policy';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -77,7 +82,7 @@ function getMcpRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp',
     analytics: false,
@@ -124,7 +129,7 @@ function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   const limiter = new Ratelimit({
-    redis: new Redis({ url, token, retry: false }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
@@ -139,7 +144,7 @@ function getMcpAnonRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpAnonRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp:anon',
     analytics: false,
@@ -240,10 +245,25 @@ export function mcpStructuredDenialResponse(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
-  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
+  opts?: {
+    wwwAuthError?: string;
+    message?: string;
+    code?: number;
+    status?: number;
+    /** Replaces the reason's default `nextStep`. `reason` never changes. */
+    nextStep?: string;
+    /** Additive `data` fields; they cannot replace `reason` or `upgradeUrl`. */
+    extraData?: Record<string, string>;
+  },
 ): Response {
   const built = buildMcpStructuredDenial({ reason });
-  const { data } = built;
+  const data: Record<string, unknown> = {
+    ...built.data,
+    ...(opts?.nextStep !== undefined ? { nextStep: opts.nextStep } : {}),
+  };
+  for (const [key, value] of Object.entries(opts?.extraData ?? {})) {
+    if (!(key in data)) data[key] = value;
+  }
   // A caller may keep its own, more specific `message` (e.g. the credential
   // mechanics on the auth-resolution 401s) while still gaining the machine-
   // readable `data`. Overriding the message never changes `data.reason`, so an
@@ -270,6 +290,32 @@ export function mcpStructuredDenialResponse(
       headers: withMcpNoStore(headers),
     },
   );
+}
+
+/** Where an agent or user reads how to connect each client. */
+export const MCP_SETUP_URL = 'https://www.worldmonitor.app/docs/mcp-quickstart';
+
+/**
+ * The refusal for a request with no credential at all. `handshake` marks the
+ * anonymous `initialize` and the GET discovery probe: a client refused there
+ * cannot call get_sources, so its generic `nextStep` leaves that tool out.
+ * Codex and Claude Code do not start sign-in from the 401 by themselves, so
+ * they get the exact step to run instead.
+ */
+export function mcpAnonymousRefusalResponse(
+  req: Request,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+  opts?: { handshake?: boolean },
+): Response {
+  const nextStep = connectInstruction(req) ?? (opts?.handshake ? HANDSHAKE_NO_ACCOUNT_NEXT_STEP : undefined);
+  return mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+    message: 'Sign-in required. Connect with OAuth (your client opens World Monitor sign-in; a free account works) '
+      + 'or send an API key in the X-WorldMonitor-Key header.',
+    nextStep,
+    extraData: { setupUrl: MCP_SETUP_URL },
+  });
 }
 
 function userKeyValidationBackpressureResponse(
@@ -403,6 +449,7 @@ export async function resolveAuthContext(
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
+  opts?: { handshake?: boolean },
 ): Promise<AuthResolution | AuthResolutionRejected> {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (authHeader.startsWith('Bearer ')) {
@@ -443,9 +490,7 @@ export async function resolveAuthContext(
     // every other denial does, which is what SERVER_INSTRUCTIONS advertises.
     return {
       ok: false,
-      response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
-        message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.',
-      }),
+      response: mcpAnonymousRefusalResponse(req, resourceMetadataUrl, corsHeaders, id, opts),
     };
   }
   const validKeys = getOperatorKeys();
@@ -516,6 +561,7 @@ export async function runProPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   // F12: Pro path is unusable without MCP_INTERNAL_HMAC_SECRET — every
   // tool fetch will throw inside buildAuthHeaders. Surface the misconfig
@@ -537,7 +583,7 @@ export async function runProPreChecks(
   const validation = await validateProMcpAuthorization(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
   if (!validation.ok) return validation;
 
-  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx, id);
+  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx, id, options);
 }
 
 /**
@@ -694,7 +740,7 @@ async function checkMcpEntitlementGate(
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
-  options: { requireApiAccess?: boolean } = {},
+  options: McpPreCheckOptions & { requireApiAccess?: boolean } = {},
 ): Promise<McpPreCheckResult> {
   /**
    * Availability failure, not a billing verdict. Mirrors the retryable shape
@@ -712,7 +758,9 @@ async function checkMcpEntitlementGate(
 
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
-    ent = await deps.getEntitlements(userId);
+    ent = options.requireTravelRiskShape
+      ? await deps.getEntitlements(userId, { requireTravelRiskShape: true })
+      : await deps.getEntitlements(userId);
   } catch (err) {
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, fingerprint: ['api/mcp', sentryStep, err instanceof Error ? err.name : 'Error'], ctx });
     // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
@@ -725,17 +773,23 @@ async function checkMcpEntitlementGate(
   // per-plan (API Business sells 300/min, everyone else 60), and a second
   // lookup on the hot path to learn it would be the round-trip KTD6 removed.
   const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
+  // An Enterprise contract member draws on the account's pool (shared with
+  // REST and with every other member) whatever API_RATE_LIMIT_ENFORCE says,
+  // and its burst is the account's.
+  const accountBudget = resolveAccountMcpBudget(ent?.account);
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    budget: {
+    budget: accountBudget ?? {
       ...resolveMcpBudget(
         ent?.features?.planLimits?.mcpCallsPerDay,
         ent?.features?.planLimits?.apiRequestsPerDay,
       ),
       ...((ent?.features?.tier ?? 0) >= 3 ? { enterprisePlan: true as const } : {}),
     },
-    burstPerMinute,
+    burstPerMinute: accountBudget?.account?.perMinuteBurst ?? burstPerMinute,
     ...(typeof ent?.planKey === 'string' ? { planKey: ent.planKey } : {}),
+    // #10451: only an explicit true grants it; a missing field is a plan without it.
+    ...(ent?.features?.travelRiskAssessment === true ? { travelRiskAssessment: true as const } : {}),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -825,6 +879,7 @@ export async function runUserKeyPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   // Same F12 posture as the OAuth door: identity-resolved user_key fetches
   // sign with the internal HMAC, so a missing secret must fail closed here
@@ -843,7 +898,7 @@ export async function runUserKeyPreChecks(
 
   const gate = await checkMcpEntitlementGate(
     context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id,
-    { requireApiAccess: true },
+    { ...options, requireApiAccess: true },
   );
   // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
   // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
@@ -867,12 +922,13 @@ export async function runContextPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
+  options: McpPreCheckOptions = {},
 ): Promise<McpPreCheckResult> {
   if (context.kind === 'pro') {
-    return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id, options);
   }
   if (context.kind === 'user_key') {
-    return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
+    return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id, options);
   }
   if (context.kind === 'free') {
     // U7: no entitlement to check — admission was already decided by the
@@ -900,13 +956,18 @@ export async function runContextPreChecks(
  *  with its pending request; the MCP schema's `RequestId` union is
  *  `string | number`, so a null id there fails client-side response validation
  *  outright. It defaults to null for the GET/SSE replay caller, which is a
- *  transport-level request carrying no JSON-RPC id to echo. */
+ *  transport-level request carrying no JSON-RPC id to echo.
+ *  `account` (an Enterprise contract member's budget pool): the call spends the
+ *  account's burst bucket — the same `checkBurst(perMinuteBurst, 'acct:<id>')`
+ *  bucket the gateway charges for the members' REST requests — instead of the
+ *  per-user MCP limiter. Protocol and panel scopes keep their own buckets. */
 export async function applyPerMinuteLimit(
   context: McpAuthContext,
   headers: Record<string, string> = {},
   perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
   id: unknown = null,
   scope?: McpMinuteScope,
+  account?: McpBudget['account'],
 ): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
@@ -945,6 +1006,22 @@ export async function applyPerMinuteLimit(
     // bounded. Keying an anonymous caller into the per-USER limiter would be
     // worse than useless — every free caller would share one bucket.
     return null;
+  }
+  if (account && !scope) {
+    // Fails open on an unavailable limiter like the per-user bucket below.
+    const burst = await checkBurst(account.perMinuteBurst, account.identity);
+    if (burst.ok !== false) return null;
+    emitMcpRateLimitHit(context, {
+      dimension: 'mcp_minute_burst',
+      limit: account.perMinuteBurst,
+      windowSeconds: 60,
+    });
+    return rpcError(
+      id,
+      -32029,
+      `Rate limit exceeded. Max ${account.perMinuteBurst} requests per minute per account, shared with REST API requests.`,
+      { ...headers, 'X-RateLimit-Limit': String(account.perMinuteBurst), 'X-RateLimit-Remaining': '0' },
+    );
   }
   if (scope?.kind === 'protocol') perMinute = MCP_PROTOCOL_BURST_PER_MINUTE;
   const rl = getMcpProMinRatelimit(perMinute);
@@ -1021,7 +1098,7 @@ function getMcpFreeTierRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpFreeTierRatelimit = new Ratelimit({
-    redis: new Redis({ url, token, retry: false }),
+    redis: new Redis(upstashRedisOptions(url, token, { retry: false })),
     limiter: Ratelimit.slidingWindow(FREE_TIER_LIMIT_PER_MINUTE, '60 s'),
     prefix: 'rl:mcp:free',
     analytics: false,

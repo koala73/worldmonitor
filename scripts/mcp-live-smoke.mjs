@@ -53,10 +53,12 @@
 //      lives in the CDN and is invisible to every in-process test, so the
 //      probe warms the cache with the plain GET first and only then issues
 //      the SSE GET.
-//   6. Listed production aliases (www, api, and the dashboard variants) are a
+//   6. Retired production aliases (www and the dashboard variants) are a
 //      client-migration surface: ordinary GET/HEAD 308 to apex, transport
 //      POST/SSE/replay 410. They are not additional servers and do not get a
-//      second capability walk.
+//      second capability walk. The served alias (api) keeps the transport for
+//      connectors already configured with it; it gets only the connect-time
+//      challenge probe, which must name its own OAuth document.
 //   7. Direct www `/api/mcp-proxy` liveness (OPTIONS 204 + anonymous GET 401).
 //      An apex redirect alone does not prove that function is healthy.
 //
@@ -86,6 +88,8 @@
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the canonical host list.
 //   MCP_SMOKE_ALIAS_HOSTS / MCP_SMOKE_VARIANT_HOSTS  override alias hosts
 //     (`tech` or a full origin). Empty string skips the alias group.
+//   MCP_SMOKE_SERVED_ALIAS_HOSTS  overrides the served-alias origin list. It
+//     defaults to api only when no host or alias override is set.
 //   MCP_SMOKE_PROXY_HOSTS  overrides the proxy liveness origin list.
 
 import { execFileSync } from 'node:child_process';
@@ -108,7 +112,10 @@ import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 const CANONICAL_ORIGIN = 'https://worldmonitor.app';
 const CANONICAL_MCP = `${CANONICAL_ORIGIN}/mcp`;
 const CANONICAL_LINK_RE = /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i;
-const DEFAULT_ALIAS_LABELS = ['www', 'api', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+const DEFAULT_ALIAS_LABELS = ['www', 'tech', 'finance', 'commodity', 'happy', 'energy'];
+// Served aliases keep the transport (shared/mcp-host-policy.ts). The smoke
+// checks their connect-time challenge names the alias's own OAuth document.
+const DEFAULT_SERVED_ALIAS_LABELS = ['api'];
 
 function csvList(raw) {
   return String(raw ?? '').split(',').map((part) => part.trim()).filter(Boolean);
@@ -130,6 +137,16 @@ if (aliasOverride !== undefined) {
   ALIAS_HOSTS = [];
 } else {
   ALIAS_HOSTS = DEFAULT_ALIAS_LABELS.map(toOrigin);
+}
+
+const servedAliasOverride = process.env.MCP_SMOKE_SERVED_ALIAS_HOSTS;
+let SERVED_ALIAS_HOSTS;
+if (servedAliasOverride !== undefined) {
+  SERVED_ALIAS_HOSTS = csvList(servedAliasOverride).map(toOrigin);
+} else if (hostsOverride || aliasOverride !== undefined) {
+  SERVED_ALIAS_HOSTS = [];
+} else {
+  SERVED_ALIAS_HOSTS = DEFAULT_SERVED_ALIAS_LABELS.map(toOrigin);
 }
 
 let PROXY_HOSTS;
@@ -305,7 +322,7 @@ async function rpc(host, method, params, { expectStatus = 200, label } = {}) {
 //    so an unauthenticated initialize MUST be refused — with the challenge that
 //    names this path's protected-resource document, and with the request id
 //    echoed (the header is checked first: a CDN-fabricated 401 lacks it).
-async function probeConnectChallenge(host) {
+async function probeConnectChallenge(host, group = 'canonical') {
   const check = `initialize on ${TRANSPORT_PATH} (anon → 401 challenge)`;
   checks += 1;
   const id = nextId++;
@@ -318,7 +335,7 @@ async function probeConnectChallenge(host) {
         jsonrpc: '2.0', id, method: 'initialize',
         params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'wm-mcp-live-smoke', version: '1.0' } },
       }),
-    }, { group: 'canonical', rpcMethod: 'initialize' }));
+    }, { group, rpcMethod: 'initialize' }));
   } catch (err) {
     throwIfRunBudgetExhausted(err);
     fail(host, check, `HANG/transport error inside the ${TIMEOUT_MS}ms budget: ${formatSafeError(err)}`);
@@ -533,20 +550,23 @@ async function walkHost(host) {
     fail(host, 'oauth metadata', `not served: ${formatSafeError(err)}`);
     return;
   }
-  // agent_auth.skill must equal <issuer>/auth.md and be served there without
-  // a redirect. On the apex that depends on the /auth.md exemption in the
+  // agent_auth.skill must name the apex /auth.md (every production metadata
+  // host points at that one copy) and be served there
+  // without a redirect. That depends on the /auth.md exemption in the
   // Cloudflare apex→www rule, which no in-process test can see.
   checks += 1;
   const skill = meta.agent_auth?.skill;
-  if (skill !== `${meta.issuer}/auth.md`) {
-    fail(host, 'agent_auth skill', `expected ${meta.issuer}/auth.md, got ${safeUrlLabel(skill)}`);
+  // Production hosts all name the apex copy; a local fixture names its own.
+  const skillOrigin = /^https:\/\/(?:[a-z0-9-]+\.)?worldmonitor\.app$/i.test(host) ? CANONICAL_ORIGIN : host;
+  if (skill !== `${skillOrigin}/auth.md`) {
+    fail(host, 'agent_auth skill', `expected ${skillOrigin}/auth.md, got ${safeUrlLabel(skill)}`);
   } else {
     try {
       const { res } = await timedFetch(skill, { headers: { Accept: 'text/markdown' } }, { group: 'canonical' });
       if (res.status !== 200 || !/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
         fail(host, 'agent_auth skill', `expected 200 markdown, got ${res.status} ${res.headers.get('content-type')} → ${safeUrlLabel(res.headers.get('location'))}`);
       } else {
-        ok(host, 'agent_auth skill', '200 markdown on the issuer origin');
+        ok(host, 'agent_auth skill', '200 markdown on the canonical host');
       }
     } catch (err) {
       throwIfRunBudgetExhausted(err);
@@ -580,57 +600,51 @@ async function walkHost(host) {
 // anonymous rate limiter (the discovery branch and the transport 405 both
 // return ahead of it), so they cost nothing against the shared 60/min bucket.
 async function probeDiscovery(host) {
-  // Plain GET /mcp — the "can Google read this?" shape.
-  checks += 1;
-  try {
-    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'canonical' });
-    if (res.status !== 200) {
-      fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `expected the markdown guide, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else if (!text.includes('World Monitor MCP Server')) {
-      fail(host, 'GET /mcp (crawler)', 'body is not the mcp-server.md guide');
-    } else {
-      ok(host, 'GET /mcp (crawler)', '200 markdown guide');
-    }
-  } catch (err) {
-    throwIfRunBudgetExhausted(err);
-    fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
-  }
+  // Plain GET and HEAD /mcp. The URL negotiates on Accept (#10519): an explicit
+  // text/html gets the HTML setup page, everything else (`*/*`, a bare fetch,
+  // a machine crawler) keeps the markdown guide. Both representations must be
+  // 200, no-store and varied on Accept / Last-Event-ID so no shared cache can
+  // replay either to a transport client.
+  const representations = [
+    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<title>\s*Connect to World Monitor MCP\s*<\/title>/i },
+    { label: 'crawler', accept: '*/*', type: /text\/markdown/i, name: 'markdown guide', body: /World Monitor MCP Server/ },
+  ];
+  for (const rep of representations) {
+    const getCheck = `GET /mcp (${rep.label})`;
+    const headCheck = `HEAD /mcp (${rep.label})`;
+    const contract = (res) => {
+      if (res.status !== 200) return `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`;
+      if (!rep.type.test(res.headers.get('content-type') ?? '')) return `expected the ${rep.name}, got content-type ${res.headers.get('content-type')}`;
+      if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) return `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`;
+      if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) return `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`;
+      if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) return `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`;
+      return null;
+    };
 
-  // HEAD must expose the same discovery metadata without a response body.
-  // This is a separate deployed method path, so unit coverage cannot prove
-  // that the CDN and routing layers preserve it.
-  checks += 1;
-  try {
-    const { res } = await timedFetch(`${host}/mcp`, {
-      method: 'HEAD',
-      headers: { Accept: 'text/html,*/*' },
-    }, { group: 'canonical' });
-    if (res.status !== 200) {
-      fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `expected markdown metadata, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else if (!CANONICAL_LINK_RE.test(res.headers.get('link') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
-    } else {
-      ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
+    checks += 1;
+    try {
+      const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: rep.accept } }, { group: 'canonical' });
+      const problem = contract(res) ?? (rep.body.test(text) ? null : `body is not the ${rep.name}`);
+      if (problem) fail(host, getCheck, problem);
+      else ok(host, getCheck, `200 ${rep.name}`);
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, getCheck, `HANG/transport error: ${formatSafeError(err)}`);
     }
-  } catch (err) {
-    throwIfRunBudgetExhausted(err);
-    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
+
+    // HEAD is a separate deployed method path, so unit coverage cannot prove
+    // that the CDN and routing layers preserve it.
+    checks += 1;
+    try {
+      const { res } = await timedFetch(`${host}/mcp`, { method: 'HEAD', headers: { Accept: rep.accept } }, { group: 'canonical' });
+      const problem = contract(res)
+        ?? (CANONICAL_LINK_RE.test(res.headers.get('link') ?? '') ? null : `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
+      if (problem) fail(host, headCheck, problem);
+      else ok(host, headCheck, `200 ${rep.name} metadata`);
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, headCheck, `HANG/transport error: ${formatSafeError(err)}`);
+    }
   }
 
   // The canary: an SSE stream-open on the URL just warmed must still be 405.
@@ -918,6 +932,10 @@ async function main() {
       await probeAliasMigration(host);
       stopIfRunBudgetExhausted();
     }
+    for (const host of SERVED_ALIAS_HOSTS) {
+      await probeConnectChallenge(host, 'aliases');
+      stopIfRunBudgetExhausted();
+    }
     completeGroup('aliases');
 
     console.log('\n── proxy ──');
@@ -931,7 +949,7 @@ async function main() {
     fail(RUNNER_LABEL, 'execution', formatSafeError(error));
   }
 
-  console.log(`\n${checks} checks across ${HOSTS.length} canonical, ${ALIAS_HOSTS.length} alias, ${PROXY_HOSTS.length} proxy origin(s); ${failures.length} failure(s).`);
+  console.log(`\n${checks} checks across ${HOSTS.length} canonical, ${ALIAS_HOSTS.length} alias, ${SERVED_ALIAS_HOSTS.length} served alias, ${PROXY_HOSTS.length} proxy origin(s); ${failures.length} failure(s).`);
   if (failures.length > 0) {
     console.log('\nFAILURES:');
     for (const failure of failures) console.log(`  [${failure.host}] ${failure.check}: ${failure.detail}`);

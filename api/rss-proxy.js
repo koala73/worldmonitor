@@ -270,7 +270,7 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'GET, OPTIONS' });
   }
 
   const keyCheck = await validateApiKey(req);

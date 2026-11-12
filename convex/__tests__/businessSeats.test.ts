@@ -2016,3 +2016,304 @@ describe("payments businessSeats email actions — Resend failure handling", () 
     fetchMock.mockRestore();
   });
 });
+
+describe("payments businessSeats extendBusinessInvite", () => {
+  const SUB_ID = "sub_business_extend_001";
+  const HOUR_MS = 60 * 60 * 1000;
+
+  async function seedExtendable(
+    t: ReturnType<typeof convexTest>,
+    opts: { expiresAt: number; status?: "pending" | "accepted" | "revoked"; ownerCustomer?: boolean },
+  ) {
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: SUB_ID,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    return await t.run(async (ctx) => {
+      if (opts.ownerCustomer !== false) {
+        await ctx.db.insert("customers", {
+          userId: OWNER_ID,
+          email: "owner@acme.com",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+      return await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: SUB_ID,
+        ownerUserId: OWNER_ID,
+        inviteeEmail: "troy@acme.com",
+        domain: "acme.com",
+        status: opts.status ?? "pending",
+        createdAt: NOW - 14 * DAY_MS,
+        expiresAt: opts.expiresAt,
+      });
+    });
+  }
+
+  function mockResend() {
+    process.env.RESEND_API_KEY = "test-resend-key";
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "resend-ok" }), { status: 200 }),
+    );
+  }
+
+  function emailedHtml(fetchMock: ReturnType<typeof mockResend>): string {
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    return (JSON.parse(String(init.body)) as { html: string }).html;
+  }
+
+  test("moves the expiry, emails a new link that works after the original expiry, and the old link does not", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const originalExpiry = NOW + 5 * HOUR_MS;
+    const grantId = await seedExtendable(t, { expiresAt: originalExpiry });
+    const oldToken = await signBusinessInviteToken(grantId, originalExpiry);
+
+    const result = await t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 });
+    expect(result.expiresAt).toBe(originalExpiry + 24 * HOUR_MS);
+    const patched = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(patched?.expiresAt).toBe(originalExpiry + 24 * HOUR_MS);
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const html = emailedHtml(fetchMock);
+    expect(html).toContain("This invite expires on ");
+    expect(html).not.toContain("expires in 14 days");
+    const newToken = decodeURIComponent(/[?&]token=([^"&]+)/.exec(html)![1]!);
+    expect(newToken.split(".")[1]).toBe(String(originalExpiry + 24 * HOUR_MS));
+
+    // Past the original expiry, inside the extension.
+    vi.setSystemTime(originalExpiry + HOUR_MS);
+    const invitee = t.withIdentity({ subject: "user_troy", tokenIdentifier: "clerk|user_troy", email: "troy@acme.com" });
+    await expect(
+      invitee.mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: oldToken }),
+    ).rejects.toThrow(/INVALID_INVITE_TOKEN/);
+    await invitee.mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token: newToken });
+    const accepted = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(accepted?.status).toBe("accepted");
+    fetchMock.mockRestore();
+  });
+
+  test("a lapsed invite is extended from now, not from its old expiry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW - 3 * HOUR_MS });
+
+    const result = await t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 });
+    expect(result.expiresAt).toBe(NOW + 24 * HOUR_MS);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    fetchMock.mockRestore();
+  });
+
+  test("reviving a lapsed invite respects the seat cap", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW - HOUR_MS });
+    for (const name of ["a", "b", "c", "d"]) {
+      await seedAcceptedGrantWithInvitee(t, {
+        businessSubscriptionId: SUB_ID,
+        inviteeUserId: `user_${name}`,
+        inviteeEmail: `${name}@acme.com`,
+        domain: "acme.com",
+      });
+    }
+    await expect(
+      t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+    ).rejects.toThrow(/SEAT_CAP_REACHED/);
+  });
+
+  test("an unexpired pending invite already holds its seat, so extending it at the cap is allowed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS });
+    for (const name of ["a", "b", "c"]) {
+      await seedAcceptedGrantWithInvitee(t, {
+        businessSubscriptionId: SUB_ID,
+        inviteeUserId: `user_${name}`,
+        inviteeEmail: `${name}@acme.com`,
+        domain: "acme.com",
+      });
+    }
+    await t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    fetchMock.mockRestore();
+  });
+
+  test("rejects a grant that is not pending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    for (const status of ["accepted", "revoked"] as const) {
+      const t = convexTest(schema, modules);
+      const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS, status });
+      await expect(
+        t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+      ).rejects.toThrow(/INVITE_NOT_PENDING/);
+    }
+  });
+
+  test("rejects hours outside 0..336", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS });
+    for (const hours of [-1, 1.5, 337]) {
+      await expect(
+        t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours }),
+      ).rejects.toThrow(/INVALID_EXTENSION_HOURS/);
+    }
+    const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(unchanged?.expiresAt).toBe(NOW + HOUR_MS);
+  });
+
+  test("rejects when the Business plan has lapsed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS });
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", SUB_ID))
+        .unique();
+      await ctx.db.patch(sub!._id, { status: "expired", currentPeriodEnd: NOW - DAY_MS });
+    });
+    await expect(
+      t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+    ).rejects.toThrow(/BUSINESS_NOT_ACTIVE/);
+  });
+
+  test("rejects when the owner's email is unknown, without moving the expiry", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS, ownerCustomer: false });
+    await expect(
+      t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+    ).rejects.toThrow(/OWNER_EMAIL_UNAVAILABLE/);
+    const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(unchanged?.expiresAt).toBe(NOW + HOUR_MS);
+  });
+
+  test("hours 0 re-sends a link for the current expiry without extending", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const expiry = NOW + 5 * HOUR_MS;
+    const grantId = await seedExtendable(t, { expiresAt: expiry });
+
+    const result = await t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 0 });
+    expect(result.expiresAt).toBe(expiry);
+    const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(unchanged?.expiresAt).toBe(expiry);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const token = decodeURIComponent(/[?&]token=([^"&]+)/.exec(emailedHtml(fetchMock))![1]!);
+    expect(token.split(".")[1]).toBe(String(expiry));
+    fetchMock.mockRestore();
+  });
+
+  test("hours 0 refuses a lapsed invite", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW - HOUR_MS });
+    await expect(
+      t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 0 }),
+    ).rejects.toThrow(/INVITE_EXPIRED/);
+  });
+
+  test("refuses when the owner already re-invited the same address", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    for (const sibling of ["pending", "accepted"] as const) {
+      const t = convexTest(schema, modules);
+      const grantId = await seedExtendable(t, { expiresAt: NOW - HOUR_MS });
+      await t.run(async (ctx) => {
+        await ctx.db.insert("businessProGrants", {
+          businessSubscriptionId: SUB_ID,
+          ownerUserId: OWNER_ID,
+          inviteeEmail: "Troy@acme.com",
+          domain: "acme.com",
+          status: sibling,
+          createdAt: NOW,
+          expiresAt: NOW + 14 * DAY_MS,
+        });
+      });
+      await expect(
+        t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+      ).rejects.toThrow(/DUPLICATE_INVITE/);
+      const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
+      expect(unchanged?.expiresAt).toBe(NOW - HOUR_MS);
+    }
+  });
+
+  test("a lapsed or revoked earlier invite for the same address does not block", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS });
+    await t.run(async (ctx) => {
+      for (const [status, expiresAt] of [["pending", NOW - DAY_MS], ["revoked", NOW + DAY_MS]] as const) {
+        await ctx.db.insert("businessProGrants", {
+          businessSubscriptionId: SUB_ID,
+          ownerUserId: OWNER_ID,
+          inviteeEmail: "troy@acme.com",
+          domain: "acme.com",
+          status,
+          createdAt: NOW - 20 * DAY_MS,
+          expiresAt,
+        });
+      }
+    });
+    await t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    fetchMock.mockRestore();
+  });
+
+  test("refuses while the owner's account is being deleted", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const grantId = await seedExtendable(t, { expiresAt: NOW + HOUR_MS });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("accountDeletions", {
+        userId: OWNER_ID,
+        userIdHash: "owner-hash",
+        source: "self",
+        status: "pending",
+        step: "grants",
+        dodoSubscriptionIds: [SUB_ID],
+        cancelledDodoSubscriptionIds: [],
+        startedAt: NOW - 2,
+        updatedAt: NOW - 1,
+      });
+    });
+    await expect(
+      t.mutation(internal.payments.businessSeats.extendBusinessInvite, { grantId, hours: 24 }),
+    ).rejects.toThrow(/ACCOUNT_DELETION_IN_PROGRESS/);
+    const unchanged = await t.run(async (ctx) => ctx.db.get(grantId));
+    expect(unchanged?.expiresAt).toBe(NOW + HOUR_MS);
+  });
+});

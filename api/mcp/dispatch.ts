@@ -521,6 +521,9 @@ export async function dispatchToolsCall(
   // execution error the model can read and correct, instead of -32602. Only
   // tools/call on 2025-11-25+ opts in; resources/read re-wraps JSON-RPC errors.
   inputErrorsAsToolResults?: boolean,
+  // The pre-check read `travelRiskAssessment: true` off the caller's
+  // entitlement (#10451). Omitted → tools that require it are refused.
+  travelRiskAssessment?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
   // Every argument-validation failure goes through here. Protocol errors (a
@@ -543,7 +546,12 @@ export async function dispatchToolsCall(
   const deferredBurst = toolBurstPerMinute !== undefined && dedicatedPanel && typeof p?.name === 'string' && p.arguments?.panel_request !== undefined
     && p.name !== 'open_country_brief' && p.name !== 'open_news_dashboard' && p.name !== 'get_mcp_allowance';
   if (toolBurstPerMinute !== undefined && !deferredBurst) {
-    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined);
+    // An Enterprise contract member's data calls spend the account's burst,
+    // which its REST requests share. The quota-exempt metadata tools fetch no
+    // data, so they stay on the per-user limiter (get_mcp_allowance on its
+    // protocol bucket).
+    const accountBurst = p?.name === 'describe_tool' || p?.name === START_UPGRADE_TOOL ? undefined : budget?.account;
+    const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id, p?.name === 'get_mcp_allowance' ? { kind: 'protocol' } : undefined, accountBurst);
     if (limited) return limited;
   }
   if (!p || typeof p.name !== 'string') {
@@ -659,6 +667,16 @@ export async function dispatchToolsCall(
   // from metering below: `describe_tool` has an `_execute`, but it is a purely
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
+  //
+  // A plan-feature tool (#10451) is refused first, so a free account is told
+  // which plans include it rather than the generic Pro copy below.
+  if (tool._planFeature === 'travelRiskAssessment' && context.kind !== 'env_key' && travelRiskAssessment !== true) {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return mcpDenialResponse({ reason: 'upgrade-required', planFeature: tool._planFeature, upgradeFrom }, -32002, 403, id, corsHeaders);
+  }
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
     return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
   }
@@ -960,13 +978,23 @@ export async function dispatchToolsCall(
           // so this exhaustion may be traffic the agent never made. It rides
           // `data` like every other denial rather than leaving the agent to
           // string-match, and matches the field the allowance resource reports.
+          // A contract account's pool rejects only at its safety limit, and
+          // the denial says so with the contract allowance beside it, as the
+          // REST 429 does (server/_shared/account-rate-limit.ts).
           return mcpDenialResponse(
-            {
-              reason: 'quota-exceeded',
-              limit: reservation.floor,
-              sharedWithRestApi: isSharedRestCounter(budget),
-              upgradeFrom,
-            },
+            budget?.account && budget.displayAllowance !== undefined
+              ? {
+                reason: 'quota-exceeded',
+                limit: reservation.floor,
+                allowance: budget.displayAllowance,
+                sharedWithRestApi: true,
+              }
+              : {
+                reason: 'quota-exceeded',
+                limit: reservation.floor,
+                sharedWithRestApi: isSharedRestCounter(budget),
+                upgradeFrom,
+              },
             -32029,
             429,
             id,
@@ -976,6 +1004,12 @@ export async function dispatchToolsCall(
         }
         // Hard-cap correctness: NEVER dispatch on reservation failure.
         return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      if (budget?.account && usage) {
+        // Attribute the pooled charge for billing: past the contract
+        // allowance the call is served and counted as overage.
+        usage.accountId = budget.account.id;
+        usage.overage = budget.displayAllowance !== undefined && reservation.newCount > budget.displayAllowance;
       }
       if (budget?.enterprisePlan) {
         reportHighUsageIfCrossed({

@@ -3,7 +3,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-> Version: 2.11.7 · Last updated: 2026-11-01
+> Version: 2.11.8 · Last updated: 2026-11-04
 
 World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 169 of 196 countries.
 
@@ -52,6 +52,7 @@ The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and 
 - [Transit Anomaly](#corpus-transit-anomaly)
 - [Country Exposure](#corpus-country-exposure)
 - [Provenance](#corpus-provenance)
+- [Open data](#corpus-open-data)
 - [Known Limits](#corpus-known-limits)
 - [Corrections](#corpus-corrections)
 - [Chokepoint explainers](#corpus-chokepoint-explainers)
@@ -302,7 +303,7 @@ Unique layers: stock exchanges, financial centers, and central-bank and supranat
 <a id="corpus-data-sources"></a>
 ## Data Sources
 
-The live inventory currently covers 829 attributed providers across 847 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution ledger](https://www.worldmonitor.app/docs/source-attribution) records each host's observed surface, license posture, required attribution, and review status.
+The live inventory currently covers 854 attributed providers across 876 observed source hosts. The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) maps coverage by domain, and the [source attribution page](https://www.worldmonitor.app/docs/source-attribution) lists hosts and observed surfaces. The [committed attribution manifest](https://github.com/koala73/worldmonitor/blob/main/shared/source-attribution-manifest.json) records license posture, required attribution, and review status, including terms-review entries.
 
 - ACLED (Armed Conflict Location & Event Data), self-hosted deployments with ACLED credentials only: Protests, riots, conflicts — 30-day window, tokenized API
 - GDELT (Global Database of Events, Language, and Tone): Geo-events, protest keywords, topic feeds
@@ -433,9 +434,9 @@ The sections below are produced by `npm run build:llms-full` from the source cat
 <a id="corpus-source-provider-directory"></a>
 ## Source provider directory
 
-World Monitor publishes 829 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
+World Monitor publishes 854 named providers across 18 source catalog pages. Each linked page contains provider names, source hosts, origins and coverage in static HTML; no search or JavaScript is required.
 
-- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 40 providers.
+- [Geopolitics & Conflict](https://www.worldmonitor.app/sources/geopolitics/): 46 providers.
 - [Military & Strategic](https://www.worldmonitor.app/sources/military/): 22 providers.
 - [News & OSINT](https://www.worldmonitor.app/sources/news/): 60 providers.
 - [News & OSINT — page 2](https://www.worldmonitor.app/sources/news/page/2/): 60 providers.
@@ -444,15 +445,15 @@ World Monitor publishes 829 named providers across 18 source catalog pages. Each
 - [News & OSINT — page 5](https://www.worldmonitor.app/sources/news/page/5/): 60 providers.
 - [News & OSINT — page 6](https://www.worldmonitor.app/sources/news/page/6/): 60 providers.
 - [News & OSINT — page 7](https://www.worldmonitor.app/sources/news/page/7/): 60 providers.
-- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 52 providers.
+- [News & OSINT — page 8](https://www.worldmonitor.app/sources/news/page/8/): 54 providers.
 - [Finance & Economics](https://www.worldmonitor.app/sources/finance/): 60 providers.
-- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 26 providers.
-- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 46 providers.
-- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 54 providers.
-- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 48 providers.
+- [Finance & Economics — page 2](https://www.worldmonitor.app/sources/finance/page/2/): 38 providers.
+- [Energy & Commodities](https://www.worldmonitor.app/sources/energy/): 49 providers.
+- [Infrastructure & Cyber](https://www.worldmonitor.app/sources/infrastructure/): 55 providers.
+- [Environment & Disasters](https://www.worldmonitor.app/sources/environment/): 50 providers.
 - [Aviation & Airspace](https://www.worldmonitor.app/sources/aviation/): 15 providers.
 - [China Coverage](https://www.worldmonitor.app/sources/china/): 14 providers.
-- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 32 providers.
+- [Tech Ecosystem](https://www.worldmonitor.app/sources/technology/): 31 providers.
 
 <a id="corpus-comparisons"></a>
 ## Comparisons
@@ -880,6 +881,12 @@ reported as zero flow.
 The `disrupted` boolean is separate from the color badge: it is true when each
 of the latest three individual days is below 85% of the same `baseline90d`.
 
+`latestDate` is the last PortWatch day the 7-day window covers. PortWatch
+publishes with a lag of several days (8-9 days in November 2026) and not every
+day, so `flowRatio` can stay the same across several days of requests. Read
+`latestDate` to see how current the ratio is. It is an empty string on an
+estimate cached before the field existed.
+
 Each published flow estimate may also include live hazard context from
 `portwatch:disruptions:active:v1`. The seeder looks for the nearest active
 GDACS `RED` or `ORANGE` alert within 500 km of the supported chokepoint and
@@ -1028,6 +1035,25 @@ Refresh cadence:
 - `supply_chain:chokepoints:v4`: status warm-ping every 6 minutes.
 - `supply_chain:transit-summaries:v1`: AIS relay compact transit summary.
 
+<a id="corpus-open-data"></a>
+## Open data
+
+The daily status of every tracked chokepoint is published as an open dataset under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). It needs no key or
+signup.
+
+- [Latest snapshot, JSON](https://www.worldmonitor.app/data/v1/chokepoints/latest.json)
+- [Latest snapshot, CSV](https://www.worldmonitor.app/data/v1/chokepoints/latest.csv)
+- [Available dates](https://www.worldmonitor.app/data/v1/chokepoints/index.json)
+- [Datasheet](https://www.worldmonitor.app/data/v1/chokepoints/README.md): columns, withheld fields, licence and limits
+- [JSON Schema](https://www.worldmonitor.app/data/v1/chokepoints/schema.json)
+
+One snapshot is published a day, at about 06:23 UTC, from the public
+`GetChokepointStatus` response this page describes. Each day also keeps a dated
+file (`YYYY-MM-DD.json` and `.csv`), and an earlier day is never rewritten.
+Third-party figures such as the EIA baselines and raw PortWatch counts are not
+in the dataset. The datasheet lists every withheld field and the reason.
+
 <a id="corpus-known-limits"></a>
 ## Known Limits
 
@@ -1060,7 +1086,7 @@ A maritime chokepoint is a narrow passage where a large share of global trade, e
 
 Chokepoints matter because rerouting is expensive, slow, or sometimes impossible. When a canal, strait, or sea lane is disrupted, the effects can move from vessel schedules to freight rates, commodity prices, insurance costs, factory inventories, and national security planning.
 
-The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and Taiwan Strait. But the operational question is not just "is this place famous?" It is:
+The familiar examples are the Strait of Hormuz, Suez Canal, Panama Canal, Bab el-Mandeb, Strait of Malacca, Bosporus, and [Taiwan Strait](https://www.worldmonitor.app/crises/taiwan-strait-tensions/). But the operational question is not just "is this place famous?" It is:
 
 > Is the passage strategically concentrated, exposed to disruption, and connected to a trade or energy flow that matters?
 
@@ -1156,7 +1182,7 @@ For operational follow-through, connect this explainer to the [supply-chain scen
 
 WorldMonitor's chokepoint status combines Redis-backed transit summaries, flow estimates, navigational warnings, AIS disruption matching, and a static threat taxonomy. Upstream gaps are surfaced as unavailable data rather than silently turned into calm conditions.
 
-The model has known limits. AIS coverage can degrade near conflict zones or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
+The model has known limits. AIS coverage can degrade near [conflict zones](/blog/posts/track-global-conflicts-in-real-time/) or regions with jamming. Only the seven energy-baseline waterways have live oil/gas flow estimates today. Baseline values are used to convert observed ratios into flow estimates; they are not a promise that live observations perfectly capture every vessel.
 
 For independently published baselines and current definitions, see the U.S. Energy Information Administration's [World Oil Transit Chokepoints analysis](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/).
 
@@ -1208,7 +1234,7 @@ The chart tells the story: tanker and cargo traffic that had been steady at 40-7
 <a id="corpus-thirteen-maritime-chokepoints-monitored-in-real-time"></a>
 ## Thirteen Maritime Chokepoints Monitored in Real Time
 
-The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical maritime chokepoints, each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
+The Hormuz crisis was the most severe in this snapshot, but it was not the only corridor under pressure. World Monitor tracks 13 critical [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), each scored by disruption level, vessel traffic, and [conflict intensity](/blog/posts/track-global-conflicts-in-real-time/):
 
 The following table highlights eight of the 13 monitored corridors as of mid-March 2026. Open a corridor name to check its latest published observations; the table remains a dated case study:
 
@@ -1277,7 +1303,7 @@ When the Strait of Hormuz closes, the trade policy data shows the second-order e
 <a id="corpus-critical-minerals-concentration-risk"></a>
 ## Critical Minerals: Concentration Risk
 
-Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the HHI (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
+Some supply chains cannot be rerouted because the supply itself is concentrated in a handful of countries. The Critical Minerals tab tracks this concentration risk using the [HHI](/blog/posts/critical-minerals-hhi-supply-risk-explained/) (Herfindahl-Hirschman Index), where anything above 2,500 indicates high concentration:
 
 | Mineral | Top Producer | Share | HHI Score | Risk |
 |---------|-------------|-------|-----------|------|
@@ -1341,13 +1367,13 @@ World Monitor monitors its canonical waterway registry, including Hormuz, Malacc
 <a id="corpus-blog-site-src-content-blog-energy-shock-monitoring-chokepoints-worldmonitor-md"></a>
 ### blog-site/src/content/blog/energy-shock-monitoring-chokepoints-worldmonitor.md
 
-An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
+An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a [chokepoint](/blog/posts/what-is-a-maritime-chokepoint/). By the time the price chart explains it, the operational window has already narrowed.
 
-WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: maritime chokepoints, fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
+WorldMonitor helps energy analysts watch the chain before it becomes one number on a terminal: [maritime chokepoints](https://www.worldmonitor.app/chokepoints/), fuel shortages, energy disruptions, commodity prices, country risk, news intelligence, and policy response. For the route side of the problem, start with the guide to [tracking chokepoints and freight costs](/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/); for the market side, pair it with [real-time market intelligence for traders](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/).
 
 This is a practical workflow for monitoring energy-shock risk.
 
-For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, Bab el-Mandeb, and the Cape of Good Hope. Its figures describe that report's observation period, not current traffic.
+For a worked example, open the [Strait of Hormuz tracker](https://www.worldmonitor.app/chokepoints/strait-of-hormuz/) to inspect its latest published transit and disruption readings. The [historical Strait of Hormuz Transit Report for July 2026](https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/) provides a dated comparison with Suez, [Bab el-Mandeb](https://www.worldmonitor.app/chokepoints/bab-el-mandeb/), and the [Cape of Good Hope](https://www.worldmonitor.app/chokepoints/cape-of-good-hope/). Its figures describe that report's observation period, not current traffic.
 
 For country context, open the [Iran](https://www.worldmonitor.app/countries/iran/) and [Oman](https://www.worldmonitor.app/countries/oman/) profiles. The [Gulf security tracker](https://www.worldmonitor.app/crises/hormuz-gulf-security/) summarizes conflict data for its stated regional coverage. The separate [Iran–Israel escalation tracker](https://www.worldmonitor.app/crises/iran-israel-escalation/) covers those two countries only.
 

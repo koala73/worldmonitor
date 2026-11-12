@@ -55,7 +55,7 @@ const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Ke
 // This list REPLACES the function's own on every api.worldmonitor.app
 // response, so a header missing here is unreadable cross-origin no matter what
 // api/_cors.js says. tests/cors-fail-closed.test.mts pins set equality.
-const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
+const EXPOSE_HEADERS = 'Allow, Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, Location, X-Billing-Verification, RateLimit, RateLimit-Policy, RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Mode, X-Wm-Upstream-Timeout, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox, Link, Deprecation, Sunset';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -331,9 +331,10 @@ const STORY_FETCH_OPTIONS = {
 // AND the U-K4 hedge, so there is exactly one origin+CORS implementation to keep correct.
 async function passThroughToOrigin(request, url, corsHeadersForStatus) {
   try {
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]);
     const response = url.pathname === '/api/story'
-      ? await fetch(request, STORY_FETCH_OPTIONS)
-      : await fetch(request);
+      ? await fetch(request, { ...STORY_FETCH_OPTIONS, signal })
+      : await fetch(request, { signal });
     const corsHeaders = typeof corsHeadersForStatus === 'function'
       ? corsHeadersForStatus(response.status)
       : corsHeadersForStatus;
@@ -404,7 +405,7 @@ export default {
     maybeShadowKvRead(request, url, env, ctx);
 
     if (!url.pathname.startsWith('/api/')) {
-      return fetch(request);
+      return fetch(request, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]) });
     }
 
     // Paths whose Vercel handler owns a wider CORS policy (MCP, OAuth,
@@ -413,7 +414,7 @@ export default {
     // external clients like https://claude.ai would see the canonical
     // worldmonitor.app fallback origin echo and the browser would block.
     if (hasPublicCorsPolicy(url.pathname)) {
-      return fetch(request);
+      return fetch(request, { signal: AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]) });
     }
 
     const origin = request.headers.get('Origin') || '';

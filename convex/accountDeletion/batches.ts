@@ -45,6 +45,10 @@ export const PERSONAL_DELETE_TABLES = [
   "checkoutSessionEvents",
   "followedCountriesUserMeta",
   "agentFeedback",
+  // Appended next to the end: in-flight deletions store a table index, and an
+  // insert earlier in the list would make them skip a table.
+  "enterpriseMembers",
+  "proBusinessUpgradeAdmissions",
   "users",
 ] as const;
 
@@ -164,6 +168,16 @@ async function takePersonalRows(
     case "followedCountriesUserMeta":
       return ctx.db
         .query("followedCountriesUserMeta")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "enterpriseMembers":
+      return ctx.db
+        .query("enterpriseMembers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(limit);
+    case "proBusinessUpgradeAdmissions":
+      return ctx.db
+        .query("proBusinessUpgradeAdmissions")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(limit);
     case "users":
@@ -409,7 +423,43 @@ async function eraseGrants(
     }
   }
   const leftover = await collectGrantIds(ctx, deletion);
-  return { writes, done: leftover.length === 0 };
+  if (leftover.length > 0) return { writes, done: false };
+  return eraseOwnedTeamDashboards(ctx, deletion, budget, writes);
+}
+
+/**
+ * An API Business team ends with its owner's account (the seats above are
+ * gone and the subscriptions are cancelled), so the dashboards it shared go
+ * too. Enterprise dashboards belong to the contract account and stay.
+ */
+async function eraseOwnedTeamDashboards(
+  ctx: MutationCtx,
+  deletion: DeletionDoc,
+  budget: number,
+  writes: number,
+): Promise<{ writes: number; done: boolean }> {
+  for (const dodoSubscriptionId of deletion.dodoSubscriptionIds ?? []) {
+    const teamKey = `business:${dodoSubscriptionId}`;
+    while (writes < budget) {
+      const rows = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .take(budget - writes);
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        await ctx.db.delete(row._id);
+        writes += 1;
+      }
+    }
+    if (writes >= budget) {
+      const more = await ctx.db
+        .query("teamDashboards")
+        .withIndex("by_team_variant", (q) => q.eq("teamKey", teamKey))
+        .first();
+      if (more) return { writes, done: false };
+    }
+  }
+  return { writes, done: true };
 }
 
 async function anonymizeBilling(
@@ -586,6 +636,23 @@ async function eraseEmailKeyed(
     if (writes >= budget) return { writes, done: false };
   }
 
+  // Enterprise invites addressed to this subject (convex/enterpriseSeats.ts).
+  // Rows they accepted carry their userId and went in the personal pass; this
+  // catches pending or withdrawn invites that only hold the address. A row
+  // bound to another user is that user's seat (an accepted row keeps the
+  // invited address, which its holder may have since given up), so an address
+  // match alone never deletes it. An address has only a handful of rows.
+  const invites = (await ctx.db
+    .query("enterpriseMembers")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .collect())
+    .filter((row) => !row.userId || row.userId === deletion.userId);
+  for (const row of invites) {
+    await ctx.db.delete(row._id);
+    writes += 1;
+    if (writes >= budget) return { writes, done: false };
+  }
+
   const leftoverReg = await ctx.db
     .query("registrations")
     .withIndex("by_normalized_email", (q) => q.eq("normalizedEmail", email))
@@ -596,9 +663,14 @@ async function eraseEmailKeyed(
       q.eq("normalizedEmail", email),
     )
     .take(1);
+  const leftoverInvite = (await ctx.db
+    .query("enterpriseMembers")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .collect())
+    .filter((row) => !row.userId || row.userId === deletion.userId);
   return {
     writes,
-    done: leftoverReg.length === 0 && leftoverContact.length === 0,
+    done: leftoverReg.length === 0 && leftoverContact.length === 0 && leftoverInvite.length === 0,
   };
 }
 

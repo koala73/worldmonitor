@@ -68,7 +68,14 @@ test('real seed writes eighteen-hour cache TTL while retained EONET expires abso
   assert.deepEqual(first.values[KEY].data.eonetRetention.eventIndexes, [1]);
   const failed = seed(START + 10 * HOUR, first.values, true);
   const repeated = seed(START + 17 * HOUR, failed.values, true);
-  assert.deepEqual(repeated.values[SNAPSHOT].eonet, first.values[SNAPSHOT].eonet);
+  // Failures advance only the failure clock, which persists through the snapshot key.
+  const { consecutiveFailures, firstFailureAt, lastAttemptAt, ...retainedSnapshot } = repeated.values[SNAPSHOT].eonet;
+  const { consecutiveFailures: _c, firstFailureAt: _f, lastAttemptAt: _l, ...originalSnapshot } = first.values[SNAPSHOT].eonet;
+  assert.deepEqual(retainedSnapshot, originalSnapshot);
+  assert.deepEqual({ consecutiveFailures, firstFailureAt, lastAttemptAt },
+    { consecutiveFailures: 2, firstFailureAt: START + 10 * HOUR, lastAttemptAt: START + 17 * HOUR });
+  assert.equal(repeated.values[META].sourceHealth.eonet.consecutiveFailures, 2);
+  assert.equal(repeated.values[META].sourceHealth.eonet.firstFailureAt, START + 10 * HOUR);
   assert.equal(repeated.values[KEY].data.fetchedAt, START);
   assert.equal(repeated.values[META].sourceHealth.eonet.lastSuccessAt, START);
   assert.equal(repeated.values[META].errorCode, 'EONET_SOURCE_FAILED');

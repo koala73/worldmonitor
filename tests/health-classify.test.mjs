@@ -174,7 +174,8 @@ test('NHC first-failure pending is bounded by its original complete snapshot', (
     lastSourceFailureCode: 'NHC_POINT_REQUEST_FAILED',
     firstSourceFailureAt: NOW,
     lastSourceAttemptAt: NOW,
-    lastSourceSuccessAt: NOW - 539 * ONE_MIN_MS,
+    // One minute inside the key's stale budget, so that budget is the binding bound.
+    lastSourceSuccessAt: NOW - (SEED_META[name].maxStaleMin - 1) * ONE_MIN_MS,
   };
   const classify = (over = {}, now = NOW) => classifyKey(name, key, { allowOnDemand: false }, {
     ...makeCtx({ strens: { [key]: 1024 }, metaValues: { [SEED_META[name].key]: { ...meta, ...over } } }),

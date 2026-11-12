@@ -236,8 +236,19 @@ async function seedProcess(initial, now, nrcanMode, failStateWrite = false) {
     const url = String(input);
     if (url.startsWith('https://redis.earthquake.test/get/')) return Response.json({ result: store.get(decodeURIComponent(url.split('/get/')[1])) ?? null });
     if (url === 'https://redis.earthquake.test' || url === 'https://redis.earthquake.test/pipeline') {
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (failStateWrite && body[0] === 'SET' && body[1] === 'seismology:earthquakes:providers:v1') return new Response('', { status: 403 });
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
+      }
       return Response.json(Array.isArray(body[0]) ? body.map(command => ({ result: redis(command) })) : { result: redis(body) });
     }
     if (url === 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson') {

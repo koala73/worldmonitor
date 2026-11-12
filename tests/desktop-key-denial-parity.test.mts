@@ -14,13 +14,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
-import { DESKTOP_KEY_LIMIT_ERROR } from '../shared/desktop-key-access.js';
+import { DESKTOP_KEY_CLIENT_ERROR, DESKTOP_KEY_LIMIT_ERROR } from '../shared/desktop-key-access.js';
 import { getEntitlementFeatures } from '../convex/config/productCatalog.ts';
 import { installRedis, type FakeRedisState } from './helpers/fake-upstash-redis.mts';
 
 const ENV_KEYS = [
   'CONVEX_SITE_URL', 'CONVEX_SERVER_SHARED_SECRET', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN',
   'VERCEL_ENV', 'WORLDMONITOR_VALID_KEYS', 'WM_SESSION_SECRET', 'DODO_PAYMENTS_ENVIRONMENT', 'LOCAL_API_MODE',
+  'DESKTOP_KEY_CLIENT_CHECK',
 ] as const;
 const ORIGINAL_ENV = new Map<string, string | undefined>();
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -62,6 +63,7 @@ beforeEach(async () => {
   process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-parity-key';
   delete process.env.DODO_PAYMENTS_ENVIRONMENT;
   delete process.env.LOCAL_API_MODE;
+  delete process.env.DESKTOP_KEY_CLIENT_CHECK;
   keysByHash.clear();
   const { __resetEntitlementNegativeCacheForTests } = await import('../server/_shared/entitlement-check.ts');
   const { __resetKeyPrefixCacheForTests, __clearLocalUnavailableBackoffForTests } = await import('../server/_shared/redis.ts');
@@ -99,12 +101,13 @@ afterEach(() => {
   }
 });
 
-const viaGateway = (key: string) => gateway(
-  new Request(`https://www.worldmonitor.app${REGULAR}`, { headers: { 'X-Api-Key': key } }),
+const withUa = (headers: Record<string, string>, userAgent?: string) => (userAgent ? { ...headers, 'User-Agent': userAgent } : headers);
+const viaGateway = (key: string, userAgent?: string) => gateway(
+  new Request(`https://www.worldmonitor.app${REGULAR}`, { headers: withUa({ 'X-Api-Key': key }, userAgent) }),
   { waitUntil: () => {} },
 );
-const viaBootstrap = (key: string) => bootstrap(
-  new Request('https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes', { headers: { 'X-WorldMonitor-Key': key } }),
+const viaBootstrap = (key: string, userAgent?: string) => bootstrap(
+  new Request('https://api.worldmonitor.app/api/bootstrap?keys=marketQuotes', { headers: withUa({ 'X-WorldMonitor-Key': key }, userAgent) }),
 );
 
 const COMPARED_HEADERS = ['Retry-After', 'Cache-Control', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'RateLimit-Policy', 'RateLimit', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-RateLimit-Mode'];
@@ -172,5 +175,79 @@ describe('desktop-key denials are identical on the gateway and bootstrap', () =>
     assert.deepEqual(gBody, { error: 'Rate-limit service temporarily unavailable' });
     assert.deepEqual(await b.json(), gBody);
     assert.deepEqual(picked(b), picked(g));
+  });
+
+  it('client check enforced: a script gets the same 403 pointing to an API plan', async () => {
+    process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+    const key = mintDesktopKey(0);
+    const g = await viaGateway(key, 'python-requests/2.32.3');
+    const b = await viaBootstrap(key, 'python-requests/2.32.3');
+    assert.equal(g.status, 403, await g.clone().text());
+    assert.equal(b.status, 403, await b.clone().text());
+    const gBody = await g.json();
+    assert.deepEqual(gBody, { error: DESKTOP_KEY_CLIENT_ERROR });
+    assert.deepEqual(await b.json(), gBody);
+    assert.equal(g.headers.get('Cache-Control'), 'no-store');
+    assert.equal(b.headers.get('Cache-Control'), 'no-store');
+    // Rejected before the meter: the script's calls do not spend the owner's ceiling.
+    assert.equal(redis.redis.get(`rl:desktopkey:day:${OWNER}:2026-10-25`), undefined);
+  });
+
+  it('client check enforced: a request with no User-Agent is refused too', async () => {
+    process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+    const key = mintDesktopKey(0);
+    assert.equal((await viaGateway(key)).status, 403);
+    assert.equal((await viaBootstrap(key)).status, 403);
+  });
+
+  for (const userAgent of ['WorldMonitor-Desktop/2.12.0 (sidecar)', 'WorldMonitor-SelfHost/2.12.0 (relay)']) {
+    it(`client check enforced: ${userAgent.split('/')[0]} is admitted`, async () => {
+      process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+      const key = mintDesktopKey(0);
+      const g = await viaGateway(key, userAgent);
+      assert.equal(g.status, 200, await g.clone().text());
+      const b = await viaBootstrap(key, userAgent);
+      assert.equal(b.status, 200, await b.clone().text());
+    });
+  }
+
+  it('client check enforced: premium-check denies a script and admits the desktop app', async () => {
+    process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+    const { resolvePremiumCallerIdentity } = await import('../server/_shared/premium-check.ts');
+    const key = mintDesktopKey(0);
+    const ask = (userAgent: string) => resolvePremiumCallerIdentity(
+      new Request(`https://www.worldmonitor.app${REGULAR}`, { headers: { 'X-WorldMonitor-Key': key, 'User-Agent': userAgent } }),
+    );
+    const script = await ask('curl/8.7.1');
+    assert.equal(script.isPremium, false);
+    assert.equal(!script.isPremium && script.desktopClientDenied, true);
+    const desktop = await ask('WorldMonitor-Desktop/2.12.0 (sidecar)');
+    assert.equal(desktop.isPremium, true);
+    assert.equal(desktop.kind, 'desktop-key');
+  });
+
+  it('client check enforced: chat-analyst and mcp-proxy answer a script with the API-plan 403', async () => {
+    process.env.DESKTOP_KEY_CLIENT_CHECK = 'enforce';
+    const key = mintDesktopKey(0);
+    const headers = { 'X-WorldMonitor-Key': key, 'User-Agent': 'python-requests/2.32.3', 'Content-Type': 'application/json' };
+    const chatAnalyst = (await import('../api/chat-analyst.ts')).default as (req: Request) => Promise<Response>;
+    const chat = await chatAnalyst(new Request('https://api.worldmonitor.app/api/chat-analyst', {
+      method: 'POST', headers, body: JSON.stringify({ query: 'hello' }),
+    }));
+    assert.equal(chat.status, 403, await chat.clone().text());
+    assert.deepEqual(await chat.json(), { error: DESKTOP_KEY_CLIENT_ERROR });
+
+    const { handler: mcpProxy } = await import('../api/mcp-proxy.js') as { handler: (req: Request, ctx: unknown) => Promise<Response> };
+    const mcp = await mcpProxy(new Request('https://api.worldmonitor.app/api/mcp-proxy?action=list-tools&serverUrl=https%3A%2F%2Fmcp.example.com', { headers }), { waitUntil: () => {} });
+    assert.equal(mcp.status, 403, await mcp.clone().text());
+    assert.deepEqual(await mcp.json(), { error: DESKTOP_KEY_CLIENT_ERROR });
+  });
+
+  it('client check off by default: a script is still served', async () => {
+    const key = mintDesktopKey(0);
+    const g = await viaGateway(key, 'python-requests/2.32.3');
+    assert.equal(g.status, 200, await g.clone().text());
+    const b = await viaBootstrap(key, 'python-requests/2.32.3');
+    assert.equal(b.status, 200, await b.clone().text());
   });
 });

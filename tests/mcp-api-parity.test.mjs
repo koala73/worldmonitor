@@ -134,10 +134,12 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // 24h per-title cache, so per-call LLM cost is bounded. Metering differs by
   // credential class — OAuth/dashboard-key callers consume the 50/UTC-day MCP
   // reservation; env-key (`wm_`) callers are bounded by the 60/min/key limiter
-  // only (see docs/mcp-tools-reference.mdx). Do not restate this as "the daily
+  // only (see docs/mcp-tools/signals.mdx). Do not restate this as "the daily
   // quota bounds it" without qualifying the env-key path.
 
-  // === fetch-on-miss (28) ===
+  // === fetch-on-miss (29) ===
+  ['GET /api/cyber/v1/get-network-info',
+    'fetch-on-miss: high-cardinality-input — arbitrary public IP enrichment; provider authorization, privacy disclosure and source attribution are handled by the Cyber Threat popup'],
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
@@ -230,8 +232,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/scenario/v1/list-scenario-templates",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["POST /api/economic/v1/get-fred-series-batch",
-    "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
   // === deferred-to-future-tool (55) ===
   ["GET /api/aviation/v1/list-aircraft-emergencies",

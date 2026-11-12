@@ -160,14 +160,14 @@ function renderChart(current: YieldPoint[], prior: YieldPoint[], ecbRates: Recor
 }
 
 function renderTable(points: YieldPoint[], labelledBy: string): string {
-  const headers = points.map(p => `<th scope="col" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text-dim);padding:4px 6px;text-align:center">${escapeHtml(p.tenor)}</th>`).join('');
+  const headers = points.map(p => `<th scope="col" style="text-align:center">${escapeHtml(p.tenor)}</th>`).join('');
   const cells = points.map(p => {
     const val = p.value !== null ? `${p.value.toFixed(2)}%` : 'N/A';
-    return `<td style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text);padding:4px 6px;text-align:center">${escapeHtml(val)}</td>`;
+    return `<td style="text-align:center">${escapeHtml(val)}</td>`;
   }).join('');
   return `
     <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${escapeHtml(labelledBy)}" style="margin-top:8px">
-      <table style="width:100%;border-collapse:collapse">
+      <table class="wm-table">
         <thead><tr>${headers}</tr></thead>
         <tbody><tr>${cells}</tr></tbody>
       </table>

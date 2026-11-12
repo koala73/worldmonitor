@@ -63,7 +63,7 @@ export class SatelliteFiresPanel extends Panel {
     this.setSafeContent(unsafeRawHtml(`
       <div class="fires-panel-content">
         <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-          <table class="fires-table">
+          <table class="wm-table fires-table">
             <thead>
               <tr>
                 <th scope="col">${t('components.satelliteFires.region')}</th>

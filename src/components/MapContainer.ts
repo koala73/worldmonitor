@@ -8,7 +8,10 @@ import { isMobileDevice } from '@/utils';
 import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
+import '../styles/reservoir-levels.css';
+import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import {
   isLayerToggleAllowed,
   isLayerEntitled,
@@ -87,7 +90,30 @@ type PendingCenter = { lat: number; lon: number; zoom?: number; actionToken?: nu
 type PendingViewportAction =
   | { type: 'view'; view: MapView; zoom?: number; actionToken: number }
   | { type: 'zoom'; zoom: number; actionToken: number }
-  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number };
+  | { type: 'center'; lat: number; lon: number; zoom?: number; actionToken: number }
+  | {
+    type: 'focus';
+    /** Short arc, for the globe. */
+    fit: FocusFitBounds;
+    /** Inside [-180, 180], for the one-world flat renderers (DeckGL, SVG). */
+    flatFit: FocusFitBounds;
+    maxZoom: number;
+    altitude: number;
+    /** humanViewportInteractionToken when the fit was requested. */
+    authority: number;
+    actionToken: number;
+    /** focusFitSeq when requested: a clear or a newer fit supersedes a queued one. */
+    seq: number;
+  };
+
+/** Chosen countries (solid outline, fitted) and neighbours (lighter outline). */
+export interface MapFocusOutline {
+  chosen: readonly string[];
+  neighbours: readonly string[];
+}
+
+// The bbox table and fit math load on the first focus fit, not with the map.
+const loadFocusMap = () => import('@/utils/focus-map');
 
 let mapLibreCssPromise: Promise<unknown> | null = null;
 
@@ -209,7 +235,11 @@ export class MapContainer {
   private destroyed = false;
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
+  private focusOutline: MapFocusOutline | null = null;
+  /** Bumped by every focus fit request and every clear; a stale fit drops itself. */
+  private focusFitSeq = 0;
   private pendingChokepointOpen: string | null = null;
+  private pendingReservoirOpen: ReservoirLevel | null = null;
   private hiddenLayerToggles = new Set<keyof MapLayers>();
   private layerLoadingState = new Map<keyof MapLayers, boolean>();
   private layerReadyState = new Map<keyof MapLayers, boolean>();
@@ -270,6 +300,7 @@ export class MapContainer {
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedNo2Activity: No2ActivitySnapshot | null = null;
+  private cachedReservoirLevels: ReservoirLevel[] | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -442,7 +473,15 @@ export class MapContainer {
     for (const action of pendingViewportActions) {
       if (action.type === 'view') this.applyView(action.view, action.zoom);
       else if (action.type === 'zoom') this.applyZoom(action.zoom);
-      else this.applyCenter(action.lat, action.lon, action.zoom);
+      else if (action.type === 'focus') {
+        // A viewport command queued after the fit supersedes it, as it does
+        // before the fit is queued (setFocusScope's token check).
+        if (
+          action.actionToken === this.viewportActionToken
+          && action.authority === this.humanViewportInteractionToken
+          && action.seq === this.focusFitSeq
+        ) this.applyFocusFit(action);
+      } else this.applyCenter(action.lat, action.lon, action.zoom);
     }
   }
 
@@ -459,6 +498,7 @@ export class MapContainer {
     // observe settlement attach to the transition that was actually started.
     this.replayPendingViewportActions();
     this.replayPendingChokepointOpen();
+    this.replayPendingReservoirOpen();
     const waiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();
     for (const waiter of waiters) waiter.resolve();
@@ -469,6 +509,13 @@ export class MapContainer {
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
     this.openChokepoint(pendingChokepointOpen);
+  }
+
+  private replayPendingReservoirOpen(): void {
+    if (this.pendingReservoirOpen === null) return;
+    const pendingReservoirOpen = this.pendingReservoirOpen;
+    this.pendingReservoirOpen = null;
+    this.openReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -877,6 +924,7 @@ export class MapContainer {
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
+    if (this.cachedReservoirLevels) this.setReservoirLevels(this.cachedReservoirLevels);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -897,6 +945,7 @@ export class MapContainer {
     for (const [layer, loading] of this.layerLoadingState) this.setLayerLoading(layer, loading);
     for (const [layer, hasData] of this.layerReadyState) this.setLayerReady(layer, hasData);
     if (this.cachedScenarioState !== undefined) this.applyScenarioState(this.cachedScenarioState);
+    if (this.focusOutline) this.applyFocusOutline();
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
@@ -1017,6 +1066,7 @@ export class MapContainer {
       : { ...this.initialState, view, zoom };
     if (!this.isViewportRendererReady()) {
       this.pendingViewportActions.push({ type: 'view', view, zoom, actionToken: viewportActionToken });
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return viewportActionToken;
     }
     this.applyView(view, zoom);
@@ -1047,6 +1097,7 @@ export class MapContainer {
     const viewportActionToken = ++this.viewportActionToken;
     if (!this.isViewportRendererReady()) {
       this.pendingCenter = { lat, lon, zoom, actionToken: viewportActionToken };
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return viewportActionToken;
     }
@@ -1320,6 +1371,8 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setDisplacementFlows(flows); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementFlows(flows);
+    } else {
+      this.svgMap?.setDisplacementFlows(flows);
     }
   }
 
@@ -1333,12 +1386,14 @@ export class MapContainer {
     }
   }
 
-  // IDMC event points, deck.gl only like the DTM and cross-border layers.
+  // IDMC event points are supported by both 2D renderers.
   public setDisplacementEvents(data: DisplacementEventsData): void {
     this.cachedDisplacementEvents = data;
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setDisplacementEvents(data);
+    } else {
+      this.svgMap?.setDisplacementEvents(data);
     }
   }
 
@@ -1348,6 +1403,8 @@ export class MapContainer {
     if (this.useGlobe) return;
     if (this.useDeckGL) {
       this.deckGLMap?.setInternalDisplacement(data);
+    } else {
+      this.svgMap?.setInternalDisplacement(data);
     }
   }
 
@@ -1481,6 +1538,27 @@ export class MapContainer {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
+  }
+
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.cachedReservoirLevels = reservoirs;
+    if (this.useGlobe) this.globeMap?.setReservoirLevels(reservoirs);
+    else if (this.useDeckGL) this.deckGLMap?.setReservoirLevels(reservoirs);
+    else this.svgMap?.setReservoirLevels(reservoirs);
+  }
+
+  /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    // A renderer switch clears the renderer before its async init finishes; keep the
+    // latest selection and replay it on readiness, as openChokepoint does.
+    if (!this.isChokepointRendererReady()) {
+      this.pendingReservoirOpen = reservoir;
+      return;
+    }
+    this.pendingReservoirOpen = null;
+    if (this.useGlobe) this.globeMap?.openReservoir(reservoir);
+    else if (this.useDeckGL) this.deckGLMap?.openReservoir(reservoir);
+    else this.svgMap?.openReservoir(reservoir);
   }
 
   public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
@@ -1756,6 +1834,7 @@ export class MapContainer {
   public openChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return;
     }
     this.pendingChokepointOpen = null;
@@ -1802,6 +1881,72 @@ export class MapContainer {
     } else {
       this.svgMap?.fitCountry(code);
     }
+  }
+
+  /**
+   * Dashboard focus (#10453). Outlines the chosen countries solid and the
+   * neighbours lighter on whichever renderer is active (and on any renderer
+   * switched to later), and, when `fit` is set, frames the chosen countries
+   * only. Markers are never filtered. Null removes the outline and leaves
+   * the view where it is.
+   *
+   * The fit is a viewport command like setView or setCenter, ordered by the
+   * same action token. It is dropped when, before it runs, a later viewport
+   * command lands (a team dashboard's saved view, a region pick, an agent
+   * action) or the user moves the map. Before the renderer is ready it
+   * queues with the other pending viewport commands.
+   */
+  public setFocusScope(focus: MapFocusOutline | null, options: { fit: boolean }): void {
+    this.focusOutline = focus
+      ? { chosen: [...focus.chosen], neighbours: [...focus.neighbours] }
+      : null;
+    this.applyFocusOutline();
+    if (!focus) {
+      this.focusFitSeq += 1;
+      return;
+    }
+    if (!options.fit) return;
+    const seq = ++this.focusFitSeq;
+    const actionToken = ++this.viewportActionToken;
+    const authority = this.humanViewportInteractionToken;
+    const chosen = [...focus.chosen];
+    void loadFocusMap().then(({ focusFitBounds, focusSingleWorldFitBounds, focusGlobeAltitude, FOCUS_FIT_MAX_ZOOM }) => {
+      if (this.destroyed || seq !== this.focusFitSeq) return;
+      if (actionToken !== this.viewportActionToken || authority !== this.humanViewportInteractionToken) return;
+      const fit = focusFitBounds(chosen);
+      const flatFit = focusSingleWorldFitBounds(chosen);
+      if (!fit || !flatFit) return;
+      const action: Extract<PendingViewportAction, { type: 'focus' }> = {
+        type: 'focus',
+        fit,
+        flatFit,
+        maxZoom: FOCUS_FIT_MAX_ZOOM,
+        altitude: focusGlobeAltitude(fit),
+        authority,
+        actionToken,
+        seq,
+      };
+      if (!this.isViewportRendererReady()) {
+        this.pendingViewportActions.push(action);
+        return;
+      }
+      this.applyFocusFit(action);
+    }).catch((error: unknown) => {
+      console.warn('[MapContainer] Focus fit failed to load', error);
+    });
+  }
+
+  private applyFocusOutline(): void {
+    const outline = this.focusOutline;
+    this.deckGLMap?.setFocusOutline(outline);
+    this.svgMap?.setFocusOutline(outline);
+    this.globeMap?.setFocusOutline(outline);
+  }
+
+  private applyFocusFit(action: Extract<PendingViewportAction, { type: 'focus' }>): void {
+    if (this.useGlobe) { this.globeMap?.fitFocusBounds(action.fit, action.altitude); return; }
+    if (this.useDeckGL) this.deckGLMap?.fitFocusBounds(action.flatFit, action.maxZoom);
+    else this.svgMap?.fitFocusBounds(action.flatFit);
   }
 
   public highlightCountry(code: string): void {
@@ -1948,6 +2093,7 @@ export class MapContainer {
     this.cachedAisDisruptions = null;
     this.cachedUkmtoIncidents = null;
     this.cachedUkmtoSnapshot = null;
+    this.cachedReservoirLevels = null;
     this.cachedAisDensity = null;
     this.cachedCableAdvisories = null;
     this.cachedRepairShips = null;
@@ -1989,6 +2135,7 @@ export class MapContainer {
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;
+    this.pendingReservoirOpen = null;
     this.hiddenLayerToggles.clear();
     this.layerLoadingState.clear();
     this.layerReadyState.clear();

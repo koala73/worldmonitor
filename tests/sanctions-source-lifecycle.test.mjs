@@ -1,15 +1,17 @@
+import { COUNTRY_NAME_TO_ISO2, normalizeCountryToken } from '../scripts/shared/country-name-to-iso2.cjs';
 import { buildSanctionsChanges } from '../scripts/_sanctions-changes.mjs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { mergeSanctionEntries, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
+import { mergeSanctionEntries, semaTargetCountry, SEMA_SOURCE, SEMA_TIMEOUT_MS, SANCTIONS_SOURCE_VERSION, sanctionsListContentMeta } from '../scripts/_sema-sanctions.mjs';
 import { CSL_ROW_ID, CSL_SOURCES, CSL_TIMEOUT_MS } from '../scripts/_csl-sanctions.mjs';
 import { projectCountrySanctions } from '../shared/country-sanctions-signals.mjs';
 import { __testing__ as health } from '../api/health.js';
 import { readSeedSnapshot, verifySeedKey, runSeed, writeExtraKeyWithMeta } from '../scripts/_seed-utils.mjs';
 import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
 const pure = source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '').split('async function fetchSource')[0];
@@ -19,13 +21,13 @@ const now = Date.UTC(2026, 8, 25);
 // OFAC's lists change slowly; a Railway container that loses egress for two 6h
 // runs must not drop ~20k OFAC entities (2026-09-27: 12h retention published 0 SDN).
 const RETAIN_MS = 48 * 3600000;
-const row = (source, i) => ({
+const row = (source, i, countryCodes = []) => ({
   id: source === SEMA_SOURCE ? `sema-ca:iran:1-part-2:${i}` : `${source}:${i}`,
-  name: `${source} Person ${i}`, sourceLists: [source], countryCodes: [], countryNames: [],
+  name: `${source} Person ${i}`, sourceLists: [source], countryCodes, countryNames: countryCodes,
   programs: ['TEST'], entityType: 'SANCTIONS_ENTITY_TYPE_INDIVIDUAL', effectiveAt: '0',
   isNew: false, _aliases: [`Alias ${source} ${i}`], _identifiers: [],
 });
-const canadian = Array.from({ length: 80 }, (_, i) => row(SEMA_SOURCE, i + 1));
+const canadian = Array.from({ length: 80 }, (_, i) => ({ ...row(SEMA_SOURCE, i + 1), _regime: 'Iran', _targetCountryCodes: ['IR'] }));
 const cslRow = (source, i) => ({
   id: `${source}:${i.toString(16).padStart(56, '0')}`, name: `${source} Firm ${i}`, sourceLists: [source],
   countryCodes: ['CN'], countryNames: [], programs: [], entityType: 'SANCTIONS_ENTITY_TYPE_UNSPECIFIED',
@@ -33,13 +35,13 @@ const cslRow = (source, i) => ({
 });
 const cslLists = Object.fromEntries(CSL_SOURCES.map(source => [source, Array.from({ length: 40 }, (_, i) => cslRow(source, i + 1))]));
 
-async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
+async function publish({ ofacCountryCodes = ['RU'], successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL'], cslRecords = cslLists, stored = null, preview = [], previousState = null, history = null, activated = false, clock = now, writeError = false, readError = false, semaRecords = canadian, semaQuarantined = [], io = {} } = {}) {
   const writes = [];
   let options;
   const context = vm.createContext({
-    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync,
+    console: { log() {}, warn() {} }, Buffer, gzipSync, gunzipSync, COUNTRY_NAME_TO_ISO2, normalizeCountryToken,
     Date: class extends Date { static now() { return clock; } },
-    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, mergeSanctionEntries, sanctionsListContentMeta, projectCountrySanctions, buildSanctionsChanges,
+    SEMA_SOURCE, SEMA_TIMEOUT_MS, CSL_TIMEOUT_MS, mergeSanctionEntries, semaTargetCountry, sanctionsListContentMeta, projectCountrySanctions, buildSanctionsChanges,
     SANCTIONS_SOURCE_VERSION, SANCTIONS_MAX_CONTENT_AGE_MIN: 43200,
     readSeedSnapshot: async key => {
       if (readError) throw new Error('synthetic cache read failure');
@@ -50,7 +52,7 @@ async function publish({ successes = ['SDN', 'CONSOLIDATED', SEMA_SOURCE, 'CSL']
     verifySeedKey: async key => key === 'sanctions:pressure:v1' ? { entries: preview } : previousState,
     fetchSource: async ({ label }) => {
       if (!successes.includes(label)) throw new Error('synthetic source timeout');
-      return { entries: [row(label, 1)], datasetDate: now - 86400000 };
+      return { entries: [row(label, 1, ofacCountryCodes)], datasetDate: now - 86400000 };
     },
     ingestSemaEntries: async () => successes.includes(SEMA_SOURCE)
       ? { records: semaRecords, quarantined: semaQuarantined, publishedAtMs: now - 2 * 86400000, error: null }
@@ -201,6 +203,85 @@ describe('sanctions source lifecycle', () => {
       assert.equal(verdict.status, 'SEED_ERROR');
       assert.equal(verdict.errorCode, 'OFAC_INGEST_FAILED');
     }
+  });
+
+  it('reports degraded OFAC country attribution as a seed error while every source succeeds', async () => {
+    const { data, options } = await publish({ ofacCountryCodes: [] });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.sourceState, 'degraded');
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.freshnessMetaPatch.failedSources.length, 0);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 1);
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._ofacAttribution, undefined, 'the diagnostics stay out of the public payload');
+    const key = health.BOOTSTRAP_KEYS.sanctionsPressure;
+    const meta = { fetchedAt: now, recordCount: data.totalCount, ...result.freshnessMetaPatch };
+    const verdict = health.classifyKey('sanctionsPressure', key, { allowOnDemand: false }, {
+      now, containmentEvidenceByName: new Map(), keyStrens: new Map([[key, 1024]]), keyErrors: new Map(),
+      keyMetaValues: new Map([[health.SEED_META.sanctionsPressure.key, JSON.stringify(meta)]]), keyMetaErrors: new Map(),
+    });
+    assert.equal(verdict.status, 'SEED_ERROR');
+    assert.equal(verdict.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+  });
+
+  it('publishes SEMA target failures as attribution seed errors, independently of healthy OFAC', async () => {
+    const semaRecords = canadian.map(entry => ({ ...entry, _targetCountryCodes: [] }));
+    const { data, options } = await publish({ semaRecords });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.degraded, false);
+    assert.equal(result.freshnessMetaPatch.semaAttribution.regimes.Iran.unattributedShare, 1);
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
+    assert.equal(options.publishTransform(data)._semaAttribution, undefined);
+  });
+
+  it('rebuilds absent legacy targets only for retained SEMA health records', async () => {
+    const withoutTargets = canadian.map(({ _targetCountryCodes, ...entry }) => entry);
+    const fresh = await publish({ semaRecords: withoutTargets });
+    assert.equal(fresh.data._semaAttribution.regimes.Iran.unattributedShare, 1,
+      'fresh missing target fields must still expose parser failures');
+    const stored = await save(fresh);
+    const retained = await publish({ stored, successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+    assert.equal(retained.data._sourceHealth[SEMA_SOURCE].status, 'retained');
+    assert.equal(retained.data._semaAttribution.regimes.Iran.unattributedShare, 0);
+    assert.equal(retained.data._semaAttribution.degraded, false);
+    const result = await retained.options.afterPublish(retained.data, {});
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SEMA_INGEST_FAILED', 'the real source outage remains visible');
+    assert.equal(Object.hasOwn(retained.data._sourceSnapshots[SEMA_SOURCE].records[0], '_targetCountryCodes'), false,
+      'health normalization does not rewrite retained evidence or change-history baselines');
+
+    const explicitFailure = await publish({ semaRecords: canadian.map(entry => ({ ...entry, _targetCountryCodes: [] })) });
+    const retainedFailure = await publish({ stored: await save(explicitFailure),
+      successes: ['SDN', 'CONSOLIDATED', 'CSL'], clock: now + 6 * 3600000 });
+    assert.equal(retainedFailure.data._semaAttribution.degraded, true, 'explicit failure evidence is preserved');
+  });
+
+  it('logs the attribution summary on healthy runs', async () => {
+    const logs = [];
+    const { data } = await publish({ io: { console: { log: line => logs.push(line), warn() {} } } });
+    assert.equal(data._ofacAttribution.degraded, false);
+    assert.equal(data._semaAttribution.degraded, false);
+    const line = logs.find(line => line.startsWith('  Sanctions attribution: '));
+    assert.ok(line, 'healthy runs emit the monitorable summary');
+    const summary = JSON.parse(line.slice('  Sanctions attribution: '.length));
+    assert.deepEqual(summary.attribution, normalize(data._ofacAttribution));
+    assert.equal(summary.semaRegimeCount, 1);
+    assert.equal(summary.semaUnattributedCount, 0);
+  });
+
+  it('publishes aircraft resolution failures as seed errors despite whole-list headroom', async () => {
+    const { data, options } = await publish({ io: { fetchSource: async ({ label }) => ({ datasetDate: now,
+      entries: [...Array.from({ length: 99 }, (_, i) => row(label, i + 1, ['RU'])),
+        ...Array.from({ length: 5 }, (_, i) => ({ ...row(label, 100 + i, ['IR']), entityType: 'SANCTIONS_ENTITY_TYPE_AIRCRAFT', _aircraftHasCurrentTail: true }))],
+    }) } });
+    const result = await options.afterPublish(data, {});
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedShare, 0);
+    assert.equal(result.freshnessMetaPatch.attribution.unattributedAircraftShare, 1);
+    assert.equal(result.freshnessMetaPatch.attribution.unresolvedAircraftWithTailCount, 10);
+    assert.equal(data._sourceSnapshots.SDN.records.at(-1)._aircraftHasCurrentTail, true);
+    assert.ok(options.publishTransform(data).entries.every(entry => !Object.hasOwn(entry, '_aircraftHasCurrentTail')));
+    assert.equal(result.freshnessMetaPatch.errorCode, 'SANCTIONS_ATTRIBUTION_DEGRADED');
+    assert.equal(result.completionState, 'DEGRADED');
   });
 
   it('keeps health OK and names the quarantined Canadian rows in source health', async () => {
@@ -377,7 +458,7 @@ describe('sanctions source lifecycle', () => {
       assert.equal(index[7].sourceState, 'error', 'every source outage degrades the screening index health');
       assert.equal(index[7].errorCode, 'SEMA_INGEST_FAILED');
       assert.deepEqual([...index[7].failedSources].sort(), ['CONSOLIDATED', 'SDN', SEMA_SOURCE, ...CSL_SOURCES].sort());
-      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], {});
+      assert.deepEqual(writes.find(([key]) => key === 'sanctions:country-counts:v1')[1], count ? { RU: 2 } : {});
     }
   });
 });
@@ -488,13 +569,13 @@ async function withLocalRedis(run) {
     if (op === 'EXPIRE' || op === 'EVAL') return 1;
     throw new Error(`unexpected fixture command ${op}`);
   }
-  globalThis.fetch = async (url, init = {}) => {
+  globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
     assert.equal(new URL(url).hostname, 'sanctions-redis.test', 'no real network allowed');
     const match = String(url).match(/\/get\/([^/?#]+)$/);
     if (match) return Response.json({ result: store.get(decodeURIComponent(match[1])) ?? null });
     const body = JSON.parse(init.body);
     return Response.json(Array.isArray(body[0]) ? body.map(c => ({ result: command(c) })) : { result: command(body) });
-  };
+  });
   try { return await run({ store, logs }); }
   finally {
     globalThis.fetch = original.fetch;
@@ -654,12 +735,12 @@ it('keeps malformed and mixed-invalid IDs unknown through the real saved-state r
       const canonical = JSON.parse(store.get('sanctions:pressure:v1')).data;
       const result = projectCountrySanctions(canonical, 'IR', Number(canonical.fetchedAt));
       assert.equal(result.state, 'observed');
-      assert.equal(result.sanctionsDesignations, 80);
+      assert.equal(result.sanctionsDesignations, 0, 'SEMA target states do not supply country evidence');
       assert.equal(result.sanctionsNewDesignations, null, JSON.stringify(entryIds));
       assert.equal(result.websiteCounts.sanctionsNewDesignations, null);
       assert.equal(result.comparison.kind, 'baseline-unavailable');
       assert.equal(result.comparison.from, null);
-      assert.equal(result.countryRow.newEntryCount, canonical.countries.find(row => row.countryCode === 'IR').newEntryCount);
+      assert.equal(result.countryRow, null);
     }
   });
 });
@@ -673,13 +754,13 @@ it('keeps old canonical metadata and state when the canonical SET fails after so
     const oldState = store.get('sanctions:pressure:state:v1');
     const next = await publish({ clock: now + 6 * 3600000, io: { verifySeedKey, writeExtraKeyWithMeta } });
     const fixtureFetch = globalThis.fetch;
-    globalThis.fetch = async (url, init = {}) => {
+    globalThis.fetch = withSeedLockFence(async (url, init = {}) => {
       const command = init.body ? JSON.parse(init.body) : null;
       if (command?.[0] === 'SET' && command[1] === 'sanctions:pressure:v1') {
         return new Response('fixture canonical write failure', { status: 400 });
       }
       return fixtureFetch(url, init);
-    };
+    });
     await assert.rejects(runSeed('sanctions', 'pressure', 'sanctions:pressure:v1', async () => next.data, next.options),
       /HTTP 400/);
     assert.equal(store.get('sanctions:pressure:v1'), oldCanonical);

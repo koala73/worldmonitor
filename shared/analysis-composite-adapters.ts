@@ -1,6 +1,6 @@
 /**
  * Composite-tool adapters: raw seeded cache payloads → shared-core inputs
- * (#5696 U3). Pure shape mapping only — no IO — so the MCP `_execute`
+ * (#5696 U3). Pure mapping and exposure eligibility — no IO — so the MCP `_execute`
  * handlers stay thin and every mapping is unit-testable against
  * seed-shaped fixtures.
  *
@@ -21,6 +21,7 @@
  * Dependency-free apart from sibling shared modules.
  */
 
+import { exposureLocationKey } from '../scripts/shared/exposure-location-key.mjs';
 import type {
   AlertDigestInputs,
   AlertSeverity,
@@ -33,6 +34,9 @@ import type {
   ThermalEntry,
 } from './analysis-alert-digest';
 import { finiteNumber, nonEmptyString } from './analysis-adapter-guards';
+import { currentUcdpCountryName, ucdpExposureName } from './ucdp-display';
+import { estimatePointExposure } from './population-density-country-at';
+import { getRadiusForEventType } from './analysis-population-exposure';
 
 const OUTAGE_SEVERITY_LEVELS: Readonly<Record<string, AlertSeverity>> = {
   OUTAGE_SEVERITY_TOTAL: 'critical',
@@ -53,6 +57,9 @@ export interface ExposureEvent {
   type: string;
   lat: number;
   lon: number;
+  reportedCountry?: string;
+  /** Number of precise UCDP events folded into this location. */
+  eventCount?: number;
 }
 
 function coords(entry: unknown): { lat: number; lon: number } | null {
@@ -102,17 +109,38 @@ export function firesToExposureEvents(payload: unknown, limit = 50): ExposureEve
 export function ucdpEventsToExposureEvents(payload: unknown, limit = 50): ExposureEvent[] {
   const raw = (payload as { events?: unknown[] })?.events;
   if (!Array.isArray(raw)) return [];
+  type UcdpRecord = { id?: unknown; country?: unknown; locationName?: unknown; dateStart?: unknown; hasPreciseLocation?: unknown };
+  // A UCDP row without point precision sits on a district or country
+  // centroid, so a radius around it describes no real place.
   const dated = raw
-    .map((e) => ({ e: e as { id?: unknown; country?: unknown; dateStart?: unknown }, c: coords(e) }))
-    .filter((x): x is { e: { id?: unknown; country?: unknown; dateStart?: unknown }; c: { lat: number; lon: number } } => x.c !== null)
-    .sort((a, b) => Date.parse(nonEmptyString(b.e.dateStart)) - Date.parse(nonEmptyString(a.e.dateStart)))
-    .slice(0, limit);
-  return dated.map(({ e, c }, i) => ({
-    id: e.id != null ? String(e.id) : `conflict-${i}`,
-    name: `Conflict event${nonEmptyString(e.country) ? ` — ${nonEmptyString(e.country)}` : ''}`,
-    type: 'conflict',
-    ...c,
-  }));
+    .map((e) => ({ e: e as UcdpRecord, c: coords(e) }))
+    .filter((x): x is { e: UcdpRecord; c: { lat: number; lon: number } } => x.c !== null && x.e.hasPreciseLocation === true)
+    .sort((a, b) => Date.parse(nonEmptyString(b.e.dateStart)) - Date.parse(nonEmptyString(a.e.dateStart)));
+  const byLocation = new Map<string, ExposureEvent & { eventCount: number }>();
+  for (const { e, c } of dated) {
+    const country = currentUcdpCountryName(nonEmptyString(e.country));
+    // Reject unestimable rows before they can hide or inflate a supported
+    // location, matching the dashboard's estimate-before-group ordering.
+    const estimate = estimatePointExposure(c.lat, c.lon, getRadiusForEventType('conflict'), country);
+    if (!estimate) continue;
+    const key = exposureLocationKey(c.lat, c.lon);
+    const existing = byLocation.get(key);
+    if (existing) {
+      existing.eventCount += 1;
+      continue;
+    }
+    if (byLocation.size >= limit) continue;
+    const place = nonEmptyString(e.locationName);
+    byLocation.set(key, {
+      id: e.id != null ? String(e.id) : `conflict-${byLocation.size}`,
+      name: ucdpExposureName(place, country, estimate.country),
+      type: 'conflict',
+      ...c,
+      ...(country ? { reportedCountry: country } : {}),
+      eventCount: 1,
+    });
+  }
+  return [...byLocation.values()];
 }
 
 /**

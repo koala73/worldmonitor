@@ -53,6 +53,7 @@ import { PAGE_FAMILIES } from './seo-ai-visibility-scorecard.mjs';
 import {
   isBrandQuery,
   markdownCell,
+  queryCell,
   number,
   percent,
   weeklyTotals,
@@ -723,7 +724,7 @@ function renderQueries(queries, primaryLabel, lines) {
   lines.push('| Query | Brand | Impressions | Clicks | CTR | Position |');
   lines.push('|---|---|---:|---:|---:|---:|');
   for (const row of primary.topQueries) {
-    lines.push(`| ${markdownCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(row.ctr)} | ${position1(row.avgImpressionPosition)} |`);
+    lines.push(`| ${queryCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(row.ctr)} | ${position1(row.avgImpressionPosition)} |`);
   }
   lines.push('');
 }

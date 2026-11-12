@@ -3,6 +3,7 @@
 // chains (related-assets, infrastructure-cascade), never by the eager
 // convergence/CII boot path, so they ride a separate lazy chunk (geo-map-data).
 import type { UnderseaCable, NuclearFacility, EconomicCenter, Spaceport, CriticalMineralProject } from '@/types';
+import { staticAssetUrl } from './static-asset-url';
 
 // Static baseline — authoritative live data is in Redis key infrastructure:submarine-cables:v1
 // (seeded weekly by scripts/seed-submarine-cables.mjs on Railway)
@@ -2935,7 +2936,7 @@ export const MAP_URLS = {
 
 /** Country topology URL — mobile gets the lighter 110m topology, desktop the full 50m. */
 export function worldTopologyUrl(isMobile: boolean): string {
-  return isMobile ? MAP_URLS.worldMobile : MAP_URLS.world;
+  return staticAssetUrl(isMobile ? MAP_URLS.worldMobile : MAP_URLS.world);
 }
 
 // Global Economic Centers - Stock Exchanges, Central Banks, Financial Hubs

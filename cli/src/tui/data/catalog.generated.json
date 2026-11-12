@@ -17,7 +17,7 @@
       "region": "na",
       "geo": null,
       "sources": [
-        "https://bloomberg.com/media-manifest/streams/us.m3u8",
+        "https://www.bloomberg.com/media-manifest/streams/us.m3u8",
         "https://www.youtube.com/watch?v=QB5BNdBFujE",
         "https://www.youtube.com/channel/UCIALMKvObZNtJ6AmdCLP7Lg"
       ]
