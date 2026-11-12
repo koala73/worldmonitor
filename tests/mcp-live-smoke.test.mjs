@@ -152,16 +152,24 @@ function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `$
       link: '<https://worldmonitor.app/mcp>; rel="canonical"',
     };
 
+    // Production negotiates on Accept (#10519): an explicit text/html gets the
+    // HTML setup page, anything else gets the markdown guide.
+    const guideHeadersFor = (accept = '') => (/text\/html/i.test(accept)
+      ? { ...commonGuideHeaders, 'content-type': 'text/html; charset=utf-8' }
+      : commonGuideHeaders);
+
     if (req.url === '/mcp' && req.method === 'GET') {
       if (req.headers.accept?.toLowerCase() === 'text/event-stream') {
         res.writeHead(405).end();
+      } else if (/text\/html/i.test(req.headers.accept ?? '')) {
+        res.writeHead(200, guideHeadersFor(req.headers.accept)).end('<!doctype html><title>Connect World Monitor MCP</title>');
       } else {
         res.writeHead(200, commonGuideHeaders).end('World Monitor MCP Server');
       }
       return;
     }
     if (req.url === '/mcp' && req.method === 'HEAD') {
-      res.writeHead(200, commonGuideHeaders).end();
+      res.writeHead(200, guideHeadersFor(req.headers.accept)).end();
       return;
     }
     if ((req.url === '/mcp' || req.url === '/api/mcp') && req.method === 'POST') {
