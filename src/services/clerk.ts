@@ -190,7 +190,13 @@ const CLERK_JS_VERSION = typeof __CLERK_JS_VERSION__ !== 'undefined' ? __CLERK_J
 // signal. Upgrades are now deliberate: bump this constant (and the
 // @clerk/clerk-js pin in package.json) together, then re-verify the auth
 // smoke against the SERVED bundles, not node_modules.
-const CLERK_UI_VERSION = '1.32.2';
+//
+// The initial pins (clerk-js 6.13.0 + ui 1.42.4) are the pair production was
+// already serving when the bare range and bare major were removed, so pinning
+// changed no behavior. The two version lines do not move in lockstep here
+// (clerk-js 6.13.x, ui 1.42.x), and that pair is the one that has run in
+// production; do not assume matching minors are required or safe.
+const CLERK_UI_VERSION = '1.42.4';
 
 // The SDK UMD bundle, loaded with a `data-clerk-publishable-key` attribute,
 // auto-creates a (not-yet-loaded) Clerk instance on `window.Clerk` — it exposes
