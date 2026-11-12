@@ -1427,7 +1427,7 @@
           "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報",
           "notamAirspace": "FAA NOTAM 中的臨時飛行限制和受限、危險及禁飛空域，當前生效或將在 24 小時內生效",
           "no2Activity": "Sentinel-5P NO2 活動方向，覆蓋 167 個國家和 32 個工業叢集：最新 56 天視窗與往年同期日期對比，經 10% 死區處理。包含經修改的 Copernicus Sentinel 資料。",
-          "reservoirLevels": "來自 NASA ICESat-2 衛星鐳射雷達的戰略水庫和湖泊水面水位，與該月的常年水位對比。NASA 在每次過境測量後約兩個月釋出資料。"
+          "reservoirLevels": "來自 NASA ICESat-2 衛星光達的戰略水庫和湖泊水面水位，與該月的常年水位對比。NASA 在每次過境測量後約兩個月釋出資料。"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
@@ -3124,7 +3124,7 @@
       "dismiss": "關閉，不再提示"
     },
     "reservoirLevels": {
-      "note": "水面水位來自 NASA ICESat-2 衛星鐳射雷達。NASA 在每次過境測量後約兩個月釋出資料，因此這裡追蹤的是數週和季節尺度的變化，而不是逐日變化。僅為水位，不是庫容。",
+      "note": "水面水位來自 NASA ICESat-2 衛星光達。NASA 在每次過境測量後約兩個月釋出資料，因此這裡追蹤的是數週和季節尺度的變化，而不是逐日變化。僅為水位，不是庫容。",
       "source": "來源：",
       "processedWith": "處理工具：",
       "empty": "暫無讀數",
