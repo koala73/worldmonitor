@@ -1749,10 +1749,11 @@ test.describe('top-level WebMCP dashboard contract', () => {
     }
 
     // full variant lists every bundled preset except finance-only nq-day-trader
-    // (8 after country-watcher landed in #7650).
+    // (8 after country-watcher landed in #7650, 9 with the full-only
+    // protective-travel preset from #10453).
     expect(first.listOutput).toMatchObject({
       ok: true,
-      count: 8,
+      count: 9,
     });
     expect(applyOutput).toMatchObject({
       ok: true,

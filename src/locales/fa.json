@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "پنهان کردن {{count}} مورد بدون کشور",
       "hideUnattributedAria_other": "پنهان کردن {{count}} مورد بدون کشور",
       "partialConflict": "نمایش رویدادهای تنازع از ۱۵۰ مورد اخیر فقط. لیست کامل بارگیری نشد.",
-      "partialConflictLoading": "نمایش رویدادهای درگیری از ۱۵۰ مورد اخیر در حین بارگیری لیست کامل."
+      "partialConflictLoading": "نمایش رویدادهای درگیری از ۱۵۰ مورد اخیر در حین بارگیری لیست کامل.",
+      "emptyInstability": "بدون امتیاز ناپایداری برای این کشورها",
+      "emptyOutbreaks": "بدون شیوع بیماری برای این کشورها",
+      "emptyOutages": "بدون قطع اینترنت برای این کشورها",
+      "emptyRadiation": "بدون اندازه‌گیری تشعشع برای این کشورها",
+      "emptyFuelShortages": "بدون کمبود سوخت برای این کشورها",
+      "emptyEnergyDisruptions": "بدون اختلال انرژی برای این کشورها",
+      "emptyDisplacement": "بدون داده‌های جابه‌جایی برای این کشورها",
+      "emptyCorrelation": "بدون سیگنال برای این کشورها"
     }
   }
 }

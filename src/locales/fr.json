@@ -5076,7 +5076,15 @@
       "hideUnattributedAria_many": "Masquer les {{count}} éléments sans pays",
       "hideUnattributedAria_other": "Masquer les {{count}} éléments sans pays",
       "partialConflict": "Affichage des événements de conflit des 150 derniers uniquement. La liste complète n'a pas pu être chargée.",
-      "partialConflictLoading": "Affichage des événements de conflit des 150 derniers pendant le chargement de la liste complète."
+      "partialConflictLoading": "Affichage des événements de conflit des 150 derniers pendant le chargement de la liste complète.",
+      "emptyInstability": "Aucun score d'instabilité pour ces pays",
+      "emptyOutbreaks": "Aucune épidémie pour ces pays",
+      "emptyOutages": "Aucune perturbation Internet pour ces pays",
+      "emptyRadiation": "Aucune mesure de rayonnement pour ces pays",
+      "emptyFuelShortages": "Aucune pénurie de carburant pour ces pays",
+      "emptyEnergyDisruptions": "Aucune perturbation énergétique pour ces pays",
+      "emptyDisplacement": "Aucune donnée de déplacement pour ces pays",
+      "emptyCorrelation": "Aucun signal pour ces pays"
     }
   }
 }

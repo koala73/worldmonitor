@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "Ficha {{count}} kipengee bila nchi",
       "hideUnattributedAria_other": "Ficha {{count}} vipengee bila nchi",
       "partialConflict": "Inaonyesha matukio ya mgogoro kutoka 150 ya hivi karibuni tu. Orodha kamili haikupakiwa.",
-      "partialConflictLoading": "Inaonyesha matukio ya mgogoro kutoka kwa 150 ya hivi karibuni wakati orodha kamili inapakiwa."
+      "partialConflictLoading": "Inaonyesha matukio ya mgogoro kutoka kwa 150 ya hivi karibuni wakati orodha kamili inapakiwa.",
+      "emptyInstability": "Hakuna alama za kutokuwa na utulivu kwa nchi hizi",
+      "emptyOutbreaks": "Hakuna mlipuko wa magonjwa kwa nchi hizi",
+      "emptyOutages": "Hakuna usumbufu wa mtandao kwa nchi hizi",
+      "emptyRadiation": "Hakuna vipimo vya mionzi kwa nchi hizi",
+      "emptyFuelShortages": "Hakuna upungufu wa mafuta kwa nchi hizi",
+      "emptyEnergyDisruptions": "Hakuna usumbufu wa nishati kwa nchi hizi",
+      "emptyDisplacement": "Hakuna data ya uhamiaji kwa nchi hizi",
+      "emptyCorrelation": "Hakuna maadhimisho kwa nchi hizi"
     }
   }
 }

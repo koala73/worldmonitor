@@ -15,6 +15,9 @@ import {
 } from '@/shared/disruption-timeline';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
+import { t } from '@/services/i18n';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -82,6 +85,9 @@ export class EnergyDisruptionsPanel extends Panel {
   private data: ListEnergyDisruptionsResponse | null = null;
   private activeTypeFilter = '';
   private ongoingOnly = false;
+  // Dashboard focus (#10453): each event carries the ISO codes of the
+  // countries it touches; events from before that field existed have none.
+  private readonly scopeFilter: PanelScopeFilter;
 
   constructor() {
     super({
@@ -95,6 +101,7 @@ export class EnergyDisruptionsPanel extends Panel {
         'click a row to jump to the pipeline / storage panel with that event ' +
         'highlighted. See /docs/methodology/disruptions for the schema.',
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
 
     // Event delegation on the persistent `content` element. Panel.setContent
     // debounces the DOM write by 150ms (see Panel.ts:1025), so attaching
@@ -165,6 +172,22 @@ export class EnergyDisruptionsPanel extends Panel {
     }
   }
 
+  public override applyScope(scope: ResolvedScope | null): void {
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure.
+    if (this.scopeFilter.setScope(scope) && !this.showingLoadFailure) this.render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
+  }
+
   private setTypeFilter(type: string): void {
     this.activeTypeFilter = type;
     this.render();
@@ -175,30 +198,39 @@ export class EnergyDisruptionsPanel extends Panel {
     this.render();
   }
 
-  private filterEvents(): EnergyDisruptionEntry[] {
-    if (!this.data) return [];
-    let events = this.data.events;
+  private filterEvents(scoped: EnergyDisruptionEntry[]): EnergyDisruptionEntry[] {
+    let events = scoped;
     if (this.activeTypeFilter) {
       events = events.filter(e => e.eventType === this.activeTypeFilter);
     }
     if (this.ongoingOnly) {
       events = events.filter(e => !e.endAt);
     }
-    // Newest first. Server already sorts by startAt DESC but defensive
-    // sort keeps the UI stable when filters reshuffle.
-    return [...events].sort((a, b) => b.startAt.localeCompare(a.startAt));
+    return events;
   }
 
   private render(): void {
     if (!this.data) return;
 
+    // Newest first. Server already sorts by startAt DESC but defensive
+    // sort keeps the UI stable when filters reshuffle. Sorted before the
+    // focus so chosen-country events stay above neighbour events.
+    const sorted = [...this.data.events].sort((a, b) => b.startAt.localeCompare(a.startAt));
+    // The focus narrows first; the type and ongoing filters work within it,
+    // and the header counts describe the focused set.
+    const view = this.scopeFilter.view(sorted, (e) => e.countries);
+    if (sorted.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
+    const rowFor = new Map<EnergyDisruptionEntry, ScopeRow<EnergyDisruptionEntry>>(view.rows.map((row) => [row.item, row]));
+
     // Compute once — previously filterEvents() ran twice per render, once
     // for the row HTML and again for filteredCount. Trivial for 52 events
     // but the redundant sort on every render was noise. Codex P2.
-    const filtered = this.filterEvents();
-    const rows = filtered.map(e => this.renderRow(e)).join('');
-    const totalCount = this.data.events.length;
-    const ongoingCount = this.data.events.filter(e => !e.endAt).length;
+    const filtered = this.filterEvents(scoped);
+    const rows = filtered.map(e => this.renderRow(e, rowFor.get(e))).join('');
+    const totalCount = scoped.length;
+    const ongoingCount = scoped.filter(e => !e.endAt).length;
     const filteredCount = filtered.length;
     const summary = this.activeTypeFilter || this.ongoingOnly
       ? `${filteredCount} shown · ${totalCount} total · ${ongoingCount} ongoing`
@@ -226,7 +258,7 @@ export class EnergyDisruptionsPanel extends Panel {
       <div class="ed-wrap">
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
-        <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
+        ${view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyEnergyDisruptions')) : `<div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
           <table class="wm-table ed-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
@@ -239,7 +271,7 @@ export class EnergyDisruptionsPanel extends Panel {
             </thead>
             <tbody role="rowgroup">${rows || `<tr role="row"><td role="cell" colspan="5" class="ed-empty">No events match the current filter.</td></tr>`}</tbody>
           </table>
-        </div>
+        </div>`}
         ${attribution}
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
@@ -309,7 +341,7 @@ export class EnergyDisruptionsPanel extends Panel {
     window.dispatchEvent(new CustomEvent('energy:open-pipeline-detail', { detail: { pipelineId: assetId } }));
   }
 
-  private renderRow(e: EnergyDisruptionEntry): string {
+  private renderRow(e: EnergyDisruptionEntry, row?: ScopeRow<EnergyDisruptionEntry>): string {
     const glyph = EVENT_GLYPH[e.eventType] ?? '•';
     const status = statusForEvent({ startAt: e.startAt, endAt: e.endAt || undefined });
     const eventWindow = formatEventWindow(e.startAt, e.endAt || undefined);
@@ -322,7 +354,7 @@ export class EnergyDisruptionsPanel extends Panel {
           data-asset-id="${escapeHtml(e.assetId)}"
           data-asset-type="${escapeHtml(e.assetType)}">
         <td role="cell">
-          <div class="ed-event">${glyph} ${escapeHtml(e.eventType)}</div>
+          <div class="ed-event">${glyph} ${escapeHtml(e.eventType)} ${scopeTagHtml(row)}</div>
           <div class="ed-sub ed-desc">${escapeHtml(e.shortDescription)}</div>
           <div class="ed-sub">${escapeHtml(causeChain)}</div>
         </td>

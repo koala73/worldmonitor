@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "{{count}} elem elrejtése ország nélkül",
       "hideUnattributedAria_other": "{{count}} elem elrejtése ország nélkül",
       "partialConflict": "Konfliktusesemények jelenítve meg a legutóbbi 150-ből. A teljes lista nem töltődött be.",
-      "partialConflictLoading": "Konfliktusesemények megjelenítése az utolsó 150-ből, miközben a teljes lista betöltődik."
+      "partialConflictLoading": "Konfliktusesemények megjelenítése az utolsó 150-ből, miközben a teljes lista betöltődik.",
+      "emptyInstability": "Nincs stabilitási pontszám ezekhez az országokhoz",
+      "emptyOutbreaks": "Nincs megbetegedési kitörés ezekhez az országokhoz",
+      "emptyOutages": "Nincs internetszünet ezekhez az országokhoz",
+      "emptyRadiation": "Nincs sugárzási érték ezekhez az országokhoz",
+      "emptyFuelShortages": "Nincs üzemanyaghiány ezekhez az országokhoz",
+      "emptyEnergyDisruptions": "Nincs energiaszünet ezekhez az országokhoz",
+      "emptyDisplacement": "Nincs menekültadatok ezekhez az országokhoz",
+      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz"
     }
   }
 }

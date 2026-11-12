@@ -5020,7 +5020,15 @@
       "showUnattributedAria_other": "国が不明な{{count}}件を表示",
       "hideUnattributedAria_other": "国が不明な{{count}}件を非表示",
       "partialConflict": "最新150件の紛争イベントのみを表示しています。全リストは読み込まれませんでした。",
-      "partialConflictLoading": "フル リストの読み込み中に、最新150件の紛争イベントを表示しています。"
+      "partialConflictLoading": "フル リストの読み込み中に、最新150件の紛争イベントを表示しています。",
+      "emptyInstability": "これらの国の不安定性スコアはありません",
+      "emptyOutbreaks": "これらの国の疾病流行はありません",
+      "emptyOutages": "これらの国のインターネット障害はありません",
+      "emptyRadiation": "これらの国の放射線測定値はありません",
+      "emptyFuelShortages": "これらの国の燃料不足はありません",
+      "emptyEnergyDisruptions": "これらの国のエネルギー供給障害はありません",
+      "emptyDisplacement": "これらの国の難民データはありません",
+      "emptyCorrelation": "これらの国のシグナルはありません"
     }
   }
 }

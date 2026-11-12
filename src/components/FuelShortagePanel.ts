@@ -1,7 +1,7 @@
 import { CountrySectionError } from '@/services/country-brief-error';
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { iso2ToCountryName } from '@/utils/country-codes';
+import { iso2ToCountryName, toIso2 } from '@/utils/country-codes';
 import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 
@@ -22,6 +22,9 @@ import {
 } from '@/shared/fuel-shortage-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import { bindActivationKeys } from '@/utils/activation';
+import { t } from '@/services/i18n';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -130,6 +133,10 @@ export class FuelShortagePanel extends Panel {
   private detail: GetFuelShortageDetailResponse | null = null;
   private detailLoading = false;
   private detailError: string | null = null;
+  // Dashboard focus (#10453): each entry carries the ISO code of its country.
+  private readonly scopeFilter: PanelScopeFilter;
+  /** A refresh is in flight: the loading indicator must stay until data lands. */
+  private refreshing = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ shortageId?: string }>).detail?.shortageId;
     if (!id || !this.element?.isConnected) return;
@@ -147,6 +154,7 @@ export class FuelShortagePanel extends Panel {
         'carries the full evidence source list — see /docs/methodology/shortages for the ' +
         'threshold spec + classifier version.',
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.render() });
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
@@ -172,6 +180,25 @@ export class FuelShortagePanel extends Panel {
       window.removeEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
     super.destroy?.();
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (!this.scopeFilter.setScope(scope)) return;
+    // The next successful load draws with the new focus; redrawing now would
+    // erase a load failure or the loading state.
+    if (this.data && !this.showingLoadFailure && !this.refreshing) this.render();
+  }
+
+  public override showLoading(message?: string): void {
+    this.refreshing = true;
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.refreshing = false;
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
   }
 
   public async fetchData(): Promise<void> {
@@ -252,12 +279,24 @@ export class FuelShortagePanel extends Panel {
 
   private render(): void {
     if (!this.data) return;
+    this.refreshing = false;
+
+    // The focus narrows first (chosen countries, then neighbours); the
+    // summary counts the focused set.
+    const view = this.scopeFilter.view(this.data.shortages, (s) => toIso2(s.country));
+    if (this.data.shortages.length === 0) this.scopeFilter.hideStrip();
+    else this.scopeFilter.renderStrip(view);
+    const scoped = view.rows.map((row) => row.item);
 
     // Sort confirmed before watch; within each tier, strongest evidence first,
     // then most recently confirmed. Readers scan high-impact + high-trust rows
-    // first — the classifier's confidence ordering is the tie-breaker.
-    const rows = [...this.data.shortages]
-      .sort((a, b) => {
+    // first — the classifier's confidence ordering is the tie-breaker. Under a
+    // focus, chosen countries come before neighbours.
+    const rows = [...view.rows]
+      .sort((rowA, rowB) => {
+        if (rowA.rank !== rowB.rank) return rowA.rank - rowB.rank;
+        const a = rowA.item;
+        const b = rowB.item;
         const aConf = a.severity === 'confirmed' ? 0 : 1;
         const bConf = b.severity === 'confirmed' ? 0 : 1;
         if (aConf !== bConf) return aConf - bConf;
@@ -267,11 +306,11 @@ export class FuelShortagePanel extends Panel {
         if (qualityRank[aQ] !== qualityRank[bQ]) return qualityRank[aQ] - qualityRank[bQ];
         return b.lastConfirmed.localeCompare(a.lastConfirmed);
       })
-      .map(s => this.renderRow(s))
+      .map(row => this.renderRow(row.item, row))
       .join('');
 
-    const confirmed = this.data.shortages.filter(s => s.severity === 'confirmed').length;
-    const watch = this.data.shortages.filter(s => s.severity === 'watch').length;
+    const confirmed = scoped.filter(s => s.severity === 'confirmed').length;
+    const watch = scoped.filter(s => s.severity === 'watch').length;
     const summary = `${confirmed} confirmed · ${watch} watch`;
 
     const attribution = attributionFooterHtml({
@@ -290,7 +329,7 @@ export class FuelShortagePanel extends Panel {
     const html = unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
-        <div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
+        ${view.emptyByFocus ? focusedEmptyHtml(t('focus.filter.emptyFuelShortages')) : `<div class="table-scroll" role="group" tabindex="${this.selectedId ? '-1' : '0'}" aria-labelledby="${this.panelId}Title">
           <table class="wm-table fs-table" role="table">
             <thead role="rowgroup">
               <tr role="row">
@@ -302,7 +341,7 @@ export class FuelShortagePanel extends Panel {
             </thead>
             <tbody role="rowgroup">${rows}</tbody>
           </table>
-        </div>
+        </div>`}
         ${attribution}
         ${drawer}
       </div>
@@ -351,13 +390,13 @@ export class FuelShortagePanel extends Panel {
     else this.setSafeContent(html);
   }
 
-  private renderRow(s: FuelShortageEntry): string {
+  private renderRow(s: FuelShortageEntry, row?: ScopeRow<FuelShortageEntry>): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
       <tr class="fs-row" role="row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td role="cell">
-          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
+          <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)} ${scopeTagHtml(row)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>
         </td>
         <td role="cell" class="fs-val" data-label="Since">${escapeHtml(s.firstSeen.slice(0, 10))}</td>

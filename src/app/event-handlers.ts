@@ -63,6 +63,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
+  getMissionPreset,
   getMissionPresetsForVariant,
   applyMissionPresetToState,
   clearMissionPreset,
@@ -328,6 +329,16 @@ export interface EventHandlerCallbacks {
   mountLiveNewsIfReady?: () => void;
   isFreeTierFallbackActive?: () => boolean;
   focusStorageFacility?: (facilityId: string) => void;
+  /**
+   * Dashboard focus (#10453). `canUseFocus`: this account may set a focus.
+   * `promptForFocus`: open the focus editor on the active tab (the presets
+   * that ask for countries). `showFocusGate`: say a focus needs a plan this
+   * account does not have. All three route to PanelLayoutManager, which owns
+   * the tabs.
+   */
+  canUseFocus?: () => boolean;
+  promptForFocus?: () => void;
+  showFocusGate?: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -1357,7 +1368,16 @@ export class EventHandlerManager implements AppModule {
     return enforceFreePanelLimit(panelSettings, false);
   }
 
-  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
+  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): boolean {
+    const focusPreset = getMissionPreset(presetId);
+    const canFocus = this.callbacks.canUseFocus?.() === true;
+    if (focusPreset?.requiresFocus && !canFocus) {
+      // Refused before anything changes: the layout, the stored preset and the
+      // picker stay as they were, and the gate says which plans include it.
+      this.closeMissionPresetPopover();
+      this.callbacks.showFocusGate?.();
+      return false;
+    }
     let applied: ReturnType<typeof applyMissionPresetToState>;
     try {
       applied = applyMissionPresetToState(
@@ -1368,7 +1388,7 @@ export class EventHandlerManager implements AppModule {
       );
     } catch {
       showToast('This mission is not available on this dashboard.');
-      return;
+      return false;
     }
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
@@ -1405,6 +1425,13 @@ export class EventHandlerManager implements AppModule {
     showToast(`Mission preset applied: ${applied.preset.label}`);
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
+    // A mission about countries asks which ones. Never from an agent (it must
+    // not open a dialog the user did not ask for), and never for a plan that
+    // cannot set a focus: Country Watcher still applies for those.
+    if (source === 'user' && applied.preset.asksForCountries && canFocus) {
+      this.callbacks.promptForFocus?.();
+    }
+    return true;
   }
 
   /**
@@ -1434,7 +1461,10 @@ export class EventHandlerManager implements AppModule {
 
     const snapshot = this.snapshotMissionDashboardState();
     try {
-      this.applyMissionPreset(presetId, 'agent');
+      if (!this.applyMissionPreset(presetId, 'agent')) {
+        // Refused (the focus gate, or a variant that lacks it): not a no-op success.
+        throw new Error('Mission preset was not applied.');
+      }
       const nextPresetId = loadStoredMissionPreset()?.id ?? null;
       const mapState = this.ctx.map?.getState();
       const changed = snapshot.presetId !== nextPresetId

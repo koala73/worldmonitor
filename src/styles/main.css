@@ -6488,6 +6488,20 @@ body.playback-mode .status-dot {
   stroke-width: calc(2px * var(--marker-scale, 1));
 }
 
+/* The light map fill leaves --green at about 2.7:1, and a faint 1px neighbour
+   line reads as an ordinary border. Darken both strokes and dash the
+   neighbour so the two states differ by more than weight. */
+[data-theme="light"] .map-base .country.country-focus-chosen {
+  stroke: var(--green-text, var(--green));
+}
+
+[data-theme="light"] .map-base .country.country-focus-neighbour {
+  stroke: var(--green-text, var(--green));
+  stroke-opacity: 0.85;
+  stroke-width: calc(1.5px * var(--marker-scale, 1));
+  stroke-dasharray: calc(4px * var(--marker-scale, 1)) calc(2px * var(--marker-scale, 1));
+}
+
 /* Cable paths */
 .cable-path {
   fill: none;
@@ -29858,7 +29872,8 @@ body.map-width-resizing {
 
 .focus-editor-search:focus-visible,
 .focus-editor-date input:focus-visible {
-  outline: none;
+  outline: 2px solid var(--green-text, var(--green));
+  outline-offset: 1px;
   border-color: var(--green);
 }
 

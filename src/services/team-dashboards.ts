@@ -6,6 +6,7 @@ import { getConvexApi, getConvexClient, waitForConvexAuthForUser } from '@/servi
 import { settleAccountOperation } from '@/services/account-operation';
 import { DASHBOARD_MAP_VIEWS, DASHBOARD_TIME_RANGES } from '../../shared/agent-bus-contract';
 import { normalizeScope, type TabScope } from '../../shared/tab-scope';
+import { filtersFromEntries, filtersToEntries, type PanelFilters } from './panel-filters';
 import type { TeamDashboardLayout } from '../../convex/lib/teamDashboardLayout';
 import type { Id } from '../../convex/_generated/dataModel';
 
@@ -77,8 +78,10 @@ export interface TeamDashboardCaptureInput extends TabPanels {
     timeRange: string;
     layers: Readonly<Record<string, boolean | undefined>>;
   } | null;
-  /** The tab's focus (#10453). Per-panel filters travel later (`panelFilters`). */
+  /** The tab's focus (#10453). */
   scope?: TabScope | null;
+  /** The tab's per-panel filter choices (forecast region, webcam region). */
+  panelFilters?: PanelFilters;
 }
 
 /**
@@ -121,11 +124,16 @@ export function captureTeamDashboardLayout(input: TeamDashboardCaptureInput): Te
   }
 
   const scope = captureScope(input.scope);
+  const filterEntries = filtersToEntries(input.panelFilters);
+  const extras = {
+    ...(scope ? { scope } : {}),
+    ...(filterEntries.length > 0 ? { panelFilters: filterEntries } : {}),
+  };
   const map = input.map;
-  if (!map?.center || !Number.isFinite(map.zoom)) return scope ? { panels, scope } : { panels };
+  if (!map?.center || !Number.isFinite(map.zoom)) return { panels, ...extras };
   return {
     panels,
-    ...(scope ? { scope } : {}),
+    ...extras,
     map: {
       view: map.view,
       zoom: map.zoom,
@@ -145,6 +153,8 @@ export interface TeamDashboardTab extends TabPanels {
   map: TeamDashboardMap | null;
   /** The shared focus (#10453), or null for a whole-world dashboard. */
   scope: TabScope | null;
+  /** The shared per-panel filter choices, or undefined when there are none. */
+  panelFilters: PanelFilters | undefined;
   /**
    * The row carries a scope this build cannot read. The caller must not open
    * it: shown unfocused, a filtered dashboard would pass for the whole world.
@@ -185,7 +195,16 @@ export function toTeamDashboardTab(
     : null;
 
   const scope = layout.scope ? normalizeScope(layout.scope) : null;
-  return { panelSettings, panelOrder, bottomSet, sizes, map, scope, scopeInvalid: !!layout.scope && !scope };
+  return {
+    panelSettings,
+    panelOrder,
+    bottomSet,
+    sizes,
+    map,
+    scope,
+    panelFilters: filtersFromEntries(layout.panelFilters),
+    scopeInvalid: !!layout.scope && !scope,
+  };
 }
 
 /**

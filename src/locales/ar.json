@@ -5160,7 +5160,15 @@
       "hideUnattributedAria_many": "إخفاء {{count}} عنصرًا بلا دولة",
       "hideUnattributedAria_other": "إخفاء {{count}} عنصر بلا دولة",
       "partialConflict": "يتم عرض أحداث النزاع من آخر 150 فقط. لم يتم تحميل القائمة الكاملة.",
-      "partialConflictLoading": "يتم عرض أحداث الصراع من آخر 150 حدث أثناء تحميل القائمة الكاملة."
+      "partialConflictLoading": "يتم عرض أحداث الصراع من آخر 150 حدث أثناء تحميل القائمة الكاملة.",
+      "emptyInstability": "لا توجد درجات عدم استقرار لهذه الدول",
+      "emptyOutbreaks": "لا توجد تفشيات أمراض لهذه الدول",
+      "emptyOutages": "لا توجد انقطاعات إنترنت لهذه الدول",
+      "emptyRadiation": "لا توجد قراءات إشعاعية لهذه الدول",
+      "emptyFuelShortages": "لا توجد نقص وقود لهذه الدول",
+      "emptyEnergyDisruptions": "لا توجد انقطاعات طاقة لهذه الدول",
+      "emptyDisplacement": "لا توجد بيانات نزوح لهذه الدول",
+      "emptyCorrelation": "لا توجد إشارات لهذه الدول"
     }
   }
 }

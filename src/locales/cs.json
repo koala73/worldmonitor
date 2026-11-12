@@ -5104,7 +5104,15 @@
       "hideUnattributedAria_many": "Skrýt {{count}} položek bez státu",
       "hideUnattributedAria_other": "Skrýt {{count}} položek bez státu",
       "partialConflict": "Zobrazuji pouze poslední konfliktní události ze 150. Úplný seznam se nenačetl.",
-      "partialConflictLoading": "Zobrazuji konfliktní události z posledních 150 událostí, zatímco se načítá úplný seznam."
+      "partialConflictLoading": "Zobrazuji konfliktní události z posledních 150 událostí, zatímco se načítá úplný seznam.",
+      "emptyInstability": "Žádné skóre nestability pro tyto země",
+      "emptyOutbreaks": "Žádné výskyty nemocí pro tyto země",
+      "emptyOutages": "Žádné přerušení internetu pro tyto země",
+      "emptyRadiation": "Žádné údaje o radiaci pro tyto země",
+      "emptyFuelShortages": "Žádné nedostatky paliva pro tyto země",
+      "emptyEnergyDisruptions": "Žádné přerušení energetiky pro tyto země",
+      "emptyDisplacement": "Žádné údaje o vysídlení pro tyto země",
+      "emptyCorrelation": "Žádné signály pro tyto země"
     }
   }
 }

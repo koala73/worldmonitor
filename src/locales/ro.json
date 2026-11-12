@@ -5076,7 +5076,15 @@
       "hideUnattributedAria_few": "Ascunde {{count}} elemente fără țară",
       "hideUnattributedAria_other": "Ascunde {{count}} de elemente fără țară",
       "partialConflict": "Se afișează doar evenimentele de conflict din ultimele 150. Lista completă nu s-a încărcat.",
-      "partialConflictLoading": "Se afișează evenimente de conflict din ultimele 150, în timp ce lista completă se încarcă."
+      "partialConflictLoading": "Se afișează evenimente de conflict din ultimele 150, în timp ce lista completă se încarcă.",
+      "emptyInstability": "Niciun scor de instabilitate pentru aceste țări",
+      "emptyOutbreaks": "Niciun focar de boală pentru aceste țări",
+      "emptyOutages": "Nicio întrerupere de internet pentru aceste țări",
+      "emptyRadiation": "Nicio măsurare de radiații pentru aceste țări",
+      "emptyFuelShortages": "Nicio lipsă de combustibil pentru aceste țări",
+      "emptyEnergyDisruptions": "Nicio întrerupere de energie pentru aceste țări",
+      "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
+      "emptyCorrelation": "Niciun semnal pentru aceste țări"
     }
   }
 }

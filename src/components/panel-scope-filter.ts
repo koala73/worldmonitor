@@ -82,6 +82,26 @@ export function focusedEmptyHtml(message: string): string {
   return `<div class="panel-scope-empty" role="status"><span class="panel-scope-empty-title">${escapeHtml(message)}</span><span class="panel-scope-empty-hint">${escapeHtml(t('focus.filter.emptyHint'))}</span></div>`;
 }
 
+/** The same empty state as an element, for panels that build DOM rather than HTML. */
+export function focusedEmptyNode(message: string): HTMLElement {
+  return h('div', { className: 'panel-scope-empty', role: 'status' },
+    h('span', { className: 'panel-scope-empty-title' }, message),
+    h('span', { className: 'panel-scope-empty-hint' }, t('focus.filter.emptyHint')),
+  );
+}
+
+/** The row marker as an element ('null' for chosen-country and unfocused rows). */
+export function scopeTagNode(row: Pick<ScopeRow<unknown>, 'tag' | 'country'> | null | undefined): HTMLElement | null {
+  if (!row?.tag) return null;
+  if (row.tag === 'neighbour' && row.country) {
+    return h('span', { className: 'panel-scope-tag panel-scope-tag-neighbour' }, neighbourTagText(row.country));
+  }
+  if (row.tag === 'unattributed') {
+    return h('span', { className: 'panel-scope-tag panel-scope-tag-none' }, t('focus.filter.noCountryTag'));
+  }
+  return null;
+}
+
 type StripAction = 'show-all' | 'apply' | 'show-unattributed' | 'hide-unattributed';
 
 export interface PanelScopeFilterOptions {

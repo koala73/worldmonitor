@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "Dölj {{count}} objekt utan land",
       "hideUnattributedAria_other": "Dölj {{count}} objekt utan land",
       "partialConflict": "Visar konflikthändelser från de senaste 150 endast. Den fullständiga listan laddades inte.",
-      "partialConflictLoading": "Visar konflikthändelser från de senaste 150 medan den fullständiga listan läses in."
+      "partialConflictLoading": "Visar konflikthändelser från de senaste 150 medan den fullständiga listan läses in.",
+      "emptyInstability": "Inga instabilitetsvärden för dessa länder",
+      "emptyOutbreaks": "Inga sjukdomsutbrott för dessa länder",
+      "emptyOutages": "Inga internetavbrott för dessa länder",
+      "emptyRadiation": "Inga strålningsmätningar för dessa länder",
+      "emptyFuelShortages": "Inga bränslebrist för dessa länder",
+      "emptyEnergyDisruptions": "Inga energistörningar för dessa länder",
+      "emptyDisplacement": "Ingen förflyttningsdata för dessa länder",
+      "emptyCorrelation": "Inga signaler för dessa länder"
     }
   }
 }

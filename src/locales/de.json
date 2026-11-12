@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "Das {{count}} Element ohne Land verbergen",
       "hideUnattributedAria_other": "Die {{count}} Elemente ohne Land verbergen",
       "partialConflict": "Zeigt Konfliktereignisse nur aus den letzten 150 an. Die vollständige Liste konnte nicht geladen werden.",
-      "partialConflictLoading": "Zeige Konfliktereignisse aus den letzten 150, während die vollständige Liste geladen wird."
+      "partialConflictLoading": "Zeige Konfliktereignisse aus den letzten 150, während die vollständige Liste geladen wird.",
+      "emptyInstability": "Keine Instabilitätswerte für diese Länder",
+      "emptyOutbreaks": "Keine Krankheitsausbrüche für diese Länder",
+      "emptyOutages": "Keine Internetunterbrechungen für diese Länder",
+      "emptyRadiation": "Keine Strahlungswerte für diese Länder",
+      "emptyFuelShortages": "Keine Treibstoffknappheit für diese Länder",
+      "emptyEnergyDisruptions": "Keine Energieunterbrechungen für diese Länder",
+      "emptyDisplacement": "Keine Fluchtlingsdaten für diese Länder",
+      "emptyCorrelation": "Keine Signale für diese Länder"
     }
   }
 }

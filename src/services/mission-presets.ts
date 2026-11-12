@@ -37,6 +37,18 @@ export interface MissionPreset {
   variants?: string[];
   /** Explicit layouts for variants where the base mission has no coherent native intersection. */
   variantOverrides?: Partial<Record<string, Pick<MissionPreset, 'panels' | 'layers'>>>;
+  /**
+   * After the preset is applied by the user, open the focus editor so they
+   * choose the countries (and dates) it is about (#10453). Skipped for plans
+   * that cannot set a focus, and when an agent applies the preset.
+   */
+  asksForCountries?: boolean;
+  /**
+   * The preset is only for plans that may set a focus (Pro Business, API
+   * Business, Enterprise). Without the entitlement it is not applied and the
+   * focus gate is shown instead.
+   */
+  requiresFocus?: boolean;
 }
 
 export interface AppliedMissionPreset {
@@ -394,6 +406,41 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
         layers: ['positiveEvents', 'happiness', 'speciesRecovery', 'renewableInstallations'],
       },
     },
+    asksForCountries: true,
+  },
+  {
+    id: 'protective-travel',
+    label: 'Protective Travel',
+    shortLabel: 'Travel',
+    description: 'Security, health, aviation and connectivity signals for a trip. Choose the countries and dates.',
+    icon: '✈',
+    view: 'global',
+    zoom: 2.2,
+    timeRange: '24h',
+    variants: ['full'],
+    // Unrest, weather and natural hazards have no panel of their own; they are
+    // map layers (protests, weather, natural), so they come in through `layers`.
+    panels: [
+      'map',
+      'live-news',
+      'security-advisories',
+      'airline-intel',
+      'disease-outbreaks',
+      'internet-disruptions',
+      'live-webcams',
+      'cii',
+      'monitors',
+    ],
+    layers: [
+      'protests',
+      'weather',
+      'natural',
+      'flights',
+      'outages',
+      'hotspots',
+    ],
+    asksForCountries: true,
+    requiresFocus: true,
   },
 ];
 
