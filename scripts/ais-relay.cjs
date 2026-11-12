@@ -3146,6 +3146,7 @@ async function seedUcdpEvents() {
       throw err;
     });
     const annual = await ucdpFetchAnnualWindow(fetchLogged, version, { nowMs });
+    const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
     const allEvents = [...annual.events];
     const failedPages = annual.failedPages;
     let latestMs = NaN;
@@ -3244,7 +3245,7 @@ async function seedUcdpEvents() {
     })).sort((a, b) => b.dateStart - a.dateStart);
 
     // Keep the newest candidate release and the annual conflict history.
-    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS);
+    const capped = ucdpCapWithAnnualFloor(mapped, (e) => candidateIds.has(e.id), UCDP_MAX_EVENTS, undefined, (e) => annualIds.has(e.id));
 
     // Partial success but 0 events after filtering: extend TTL, don't overwrite
     if (capped.length === 0) {
@@ -3282,7 +3283,7 @@ async function seedUcdpEvents() {
       return cached;
     }, window);
     if (keepCached) {
-      console.warn(`[UCDP] Window incomplete and ending ${new Date(latestMs).toISOString().slice(0, 10)}, no later than the cached window (or the cache was unreadable), extending existing key TTL (preserving last good data)`);
+      console.warn(`[UCDP] Window refresh cannot replace the cached frontier, extending existing key TTL (preserving last good data)`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }

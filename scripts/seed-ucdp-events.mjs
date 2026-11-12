@@ -12,6 +12,7 @@ import { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KE
 import ucdpCandidate from './shared/ucdp-candidate.cjs';
 
 const {
+  withUcdpFetchDeadline,
   ANNUAL_LOOKBACK_MS,
   ANNUAL_WINDOW_MAX_PAGES,
   buildCandidateVersions,
@@ -94,6 +95,7 @@ async function discoverVersion(token, fetchPage = fetchGedPage, candidates = bui
       console.log(`  Found v${version} with ${page0.Result.length} events on page 0`);
       return { version, page0 };
     } catch (err) {
+      if (err.code === 'UCDP_FETCH_DEADLINE') throw err;
       console.warn(`  v${version} failed: ${err.message}`);
     }
   }
@@ -105,7 +107,6 @@ async function discoverVersion(token, fetchPage = fetchGedPage, candidates = bui
 function candidateFetcher(token) {
   return (version, page, timeoutMs, query) => fetchGedPage(version, page, token, timeoutMs, query);
 }
-const windowFetcher = candidateFetcher;
 
 // Probes all candidates CONCURRENTLY under a short discovery timeout and returns
 // null (never throws) when none is published yet — the candidate is an addition
@@ -186,13 +187,15 @@ async function main() {
   console.log(`  UCDP Token: ${ucdpToken ? maskToken(ucdpToken) : '(none — unauthenticated)'}`);
   console.log();
 
-  const { version } = await discoverVersion(ucdpToken);
+  const fetchWindowPage = withUcdpFetchDeadline(candidateFetcher(ucdpToken));
+  const { version } = await discoverVersion(ucdpToken, (v, page) => fetchWindowPage(v, page));
   const nowMs = Date.now();
   console.log(`  Version: ${version}`);
 
   // The annual release's part of the trailing window, by date: its pages are
   // not in date order, so "the newest pages" never meant the newest events.
-  const annual = await fetchAnnualWindow(windowFetcher(ucdpToken), version, { nowMs });
+  const annual = await fetchAnnualWindow(fetchWindowPage, version, { nowMs });
+  const annualIds = new Set(annual.events.filter((event) => event?.id != null).map((event) => String(event.id)));
   const allEvents = [...annual.events];
   const failedPages = annual.failedPages;
   let latestDatasetMs = getMaxDateMs(annual.events);
@@ -227,10 +230,10 @@ async function main() {
   let unpublishedMonths = [];
   const candidateIds = new Set();
   try {
-    const candidate = await discoverCandidateVersion(ucdpToken);
+    const candidate = await discoverCandidateVersion(ucdpToken, fetchWindowPage);
     if (candidate) {
       const fromMs = Math.max(annualReleaseEndMs(version) + 1, nowMs - ANNUAL_LOOKBACK_MS);
-      const merged = await fetchCandidateWindow(windowFetcher(ucdpToken), candidate, { fromMs, throughVersion: currentCandidateVersion(nowMs) });
+      const merged = await fetchCandidateWindow(fetchWindowPage, candidate, { fromMs, throughVersion: currentCandidateVersion(nowMs) });
       // Only claim the bare candidate version once every release of the
       // window was fetched whole — a partial window labelled `26.0.6` is
       // indistinguishable from a complete one downstream.
@@ -303,7 +306,7 @@ async function main() {
 
   mapped.sort((a, b) => b.dateStart - a.dateStart);
   // Keep the newest candidate release and the annual conflict history.
-  const capped = capWithAnnualFloor(mapped, (event) => candidateIds.has(event.id), MAX_EVENTS);
+  const capped = capWithAnnualFloor(mapped, (event) => candidateIds.has(event.id), MAX_EVENTS, undefined, (event) => annualIds.has(event.id));
   if (mapped.length > MAX_EVENTS) console.log(`  Capped: ${mapped.length} → ${capped.length}`);
 
   // Guard: never overwrite existing data with empty results.
@@ -347,7 +350,7 @@ async function main() {
 
   // Never replace a complete window with an incomplete one that reaches no further.
   if (await keepLastGoodUcdpWindow(() => readExistingPayload(redisUrl, redisToken), payload.window)) {
-    console.warn(`  Window incomplete and ending ${new Date(latestDatasetMs).toISOString().slice(0, 10)}, no later than the cached window (or the cache was unreadable) — extending existing key TTL (preserving last good data)`);
+    console.warn(`  Window refresh cannot replace the cached frontier — extending existing key TTL (preserving last good data)`);
     await extendExistingTtl(redisUrl, redisToken);
     process.exit(0);
   }
@@ -451,7 +454,10 @@ async function main() {
 export { buildVersionCandidates, discoverVersion, buildCandidateVersions, discoverCandidateVersion };
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  main().catch(err => {
+  main().catch(async (err) => {
+    if (err.code === 'UCDP_FETCH_DEADLINE') {
+      await extendExistingTtl(process.env.UPSTASH_REDIS_REST_URL, process.env.UPSTASH_REDIS_REST_TOKEN);
+    }
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     // Exit gracefully for cron — crashing restarts the container unnecessarily.
     // The health endpoint will flag stale data via seed-meta.

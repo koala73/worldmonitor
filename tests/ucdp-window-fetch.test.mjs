@@ -9,6 +9,8 @@ import { describe, it } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const {
+  capWithAnnualFloor,
+  withUcdpFetchDeadline,
   annualReleaseEndMs,
   candidateVersionsSince,
   discoverCandidateVersion,
@@ -21,6 +23,40 @@ const {
 const DAY_MS = 86_400_000;
 const NOW = Date.UTC(2026, 9, 23);
 const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+
+it('reserves actual annual rows when older candidates precede them', () => {
+  const rows = [
+    ...Array.from({ length: 1800 }, (_, i) => ({ id: `new-${i}`, dateStart: NOW, release: 'new' })),
+    ...Array.from({ length: 600 }, (_, i) => ({ id: `old-${i}`, dateStart: NOW - DAY_MS, release: 'old' })),
+    ...Array.from({ length: 600 }, (_, i) => ({ id: `annual-${i}`, dateStart: NOW - 90 * DAY_MS, release: 'annual' })),
+  ];
+  const kept = capWithAnnualFloor(rows, (e) => e.release === 'new', 2000, 500, (e) => e.release === 'annual');
+  assert.equal(kept.filter((e) => e.release === 'new').length, 1800);
+  assert.equal(kept.filter((e) => e.release === 'annual').length, 500);
+  assert.equal(kept.length, 2300);
+});
+
+it('malformed annual pages count as failed, including page zero', async () => {
+  const later = await fetchAnnualWindow(async (_v, page) => page === 0
+    ? { TotalPages: 2, Result: [{ id: 1 }] } : { TotalPages: 2, Result: null }, '26.1', { nowMs: NOW });
+  assert.equal(later.failedPages, 1);
+  const first = await fetchAnnualWindow(async () => ({ TotalPages: 1 }), '26.1', { nowMs: NOW });
+  assert.equal(first.failedPages, 1);
+});
+
+it('a shared deadline clamps each request and prevents starting work after the budget', async () => {
+  let clock = 0;
+  const timeouts = [];
+  const fetchPage = withUcdpFetchDeadline(async (_v, _page, timeout) => {
+    timeouts.push(timeout);
+    clock += 80_000;
+    return { Result: [] };
+  }, { budgetMs: 100_000, now: () => clock });
+  await fetchPage('26.1', 0, 90_000);
+  await fetchPage('26.1', 1, 90_000);
+  await assert.rejects(() => fetchPage('26.1', 2), { code: 'UCDP_FETCH_DEADLINE' });
+  assert.deepEqual(timeouts, [90_000, 20_000]);
+});
 
 /** 40 events a day; ids encode the release so the dedupe is observable. */
 function eventsBetween(startMs, endMs, release, perDay = 40) {

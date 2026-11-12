@@ -338,11 +338,23 @@ describe('a run that cannot complete its window keeps the last good one', () => 
       assert.equal(await decide({ window: { complete: true, endMs: 1_000 } }), true);
     });
 
-    it('publishes a complete run without reading the cache', async () => {
+    it('keeps a newer complete cached frontier even when discovery reports a complete older run', async () => {
       let reads = 0;
       const keep = await ucdpCandidate.keepLastGoodUcdpWindow(async () => { reads += 1; return recentGood; }, { complete: true, endMs: 1_000 });
-      assert.equal(keep, false);
-      assert.equal(reads, 0);
+      assert.equal(keep, true);
+      assert.equal(reads, 1);
+    });
+
+    it('never publishes an unparseable frontier, even if labelled complete', async () => {
+      for (const endMs of [NaN, null, undefined]) {
+        assert.equal(await decide(null, { complete: true, endMs }), true);
+      }
+    });
+
+    it('publishes complete runs at the same or a newer frontier', async () => {
+      for (const endMs of [1_000, 1_001]) {
+        assert.equal(await decide({ window: { complete: true, endMs: 1_000 } }, { complete: true, endMs }), false);
+      }
     });
 
     it('publishes an incomplete run when there is nothing better to keep', async () => {
@@ -359,14 +371,14 @@ describe('a run that cannot complete its window keeps the last good one', () => 
   });
 
   describe('ais-relay.cjs writer', () => {
-    async function runRelay({ existing = null, readFails = false, discover = async () => null, merge = async () => { throw new Error('not reached'); } } = {}) {
+    async function runRelay({ existing = null, readFails = false, annualEvents = [annualRow], discover = async () => null, merge = async () => { throw new Error('not reached'); } } = {}) {
       const calls = { writes: [], meta: [], expires: [] };
       const quiet = { log() {}, warn() {}, error() {} };
       const deps = {
         console: quiet,
         ucdpDiscoverVersion: async () => ({ version: '26.1' }),
         ucdpFetchPage: async () => { throw new Error('not reached'); },
-        ucdpFetchAnnualWindow: async () => ({ events: [annualRow], failedPages: 0, totalPages: 1, truncated: false, startDate: '', endDate: '' }),
+        ucdpFetchAnnualWindow: async () => ({ events: annualEvents, failedPages: 0, totalPages: 1, truncated: false, startDate: '', endDate: '' }),
         UCDP_ANNUAL_WINDOW_MAX_PAGES: 50,
         UCDP_ANNUAL_LOOKBACK_MS: ucdpCandidate.ANNUAL_LOOKBACK_MS,
         UCDP_TRAILING_WINDOW_MS: 365 * DAY_MS,
@@ -406,6 +418,10 @@ describe('a run that cannot complete its window keeps the last good one', () => 
       assert.deepEqual(calls.expires, [UCDP_REDIS_KEY]);
     };
 
+    it('a null annual row cannot bypass last-good preservation', async () => {
+      assertPreserved(await runRelay({ existing: recentGood, annualEvents: [null, annualRow] }));
+    });
+
     it('candidate discovery finding nothing keeps a complete cached window that ends later', async () => {
       assertPreserved(await runRelay({ existing: recentGood }));
     });
@@ -435,7 +451,7 @@ describe('a run that cannot complete its window keeps the last good one', () => 
   describe('seed-ucdp-events.mjs writer', () => {
     // Runs the real script with fetch replaced (no network): annual pages
     // answer one row, every candidate release 400s, so discovery returns null.
-    function runStandalone(existing) {
+    function runStandalone(existing, exhaustBudget = false, nullAnnualRow = false) {
       const dir = mkdtempSync(join(tmpdir(), 'ucdp-writer-'));
       const preload = join(dir, 'preload.mjs');
       const outPath = join(dir, 'calls.json');
@@ -444,13 +460,16 @@ import { writeFileSync } from 'node:fs';
 const existing = ${JSON.stringify(existing)};
 const annualRow = ${JSON.stringify(annualRow)};
 const calls = { sets: [], expires: [] };
+let clock = ${NOW};
+if (${exhaustBudget}) Date.now = () => clock;
 process.on('exit', () => writeFileSync(${JSON.stringify(outPath)}, JSON.stringify(calls)));
 globalThis.fetch = async (url, init) => {
   const u = String(url);
   if (u.includes('/api/gedevents/')) {
+    if (${exhaustBudget}) { clock += 250_000; throw new Error('upstream timeout'); }
     const version = u.split('/api/gedevents/')[1].split('?')[0];
     if (version.includes('.0.')) return new Response('{}', { status: 400 });
-    return Response.json({ TotalPages: 1, Result: [annualRow] });
+    return Response.json({ TotalPages: 1, Result: ${nullAnnualRow ? '[null, annualRow]' : '[annualRow]'} });
   }
   if (u.includes('/get/')) return Response.json({ result: existing === null ? null : JSON.stringify(existing) });
   const [command, key] = JSON.parse(init.body);
@@ -483,6 +502,19 @@ globalThis.fetch = async (url, init) => {
       assert.ok(calls.sets.includes(UCDP_REDIS_KEY));
       assert.ok(calls.sets.includes('seed-meta:conflict:ucdp-events'));
       assert.ok(!calls.expires.includes(UCDP_REDIS_KEY));
+    });
+
+    it('a null annual row cannot bypass last-good preservation', () => {
+      const calls = runStandalone(recentGood, false, true);
+      assert.deepEqual(calls.sets, []);
+      assert.ok(calls.expires.includes(UCDP_REDIS_KEY));
+    });
+
+    it('uses the reserved budget to preserve last-good data after discovery exhausts the deadline', () => {
+      const calls = runStandalone(recentGood, true);
+      assert.deepEqual(calls.sets, []);
+      assert.ok(calls.expires.includes(UCDP_REDIS_KEY));
+      assert.ok(calls.expires.includes('seed-meta:conflict:ucdp-events'));
     });
   });
 });
