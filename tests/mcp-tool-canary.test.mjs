@@ -149,15 +149,19 @@ describe('runCanary', () => {
     assert.equal(summarize(report).healthy, false);
   });
 
-  it('chains derived arguments from the upstream tool result', async () => {
+  it('requests one forecast so full case files cannot exhaust the list budget before chaining', async () => {
     const tools = [
       tool('get_forecast_case', { inputSchema: { type: 'object', properties: {}, required: ['forecast_id', 'generated_at'] } }),
       tool('get_forecast_predictions'),
     ];
     const upstream = { content: [], structuredContent: { cached_at: 'x', stale: false, data: { items: [], predictions: { generatedAt: 1794211442129, predictions: [{ id: 'fc-1' }] } } } };
-    const { fetchImpl, calls } = fakeFetch(tools, (name) => ({ body: rpcResult(name === 'get_forecast_predictions' ? upstream : GOOD) }));
+    const overBudget = { content: [], structuredContent: { _budget_exceeded: true, budget_bytes: 131072, actual_bytes: 137988 } };
+    const { fetchImpl, calls } = fakeFetch(tools, (name, args) => ({
+      body: rpcResult(name === 'get_forecast_predictions' ? (args.limit === 1 ? upstream : overBudget) : GOOD),
+    }));
     const report = await runCanary({ key: 'wm_test', fetchImpl, ...FAST });
     assert.equal(summarize(report).healthy, true);
+    assert.deepEqual(calls.find((c) => c.name === 'get_forecast_predictions').args, { limit: 1 });
     assert.deepEqual(calls.find((c) => c.name === 'get_forecast_case').args, { forecast_id: 'fc-1', generated_at: '1794211442129' });
   });
 });
