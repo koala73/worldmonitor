@@ -112,7 +112,8 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
   // rendered its HTML markers. Keep that state now that textures come from the bundle
   // origin. With a texture, the focused article marker sits under the canvas centre and
   // takes the wheel, and the software-GPU runner finishes Zoom before the gestures land.
-  await page.route('**/textures/*', route => route.fulfill({ status: 404, body: 'Not Found', headers: { 'Access-Control-Allow-Origin': '*' } }));
+  // A context route, so a test that serves its own texture with page.route still wins.
+  await page.context().route('**/textures/*', route => route.fulfill({ status: 404, body: 'Not Found', headers: { 'Access-Control-Allow-Origin': '*' } }));
   await page.route('**/news-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>News plugin metering acceptance</title><h1>Built news plugin — controlled host and data</h1><p>Checks rendering and request reuse. Does not test live OAuth, ChatGPT installation or source freshness.</p><iframe title="WorldMonitor news and maps" sandbox="allow-scripts" style="width:100%;height:1050px;border:0"></iframe>' }));
   await page.exposeFunction('newsHost', async (method: string, params: HostCall) => {
     methods.push(method);
