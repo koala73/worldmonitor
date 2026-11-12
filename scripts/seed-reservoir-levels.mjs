@@ -22,10 +22,10 @@ import {
   classifyPasses,
   computeChange,
   createPassAccumulator,
+  dedupeGranules,
   fetchSegments,
   granuleDate,
   granuleRevision,
-  granuleRgt,
   listGranules,
   mergePasses,
   passToTuple,
@@ -210,10 +210,12 @@ export function planFetches(queues, budget = MAX_GRANULES_PER_RUN) {
       const q = queues.get(id);
       const i = cursors.get(id);
       if (i >= q.length) continue;
+      const group = Array.isArray(q[i]) ? q[i] : [q[i]];
+      if (total + group.length > budget) continue;
       if (!picked.has(id)) picked.set(id, []);
-      picked.get(id).push(q[i]);
+      picked.get(id).push(...group);
       cursors.set(id, i + 1);
-      total++;
+      total += group.length;
       progress = true;
     }
   }
@@ -226,6 +228,24 @@ export function granuleQueue(state, listed) {
   const retries = Object.keys(state.failures || {}).filter((g) => !processed.has(g) && !gaveUp.has(g)).sort();
   const fresh = listed.filter((g) => !processed.has(g) && !gaveUp.has(g) && !(g in (state.failures || {})));
   return [...retries, ...fresh];
+}
+
+/** Refresh potentially overlapping acquisition dates atomically. Include processed
+ * companions and only the newest release of each orbit. The two-day separation
+ * covers both sides of the +/- one-day granule-to-pass attribution window. */
+export function granuleGroups(state, listed) {
+  const all = dedupeGranules([...listed, ...state.processed, ...state.gaveUp, ...Object.keys(state.failures || {})]);
+  const pending = new Set(granuleQueue(state, all));
+  const abandoned = new Set(state.gaveUp);
+  const groups = [];
+  for (const g of all) {
+    const last = groups.at(-1);
+    if (last && Date.parse(granuleDate(g)) - Date.parse(granuleDate(last.at(-1))) <= 2 * DAY_MS) last.push(g);
+    else groups.push([g]);
+  }
+  const retry = group => group.some(g => g in (state.failures || {}));
+  return groups.filter(group => group.some(g => pending.has(g)) && !group.some(g => abandoned.has(g)))
+    .sort((a, b) => Number(retry(b)) - Number(retry(a)));
 }
 
 // ---------------------------------------------------------------------------
@@ -283,19 +303,13 @@ function outage(message) {
 }
 
 /**
- * Tag each new pass with the newest release revision of its contributing granules
- * (same source RGT, acquisition date within a day), so reprocessing replaces older values.
+ * Sum the complete group's orbit revisions, so updating any member (even below the
+ * group's maximum revision) or adding a late member supersedes the stored reduction.
+ * Granules must be a complete group with one latest release per orbit.
  */
 export function withRevisions(passes, granules) {
-  return passes.map((p) => {
-    let revision = 1;
-    for (const g of granules) {
-      if (!(p.sourceRgts ?? [p.rgt]).includes(granuleRgt(g))) continue;
-      const gd = granuleDate(g);
-      if (gd && Math.abs(Date.parse(gd) - Date.parse(p.date)) <= DAY_MS) revision = Math.max(revision, granuleRevision(g) ?? 1);
-    }
-    return { ...p, revision };
-  });
+  const revision = granules.reduce((sum, g) => sum + (granuleRevision(g) ?? 1), 0) || 1;
+  return passes.map(p => ({ ...p, revision }));
 }
 
 async function mapLimit(items, limit, fn) {
@@ -344,13 +358,14 @@ export async function fetchReservoirLevels({
       : MISSION_START_ISO;
     try {
       const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS, product: productOf(e).id });
-      queues.set(e.id, granuleQueue(s, listed));
+      queues.set(e.id, granuleGroups(s, listed));
       return true;
     } catch (err) {
       cmrFailures++;
       discoveryFailed.add(e.id);
       log(`  [${e.id}] CMR failed: ${err?.message || err}`);
-      queues.set(e.id, granuleQueue(s, []));
+      // Without a complete listing, an unknown companion could be omitted.
+      queues.set(e.id, []);
       return false;
     }
   };
@@ -363,6 +378,11 @@ export async function fetchReservoirLevels({
   // 2. Fetch a bounded, round-robin selection from SlideRule, with separate budgets for
   // ATL13 and the larger ATL06 granules.
   const queuesFor = (productId) => new Map(watchlist.filter((e) => productOf(e).id === productId).map((e) => [e.id, queues.get(e.id) || []]));
+  for (const [product, limit] of [['atl13', budget], ['atl06', atl06Budget]]) {
+    if (limit > 0 && [...queuesFor(product).values()].some(groups => groups.some(group => group.length > limit))) {
+      throw outage(`atomic ${product} granule group exceeds the ${limit}-granule run budget`);
+    }
+  }
   const plan = new Map([...planFetches(queuesFor('atl13'), budget), ...planFetches(queuesFor('atl06'), atl06Budget)]);
   const planned = [...plan.values()].reduce((n, g) => n + g.length, 0);
   let okBatches = 0;
@@ -375,40 +395,48 @@ export async function fetchReservoirLevels({
   const planned06 = (e) => productOf(e).id === 'atl06';
   const entries = [...watchlist.filter((e) => plan.has(e.id) && planned06(e)), ...watchlist.filter((e) => plan.has(e.id) && !planned06(e))];
   await mapLimit(entries, SLIDERULE_CONCURRENCY, async (e) => {
-    const granules = plan.get(e.id);
-    if (Date.now() > deadlineAtMs) { skippedForTime += granules.length; return; }
-    const product = productOf(e).id;
-    const acc = createPassAccumulator({ refid: e.refid ?? null, product, levelWindow: e.levelWindowM ?? null });
-    const r = await fetchSegments(bboxToPolygon(e.core), granules, (row) => acc.add(row), fetchImpl, {
-      product,
-      deadlineAtMs,
-      log: (m) => log(`  [${e.id}]${m}`),
-    });
-    skippedForTime += r.skipped.length;
-    okBatches += r.okBatches;
-    failedBatches += r.failedBatches;
-    attempted += r.processed.length + r.failed.length;
-    succeeded += r.processed.length;
-    const s = byId[e.id];
-    const fresh = withRevisions(acc.finish(), r.processed);
-    const processed = new Set([...s.processed, ...r.processed]);
-    const failures = { ...s.failures };
-    const gaveUp = new Set(s.gaveUp);
-    for (const g of r.processed) delete failures[g];
-    for (const g of r.failed) {
-      failures[g] = (failures[g] || 0) + 1;
-      if (failures[g] >= MAX_GRANULE_FAILURES) { gaveUp.add(g); delete failures[g]; }
+    const selected = new Set(plan.get(e.id));
+    const groups = queues.get(e.id).filter(group => group.every(g => selected.has(g)));
+    for (const granules of groups) {
+      if (Date.now() > deadlineAtMs) { skippedForTime += granules.length; continue; }
+      const product = productOf(e).id;
+      const acc = createPassAccumulator({ refid: e.refid ?? null, product, levelWindow: e.levelWindowM ?? null });
+      const r = await fetchSegments(bboxToPolygon(e.core), granules, (row) => acc.add(row), fetchImpl, {
+        product,
+        deadlineAtMs,
+        log: (m) => log(`  [${e.id}]${m}`),
+      });
+      skippedForTime += r.skipped.length;
+      okBatches += r.okBatches;
+      failedBatches += r.failedBatches;
+      attempted += r.processed.length + r.failed.length;
+      succeeded += r.processed.length;
+      const s = byId[e.id];
+      const complete = r.processed.length === granules.length;
+      const fresh = complete ? withRevisions(acc.finish(), r.processed) : [];
+      const accepted = complete ? r.processed : [];
+      const processed = new Set([...s.processed, ...accepted]);
+      const failures = { ...s.failures };
+      const gaveUp = new Set(s.gaveUp);
+      for (const g of accepted) delete failures[g];
+      // A deferred group is retried without spending its failure allowance. A failed
+      // group retains the last complete pass and retries all uncommitted members.
+      const failed = !complete && !r.skipped.length ? granules.filter(g => !processed.has(g)) : [];
+      for (const g of failed) {
+        failures[g] = (failures[g] || 0) + 1;
+        if (failures[g] >= MAX_GRANULE_FAILURES) { gaveUp.add(g); delete failures[g]; }
+      }
+      let cursor = s.cursor;
+      for (const g of accepted) cursor = maxDate(cursor, granuleDate(g));
+      byId[e.id] = pruneReservoirState({
+        passes: mergePasses(s.passes.map(tupleToPass), fresh).map(passToTuple),
+        cursor,
+        processed: [...processed].sort(),
+        failures,
+        gaveUp: [...gaveUp].sort(),
+      });
+      log(`  [${e.id}] ${r.processed.length}/${granules.length} granules, ${complete ? 'complete' : 'retained previous group'}, +${fresh.length} passes`);
     }
-    let cursor = s.cursor;
-    for (const g of r.processed) cursor = maxDate(cursor, granuleDate(g));
-    byId[e.id] = pruneReservoirState({
-      passes: mergePasses(s.passes.map(tupleToPass), fresh).map(passToTuple),
-      cursor,
-      processed: [...processed].sort(),
-      failures,
-      gaveUp: [...gaveUp].sort(),
-    });
-    log(`  [${e.id}] ${r.processed.length}/${granules.length} granules, +${fresh.length} passes`);
   });
   // Outage = no request reached a working SlideRule. Per-granule server errors inside a
   // completed request are partial success (retried next run, dropped after three runs).

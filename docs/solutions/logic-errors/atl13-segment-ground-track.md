@@ -92,12 +92,25 @@ scratch is rejected with an explicit reset instruction. Redis bookkeeping schema
 2 ignores schema-1 pass histories, starting from the rebuilt committed baseline;
 normal bounded discovery catches up from each preserved historical cursor.
 Already published last-good data remains under the existing retention rules if
-an upstream request fails. Filename RGT is retained only transiently as
-`sourceRgt` on rows and the complete `sourceRgts` set on a reduced pass for
-revision attribution; persisted pass keys use segment RGT. When multiple source
-granules contribute to the same flown pass, the newest revision from any of them
-must replace older statistics even if it contains fewer retained segments. The
-seeder regression covers this case with two source RGTs and one flown pass.
+an upstream request fails. Filename RGT is retained transiently as `sourceRgt` on native rows;
+persisted pass keys use segment RGT. Discovery groups overlapping acquisition
+dates, including processed companions, and selects only the newest release per
+orbit. Groups cover the +/- one-day attribution window and are fetched atomically
+within the existing per-product granule budget. If any member fails or is deferred,
+the stored complete statistics remain unchanged and the group is retried; a CMR
+listing failure also defers that reservoir. An oversized group fails closed rather
+than exceeding the budget or silently publishing a partial pass.
+
+The tuple's optional revision value is the sum of the complete group's orbit
+revisions. Updating any member or adding a late companion raises this value,
+even when the maximum individual revision stays unchanged. This makes the new
+complete reduction supersede old statistics regardless of segment count. The
+150-day processed-name retention exceeds the 120-day discovery lookback, so
+companions cannot be pruned while their group is still eligible for refresh.
+Regressions cover lower-than-maximum revision updates, late companions, failures,
+midnight boundaries, atomic budget selection, and deadline deferral. The largest
+atomic group across all 50 saved mission backfills contains two granules, within
+both existing run budgets.
 
 Deploy the code and baseline together. A rollback must restore both; schema-2
 bookkeeping is incompatible with the old seeder and will be rebuilt by its

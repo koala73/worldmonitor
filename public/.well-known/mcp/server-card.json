@@ -807,7 +807,7 @@
     },
     {
       "name": "get_stock_research",
-      "description": "Run one stock-research operation and return {operation, data}: analysis (current rating with model and engineVersion provenance), backtest (technical-signal simulation with ratingBasis provenance), history (saved analysis snapshots per symbol) or stored-backtests (saved backtests per symbol). Use analysis/backtest for a named ticker and history/stored-backtests for saved watchlist research. Results record availability and observation dates; backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. A cold analysis may fetch upstream market data and call an LLM (up to 55 s) and may save a shared research snapshot, so readOnlyHint is false; no trades or account changes occur. Requires a paid plan; weight 2 on API plans, with the gateway's provider quotas also applying.",
+      "description": "Stock research returns {operation, data}, availability and observation dates. Analysis records model/engineVersion; technical-signal backtests record ratingBasis, exclude point-in-time fundamentals and are simulations, not trading results or forecasts. Cold analysis may fetch market data, call an LLM (55 s timeout) and save a shared snapshot (readOnlyHint=false). No trades or account changes. Paid plan required; API weight 2 and gateway provider quotas apply.",
       "_meta": {
         "worldmonitor/access": "subscription",
         "worldmonitor/category": "markets-economy"

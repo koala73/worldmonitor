@@ -667,8 +667,7 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, 
       const rgt = Number(row.rgt);
       const key = `${date}|${rgt}`;
       let g = groups.get(key);
-      if (!g) groups.set(key, (g = { date, rgt, sourceRgts: new Set(), h: [], byBeam: new Map(), tMin: ms, tMax: ms }));
-      if (row.sourceRgt != null) g.sourceRgts.add(row.sourceRgt);
+      if (!g) groups.set(key, (g = { date, rgt, h: [], byBeam: new Map(), tMin: ms, tMax: ms }));
       g.h.push(h);
       const beam = String(row.gt ?? '');
       let bh = g.byBeam.get(beam);
@@ -740,7 +739,6 @@ function passStats(g) {
     time: tMid,
     date: g.date,
     rgt: g.rgt,
-    ...(g.sourceRgts?.size ? { sourceRgts: [...g.sourceRgts] } : {}),
     levelM: round(m),
     madM: round(d),
     n: kept.length,
@@ -762,8 +760,8 @@ function comparePasses(a, b) {
 }
 
 // Compact tuple storage: [timeIso, rgt, levelM, madM, n, beamSpreadM|null, revision?].
-// The granule release revision is stored only when above 1, so revision-1 tuples (the
-// whole committed baseline) keep their six-element form.
+// The complete acquisition-group revision sum is stored only when above 1, so the
+// committed baseline keeps its six-element form.
 export function passToTuple(p) {
   const t = [p.time, p.rgt, p.levelM, p.madM, p.n, p.beamSpreadM ?? null];
   if ((p.revision ?? 1) > 1) t.push(p.revision);
@@ -778,10 +776,10 @@ export function tupleToPass(t) {
 }
 
 /**
- * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher granule
- * release revision always wins: NASA reprocesses a granule to correct it, so its values
- * replace the earlier ones whatever their segment count. Within one revision (the same
- * granule re-processed, or a pass split across granules) the record with more segments
+ * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher acquisition-group
+ * revision sum always wins: NASA reprocesses granules to correct them, so their values
+ * replace the earlier ones whatever their segment count. Within one revision sum (the same
+ * complete acquisition group re-processed) the record with more segments
  * wins, then lower deviation, then lower height, so merging is idempotent and
  * order-independent.
  */

@@ -20,7 +20,6 @@ it('uses source segment RGT 783 rather than granule metadata RGT 781', async () 
   assert.ok(rows.every(row => row.rgt === 783 && row.sourceRgt === 781));
   const [p] = reduceRows(rows);
   assert.equal(p.rgt, 783);
-  assert.deepEqual(p.sourceRgts, [781]);
   assert.equal(p.levelM, 328.965);
 });
 

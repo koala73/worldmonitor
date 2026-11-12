@@ -11,6 +11,7 @@ import {
   buildSeedOptions,
   countWithLatest,
   fetchReservoirLevels,
+  granuleGroups,
   makeValidate,
   mergeReservoirState,
   mergeState,
@@ -135,7 +136,7 @@ describe('reservoir seeder run', () => {
 
   it('records a per-granule failure, keeps the rest of the batch, and gives up after three failed runs', async () => {
     const bad = gran('2026-09-05', 40);
-    const good = gran('2026-09-06', 41);
+    const good = gran('2026-09-09', 41);
     const { fetchImpl } = fakeUpstream({ cmr: { alpha: [bad, good] }, failGranules: [bad] });
     let state = null;
     for (let i = 1; i <= MAX_GRANULE_FAILURES; i++) {
@@ -233,13 +234,90 @@ describe('reservoir seeder run', () => {
     const data = await run({ baseline, fetchImpl });
     const passes = data._state.byId.alpha.passes.filter(t => t[0].startsWith('2026-09-02') && t[1] === 23);
     assert.equal(passes.length, 1);
-    assert.equal(passes[0][6], 2);
+    assert.equal(passes[0][6], 3);
     assert.equal(passes[0][4], 40);
     assert.ok(Math.abs(passes[0][2] - 301.51) < 0.02);
+  });
+
+  it('reloads a processed companion when another source orbit is revised below the maximum revision', async () => {
+    const a1 = gran('2026-09-02', 21);
+    const a2 = gran('2026-09-02', 21, '02');
+    const b3 = gran('2026-09-02', 22, '03');
+    const first = await run({ ...fakeUpstream({ cmr: { alpha: [a1, b3] }, flownRgt: 23 }) });
+    const next = fakeUpstream({ cmr: { alpha: [a2, b3] }, flownRgt: 23, level: { alpha: 301.5 } });
+    const second = await run({ ...next, readState: async () => first._state });
+    assert.deepEqual(next.calls.slide.flat(), [a2, b3]);
+    const pass = second._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23);
+    assert.equal(pass[4], 40, 'both granules contribute');
+    assert.equal(pass[6], 5, 'sum advances even though maximum revision remains 3');
+    assert.ok(Math.abs(pass[2] - 301.51) < 0.02, 'corrected reduction supersedes the stored pass');
+  });
+
+  it('retains a complete pass if a companion fails, then retries the entire group', async () => {
+    const a1 = gran('2026-09-02', 21);
+    const a2 = gran('2026-09-02', 21, '02');
+    const b1 = gran('2026-09-02', 22);
+    const first = await run({ ...fakeUpstream({ cmr: { alpha: [a1, b1] }, flownRgt: 23 }) });
+    const failed = await run({ ...fakeUpstream({ cmr: { alpha: [a2, b1] }, flownRgt: 23, failGranules: [b1], level: { alpha: 302 } }), readState: async () => first._state });
+    assert.deepEqual(failed._state.byId.alpha.passes, first._state.byId.alpha.passes);
+    assert.ok(!failed._state.byId.alpha.processed.includes(a2));
+    assert.equal(failed._state.byId.alpha.failures[a2], 1);
+    const retry = fakeUpstream({ cmr: { alpha: [a2, b1] }, flownRgt: 23, level: { alpha: 302 } });
+    const recovered = await run({ ...retry, readState: async () => failed._state });
+    assert.deepEqual(retry.calls.slide.flat(), [a2, b1]);
+    assert.equal(recovered._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23)[4], 40);
+  });
+
+  it('reloads existing contributions when a late companion appears', async () => {
+    const a = gran('2026-09-02', 21, '03');
+    const b = gran('2026-09-02', 22);
+    const first = await run({ ...fakeUpstream({ cmr: { alpha: [a] }, flownRgt: 23 }) });
+    const late = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23, level: { alpha: 301 } });
+    const second = await run({ ...late, readState: async () => first._state });
+    assert.deepEqual(late.calls.slide.flat(), [a, b]);
+    const pass = second._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23);
+    assert.equal(pass[4], 40);
+    assert.equal(pass[6], 4);
+  });
+
+  it('does not commit a partially fetched date group when the run deadline expires', async () => {
+    const a1 = gran('2026-09-02', 21);
+    const a2 = gran('2026-09-02', 21, '02');
+    const b = gran('2026-09-02', 22);
+    const first = await run({ ...fakeUpstream({ cmr: { alpha: [a1, b] }, flownRgt: 23 }) });
+    const upstream = fakeUpstream({ cmr: { alpha: [a2, b] }, flownRgt: 23 });
+    const realNow = Date.now;
+    let clock = realNow();
+    const deadlineAtMs = clock + 100_000;
+    try {
+      Date.now = () => clock;
+      const data = await run({
+        readState: async () => first._state, deadlineAtMs,
+        fetchImpl: async (url, init) => {
+          const response = await upstream.fetchImpl(url, init);
+          if (String(url).includes('/source/atl13x')) clock = deadlineAtMs + 1;
+          return response;
+        },
+      });
+      assert.deepEqual(data._state.byId.alpha.passes, first._state.byId.alpha.passes);
+      assert.ok(!data._state.byId.alpha.processed.includes(a2));
+      assert.deepEqual(data._state.byId.alpha.failures, {});
+      assert.deepEqual(upstream.calls.slide.flat(), [a2]);
+    } finally { Date.now = realNow; }
   });
 });
 
 describe('planning and state', () => {
+  it('keeps overlapping date groups together across midnight and the remaining budget', () => {
+    const a = gran('2026-09-02', 21);
+    const b = gran('2026-09-03', 22);
+    const c = gran('2026-09-10', 30);
+    const groups = granuleGroups({ processed: [a], gaveUp: [], failures: {} }, [a, b, c]);
+    assert.deepEqual(groups, [[a, b], [c]]);
+    assert.deepEqual([...planFetches(new Map([['a', groups]]), 1).values()], []);
+    assert.deepEqual([...planFetches(new Map([['a', groups]]), 2).values()], [[a, b]]);
+  });
+
   it('round-robins the per-run granule budget so no reservoir starves', () => {
     const queues = new Map([['a', ['a1', 'a2', 'a3', 'a4']], ['b', ['b1']], ['c', ['c1', 'c2']]]);
     const plan = planFetches(queues, 5);
@@ -410,8 +488,8 @@ describe('ATL06 entries in the seeder run', () => {
 
   it('budgets ATL06 granules separately from ATL13 granules', async () => {
     assert.ok(MAX_ATL06_GRANULES_PER_RUN < MAX_GRANULES_PER_RUN);
-    const g06 = Array.from({ length: 6 }, (_, i) => gran06(`2026-09-${String(10 + i).padStart(2, '0')}`, 40 + i));
-    const g13 = Array.from({ length: 4 }, (_, i) => gran(`2026-09-${String(10 + i).padStart(2, '0')}`, 60 + i));
+    const g06 = Array.from({ length: 6 }, (_, i) => gran06(`2026-09-${String(10 + i * 3).padStart(2, '0')}`, 40 + i));
+    const g13 = Array.from({ length: 4 }, (_, i) => gran(`2026-09-${String(10 + i * 3).padStart(2, '0')}`, 60 + i));
     const { fetchImpl, calls } = fake({ cmr: { alpha: g13, gamma: g06 } });
     const data = await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl, budget: 3, atl06Budget: 2 });
     const fetched = (path) => calls.slide.filter((c) => c.path === path).flatMap((c) => c.resources);
@@ -419,6 +497,6 @@ describe('ATL06 entries in the seeder run', () => {
     assert.deepEqual(fetched('/source/atl06x'), g06.slice(0, 2));
     assert.deepEqual(fetched('/source/atl13x'), g13.slice(0, 3));
     // The rest stays queued: the cursor advanced only to the fetched granules.
-    assert.equal(data._state.byId.gamma.cursor, '2026-09-11');
+    assert.equal(data._state.byId.gamma.cursor, '2026-09-13');
   });
 });
