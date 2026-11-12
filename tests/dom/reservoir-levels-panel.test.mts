@@ -1,12 +1,17 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import french from '@/locales/fr.json';
+const deferSwap = vi.hoisted(() => ({ on: false, pending: null as null | (() => void) }));
 vi.mock('@/components/Panel', () => ({ Panel: class {
   content = document.body.appendChild(document.createElement('div'));
   count = -1;
   setCount(n: number) { this.count = n; }
   showError(message: string) { this.content.textContent = `error:${message}`; }
   // Like Panel, runs afterUpdate only once the (debounced) DOM swap has happened.
-  setSafeContent(value: unknown, afterUpdate?: () => void) { this.content.innerHTML = String(value); afterUpdate?.(); }
+  // Tests can defer the swap (deferSwap.on) to model the real debounce window.
+  setSafeContent(value: unknown, afterUpdate?: () => void) {
+    const swap = () => { this.content.innerHTML = String(value); afterUpdate?.(); };
+    if (deferSwap.on) deferSwap.pending = swap; else swap();
+  }
 } }));
 vi.mock('@/services/i18n', () => ({
   getLocale: () => 'en',
@@ -16,7 +21,7 @@ import { ReservoirLevelsPanel } from '@/components/ReservoirLevelsPanel';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import type { ReservoirLevel } from '@/services/climate';
 
-afterEach(() => { document.body.replaceChildren(); });
+afterEach(() => { document.body.replaceChildren(); deferSwap.on = false; deferSwap.pending = null; });
 
 function reservoir(id: string, overrides: Partial<ReservoirLevel> = {}): ReservoirLevel {
   return {
@@ -84,6 +89,20 @@ it('does not steal focus when a render happens while focus is outside the filter
   panel.setResult(ok([reservoir('calm')]));
   panel.setFilter('attention');
   expect(document.activeElement).toBe(outside);
+});
+
+it('does not pull focus back when the user tabs away before the deferred swap lands', () => {
+  const panel = new ReservoirLevelsPanel();
+  panel.setResult(ok([reservoir('calm'), reservoir('mead', { status: 'record_low', seasonalZ: -2.4 })]));
+  const outside = document.body.appendChild(document.createElement('input'));
+  const chip = document.querySelector<HTMLButtonElement>('button[data-wl-filter="attention"]')!;
+  chip.focus();
+  deferSwap.on = true;
+  chip.click();
+  outside.focus();
+  deferSwap.pending?.();
+  expect(document.activeElement).toBe(outside);
+  expect(rowIds()).toEqual(['mead']);
 });
 
 it('tells an empty dataset from a failed request and keeps rows through a later failure', () => {

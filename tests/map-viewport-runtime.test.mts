@@ -243,6 +243,33 @@ describe('deferred renderer replay (#8690)', () => {
     map.openReservoir({ id: 'powell' });
     assert.deepEqual(calls.filter(([name]) => name === 'openReservoir').map(([, id]) => id), ['gerd', 'powell'], 'a ready renderer opens directly');
   });
+
+  const newerNavigation: Array<[string, (m: Record<string, (...args: unknown[]) => unknown>) => unknown]> = [
+    ['setCenter', (m) => m.setCenter(10, 20, 4)],
+    ['setView', (m) => m.setView('eu', 4)],
+    ['openChokepoint', (m) => m.openChokepoint('hormuz')],
+  ];
+  for (const [label, navigate] of newerNavigation) {
+    it(`a ${label} queued after a reservoir open wins on replay`, () => {
+      const { map, internals, calls, renderer } = deferredHarness();
+      (renderer as Record<string, unknown>).openReservoir = (v: { id: string }) => calls.push(['openReservoir', v.id]);
+      map.openReservoir({ id: 'mead' });
+      navigate(map);
+      internals.deckGLMap = renderer;
+      (internals.markRendererReady as (token: number) => void).call(map, 7);
+      assert.deepEqual(calls.filter(([name]) => name === 'openReservoir'), [], 'the older reservoir open must not replace the newer destination');
+    });
+  }
+
+  it('a reservoir open queued after a setCenter still opens on replay', () => {
+    const { map, internals, calls, renderer } = deferredHarness();
+    (renderer as Record<string, unknown>).openReservoir = (v: { id: string }) => calls.push(['openReservoir', v.id]);
+    map.setCenter(10, 20, 4);
+    map.openReservoir({ id: 'mead' });
+    internals.deckGLMap = renderer;
+    (internals.markRendererReady as (token: number) => void).call(map, 7);
+    assert.deepEqual(calls.filter(([name]) => name === 'openReservoir'), [['openReservoir', 'mead']]);
+  });
 });
 
 describe('concrete renderer startup', () => {

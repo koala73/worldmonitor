@@ -106,8 +106,14 @@ export class ReservoirLevelsPanel extends Panel {
     // The swap replaces the filter buttons; a keyboard user who just activated one
     // would lose focus, so put it back on the active filter once the DOM is written.
     const refocusFilter = this.content.querySelector('.wl-filters')?.contains(document.activeElement) ?? false;
+    // Only when the swap itself took focus away: if the user moved on during the debounce,
+    // focus sits on a live element and stays there.
     const restoreFocus = refocusFilter
-      ? () => this.content.querySelector<HTMLButtonElement>(`button[data-wl-filter="${this.filter}"]`)?.focus()
+      ? () => {
+        const now = document.activeElement;
+        if (now && now !== document.body && now.isConnected) return;
+        this.content.querySelector<HTMLButtonElement>(`button[data-wl-filter="${this.filter}"]`)?.focus();
+      }
       : undefined;
 
     this.setSafeContent(safeHtml`<div class="wl-panel">

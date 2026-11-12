@@ -1030,6 +1030,7 @@ export class MapContainer {
       : { ...this.initialState, view, zoom };
     if (!this.isViewportRendererReady()) {
       this.pendingViewportActions.push({ type: 'view', view, zoom, actionToken: viewportActionToken });
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return viewportActionToken;
     }
     this.applyView(view, zoom);
@@ -1060,6 +1061,7 @@ export class MapContainer {
     const viewportActionToken = ++this.viewportActionToken;
     if (!this.isViewportRendererReady()) {
       this.pendingCenter = { lat, lon, zoom, actionToken: viewportActionToken };
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return viewportActionToken;
     }
@@ -1796,6 +1798,7 @@ export class MapContainer {
   public openChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return;
     }
     this.pendingChokepointOpen = null;
