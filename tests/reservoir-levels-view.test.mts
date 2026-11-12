@@ -16,6 +16,7 @@ import {
   reservoirToneRgb,
   resampleByTime,
   sortReservoirs,
+  statusLabel,
   type ReservoirFormatContext,
 } from '../src/components/reservoir-levels-view.ts';
 
@@ -121,6 +122,14 @@ describe('reservoir wording', () => {
     assert.equal(reservoirMeasured(old, ctx), 'measured(date=30 Dec 2025,age=316 days ago)');
     assert.equal(reservoirMeasured(old, ctx, true), '30 Dec 2025 (316 days ago)');
     assert.equal(reservoirMeasured(reservoir({ latest: null }), ctx), 'noPass');
+  });
+
+  it('says "for season" only when a seasonal baseline backs a low or high status', () => {
+    assert.equal(statusLabel(reservoir({ status: 'high', seasonalZ: 1.8 }), t), 'status.high');
+    assert.equal(statusLabel(reservoir({ status: 'low', seasonalZ: -2 }), t), 'status.low');
+    assert.equal(statusLabel(reservoir({ status: 'high', seasonalZ: null, seasonalAnomalyM: null, percentOfRange: 89.1 }), t), 'status.highInRange');
+    assert.equal(statusLabel(reservoir({ status: 'low', seasonalZ: null, seasonalAnomalyM: null, percentOfRange: 12 }), t), 'status.lowInRange');
+    assert.equal(statusLabel(reservoir({ status: 'record_low', seasonalZ: null }), t), 'status.record_low');
   });
 
   it('names the country in the reader locale and joins the river', () => {

@@ -29551,6 +29551,11 @@ body.map-width-resizing {
   flex-direction: column;
   gap: 4px;
   padding: 2px 0 2px 20px;
+  /* 12 chosen countries plus their neighbours outgrow a short phone, and the
+     bar sits outside the page's scroll area: scroll the list itself. */
+  max-height: min(45vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .focus-bar-details[hidden] {

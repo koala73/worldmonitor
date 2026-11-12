@@ -125,6 +125,9 @@ export function buildFixtures(now = new Date()) {
         return id ? { webcam_id: id } : null;
       },
     },
+    // Only one ID/generation is needed for the case read. Full case files in
+    // the default list can exceed the response budget and leave no IDs to chain.
+    get_forecast_predictions: { limit: 1 },
     get_forecast_case: {
       after: 'get_forecast_predictions',
       derive: (sc) => {

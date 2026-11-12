@@ -3145,7 +3145,9 @@
         "high": "계절 대비 높음",
         "normal": "평년 수준",
         "insufficient_history": "이력 부족",
-        "no_recent_data": "최근 패스 없음"
+        "no_recent_data": "최근 패스 없음",
+        "lowInRange": "범위 내 낮음",
+        "highInRange": "범위 내 높음"
       },
       "vsUsual": "{{month}} 평년 대비 {{value}}",
       "in12Months": "12개월간 {{value}}",

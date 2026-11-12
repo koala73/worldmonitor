@@ -3208,7 +3208,9 @@
         "high": "Vysoká na roční období",
         "normal": "Běžná",
         "insufficient_history": "Krátká historie",
-        "no_recent_data": "Žádný nedávný přelet"
+        "no_recent_data": "Žádný nedávný přelet",
+        "lowInRange": "Nízká v rozsahu",
+        "highInRange": "Vysoká v rozsahu"
       },
       "vsUsual": "{{value}} oproti obvyklé hladině ({{month}})",
       "in12Months": "{{value}} za 12 měsíců",

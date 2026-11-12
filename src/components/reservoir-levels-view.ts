@@ -44,6 +44,7 @@ const TONE_FALLBACK_HEX: Readonly<Record<ReservoirTone, string>> = {
 };
 
 export const RESERVOIR_SOURCE_URL = 'https://nsidc.org/data/atl13';
+export const RESERVOIR_ATL06_SOURCE_URL = 'https://nsidc.org/data/atl06';
 export const RESERVOIR_PROCESSING_URL = 'https://slideruleearth.io';
 
 const DAY_MS = 86_400_000;
@@ -151,8 +152,14 @@ export function reservoirPlace(r: ReservoirLevel, locale: string): string {
   return [countryName(r.country, locale), r.river].filter(Boolean).join(' · ');
 }
 
-export function statusLabel(status: ReservoirLevelStatus, t: Translate): string {
-  return t(`components.reservoirLevels.status.${status}`);
+/**
+ * Low and high come from the seasonal z-score when a seasonal baseline exists,
+ * else from the position in the record range (classifyStatus), so only the
+ * first case may say "for season".
+ */
+export function statusLabel(r: Pick<ReservoirLevel, 'status' | 'seasonalZ'>, t: Translate): string {
+  const inRange = (r.status === 'low' || r.status === 'high') && r.seasonalZ == null;
+  return t(`components.reservoirLevels.status.${inRange ? `${r.status}InRange` : r.status}`);
 }
 
 /**

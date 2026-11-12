@@ -3235,7 +3235,9 @@
         "high": "मौसम के हिसाब से अधिक",
         "normal": "सामान्य",
         "insufficient_history": "अपर्याप्त इतिहास",
-        "no_recent_data": "हाल का कोई पास नहीं"
+        "no_recent_data": "हाल का कोई पास नहीं",
+        "lowInRange": "अपनी सीमा में कम",
+        "highInRange": "अपनी सीमा में अधिक"
       },
       "vsUsual": "{{month}} के सामान्य से {{value}}",
       "in12Months": "12 महीनों में {{value}}",

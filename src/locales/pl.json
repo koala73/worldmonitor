@@ -3208,7 +3208,9 @@
         "high": "Wysoko jak na porę roku",
         "normal": "Typowy",
         "insufficient_history": "Za krótka historia",
-        "no_recent_data": "Brak niedawnego przelotu"
+        "no_recent_data": "Brak niedawnego przelotu",
+        "lowInRange": "Nisko w swoim zakresie",
+        "highInRange": "Wysoko w swoim zakresie"
       },
       "vsUsual": "{{value}} względem normy ({{month}})",
       "in12Months": "{{value}} w 12 miesięcy",

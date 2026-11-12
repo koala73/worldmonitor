@@ -336,7 +336,8 @@
           "Satın Alma Siparişi Faturalandırması",
           "SAML SSO ve SCIM (sözleşmeyle)",
           "Özel Güvenlik ve Gizlilik Ayarları",
-          "Tamamen beyaz etiketli — gelir paylaşımı ile veya olmadan"
+          "Tamamen beyaz etiketli — gelir paylaşımı ile veya olmadan",
+          "MCP üzerinden seyahat riski değerlendirme taslakları"
         ],
         "cta": "Satışla İletişime Geçin"
       },
@@ -349,7 +350,8 @@
           "Günde 10.000 istek dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 olarak sayılır)",
           "5 Pro lisansı — herhangi bir kurumsal e-posta alan adına sahip kullanıcıları davet edin",
           "Paylaşılan ekip panoları",
-          "Öncelikli destek"
+          "Öncelikli destek",
+          "MCP üzerinden seyahat riski değerlendirme taslakları"
         ],
         "highlightFeatures": [
           "Ticari kullanım — müşteriye yönelik ürünlerinizde"
@@ -364,7 +366,8 @@
           "25 özel pano (vs 10)",
           "MCP + SDK: 250 çağrı/gün (vs 50)",
           "Masaüstü uygulaması için anahtar (3 anahtar)",
-          "Öncelikli destek"
+          "Öncelikli destek",
+          "MCP üzerinden seyahat riski değerlendirme taslakları"
         ],
         "highlightFeatures": [
           "Ticari lisans dahil",
@@ -665,7 +668,7 @@
     "subtitle": "Son 30 gündeki yeni özellikler — düzeltmeler ve altyapı güncellemeleri dahil değil.",
     "proTag": "PRO",
     "m1": "Medya perspektifi — her ülkenin medyasının herhangi bir ülkeyi nasıl haberleştirdiği, yapay zekâ ajanları ve API için",
-    "m2": "/verify — her iddia için yayımlanmış doğruluk kontrollerine atıf yapan bir kanıt kartı",
+    "m2": "Stratejik Su Seviyeleri — 50 baraj gölü ve göl için uydu lidar seviyeleri, haritada ve yapay zekâ ajanları için",
     "m3": "Uyarılarda, özetlerde ve harita açılır pencerelerinde doğrulayan kaynak sayısı, ayrıca herkese açık /trust sayfası",
     "m4": "Otomatik saldırı takibi — ülke riski saldırı altında yükselir, saldırılar durunca toparlanır",
     "m5": "FAA NOTAM'larından hava sahası kapanışları ve bildirilen uçak acil durumları için bir harita katmanı",

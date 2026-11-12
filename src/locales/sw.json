@@ -3235,7 +3235,9 @@
         "high": "Juu kwa msimu",
         "normal": "Kawaida",
         "insufficient_history": "Historia haitoshi",
-        "no_recent_data": "Hakuna upitaji wa karibuni"
+        "no_recent_data": "Hakuna upitaji wa karibuni",
+        "lowInRange": "Chini ndani ya masafa yake",
+        "highInRange": "Juu ndani ya masafa yake"
       },
       "vsUsual": "{{value}} ikilinganishwa na kawaida ya {{month}}",
       "in12Months": "{{value}} katika miezi 12",

@@ -3235,7 +3235,9 @@
         "high": "بالا برای این فصل",
         "normal": "عادی",
         "insufficient_history": "سابقه ناکافی",
-        "no_recent_data": "بدون گذر اخیر"
+        "no_recent_data": "بدون گذر اخیر",
+        "lowInRange": "پایین در محدوده خود",
+        "highInRange": "بالا در محدوده خود"
       },
       "vsUsual": "{{value}} نسبت به معمول در {{month}}",
       "in12Months": "{{value}} در 12 ماه",

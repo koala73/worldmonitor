@@ -60,7 +60,8 @@
           "Dashibodi 25 za kadhaa (vs 10)",
           "MCP + SDK: mahitaji 250 kwa siku (vs 50)",
           "Funguo ya programu ya desktop (funguo 3)",
-          "Msaada wa kipaumbele"
+          "Msaada wa kipaumbele",
+          "Rasimu za tathmini ya hatari ya usafiri kupitia MCP"
         ],
         "highlightFeatures": [
           "Leseni ya biashara iliyojumuishwa",
@@ -91,7 +92,8 @@
           "Ombi 10,000 kwa siku zilizoingizwa (REST + MCP pamoja; simu ya MCP hai huhesabu kama 2-3)",
           "Leseni 5 za Pro — waalike watumiaji wenye kikoa chochote cha barua pepe cha shirika",
           "Dashibodi zinazoshirikiwa na timu",
-          "Msaada wa kipaumbele"
+          "Msaada wa kipaumbele",
+          "Rasimu za tathmini ya hatari ya usafiri kupitia MCP"
         ],
         "highlightFeatures": [
           "Matumizi ya kibiashara — katika bidhaa zako zinazowahudumia wateja"
@@ -111,7 +113,8 @@
           "Bili ya Agizo la Ununuzi",
           "SAML SSO na SCIM (kwa mkataba)",
           "Mipango ya Usalama na Faragha Inayolingana",
-          "Inayofikiwa kabisa kwa chapa yako — bila au pamoja na mgawanyiko wa mapato"
+          "Inayofikiwa kabisa kwa chapa yako — bila au pamoja na mgawanyiko wa mapato",
+          "Rasimu za tathmini ya hatari ya usafiri kupitia MCP"
         ],
         "cta": "Wasiliana na Bora"
       }
@@ -665,7 +668,7 @@
     "subtitle": "Sifa mpya kutoka siku 30 zilizopita — marekebisho na mabomba hayajajumuishwa.",
     "proTag": "PRO",
     "m1": "Mtazamo wa vyombo vya habari — jinsi vyombo vya kila nchi vinavyoripoti nchi yoyote, kwa mawakala wa AI na API",
-    "m2": "/verify — kadi ya ushahidi kwa dai lolote, ikinukuu uhakiki wa ukweli uliochapishwa",
+    "m2": "Viwango vya Kimkakati vya Maji — viwango vya lidar ya satelaiti kwa mabwawa 50 na maziwa, kwenye ramani na kwa mawakala wa AI",
     "m3": "Idadi ya vyanzo vinavyothibitisha kwenye arifa, muhtasari na madirisha ya ramani, pamoja na ukurasa wa umma /trust",
     "m4": "Ufuatiliaji wa mashambulizi kiotomatiki — hatari ya nchi hupanda inaposhambuliwa na kupungua mashambulizi yanapokoma",
     "m5": "Kufungwa kwa anga kutoka NOTAM za FAA na safu ya ramani ya dharura za ndege zilizoripotiwa",

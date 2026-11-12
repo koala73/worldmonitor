@@ -336,7 +336,8 @@
           "Facturation par bon de commande",
           "SAML SSO et SCIM (sur contrat)",
           "Paramètres de sécurité et confidentialité personnalisés",
-          "Entièrement white-label — avec ou sans partage de revenus"
+          "Entièrement white-label — avec ou sans partage de revenus",
+          "Brouillons d'évaluation du risque de voyage via MCP"
         ],
         "cta": "Contacter les ventes"
       },
@@ -349,7 +350,8 @@
           "10 000 requêtes/jour incluses (REST + MCP combinés ; un appel MCP en direct compte pour 2-3)",
           "5 licences Pro — invitez des utilisateurs avec n’importe quel domaine de messagerie d’entreprise",
           "Tableaux de bord partagés de l'équipe",
-          "Support prioritaire"
+          "Support prioritaire",
+          "Brouillons d'évaluation du risque de voyage via MCP"
         ],
         "highlightFeatures": [
           "Usage commercial — dans vos produits destinés aux clients"
@@ -364,7 +366,8 @@
           "25 tableaux de bord personnalisés (vs 10)",
           "MCP + SDK : 250 appels/jour (vs 50)",
           "Clé de bureau pour l'app de bureau (3 clés)",
-          "Support prioritaire"
+          "Support prioritaire",
+          "Brouillons d'évaluation du risque de voyage via MCP"
         ],
         "highlightFeatures": [
           "Licence commerciale incluse",
@@ -665,7 +668,7 @@
     "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
     "proTag": "PRO",
     "m1": "Perspective médiatique — comment les médias de chaque pays couvrent n'importe quel pays, pour les agents IA et l'API",
-    "m2": "/verify — une fiche de preuves pour toute affirmation, citant les vérifications publiées",
+    "m2": "Niveaux d'eau stratégiques — niveaux mesurés par lidar satellite pour 50 réservoirs et lacs, sur la carte et pour les agents IA",
     "m3": "Nombre de sources concordantes sur les alertes, les synthèses et les infobulles de la carte, plus une page publique /trust",
     "m4": "Suivi automatique des frappes — le risque d'un pays monte sous les attaques et retombe quand elles cessent",
     "m5": "Fermetures d'espace aérien issues des NOTAM de la FAA et une couche de carte des urgences aériennes signalées",

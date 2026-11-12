@@ -3145,7 +3145,9 @@
         "high": "季節平年より高い",
         "normal": "平年並み",
         "insufficient_history": "履歴不足",
-        "no_recent_data": "最近のパスなし"
+        "no_recent_data": "最近のパスなし",
+        "lowInRange": "範囲内で低い",
+        "highInRange": "範囲内で高い"
       },
       "vsUsual": "{{month}}の平年比 {{value}}",
       "in12Months": "12か月で{{value}}",

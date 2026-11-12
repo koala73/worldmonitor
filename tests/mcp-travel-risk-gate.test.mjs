@@ -18,6 +18,7 @@ import {
 } from './helpers/mcp-pro-deps.mjs';
 import { getEntitlementFeatures, PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import { buildMcpStructuredDenial, informOnlyNextStep } from '../api/mcp/upgrade.ts';
+import { MCP_UPGRADE_URL } from '../shared/mcp-attribution.ts';
 import { recommendedPlanForFeature } from '../api/mcp/checkout.ts';
 import { toolWeight, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 
@@ -110,6 +111,8 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
       const expected = planKey.startsWith('api_') ? 'api_business' : 'pro_business_monthly';
       assert.equal(body.error.data.recommendedPlan, expected, planKey);
       assert.equal(body.error.data.checkoutTool, undefined, 'only a free account is pointed at start_upgrade');
+      const upgradeUrl = planKey.startsWith('api_') ? MCP_UPGRADE_URL : `${MCP_UPGRADE_URL}#plan-proBusiness`;
+      assert.equal(body.error.data.upgradeUrl, upgradeUrl, planKey);
     });
   }
 
@@ -120,6 +123,7 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
     assert.equal(pipe.count, 0, 'the free allowance is not spent on a refused call');
     assert.equal(body.error.data.recommendedPlan, 'pro_business_monthly', 'Pro lacks the feature, so Pro is not offered');
     assert.equal(body.error.data.checkoutTool, 'start_upgrade');
+    assert.equal(body.error.data.upgradeUrl, `${MCP_UPGRADE_URL}#plan-proBusiness`);
   });
 
   it('streams a legacy SSE draft live without keeping a replayable copy of the trip', async () => {
@@ -310,6 +314,7 @@ describe('prepare_travel_risk_assessment plan gate through mcpHandler', () => {
     assert.doesNotMatch(body.error.data.nextStep, /\bUpgrade to\b/);
     assert.equal(body.error.data.recommendedPlan, undefined);
     assert.equal(body.error.data.checkoutTool, undefined);
+    assert.equal(body.error.data.upgradeUrl, `${MCP_UPGRADE_URL}#plan-proBusiness`);
   });
 });
 
@@ -352,7 +357,14 @@ describe('plan-feature denial copy', () => {
     assert.equal(data.reason, 'upgrade-required');
     assert.equal(data.planFeature, 'travelRiskAssessment');
     assert.equal(data.recommendedPlan, 'pro_business_monthly');
-    assert.match(data.upgradeUrl, /^https:\/\//);
+    assert.equal(data.upgradeUrl, `${MCP_UPGRADE_URL}#plan-proBusiness`);
+    assert.match(data.upgradeUrl, /worldmonitor\.app\/pro\?/);
+  });
+
+  it('an API Starter caller is offered API Business on the plans page, not the Pro Business card', () => {
+    const { data } = buildMcpStructuredDenial({ reason: 'upgrade-required', planFeature: 'travelRiskAssessment', upgradeFrom: 'api_starter' });
+    assert.equal(data.recommendedPlan, 'api_business');
+    assert.equal(data.upgradeUrl, MCP_UPGRADE_URL);
   });
 
   it('an unknown planFeature value falls back to the generic inform-only step', () => {

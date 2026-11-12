@@ -3145,7 +3145,9 @@
         "high": "สูงสำหรับฤดูกาล",
         "normal": "ปกติ",
         "insufficient_history": "ประวัติไม่พอ",
-        "no_recent_data": "ไม่มีการโคจรผ่านล่าสุด"
+        "no_recent_data": "ไม่มีการโคจรผ่านล่าสุด",
+        "lowInRange": "ต่ำในช่วงที่บันทึกไว้",
+        "highInRange": "สูงในช่วงที่บันทึกไว้"
       },
       "vsUsual": "{{value}} เทียบกับปกติของ{{month}}",
       "in12Months": "{{value}} ใน 12 เดือน",
