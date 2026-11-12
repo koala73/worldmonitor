@@ -51,7 +51,7 @@ Return NASA ICESat-2 lidar water levels for the 50 strategic reservoirs and lake
 | `country` | string | Keep reservoirs whose country or riparian list includes this country, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
 | `status` | `string: record_low / falling_fast / low / normal / high / rising_fast / record_high / no_recent_data / insufficient_history` | Keep reservoirs with this status. record_low and record_high mark the latest pass as the record; falling_fast and rising_fast a 90-day move beyond the seasonal swing; low and high a seasonal z-score of 1.5 or more (percent of range when there is no seasonal baseline); no_recent_data no qualifying pass in 150 days; insufficient_history too short a record to judge. |
 | `id` | string | Keep one reservoir by watchlist id, e.g. "gerd", "mead" or "three-gorges". |
-| `include_series` | boolean | Also return each reservoir's pass series over the 36 months before its latest pass as {date, levelM} points. Default false. |
+| `include_series` | boolean | Also return each reservoir's pass series over the 36 months before its latest pass as `{date, levelM}` points. Default false. |
 
 - **API endpoints:** `GET /api/climate/v1/list-reservoir-levels`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.

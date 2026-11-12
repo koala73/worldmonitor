@@ -3510,7 +3510,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           description: 'Keep reservoirs with this status. record_low and record_high mark the latest pass as the record; falling_fast and rising_fast a 90-day move beyond the seasonal swing; low and high a seasonal z-score of 1.5 or more (percent of range when there is no seasonal baseline); no_recent_data no qualifying pass in 150 days; insufficient_history too short a record to judge.',
         },
         id: { type: 'string', description: 'Keep one reservoir by watchlist id, e.g. "gerd", "mead" or "three-gorges".' },
-        include_series: { type: 'boolean', description: 'Also return each reservoir\'s pass series over the 36 months before its latest pass as {date, levelM} points. Default false.' },
+        include_series: { type: 'boolean', description: 'Also return each reservoir\'s pass series over the 36 months before its latest pass as `{date, levelM}` points. Default false.' },
       },
       required: [],
     },

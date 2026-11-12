@@ -52,7 +52,7 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 保留所在国或共享水域国家列表包含该国的水库,可传 ISO 3166-1 alpha-2、alpha-3 代码或国家名称。无法解析的输入返回 Invalid params。 |
 | `status` | `string: record_low / falling_fast / low / normal / high / rising_fast / record_high / no_recent_data / insufficient_history` | 保留该状态的水库。record_low 和 record_high 表示最新过境创纪录;falling_fast 和 rising_fast 表示 90 天变化超出季节波动;low 和 high 表示季节 z 分数达到 1.5 或以上(无季节基线时看历史区间百分比);no_recent_data 表示 150 天内无合格过境;insufficient_history 表示记录太短无法判断。 |
 | `id` | string | 按观察名单 id 保留一座水库,例如 "gerd"、"mead" 或 "three-gorges"。 |
-| `include_series` | boolean | 同时返回每座水库最新过境前 36 个月的过境序列,格式为 {date, levelM} 点。默认 false。 |
+| `include_series` | boolean | 同时返回每座水库最新过境前 36 个月的过境序列,格式为 `{date, levelM}` 点。默认 false。 |
 
 - **API 端点:** `GET /api/climate/v1/list-reservoir-levels`
 - **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
