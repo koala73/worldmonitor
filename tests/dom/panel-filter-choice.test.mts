@@ -8,6 +8,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { ForecastPanel } from '@/components/ForecastPanel';
 import { LiveWebcamsPanel } from '@/components/LiveWebcamsPanel';
 import { Panel } from '@/components/Panel';
+import { captureTeamDashboardLayout, toTeamDashboardTab } from '@/services/team-dashboards';
+import { PanelLayoutManager } from '@/app/panel-layout';
 
 import { createFakeYouTubeIframeApi } from './helpers/fake-youtube-iframe-api.mts';
 import { initTestI18n } from './helpers/i18n.mts';
@@ -95,6 +97,22 @@ describe('ForecastPanel region choice', () => {
     panel.setFilterChoice('east-asia');
     expect(panel.getFilterChoice()).toBe('east-asia');
     expect(seen).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+    expect(panel.getElement().querySelector('[data-fc-region="east-asia"]')?.classList.contains('fc-active')).toBe(true);
+  });
+
+  it('applies the region restored from a shared dashboard through the layout to the real panel', () => {
+    const panel = mount(new ForecastPanel());
+    const panelSettings = { forecast: { name: 'Forecast', enabled: true, priority: 1 } };
+    const layout = captureTeamDashboardLayout({
+      panelSettings, panelOrder: ['forecast'], bottomSet: [], rowSpans: {}, colSpans: {}, map: null,
+      panelFilters: { forecast: 'east-asia' },
+    });
+    const tab = toTeamDashboardTab(layout, panelSettings);
+    Reflect.get(PanelLayoutManager.prototype, 'applyTabPanelFilters').call({
+      ctx: { panels: { forecast: panel } }, appliedPanelFilters: new Set(),
+    }, tab.panelFilters);
+    expect(panel.getFilterChoice()).toBe('east-asia');
     vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
     expect(panel.getElement().querySelector('[data-fc-region="east-asia"]')?.classList.contains('fc-active')).toBe(true);
   });
