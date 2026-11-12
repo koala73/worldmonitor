@@ -5118,7 +5118,7 @@
       "partialExposureLoading": "Před filtrováním ohrožení se načítají všechna místa UCDP. Počty pokrytí zahrnují pouze nepokoje.",
       "partialExposure": "Všechna místa UCDP se nepodařilo načíst. Údaje o ohrožení jsou neúplné; počty pokrytí zahrnují pouze nepokoje."
     },
-    "draftAssessment": "Návrh posouzení",
+    "draftAssessment": "Posouzení cesty",
     "draftAssessmentAria": "Otevřít posouzení cesty, předvyplněné touto zaměřením",
     "draftCopied": "Požadavek zkopírován. Vložte jej do vašeho AI asistenta.",
     "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí. Vynecháno: {{omitted}}.",

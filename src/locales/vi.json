@@ -5034,7 +5034,7 @@
       "partialExposureLoading": "Đang tải tất cả vị trí UCDP trước khi lọc mức độ ảnh hưởng. Số liệu bao phủ chỉ tính các vụ bất ổn.",
       "partialExposure": "Không thể tải tất cả vị trí UCDP. Dữ liệu ảnh hưởng chưa đầy đủ; số liệu bao phủ chỉ tính các vụ bất ổn."
     },
-    "draftAssessment": "Bản đánh giá dự thảo",
+    "draftAssessment": "Đánh giá chuyến đi",
     "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",
     "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
     "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia. Các quốc gia bị bỏ qua: {{omitted}}.",

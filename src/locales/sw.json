@@ -5062,7 +5062,7 @@
       "partialExposureLoading": "Inapakia maeneo yote ya UCDP kabla ya kuchuja walio hatarini. Hesabu za ujumuishaji zinajumuisha machafuko pekee.",
       "partialExposure": "Imeshindwa kupakia maeneo yote ya UCDP. Data ya walio hatarini haijakamilika; hesabu za ujumuishaji zinajumuisha machafuko pekee."
     },
-    "draftAssessment": "Rasimu ya tathmini",
+    "draftAssessment": "Tathmini ya safari",
     "draftAssessmentAria": "Fungua tathmini ya safari, iliyojazwa na hii focus",
     "draftCopied": "Ombi limenakiliwa. Libandike kwenye msaidizi wako wa AI.",
     "draftCopiedPartial": "Ombi limenakiliwa kwa nchi {{count}} za kwanza. Tathmini moja inajumuisha nchi {{max}} kwa kiwango cha juu. Nchi zilizoachwa: {{omitted}}.",

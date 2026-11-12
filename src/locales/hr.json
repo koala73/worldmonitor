@@ -5101,7 +5101,7 @@
       "partialExposureLoading": "Učitavaju se sve lokacije UCDP-a prije filtriranja izloženosti. Brojevi pokrivenosti uključuju samo nemire.",
       "partialExposure": "Nije bilo moguće učitati sve lokacije UCDP-a. Podaci o izloženosti nisu potpuni; brojevi pokrivenosti uključuju samo nemire."
     },
-    "draftAssessment": "Nacrt ocjene",
+    "draftAssessment": "Procjena putovanja",
     "draftAssessmentAria": "Otvori procjenu putovanja, unaprijed popunjena s ovim fokusom",
     "draftCopied": "Zahtjev kopiran. Zalijepi ga u svoj AI asistent.",
     "draftCopiedPartial": "Zahtjev kopiran za prvih {{count}} zemalja. Procjena pokriva najviše {{max}} zemalja. Izostavljeno: {{omitted}}.",

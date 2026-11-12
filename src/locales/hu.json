@@ -5062,7 +5062,7 @@
       "partialExposureLoading": "Az összes UCDP-helyszín betöltése a kitettség szűrése előtt. A lefedettségi számok csak a zavargásokat tartalmazzák.",
       "partialExposure": "Nem sikerült betölteni az összes UCDP-helyszínt. A kitettségi adatok hiányosak; a lefedettségi számok csak a zavargásokat tartalmazzák."
     },
-    "draftAssessment": "Értékelési vázlat",
+    "draftAssessment": "Utazási értékelés",
     "draftAssessmentAria": "Az utazási értékelés megnyitása, amely ezzel a fókusszal van kitöltve",
     "draftCopied": "Kérés másolva. Illessze be az AI asszisztensébe.",
     "draftCopiedPartial": "A kérés az első {{count}} országra lett másolva. Egy értékelés legfeljebb {{max}} országot fed le. Kihagyva: {{omitted}}.",

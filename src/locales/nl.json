@@ -5062,7 +5062,7 @@
       "partialExposureLoading": "Alle UCDP-locaties worden geladen voordat de blootstelling wordt gefilterd. De dekkingstellingen omvatten alleen onrust.",
       "partialExposure": "Niet alle UCDP-locaties konden worden geladen. De blootstellingsgegevens zijn onvolledig; de dekkingstellingen omvatten alleen onrust."
     },
-    "draftAssessment": "Conceptbeoordeling",
+    "draftAssessment": "Reisbeoordeling",
     "draftAssessmentAria": "Open de risicoanalyse reisroute, vooringevuld met deze focus",
     "draftCopied": "Verzoek gekopieerd. Plak het in uw AI-assistent.",
     "draftCopiedPartial": "Verzoek gekopieerd voor de eerste {{count}} landen. Een beoordeling omvat maximaal {{max}} landen. Weggelaten: {{omitted}}.",

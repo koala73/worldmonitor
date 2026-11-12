@@ -5062,7 +5062,7 @@
       "partialExposureLoading": "Läser in alla UCDP-platser innan exponeringen filtreras. Täckningsantalen omfattar endast oroligheter.",
       "partialExposure": "Alla UCDP-platser kunde inte läsas in. Exponeringsdata är ofullständiga; täckningsantalen omfattar endast oroligheter."
     },
-    "draftAssessment": "Utkast till bedömning",
+    "draftAssessment": "Resebedömning",
     "draftAssessmentAria": "Öppna resebedömningen, förifylld med denna fokusering",
     "draftCopied": "Förfrågan kopierad. Klistra in den i din AI-assistent.",
     "draftCopiedPartial": "Begäran kopierad för de första {{count}} länderna. En bedömning omfattar högst {{max}} länder. Utelämnade: {{omitted}}.",

@@ -40,3 +40,9 @@ When writing about an API issue, include your key prefix (never the full key), t
 
 - [Plans & Pricing](/pricing)
 - [Accounts & Sign-up](/accounts)
+
+### Status page monitoring
+
+A browser synthetic in `status-page-monitor.yml` checks the public status page every 15 minutes, including the 24-hour, 7-day, 30-day, and 90-day uptime figures. A data-fetch error, missing figure, or monitor infrastructure failure opens a tracking issue in GitHub; the next successful check closes it. Rendered evidence is retained with the workflow run for seven days. GitHub notification delivery depends on repository subscription settings.
+
+See [security and service status](https://www.worldmonitor.app/security/) for the status page and private vulnerability reporting links.

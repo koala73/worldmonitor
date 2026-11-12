@@ -5034,7 +5034,7 @@
       "partialExposureLoading": "曝露を絞り込む前にUCDPの全地点を読み込んでいます。カバレッジの集計には騒乱のみが含まれます。",
       "partialExposure": "UCDPの全地点を読み込めませんでした。曝露データは不完全です。カバレッジの集計には騒乱のみが含まれます。"
     },
-    "draftAssessment": "ドラフト評価",
+    "draftAssessment": "旅行リスク評価",
     "draftAssessmentAria": "旅行リスク評価を開く（このフォーカスで事前入力）",
     "draftCopied": "リクエストをコピーしました。AIアシスタントに貼り付けてください。",
     "draftCopiedPartial": "最初の{{count}}か国についてリクエストをコピーしました。アセスメントは最大{{max}}か国までカバーできます。除外された国：{{omitted}}。",

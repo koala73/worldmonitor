@@ -5118,7 +5118,7 @@
       "partialExposureLoading": "Wczytywanie wszystkich lokalizacji UCDP przed filtrowaniem narażenia. Statystyki pokrycia obejmują tylko niepokoje.",
       "partialExposure": "Nie udało się wczytać wszystkich lokalizacji UCDP. Dane o narażeniu są niepełne; statystyki pokrycia obejmują tylko niepokoje."
     },
-    "draftAssessment": "Szkic oceny",
+    "draftAssessment": "Ocena podróży",
     "draftAssessmentAria": "Otwórz ocenę podróży, wstępnie wypełnioną tym fokusem",
     "draftCopied": "Prośba skopiowana. Wklej ją do swojego asystenta AI.",
     "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów. Pominięte kraje: {{omitted}}.",

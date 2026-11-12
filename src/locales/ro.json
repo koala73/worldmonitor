@@ -5090,7 +5090,7 @@
       "partialExposureLoading": "Se încarcă toate locațiile UCDP înainte de filtrarea expunerii. Numărătorile de acoperire includ doar tulburările.",
       "partialExposure": "Nu s-au putut încărca toate locațiile UCDP. Datele de expunere sunt incomplete; numărătorile de acoperire includ doar tulburările."
     },
-    "draftAssessment": "Ciornă de evaluare",
+    "draftAssessment": "Evaluare călătorie",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",
     "draftCopied": "Cerere copiată. Lipește-o în asistentul tău AI.",
     "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări. Țări omise: {{omitted}}.",

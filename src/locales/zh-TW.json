@@ -5034,7 +5034,7 @@
       "partialExposureLoading": "正在載入所有 UCDP 地點，然後篩選暴露資料。覆蓋統計僅包含騷亂事件。",
       "partialExposure": "無法載入所有 UCDP 地點。暴露資料不完整；覆蓋統計僅包含騷亂事件。"
     },
-    "draftAssessment": "草稿評估",
+    "draftAssessment": "行程評估",
     "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
     "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
     "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。未包含的國家：{{omitted}}。",

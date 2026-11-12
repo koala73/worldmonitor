@@ -5090,7 +5090,7 @@
       "partialExposureLoading": "Chargement de tous les lieux UCDP avant de filtrer l’exposition. Les décomptes de couverture incluent uniquement les troubles.",
       "partialExposure": "Impossible de charger tous les lieux UCDP. Les données d’exposition sont incomplètes ; les décomptes de couverture incluent uniquement les troubles."
     },
-    "draftAssessment": "Brouillon d'évaluation",
+    "draftAssessment": "Évaluation de voyage",
     "draftAssessmentAria": "Ouvrir l'évaluation de voyage, préremplie avec ce focus",
     "draftCopied": "Demande copiée. Collez-la dans votre assistant IA.",
     "draftCopiedPartial": "Demande copiée pour les {{count}} premiers pays. Une évaluation couvre au maximum {{max}} pays. Pays exclus : {{omitted}}.",

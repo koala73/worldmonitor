@@ -418,7 +418,7 @@ export const DOCS_PAGE_DATES: Record<string, { datePublished: string; dateModifi
   "signal-intelligence": {"datePublished":"2026-03-12","dateModified":"2026-10-08"},
   "source-attribution": {"datePublished":"2026-08-12","dateModified":"2026-11-12"},
   "strategic-risk": {"datePublished":"2026-03-12","dateModified":"2026-10-25"},
-  "support": {"datePublished":"2026-07-05","dateModified":"2026-11-10"},
+  "support": {"datePublished":"2026-07-05","dateModified":"2026-11-12"},
   "terms": {"datePublished":"2026-07-10","dateModified":"2026-11-02"},
   "trademark-policy": {"datePublished":"2026-05-28","dateModified":"2026-07-10"},
   "travel-risk-assessment": {"datePublished":"2026-11-12","dateModified":"2026-11-12"},
