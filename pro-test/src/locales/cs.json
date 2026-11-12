@@ -336,7 +336,8 @@
           "Fakturace na základě nákupního příkazu",
           "SAML SSO a SCIM (na základě smlouvy)",
           "Vlastní nastavení bezpečnosti a ochrany soukromí",
-          "Plně vlastní značka — s dělením příjmů nebo bez něj"
+          "Plně vlastní značka — s dělením příjmů nebo bez něj",
+          "Koncepty hodnocení cestovního rizika přes MCP"
         ],
         "cta": "Kontaktujte prodej"
       },
@@ -349,7 +350,8 @@
           "10 000 požadavků za den (REST + MCP dohromady; živý MCP hovor se počítá jako 2–3)",
           "5 licencí Pro — pozvěte uživatele z libovolné firemní e-mailové domény",
           "Sdílené týmové dashboardy",
-          "Prioritní podpora"
+          "Prioritní podpora",
+          "Koncepty hodnocení cestovního rizika přes MCP"
         ],
         "highlightFeatures": [
           "Komerční použití — v produktech dostupných vašim zákazníkům"
@@ -364,7 +366,8 @@
           "25 vlastních dashboardů (vs 10)",
           "MCP + SDK: 250 volání/den (vs 50)",
           "Klíč pro desktopovou aplikaci (3 klíče)",
-          "Prioritní podpora"
+          "Prioritní podpora",
+          "Koncepty hodnocení cestovního rizika přes MCP"
         ],
         "highlightFeatures": [
           "Komerční licence v ceně",

@@ -281,6 +281,10 @@ describe('marketing Sentry request URL privacy', () => {
       'https://www.worldmonitor.app/#enterprise-contact',
     );
     assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/pro?utm_source=mcp#plan-proBusiness'),
+      'https://www.worldmonitor.app/pro#plan-proBusiness',
+    );
+    assert.equal(
       sanitizeMarketingRequestUrl('https://www.worldmonitor.app/dashboard?token=private'),
       undefined,
     );

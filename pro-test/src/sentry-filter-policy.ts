@@ -57,7 +57,7 @@ export interface PolicyEvent {
 }
 
 const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
-const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
+const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact|plan-proBusiness)$/i;
 const MAX_MARKETING_ORIGIN_LENGTH = 200;
 
 /**

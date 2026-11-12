@@ -203,7 +203,7 @@ Content-Type: application/json
 
 **ChatGPT.** ChatGPT's app guidelines do not allow an app to start a checkout or promote an upgrade, so a request whose `User-Agent` is ChatGPT's `openai-mcp/…` (Codex excluded) gets neither `recommendedPlan` nor `checkoutTool`. Its `nextStep` states what the current plan covers and that `upgradeUrl` describes the plans, and the lapse and API-plan messages drop their call to resubscribe or upgrade. `reason`, the JSON-RPC code, the HTTP status and `upgradeUrl` are the same as for every other client. `start_upgrade` is not listed to ChatGPT, and calling it returns `Unknown tool`.
 
-**Plan-feature refusal.** A tool that needs a named plan flag on top of a subscription refuses every identity-bound caller whose plan lacks the flag. The refusal comes before argument validation and before any allowance is charged. The only such flag is `travelRiskAssessment`, which `prepare_travel_risk_assessment` needs and which only the Pro Business, API Business and Enterprise plans carry. The denial is `-32002` at HTTP 403 with the same `reason: "upgrade-required"` plus `data.planFeature`, so clients that branch on `reason` keep working. `message` names the plans that include the tool. `recommendedPlan` is `pro_business_monthly` for free and Pro callers, because Pro does not include the flag, and `api_business` for API Starter callers. `checkoutTool` still appears only for a free account, and ChatGPT gets an inform-only `nextStep`. Operator keys are not plan-gated.
+**Plan-feature refusal.** A tool that needs a named plan flag on top of a subscription refuses every identity-bound caller whose plan lacks the flag. The refusal comes before argument validation and before any allowance is charged. The only such flag is `travelRiskAssessment`, which `prepare_travel_risk_assessment` needs and which only the Pro Business, API Business and Enterprise plans carry. The denial is `-32002` at HTTP 403 with the same `reason: "upgrade-required"` plus `data.planFeature`, so clients that branch on `reason` keep working. `message` names the plans that include the tool. `recommendedPlan` is `pro_business_monthly` for free and Pro callers, because Pro does not include the flag, and `api_business` for API Starter callers. For a free or Pro caller, `upgradeUrl` is the plans page with `#plan-proBusiness`, so the link opens the Pro Business card. An API Starter caller keeps the plans page without that card hash, because that step up happens in the billing portal. `checkoutTool` still appears only for a free account, and ChatGPT gets an inform-only `nextStep`. Operator keys are not plan-gated.
 
 ```json
 {
@@ -215,7 +215,7 @@ Content-Type: application/json
     "data": {
       "reason": "upgrade-required",
       "nextStep": "Upgrade to Pro Business or API Business at the upgrade URL to use this tool. Every other tool the current plan includes still works.",
-      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel#plan-proBusiness",
       "planFeature": "travelRiskAssessment",
       "recommendedPlan": "pro_business_monthly"
     }
