@@ -3,9 +3,10 @@
  * dialog that sets a focus.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import i18next from 'i18next';
 
 import { FocusBar, type FocusBarCallbacks } from '@/components/FocusBar';
-import { focusGateCopy } from '@/components/focus-format';
+import { focusCountryName, focusGateCopy, focusWindowText } from '@/components/focus-format';
 import { openFocusEditor, validateFocusDraft, type FocusEditorHandle } from '@/components/FocusEditor';
 import { PanelTabBar } from '@/components/PanelTabBar';
 import { PanelGateReason } from '@/services/panel-gating';
@@ -111,6 +112,28 @@ describe('FocusBar', () => {
     expect(win.textContent).toMatch(/14/);
     expect(win.textContent).toMatch(/18/);
     expect(win.classList.contains('ended')).toBe(false);
+  });
+
+  it.each([
+    [{ start: '2027-11-14' }, /Starts.*2027/],
+    [{ end: '2025-11-14' }, /Window ended.*2025/],
+    [{ start: '2025-11-14' }, /From.*2025/],
+    [{ end: '2027-11-14' }, /Until.*2027/],
+    [{ start: '2026-01-01', end: '2027-01-01' }, /2026.*2027/],
+  ])('includes years outside the current year and on both sides of a cross-year range: %j', (dates, expected) => {
+    expect(focusWindowText({ countries: ['TH'], neighbours: false, ...dates }, DURING)?.text).toMatch(expected);
+  });
+
+  it('keeps a same-year window concise and uses the supplied UTC year', () => {
+    expect(focusWindowText(SEA, DURING)?.text).not.toMatch(/2026/);
+    expect(focusWindowText({ countries: ['TH'], neighbours: false, end: '2026-01-01' },
+      new Date('2025-12-31T23:30:00-02:00'))?.text).not.toMatch(/2026/);
+  });
+
+  it('keeps both years in the range fallback', () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'formatRange').mockImplementation(() => { throw new Error('unsupported'); });
+    expect(focusWindowText({ countries: ['TH'], neighbours: false, start: '2026-01-01', end: '2027-01-01' }, DURING)?.text)
+      .toMatch(/2026.*2027/);
   });
 
   it('says the window ended without hiding anything', () => {
@@ -331,6 +354,25 @@ describe('openFocusEditor', () => {
     results()[0]!.click();
     expect(chips()).toEqual(['TH']);
     expect(d('.focus-editor-count')?.textContent).toBe('1 of 12');
+  });
+
+  it('rebuilds search names after a language change even when Andorra stays the same', async () => {
+    editor = openFocusEditor({ initial: null, onSave, onClear });
+    search('Germany');
+    expect(results().map((r) => r.textContent).join(' ')).toContain('Germany');
+    const firstName = focusCountryName('AD');
+    try {
+      await i18next.changeLanguage('es');
+      expect(focusCountryName('AD')).toBe(firstName);
+      editor.close();
+      editor = openFocusEditor({ initial: null, onSave, onClear });
+      search('Alemania');
+      expect(results().map((r) => r.textContent).join(' ')).toContain('Alemania');
+      search('Germany');
+      expect(results().map((r) => r.textContent).join(' ')).toContain('Alemania');
+    } finally {
+      await i18next.changeLanguage('en');
+    }
   });
 
   it('defaults to including neighbours and saves the scope', () => {
