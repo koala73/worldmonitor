@@ -56,7 +56,7 @@ Return NASA ICESat-2 lidar water levels for the 50 strategic reservoirs and lake
 - **API endpoints:** `GET /api/climate/v1/list-reservoir-levels`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
 - **Kind:** cache read — sub-second response from the seeded ICESat-2 reservoir snapshot.
-- **Freshness budget:** up to **72 h** since the last seed run, and `stale: true` when fewer than **50** watchlist reservoirs carry a level (matches `seed-meta:climate:reservoir-levels` in `/api/health`). Pass age is never staleness: ICESat-2 passes publish about 50-70 days after the overpass, so `latest.ageDays` is normally large, and `no_recent_data` marks a reservoir with no qualifying pass in 150 days.
+- **Freshness budget:** up to **72 h** since the last seed run, and `stale: true` when fewer than **50** watchlist reservoirs are tracked (matches `seed-meta:climate:reservoir-levels` in `/api/health`). A reservoir counts as tracked when it carries a level and its pass discovery is not failing, so `stale` can be true while all 50 still show their last good level. Pass age is never staleness: ICESat-2 passes publish about 50-70 days after the overpass, so `latest.ageDays` is normally large, and `no_recent_data` marks a reservoir with no qualifying pass in 150 days.
 
 <CodeGroup>
 

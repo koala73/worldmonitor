@@ -57,7 +57,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点:** `GET /api/climate/v1/list-reservoir-levels`
 - **访问:** `free-account` — 任何已登录账户均可调用;免费账户消耗每日免费额度,Pro 调用消耗每日配额。支持通用 `summary` 参数。
 - **类型:** 缓存读取 — 来自 ICESat-2 水库快照的亚秒级响应。
-- **新鲜度预算:** 距上次种子运行最多 **72 小时**;带水位的观察名单水库少于 **50** 座时 `stale: true`(与 `/api/health` 中的 `seed-meta:climate:reservoir-levels` 一致)。过境时间从不算作过期:ICESat-2 过境数据在过境后约 50-70 天发布,所以 `latest.ageDays` 通常较大;`no_recent_data` 表示该水库 150 天内没有合格过境。
+- **新鲜度预算:** 距上次种子运行最多 **72 小时**;被跟踪的观察名单水库少于 **50** 座时 `stale: true`(与 `/api/health` 中的 `seed-meta:climate:reservoir-levels` 一致)。水库带有水位且过境发现未持续失败才算被跟踪,所以即使 50 座水库仍显示上次的有效水位,`stale` 也可能为 true。过境时间从不算作过期:ICESat-2 过境数据在过境后约 50-70 天发布,所以 `latest.ageDays` 通常较大;`no_recent_data` 表示该水库 150 天内没有合格过境。
 
 <CodeGroup>
 
