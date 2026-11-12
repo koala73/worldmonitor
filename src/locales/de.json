@@ -5104,6 +5104,7 @@
     "errBusy": "Zu viele Anfragen. Versuchen Sie es in einer Minute erneut.",
     "errUnavailable": "Die Daten hinter dem Entwurf sind gerade nicht verfügbar. Versuchen Sie es in einer Minute erneut.",
     "errGeneric": "Der Entwurf konnte nicht erstellt werden. Versuchen Sie es erneut.",
-    "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\"."
+    "errDownload": "Die Datei konnte hier nicht heruntergeladen werden. Verwenden Sie stattdessen „Drucken\" oder „Als PDF speichern\".",
+    "errLoad": "Die Reisebewertung konnte nicht geöffnet werden. Laden Sie die Seite neu und versuchen Sie es erneut."
   }
 }

@@ -5132,6 +5132,7 @@
     "errBusy": "Troppe richieste. Riprova tra un minuto.",
     "errUnavailable": "I dati alla base della bozza non sono disponibili al momento. Riprova tra un minuto.",
     "errGeneric": "La bozza non può essere creata. Riprova.",
-    "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF."
+    "errDownload": "Il file non può essere scaricato qui. Usa Stampa o salva come PDF.",
+    "errLoad": "Non è stato possibile aprire la valutazione del viaggio. Ricarica la pagina e riprova."
   }
 }

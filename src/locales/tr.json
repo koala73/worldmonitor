@@ -5104,6 +5104,7 @@
     "errBusy": "Çok fazla istek. Bir dakika sonra yeniden deneyin.",
     "errUnavailable": "Taslağın arkasındaki veriler şu anda kullanılamıyor. Bir dakika sonra yeniden deneyin.",
     "errGeneric": "Taslak oluşturulamadı. Yeniden deneyin.",
-    "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin."
+    "errDownload": "Dosya buraya indirilemedi. Bunun yerine Yazdır seçeneğini kullanın veya PDF olarak kaydedin.",
+    "errLoad": "Seyahat değerlendirmesi açılamadı. Sayfayı yeniden yükleyin ve tekrar deneyin."
   }
 }

@@ -4789,7 +4789,8 @@
     "errBusy": "Too many requests. Try again in a minute.",
     "errUnavailable": "The data behind the draft is unavailable right now. Try again in a minute.",
     "errGeneric": "The draft could not be built. Try again.",
-    "errDownload": "The file could not be downloaded here. Use Print or save as PDF instead."
+    "errDownload": "The file could not be downloaded here. Use Print or save as PDF instead.",
+    "errLoad": "The trip assessment could not be opened. Reload the page and try again."
   },
   "layerExplanation": {
     "labels": {

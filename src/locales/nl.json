@@ -5104,6 +5104,7 @@
     "errBusy": "Te veel verzoeken. Probeer het over een minuut opnieuw.",
     "errUnavailable": "De data achter de versie zijn momenteel niet beschikbaar. Probeer het over een minuut opnieuw.",
     "errGeneric": "De versie kon niet worden samengesteld. Probeer het opnieuw.",
-    "errDownload": "Het bestand kon hier niet worden gedownload. Gebruik Afdrukken of opslaan als PDF."
+    "errDownload": "Het bestand kon hier niet worden gedownload. Gebruik Afdrukken of opslaan als PDF.",
+    "errLoad": "De reisbeoordeling kon niet worden geopend. Laad de pagina opnieuw en probeer het opnieuw."
   }
 }

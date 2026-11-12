@@ -5076,6 +5076,7 @@
     "errBusy": "Quá nhiều yêu cầu. Thử lại trong một phút.",
     "errUnavailable": "Dữ liệu đằng sau dự thảo hiện không khả dụng. Thử lại trong một phút.",
     "errGeneric": "Không thể xây dựng dự thảo. Thử lại.",
-    "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF."
+    "errDownload": "Không thể tải xuống tệp tại đây. Hãy sử dụng In hoặc lưu dưới dạng PDF.",
+    "errLoad": "Không thể mở đánh giá chuyến đi. Tải lại trang và thử lại."
   }
 }

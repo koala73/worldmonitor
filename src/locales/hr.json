@@ -5107,7 +5107,7 @@
     "heading": "Procjena putovanja",
     "intro": "Nacrt prve verzije procjene rizika putovanja na temelju izvora, koju analyst završava. Izvještava što podaci pokazuju i ne daje savjete.",
     "privacy": "Samo zemlje, gradovi i datumi. Ne unosite imena putnika, hotele ili adrese. Ništa što unesete se ne pohranjuje.",
-    "taskLabel": "Oznaka zadatka (izbjegli)",
+    "taskLabel": "Oznaka zadatka (neobavezno)",
     "taskLabelPlaceholder": "Regionalni posjeti lokacijama",
     "windowStart": "Putovanje počinje",
     "windowEnd": "Putovanje završava",
@@ -5143,6 +5143,7 @@
     "errBusy": "Previše zahtjeva. Pokušajte ponovno za minutu.",
     "errUnavailable": "Podaci iza nacrta trenutno nisu dostupni. Pokušajte ponovno za minutu.",
     "errGeneric": "Nacrt se ne može izraditi. Pokušajte ponovno.",
-    "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF."
+    "errDownload": "Datoteka se ne može preuzeti odavdje. Umjesto toga koristite Ispis ili spremi kao PDF.",
+    "errLoad": "Procjena putovanja nije mogla biti otvorena. Ponovno učitajte stranicu i pokušajte ponovno."
   }
 }

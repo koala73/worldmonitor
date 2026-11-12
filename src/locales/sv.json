@@ -5104,6 +5104,7 @@
     "errBusy": "För många förfrågningar. Försök igen om en minut.",
     "errUnavailable": "Data bakom utkastet är för närvarande otillgänglig. Försök igen om en minut.",
     "errGeneric": "Utkastet kunde inte byggas. Försök igen.",
-    "errDownload": "Filen kunde inte laddas ned här. Använd Skriv ut eller spara som PDF istället."
+    "errDownload": "Filen kunde inte laddas ned här. Använd Skriv ut eller spara som PDF istället.",
+    "errLoad": "Resebedömningen kunde inte öppnas. Ladda om sidan och försök igen."
   }
 }

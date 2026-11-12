@@ -5160,6 +5160,7 @@
     "errBusy": "Příliš mnoho požadavků. Zkuste to za minutu.",
     "errUnavailable": "Data pro návrh jsou nyní nedostupná. Zkuste to za minutu.",
     "errGeneric": "Návrh nemohl být vytvořen. Zkuste to znovu.",
-    "errDownload": "Soubor nelze stáhnout zde. Místo toho použijte Tisk nebo Uložit jako PDF."
+    "errDownload": "Soubor nelze stáhnout zde. Místo toho použijte Tisk nebo Uložit jako PDF.",
+    "errLoad": "Posouzení cesty se nepodařilo otevřít. Znovu načtěte stránku a zkuste to znovu."
   }
 }

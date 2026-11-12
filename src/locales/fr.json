@@ -5132,6 +5132,7 @@
     "errBusy": "Trop de requêtes. Réessayez dans une minute.",
     "errUnavailable": "Les données du brouillon ne sont pas disponibles pour le moment. Réessayez dans une minute.",
     "errGeneric": "Le brouillon n'a pas pu être généré. Réessayez.",
-    "errDownload": "Le fichier n'a pas pu être téléchargé ici. Utilisez l'impression ou enregistrez en PDF à la place."
+    "errDownload": "Le fichier n'a pas pu être téléchargé ici. Utilisez l'impression ou enregistrez en PDF à la place.",
+    "errLoad": "L'évaluation de voyage n'a pas pu être ouverte. Rechargez la page et réessayez."
   }
 }

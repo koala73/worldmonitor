@@ -155,7 +155,12 @@ describe('TripAssessmentDialog', () => {
   const error = () => q('.focus-editor-error');
 
   beforeEach(() => { document.body.replaceChildren(); });
-  afterEach(() => { document.body.replaceChildren(); });
+  afterEach(() => {
+    // Close through the dialog so its focus trap is released; removing the DOM
+    // alone leaves a capture-phase keydown listener on the document.
+    document.querySelector<HTMLButtonElement>('.trip-assessment .modal-close')?.click();
+    document.body.replaceChildren();
+  });
 
   function open(extra: Partial<Parameters<typeof openTripAssessment>[0]> = {}) {
     return openTripAssessment({ initial: draftFromHandoff(reportHandoffFromScope(SEA)), ...extra });
@@ -313,6 +318,57 @@ describe('TripAssessmentDialog', () => {
     expect(q<HTMLButtonElement>('.trip-assessment-markdown').disabled).toBe(false);
   });
 
+  it('locks the form while a draft is being built and unlocks it, with focus back on the button, after', async () => {
+    let release!: (r: Response) => void;
+    const fetcher = vi.fn(() => new Promise<Response>((resolve) => { release = resolve; }));
+    open({ fetcher, deliver: vi.fn().mockResolvedValue({ state: 'attempted' }) });
+    const word = q<HTMLButtonElement>('.trip-assessment-word');
+    word.focus();
+    word.click();
+    const editable = () => [...document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+      '.trip-assessment-label, .trip-assessment-from, .trip-assessment-to, .trip-assessment-search, .trip-assessment-input, .trip-assessment-row-btn',
+    )];
+    expect(editable().length).toBeGreaterThan(10);
+    expect(editable().every((control) => control.disabled)).toBe(true);
+    // Nothing offered to type into or reorder can change the trip mid-request.
+    expect(document.querySelectorAll('.focus-editor-result')).toHaveLength(0);
+    release(okResponse('x'));
+    await tick(); await tick(); await tick();
+    expect(q<HTMLInputElement>('.trip-assessment-label').disabled).toBe(false);
+    expect(q<HTMLButtonElement>('[data-code="TH"] [data-action="up"]').disabled).toBe(true); // first row: nothing earlier
+    expect(q<HTMLButtonElement>('[data-code="VN"] [data-action="up"]').disabled).toBe(false);
+    expect(q<HTMLInputElement>('[data-code="VN"] .trip-assessment-cities').disabled).toBe(false);
+    expect(document.activeElement).toBe(q('.trip-assessment-word'));
+  });
+
+  it('keeps the country search locked after a draft when the trip is full', async () => {
+    const six = ['TH', 'VN', 'ID', 'MY', 'SG', 'PH'];
+    const handoff = reportHandoffFromScope({ countries: six, neighbours: false });
+    openTripAssessment({ initial: draftFromHandoff(handoff), fetcher: async () => okResponse('x'), deliver: async () => ({ state: 'attempted' }) });
+    click('.trip-assessment-markdown');
+    await tick(); await tick(); await tick();
+    expect(q<HTMLInputElement>('.trip-assessment-search').disabled).toBe(true);
+    expect(q<HTMLInputElement>('.trip-assessment-label').disabled).toBe(false);
+  });
+
+  it('says so when the download itself throws, and lets the person try again', async () => {
+    open({ fetcher: async () => okResponse('x'), deliver: async () => { throw new DOMException('blocked', 'SecurityError'); } });
+    click('.trip-assessment-markdown');
+    await tick(); await tick(); await tick();
+    expect(error().textContent).toMatch(/Use Print or save as PDF instead/);
+    expect(status()).toBe('');
+    expect(q<HTMLButtonElement>('.trip-assessment-markdown').disabled).toBe(false);
+  });
+
+  it('says so when printing throws', async () => {
+    open({ fetcher: async () => okResponse('<html></html>'), print: () => { throw new Error('no frame'); } });
+    click('.trip-assessment-print');
+    await tick(); await tick(); await tick();
+    expect(error().textContent).toBe('The draft could not be built. Try again.');
+    expect(status()).toBe('');
+    expect(q<HTMLButtonElement>('.trip-assessment-print').disabled).toBe(false);
+  });
+
   it('says when the data is unavailable and when the browser cannot save the file', async () => {
     open({ fetcher: async () => fail(503) });
     click('.trip-assessment-markdown');
@@ -372,6 +428,7 @@ describe('opening from a focus', () => {
   const rows = () => [...document.querySelectorAll<HTMLElement>('.trip-assessment-row')].map((row) => row.dataset.code);
   beforeEach(() => { document.body.replaceChildren(); });
   afterEach(() => {
+    document.querySelector<HTMLButtonElement>('.trip-assessment .modal-close')?.click();
     document.body.replaceChildren();
     vi.unstubAllGlobals();
   });
@@ -381,6 +438,24 @@ describe('opening from a focus', () => {
     expect(rows()).toEqual(['TH', 'VN', 'ID', 'MY', 'SG', 'PH']);
     expect(document.querySelector<HTMLInputElement>('.trip-assessment-from')!.value).toBe('2026-12-01');
     expect(document.body.textContent).toContain('Cambodia, Laos');
+  });
+
+  it('does not list a country as left out once the analyst has swapped it in', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    await openTripAssessmentForScope({ countries: ['TH', 'VN', 'ID', 'MY', 'SG', 'PH', 'KH', 'LA'], neighbours: true });
+    document.querySelector<HTMLButtonElement>('[data-code="PH"] [data-action="remove"]')!.click();
+    const search = document.querySelector<HTMLInputElement>('.trip-assessment-search')!;
+    search.value = 'cambodia';
+    search.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLButtonElement>('.focus-editor-result[data-code="KH"]')!.click();
+    document.querySelector<HTMLButtonElement>('.trip-assessment-copy')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const text = writeText.mock.calls[0]![0] as string;
+    expect(text).toContain('Cambodia (KH)');
+    expect(text.split('\n').find((line) => line.startsWith('Not part of this request'))).toBe(
+      'Not part of this request (an assessment covers at most 6 countries): Laos (LA).',
+    );
   });
 
   it('opens one dialog however many times the action is pressed while it loads', async () => {

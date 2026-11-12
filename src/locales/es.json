@@ -5132,6 +5132,7 @@
     "errBusy": "Demasiadas solicitudes. Intenta de nuevo en un minuto.",
     "errUnavailable": "Los datos detrás del borrador no están disponibles en este momento. Intenta de nuevo en un minuto.",
     "errGeneric": "No se pudo generar el borrador. Intenta de nuevo.",
-    "errDownload": "El archivo no se pudo descargar aquí. Usa Imprimir o guarda como PDF en su lugar."
+    "errDownload": "El archivo no se pudo descargar aquí. Usa Imprimir o guarda como PDF en su lugar.",
+    "errLoad": "No se pudo abrir la evaluación del viaje. Recarga la página e intenta de nuevo."
   }
 }

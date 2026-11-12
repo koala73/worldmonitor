@@ -5104,6 +5104,7 @@
     "errBusy": "Túl sok kérés. Próbálja újra egy perc múlva.",
     "errUnavailable": "Az első változat mögötti adatok jelenleg nem érhetők el. Próbálja újra egy perc múlva.",
     "errGeneric": "Az első változat nem állítható össze. Próbálja újra.",
-    "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette."
+    "errDownload": "A fájl innen nem tölthető le. Használja a Nyomtatást vagy a PDF-ként mentést helyette.",
+    "errLoad": "Az utazási értékelés nem nyitható meg. Töltse be újra az oldalt, és próbálja újra."
   }
 }

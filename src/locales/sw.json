@@ -5076,8 +5076,8 @@
     "count": "{{n}} ya {{max}}",
     "searchPlaceholder": "Ongeza nchi",
     "addCountry": "Ongeza nchi kwa safari",
-    "limit": "Safari inakamatia nchi {{max}} zaidi sana.",
-    "omitted": "Kuachwa kwa sababu safari inakamatia nchi {{max}} zaidi sana: {{names}}.",
+    "limit": "Safari inakamatia hadi {{max}} nchi.",
+    "omitted": "Kuachwa kwa sababu safari inakamatia hadi {{max}} nchi: {{names}}.",
     "cities": "Miji, iliyotenganisha kwa koma (hadi {{max}})",
     "arrive": "Fika",
     "depart": "Ondoka",
@@ -5093,10 +5093,10 @@
     "downloaded": "Kilichopakuwa {{file}}. Kila pakua kinajengwa upya na kumkamatia na wakati wake tofauti wa kukamatia.",
     "printOpened": "Kidirisha cha chapisha kilifunguliwa. Chagua Hifadhi kama PDF kukamatia nakili.",
     "errNoCountries": "Ongeza angalau nchi moja.",
-    "errTooMany": "Safari inakamatia nchi {{max}} zaidi sana.",
+    "errTooMany": "Safari inakamatia hadi {{max}} nchi.",
     "errWindow": "Safari lazima iishe siku ile ile au baada ya siku inayoanza.",
-    "errCities": "{{name}}: orodha miji {{max}} zaidi sana.",
-    "errCountryDates": "{{name}}: kufika lazima kiwe siku ile ile au baada ya kuwasili.",
+    "errCities": "{{name}}: orodhesha hadi {{max}} miji.",
+    "errCountryDates": "{{name}}: kuondoka lazima kuwe siku ile ile au baada ya kuwasili.",
     "errOutsideWindow": "{{name}}: tarehe lazima ziwe ndani ya dirisha la safari.",
     "errInvalid": "Rasimu haikuweza kujenguliwa kutoka safari hii:",
     "errAuth": "Ingia tena kujenga rasimu.",
@@ -5104,6 +5104,7 @@
     "errBusy": "Maombi mengi sana. Jaribu tena baada ya dakika moja.",
     "errUnavailable": "Data nyuma ya rasimu haipatikani sasa. Jaribu tena baada ya dakika moja.",
     "errGeneric": "Rasimu haikuweza kujenguliwa. Jaribu tena.",
-    "errDownload": "Faili haikuweza kupakuliwa hapa. Tumia Chapisha au hifadhi kama PDF badala yake."
+    "errDownload": "Faili haikuweza kupakuliwa hapa. Tumia Chapisha au hifadhi kama PDF badala yake.",
+    "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
   }
 }

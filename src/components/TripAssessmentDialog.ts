@@ -144,8 +144,8 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
     dates.append(wrap);
     return input;
   };
-  dateField('trip-assessment-from', t('tripAssessment.windowStart'), draft.dateFrom, (v) => { draft.dateFrom = v; });
-  dateField('trip-assessment-to', t('tripAssessment.windowEnd'), draft.dateTo, (v) => { draft.dateTo = v; });
+  const fromInput = dateField('trip-assessment-from', t('tripAssessment.windowStart'), draft.dateFrom, (v) => { draft.dateFrom = v; });
+  const toInput = dateField('trip-assessment-to', t('tripAssessment.windowEnd'), draft.dateTo, (v) => { draft.dateTo = v; });
 
   // Countries
   const countriesHead = el('div', 'focus-editor-field-head');
@@ -215,15 +215,19 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
     error.textContent = key ? t(key, params) : '';
   };
 
+  // While a draft is being built the form is read-only, so the file that comes
+  // back is always the trip the person is looking at, not an earlier version.
   const setBusy = (value: boolean): void => {
     busy = value;
     for (const btn of actions) btn.disabled = value;
+    for (const input of [labelInput, fromInput, toInput]) input.disabled = value;
     modal.setAttribute('aria-busy', String(value));
+    renderList();
   };
 
   function renderResults(): void {
     const full = draft.countries.length >= TRIP_MAX_COUNTRIES;
-    const matches = full ? [] : searchFocusCountries(searchInput.value, new Set(draft.countries.map((c) => c.code)));
+    const matches = full || busy ? [] : searchFocusCountries(searchInput.value, new Set(draft.countries.map((c) => c.code)));
     results.replaceChildren(...matches.map((entry) => {
       const item = el('li', 'focus-editor-result-item');
       const btn = el('button', 'focus-editor-result', entry.name);
@@ -257,9 +261,9 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
         btn.addEventListener('click', run);
         controls.append(btn);
       };
-      control('up', '↑', t('tripAssessment.moveEarlier', { name }), index === 0, () => move(country.code, -1));
-      control('down', '↓', t('tripAssessment.moveLater', { name }), index === draft.countries.length - 1, () => move(country.code, 1));
-      control('remove', '×', t('tripAssessment.remove', { name }), false, () => remove(country.code));
+      control('up', '↑', t('tripAssessment.moveEarlier', { name }), busy || index === 0, () => move(country.code, -1));
+      control('down', '↓', t('tripAssessment.moveLater', { name }), busy || index === draft.countries.length - 1, () => move(country.code, 1));
+      control('remove', '×', t('tripAssessment.remove', { name }), busy, () => remove(country.code));
       head.append(controls);
 
       const fields = el('div', 'trip-assessment-row-fields');
@@ -269,6 +273,7 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
         input.type = type;
         input.id = `${id}-${country.code}-${cls}`;
         input.value = value;
+        input.disabled = busy;
         input.addEventListener('input', () => set(input.value));
         extra?.(input);
         const lab = el('label', 'focus-editor-label', label);
@@ -287,7 +292,7 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
       return row;
     }));
     list.hidden = draft.countries.length === 0;
-    searchInput.disabled = full;
+    searchInput.disabled = full || busy;
     limit.hidden = !full;
     renderResults();
     if (focus) {
@@ -368,6 +373,8 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
       showError(invalid.key, invalid.params);
       return;
     }
+    // Disabling the pressed button drops focus to the page; remember where it was.
+    const returnFocusTo = document.activeElement;
     setBusy(true);
     status.textContent = t('tripAssessment.building');
     // The order the server will number its violations by.
@@ -391,8 +398,19 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
         ? ''
         : t('tripAssessment.downloaded', { file: result.filename });
       if (delivered.state === 'error' || delivered.state === 'unsupported') showError('tripAssessment.errDownload');
+    } catch {
+      // The browser can refuse the file (object URL, click) or the print frame;
+      // the delivery dependency can reject too. Say so instead of leaving
+      // "Building..." on screen.
+      if (!closed) {
+        status.textContent = '';
+        showError(then === 'print' ? 'tripAssessment.errGeneric' : 'tripAssessment.errDownload');
+      }
     } finally {
-      if (!closed) setBusy(false);
+      if (!closed) {
+        setBusy(false);
+        if (returnFocusTo instanceof HTMLElement && modal.contains(returnFocusTo)) returnFocusTo.focus();
+      }
     }
   }
 

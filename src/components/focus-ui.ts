@@ -6,6 +6,8 @@
  */
 
 import type { Panel } from './Panel';
+import { t } from '@/services/i18n';
+import { showToast } from '@/utils/toast';
 import type { ResolvedScope } from '@/services/tab-focus';
 import type { TabScope } from '../../shared/tab-scope';
 import { getPanelScopeBehaviour } from '@/config/panel-scope';
@@ -41,6 +43,10 @@ export async function openTripAssessmentForScope(scope: TabScope): Promise<void>
   tripAssessmentLoading = true;
   try {
     await openTripAssessmentDialog(scope);
+  } catch {
+    // A dynamic import that rejects (a deploy swapped the chunk, the network
+    // dropped) would otherwise vanish: the press does nothing and says nothing.
+    showToast(t('tripAssessment.errLoad'));
   } finally {
     tripAssessmentLoading = false;
   }
@@ -62,7 +68,9 @@ async function openTripAssessmentDialog(scope: TabScope): Promise<void> {
     onCopyRequest: (draft) => {
       void copyHandoffRequest({
         countries: draft.countries.map((c) => c.code),
-        omitted: handoff.omitted,
+        // Only what is still left out: a country the analyst swapped in for a
+        // selected one must not be listed as both selected and not part of the request.
+        omitted: handoff.omitted.filter((code) => !draft.countries.some((c) => c.code === code)),
         dateFrom: draft.dateFrom || null,
         dateTo: draft.dateTo || null,
         taskLabel: draft.taskLabel.trim() || null,

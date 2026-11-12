@@ -5160,6 +5160,7 @@
     "errBusy": "Zbyt wiele żądań. Spróbuj ponownie za minutę.",
     "errUnavailable": "Dane na potrzeby szkicu są niedostępne. Spróbuj ponownie za minutę.",
     "errGeneric": "Nie można było zbudować szkicu. Spróbuj ponownie.",
-    "errDownload": "Nie można było pobrać pliku tutaj. Użyj funkcji Drukuj lub zapisz jako PDF."
+    "errDownload": "Nie można było pobrać pliku tutaj. Użyj funkcji Drukuj lub zapisz jako PDF.",
+    "errLoad": "Nie można było otworzyć oceny podróży. Odśwież stronę i spróbuj ponownie."
   }
 }

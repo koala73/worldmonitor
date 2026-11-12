@@ -3993,6 +3993,7 @@
   "tripAssessment.errDownload": "The file could not be downloaded here. Use Print or save as PDF instead.",
   "tripAssessment.errGeneric": "The draft could not be built. Try again.",
   "tripAssessment.errInvalid": "The draft could not be built from this trip:",
+  "tripAssessment.errLoad": "The trip assessment could not be opened. Reload the page and try again.",
   "tripAssessment.errNoCountries": "Add at least one country.",
   "tripAssessment.errOutsideWindow": "{{name}}: dates must fall inside the trip window.",
   "tripAssessment.errTooMany": "A trip covers at most {{max}} countries.",
