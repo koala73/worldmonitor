@@ -652,7 +652,11 @@ async function _getEntitlementsImpl(
       // The cache-shape check must
       // run first: a pre-embedAccess marker is still an authorization row, and
       // serving it would bypass the canonical Convex merge below.
-      if (hasCurrentEmbedAccessShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
+      // The opt-in travel shape applies here too: a marker row written before
+      // `travelRiskAssessment` existed would otherwise admit the account at the
+      // MCP pre-check and then deny the tool as a missing plan feature.
+      const hasRequestedTravelShape = !options.requireTravelRiskShape || typeof ent.features.travelRiskAssessment === 'boolean';
+      if (hasCurrentEmbedAccessShape && hasRequestedTravelShape && entitlementMarkerTtlSeconds(ent) !== null) return ent;
       // Only use cached data if it hasn't expired AND has the post-U10 shape.
       //
       // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
@@ -699,7 +703,7 @@ async function _getEntitlementsImpl(
         ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
         !legacySharedBudgetShape &&
         (!options.requireDesktopKeyShape || hasDesktopKeyShape(ent)) &&
-        (!options.requireTravelRiskShape || typeof ent.features.travelRiskAssessment === 'boolean')
+        hasRequestedTravelShape
       ) {
         return ent;
       }

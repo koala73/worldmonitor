@@ -520,6 +520,30 @@ describe("gateway entitlement check", () => {
     );
   });
 
+  test("a billing-status marker without travelRiskAssessment reloads only when the travel shape is required", async () => {
+    const legacyMarker = {
+      ...makeEntitlements(1, "pro_business_monthly"),
+      billingStatus: "renewal_verification_pending" as const,
+      retryAfterSeconds: 11,
+    };
+    const current = {
+      ...legacyMarker,
+      features: { ...legacyMarker.features, travelRiskAssessment: true },
+    };
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const served = await getEntitlements("travel-shape-marker-default");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(served?.features.travelRiskAssessment).toBeUndefined();
+    });
+
+    await withCachedEntitlementResponse(legacyMarker, current, async (fetchMock) => {
+      const reloaded = await getEntitlements("travel-shape-marker-required", { requireTravelRiskShape: true });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(reloaded?.features.travelRiskAssessment).toBe(true);
+    });
+  });
+
   test("legacy renewal-freshness marker without embedAccess reloads before the marker cache return", async () => {
     const marker = {
       ...makeEntitlements(0),
