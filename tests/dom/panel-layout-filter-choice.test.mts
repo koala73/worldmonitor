@@ -3,10 +3,13 @@
  * The layout needs the whole app to construct, so the methods are called on a
  * minimal stand-in `this`, the way correlation-recovery does for mounting.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { PanelLayoutManager } from '@/app/panel-layout';
 import type { Panel } from '@/components/Panel';
+import { initTestI18n } from './helpers/i18n.mts';
+
+beforeAll(initTestI18n);
 
 type Fake = {
   appliedPanelFilters: Set<string>;
@@ -32,6 +35,20 @@ function panel(): Panel & { choice: string | null } {
 }
 
 describe('PanelLayoutManager panel filter choices', () => {
+  it('shows why sharing panel choices is refused before capturing or publishing a tab', async () => {
+    const capture = vi.fn(() => { throw new Error('must refuse before capture'); });
+    const self = {
+      team: { userId: 'fixture-user', dashboards: { team: { kind: 'business', focus: false }, dashboards: [] } },
+      teamBusy: false,
+      activeTab: () => ({ panelFilters: { forecast: 'east-asia' } }),
+      captureCurrentTabState: capture,
+    };
+    await method<() => Promise<void>>('shareActiveTabWithTeam').call(self);
+    expect(capture).not.toHaveBeenCalled();
+    expect(document.querySelector('.toast-notification')?.textContent).toContain("Your plan doesn't include sharing a focused dashboard.");
+    document.querySelector('.toast-notification')?.remove();
+  });
+
   it('records a choice restored when a lazy panel mounts, so the next tab switch resets it', () => {
     const webcams = panel();
     const self: Fake = {
