@@ -1,5 +1,6 @@
 import type { StoryData } from './story-data';
 import { getLocale, t } from './i18n';
+import { displayedCiiComponents } from '@/utils/cii-components';
 
 const W = 1080;
 const H = 1920;
@@ -166,13 +167,14 @@ export async function renderStoryToCanvas(data: StoryData): Promise<HTMLCanvasEl
 
     // Component scores
     y += 44;
-    const comps = [
-      { label: t('common.unrest').toUpperCase(), val: data.cii.components.unrest, color: '#f97316' },
-      { label: t('common.conflict').toUpperCase(), val: data.cii.components.conflict, color: '#dc2626' },
-      { label: t('common.security').toUpperCase(), val: data.cii.components.security, color: '#ef4444' },
-      { label: t('common.information').toUpperCase(), val: data.cii.components.information, color: '#8b5cf6' },
-    ];
-    const compBarW = (barW - 24) / 3;
+    const compDisplay = {
+      unrest: { label: t('common.unrest').toUpperCase(), color: '#f97316' },
+      conflict: { label: t('common.conflict').toUpperCase(), color: '#dc2626' },
+      security: { label: t('common.security').toUpperCase(), color: '#ef4444' },
+      information: { label: t('common.information').toUpperCase(), color: '#8b5cf6' },
+    };
+    const comps = displayedCiiComponents(data.cii.components).map(({ key, value }) => ({ ...compDisplay[key], val: value }));
+    const compBarW = (barW - 12 * (comps.length - 1)) / comps.length;
     for (const comp of comps) {
       const cx = PAD + comps.indexOf(comp) * (compBarW + 12);
       ctx.fillStyle = '#777';

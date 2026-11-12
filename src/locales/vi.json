@@ -1450,7 +1450,7 @@
     },
     "cii": {
       "noSignals": "Không phát hiện tín hiệu bất ổn",
-      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác.",
+      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác.",
       "_methodologyLink_translatorNote": "TODO DỊCH (#3725): dịch methodologyLink. Giá trị tiếng Anh được gửi đến mọi ngôn ngữ như giải pháp tạm thời để liên kết phương pháp có sẵn trong tất cả ngôn ngữ. Có thể dịch độc lập với infoTooltip — cả hai hiển thị thành một tooltip duy nhất qua nối chuỗi trong CIIPanel.ts.",
       "methodologyLink": "Bao gồm đường cơ sở từng quốc gia + bộ nhân sự kiện — xem /docs/methodology/cii-risk-scores để xem bảng được công bố",
       "sectionFollowing": "Đang theo dõi",
@@ -5028,9 +5028,13 @@
       "emptyFuelShortages": "Không có thiếu hụt nhiên liệu cho các quốc gia này",
       "emptyEnergyDisruptions": "Không có gián đoạn năng lượng cho các quốc gia này",
       "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
-      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này"
+      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này",
+      "emptyExposure": "Không có vị trí dân cư chịu ảnh hưởng cho các quốc gia này",
+      "emptyExposurePartial": "Dữ liệu hiện có không có vị trí chịu ảnh hưởng cho các quốc gia này. Đang chờ phạm vi bao phủ UCDP đầy đủ.",
+      "partialExposureLoading": "Đang tải tất cả vị trí UCDP trước khi lọc mức độ ảnh hưởng. Số liệu bao phủ chỉ tính các vụ bất ổn.",
+      "partialExposure": "Không thể tải tất cả vị trí UCDP. Dữ liệu ảnh hưởng chưa đầy đủ; số liệu bao phủ chỉ tính các vụ bất ổn."
     },
-    "draftAssessment": "Bản đánh giá dự thảo",
+    "draftAssessment": "Đánh giá chuyến đi",
     "draftAssessmentAria": "Mở đánh giá chuyến đi, được điền sẵn với tiêu điểm này",
     "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
     "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia. Các quốc gia bị bỏ qua: {{omitted}}.",

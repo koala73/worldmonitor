@@ -1404,7 +1404,7 @@
     },
     "cii": {
       "noSignals": "Aucun signal d'instabilité détecté",
-      "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>S</strong>sécurité : vols/navires militaires au-dessus territoire</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:S:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise.",
+      "infoTooltip": "<strong>Méthodologie</strong><ul><li><strong>U</strong>nrepos : troubles civils et manifestations</li><li><strong>C</strong>conflit : intensité du conflit armé</li><li><strong>I</strong>informations : vitesse des informations et corrélation des points focaux</li><li>Augmentation de la proximité des points d'accès (emplacements stratégiques)</li></ul><em>Les valeurs U:C:I affichent les scores des composants.</em> La détection du point focal corrèle les entités d'information avec les signaux cartographiques pour une notation précise.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Inclut la référence par pays + multiplicateur d'événement — voir /docs/methodology/cii-risk-scores pour le tableau publié",
       "sectionFollowing": "Suivis",
@@ -5084,9 +5084,13 @@
       "emptyFuelShortages": "Aucune pénurie de carburant pour ces pays",
       "emptyEnergyDisruptions": "Aucune perturbation énergétique pour ces pays",
       "emptyDisplacement": "Aucune donnée de déplacement pour ces pays",
-      "emptyCorrelation": "Aucun signal pour ces pays"
+      "emptyCorrelation": "Aucun signal pour ces pays",
+      "emptyExposure": "Aucun lieu d’exposition de la population pour ces pays",
+      "emptyExposurePartial": "Les données disponibles ne contiennent aucun lieu d’exposition pour ces pays. La couverture complète d’UCDP est en attente.",
+      "partialExposureLoading": "Chargement de tous les lieux UCDP avant de filtrer l’exposition. Les décomptes de couverture incluent uniquement les troubles.",
+      "partialExposure": "Impossible de charger tous les lieux UCDP. Les données d’exposition sont incomplètes ; les décomptes de couverture incluent uniquement les troubles."
     },
-    "draftAssessment": "Brouillon d'évaluation",
+    "draftAssessment": "Évaluation de voyage",
     "draftAssessmentAria": "Ouvrir l'évaluation de voyage, préremplie avec ce focus",
     "draftCopied": "Demande copiée. Collez-la dans votre assistant IA.",
     "draftCopiedPartial": "Demande copiée pour les {{count}} premiers pays. Une évaluation couvre au maximum {{max}} pays. Pays exclus : {{omitted}}.",

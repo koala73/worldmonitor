@@ -1603,7 +1603,7 @@
     },
     "cii": {
       "noSignals": "Nincs instabilitási jelzés észlelve",
-      "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>S</strong> (Security): katonai járművek/hajók a terület felett</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:S:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
+      "infoTooltip": "<strong>Módszertan</strong><ul><li><strong>U</strong> (Unrest): polgári rendzavarások és tüntetések</li><li><strong>C</strong> (Conflict): fegyveres konfliktus intenzitása</li><li><strong>I</strong> (Information): hírek sebessége és fókuszpont korrelációja</li><li>Fókuszpont közelségi növelés (stratégiai helyek)</li></ul><em>Az U:C:I értékek az összetevő pontszámait mutatják.</em> A Fókuszpont-detektálás korrelál a hírjellegzetességeket a térképi jelekkel a pontos pontozáshoz.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Tartalmazza az országonkénti alapértéket + eseményszorzót — lásd /docs/methodology/cii-risk-scores a közzétett táblázathoz",
       "sectionFollowing": "Követés",
@@ -5056,9 +5056,13 @@
       "emptyFuelShortages": "Nincs üzemanyaghiány ezekhez az országokhoz",
       "emptyEnergyDisruptions": "Nincs energiaszünet ezekhez az országokhoz",
       "emptyDisplacement": "Nincs menekültadatok ezekhez az országokhoz",
-      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz"
+      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz",
+      "emptyExposure": "Nincsenek lakossági kitettségi helyszínek ezekben az országokban",
+      "emptyExposurePartial": "A rendelkezésre álló adatokban nincsenek kitettségi helyszínek ezekhez az országokhoz. A teljes UCDP-lefedettség még függőben van.",
+      "partialExposureLoading": "Az összes UCDP-helyszín betöltése a kitettség szűrése előtt. A lefedettségi számok csak a zavargásokat tartalmazzák.",
+      "partialExposure": "Nem sikerült betölteni az összes UCDP-helyszínt. A kitettségi adatok hiányosak; a lefedettségi számok csak a zavargásokat tartalmazzák."
     },
-    "draftAssessment": "Értékelési vázlat",
+    "draftAssessment": "Utazási értékelés",
     "draftAssessmentAria": "Az utazási értékelés megnyitása, amely ezzel a fókusszal van kitöltve",
     "draftCopied": "Kérés másolva. Illessze be az AI asszisztensébe.",
     "draftCopiedPartial": "A kérés az első {{count}} országra lett másolva. Egy értékelés legfeljebb {{max}} országot fed le. Kihagyva: {{omitted}}.",

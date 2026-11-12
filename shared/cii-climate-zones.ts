@@ -1,11 +1,9 @@
 /**
  * Canonical climate-producer zone to Tier-1 CII-country attribution map.
  *
- * The server uses this map when it turns climate anomalies into score inputs;
- * the browser uses it only for country-detail signal context. An edit that
- * changes server/API scores must bump CII_FORMULA_VERSION and update the CII
- * methodology document and public changelog in the same change. The
- * version-keyed CII protocol snapshot tests this map directly.
+ * Only the browser uses this map, for country-detail signal context. The server
+ * does not read it: CII v15 removed climate anomalies from the score, so editing
+ * it changes no server or API score.
  */
 export const CII_CLIMATE_ZONE_COUNTRIES: Record<string, string[]> = {
   'North America': ['US'],

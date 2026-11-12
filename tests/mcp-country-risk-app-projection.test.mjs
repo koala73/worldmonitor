@@ -61,6 +61,16 @@ function assertUnknownScore(doc) {
 }
 
 describe('Country Risk exported HTML projections', () => {
+  it('hides the Security component when it is not scored, and shows it when it is', async () => {
+    const components = militaryActivity => ({ ...risk.cii.components, militaryActivity });
+    const view = await mount(wire({ ...risk, cii: { ...risk.cii, components: components(0) } }));
+    assert.equal(view.doc.querySelectorAll('#components .comp').length, 3);
+    assert.doesNotMatch(text(view.doc, 'components'), /Security/);
+    assert.match(text(view.doc, 'components'), /Domestic unrest44.*Armed conflict88.*Information environment71/);
+    view.send(wire({ ...risk, cii: { ...risk.cii, components: components(65) } }));
+    assert.match(text(view.doc, 'components'), /Security & mobility65/);
+  });
+
   it('uses a source-neutral qualifier for a SEMA-only positive country count', async () => {
     for (const [count, expected] of [[1, '1 sanctions listing'], [2, '2 sanctions listings']]) {
       const semaOnlyRisk = { ...risk, sanctionsCount: count, sanctionsActive: true };

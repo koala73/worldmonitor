@@ -1617,7 +1617,7 @@
         "degraded": "деградована",
         "stale": "застаріла"
       },
-      "infoTooltip": "<strong>Методологія</strong><ul><li><strong>U</strong> — Напруженість: громадянські безпорядки та протести</li><li><strong>C</strong> — Конфлікт: інтенсивність збройного конфлікту</li><li><strong>S</strong> — Безпека: військові літаки та судна над територією</li><li><strong>I</strong> — Інформація: швидкість новин та кореляція фокусної точки</li><li>Підвищення близькості до гарячої точки (стратегічні місця)</li></ul><em>Значення U:C:S:I показують оцінки компонентів.</em> Виявлення фокусної точки корелює новинні сутності із сигналами карти для точної оцінки.",
+      "infoTooltip": "<strong>Методологія</strong><ul><li><strong>U</strong> — Напруженість: громадянські безпорядки та протести</li><li><strong>C</strong> — Конфлікт: інтенсивність збройного конфлікту</li><li><strong>I</strong> — Інформація: швидкість новин та кореляція фокусної точки</li><li>Підвищення близькості до гарячої точки (стратегічні місця)</li></ul><em>Значення U:C:I показують оцінки компонентів.</em> Виявлення фокусної точки корелює новинні сутності із сигналами карти для точної оцінки.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Включає базові показники по країнах + множник подій — див. /docs/methodology/cii-risk-scores для опублікованої таблиці"
     },
@@ -5112,9 +5112,13 @@
       "emptyFuelShortages": "Немає дефіциту палива для цих країн",
       "emptyEnergyDisruptions": "Немає перебоїв у енергопостачанні для цих країн",
       "emptyDisplacement": "Немає даних про переміщення населення для цих країн",
-      "emptyCorrelation": "Немає сигналів для цих країн"
+      "emptyCorrelation": "Немає сигналів для цих країн",
+      "emptyExposure": "Немає місць впливу на населення для цих країн",
+      "emptyExposurePartial": "У доступних даних немає місць впливу для цих країн. Очікується повне охоплення UCDP.",
+      "partialExposureLoading": "Перед фільтруванням впливу завантажуються всі місця UCDP. Підрахунки охоплення включають лише заворушення.",
+      "partialExposure": "Не вдалося завантажити всі місця UCDP. Дані про вплив неповні; підрахунки охоплення включають лише заворушення."
     },
-    "draftAssessment": "Чернетка оцінки",
+    "draftAssessment": "Оцінка подорожі",
     "draftAssessmentAria": "Відкрити оцінку подорожі, передзаповнену цим фокусом",
     "draftCopied": "Запит скопійовано. Вставте його у ваш AI-помічник.",
     "draftCopiedPartial": "Запит скопійовано для перших {{count}} країн. Оцінка охоплює максимум {{max}} країн. Виключені країни: {{omitted}}.",

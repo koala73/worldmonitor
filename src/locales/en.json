@@ -1655,7 +1655,7 @@
         "degraded": "degraded",
         "stale": "stale"
       },
-      "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>S</strong>ecurity: military flights/vessels over territory</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:S:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring.",
+      "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
     },
@@ -4670,7 +4670,7 @@
     "edit": "Edit",
     "clear": "Clear",
     "clearAria": "Clear the focus and show the whole world",
-    "draftAssessment": "Draft assessment",
+    "draftAssessment": "Trip assessment",
     "draftAssessmentAria": "Open the trip assessment, prefilled with this focus",
     "draftCopied": "Request copied. Paste it into your AI assistant.",
     "draftCopiedPartial": "Request copied for the first {{count}} countries. An assessment covers at most {{max}} countries. Left out: {{omitted}}.",
@@ -4738,6 +4738,10 @@
       "emptyEnergyDisruptions": "No energy disruptions for these countries",
       "emptyDisplacement": "No displacement data for these countries",
       "emptyCorrelation": "No signals for these countries",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only.",
       "emptyConflict": "No UCDP conflict events for these countries",
       "emptyConflictPartial": "No conflict events for these countries among the latest events. The full list did not load.",
       "partialConflictLoading": "Showing conflict events from the latest 150 while the full list loads.",

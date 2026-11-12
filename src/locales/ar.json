@@ -1413,7 +1413,7 @@
     },
     "cii": {
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
-      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
+      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور",
       "sectionFollowing": "المتابَعة",
@@ -5168,9 +5168,13 @@
       "emptyFuelShortages": "لا توجد نقص وقود لهذه الدول",
       "emptyEnergyDisruptions": "لا توجد انقطاعات طاقة لهذه الدول",
       "emptyDisplacement": "لا توجد بيانات نزوح لهذه الدول",
-      "emptyCorrelation": "لا توجد إشارات لهذه الدول"
+      "emptyCorrelation": "لا توجد إشارات لهذه الدول",
+      "emptyExposure": "لا توجد مواقع لتعرّض السكان في هذه البلدان",
+      "emptyExposurePartial": "لا توجد مواقع تعرّض لهذه البلدان في البيانات المتاحة. التغطية الكاملة لبيانات UCDP قيد الانتظار.",
+      "partialExposureLoading": "جارٍ تحميل جميع مواقع UCDP قبل تصفية التعرّض. تشمل أعداد التغطية الاضطرابات فقط.",
+      "partialExposure": "تعذّر تحميل جميع مواقع UCDP. بيانات التعرّض غير مكتملة؛ وتشمل أعداد التغطية الاضطرابات فقط."
     },
-    "draftAssessment": "صياغة تقييم",
+    "draftAssessment": "تقييم الرحلة",
     "draftAssessmentAria": "فتح تقييم الرحلة، معبأ مسبقاً بهذا التركيز",
     "draftCopied": "تم نسخ الطلب. الصقه في مساعدك الذكي.",
     "draftCopiedPartial": "تم نسخ الطلب لأول {{count}} دول. يغطي التقييم {{max}} دول كحد أقصى. الدول المستبعدة: {{omitted}}.",

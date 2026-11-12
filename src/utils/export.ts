@@ -7,6 +7,7 @@ import { vesselTypeLabel } from '@/utils/vessel-type-label';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { showToast } from '@/utils/toast';
+import { displayedCiiComponents } from '@/utils/cii-components';
 import { buildDataReportDocument, printReportDocument, sanitizeExportData } from '@/utils/export-report';
 import { SUPPORTED_EXPORT_FORMATS, type DataExportFormat } from '@/services/gates/export-resolver';
 
@@ -637,7 +638,7 @@ export function renderCountryEvidenceMarkdown(bundle: CountryEvidenceBundle): st
     lines.push('- Instability score: unavailable in this dossier.');
   }
   if (bundle.components) {
-    lines.push(`- Components: unrest ${bundle.components.unrest}, conflict ${bundle.components.conflict}, security ${bundle.components.security}, information ${bundle.components.information}`);
+    lines.push(`- Components: ${displayedCiiComponents(bundle.components).map(({ key, value }) => `${key} ${value}`).join(', ')}`);
   }
   lines.push('');
 
@@ -715,10 +716,9 @@ export function exportCountryBriefCSV(data: CountryBriefExport): void {
   if (data.components) {
     lines.push('');
     lines.push('Component,Value');
-    lines.push(`Unrest,${data.components.unrest}`);
-    lines.push(`Conflict,${data.components.conflict}`);
-    lines.push(`Security,${data.components.security}`);
-    lines.push(`Information,${data.components.information}`);
+    for (const { key, value } of displayedCiiComponents(data.components)) {
+      lines.push(`${key.charAt(0).toUpperCase()}${key.slice(1)},${value}`);
+    }
   }
   if (data.signals) {
     lines.push('');

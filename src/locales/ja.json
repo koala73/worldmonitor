@@ -1450,7 +1450,7 @@
     },
     "cii": {
       "noSignals": "不安定性シグナル未検出",
-      "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>S</strong>ecurity: 領土上の軍事飛行/艦艇</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:S:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>U</strong>nrest: 市民の騒乱・抗議活動</li><li><strong>C</strong>onflict: 武力紛争の強度</li><li><strong>I</strong>nformation: ニュース速度と焦点相関</li><li>ホットスポット近接ブースト（戦略的拠点）</li></ul><em>U:C:I値はコンポーネントスコアを表示。</em> 焦点検出はニュースエンティティとマップシグナルを相関させ正確なスコアリングを実現。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "国別ベースライン + イベント乗数を含む — 公開表は /docs/methodology/cii-risk-scores を参照してください",
       "sectionFollowing": "フォロー中",
@@ -5028,9 +5028,13 @@
       "emptyFuelShortages": "これらの国の燃料不足はありません",
       "emptyEnergyDisruptions": "これらの国のエネルギー供給障害はありません",
       "emptyDisplacement": "これらの国の難民データはありません",
-      "emptyCorrelation": "これらの国のシグナルはありません"
+      "emptyCorrelation": "これらの国のシグナルはありません",
+      "emptyExposure": "これらの国には人口曝露地点がありません",
+      "emptyExposurePartial": "利用可能なデータにこれらの国の曝露地点はありません。UCDPの全データの取得を待っています。",
+      "partialExposureLoading": "曝露を絞り込む前にUCDPの全地点を読み込んでいます。カバレッジの集計には騒乱のみが含まれます。",
+      "partialExposure": "UCDPの全地点を読み込めませんでした。曝露データは不完全です。カバレッジの集計には騒乱のみが含まれます。"
     },
-    "draftAssessment": "ドラフト評価",
+    "draftAssessment": "旅行リスク評価",
     "draftAssessmentAria": "旅行リスク評価を開く（このフォーカスで事前入力）",
     "draftCopied": "リクエストをコピーしました。AIアシスタントに貼り付けてください。",
     "draftCopiedPartial": "最初の{{count}}か国についてリクエストをコピーしました。アセスメントは最大{{max}}か国までカバーできます。除外された国：{{omitted}}。",

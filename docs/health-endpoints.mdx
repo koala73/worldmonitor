@@ -440,7 +440,7 @@ it to the `riskScores` entry as `ciiInputs` (`states`, `dead`,
 `notConfigured`, `unfedFamilies`). An input is dead when it is `missing`,
 `unusable`, not reported at all, `stale` because its own health check reads
 `STALE_SEED`, or `quiet` past its plausibility budget. Feeds that can be quiet
-indefinitely, such as earthquakes, outages and the strike feed, have no quiet
+indefinitely, such as outages and the strike feed, have no quiet
 budget, so quiet but fresh is never dead. An absent OREF history is quiet,
 because the relay writes it only when sirens change. `not_configured` is shown
 but never alarms on its own.
@@ -452,8 +452,7 @@ but never alarms on its own.
 
 The families are `conflict` (ACLED and the GDELT country events, the realtime
 feeds behind Unrest and Conflict; UCDP is an annual floor and cannot stand in
-for them), `information` (news insights and the threat summary), and `security`
-(military activity, GPS jamming and aviation). These verdicts
+for them) and `information` (news insights and the threat summary). These verdicts
 only raise an `OK` or `COVERAGE_PARTIAL` result, and they are never contained
 behind the served payload: the payload is present, but its scores are missing
 a signal. `ciiInputs` is operator-only: the anonymous `?compact=1` body keeps

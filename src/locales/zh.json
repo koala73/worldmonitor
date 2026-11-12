@@ -1450,7 +1450,7 @@
     },
     "cii": {
       "noSignals": "未检测到不稳定信号",
-      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
+      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "包含各国基准线 + 事件乘数 — 请参阅 /docs/methodology/cii-risk-scores 了解已发布的表格",
       "sectionFollowing": "关注中",
@@ -5028,9 +5028,13 @@
       "emptyFuelShortages": "这些国家没有燃料短缺",
       "emptyEnergyDisruptions": "这些国家没有能源中断",
       "emptyDisplacement": "这些国家没有人口流离失所数据",
-      "emptyCorrelation": "这些国家没有信号"
+      "emptyCorrelation": "这些国家没有信号",
+      "emptyExposure": "这些国家没有人口暴露地点",
+      "emptyExposurePartial": "现有数据中没有这些国家的暴露地点。正在等待完整的 UCDP 覆盖数据。",
+      "partialExposureLoading": "正在加载所有 UCDP 地点，然后筛选暴露数据。覆盖统计仅包含骚乱事件。",
+      "partialExposure": "无法加载所有 UCDP 地点。暴露数据不完整；覆盖统计仅包含骚乱事件。"
     },
-    "draftAssessment": "草稿评估",
+    "draftAssessment": "行程评估",
     "draftAssessmentAria": "打开行程评估，使用此焦点预填充",
     "draftCopied": "请求已复制。将其粘贴到您的AI助手中。",
     "draftCopiedPartial": "已为前 {{count}} 个国家复制请求。一份评估最多涵盖 {{max}} 个国家。未包含的国家：{{omitted}}。",

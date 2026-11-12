@@ -1605,7 +1605,7 @@
       "noSignals": "कोई अस्थिरता संकेत नहीं मिला",
       "sectionFollowing": "फ़ॉलो कर रहे हैं",
       "sectionAll": "सभी",
-      "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>S</strong>ecurity: सैन्य उड़ान/जहाज गतिविधि क्षेत्र पर</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:S:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
+      "infoTooltip": "<strong>प्रणाली</strong><ul><li><strong>U</strong>nrest: नागरिक अशांति और प्रदर्शन</li><li><strong>C</strong>onflict: सशस्त्र संघर्ष की तीव्रता</li><li><strong>I</strong>nformation: समाचार गति और फोकल पॉइंट सम्बन्ध</li><li>हॉटस्पॉट नजदीकी बूस्ट (रणनीतिक स्थान)</li></ul><em>U:C:I मान घटक स्कोर दिखाते हैं।</em> फोकल पॉइंट डिटेक्शन खबरों को मानचित्र संकेतों से जोड़ता है।",
       "_methodologyLink_translatorNote": "अनुवाद की आवश्यकता (#3725): methodologyLink स्थानीयकरण करें। अंग्रेजी मान सभी भाषाओं में भेजा जाता है ताकि methodology लिंक मौजूद रहे। स्वतंत्र रूप से अनुवादित करें।",
       "methodologyLink": "प्रति-देश आधार + घटना गुणक शामिल — /docs/methodology/cii-risk-scores देखें",
       "sourceStates": {
@@ -5056,9 +5056,13 @@
       "emptyFuelShortages": "इन देशों में कोई ईंधन की कमी नहीं",
       "emptyEnergyDisruptions": "इन देशों में कोई ऊर्जा व्यवधान नहीं",
       "emptyDisplacement": "इन देशों के लिए कोई विस्थापन डेटा नहीं",
-      "emptyCorrelation": "इन देशों के लिए कोई सिग्नल नहीं"
+      "emptyCorrelation": "इन देशों के लिए कोई सिग्नल नहीं",
+      "emptyExposure": "इन देशों के लिए आबादी के जोखिम वाले स्थान नहीं हैं",
+      "emptyExposurePartial": "उपलब्ध डेटा में इन देशों के लिए जोखिम वाले स्थान नहीं हैं। पूर्ण UCDP कवरेज लंबित है।",
+      "partialExposureLoading": "जोखिम फ़िल्टर करने से पहले सभी UCDP स्थान लोड हो रहे हैं। कवरेज की गिनती में केवल अशांति की घटनाएँ शामिल हैं।",
+      "partialExposure": "सभी UCDP स्थान लोड नहीं हो सके। जोखिम का डेटा अधूरा है; कवरेज की गिनती में केवल अशांति की घटनाएँ शामिल हैं।"
     },
-    "draftAssessment": "ड्राफ्ट मूल्यांकन",
+    "draftAssessment": "यात्रा आकलन",
     "draftAssessmentAria": "यात्रा आकलन खोलें, इस फोकस के साथ पूर्व-भरा हुआ",
     "draftCopied": "अनुरोध कॉपी किया गया। इसे अपने AI सहायक में पेस्ट करें।",
     "draftCopiedPartial": "पहले {{count}} देशों के लिए अनुरोध कॉपी किया गया। एक मूल्यांकन में अधिकतम {{max}} देश शामिल हो सकते हैं। छोड़े गए देश: {{omitted}}।",

@@ -1609,7 +1609,7 @@
         "degraded": "تنزل‌یافته",
         "stale": "منسوخ"
       },
-      "infoTooltip": "<strong>روش‌شناسی</strong><ul><li><strong>U</strong> (ناآرامی): بی‌نظمی مدنی و اعتراضات</li><li><strong>C</strong> (درگیری): شدت درگیری مسلحانه</li><li><strong>S</strong> (امنیت): پروازها/شناورهای نظامی بر فراز قلمرو</li><li><strong>I</strong> (اطلاعات): سرعت اخبار و همبستگی نقاط کانونی</li><li>افزایش امتیاز نزدیکی به کانون‌ها (مکان‌های راهبردی)</li></ul><em>مقادیر U:C:S:I امتیاز اجزا را نشان می‌دهند.</em> تشخیص نقطه کانونی، موجودیت‌های خبری را با سیگنال‌های نقشه همبسته می‌کند تا امتیازدهی دقیق باشد.",
+      "infoTooltip": "<strong>روش‌شناسی</strong><ul><li><strong>U</strong> (ناآرامی): بی‌نظمی مدنی و اعتراضات</li><li><strong>C</strong> (درگیری): شدت درگیری مسلحانه</li><li><strong>I</strong> (اطلاعات): سرعت اخبار و همبستگی نقاط کانونی</li><li>افزایش امتیاز نزدیکی به کانون‌ها (مکان‌های راهبردی)</li></ul><em>مقادیر U:C:I امتیاز اجزا را نشان می‌دهند.</em> تشخیص نقطه کانونی، موجودیت‌های خبری را با سیگنال‌های نقشه همبسته می‌کند تا امتیازدهی دقیق باشد.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "شامل خط پایه هر کشور + ضریب رویداد — جدول منتشرشده را در /docs/methodology/cii-risk-scores ببینید"
     },
@@ -5056,9 +5056,13 @@
       "emptyFuelShortages": "بدون کمبود سوخت برای این کشورها",
       "emptyEnergyDisruptions": "بدون اختلال انرژی برای این کشورها",
       "emptyDisplacement": "بدون داده‌های جابه‌جایی برای این کشورها",
-      "emptyCorrelation": "بدون سیگنال برای این کشورها"
+      "emptyCorrelation": "بدون سیگنال برای این کشورها",
+      "emptyExposure": "برای این کشورها مکانی با جمعیت در معرض خطر وجود ندارد",
+      "emptyExposurePartial": "در داده‌های موجود، مکانی برای جمعیت در معرض خطر این کشورها وجود ندارد. پوشش کامل UCDP در انتظار است.",
+      "partialExposureLoading": "در حال بارگیری همه مکان‌های UCDP پیش از فیلتر کردن جمعیت در معرض خطر. شمارش پوشش فقط شامل ناآرامی‌ها است.",
+      "partialExposure": "همه مکان‌های UCDP بارگیری نشدند. داده‌های جمعیت در معرض خطر ناقص است؛ شمارش پوشش فقط شامل ناآرامی‌ها است."
     },
-    "draftAssessment": "ارزیابی پیش‌نویس",
+    "draftAssessment": "ارزیابی سفر",
     "draftAssessmentAria": "باز کردن ارزیابی سفر، از قبل پر‌شده با این تمرکز",
     "draftCopied": "درخواست کپی شد. آن را در دستیار هوش مصنوعی خود جای‌گذاری کنید.",
     "draftCopiedPartial": "درخواست برای {{count}} کشور اول کپی شد. یک ارزیابی حداکثر {{max}} کشور را شامل می‌شود. کشورهای حذف‌شده: {{omitted}}.",

@@ -1450,7 +1450,7 @@
     },
     "cii": {
       "noSignals": "未檢測到不穩定訊號",
-      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>安</strong>全：領土上空軍用飛機/艦艇</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:S:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "包含各國基準線 + 事件乘數 — 請參閱 /docs/methodology/cii-risk-scores 瞭解已釋出的表格",
       "sectionFollowing": "關注中",
@@ -5028,9 +5028,13 @@
       "emptyFuelShortages": "這些國家沒有燃料短缺",
       "emptyEnergyDisruptions": "這些國家沒有能源中斷",
       "emptyDisplacement": "這些國家沒有人口流離失所資料",
-      "emptyCorrelation": "這些國家沒有訊號"
+      "emptyCorrelation": "這些國家沒有訊號",
+      "emptyExposure": "這些國家沒有人口暴露地點",
+      "emptyExposurePartial": "現有資料中沒有這些國家的暴露地點。正在等待完整的 UCDP 覆蓋資料。",
+      "partialExposureLoading": "正在載入所有 UCDP 地點，然後篩選暴露資料。覆蓋統計僅包含騷亂事件。",
+      "partialExposure": "無法載入所有 UCDP 地點。暴露資料不完整；覆蓋統計僅包含騷亂事件。"
     },
-    "draftAssessment": "草稿評估",
+    "draftAssessment": "行程評估",
     "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
     "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
     "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。未包含的國家：{{omitted}}。",

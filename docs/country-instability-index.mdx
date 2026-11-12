@@ -43,7 +43,7 @@ Each country's score combines a static baseline with a dynamic event score:
 ```
 eventScore = Unrest * 0.25
            + Conflict * 0.30
-           + Security * 0.20
+           + Security * 0      (no inputs since v15; weight not redistributed)
            + Information * 0.25
 
 combinedScore = baselineRisk * 0.40
@@ -58,7 +58,7 @@ bounded to 0-100.
 |-----------|------------------|-------------|
 | **Unrest** | Civil disorder pressure before or below open conflict | ACLED protests and riots, protest fatalities, high-severity unrest, internet/power outages |
 | **Conflict** | Kinetic violence | ACLED battles, explosions, violence against civilians, fatalities, OREF alerts for Israel; GDELT conflict coverage while ACLED returns no events |
-| **Security** | Hard-security pressure on the country | Foreign military flights and vessels located in it, aviation closures/delays, GPS/GNSS jamming |
+| **Security** | Nothing since v15 (weight 0) | None: foreign military flights and vessels, aviation delays and GPS/GNSS jamming left the score because they do not measure instability inside the country |
 | **Information** | Information-environment pressure | Classified news headlines and country-attributed threat summaries |
 
 ## Boosts And Floors
@@ -68,15 +68,10 @@ arrive outside the base event components:
 
 | Boost | Max | Trigger |
 |-------|----:|---------|
-| Climate anomalies | 15 | Country-attributed climate severity |
-| Wildfires | 8 | High-brightness and total fire counts |
 | Travel advisories | 15 | Do-not-travel, reconsider, or caution advisories |
 | OREF blend | 25 | Active and 24-hour Israel alert pressure |
 | Displacement | 20 | Log-scaled humanitarian displacement |
 | News urgency | 5 | High Information component pressure |
-| Earthquakes | 25 | Significant, major, or severe earthquakes |
-| Sanctions | 14 | Sanctions entry volume and new-entry activity |
-| AIS disruptions | 10 | Maritime disruption buckets |
 | Strike pressure | 10 | Strikes on the country (Middle East strike feed, GDELT worldwide), decayed with a three-day half-life |
 
 Sanctions counts use OFAC location-based country evidence only; nationality-only features are not counted, and SEMA regulation targets are shown separately and do not feed risk scores.

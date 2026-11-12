@@ -1450,7 +1450,7 @@
     },
     "cii": {
       "noSignals": "ไม่พบสัญญาณความไม่มั่นคง",
-      "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>S</strong>ecurity: เที่ยวบินทหาร/เรือรบเหนือดินแดน</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:S:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
+      "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว",
       "sectionFollowing": "กำลังติดตาม",
@@ -5028,9 +5028,13 @@
       "emptyFuelShortages": "ไม่มีการขาดแคลนเชื้อเพลิงสำหรับประเทศเหล่านี้",
       "emptyEnergyDisruptions": "ไม่มีการหยุดชะงักของพลังงานสำหรับประเทศเหล่านี้",
       "emptyDisplacement": "ไม่มีข้อมูลการอพยพสำหรับประเทศเหล่านี้",
-      "emptyCorrelation": "ไม่มีสัญญาณสำหรับประเทศเหล่านี้"
+      "emptyCorrelation": "ไม่มีสัญญาณสำหรับประเทศเหล่านี้",
+      "emptyExposure": "ไม่มีตำแหน่งประชากรที่ได้รับผลกระทบสำหรับประเทศเหล่านี้",
+      "emptyExposurePartial": "ไม่มีตำแหน่งที่ได้รับผลกระทบสำหรับประเทศเหล่านี้ในข้อมูลที่มีอยู่ กำลังรอข้อมูล UCDP ที่ครอบคลุมทั้งหมด",
+      "partialExposureLoading": "กำลังโหลดตำแหน่ง UCDP ทั้งหมดก่อนกรองการได้รับผลกระทบ จำนวนความครอบคลุมรวมเฉพาะเหตุความไม่สงบ",
+      "partialExposure": "ไม่สามารถโหลดตำแหน่ง UCDP ทั้งหมดได้ ข้อมูลการได้รับผลกระทบไม่ครบถ้วน จำนวนความครอบคลุมรวมเฉพาะเหตุความไม่สงบ"
     },
-    "draftAssessment": "ร่างการประเมิน",
+    "draftAssessment": "การประเมินการเดินทาง",
     "draftAssessmentAria": "เปิดการประเมินการเดินทาง ที่เต็มไปด้วยข้อมูลนี้แล้ว",
     "draftCopied": "คัดลอกคำขอแล้ว วางลงในผู้ช่วย AI ของคุณ",
     "draftCopiedPartial": "คำขอที่คัดลอกสำหรับ {{count}} ประเทศแรก การประเมินครอบคลุมได้สูงสุด {{max}} ประเทศ ประเทศที่ไม่รวม: {{omitted}}",

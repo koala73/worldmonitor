@@ -16,7 +16,7 @@ World Monitor is a free real-time global intelligence dashboard that correlates 
 
 ## What Is the Country Instability Index?
 
-The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v14 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
+The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v14 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, and information signals at 25%; the security component carries no weight, because none of its former inputs measured instability inside the country. The score then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
 
 ## What Makes World Monitor Different?
 

@@ -1459,7 +1459,7 @@
     },
     "cii": {
       "noSignals": "Сигналы нестабильности не обнаружены",
-      "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
+      "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы",
       "sectionFollowing": "Отслеживаемые",
@@ -5112,9 +5112,13 @@
       "emptyFuelShortages": "Нет данных о дефиците топлива для этих стран",
       "emptyEnergyDisruptions": "Нет данных о сбоях в энергоснабжении для этих стран",
       "emptyDisplacement": "Нет данных о миграции для этих стран",
-      "emptyCorrelation": "Нет сигналов для этих стран"
+      "emptyCorrelation": "Нет сигналов для этих стран",
+      "emptyExposure": "Нет мест воздействия на население для этих стран",
+      "emptyExposurePartial": "В доступных данных нет мест воздействия для этих стран. Ожидается полное покрытие UCDP.",
+      "partialExposureLoading": "Перед фильтрацией воздействия загружаются все места UCDP. В подсчёте охвата учитываются только беспорядки.",
+      "partialExposure": "Не удалось загрузить все места UCDP. Данные о воздействии неполны; в подсчёте охвата учитываются только беспорядки."
     },
-    "draftAssessment": "Черновой анализ",
+    "draftAssessment": "Оценка поездки",
     "draftAssessmentAria": "Открыть оценку поездки, предварительно заполненную этим фокусом",
     "draftCopied": "Запрос скопирован. Вставьте его в помощника ИИ.",
     "draftCopiedPartial": "Запрос скопирован для первых {{count}} стран. Оценка охватывает максимум {{max}} стран. Исключённые страны: {{omitted}}.",

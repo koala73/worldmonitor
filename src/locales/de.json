@@ -1697,7 +1697,7 @@
     },
     "cii": {
       "noSignals": "Keine Instabilitätssignale erkannt",
-      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung.",
+      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Umfasst länderspezifische Baseline + Ereignismultiplikator – siehe /docs/methodology/cii-risk-scores für die veröffentlichte Tabelle",
       "sectionFollowing": "Beobachtet",
@@ -5056,9 +5056,13 @@
       "emptyFuelShortages": "Keine Treibstoffknappheit für diese Länder",
       "emptyEnergyDisruptions": "Keine Energieunterbrechungen für diese Länder",
       "emptyDisplacement": "Keine Fluchtlingsdaten für diese Länder",
-      "emptyCorrelation": "Keine Signale für diese Länder"
+      "emptyCorrelation": "Keine Signale für diese Länder",
+      "emptyExposure": "Keine Orte mit Bevölkerungsexposition für diese Länder",
+      "emptyExposurePartial": "Die verfügbaren Daten enthalten keine Expositionsorte für diese Länder. Die vollständige UCDP-Abdeckung steht noch aus.",
+      "partialExposureLoading": "Alle UCDP-Orte werden vor der Filterung der Exposition geladen. Die Abdeckungszahlen enthalten nur Unruhen.",
+      "partialExposure": "Die vollständigen UCDP-Orte konnten nicht geladen werden. Die Expositionsdaten sind unvollständig; die Abdeckungszahlen enthalten nur Unruhen."
     },
-    "draftAssessment": "Entwurf einer Bewertung",
+    "draftAssessment": "Reisebewertung",
     "draftAssessmentAria": "Reisebewertung öffnen, vorgefüllt mit diesem Focus",
     "draftCopied": "Anfrage kopiert. Füge sie in deinen KI-Assistenten ein.",
     "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder. Ausgelassen: {{omitted}}.",

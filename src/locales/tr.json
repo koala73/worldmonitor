@@ -1453,7 +1453,7 @@
     },
     "cii": {
       "noSignals": "Istikrarsizlik sinyali tespit edilmedi",
-      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
+      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Ülke başına temel + olay çarpanını içerir — yayımlanmış tablo için /docs/methodology/cii-risk-scores bölümüne bakın",
       "sectionFollowing": "Takip edilenler",
@@ -5056,9 +5056,13 @@
       "emptyFuelShortages": "Bu ülkeler için yakıt kıtlığı yok",
       "emptyEnergyDisruptions": "Bu ülkeler için enerji kesintisi yok",
       "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
-      "emptyCorrelation": "Bu ülkeler için sinyal yok"
+      "emptyCorrelation": "Bu ülkeler için sinyal yok",
+      "emptyExposure": "Bu ülkeler için nüfus maruziyeti konumu yok",
+      "emptyExposurePartial": "Mevcut verilerde bu ülkeler için maruziyet konumu yok. Tam UCDP kapsamı bekleniyor.",
+      "partialExposureLoading": "Maruziyet filtrelenmeden önce tüm UCDP konumları yükleniyor. Kapsam sayıları yalnızca huzursuzluk olaylarını içerir.",
+      "partialExposure": "Tüm UCDP konumları yüklenemedi. Maruziyet verileri eksik; kapsam sayıları yalnızca huzursuzluk olaylarını içerir."
     },
-    "draftAssessment": "Taslak değerlendirme",
+    "draftAssessment": "Seyahat değerlendirmesi",
     "draftAssessmentAria": "Seyahat değerlendirmesini açın, bu odak noktasıyla önceden doldurulmuş",
     "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
     "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar. Dışarıda bırakılan ülkeler: {{omitted}}.",

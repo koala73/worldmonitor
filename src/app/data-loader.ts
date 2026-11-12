@@ -137,7 +137,7 @@ import { fetchOrefAlerts, startOrefPolling, stopOrefPolling, onOrefAlertsUpdate,
 import { getResilienceRanking } from '@/services/resilience';
 import { buildResilienceChoroplethMap } from '@/components/resilience-choropleth-utils';
 import { getNo2ActivityData } from '@/services/no2-activity';
-import { addExposureCoverage, enrichEventsWithExposure } from '@/services/population-exposure';
+import { addExposureCoverage, enrichEventsWithExposure, ucdpExposureEvents } from '@/services/population-exposure';
 import { debounce, getCircuitBreakerCooldownInfo } from '@/utils';
 import { addLocalDays, localYmd } from '@/utils/local-date';
 import { isFeatureAvailable, isFeatureEnabled } from '@/services/runtime-config';
@@ -4003,16 +4003,14 @@ export class DataLoaderManager implements AppModule {
       const perSourceLimit = 10;
       // Older UCDP snapshots have no precision field. Keep their usable points
       // visible as pending; unrest still requires confirmed provider precision.
-      const ucdp = enrichEventsWithExposure((ucdpInput?.events ?? []).map(e => ({
-        id: e.id, lat: e.latitude, lon: e.longitude, type: e.type_of_violence,
-        name: e.locationName ?? '', locationName: e.locationName ?? '',
-        country: e.country, hasPreciseLocation: e.hasPreciseLocation, eventCount: e.eventCount,
-      })), perSourceLimit, true);
-      const unrest = enrichEventsWithExposure((protests?.events ?? []).map(e => ({
+      const ucdpEvents = ucdpExposureEvents(ucdpInput?.events ?? []);
+      const unrestEvents = (protests?.events ?? []).map(e => ({
         id: e.id, lat: e.lat, lon: e.lon, type: 'conflict',
         name: e.city ? `${e.city}, ${e.country}` : e.title,
         country: e.country, hasPreciseLocation: e.hasPreciseLocation,
-      })), perSourceLimit);
+      }));
+      const ucdp = enrichEventsWithExposure(ucdpEvents, perSourceLimit, true);
+      const unrest = enrichEventsWithExposure(unrestEvents, perSourceLimit);
       const exposures = [...unrest.exposures, ...ucdp.exposures]
         .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
       const ucdpCoverage = ucdpInput?.source === 'full-feed' ? ucdp.coverage : ucdpInput?.coverage;
@@ -4023,7 +4021,9 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('population-exposure', 'showError', t('common.unavailable'));
       } else {
         const hasCachedUcdp = ucdp.exposures.length > 0 && (!ucdpReceived || ucdpFromCache);
-        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp, coverage);
+        this.callPanel('population-exposure', 'setExposures', exposures, hasCachedUcdp, coverage, {
+          unrest: unrestEvents, ucdp: ucdpEvents, ucdpIsProjection: ucdpInput?.source !== 'full-feed',
+        });
       }
       if (!protestsUpdated || !ucdpReceived) {
         dataFreshness.recordError('worldpop', 'Exposure source data unavailable');

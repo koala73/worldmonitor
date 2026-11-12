@@ -47,29 +47,21 @@ const INPUTS = {
   strikePressure:     { maxQuietMin: null, sourceCheck: 'strikePressure' },
   oref:               { maxQuietMin: null, sourceCheck: null, missingIsQuiet: true },
   outages:            { maxQuietMin: null, sourceCheck: 'outages' },
-  climate:            { maxQuietMin: null, sourceCheck: 'climateAnomalies' },
-  fires:              { maxQuietMin: 1440, sourceCheck: 'wildfiresSummary' },
-  gpsjam:             { maxQuietMin: 720, sourceCheck: 'gpsjam' },
   advisories:         { maxQuietMin: 1440, sourceCheck: null },
   displacement:       { maxQuietMin: 1440, sourceCheck: null },
   crossBorder:        { maxQuietMin: null, sourceCheck: null },
   newsInsights:       { maxQuietMin: 360, sourceCheck: 'newsInsights' },
   threatSummary:      { maxQuietMin: 360, sourceCheck: 'newsThreatSummary' },
-  aviation:           { maxQuietMin: null, sourceCheck: 'flightDelays' },
-  earthquakes:        { maxQuietMin: null, sourceCheck: 'earthquakes' },
-  sanctionsPressure:  { maxQuietMin: 1440, sourceCheck: 'sanctionsPressure' },
-  sanctionsCounts:    { maxQuietMin: 1440, sourceCheck: null },
-  militaryCii:        { maxQuietMin: 720, sourceCheck: 'militaryCii' },
 };
 
 // A family is unfed when none of its inputs is live or plausibly quiet. The
 // conflict family is the realtime event feeds behind Unrest and Conflict:
 // UCDP is an annual floor and the strike feed is regional, so neither can
 // stand in for them (UCDP is what hid the ACLED loss for months).
+// The Security family is gone: every Security input left the score in v15.
 const FAMILIES = {
   conflict: ['acled', 'gdeltCountryEvents'],
   information: ['newsInsights', 'threatSummary'],
-  security: ['militaryCii', 'gpsjam', 'aviation'],
 };
 
 export const CII_INPUT_POLICY = Object.freeze({

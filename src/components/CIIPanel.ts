@@ -16,6 +16,7 @@ import {
   shouldRenderSectionLabels,
 } from './_cii-panel-partition';
 import { bindActivationKeys } from '@/utils/activation';
+import { displayedCiiComponents } from '@/utils/cii-components';
 import type { ResolvedScope } from '@/services/tab-focus';
 import { PanelScopeFilter, focusedEmptyNode, scopeTagNode, type ScopeRow } from './panel-scope-filter';
 
@@ -143,6 +144,13 @@ export class CIIPanel extends Panel {
     // stopPropagation pattern in `bindShareButtons`).
     followHost.addEventListener('click', (e) => e.stopPropagation());
 
+    const componentDisplay = {
+      unrest: { letter: 'U', title: t('common.unrest') },
+      conflict: { letter: 'C', title: t('common.conflict') },
+      security: { letter: 'S', title: t('common.security') },
+      information: { letter: 'I', title: t('common.information') },
+    };
+
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
       followHost,
       h('div', { className: 'cii-header' },
@@ -157,10 +165,8 @@ export class CIIPanel extends Panel {
         h('div', { className: 'cii-bar', style: `width: ${country.score}%; background: ${color};` }),
       ),
       h('div', { className: 'cii-components' },
-        h('span', { title: t('common.unrest') }, `U:${country.components.unrest}`),
-        h('span', { title: t('common.conflict') }, `C:${country.components.conflict}`),
-        h('span', { title: t('common.security') }, `S:${country.components.security}`),
-        h('span', { title: t('common.information') }, `I:${country.components.information}`),
+        ...displayedCiiComponents(country.components).map(({ key, value }) =>
+          h('span', { title: componentDisplay[key].title }, `${componentDisplay[key].letter}:${value}`)),
       ),
     );
   }

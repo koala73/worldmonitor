@@ -49989,7 +49989,7 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
+                    description: Security contribution; always 0 because v15 scores no Security input.
             description: CiiComponents represents the contributing factors to a CII score.
         worldmonitor_intelligence_v1_StrategicRisk:
             type: object

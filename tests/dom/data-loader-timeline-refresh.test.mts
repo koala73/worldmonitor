@@ -398,6 +398,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     expect(setEvents).toHaveBeenCalledExactlyOnceWith(projected, aggregates);
     expect(setExposures).toHaveBeenCalledExactlyOnceWith(
       [expect.objectContaining({ eventId: 'eligible' })], false, exposureCoverage,
+      expect.objectContaining({ ucdpIsProjection: true, ucdp: [expect.objectContaining({ id: 'eligible' })] }),
     );
   });
 
@@ -421,6 +422,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     expect(setExposures).toHaveBeenCalledExactlyOnceWith(
       expect.arrayContaining([expect.objectContaining({ eventId: 'eligible', eventCount: 2 })]), false,
       { totalEvents: 1, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true },
+      expect.any(Object),
     );
   });
 
@@ -443,7 +445,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
     await loader.loadIntelligenceSignals();
     expect(setExposures).toHaveBeenCalledExactlyOnceWith(
       [expect.objectContaining({ eventId: 'legacy', locationPending: true })], false,
-      { totalEvents: 0, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true },
+      { totalEvents: 0, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true }, expect.any(Object),
     );
   });
 
@@ -464,7 +466,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
     expect(ctx.intelligenceCache.protests).toBeUndefined();
     expect(setExposures).toHaveBeenCalledExactlyOnceWith(
-      [expect.objectContaining({ eventId: 'eligible' })], false, coverage,
+      [expect.objectContaining({ eventId: 'eligible' })], false, coverage, expect.any(Object),
     );
   });
 
@@ -490,7 +492,7 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
 
       if (failedSource === 'neither') {
         expect(showError).not.toHaveBeenCalled();
-        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false, expect.objectContaining({ withoutPreciseLocation: 1 }));
+        expect(setExposures).toHaveBeenCalledExactlyOnceWith([], false, expect.objectContaining({ withoutPreciseLocation: 1 }), expect.any(Object));
       } else {
         expect(showError).toHaveBeenCalledOnce();
         expect(setExposures).not.toHaveBeenCalled();
