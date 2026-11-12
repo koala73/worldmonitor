@@ -5029,6 +5029,11 @@
       "emptyEnergyDisruptions": "Không có gián đoạn năng lượng cho các quốc gia này",
       "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
       "emptyCorrelation": "Không có tín hiệu cho các quốc gia này"
-    }
+    },
+    "draftAssessment": "Bản đánh giá dự thảo",
+    "draftAssessmentAria": "Sao chép yêu cầu để yêu cầu trợ lý AI của bạn lập bản đánh giá rủi ro du lịch cho tiêu điểm này",
+    "draftCopied": "Đã sao chép yêu cầu. Dán nó vào trợ lý AI của bạn.",
+    "draftCopiedPartial": "Yêu cầu đã được sao chép cho {{count}} quốc gia đầu tiên. Một đánh giá bao gồm tối đa {{max}} quốc gia.",
+    "draftCopyFailed": "Không thể sao chép yêu cầu."
   }
 }

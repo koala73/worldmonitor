@@ -5085,6 +5085,11 @@
       "emptyEnergyDisruptions": "Nessuna interruzione energetica per questi paesi",
       "emptyDisplacement": "Nessun dato di sfollamento per questi paesi",
       "emptyCorrelation": "Nessun segnale per questi paesi"
-    }
+    },
+    "draftAssessment": "Bozza di valutazione",
+    "draftAssessmentAria": "Copia una richiesta che chiede al tuo assistente AI di redigere una valutazione del rischio di viaggio per questo focus",
+    "draftCopied": "Richiesta copiata. Incollala nel tuo assistente AI.",
+    "draftCopiedPartial": "Richiesta copiata per i primi {{count}} paesi. Una valutazione copre al massimo {{max}} paesi.",
+    "draftCopyFailed": "Impossibile copiare la richiesta."
   }
 }

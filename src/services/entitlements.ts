@@ -16,6 +16,7 @@ import {
 import { getCurrentClerkUser } from './clerk';
 import { hasAccountEmbedAccess } from '../../shared/embed-access';
 import { hasTabFocus } from '../../shared/tab-focus-access';
+import { hasTravelRiskAssessment } from '../../shared/travel-risk-access';
 
 export interface EntitlementState {
   planKey: string;
@@ -80,6 +81,12 @@ export interface EntitlementState {
      * (`team.focus` on the team dashboard list), not from this field.
      */
     tabFocus?: boolean;
+    /**
+     * Travel risk assessment drafts (#10451): Pro Business, API Business and
+     * Enterprise. Read it through `hasTravelRiskAssessmentForAccount`, which
+     * is fail-closed on `undefined`. The MCP tool enforces it on the server.
+     */
+    travelRiskAssessment?: boolean;
   };
   validUntil: number;
 }
@@ -339,6 +346,15 @@ export function hasEmbedAccessForAccount(role: 'free' | 'pro' | undefined): bool
  */
 export function hasTabFocusForAccount(): boolean {
   return hasTabFocus(currentState, Date.now());
+}
+
+/**
+ * Whether the signed-in account holds the travel risk assessment grant
+ * (#10451). A presentation gate for the focus bar's "Draft assessment"; the
+ * MCP tool refuses an account without it on the server.
+ */
+export function hasTravelRiskAssessmentForAccount(): boolean {
+  return hasTravelRiskAssessment(currentState, Date.now());
 }
 
 /**

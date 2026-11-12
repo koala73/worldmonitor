@@ -32,7 +32,7 @@ const BEFORE = new Date('2026-11-01T12:00:00Z');
 
 let now: Date;
 let bar: FocusBar;
-let callbacks: { [K in keyof FocusBarCallbacks]: Mock<FocusBarCallbacks[K]> };
+let callbacks: { [K in 'onEdit' | 'onClear']: Mock<FocusBarCallbacks[K]> };
 
 const root = () => bar.getElement();
 const q = <T extends HTMLElement = HTMLElement>(sel: string) => root().querySelector<T>(sel);
@@ -164,6 +164,53 @@ describe('FocusBar', () => {
     q<HTMLButtonElement>('.focus-bar-clear')!.click();
     expect(callbacks.onEdit).toHaveBeenCalledTimes(1);
     expect(callbacks.onClear).toHaveBeenCalledTimes(1);
+  });
+
+  describe('draft assessment action (#10451 hand-off)', () => {
+    const draft = () => q<HTMLButtonElement>('.focus-bar-draft');
+
+    function barWith(canDraft: (() => boolean) | undefined, onDraft: () => void): FocusBar {
+      bar.destroy();
+      document.body.replaceChildren();
+      bar = new FocusBar({ onEdit: vi.fn(), onClear: vi.fn(), canDraftAssessment: canDraft, onDraftAssessment: onDraft }, () => now);
+      document.body.appendChild(bar.getElement());
+      return bar;
+    }
+
+    it('is absent when the bar was given no hand-off', () => {
+      bar.render(resolved(SEA));
+      expect(draft()).toBeNull();
+    });
+
+    it('is absent for an account that may not draft', () => {
+      barWith(() => false, vi.fn()).render(resolved(SEA));
+      expect(draft()).toBeNull();
+    });
+
+    it('is a labelled button for an account that may, and calls back once per click', () => {
+      const onDraft = vi.fn();
+      barWith(() => true, onDraft).render(resolved(SEA));
+      expect(draft()!.textContent).toBe('Draft assessment');
+      expect(draft()!.getAttribute('aria-label')).toMatch(/AI assistant/);
+      draft()!.click();
+      expect(onDraft).toHaveBeenCalledTimes(1);
+    });
+
+    it('sits before Edit so the report action leads the focus actions', () => {
+      barWith(() => true, vi.fn()).render(resolved(SEA));
+      const labels = [...root().querySelectorAll('.focus-bar-actions button')].map((b) => b.className);
+      expect(labels[0]).toContain('focus-bar-draft');
+      expect(labels[1]).toContain('focus-bar-edit');
+    });
+
+    it('follows the plan at the next render, so a lapsed grant removes it', () => {
+      let allowed = true;
+      barWith(() => allowed, vi.fn()).render(resolved(SEA));
+      expect(draft()).not.toBeNull();
+      allowed = false;
+      bar.render(resolved(SEA));
+      expect(draft()).toBeNull();
+    });
   });
 
   it('shows the upgrade gate inline for an account without focus', () => {

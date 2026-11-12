@@ -7,6 +7,13 @@ import { focusCountryName, focusWindowText, formatCountryList } from './focus-fo
 export interface FocusBarCallbacks {
   onEdit(): void;
   onClear(): void;
+  /**
+   * Hand the focus to the travel risk assessment (#10451). The action shows
+   * only when both are given and `canDraftAssessment` says the plan holds the
+   * grant, read at every render so a lapsed grant removes it.
+   */
+  canDraftAssessment?(): boolean;
+  onDraftAssessment?(): void;
 }
 
 let nextId = 0;
@@ -151,6 +158,16 @@ export class FocusBar {
 
     const actions = document.createElement('div');
     actions.className = 'focus-bar-actions';
+    const { canDraftAssessment, onDraftAssessment } = this.callbacks;
+    if (canDraftAssessment && onDraftAssessment && canDraftAssessment()) {
+      const draft = document.createElement('button');
+      draft.type = 'button';
+      draft.className = 'focus-bar-btn focus-bar-draft';
+      draft.textContent = t('focus.draftAssessment');
+      draft.setAttribute('aria-label', t('focus.draftAssessmentAria'));
+      draft.addEventListener('click', () => onDraftAssessment());
+      actions.append(draft);
+    }
     actions.append(edit, clear);
 
     const row = document.createElement('div');

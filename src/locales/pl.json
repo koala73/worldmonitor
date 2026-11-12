@@ -5113,6 +5113,11 @@
       "emptyEnergyDisruptions": "Brak zakłóceń w dostawach energii dla tych krajów",
       "emptyDisplacement": "Brak danych o przesiedleniach dla tych krajów",
       "emptyCorrelation": "Brak sygnałów dla tych krajów"
-    }
+    },
+    "draftAssessment": "Szkic oceny",
+    "draftAssessmentAria": "Skopiuj prośbę do asystenta AI, aby przygotował ocenę ryzyka podróży dla tego obszaru",
+    "draftCopied": "Prośba skopiowana. Wklej ją do swojego asystenta AI.",
+    "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów.",
+    "draftCopyFailed": "Nie udało się skopiować prośby."
   }
 }

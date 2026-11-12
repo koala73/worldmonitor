@@ -5029,6 +5029,11 @@
       "emptyEnergyDisruptions": "這些國家沒有能源中斷",
       "emptyDisplacement": "這些國家沒有難民安置資料",
       "emptyCorrelation": "這些國家沒有訊號"
-    }
+    },
+    "draftAssessment": "草稿評估",
+    "draftAssessmentAria": "複製一個請求，讓您的AI助手為該關注點草擬旅行風險評估",
+    "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
+    "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。",
+    "draftCopyFailed": "無法複製請求。"
   }
 }

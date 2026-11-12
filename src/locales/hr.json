@@ -5096,6 +5096,11 @@
       "emptyEnergyDisruptions": "Nema prekida u opskrbi energijom za ove zemlje",
       "emptyDisplacement": "Nema podataka o raseljenim osobama za ove zemlje",
       "emptyCorrelation": "Nema signala za ove zemlje"
-    }
+    },
+    "draftAssessment": "Nacrt ocjene",
+    "draftAssessmentAria": "Kopiraj zahtjev koji traži od AI asistenta da izradi procjenu putnog rizika za ovaj fokus",
+    "draftCopied": "Zahtjev kopiran. Zalijepi ga u svoj AI asistent.",
+    "draftCopiedPartial": "Zahtjev kopiran za prvih {{count}} zemalja. Procjena pokriva najviše {{max}} zemalja.",
+    "draftCopyFailed": "Nije bilo moguće kopirati zahtjev."
   }
 }
