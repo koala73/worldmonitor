@@ -113,6 +113,33 @@ function dropSingleTickSpikes(bars) {
 }
 
 /**
+ * Put a point back where the spike filter removed one from a continuously
+ * trading tape. The client spaces points evenly from sparklineStartAt, so a
+ * removed close would shift every later point 5 minutes early. The replacement
+ * is the straight line between the retained closes around it. A removal next to
+ * a trading gap is left out: that tape has no even spacing to preserve.
+ * @param {{t: number, v: number|null}[]} ordered Every close, and a v:null entry per bucket whose prints were all removed, oldest first.
+ * @param {Set<object>} keptSet The closes the filter retained, same objects.
+ */
+function fillDroppedCloses(ordered, keptSet) {
+  const out = [];
+  for (let i = 0; i < ordered.length; i += 1) {
+    const bar = ordered[i];
+    if (keptSet.has(bar)) { out.push(bar); continue; }
+    const before = out.at(-1);
+    let after;
+    for (let j = i + 1; j < ordered.length && !after; j += 1) if (keptSet.has(ordered[j])) after = ordered[j];
+    if (!before || !after) continue;
+    // The filter only drops interior bars, so both neighbours exist; a gap on
+    // either side of the removed run means it was not part of a dense tape.
+    if (bar.t - before.t > TRADING_GAP_SECONDS || after.t - bar.t > TRADING_GAP_SECONDS) continue;
+    const ratio = (bar.t - before.t) / (after.t - before.t);
+    out.push({ t: bar.t, v: before.v + (after.v - before.v) * ratio });
+  }
+  return out;
+}
+
+/**
  * Build the 24-trading-hour sparkline from the quote's default chart and, when
  * available, a SPARKLINE_HISTORY_QUERY chart of the same symbol. Returns the
  * values with the bar width in seconds and the first bar's start in epoch ms,
@@ -121,19 +148,26 @@ function dropSingleTickSpikes(bars) {
 function buildQuoteSparkline(chart, history) {
   const recent = chartBars(chart);
   const recentStart = recent.length > 0 ? recent[0].t : Infinity;
-  const bars = dropSingleTickSpikes([...chartBars(history).filter((bar) => bar.t < recentStart), ...recent]);
+  const raw = [...chartBars(history).filter((bar) => bar.t < recentStart), ...recent];
+  const bars = dropSingleTickSpikes(raw);
   if (bars.length === 0) return { sparkline: [] };
 
+  const bucketOf = (bar) => Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS;
   const closes = new Map();
   // Keep the closing print's actual time for trading-gap decisions. Rounding
   // a 16-minute gap to 15 minutes must not change a sparse pair's treatment.
-  for (const bar of bars) closes.set(Math.floor(bar.t / SPARKLINE_INTERVAL_SECONDS) * SPARKLINE_INTERVAL_SECONDS, bar);
+  for (const bar of bars) closes.set(bucketOf(bar), bar);
+  // A bucket whose every print the filter removed still occupies a slot on the
+  // client's even time axis; fillDroppedCloses puts it back.
+  const lost = new Map();
+  for (const bar of raw) if (!closes.has(bucketOf(bar))) lost.set(bucketOf(bar), { t: bucketOf(bar), v: null });
   // A bad print that follows a smaller bad print passes the first pass, then
   // becomes its bucket's close: USDTRY read 50.207, 50.113, 50.207 on a 50.229
   // tape. The filter runs again on the closes, before the window is cut, so
   // the window's first close is tested against the close before it.
-  const points = dropSingleTickSpikes([...closes.values()].sort((a, b) => a.t - b.t))
-    .slice(-SPARKLINE_POINTS);
+  const real = [...closes.values()].sort((a, b) => a.t - b.t);
+  const all = [...real, ...lost.values()].sort((a, b) => a.t - b.t);
+  const points = fillDroppedCloses(all, new Set(dropSingleTickSpikes(real))).slice(-SPARKLINE_POINTS);
   return {
     sparkline: points.map((point) => point.v),
     sparklineIntervalSeconds: SPARKLINE_INTERVAL_SECONDS,
