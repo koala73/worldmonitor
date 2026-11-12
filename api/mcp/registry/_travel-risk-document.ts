@@ -15,7 +15,7 @@ import { CII_COUNTRY_CODES } from '../../../shared/cii-weights';
 import { countryBox, inBox } from '../../../shared/country-bbox';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { normalizeAdvisoryRegisterLevels, normalizeAdvisorySnapshot } from '../../../shared/intelligence-snapshots.js';
-import seasonalCalendarData from '../../../shared/seasonal-hazard-calendar.json';
+import { countries, hazards, windows, generatedAt } from '../../../shared/seasonal-hazard-calendar.json';
 
 export const TRAVEL_RISK_TOOL = 'prepare_travel_risk_assessment';
 
@@ -747,7 +747,6 @@ export const SEASON_MIN_YEARS = 3;
 export const SEASON_MIN_SHARE = 0.2;
 
 export interface SeasonalCalendar {
-  source: string;
   hazards: Record<string, string>;
   windows: Record<string, { fromYear: number; toYear: number }>;
   generatedAt: string;
@@ -755,7 +754,8 @@ export interface SeasonalCalendar {
   countries: Record<string, Record<string, number[]>>;
 }
 
-const SEASONAL_CALENDAR = seasonalCalendarData as SeasonalCalendar;
+// Named JSON imports keep build-time source/method metadata out of the Edge bundle.
+const SEASONAL_CALENDAR: SeasonalCalendar = { countries, hazards, windows, generatedAt };
 
 /** Calendar months (1 to 12) a trip touches, from its first and last date; null when no usable date is given. */
 function tripMonths(from: string | null, to: string | null): number[] | null {
@@ -1094,7 +1094,6 @@ const METHOD_NOTES: readonly string[] = [
   'Earthquakes, natural events and hotspots are matched by the country\'s bounding box, which can include parts of neighbouring countries and sea.',
   'Conflict, unrest, airport and outage records are matched by the country name each feed gives. Listed cities are shown for the analyst and mark matching unrest signals and airports; they do not narrow the feeds.',
   'Quoted titles are feed text as published, shortened to one line, with straight double quotes shown as single quotes and direction and invisible characters removed. Unrest items are unverified media signals.',
-  'Seasonal hazards come from a calendar of past GDACS cyclone and flood records by country and month. It shows what was recorded in the same months of earlier years, not what will happen, and it has no wildfire, heat, drought or monsoon rainfall data.',
   'An unavailable source is not a quiet one: its section says why it could not be read.',
 ];
 
