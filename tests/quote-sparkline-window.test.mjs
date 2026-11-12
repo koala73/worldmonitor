@@ -621,4 +621,12 @@ describe('a removed close keeps its place on the time axis', () => {
     assert.equal(sparkline.length, 60);
     assert.ok(Math.abs(sparkline[30] - 50.03) < 1e-9, `midpoint, got ${sparkline[30]}`);
   });
+
+  it('fills a lost bucket whose real gaps are exactly 15 minutes even when its bucket start is further away', () => {
+    const minutes = [0, 5, 10, 14, 29, 44, 49, 54];
+    const values = [50, 50, 50, 50, 49.5, 50, 50, 50];
+    const { sparkline } = buildQuoteSparkline(chart(minutes.map((m) => T0 + m * 60), values, '1m'), null);
+    // Buckets 0, 5, 10 (minute 14 closes it), 40, 45, 50, plus the refilled 25.
+    assert.equal(sparkline.length, 7);
+  });
 });
