@@ -1615,14 +1615,15 @@ test('isolated globe wheel publishes the changed camera without another view com
     const map = (window as unknown as RendererProbeWindow).__newsMap;
     return { zoom: map.getState().zoom, authority: map.getViewportAuthorityToken() };
   });
-  // focus_news_article smooth-scrolls the article row into view, which also scrolls the host page.
-  // Measure the canvas only after that scroll settles, or the wheel lands on the news panels.
+  // focus_news_article smooth-scrolls the article row into view, which can scroll the host page and the view document.
+  // Measure the canvas only after its on-screen position settles, or the wheel lands on the news panels.
+  const canvas = frame.locator('#mapContainer canvas').first();
   await expect.poll(async () => {
-    const first = await page.evaluate(() => scrollY);
+    const first = JSON.stringify(await canvas.boundingBox());
     await page.waitForTimeout(150);
-    return first === await page.evaluate(() => scrollY);
+    return first === JSON.stringify(await canvas.boundingBox());
   }).toBe(true);
-  const bounds = await frame.locator('#mapContainer canvas').first().boundingBox();
+  const bounds = await canvas.boundingBox();
   expect(bounds).not.toBeNull();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.wheel(0, -400);
