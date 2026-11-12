@@ -319,8 +319,8 @@ describe('reservoir seeder run', () => {
     const baseline = structuredClone(BASELINE);
     baseline.reservoirs.alpha.processedThrough = '2026-09-02';
     const floor = new Date(Date.parse('2026-09-02') - 120 * DAY).toISOString().slice(0, 10);
-    const before = days => new Date(Date.parse(floor) - days * DAY).toISOString().slice(0, 10);
-    const old = [gran(before(3), 21), gran(before(1), 22)];
+    const dateBeforeFloor = days => new Date(Date.parse(floor) - days * DAY).toISOString().slice(0, 10);
+    const old = [gran(dateBeforeFloor(3), 21), gran(dateBeforeFloor(1), 22)];
     const next = gran(floor, 23);
     const state = { schema: STATE_SCHEMA, byId: { alpha: { processed: old } } };
     const upstream = fakeUpstream({ cmr: { alpha: [...old, next] } });
