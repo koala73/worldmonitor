@@ -91,6 +91,46 @@ export function csvFromRows(rows) {
   return `${lines.join('\n')}\n`;
 }
 
+/** Single-granule ATL13 native dataframes: six beam EOFs, segment columns separate
+ * from scalar metadata (including the intentionally different granule RGT).
+ */
+export function atl13FileRecords(rows) {
+  const records = [];
+  const add = (key, kind, name, code, n, data) => {
+    const h = Buffer.alloc(160);
+    h.writeBigUInt64LE(BigInt(key), 0);
+    h.writeUInt32LE(kind, 16);
+    h.writeUInt32LE(kind === 3 ? 0 : data.length, 20);
+    h.writeUInt32LE(code, 24);
+    h.writeUInt32LE(n, 28);
+    h.write(name, 32);
+    records.push(encodeRecord('geodataframe', Buffer.concat([h, data])));
+  };
+  for (const gt of [10, 20, 30, 40, 50, 60]) {
+    const beam = rows.filter(r => (r.gt ?? 10) === gt);
+    const n = beam.length;
+    const fields = {
+      time_ns: [11, 8, (b, r, i) => b.writeBigInt64LE(BigInt(Date.parse(r.t)) * 1000000n, i)],
+      rgt: [1, 2, (b, r, i) => b.writeInt16LE(r.segmentRgt ?? r.rgt, i)],
+      ht_ortho: [9, 4, (b, r, i) => b.writeFloatLE(r.h, i)],
+      atl13refid: [3, 8, (b, r, i) => b.writeBigInt64LE(BigInt(r.refid ?? 1), i)],
+    };
+    for (const [name, [code, width, write]] of Object.entries(fields)) {
+      const data = Buffer.alloc(n * width);
+      beam.forEach((r, i) => write(data, r, i * width));
+      add(gt, 0, name, code, n, data);
+    }
+    add(gt, 1, 'gt', 4, n, Buffer.from([gt]));
+    const rgt = Buffer.alloc(2);
+    rgt.writeInt16LE(beam[0]?.rgt ?? 1);
+    add(gt, 1, 'rgt', 1, n, rgt);
+    const columnCount = Buffer.alloc(4);
+    columnCount.writeUInt32LE(4);
+    add(gt, 3, '', 0, n, columnCount);
+  }
+  return records;
+}
+
 // Columns of a SlideRule atl06x CSV with atl06_fields ["dem/geoid_h"] (subset of the real
 // 26-column file, same names).
 export const ATL06_CSV_HEADER = 'time_ns,gt,longitude,atl06_quality_summary,rgt,dh_fit_dx,dem/geoid_h,cycle,h_li,latitude';

@@ -57,7 +57,9 @@ export const RESERVOIR_LEVELS_ACTIVATION_KEY = 'seed-activated:climate:reservoir
 export const CACHE_TTL_SECONDS = 7 * 24 * 3600;
 export const STATE_TTL_SECONDS = 45 * 24 * 3600;
 export const MAX_STALE_MIN = 4320; // 3x the daily cadence
-export const STATE_SCHEMA = 1;
+// Schema 2 uses the segment/flown RGT, rather than ATL13 granule metadata RGT.
+// A rebuilt mission baseline replaces schema-1 histories before new discovery.
+export const STATE_SCHEMA = 2;
 
 // Discovery searches acquisition dates this far behind the cursor, because NASA publishes
 // granules 50-70 days after acquisition and not in acquisition order: a granule acquired
@@ -288,7 +290,7 @@ export function withRevisions(passes, granules) {
   return passes.map((p) => {
     let revision = 1;
     for (const g of granules) {
-      if (granuleRgt(g) !== p.rgt) continue;
+      if (granuleRgt(g) !== (p.sourceRgt ?? p.rgt)) continue;
       const gd = granuleDate(g);
       if (gd && Math.abs(Date.parse(gd) - Date.parse(p.date)) <= DAY_MS) revision = Math.max(revision, granuleRevision(g) ?? 1);
     }
@@ -446,7 +448,7 @@ export function buildSeedOptions(watchlistSize = loadWatchlist().length) {
     recordCount: countTracked,
     publishTransform: stripState,
     declareRecords,
-    sourceVersion: 'icesat2-atl13-atl06-v007-sliderule-core-box-v2',
+    sourceVersion: 'icesat2-atl13-atl06-v007-sliderule-segment-rgt-v3',
     schemaVersion: 1,
     maxStaleMin: MAX_STALE_MIN,
     lockTtlMs: 9 * 60 * 1000,

@@ -18,9 +18,11 @@ import {
   passToTuple,
   reduceRows,
   tupleToPass,
+  streamSlideRuleRequest,
 } from '../scripts/_reservoir-levels.mjs';
 import {
   csvFileRecords,
+  atl13FileRecords,
   csvFromRows,
   encodeRecord,
   eventRecord,
@@ -104,17 +106,16 @@ describe('fetchSegments', () => {
   it('streams rows and treats a per-granule server failure as partial success', async () => {
     const calls = [];
     const fetchImpl = async (url, init) => {
-      calls.push(JSON.parse(init.body).parms);
-      return streamResponse(splitEvery(Buffer.concat([
-        ...csvFileRecords(csv, 37),
-        exceptRecord(`H5Coro::Future read failure on ${G2}/gt2r/ht_ortho`),
-      ]), [11]));
+      const body = JSON.parse(init.body);
+      calls.push(body.resource);
+      return streamResponse(body.resource === G2
+        ? [exceptRecord(`H5Coro::Future read failure on ${G2}/gt2r/ht_ortho`)]
+        : splitEvery(Buffer.concat(atl13FileRecords(okRows)), [11]));
     };
     const rows = [];
     const r = await fetchSegments([{ lon: 0, lat: 0 }], [G1, G2, G3], (row) => rows.push(row), fetchImpl);
-    assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0].resources, [G1, G2, G3]);
-    assert.equal(rows.length, okRows.length);
+    assert.deepEqual(calls, [G1, G2, G3]);
+    assert.equal(rows.length, 2 * okRows.length);
     assert.deepEqual(r.processed, [G1, G3]);
     assert.deepEqual(r.failed, [G2]);
   });
@@ -123,26 +124,26 @@ describe('fetchSegments', () => {
     const recs = csvFileRecords(csv, 37);
     recs.pop(); // drop arrowrec.eof
     const rows = [];
-    const r = await fetchSegments([], [G1], (row) => rows.push(row), async () => streamResponse([Buffer.concat(recs)]));
-    assert.deepEqual(r.processed, [G1]);
+    const r = await streamSlideRuleRequest('https://example.test', {}, (row) => rows.push(row), async () => streamResponse([Buffer.concat(recs)]));
+    assert.equal(r.csvBytes, r.fileSize);
     assert.equal(rows.length, okRows.length);
   });
 
-  it('batches at most 20 granules per request', async () => {
+  it('reads ATL13 granules singly to keep source columns separate from metadata', async () => {
     const names = Array.from({ length: 45 }, (_, i) => `ATL13_202606${String(1 + (i % 28)).padStart(2, '0')}0000${String(i).padStart(2, '0')}_0${String(1000 + i)}3101_007_01.h5`);
-    const sizes = [];
+    const resources = [];
     const fetchImpl = async (_url, init) => {
-      sizes.push(JSON.parse(init.body).parms.resources.length);
-      return streamResponse([eventRecord('no resources to process', 2)]);
+      resources.push(JSON.parse(init.body).resource);
+      return streamResponse(atl13FileRecords([]));
     };
     const r = await fetchSegments([], names, () => {}, fetchImpl);
-    assert.deepEqual(sizes, [20, 20, 5]);
+    assert.deepEqual(resources, names);
     assert.equal(r.processed.length, 45);
     assert.equal(r.failed.length, 0);
   });
 
   it('marks the whole batch failed and emits no rows when the stream is cut', async () => {
-    const full = Buffer.concat(csvFileRecords(csv, 37));
+    const full = Buffer.concat(atl13FileRecords(okRows));
     const fetchImpl = async () => streamResponse([full.subarray(0, full.length - 40)]);
     const rows = [];
     const r = await fetchSegments([], [G1, G3], (row) => rows.push(row), fetchImpl);

@@ -13,18 +13,26 @@ const ENTRY = { id: 'mead', core: [-114.8, 36.0, -114.4, 36.3], refid: 231000080
 
 function scratch(dir, s, file = `${s.id}.json`) {
   writeFileSync(join(dir, file), JSON.stringify({
-    id: 'mead', core: ENTRY.core, refid: ENTRY.refid, product: 'atl13', levelWindowM: null,
+    id: 'mead', core: ENTRY.core, refid: ENTRY.refid, product: 'atl13', levelWindowM: null, passKeyVersion: 2,
     granules: [], processed: [], failures: {}, done: true, processedThrough: '2026-09-06',
     passes: [['2026-09-06T10:00Z', 1, 316.757, 0.02, 40, 0.03]], ...s,
   }));
 }
 
 describe('baseline assembly', () => {
+  it('refuses ATL13 scratch using the old granule-RGT keys', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'reservoir-backfill-'));
+    try {
+      scratch(dir, { id: 'mead', passKeyVersion: 1 });
+      assert.throws(() => assembleBaseline([ENTRY], dir), /granule RGT pass keys/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it('assembles a scratch file built for the committed watchlist entry', () => {
     const dir = mkdtempSync(join(tmpdir(), 'reservoir-backfill-'));
     try {
       scratch(dir, { id: 'mead' });
       const b = assembleBaseline([ENTRY], dir, '2026-11-11T00:00:00Z');
+      assert.equal(b.passKeyVersion, 2);
       assert.equal(b.reservoirs.mead.passes.length, 1);
       assert.equal(b.through, '2026-09-06');
     } finally { rmSync(dir, { recursive: true, force: true }); }

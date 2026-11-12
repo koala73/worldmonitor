@@ -17,7 +17,7 @@ import {
   planFetches,
   stripState,
 } from '../scripts/seed-reservoir-levels.mjs';
-import { csvFileRecords, csvFromAtl06Rows, csvFromRows, exceptRecord, eventRecord, streamResponse } from './helpers/sliderule-stream.mjs';
+import { atl13FileRecords, csvFileRecords, csvFromAtl06Rows, exceptRecord, eventRecord, streamResponse } from './helpers/sliderule-stream.mjs';
 
 const NOW = Date.parse('2026-11-11T00:00:00Z');
 const DAY = 86_400_000;
@@ -56,7 +56,7 @@ const BASELINE = {
  * Fake CMR + SlideRule. cmr: { id -> [granule names] } keyed by core bbox; slide(granules)
  * returns { rows, failGranules, status }.
  */
-function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {} } = {}) {
+function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {}, trackOffset = 0 } = {}) {
   const calls = { cmr: 0, slide: [] };
   const byBbox = new Map(WATCHLIST.map((e) => [e.core.join(','), e.id]));
   const fetchImpl = async (url, init = {}) => {
@@ -71,7 +71,8 @@ function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = 
       return { ok: true, status: 200, headers: new Headers(), json: async () => ({ feed: { entry: entries } }) };
     }
     if (u.hostname === 'sliderule.slideruleearth.io') {
-      const parms = JSON.parse(init.body).parms;
+      const body = JSON.parse(init.body);
+      const parms = { ...body.parms, resources: body.resource ? [body.resource] : body.parms.resources };
       calls.slide.push(parms.resources);
       if (slideDown) return streamResponse([Buffer.from('down')], { status: 503, contentType: 'text/plain' });
       const id = WATCHLIST.find((e) => Math.abs(parms.poly[0].lon - e.core[0]) < 1e-9).id;
@@ -80,9 +81,9 @@ function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = 
         if (failGranules.includes(g)) continue;
         const date = `${g.slice(6, 10)}-${g.slice(10, 12)}-${g.slice(12, 14)}`;
         const rgt = Number(g.slice(21, 25));
-        for (let i = 0; i < 20; i++) rows.push({ t: `${date}T12:00:00Z`, rgt, gt: [10, 30, 50][i % 3], h: (level[id] ?? 300) + (i % 3) * 0.01, refid: id === 'alpha' ? 11 : 99 });
+        for (let i = 0; i < 20; i++) rows.push({ t: `${date}T12:00:00Z`, rgt, segmentRgt: rgt + trackOffset, gt: [10, 30, 50][i % 3], h: (level[id] ?? 300) + (i % 3) * 0.01, refid: id === 'alpha' ? 11 : 99 });
       }
-      const recs = [...csvFileRecords(csvFromRows(rows), 100), eventRecord('generated rows', 1)];
+      const recs = [...atl13FileRecords(rows), eventRecord('generated rows', 1)];
       for (const g of parms.resources.filter((x) => failGranules.includes(x))) recs.push(exceptRecord(`H5Coro::Future read failure on ${g}/gt1l/ht_ortho`));
       return streamResponse(recs);
     }
@@ -114,7 +115,7 @@ describe('reservoir seeder run', () => {
     const newer = [gran('2026-09-02', 21), gran('2026-09-15', 22)];
     const { fetchImpl, calls } = fakeUpstream({ cmr: { alpha: [gran('2026-08-12', 4), ...newer] }, level: { alpha: 299.5 } });
     const data = await run({ fetchImpl });
-    assert.deepEqual(calls.slide.find((r) => r.includes(newer[0])), [gran('2026-08-12', 4), ...newer]);
+    assert.deepEqual(calls.slide.flat().filter(g => [gran('2026-08-12', 4), ...newer].includes(g)).sort(), [gran('2026-08-12', 4), ...newer]);
     const a = data._state.byId.alpha;
     assert.equal(a.cursor, '2026-09-15');
     assert.ok(a.processed.includes(newer[1]));
@@ -204,6 +205,18 @@ describe('reservoir seeder run', () => {
     assert.ok(Math.abs(pass[2] - 301.51) < 0.02, `expected the revision 02 height, got ${pass[2]}`);
   });
 
+  it('replaces an offset-track pass by source granule revision without duplicating its flown key', async () => {
+    const r1 = gran('2026-09-02', 21, '01');
+    const r2 = gran('2026-09-02', 21, '02');
+    const first = await run({ fetchImpl: fakeUpstream({ cmr: { alpha: [r1] }, trackOffset: 2 }).fetchImpl });
+    const second = await run({ fetchImpl: fakeUpstream({ cmr: { alpha: [r2] }, trackOffset: 2, level: { alpha: 301.5 } }).fetchImpl, readState: async () => first._state });
+    const passes = second._state.byId.alpha.passes.filter(t => t[0].startsWith('2026-09-02'));
+    assert.equal(passes.length, 1);
+    assert.equal(passes[0][1], 23);
+    assert.equal(passes[0][6], 2);
+    assert.ok(Math.abs(passes[0][2] - 301.51) < 0.02);
+  });
+
   it('propagates a Redis read failure instead of treating it as a cold start', async () => {
     const { fetchImpl } = fakeUpstream();
     await assert.rejects(run({ fetchImpl, readState: async () => { throw new Error('Redis GET failed: HTTP 500'); } }), /HTTP 500/);
@@ -233,6 +246,11 @@ describe('planning and state', () => {
     assert.equal(byId.alpha.cursor, '2026-08-20');
     assert.deepEqual(Object.keys(byId), ['alpha', 'beta']);
     assert.deepEqual(mergeState(null, null, WATCHLIST).beta.passes, []);
+  });
+
+  it('does not merge schema-1 granule keys into the corrected baseline', () => {
+    const byId = mergeState(BASELINE, { schema: 1, byId: { alpha: { passes: [tuple('2026-08-20', 999, 999)] } } }, WATCHLIST);
+    assert.deepEqual(byId.alpha.passes, BASELINE.reservoirs.alpha.passes);
   });
 
   it('validation rejects a payload where fewer than 80% of reservoirs have a latest pass', () => {
@@ -294,7 +312,8 @@ describe('ATL06 entries in the seeder run', () => {
         const names = (cmr[id] || []).filter((g) => g.startsWith(`${u.searchParams.get('short_name')}_`));
         return { ok: true, status: 200, headers: new Headers(), json: async () => ({ feed: { entry: names.map((g) => ({ producer_granule_id: g })) } }) };
       }
-      const parms = JSON.parse(init.body).parms;
+      const body = JSON.parse(init.body);
+      const parms = { ...body.parms, resources: body.resource ? [body.resource] : body.parms.resources };
       calls.slide.push({ path: u.pathname, resources: parms.resources });
       const rows = [];
       for (const g of parms.resources) {
@@ -308,8 +327,7 @@ describe('ATL06 entries in the seeder run', () => {
           for (let i = 0; i < 20; i++) rows.push({ t, rgt, gt: [10, 30, 50][i % 3], h: 300, refid: 11 });
         }
       }
-      const csv = u.pathname === '/source/atl06x' ? csvFromAtl06Rows(rows) : csvFromRows(rows);
-      return streamResponse(csvFileRecords(csv, 200));
+      return streamResponse(u.pathname === '/source/atl06x' ? csvFileRecords(csvFromAtl06Rows(rows), 200) : atl13FileRecords(rows));
     };
     return { fetchImpl, calls };
   }

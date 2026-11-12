@@ -121,14 +121,14 @@ describe('ATL06 product routing', () => {
     assert.ok(got.every((x) => Math.abs(Number(x.ht_ortho) - 330) < 0.01));
   });
 
-  it('keeps the ATL13 request unchanged by default', async () => {
+  it('requests the ATL13 segment RGT directly', async () => {
     let call = null;
     await fetchSegments([], [A1.replace('ATL06', 'ATL13')], () => {}, async (url, init) => {
       call = { url, parms: JSON.parse(init.body).parms };
       return streamResponse([]);
     });
     assert.equal(call.url, SLIDERULE_ATL13_URL);
-    assert.deepEqual(call.parms.atl13, { anc_fields: ['atl13refid'] });
+    assert.deepEqual(call.parms.atl13, { anc_fields: ['atl13refid', 'rgt'] });
   });
 });
 
