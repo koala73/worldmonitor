@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ALL_PANELS, VARIANT_DEFAULTS } from '../src/config/panels.ts';
-import { PANEL_SCOPE_BEHAVIOUR, getPanelScopeBehaviour } from '../src/config/panel-scope.ts';
+import { PANEL_SCOPE_BEHAVIOUR, PANEL_SCOPE_REASONS, getPanelScopeBehaviour } from '../src/config/panel-scope.ts';
 
 const BEHAVIOURS = new Set(['filters', 'global', 'unsupported']);
 
@@ -42,20 +42,32 @@ describe('PANEL_SCOPE_BEHAVIOUR', () => {
     }
   });
 
-  it('declares as filtering exactly the panels whose class filters (NewsPanel regions, advisories, UCDP, aviation)', () => {
+  it('declares as filtering exactly the panels whose class filters (news regions, advisories, UCDP, aviation, and the phase 2 panels)', () => {
     const filtering = Object.entries(PANEL_SCOPE_BEHAVIOUR)
       .filter(([, behaviour]) => behaviour === 'filters')
       .map(([key]) => key)
       .sort();
     assert.deepEqual(filtering, [
-      'africa', 'airline-intel', 'asia', 'europe', 'intel', 'latam', 'middleeast', 'politics',
-      'security-advisories', 'ucdp-events', 'us',
+      'africa', 'airline-intel', 'asia', 'cii', 'disaster-correlation', 'disease-outbreaks', 'displacement',
+      'economic-correlation', 'energy-disruptions', 'escalation-correlation', 'europe', 'fuel-shortages',
+      'intel', 'internet-disruptions', 'latam', 'middleeast', 'military-correlation', 'politics',
+      'radiation-watch', 'security-advisories', 'ucdp-events', 'us',
     ]);
   });
 
   it('does not claim filtering for regional zones or a pre-cut worldwide slice', () => {
     assert.equal(getPanelScopeBehaviour('climate'), 'unsupported');
     assert.equal(getPanelScopeBehaviour('population-exposure'), 'unsupported');
+  });
+});
+
+describe('PANEL_SCOPE_REASONS', () => {
+  it('explains only panels that are real and still not supported', () => {
+    for (const [key, reason] of Object.entries(PANEL_SCOPE_REASONS)) {
+      assert.ok(Object.prototype.hasOwnProperty.call(ALL_PANELS, key), `${key} is not a panel`);
+      assert.equal(getPanelScopeBehaviour(key), 'unsupported', `${key} filters now: remove its reason`);
+      assert.ok(reason.length > 20, `${key} needs a real reason`);
+    }
   });
 });
 

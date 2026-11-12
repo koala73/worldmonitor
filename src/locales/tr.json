@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "Ülkesi olmayan {{count}} öğeyi gizle",
       "hideUnattributedAria_other": "Ülkesi olmayan {{count}} öğeyi gizle",
       "partialConflict": "Son 150 çatışma olayı gösteriliyor. Tam liste yüklenemedi.",
-      "partialConflictLoading": "En son 150 çatışma olayı gösterilmektedir, tam liste yüklenirken."
+      "partialConflictLoading": "En son 150 çatışma olayı gösterilmektedir, tam liste yüklenirken.",
+      "emptyInstability": "Bu ülkeler için istikrarsızlık puanı yok",
+      "emptyOutbreaks": "Bu ülkeler için hastalık salgını yok",
+      "emptyOutages": "Bu ülkeler için internet kesintisi yok",
+      "emptyRadiation": "Bu ülkeler için radyasyon ölçümü yok",
+      "emptyFuelShortages": "Bu ülkeler için yakıt kıtlığı yok",
+      "emptyEnergyDisruptions": "Bu ülkeler için enerji kesintisi yok",
+      "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
+      "emptyCorrelation": "Bu ülkeler için sinyal yok"
     }
   }
 }

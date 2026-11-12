@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "बिना देश का {{count}} आइटम छुपाएं",
       "hideUnattributedAria_other": "बिना देश के {{count}} आइटम छुपाएं",
       "partialConflict": "केवल नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं। पूरी सूची लोड नहीं हुई।",
-      "partialConflictLoading": "पूरी सूची लोड होने के दौरान नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं।"
+      "partialConflictLoading": "पूरी सूची लोड होने के दौरान नवीनतम 150 से संघर्ष घटनाएं दिखाई जा रही हैं।",
+      "emptyInstability": "इन देशों के लिए कोई अस्थिरता स्कोर नहीं",
+      "emptyOutbreaks": "इन देशों में कोई रोग प्रकोप नहीं",
+      "emptyOutages": "इन देशों में कोई इंटरनेट व्यवधान नहीं",
+      "emptyRadiation": "इन देशों के लिए कोई रेडिएशन रीडिंग नहीं",
+      "emptyFuelShortages": "इन देशों में कोई ईंधन की कमी नहीं",
+      "emptyEnergyDisruptions": "इन देशों में कोई ऊर्जा व्यवधान नहीं",
+      "emptyDisplacement": "इन देशों के लिए कोई विस्थापन डेटा नहीं",
+      "emptyCorrelation": "इन देशों के लिए कोई सिग्नल नहीं"
     }
   }
 }

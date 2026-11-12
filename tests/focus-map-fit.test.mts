@@ -9,6 +9,7 @@ import {
   FOCUS_FIT_MAX_ZOOM,
   focusCountryBox,
   focusFitBounds,
+  GLOBE_MAX_ALTITUDE,
   focusGlobeAltitude,
   focusSingleWorldFitBounds,
   type FocusFitBounds,
@@ -196,11 +197,38 @@ describe('focus map fit (#10453)', () => {
     assert.ok(shows(view, { south: 41.21, west: 19.6, north: 81.29, east: 180 }), `Russia in ${JSON.stringify(view)}`);
   });
 
+  it('frames widely separated countries as far out as the globe camera goes', () => {
+    // GB and NZ are about 167 degrees apart: altitude 1.8 sees 69 degrees from
+    // the camera's nadir, so no view of it could show both.
+    const fit = focusFitBounds(['GB', 'NZ'])!;
+    const altitude = focusGlobeAltitude(fit);
+    assert.equal(altitude, GLOBE_MAX_ALTITUDE);
+  });
+
+  it('never frames a wide focus tighter than it can be seen', () => {
+    const horizon = (altitude: number) => Math.acos(1 / (1 + altitude)) * 180 / Math.PI;
+    const toRad = (d: number) => d * Math.PI / 180;
+    const angle = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+      const d = Math.sin(toRad(a.lat)) * Math.sin(toRad(b.lat))
+        + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(a.lon - b.lon));
+      return Math.acos(Math.min(1, Math.max(-1, d))) * 180 / Math.PI;
+    };
+    for (const pair of [['GB', 'NZ'], ['US', 'AU'], ['BR', 'ID'], ['CL', 'JP'], ['AR', 'KR']]) {
+      const fit = focusFitBounds(pair)!;
+      const altitude = focusGlobeAltitude(fit);
+      const radius = Math.max(
+        ...[fit.south, fit.north].flatMap((lat) => [fit.west, fit.east].map((lon) => angle(fit.center, { lat, lon }))),
+      );
+      const needed = Math.min(radius, horizon(GLOBE_MAX_ALTITUDE));
+      assert.ok(horizon(altitude) >= needed - 1e-6, `${pair}: sees ${horizon(altitude).toFixed(1)} of the ${needed.toFixed(1)} degrees it needs`);
+    }
+  });
+
   it('maps the fitted span to a globe altitude that grows with the span', () => {
     const small = focusGlobeAltitude(focusFitBounds(['LB'])!);
     const region = focusGlobeAltitude(focusFitBounds(['TH', 'VN', 'ID'])!);
     const wide = focusGlobeAltitude(focusFitBounds(['RU', 'US'])!);
     assert.ok(small < region && region < wide, `${small} < ${region} < ${wide}`);
-    assert.ok(small > 0 && wide <= 2.5);
+    assert.ok(small > 0 && wide <= GLOBE_MAX_ALTITUDE);
   });
 });

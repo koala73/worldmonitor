@@ -1681,6 +1681,9 @@ export class App {
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
       focusStorageFacility: (facilityId) => this.panelLayout.focusStorageFacility(facilityId),
+      canUseFocus: () => this.panelLayout.canFocus(),
+      promptForFocus: () => this.panelLayout.promptForFocus(),
+      showFocusGate: () => this.panelLayout.showFocusGateNotice(),
       updateFlightSource: (adsb, military) => this.updateFlightSourceIfReady(adsb, military),
       isFreeTierFallbackActive: () => this.freeTierGate.authSettleDeadlineExceeded,
     });
@@ -2257,6 +2260,7 @@ export class App {
         }
         return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
@@ -2273,6 +2277,7 @@ export class App {
         }
         return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
           hasPremium: hasPremiumAccess(getAuthState()),
+          hasFocus: this.panelLayout.canFocus(),
           isPanelEntitled: (panelId) => {
             const config = this.state.panelSettings[panelId]
               ?? getEffectivePanelConfig(panelId, SITE_VARIANT);

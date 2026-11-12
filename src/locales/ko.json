@@ -5020,7 +5020,15 @@
       "showUnattributedAria_other": "국가가 없는 {{count}}개 항목 표시",
       "hideUnattributedAria_other": "국가가 없는 {{count}}개 항목 숨기기",
       "partialConflict": "최근 150개의 분쟁 사건만 표시됩니다. 전체 목록을 불러오지 못했습니다.",
-      "partialConflictLoading": "전체 목록이 로드되는 동안 최근 150개의 충돌 이벤트를 표시하고 있습니다."
+      "partialConflictLoading": "전체 목록이 로드되는 동안 최근 150개의 충돌 이벤트를 표시하고 있습니다.",
+      "emptyInstability": "이 국가들에 대한 불안정성 점수가 없습니다",
+      "emptyOutbreaks": "이 국가들에 대한 질병 발생 보고가 없습니다",
+      "emptyOutages": "이 국가들에 대한 인터넷 중단 기록이 없습니다",
+      "emptyRadiation": "이 국가들에 대한 방사능 수치가 없습니다",
+      "emptyFuelShortages": "이 국가들에 대한 연료 부족 기록이 없습니다",
+      "emptyEnergyDisruptions": "이 국가들에 대한 에너지 중단 기록이 없습니다",
+      "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
+      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다"
     }
   }
 }

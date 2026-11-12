@@ -5020,7 +5020,15 @@
       "showUnattributedAria_other": "顯示 {{count}} 項無國家標記的內容",
       "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容",
       "partialConflict": "僅顯示最近150條衝突事件。完整列表未載入。",
-      "partialConflictLoading": "正在載入完整列表，目前顯示最新150條衝突事件。"
+      "partialConflictLoading": "正在載入完整列表，目前顯示最新150條衝突事件。",
+      "emptyInstability": "這些國家沒有不穩定性評分",
+      "emptyOutbreaks": "這些國家沒有疾病爆發",
+      "emptyOutages": "這些國家沒有網際網路中斷",
+      "emptyRadiation": "這些國家沒有輻射讀數",
+      "emptyFuelShortages": "這些國家沒有燃料短缺",
+      "emptyEnergyDisruptions": "這些國家沒有能源中斷",
+      "emptyDisplacement": "這些國家沒有難民安置資料",
+      "emptyCorrelation": "這些國家沒有訊號"
     }
   }
 }

@@ -1711,6 +1711,46 @@ export class Panel {
     return this.applyScope !== Panel.prototype.applyScope;
   }
 
+  private filterChoiceListener: ((value: string | null) => void) | null = null;
+
+  /**
+   * A panel's own filter choice (forecast region, webcam region; #10453
+   * phase 2). A panel that owns one overrides `getFilterChoice` (null while
+   * unfiltered) and `setFilterChoice`, and calls `reportFilterChoice` when
+   * the user changes it. The layout saves the value with the tab, so it
+   * reaches a teammate who opens the shared dashboard.
+   *
+   * `setFilterChoice` is how the tab or a shared dashboard hands a value in
+   * (null resets the panel to its default). It must ignore a value the panel
+   * does not recognise, and it must not call `reportFilterChoice`: only the
+   * user's own change is saved back.
+   */
+  public getFilterChoice(): string | null {
+    return null;
+  }
+
+  public setFilterChoice(_value: string | null): void {}
+
+  /** True when this panel's class owns a filter choice. */
+  public hasFilterChoice(): boolean {
+    return this.setFilterChoice !== Panel.prototype.setFilterChoice;
+  }
+
+  /** The layout's hook: called with the new choice when the user changes it. */
+  public onFilterChoiceChange(listener: ((value: string | null) => void) | null): void {
+    this.filterChoiceListener = listener;
+  }
+
+  /**
+   * Report the user's own change. `value` is what the user chose, INCLUDING the
+   * panel's "all" option (never null): a tab that chose All must be told apart
+   * from one that never chose, or a shared dashboard could not override the
+   * region saved in a teammate's browser. Null is only for a reset.
+   */
+  protected reportFilterChoice(value: string | null = this.getFilterChoice()): void {
+    this.filterChoiceListener?.(value);
+  }
+
   /**
    * Show or hide the header chip that says this panel is not following the
    * tab's focus. 'global': the data has no country to filter by (markets,

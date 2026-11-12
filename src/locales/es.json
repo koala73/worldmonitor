@@ -5076,7 +5076,15 @@
       "hideUnattributedAria_many": "Ocultar los {{count}} elementos sin país",
       "hideUnattributedAria_other": "Ocultar los {{count}} elementos sin país",
       "partialConflict": "Se muestran eventos de conflicto solo de los últimos 150. No se cargó la lista completa.",
-      "partialConflictLoading": "Se muestran eventos de conflicto de los últimos 150 mientras se carga la lista completa."
+      "partialConflictLoading": "Se muestran eventos de conflicto de los últimos 150 mientras se carga la lista completa.",
+      "emptyInstability": "Sin puntuaciones de inestabilidad para estos países",
+      "emptyOutbreaks": "Sin brotes de enfermedades para estos países",
+      "emptyOutages": "Sin interrupciones de internet para estos países",
+      "emptyRadiation": "Sin lecturas de radiación para estos países",
+      "emptyFuelShortages": "Sin escasez de combustible para estos países",
+      "emptyEnergyDisruptions": "Sin interrupciones energéticas para estos países",
+      "emptyDisplacement": "Sin datos de desplazamiento para estos países",
+      "emptyCorrelation": "Sin señales para estos países"
     }
   }
 }

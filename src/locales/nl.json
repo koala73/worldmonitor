@@ -5048,7 +5048,15 @@
       "hideUnattributedAria_one": "Het {{count}} item zonder land verbergen",
       "hideUnattributedAria_other": "De {{count}} items zonder land verbergen",
       "partialConflict": "Alleen conflictgebeurtenissen van de laatste 150 weergegeven. De volledige lijst is niet geladen.",
-      "partialConflictLoading": "Conflictgebeurtenissen uit de laatste 150 worden weergegeven terwijl de volledige lijst wordt geladen."
+      "partialConflictLoading": "Conflictgebeurtenissen uit de laatste 150 worden weergegeven terwijl de volledige lijst wordt geladen.",
+      "emptyInstability": "Geen instabiliteitsscore voor deze landen",
+      "emptyOutbreaks": "Geen ziekteuitbraken voor deze landen",
+      "emptyOutages": "Geen internetonderbrekingen voor deze landen",
+      "emptyRadiation": "Geen stralingmetingen voor deze landen",
+      "emptyFuelShortages": "Geen brandstoftekorten voor deze landen",
+      "emptyEnergyDisruptions": "Geen energieonderbrekingen voor deze landen",
+      "emptyDisplacement": "Geen vluchtelingengegevens voor deze landen",
+      "emptyCorrelation": "Geen signalen voor deze landen"
     }
   }
 }

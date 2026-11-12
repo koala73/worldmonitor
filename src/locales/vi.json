@@ -5020,7 +5020,15 @@
       "showUnattributedAria_other": "Hiển thị {{count}} mục không có quốc gia",
       "hideUnattributedAria_other": "Ẩn {{count}} mục không có quốc gia",
       "partialConflict": "Hiển thị các sự kiện xung đột từ 150 sự kiện mới nhất. Danh sách đầy đủ không được tải.",
-      "partialConflictLoading": "Đang hiển thị các sự kiện xung đột từ 150 mới nhất trong khi danh sách đầy đủ đang tải."
+      "partialConflictLoading": "Đang hiển thị các sự kiện xung đột từ 150 mới nhất trong khi danh sách đầy đủ đang tải.",
+      "emptyInstability": "Không có điểm số bất ổn định cho các quốc gia này",
+      "emptyOutbreaks": "Không có bùng phát dịch bệnh cho các quốc gia này",
+      "emptyOutages": "Không có gián đoạn internet cho các quốc gia này",
+      "emptyRadiation": "Không có số liệu phóng xạ cho các quốc gia này",
+      "emptyFuelShortages": "Không có thiếu hụt nhiên liệu cho các quốc gia này",
+      "emptyEnergyDisruptions": "Không có gián đoạn năng lượng cho các quốc gia này",
+      "emptyDisplacement": "Không có dữ liệu di cư cho các quốc gia này",
+      "emptyCorrelation": "Không có tín hiệu cho các quốc gia này"
     }
   }
 }

@@ -5087,7 +5087,15 @@
       "hideUnattributedAria_few": "Sakrij {{count}} stavke bez zemlje",
       "hideUnattributedAria_other": "Sakrij {{count}} stavki bez zemlje",
       "partialConflict": "Prikazujem ratne događaje samo iz zadnjih 150. Puna lista se nije učitala.",
-      "partialConflictLoading": "Prikazujem događaje sukoba iz zadnjih 150 dok se puna lista učitava."
+      "partialConflictLoading": "Prikazujem događaje sukoba iz zadnjih 150 dok se puna lista učitava.",
+      "emptyInstability": "Nema rezultata nestabilnosti za ove zemlje",
+      "emptyOutbreaks": "Nema izvještaja o bolestima za ove zemlje",
+      "emptyOutages": "Nema prekida interneta za ove zemlje",
+      "emptyRadiation": "Nema mjerenja zračenja za ove zemlje",
+      "emptyFuelShortages": "Nema manjka goriva za ove zemlje",
+      "emptyEnergyDisruptions": "Nema prekida u opskrbi energijom za ove zemlje",
+      "emptyDisplacement": "Nema podataka o raseljenim osobama za ove zemlje",
+      "emptyCorrelation": "Nema signala za ove zemlje"
     }
   }
 }

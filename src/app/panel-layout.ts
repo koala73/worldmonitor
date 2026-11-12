@@ -99,6 +99,7 @@ import {
   type ResolvedScope,
   type TabScope,
 } from '@/services/tab-focus';
+import { planPanelFilterApply, setPanelFilter, type PanelFilters } from '@/services/panel-filters';
 import {
   loadTabsState,
   saveTabsState,
@@ -555,6 +556,8 @@ export class PanelLayoutManager implements AppModule {
   private focusBar: FocusBar | null = null;
   private unsubscribeScope: (() => void) | null = null;
   private focusEditor: { close(): void } | null = null;
+  // Panels the active tab has a filter choice for; see planPanelFilterApply.
+  private appliedPanelFilters = new Set<string>();
   // Map outline and fit for the focus; see FocusMapSync for when it moves.
   // Created on first use, like the other focus state, so a manager built
   // without its constructor (test harnesses) still dispatches scopes.
@@ -1635,6 +1638,10 @@ export class PanelLayoutManager implements AppModule {
     // Reload: the stored tab's focus becomes the active one. Not gated; see
     // restoreActiveScope.
     restoreActiveScope(this.activeTab()?.scope ?? null);
+    this.seedAppliedPanelFilters();
+    // createPanels() runs before the tabs load, so a panel that mounted
+    // eagerly found no active tab and kept its default.
+    this.applyTabPanelFilters(this.activeTab()?.panelFilters);
     this.onScopeChanged(getResolvedScope());
   }
 
@@ -1689,6 +1696,21 @@ export class PanelLayoutManager implements AppModule {
     return canSetFocus() || this.team.dashboards?.team.focus === true;
   }
 
+  /** Whether this account may set a focus; the mission presets that ask for countries read it. */
+  public canFocus(): boolean {
+    return this.focusAllowed();
+  }
+
+  /** Open the focus editor on the active tab (a mission preset asks for its countries). */
+  public promptForFocus(): void {
+    this.openFocusEditor('tabs');
+  }
+
+  /** Say a focus needs a plan this account lacks (a gated mission preset). */
+  public showFocusGateNotice(): void {
+    this.showFocusGate('tabs');
+  }
+
   private showFocusGate(from: 'tabs' | 'bar'): void {
     trackGateHit('tab-focus');
     const auth = getAuthState();
@@ -1733,6 +1755,52 @@ export class PanelLayoutManager implements AppModule {
       console.error('[focus] editor failed to load', err);
       showToast(t('teamDashboards.failed'));
     });
+  }
+
+  // ============================================
+  // Panel filter choices (#10453, phase 2): saved with the tab
+  // ============================================
+
+  /**
+   * Hand the active tab's choice to a panel that owns one, and save the
+   * user's own changes to it back to the tab. Runs as each panel mounts.
+   */
+  private bindPanelFilterChoice(key: string, panel: Panel): void {
+    if (typeof panel.hasFilterChoice !== 'function' || !panel.hasFilterChoice()) return;
+    panel.onFilterChoiceChange((value) => this.onPanelFilterChanged(key, value));
+    const value = this.activeTab()?.panelFilters?.[key];
+    if (value !== undefined) {
+      panel.setFilterChoice(value);
+      // A panel that mounts after a reload restores its saved choice here, so
+      // the next tab switch must know to reset it.
+      this.appliedPanelFilters.add(key);
+    }
+  }
+
+  /** At startup the active tab's choices count as applied, whether or not their panels have mounted. */
+  private seedAppliedPanelFilters(): void {
+    this.appliedPanelFilters = new Set(Object.keys(this.activeTab()?.panelFilters ?? {}));
+  }
+
+  /** Give every mounted panel the choice the now-active tab holds, or reset it. */
+  private applyTabPanelFilters(filters: PanelFilters | undefined): void {
+    const panels = this.ctx.panels ?? {};
+    const plan = planPanelFilterApply(Object.keys(panels), filters, this.appliedPanelFilters);
+    for (const { key, value } of plan.updates) {
+      const panel = panels[key];
+      if (panel && typeof panel.setFilterChoice === 'function') panel.setFilterChoice(value);
+    }
+    this.appliedPanelFilters = plan.applied;
+  }
+
+  private onPanelFilterChanged(key: string, value: string | null): void {
+    const tab = this.activeTab();
+    if (!tab || !this.tabsState) return;
+    const next = setPanelFilter(tab.panelFilters, key, value);
+    if (next) tab.panelFilters = next;
+    else delete tab.panelFilters;
+    this.appliedPanelFilters = new Set(Object.keys(next ?? {}));
+    saveTabsState(this.tabsState);
   }
 
   /** Set (or with null, clear) the active tab's focus and persist it with the tab. */
@@ -1825,6 +1893,7 @@ export class PanelLayoutManager implements AppModule {
         bottomSet: built.bottomSet,
         team: { id: dashboard.id, version: dashboard.version },
         ...(built.scope ? { scope: built.scope } : {}),
+        ...(built.panelFilters ? { panelFilters: built.panelFilters } : {}),
       });
       this.applyTeamPanelSizes(built.sizes);
       this.applyTeamMap(built.map);
@@ -1847,6 +1916,9 @@ export class PanelLayoutManager implements AppModule {
     // The shared focus (and its neighbours switch) is part of the version.
     if (built.scope) tab.scope = built.scope;
     else delete tab.scope;
+    if (built.panelFilters) tab.panelFilters = built.panelFilters;
+    else delete tab.panelFilters;
+    this.applyTabPanelFilters(tab.panelFilters);
     // A stored map view wins over the focus fit; the outline still draws.
     if (built.map) this.focusMap().keepMapView(() => restoreActiveScope(built.scope));
     else restoreActiveScope(built.scope);
@@ -1875,6 +1947,7 @@ export class PanelLayoutManager implements AppModule {
     const layout = captureTeamDashboardLayout({
       ...this.captureCurrentTabState().snapshot,
       scope: tab.scope ?? null,
+      ...(team.team.focus === true && tab.panelFilters ? { panelFilters: tab.panelFilters } : {}),
       rowSpans: loadPanelSpans(),
       colSpans: loadPanelColSpans(),
       map: this.ctx.map && mapState
@@ -2453,7 +2526,7 @@ export class PanelLayoutManager implements AppModule {
 
   private createAndActivateTab(
     name: string,
-    preset?: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet' | 'team' | 'scope'>,
+    preset?: Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet' | 'team' | 'scope' | 'panelFilters'>,
   ): { tab: PanelTab; persisted: boolean } {
     if (!this.tabsState) {
       throw new Error('Dashboard tabs are not available.');
@@ -2474,11 +2547,13 @@ export class PanelLayoutManager implements AppModule {
       bottomSet: preset?.bottomSet ?? [],
       ...(preset?.team ? { team: preset.team } : {}),
       ...(preset?.scope ? { scope: preset.scope } : {}),
+      ...(preset?.panelFilters ? { panelFilters: preset.panelFilters } : {}),
     };
     this.tabsState.tabs.push(tab);
     this.tabsState.activeTabId = tab.id;
     const persist = saveTabsState(this.tabsState);
     restoreActiveScope(tab.scope ?? null);
+    this.applyTabPanelFilters(tab.panelFilters);
     this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
     this.panelTabBar?.refresh();
     this.updateTabCapLock();
@@ -2586,6 +2661,7 @@ export class PanelLayoutManager implements AppModule {
     const persist = saveTabsState(this.tabsState);
 
     restoreActiveScope(target.scope ?? null);
+    this.applyTabPanelFilters(target.panelFilters);
     this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
     this.panelTabBar?.refresh();
     return persist;
@@ -2661,6 +2737,7 @@ export class PanelLayoutManager implements AppModule {
       this.tabsState.activeTabId = fallback.id;
       persist = saveTabsState(this.tabsState);
       restoreActiveScope(fallback.scope ?? null);
+      this.applyTabPanelFilters(fallback.panelFilters);
       this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
     } else {
       persist = saveTabsState(this.tabsState);
@@ -3288,6 +3365,7 @@ export class PanelLayoutManager implements AppModule {
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
     applyScopeToPanel(key, panel);
+    this.bindPanelFilterChoice(key, panel);
     if (key === STORAGE_ATLAS_PANEL_KEY) this.deliverPendingStorageFacility(panel);
     this.observePanelForHydration(panel);
     if (config?.enabled) {

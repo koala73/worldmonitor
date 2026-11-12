@@ -185,6 +185,39 @@ describe('toTeamDashboardTab', () => {
   });
 });
 
+describe('panel filters (#10453, phase 2)', () => {
+  const FILTERS = { forecast: 'asia', 'live-webcams': 'europe' };
+
+  it('captures the tab panel filters as sorted entries', () => {
+    const layout = captureTeamDashboardLayout({ ...captureInput(), panelFilters: { 'live-webcams': 'europe', forecast: 'asia' } });
+    assert.deepEqual(layout.panelFilters, [
+      { key: 'forecast', value: 'asia' },
+      { key: 'live-webcams', value: 'europe' },
+    ]);
+  });
+
+  it('captures no panelFilters field for none, or for choices the server would refuse', () => {
+    assert.equal('panelFilters' in captureTeamDashboardLayout(captureInput()), false);
+    assert.equal('panelFilters' in captureTeamDashboardLayout({ ...captureInput(), panelFilters: {} }), false);
+    assert.equal('panelFilters' in captureTeamDashboardLayout({ ...captureInput(), panelFilters: { 'bad key': 'x' } }), false);
+  });
+
+  it('keeps the filters when the layout has no map', () => {
+    const layout = captureTeamDashboardLayout({ ...captureInput(), map: null, panelFilters: FILTERS });
+    assert.equal(layout.panelFilters?.length, 2);
+  });
+
+  it('round-trips the filters into the teammate tab', () => {
+    const tab = toTeamDashboardTab(captureTeamDashboardLayout({ ...captureInput(), panelFilters: FILTERS }), defaults());
+    assert.deepEqual(tab.panelFilters, FILTERS);
+  });
+
+  it('opens an old-shape row with no filters as a tab with none', () => {
+    const [a] = realKeys(1) as [string];
+    assert.equal(toTeamDashboardTab({ panels: [{ key: a, on: true }] }, defaults()).panelFilters, undefined);
+  });
+});
+
 describe('focus scope (#10453)', () => {
   const SEA = { countries: ['TH', 'VN', 'ID'], neighbours: false, start: '2026-11-14', end: '2026-11-18' };
 
