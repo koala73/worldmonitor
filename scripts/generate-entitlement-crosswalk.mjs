@@ -72,7 +72,7 @@ for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gate
 
 
 // ------------------------------------------------------- code-site gates
-const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|features\\.travelRiskAssessment|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasTabFocus\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
+const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|features\\.travelRiskAssessment|hasTravelRiskAssessment\\(|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasTabFocus\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
 const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src api convex server 2>/dev/null || true`, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const sites = [];
 for (const ln of out.split('\n')) {
@@ -90,7 +90,7 @@ for (const ln of out.split('\n')) {
       /features\.apiAccess/.test(t)  ? 'apiAccess'
     : /features\.mcpAccess/.test(t)  ? 'mcpAccess'
     : /features\.dataExport/.test(t) ? 'dataExport'
-    : /features\.travelRiskAssessment/.test(t) ? 'travelRiskAssessment'
+    : /features\.travelRiskAssessment|hasTravelRiskAssessment\(/.test(t) ? 'travelRiskAssessment'
     : /has(?:Account)?EmbedAccess\(/.test(t) ? 'embedAccess'
     : /hasTabFocus\(/.test(t) ? 'tabFocus'
     : /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/.test(t) ? 'desktopKeyAccess'
@@ -254,8 +254,10 @@ const SITE_MAP = [
   [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' , preds: ['apiAccess'] }],
   [/convex\/embedKeys\.ts/,                   { cap: 'embed.panels', note: 'wme_ key issuance — tier>=1 + embedAccess, deliberately not apiAccess' , preds: ['embedAccess'] }],
   [/src\/services\/entitlements\.ts/,        { cap: 'embed.panels', note: 'browser account-level embed access predicate' , preds: ['embedAccess'] }],
+  [/src\/services\/entitlements\.ts/,        { cap: 'intel.travel_risk', note: 'browser predicate for the focus bar Draft assessment action: presentation only, the server route and the MCP tool decide the plan' , preds: ['travelRiskAssessment'] }],
   [/convex\/teamDashboards\.ts/,             { cap: 'dashboards.focus', note: 'publish refuses a focused team dashboard without tabFocus; a seat holder is judged by the team plan' , preds: ['tabFocus'] }],
   [/src\/services\/entitlements\.ts/,        { cap: 'dashboards.focus', note: 'browser predicate for focusing a personal tab — presentation only, the data is already in the plan' , preds: ['tabFocus'] }],
+  [/server\/_shared\/travel-risk-export\.ts/, { cap: 'intel.travel_risk', note: 'POST /api/travel-risk-assessment: the dashboard export. The route decides the plan from the merged entitlement before any source is read; a browser session only, no API keys' , preds: ['travelRiskAssessment'] }],
   [/api\/mcp\/auth\.ts/,                    { cap: 'intel.travel_risk', note: 'MCP pre-check reads the named flag for prepare_travel_risk_assessment; dispatch refuses the tool without it, on every credential door' , preds: ['travelRiskAssessment'] }],
   [/pro-mcp-gate\.ts|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' , preds: ['isCallerPremium','resolvePremiumCallerIdentity','mcpAccess','tier'] }],
   [/gates\/export/,                           { cap: 'export.data' , preds: ['dataExport'] }],
@@ -373,6 +375,7 @@ const SITE_BASELINE = {
   "server/_shared/pro-entitlement.ts::tier": 1,
   "server/_shared/pro-mcp-gate.ts::mcpAccess": 2,
   "server/_shared/pro-mcp-gate.ts::tier": 1,
+  "server/_shared/travel-risk-export.ts::travelRiskAssessment": 1,
   "server/gateway.ts::apiAccess": 1,
   "server/gateway.ts::embedAccess": 1,
   "server/gateway.ts::tier": 5,
@@ -406,6 +409,7 @@ const SITE_BASELINE = {
   "src/services/entitlements.ts::embedAccess": 1,
   "src/services/entitlements.ts::tabFocus": 1,
   "src/services/entitlements.ts::tier": 1,
+  "src/services/entitlements.ts::travelRiskAssessment": 1,
   "src/services/gates/export-resolver.ts::dataExport": 4,
   "src/services/gates/export.ts::dataExport": 1,
   "src/services/sanctions-pressure.ts::hasPremiumAccess": 1,

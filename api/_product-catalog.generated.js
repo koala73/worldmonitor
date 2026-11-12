@@ -75,7 +75,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
       "travelRiskAssessment": true,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Travel risk assessment drafts over MCP, Commercial license included, 1 named user — not a shared login"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Desktop key for the desktop app (3 keys), Priority support, Travel risk assessment drafts in the dashboard and over MCP, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -139,7 +139,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
       "travelRiskAssessment": true,
-      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Shared team dashboards, Priority support, Travel risk assessment drafts over MCP, Commercial use — in your customer-facing products"
+      "description": "Everything in API Starter, R1–R3 redistribution rights for customer-facing products, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Shared team dashboards, Priority support, Travel risk assessment drafts in the dashboard and over MCP, Commercial use — in your customer-facing products"
     },
     {
       "planKey": "api_business_annual",
@@ -171,7 +171,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "selfServe": false,
       "dashboardAiCallsPerDay": 10000,
       "travelRiskAssessment": true,
-      "description": "Everything in Pro + API, Shared team dashboards, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee (by contract), On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO and SCIM (by contract), Custom security and privacy settings, Fully white-labeled — with or without revenue sharing, Travel risk assessment drafts over MCP"
+      "description": "Everything in Pro + API, Shared team dashboards, 10,000 API requests a day, more by contract, Dedicated support, Custom integrations, SLA guarantee (by contract), On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO and SCIM (by contract), Custom security and privacy settings, Fully white-labeled — with or without revenue sharing, Travel risk assessment drafts in the dashboard and over MCP"
     }
   ],
   "heroProofStats": {
@@ -324,7 +324,7 @@ export const TIER_CONFIG = {
       "MCP + SDK: 250 calls/day (vs 50)",
       "Desktop key for the desktop app (3 keys)",
       "Priority support",
-      "Travel risk assessment drafts over MCP"
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "highlightFeatures": [
       "Commercial license included",
@@ -386,7 +386,7 @@ export const TIER_CONFIG = {
       "5 Pro licenses — invite users at any corporate email domain",
       "Shared team dashboards",
       "Priority support",
-      "Travel risk assessment drafts over MCP"
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "highlightFeatures": [
       "Commercial use — in your customer-facing products"
@@ -422,7 +422,7 @@ export const TIER_CONFIG = {
       "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
-      "Travel risk assessment drafts over MCP"
+      "Travel risk assessment drafts in the dashboard and over MCP"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,

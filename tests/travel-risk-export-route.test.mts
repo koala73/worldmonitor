@@ -4,11 +4,12 @@
 // plan fixtures come from the real catalog so a plan that gains or loses the
 // `travelRiskAssessment` flag changes these results.
 
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { getEntitlementFeatures } from '../convex/config/productCatalog';
 import { McpSourceUnavailableError } from '../api/mcp/source-unavailable';
+import { createTravelRiskTool } from '../api/mcp/registry/travel-risk-tool';
 import type { TravelRiskResult } from '../api/mcp/registry/_travel-risk-document';
 import {
   createTravelRiskExportHandler,
@@ -236,5 +237,73 @@ describe('travel risk export route: the files', () => {
     assert.equal(res.status, 500);
     assert.doesNotMatch(await res.text(), /secret internal detail/);
     assert.equal(calls.capture, 1);
+  });
+});
+
+describe('travel risk export route: with the real tool behind it', () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN };
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of [['UPSTASH_REDIS_REST_URL', originalEnv.url], ['UPSTASH_REDIS_REST_TOKEN', originalEnv.token]] as const) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+
+  // Every key holds a small object, which the assembler reads as a source that
+  // answered with nothing it can use: the draft still comes back, section by
+  // section "unavailable", which is what the route must carry through.
+  function stubRedis() {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = (async (url: unknown, init?: { body?: unknown }) => {
+      const value = JSON.stringify({ ok: 1 });
+      if (String(url).endsWith('/pipeline')) {
+        const commands = JSON.parse(String(init?.body ?? '[]')) as unknown[];
+        return Response.json(commands.map(() => ({ result: value })));
+      }
+      return Response.json({ result: value });
+    }) as typeof fetch;
+  }
+
+  function realHandler() {
+    const tool = createTravelRiskTool();
+    const { deps } = harness({
+      build: async (params) => await (tool as { _execute: (p: Record<string, unknown>, b: string, c: unknown, e: unknown) => Promise<unknown> })
+        ._execute(params, '', { kind: 'free' }, undefined) as TravelRiskResult,
+    });
+    return createTravelRiskExportHandler(deps);
+  }
+
+  const SECTIONS = ['1. Summary', '2. Government travel advice', '3. Security', '4. Natural hazards', '5. Health',
+    '6. Getting in and out', '7. Communications and infrastructure', '8. What this draft does not cover', '9. Sources and capture time'];
+
+  it('returns the nine-section Markdown draft for the trip that was posted', async () => {
+    stubRedis();
+    const res = await realHandler()(post({ ...TRIP, countries: [{ country_code: 'TH', cities: ['Bangkok'] }, { country_code: 'VN' }], format: 'markdown' }));
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    for (const heading of SECTIONS) assert.ok(text.includes(`## ${heading}`), heading);
+    assert.match(text, /Task: Site visit/);
+    assert.match(text, /1\. Thailand \(TH\)\. Cities: Bangkok\./);
+    assert.match(text, /2\. Vietnam \(VN\)\./);
+  });
+
+  it('returns the same draft as HTML, with every section and the analyst headings', async () => {
+    stubRedis();
+    const res = await realHandler()(post({ ...TRIP, format: 'html' }));
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.deepEqual([...html.matchAll(/<h2>([^<]*)<\/h2>/g)].map((m) => m[1]), SECTIONS);
+    assert.equal((html.match(/Analyst to complete\./g) ?? []).length, 5);
+    assert.match(html, /<table>/);
+  });
+
+  it('refuses a trip the tool would refuse, without reading a source', async () => {
+    let fetched = 0;
+    globalThis.fetch = (async () => { fetched += 1; return Response.json({ result: null }); }) as typeof fetch;
+    const res = await realHandler()(post({ countries: [{ country_code: 'XX' }], format: 'markdown' }));
+    assert.equal(res.status, 400);
+    assert.equal(fetched, 0);
   });
 });

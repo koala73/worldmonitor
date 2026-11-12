@@ -30027,8 +30027,27 @@ body.map-width-resizing {
 /* Trip assessment dialog (#10451, phase 2). Reuses the focus editor's
    overlay, inputs, results and footer; only the per-country rows are new. */
 .trip-assessment {
-  width: min(580px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 32px));
+  max-width: none;
   overflow-y: auto;
+}
+
+/* The messages and the actions stay in view while a long trip scrolls. The
+   negative margins let the bar span the modal's padding. */
+.trip-assessment-foot {
+  position: sticky;
+  bottom: -20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px -20px -20px;
+  padding: 10px 20px 20px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.trip-assessment-foot .focus-editor-footer {
+  margin-top: 0;
 }
 
 .trip-assessment-field {
@@ -30102,12 +30121,8 @@ body.map-width-resizing {
 
 .trip-assessment-row-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
-}
-
-.trip-assessment-cities-wrap {
-  grid-column: 1 / -1;
 }
 
 .trip-assessment-input {
@@ -30150,9 +30165,13 @@ body.map-width-resizing {
   border: 0;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   .trip-assessment-row-fields {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trip-assessment-cities-wrap {
+    grid-column: 1 / -1;
   }
 }
 

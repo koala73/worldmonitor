@@ -8,6 +8,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openTripAssessment } from '@/components/TripAssessmentDialog';
+import { openTripAssessmentForScope } from '@/components/focus-ui';
 import {
   buildTripRequest,
   draftFromHandoff,
@@ -270,7 +271,30 @@ describe('TripAssessmentDialog', () => {
     click('.trip-assessment-word');
     await tick(); await tick();
     expect(error().textContent).toBe('The draft could not be built from this trip:');
-    expect(q('.trip-assessment-violations').textContent).toContain('countries.1.arrive: Countries are listed in travel order.');
+    expect(q('.trip-assessment-violations').textContent).toContain('Vietnam · Arrive: Countries are listed in travel order.');
+    expect(q('.trip-assessment-violations').textContent).not.toContain('countries.1');
+  });
+
+  it('names the form field, not the request path, for each kind of violation', async () => {
+    open({
+      fetcher: async () => fail(400, { violations: [
+        { field: 'countries.2.depart', description: 'Must be on or after arrive.' },
+        { field: 'date_to', description: 'Must be on or after date_from.' },
+        { field: 'task_label', description: 'Use one line of plain text.' },
+        { field: 'countries.0.cities.1', description: 'Use a plain city name.' },
+        { field: 'traveller_name', description: 'Unknown argument.' },
+      ] }),
+    });
+    click('.trip-assessment-markdown');
+    await tick(); await tick();
+    const lines = [...document.querySelectorAll('.trip-assessment-violations li')].map((li) => li.textContent);
+    expect(lines).toEqual([
+      'Indonesia · Depart: Must be on or after arrive.',
+      'Trip ends: Must be on or after date_from.',
+      'Task label (optional): Use one line of plain text.',
+      'Thailand: Use a plain city name.',
+      'traveller_name: Unknown argument.',
+    ]);
   });
 
   it('says when the data is unavailable and when the browser cannot save the file', async () => {
@@ -325,5 +349,37 @@ describe('TripAssessmentDialog', () => {
     click('.trip-assessment-copy');
     expect(onCopyRequest).toHaveBeenCalledOnce();
     expect(onCopyRequest.mock.calls[0]![0].countries.map((c: { code: string }) => c.code)).toEqual(['TH', 'VN', 'ID']);
+  });
+});
+
+describe('opening from a focus', () => {
+  const rows = () => [...document.querySelectorAll<HTMLElement>('.trip-assessment-row')].map((row) => row.dataset.code);
+  beforeEach(() => { document.body.replaceChildren(); });
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.unstubAllGlobals();
+  });
+
+  it('opens the dialog prefilled from the focus, and says what did not fit', async () => {
+    await openTripAssessmentForScope({ countries: ['TH', 'VN', 'ID', 'MY', 'SG', 'PH', 'KH', 'LA'], neighbours: true, start: '2026-12-01', end: '2026-12-12' });
+    expect(rows()).toEqual(['TH', 'VN', 'ID', 'MY', 'SG', 'PH']);
+    expect(document.querySelector<HTMLInputElement>('.trip-assessment-from')!.value).toBe('2026-12-01');
+    expect(document.body.textContent).toContain('Cambodia, Laos');
+  });
+
+  it('copies the request for the trip as edited, not for the focus it started from', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    await openTripAssessmentForScope(SEA);
+    document.querySelector<HTMLButtonElement>('[data-code="VN"] [data-action="remove"]')!.click();
+    const to = document.querySelector<HTMLInputElement>('.trip-assessment-to')!;
+    to.value = '2026-12-20';
+    to.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLButtonElement>('.trip-assessment-copy')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const text = writeText.mock.calls[0]![0] as string;
+    expect(text).toContain('Thailand (TH), Indonesia (ID)');
+    expect(text).not.toContain('Vietnam');
+    expect(text).toContain('2026-12-01 to 2026-12-20');
   });
 });

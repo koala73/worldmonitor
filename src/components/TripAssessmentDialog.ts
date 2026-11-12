@@ -197,12 +197,16 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
   if (copyBtn) footer.append(copyBtn);
   footer.append(...actions);
 
+  // The messages and the actions stay in view while a long trip scrolls.
+  const foot = el('div', 'trip-assessment-foot');
+  foot.append(error, detail, status, footer);
+
   modal.append(
     header, intro, privacy,
     labelField, dates,
     countriesHead, list, searchInput, results, limit,
     ...(omittedNote ? [omittedNote] : []),
-    error, detail, status, footer,
+    foot,
   );
   overlay.append(modal);
 
@@ -322,12 +326,32 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
     renderList({ code, action: delta < 0 ? 'up' : 'down' });
   }
 
-  function showFailure(result: Extract<TripExportResult, { ok: false }>): void {
+  /**
+   * The server names a field by its request path. A person reads the country
+   * and the label on the form instead: "Vietnam · Arrive: ...".
+   */
+  function describeViolation(field: string, description: string, sent: readonly string[]): string {
+    const country = /^countries\.(\d+)(?:\.(\w+))?/.exec(field);
+    if (country) {
+      const code = sent[Number(country[1])];
+      const name = code ? focusCountryName(code) : null;
+      const label = country[2] === 'arrive' ? t('tripAssessment.arrive') : country[2] === 'depart' ? t('tripAssessment.depart') : null;
+      if (name) return `${name}${label ? ` · ${label}` : ''}: ${description}`;
+    }
+    const labels: Record<string, string> = {
+      date_from: t('tripAssessment.windowStart'),
+      date_to: t('tripAssessment.windowEnd'),
+      task_label: t('tripAssessment.taskLabel'),
+    };
+    return `${labels[field] ?? field}: ${description}`;
+  }
+
+  function showFailure(result: Extract<TripExportResult, { ok: false }>, sent: readonly string[]): void {
     detail.replaceChildren();
     detail.hidden = true;
     if (result.reason === 'invalid') {
       showError('tripAssessment.errInvalid');
-      detail.replaceChildren(...result.violations.map((v) => el('li', '', `${v.field}: ${v.description}`)));
+      detail.replaceChildren(...result.violations.map((v) => el('li', '', describeViolation(v.field, v.description, sent))));
       detail.hidden = detail.childElementCount === 0;
       return;
     }
@@ -346,12 +370,14 @@ export function openTripAssessment(options: TripAssessmentOptions): TripAssessme
     }
     setBusy(true);
     status.textContent = t('tripAssessment.building');
+    // The order the server will number its violations by.
+    const sent = draft.countries.map((c) => c.code);
     try {
       const result = await requestTripAssessment(draft, format, { fetcher: options.fetcher, signal: abort.signal });
       if (closed) return;
       if (!result.ok) {
         status.textContent = '';
-        showFailure(result);
+        showFailure(result, sent);
         return;
       }
       if (then === 'print') {

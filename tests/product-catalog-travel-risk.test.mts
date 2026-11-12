@@ -20,7 +20,7 @@ const ENTITLED = new Set([
   'enterprise',
 ]);
 
-const TRAVEL_RISK_FEATURE = 'Travel risk assessment drafts over MCP';
+const TRAVEL_RISK_FEATURE = 'Travel risk assessment drafts in the dashboard and over MCP';
 
 describe('travelRiskAssessment catalog flag', () => {
   it('every catalog entry sets travelRiskAssessment explicitly', () => {
@@ -83,17 +83,17 @@ describe('travelRiskAssessment catalog flag', () => {
 
   it('pricing prose and the machine-readable summary follow the same flag', () => {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-    const phrase = /travel risk assessment drafts over MCP/i;
+    const phrase = /travel risk assessment drafts in the dashboard and over MCP/i;
     const pricingMd = readFileSync(resolve(root, 'public/pricing.md'), 'utf8');
     const summary = JSON.parse(pricingMd.match(/```json\n([\s\S]*?)```/)?.[1] ?? '{}') as {
       plans: Array<{ name: string; features: string[] }>;
     };
     const byName = Object.fromEntries(summary.plans.map((plan) => [plan.name, plan.features]));
     for (const name of ['Pro Business', 'API Business', 'Enterprise']) {
-      assert.equal(byName[name].includes('travel risk assessment drafts over MCP'), true, name);
+      assert.equal(byName[name].includes('travel risk assessment drafts in the dashboard and over MCP'), true, name);
     }
     for (const name of ['Free', 'Pro', 'API']) {
-      assert.equal(byName[name].includes('travel risk assessment drafts over MCP'), false, name);
+      assert.equal(byName[name].includes('travel risk assessment drafts in the dashboard and over MCP'), false, name);
     }
 
     const section = (markdown: string, heading: string) => {
