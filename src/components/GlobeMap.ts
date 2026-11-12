@@ -28,6 +28,7 @@ import { getLocale, initI18n, t } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { SITE_VARIANT } from '@/config/variant';
+import { staticAssetUrl } from '@/config/static-asset-url';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
   getLayerExplanation,
@@ -747,7 +748,7 @@ export class GlobeMap {
 
     const initialTexture = getGlobeTexture();
     globe
-      .globeImageUrl(GLOBE_TEXTURE_URLS[initialTexture])
+      .globeImageUrl(staticAssetUrl(GLOBE_TEXTURE_URLS[initialTexture]))
       .backgroundImageUrl('')
       .atmosphereColor('#4466cc')
       .atmosphereAltitude(0.18)
@@ -830,7 +831,7 @@ export class GlobeMap {
 
     // Subscribe to texture changes (kept as-is)
     this.unsubscribeGlobeTexture = subscribeGlobeTextureChange((texture) => {
-      if (this.globe) this.globe.globeImageUrl(GLOBE_TEXTURE_URLS[texture]);
+      if (this.globe) this.globe.globeImageUrl(staticAssetUrl(GLOBE_TEXTURE_URLS[texture]));
     });
 
     // Pause auto-rotate on user interaction; resume after 60 s idle (like Sentinel)
