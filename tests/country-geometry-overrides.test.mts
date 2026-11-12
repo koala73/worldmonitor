@@ -146,6 +146,25 @@ describe('country geometry political overrides', () => {
     assert.equal(countryGeometry.hasCountryGeometry('TW'), true);
     assert.equal(countryGeometry.hasCountryGeometry('CN-TW'), false);
   });
+
+  it('maps placeholder stamps such as -99 to no country instead of passing them to APIs', async () => {
+    const countryGeometry = await loadFreshCountryGeometryModule();
+    assert.equal(countryGeometry.canonicalizeCountryCode('-99'), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(' -99 '), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(''), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode('USA'), '');
+    assert.equal(countryGeometry.canonicalizeCountryCode(' gb '), 'GB');
+
+    // Somaliland, Northern Cyprus, Bir Tawil and other bundled features carry
+    // -99; map hover/click reads this property raw on every pointer event.
+    const bundled = JSON.parse(readFileSync(new URL('../public/data/countries.geojson', import.meta.url), 'utf8'));
+    const placeholders = bundled.features.filter((f: { properties: Record<string, unknown> }) => f.properties['ISO3166-1-Alpha-2'] === '-99');
+    assert.ok(placeholders.length > 0, 'fixture no longer exercises the -99 placeholder');
+    for (const feature of bundled.features as Array<{ properties: Record<string, unknown> }>) {
+      const code = countryGeometry.canonicalizeCountryCode(String(feature.properties['ISO3166-1-Alpha-2']));
+      assert.match(code, /^(?:[A-Z]{2})?$/, `${String(feature.properties.name)} canonicalized to ${code}`);
+    }
+  });
 });
 
 describe('country geometry overrides', () => {

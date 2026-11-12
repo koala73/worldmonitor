@@ -4,6 +4,7 @@
 
 import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
 import type { McpBudget } from './quota';
+import type { SpokenNarrator } from './spoken';
 
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
@@ -59,6 +60,12 @@ export interface McpToolExecutionContext {
   readAccountAllowance?: () => Promise<import('./_account-allowance').McpAllowanceStatus>;
   // The checkout session dispatch already created for `start_upgrade` (#9144).
   startUpgradeResult?: import('./checkout').StartUpgradeResult;
+  // Set only by dispatch for a host that must not see these tools (ChatGPT,
+  // host-policy.ts). describe_tool treats them as unknown.
+  hiddenTools?: ReadonlySet<string>;
+  // Set with hiddenTools: describe_tool returns the same inform-only schema
+  // copy that host's tools/list carries.
+  informOnly?: true;
   panelRequest?: import('./panel-requests').PaidPanelAdmission;
   panelScope?: 'forecasts';
   // Set only by dispatch for an original forecast read billed per tool call.
@@ -66,6 +73,23 @@ export interface McpToolExecutionContext {
   // Set only by dispatch after a dedicated paid country-panel read is authorized.
   countryPanelCode?: string;
   countryRiskHistoryReuseUntil?: number | null;
+  // Set only by dispatch for a signed-in free account on the paid-funnel
+  // allowance (#6716). Cache tools then never read their `_subscriptionCacheKeys`.
+  freeAccountAllowance?: true;
+  // Set only by dispatch, and only for `report_issue` (#8721): who is
+  // reporting, derived from the request (the same getClientIp rules
+  // applyFreeTierLimit uses) and the auth context, never from `params`.
+  // `principalId` is present only for a principal that passed the entitlement
+  // pre-check with API access; every other caller reports anonymously. The
+  // reporting call's own request id is not carried: it is already on this
+  // call's wm_api_usage row, and the stored `requestId` is the one the caller
+  // cites for the call that failed.
+  feedbackCaller?: {
+    clientIp: string;
+    userAgent: string;
+    principalId?: string;
+    isKnownTool: (name: string) => boolean;
+  };
   inboundHostClass: McpInboundHostClass;
   downstreamOrigin: string;
   downstreamOriginTag: string;
@@ -74,6 +98,9 @@ export interface McpToolExecutionContext {
 // ---------------------------------------------------------------------------
 // Tool registry types
 // ---------------------------------------------------------------------------
+/** Entitlement flags a single tool can require beyond MCP access (#10451). */
+export type McpPlanFeature = 'travelRiskAssessment';
+
 export interface BaseToolDef {
   // Pure caller-input checks that must run before any allowance reservation.
   _validateArgs?: (params: Record<string, unknown>) => void;
@@ -85,6 +112,7 @@ export interface BaseToolDef {
     properties: Record<string, unknown>;
     required: string[];
     oneOf?: Array<Record<string, unknown>>;
+    additionalProperties?: false;
   };
   // Per-tool output budget. When serialised tool output exceeds this AFTER
   // _postFilter + summary + JMESPath, the server returns a `_budget_exceeded`
@@ -109,6 +137,15 @@ export interface BaseToolDef {
   // projection cannot separate the values from the attribution that licenses
   // their redistribution.
   _attribution?: string;
+  // `response_mode: "spoken"` (#9722). A tool that declares a narrator
+  // advertises `response_mode` in its input schema and the spoken branch in
+  // its output schema; the dispatcher replaces the finished payload with the
+  // narrator's 2-3 sentence envelope (api/mcp/spoken.ts). Declared HERE, on
+  // the tool, so the roster is the registry itself. The narrator sees the
+  // payload a full call would serialize after filters and presentation but
+  // before any output-budget fit (the envelope is small, so the fit is
+  // skipped), and must read every number it speaks from that payload.
+  _spoken?: SpokenNarrator;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
   // on the tool itself, so the roster and the tool definition cannot drift
@@ -118,9 +155,21 @@ export interface BaseToolDef {
   // `{ kind: 'free' }` context that carries no identity, so `buildAuthHeaders`
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
+  //
+  // One stated exception: `report_issue` (#8721) writes through a
+  // shared-secret Convex HTTP action. The secret authorizes one append-only
+  // write behind fail-closed admission and mints no principal, unlike an
+  // HMAC-signed gateway call. The exception is exactly that tool and that
+  // action (docs/architecture/agent-feedback-threat-model.md, "Free-tier
+  // amendment"); tests/mcp-free-tier-subset.test.mjs pins it. It does not
+  // extend to any other tool.
   _freeTier?: true;
   // Cache-backed tools can require the same paid access as their REST route.
   _subscriptionOnly?: true;
+  // A named plan flag the caller's entitlement must carry on top of MCP access
+  // (#10451). Dispatch refuses the call before validation and metering unless
+  // the pre-check read the flag as true; operator keys are exempt.
+  _planFeature?: McpPlanFeature;
   // Budget units this tool charges, overriding the class default in
   // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
   // maximum downstream fan-out differs from its class. A tool that adds a
@@ -257,6 +306,15 @@ export interface CacheToolDef extends BaseToolDef {
   // element) — every cache tool must declare at least one freshness budget, and
   // the dispatcher reads this list directly with no synthesized fallback.
   _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
+  // Keys of a free-account tool that hold subscription datasets, each mapped to
+  // the tier-gated REST path that sells the same data. For a free-account
+  // caller the dispatcher never reads these keys or their
+  // `seed-meta:<key without :vN>` freshness records, and names the withheld
+  // sections in `locked` with an `upgradeUrl`. Filtering here, at key-read
+  // time, and not in `_postFilter` keeps it closed: a throwing post-filter
+  // falls back to the unfiltered data. Enforced by
+  // tests/mcp-free-account-paid-data-invariant.test.mts.
+  _subscriptionCacheKeys?: Record<string, string>;
   _execute?: never;
   // Optional argument-free projection of the stored values onto the fields the
   // tool's `outputSchema` declares, applied to the label-walked `data` map
@@ -336,7 +394,7 @@ export type McpAccessClass = 'free' | 'free-account' | 'subscription';
 // ---------------------------------------------------------------------------
 // JMESPath result envelope
 // ---------------------------------------------------------------------------
-export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
+export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression' | 'empty_projection';
 
 // Result envelope. `text` is always the wire-ready JSON the dispatcher will
 // emit in `content[0].text`. `failed` is set only on a soft-failure path,
@@ -364,6 +422,7 @@ export interface PublicToolShape {
     properties: Record<string, unknown>;
     required: string[];
     oneOf?: Array<Record<string, unknown>>;
+    additionalProperties?: false;
   };
   outputSchema: object;
   annotations: {
@@ -394,6 +453,10 @@ export interface PublicToolShape {
     ui?: { resourceUri: string };
     'ui/resourceUri'?: string;
     'openai/ui'?: { entrypoints: Array<{ type: 'global' | 'thread' }> };
+    // Present-tense status labels ChatGPT shows while a UI-rendering tool runs / after it finishes.
+    'openai/toolInvocation'?: { invoking: string; invoked: string };
+    'openai/toolInvocation/invoking'?: string;
+    'openai/toolInvocation/invoked'?: string;
     'worldmonitor/access': McpAccessClass;
     'worldmonitor/weight': number;
   };
@@ -448,11 +511,13 @@ export interface McpHandlerDeps {
     | { ok: 'transient' }
     | null
   >;
-  getEntitlements: (userId: string) => Promise<{
+  getEntitlements: (userId: string, options?: { requireTravelRiskShape?: boolean }) => Promise<{
     planKey?: string;
     features: {
       tier: number;
       mcpAccess?: boolean;
+      // #10451: read only for prepare_travel_risk_assessment; absent is false.
+      travelRiskAssessment?: boolean;
       // Mirrors `CachedEntitlements.features.planLimits`. The MCP daily
       // allowance and the MCP minute burst are read here (plan 2026-07-25-001
       // U3); the siblings are declared so the shape stays recognisable against
@@ -469,6 +534,14 @@ export interface McpHandlerDeps {
       };
     };
     validUntil: number;
+    // Mirrors `CachedEntitlements.account`: present only for an active member
+    // of a live Enterprise contract, whose MCP calls draw on the account pool.
+    account?: {
+      id: string;
+      dailyAllowance: number;
+      perMinuteBurst: number;
+      breakerMultiple: number;
+    };
     billingStatus?: BillingVerificationStatus;
     retryAfterSeconds?: number;
     verificationUnavailable?: boolean;
@@ -536,6 +609,17 @@ export interface McpPreCheckPassed {
    * the plan one step up (#9144). Omitted when the row carries none.
    */
   planKey?: string;
+  /**
+   * The plan includes `prepare_travel_risk_assessment` (#10451), read from the
+   * same entitlement row as `budget`. Never set on the free-account allowance.
+   */
+  travelRiskAssessment?: true;
+}
+
+/** What the caller is about to do, when it changes which entitlement shape a pre-check needs. */
+export interface McpPreCheckOptions {
+  /** Refetch a cached entitlement that predates `travelRiskAssessment` instead of reading it as false. */
+  requireTravelRiskShape?: boolean;
 }
 export interface McpPreCheckRejected {
   ok: false;

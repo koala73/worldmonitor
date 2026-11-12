@@ -41,13 +41,13 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Install Rust stable
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7
         with:
-          toolchain: stable
+          toolchain: 1.99.1
 
       - name: Rust cache
-        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
@@ -99,6 +99,24 @@ jobs:
             echo "::error::Desktop canary requires non-empty client env:$MISSING (#5905)"
             exit 1
           fi
+
+      # The bundler downloads its AppImage tools from GitHub with no retry, so
+      # one 504 failed this canary (run 42567226797). Restore them from cache
+      # and fetch any missing one with retries before building; the bundler
+      # skips tools that already exist. The key rotates monthly so the tools
+      # served from moving `master`/`continuous` URLs are refreshed.
+      - name: AppImage tool cache month
+        id: appimage-tools-month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tauri AppImage tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/tauri
+          key: tauri-appimage-tools-x86_64-${{ steps.appimage-tools-month.outputs.month }}-${{ hashFiles('scripts/prefetch-appimage-tools.sh') }}
+
+      - name: Prefetch Tauri AppImage tools
+        run: bash scripts/prefetch-appimage-tools.sh x86_64
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f
@@ -274,7 +292,10 @@ jobs:
             echo "❌ No screenshot captured — cannot verify rendered content"
             exit 1
           fi
-          COLORS=$(identify -verbose screenshot.png 2>/dev/null | grep "Colors:" | awk '{print $2}')
+          # %k always counts unique colors. `identify -verbose` prints "Colors:"
+          # only for images with <=1024 colors, so a richer render made the
+          # grep miss and pipefail killed the step before this gate ran.
+          COLORS=$(identify -format '%k' screenshot.png 2>/dev/null || echo 0)
           echo "Screenshot unique colors: ${COLORS:-unknown}"
           if [ "${COLORS:-0}" -le 5 ]; then
             echo "❌ Screenshot appears blank (only ${COLORS:-0} colors). App did not render."

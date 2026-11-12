@@ -13,7 +13,8 @@ import {
   releaseLock,
   sleep,
 } from './_seed-utils.mjs';
-import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState } from './shared/comtrade.mjs';
+import { HS4_CODES, HS4_BATCHES, PREVIEW_MAX_RECORDS, parseRecords, groupByProduct, groupWorldExports, toCanonicalProduct, toPartnersProduct, comtradeFailureState, normalizeComtradePartner } from './shared/comtrade.mjs';
+import { LNG_CMD_CODE, LNG_HORMUZ_SHARE_KEY, MIN_LNG_PRE_CRISIS_COUNTRIES, buildLngOriginShares, lngOriginRequests, parseLngRows } from './shared/comtrade-lng-origin.mjs';
 export { HS4_CODES, MAX_HS4_CODES_PER_BATCH, groupByProduct } from './shared/comtrade.mjs';
 import { candidatePeriods, periodWindow, recentPeriod } from './shared/comtrade-period.mjs';
 
@@ -35,6 +36,9 @@ const PARTNERS_KEY_PREFIX = 'comtrade:bilateral-hs4-partners:';
 // One key for the whole run: every reporter's exports of every reviewed heading,
 // so the brief can state a supplier's absolute scale and its world rank.
 const WORLD_EXPORTS_KEY = 'comtrade:world-exports-hs4:v1';
+// One key for the whole run: every importer's Hormuz share of LNG (HS 271111)
+// before the crisis and in current flows, read by the energy shock model.
+const LNG_KEY = LNG_HORMUZ_SHARE_KEY;
 const TTL_SECONDS = 3456000; // 40d: monthly cadence + 9d deploy/missed-tick slack
 const LOCK_DOMAIN = 'comtrade:bilateral-hs4';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
@@ -51,15 +55,18 @@ const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 // is ever edited, because every constant here is sized against it:
 //   gate 24d < shortest month 28d      -> a scheduled run is never skipped
 //   maxStaleMin 35d > longest month 31d -> no false STALE_SEED between runs
-//   ~394 calls x 1 run/month           -> fits the 500/month quota
+//   ~400 calls per run                 -> one run per tick, never two a day
 //
-// Belt-and-suspenders against the UN Comtrade Free APIs 500 calls/month quota
-// (~394 calls per run with a single COMTRADE_API_KEYS entry). Also verified
-// 2026-07-27: this is the ONLY scheduled consumer of that keyed quota.
-// seed-trade-flows runs daily but on the unauthenticated
-// `public/v1` preview route, and seed-recovery-import-hhi /
-// seed-recovery-reexport-share do use the keyed `data/v1/get` route but have
-// no Railway service running them.
+// Quota, corrected 2026-11-01 (#7990): UN Comtrade's free subscription is 500
+// calls per DAY (https://uncomtrade.org/docs/subscriptions/), not per month,
+// so this gate is not what keeps a run inside it. It stops repeat runs within
+// a month. A full run is ~400 keyed calls, but both October 2026 runs were
+// refused from request ~252 onward, so the usable allowance per run is lower
+// than that. The keyed route is no longer this seeder's alone either:
+// seed-recovery-import-hhi and seed-recovery-reexport-share now run in the
+// seed-bundle-resilience-recovery Railway service (import-hhi wrote 173
+// reporters at 2026-11-01 00:07 UTC). orderCountriesForRun keeps a short run
+// from starving the same reporters every month.
 // Override for force-reseed scenarios: FORCE_RESEED=true bypasses the gate.
 export const FRESHNESS_GATE_MS = 24 * 24 * 60 * 60 * 1000;
 
@@ -69,7 +76,7 @@ export const FRESHNESS_GATE_MS = 24 * 24 * 60 * 60 * 1000;
 // silently lets every cron tick through. Pre-fix (Greptile review on
 // PR #3661): meta TTL was TTL_SECONDS * 3 = 9d while gate = 24d, leaving
 // days 9-24 unprotected — if the cron ever flipped back to daily, those
-// 15 days would burn ~6,000 calls against the 500/mo quota.
+// 15 days would burn ~6,000 calls, ~400 a day against the 500/day quota.
 //
 // Keep metadata for the same 40-day continuity window as the country shards.
 // Health turns stale at 35d, leaving five days where a missed run is visible
@@ -138,9 +145,10 @@ const INTER_REQUEST_DELAY_MS = usePublicApi ? 3500 : 1500;
 const MAX_RECORDS = usePublicApi ? PREVIEW_MAX_RECORDS : 100_000;
 
 // A full country pass at 2 requests/country is ~396 authenticated calls against
-// UN Comtrade's 500/mo Free APIs quota. The (y-3) fallback below doubles that
-// for any reporter empty on (y-2), so cap total requests with slack under the
-// cap rather than risk a bad month (e.g. many slow filers) blowing the quota.
+// UN Comtrade's 500 calls/day free quota. The preview route's fallback period
+// doubles that for any reporter empty on the first period, so cap total
+// requests with slack under the quota. The provider can refuse earlier (see the
+// freshness gate note); the 401/403/429 breaker ends the run when it does.
 export const REQUEST_BUDGET = Number(process.env.COMTRADE_REQUEST_BUDGET) || 480;
 
 // Comtrade annual data lags across reporters. Without an explicit period the
@@ -175,6 +183,15 @@ const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-override
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
+// Reporter codes that are not standard partner identities (490 is Taiwan as a
+// reporter, "Other Asia, nes" as a partner).
+const ISO2_BY_REPORTER_OVERRIDE = Object.fromEntries(
+  Object.entries(COMTRADE_REPORTER_OVERRIDES).map(([iso2, un]) => [un, iso2]),
+);
+/** @param {string} code */
+const lngReporterIso2 = (code) => ISO2_BY_REPORTER_OVERRIDE[code] ?? normalizeComtradePartner(code).iso2;
+/** @param {string} code */
+const lngPartnerKind = (code) => normalizeComtradePartner(code).kind;
 
 /**
  * @param {Array<string[]>} commands
@@ -221,22 +238,60 @@ export async function checkSeedMetaFreshness(now = Date.now()) {
 }
 
 /**
- * Consecutive TTL-refresh streak per ISO2 from the previous run's seed-meta.
- * Fail-open: any read/parse error yields {} so every streak restarts at zero,
- * which only ever grants MORE grace before a payload expires, never less.
- * @returns {Promise<Record<string, number>>}
+ * The previous run's seed-meta: the consecutive TTL-refresh streak per ISO2,
+ * and its per-country coverage (which orders this run's reporters).
+ * Fail-open: any read/parse error yields no streaks, so every streak restarts
+ * at zero, which only ever grants MORE grace before a payload expires, never
+ * less; and no coverage, which keeps the registry order.
+ * @returns {Promise<{streaks: Record<string, number>, coverage: Record<string, {state?: string}> | null}>}
  */
-export async function readPreserveStreaks() {
+export async function readPriorRun() {
   try {
     const result = await redisPipeline([['GET', META_KEY]]);
     const raw = Array.isArray(result) ? result[0]?.result : null;
-    if (!raw || typeof raw !== 'string') return {};
-    const streaks = JSON.parse(raw)?.preserveStreaks;
-    if (!streaks || typeof streaks !== 'object' || Array.isArray(streaks)) return {};
-    return streaks;
+    if (!raw || typeof raw !== 'string') return { streaks: {}, coverage: null };
+    const meta = JSON.parse(raw);
+    const isRecord = (v) => v && typeof v === 'object' && !Array.isArray(v);
+    return {
+      streaks: isRecord(meta?.preserveStreaks) ? meta.preserveStreaks : {},
+      coverage: isRecord(meta?.countryCoverage) ? meta.countryCoverage : null,
+    };
   } catch {
-    return {};
+    return { streaks: {}, coverage: null };
   }
+}
+
+// Coverage states that mean the previous run refreshed the country: it wrote a
+// payload, or Comtrade validly answered that the reporter filed nothing.
+const REFRESHED_STATES = new Set(['observed', 'no_records']);
+
+/**
+ * The order this run fetches reporters in.
+ *
+ * The usable request budget can end the run before the roster does. In
+ * October 2026 both runs stopped at request ~252, after 123-125 of the 197
+ * reporters, so the same tail went unrefreshed every run until
+ * MAX_PRESERVE_RUNS let its payloads expire. Reporters the previous run did
+ * not refresh therefore go first, the longest-preserved before the rest, so a
+ * short run rotates through the roster instead of starving its end. Without
+ * prior coverage (first run, or meta written before countryCoverage) the
+ * registry order is kept. The sort is stable, so ties keep registry order.
+ *
+ * @template {[string, ...unknown[]]} T
+ * @param {T[]} countries registry entries, [iso2, ...]
+ * @param {{streaks: Record<string, number>, coverage: Record<string, {state?: string}> | null}} prior
+ * @returns {T[]}
+ */
+export function orderCountriesForRun(countries, prior) {
+  if (!prior?.coverage) return countries;
+  const rank = ([iso2]) => {
+    if (REFRESHED_STATES.has(prior.coverage[iso2]?.state)) return 0;
+    return 1 + (Number(prior.streaks?.[iso2]) || 0);
+  };
+  return countries
+    .map((entry, index) => ({ entry, index, rank: rank(entry) }))
+    .sort((a, b) => b.rank - a.rank || a.index - b.index)
+    .map(({ entry }) => entry);
 }
 
 /**
@@ -258,6 +313,10 @@ export function isTransientComtrade(status) {
 // consecutive rate-limited batch fetches is ~5 minutes plus normal request
 // pacing, well inside the lock, and by then the quota verdict is not in doubt.
 export const MAX_CONSECUTIVE_RATE_LIMITED_FETCHES = 5;
+/** @param {number} status */
+export function isQuotaRefusal(status) {
+  return status === 429 || status === 401 || status === 403;
+}
 let consecutiveRateLimited = 0;
 /** Reset at the start of every run; also lets tests isolate module state. */
 export function resetRateLimitStreak() { consecutiveRateLimited = 0; }
@@ -275,6 +334,13 @@ export function __setSleepForTests(fn) {
   const next = typeof fn === 'function' ? fn : sleep;
   _retrySleep = next;
   _paceSleep = next;
+}
+
+// The keyless test route caps a response at 500 rows, far fewer importers than
+// the production floor is sized for; tests lower it. null restores it.
+let _lngCoverageFloor = MIN_LNG_PRE_CRISIS_COUNTRIES;
+export function __setLngCoverageFloorForTests(n) {
+  _lngCoverageFloor = typeof n === 'number' ? n : MIN_LNG_PRE_CRISIS_COUNTRIES;
 }
 
 /**
@@ -303,8 +369,8 @@ async function fetchBilateralOnce(url, timeoutMs, reserveRequest) {
  * @param {'M' | 'X'} [flowCode] 'M' is the per-reporter import pull; 'X' with
  *   partnerCode=0 is each reporter's exports of the heading to the World.
  */
-function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M') {
-  const url = new URL(COMTRADE_FETCH_URL);
+function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M', frequency = 'A') {
+  const url = new URL(frequency === 'M' ? COMTRADE_FETCH_URL.replace('/C/A/', '/C/M/') : COMTRADE_FETCH_URL);
   if (reporterCode) url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('cmdCode', hs4Batch.join(','));
   url.searchParams.set('flowCode', flowCode);
@@ -340,9 +406,11 @@ function buildFetchUrl(reporterCode, hs4Batch, key, period, flowCode = 'M') {
  *   still reports the number of rows it saw.
  * @param {'M' | 'X'} [flowCode] 'X' builds the all-reporter world-exports
  *   request, which reuses this function purely for its retry and 429 handling.
- * @returns {Promise<Array<{cmdCode: string, partnerCode: string, reporterCode?: string, primaryValue: number, year: number}>>}
+ * @param {{frequency?: 'A' | 'M', parse?: (data: unknown, maxRecords: number) => any[]}} [options] the
+ *   LNG origin requests use the monthly route and their own HS6 row parser.
+ * @returns {Promise<Array<any>>}
  */
-export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequest, onRawRowCount, flowCode = 'M') {
+export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequest, onRawRowCount, flowCode = 'M', { frequency = 'A', parse = parseRecords } = {}) {
   period = period ?? recentPeriod();
   let rateLimitedOnce = false;
   let transientRetries = 0;
@@ -353,7 +421,7 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
   let resp;
   while (true) {
     resp = await fetchBilateralOnce(
-      buildFetchUrl(reporterCode, hs4Batch, getNextKey(), period, flowCode),
+      buildFetchUrl(reporterCode, hs4Batch, getNextKey(), period, flowCode, frequency),
       45_000,
       reserveRequest,
     );
@@ -378,8 +446,15 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
 
   if (!resp.ok) {
     const tag = (rateLimitedOnce || transientRetries > 0) ? ' (after retries)' : '';
-    console.warn(`    HTTP ${resp.status} for reporter ${label}${tag}`);
-    if (resp.status === 429) consecutiveRateLimited++;
+    // The refusal body names the cause (an exhausted quota says when it
+    // replenishes); without it the October 2026 tail failures were unattributable
+    // once Railway's log retention lapsed. Bounded, and it carries no key.
+    const detail = await resp.text().then(t => t.replace(/\s+/g, ' ').slice(0, 200)).catch(() => '');
+    console.warn(`    HTTP ${resp.status} for reporter ${label}${tag}${detail ? `: ${detail}` : ''}`);
+    // 401 and 403 count with 429: Comtrade refuses an exhausted subscription
+    // quota or an invalid key on every later request too, so the breaker should
+    // end the run rather than spend one request per remaining reporter.
+    if (isQuotaRefusal(resp.status)) consecutiveRateLimited++;
     throw new Error(`Comtrade upstream HTTP ${resp.status}`);
   }
 
@@ -390,7 +465,7 @@ export async function fetchBilateral(reporterCode, hs4Batch, period, reserveRequ
   // throws outright on a capped response — the one case where knowing how many
   // rows arrived matters most.
   if (Array.isArray(data?.data)) onRawRowCount?.(data.data.length);
-  const parsed = parseRecords(data, MAX_RECORDS);
+  const parsed = parse(data, MAX_RECORDS);
   if (parsed.length === 0 && data?.count > 0) {
     console.warn(`    Reporter ${label}: API returned count=${data.count} but parseRecords produced 0 — response shape may have changed`);
   }
@@ -410,9 +485,9 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
     : REQUEST_BUDGET;
 
   // Freshness gate: skip if seed-meta says we re-seeded < 24d ago.
-  // One run = ~396 authenticated UN Comtrade calls; their Free APIs tier is
-  // 500/month, so a stuck-on cron schedule used to put us 24× over quota
-  // before this gate landed. FORCE_RESEED=true bypasses (used by ad-hoc
+  // One run = ~396 authenticated UN Comtrade calls against a 500/day quota,
+  // so a stuck-on cron schedule would spend most of each day's allowance on
+  // repeat runs. FORCE_RESEED=true bypasses (used by ad-hoc
   // refresh scripts like post-pr*-force-refresh.mjs).
   if (!process.env.FORCE_RESEED) {
     const freshness = await checkSeedMetaFreshness();
@@ -427,8 +502,12 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
   const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
 
   const PERIODS = periodCandidates(usePublicApi);
-  const countries = Object.entries(COUNTRY_PORT_CLUSTERS)
-    .filter(([k]) => k !== '_comment' && k.length === 2);
+  const prior = await readPriorRun();
+  const priorStreaks = prior.streaks;
+  const countries = orderCountriesForRun(
+    Object.entries(COUNTRY_PORT_CLUSTERS).filter(([k]) => k !== '_comment' && k.length === 2),
+    prior,
+  );
   const canonicalKey = (iso2) => `${KEY_PREFIX}${iso2}:v1`;
   const partnersKey = (iso2) => `${PARTNERS_KEY_PREFIX}${iso2}:v1`;
   // Both keys of every country. They describe one observation, so every
@@ -437,7 +516,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
   const allKeys = countries.flatMap(([iso2]) => [canonicalKey(iso2), partnersKey(iso2)]);
 
   if (lock.skipped) {
-    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, META_KEY], TTL_SECONDS)
+    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, LNG_KEY, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[bilateral-hs4] TTL extension (skipped) failed:', e.message));
     return;
   }
@@ -451,15 +530,16 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
   // which is also what a snapshot written before this field existed reads as —
   // api/seed-health.js treats that absence as "no evidence", not as a failure.
   let worldExports = null;
+  // The run's LNG origin outcome, recorded the same way as worldExports.
+  let lngOrigin = null;
   const writeMeta = async (count, status = 'ok', preserveStreaks = {}) => {
-    const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status, preserveStreaks, requestedHs4s: HS4_CODES, countryCoverage, worldExports });
+    const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status, preserveStreaks, requestedHs4s: HS4_CODES, countryCoverage, worldExports, lngOrigin });
     // TTL ≥ FRESHNESS_GATE_MS so the gate's "fresh" answer cannot be silently
     // invalidated by Redis eviction. See the SEED_META_TTL_SECONDS comment.
     await redisPipeline([['SET', META_KEY, meta, 'EX', String(SEED_META_TTL_SECONDS)]])
       .catch(e => console.warn('[bilateral-hs4] Failed to write seed-meta:', e.message));
   };
 
-  const priorStreaks = await readPreserveStreaks();
   resetRateLimitStreak();
 
   try {
@@ -541,6 +621,47 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
       // scale rather than the country coverage.
       console.warn(`[bilateral-hs4] world exports unavailable, continuing with reporters: ${err.message}`);
       worldExports = { state: comtradeFailureState(err), attemptedAt: new Date().toISOString() };
+    }
+
+    // Hormuz LNG origin shares: three all-reporter HS 271111 requests (annual
+    // pre-crisis year, the 12 pre-crisis months, crisis months since 2026-03),
+    // reserved before the reporters for the same reason as world exports. The
+    // snapshot is all-or-nothing: the first failure ends the phase, the
+    // previous snapshot is kept, and the reporters do not depend on it.
+    try {
+      /** @type {Record<string, any[]>} */
+      const lngRows = {};
+      for (const request of lngOriginRequests()) {
+        if (requestCount > 0) await _paceSleep(INTER_REQUEST_DELAY_MS);
+        console.log(`[bilateral-hs4] LNG origin ${request.id} (${request.frequency}, ${request.periods.length} periods)...`);
+        lngRows[request.id] = await fetchBilateral('', [LNG_CMD_CODE], request.periods.join(','), reserveRequest, undefined, 'M', { frequency: request.frequency, parse: parseLngRows });
+      }
+      const shares = buildLngOriginShares(lngRows, { reporterIso2: lngReporterIso2, partnerKind: lngPartnerKind });
+      const fetchedAt = new Date().toISOString();
+      const countries = Object.values(shares.countries);
+      const preCrisisCount = countries.filter(c => c.preCrisis).length;
+      if (countries.length === 0) {
+        console.warn('[bilateral-hs4] LNG origin: no usable rows, keeping the previous snapshot');
+        lngOrigin = { state: 'no_records', attemptedAt: fetchedAt };
+      } else if (preCrisisCount < _lngCoverageFloor) {
+        // Entries exist but too few carry a usable share: a thin or withheld
+        // response must not replace a fuller snapshot.
+        console.warn(`[bilateral-hs4] LNG origin: ${preCrisisCount} pre-crisis shares (floor ${_lngCoverageFloor}), keeping the previous snapshot`);
+        lngOrigin = { state: 'incomplete', attemptedAt: fetchedAt, countryCount: countries.length, preCrisisCount };
+      } else {
+        queueWrite(LNG_KEY, JSON.stringify({ fetchedAt, source: 'UN Comtrade data API', ...shares }));
+        lngOrigin = {
+          state: 'observed',
+          fetchedAt,
+          countryCount: countries.length,
+          preCrisisCount,
+          currentCount: countries.filter(c => c.current).length,
+        };
+        console.log(`[bilateral-hs4] LNG origin: ${lngOrigin.countryCount} importers, ${lngOrigin.preCrisisCount} pre-crisis, ${lngOrigin.currentCount} current-flows shares`);
+      }
+    } catch (err) {
+      console.warn(`[bilateral-hs4] LNG origin unavailable, continuing with reporters: ${err.message}`);
+      lngOrigin = { state: comtradeFailureState(err), attemptedAt: new Date().toISOString() };
     }
 
     for (let i = 0; i < countries.length; i++) {
@@ -642,7 +763,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
       await flushIfFull();
 
       if (consecutiveRateLimited >= MAX_CONSECUTIVE_RATE_LIMITED_FETCHES) {
-        console.warn(`[bilateral-hs4] ABORTING after ${consecutiveRateLimited} consecutive rate-limited batch fetches — the monthly quota looks exhausted. Writing the partial result rather than grinding through ~${countries.length - i - 1} more 60s waits and outliving the ${LOCK_TTL_MS / 60_000}min lock.`);
+        console.warn(`[bilateral-hs4] ABORTING after ${consecutiveRateLimited} consecutive refused batch fetches (HTTP 429/401/403) — the key's quota looks exhausted. Writing the partial result rather than grinding through ~${countries.length - i - 1} more 60s waits and outliving the ${LOCK_TTL_MS / 60_000}min lock.`);
         break;
       }
       if (requestBudgetExhausted) {
@@ -696,6 +817,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
     // A run that could not rewrite the world-exports snapshot keeps the previous
     // one alive, exactly as a failed reporter keeps its previous shard.
     if (worldExports?.state !== 'observed') preservedKeys.push(WORLD_EXPORTS_KEY);
+    if (lngOrigin?.state !== 'observed') preservedKeys.push(LNG_KEY);
     if (preservedKeys.length > 0) {
       await extendExistingTtl(preservedKeys, TTL_SECONDS)
         .catch(e => console.warn('[bilateral-hs4] TTL extension (preserved) failed:', e.message));
@@ -719,7 +841,7 @@ export async function main({ requestBudget = REQUEST_BUDGET } = {}) {
     console.log(`[bilateral-hs4] Seeded ${writtenCount} country keys (${failedCount} failed, ${preservedKeys.length} preserved)`);
   } catch (err) {
     console.error('[bilateral-hs4] Seed failed:', err.message || err);
-    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, META_KEY], TTL_SECONDS)
+    await extendExistingTtl([...allKeys, WORLD_EXPORTS_KEY, LNG_KEY, META_KEY], TTL_SECONDS)
       .catch(e => console.warn('[bilateral-hs4] TTL extension failed:', e.message));
     await writeMeta(0, 'error');
     throw err;

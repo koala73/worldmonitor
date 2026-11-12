@@ -17,7 +17,7 @@ import {
 } from '../scripts/_feed-health.mjs';
 import { computeRecall } from '../scripts/_recall-benchmark-core.mjs';
 import { selectTopStories } from '../scripts/_clustering.mjs';
-import { extractServerFeeds } from '../scripts/validate-rss-feeds.mjs';
+import { extractFeeds, extractServerFeeds } from '../scripts/validate-rss-feeds.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readSrc = (rel) => readFileSync(resolve(root, rel), 'utf-8');
@@ -206,11 +206,8 @@ describe('server catalog extraction (#4920a)', () => {
     const natureFeed = extractServerFeeds().find((feed) => feed.name === 'Nature News');
     assert.equal(natureFeed?.url, canonicalNatureUrl, 'server digest must use Nature\'s canonical RSS URL');
 
-    const clientFeeds = readSrc('src/config/feeds.ts');
-    assert.ok(
-      clientFeeds.includes(`{ name: 'Nature News', url: rss('${canonicalNatureUrl}') }`),
-      'client catalog must use the same canonical Nature RSS endpoint',
-    );
+    const clientNature = extractFeeds().find((feed) => feed.name === 'Nature News');
+    assert.equal(clientNature?.url, canonicalNatureUrl, 'client catalog must use the same canonical Nature RSS endpoint');
 
     const validator = readSrc('scripts/validate-rss-feeds.mjs');
     assert.match(validator, /const MAX_REDIRECTS = 3;/);
@@ -273,20 +270,33 @@ import { GDELT_BULK_ARTICLES_KEY } from '../scripts/_gdelt-bulk-contract.mjs';
 import { publishFeedHealth } from '../scripts/validate-rss-feeds.mjs';
 import { getOptionalUpstashCreds } from '../scripts/_upstash-rest.mjs';
 
-describe('gn()/gnLocale() replica drift guard (#4927 review)', () => {
-  it('extractServerFeeds URL builders textually match the _feeds.ts source', () => {
-    const feedsSrc = readSrc('server/worldmonitor/news/v1/_feeds.ts');
-    const validatorSrc = readSrc('scripts/validate-rss-feeds.mjs');
-    // The load-bearing template expressions must appear byte-identical in
-    // both files — a change to gn()'s URL shape in _feeds.ts without the
-    // replica following makes the health report validate URLs the digest
-    // never fetches.
-    const gnTemplate = 'https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en';
-    const gnLocaleTemplate = 'https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}';
-    for (const template of [gnTemplate, gnLocaleTemplate]) {
-      assert.ok(feedsSrc.includes(template), `_feeds.ts must contain: ${template}`);
-      assert.ok(validatorSrc.includes(template), `validate-rss-feeds replica must contain: ${template}`);
+describe('validator reads the URLs the views serve (#4927 review)', () => {
+  // The validator reads shared/news-catalog.json without executing app code.
+  // Its extraction must equal what the server digest and the browser fetch,
+  // or the health report validates URLs nobody requests (or skips ones they do).
+  it('extractServerFeeds equals the server view', async () => {
+    const { buildServerVariantFeeds, buildServerIntelSources } = await import('../shared/news-catalog.ts');
+    const served = new Set([
+      ...Object.values(buildServerVariantFeeds()).flatMap((byCategory) => Object.values(byCategory).flat()),
+      ...buildServerIntelSources(),
+    ].map((feed) => feed.url));
+    const extracted = extractServerFeeds().map((feed) => feed.url);
+    assert.ok(served.size > 0, 'the server view is empty');
+    assert.ok(extracted.length > 0, 'server extraction is empty');
+    assert.deepEqual(new Set(extracted), served);
+  });
+
+  it('extractFeeds equals the browser view', async () => {
+    const { NEWS_CATALOG, buildBrowserCategoryFeeds, buildBrowserIntelSources } = await import('../shared/news-catalog.ts');
+    const urls = new Set();
+    const add = (url) => (typeof url === 'string' ? urls.add(url) : Object.values(url).forEach((href) => urls.add(href)));
+    for (const edition of Object.keys(NEWS_CATALOG.layout.browser)) {
+      for (const feeds of Object.values(buildBrowserCategoryFeeds(edition))) feeds.forEach((feed) => add(feed.url));
     }
+    buildBrowserIntelSources().forEach((feed) => add(feed.url));
+    const extracted = extractFeeds().map((feed) => feed.url);
+    assert.ok(extracted.length > 500, `browser extraction looks empty (${extracted.length})`);
+    assert.deepEqual(new Set(extracted), urls);
   });
 });
 

@@ -3,6 +3,7 @@
 import { loadEnvFile, CHROME_UA, getRedisCredentials, parseRedisCommandResponse, redisCommand, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata, logSeedResult, verifySeedKey, extendExistingTtl, getResponseHeader } from './_seed-utils.mjs';
 import { summarizeMilitaryTheaters, buildMilitarySurges, appendMilitaryHistory } from './_military-surges.mjs';
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { lookupPlaneAlertAircraft } from './_plane-alert-registry.mjs';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -1477,8 +1478,10 @@ function summarizeClassificationAudit(rawStates, flights, rejected, stageCounter
   let typedFlights = 0;
   let operatorResolved = 0;
   let highConfidenceFlights = 0;
+  let watchlistMatched = 0;
 
   for (const flight of flights) {
+    if (flight.watchlist) watchlistMatched += 1;
     admittedByReason[flight.admissionReason] = (admittedByReason[flight.admissionReason] || 0) + 1;
     if (flight.aircraftTypeInferenceReason === 'callsign_pattern' || flight.classificationReason === 'callsign_pattern') typedByCallsign += 1;
     if (flight.aircraftTypeInferenceReason === 'source_metadata' || flight.operatorInferenceReason === 'source_metadata' || flight.classificationReason === 'source_metadata') typedBySource += 1;
@@ -1507,6 +1510,8 @@ function summarizeClassificationAudit(rawStates, flights, rejected, stageCounter
     hexOnlyAdmissions: hexOnly,
     operatorOtherRate: flights.length ? Number((operatorOther / flights.length).toFixed(3)) : 0,
     unknownTypeRate: flights.length ? Number((unknownType / flights.length).toFixed(3)) : 0,
+    watchlistMatched,
+    watchlistMatchRate: flights.length ? Number((watchlistMatched / flights.length).toFixed(3)) : 0,
     stageWaterfall: {
       rawStates,
       positionEligible: stageCounters.positionEligible,
@@ -1690,6 +1695,11 @@ function buildMilitaryFlightRecord(state, classified, sourceHints) {
   const isInteresting = (hotspot && hotspot.priority === 'high') ||
     classified.aircraftType === 'bomber' || classified.aircraftType === 'reconnaissance' || classified.aircraftType === 'awacs';
   const sourcePrefix = getSourcePrefix(state);
+  // Static hex join over the vendored plane-alert-db watchlist (#6228). This
+  // annotates; it does not change admission or the operator/type enums, so a
+  // listed aircraft the heuristics already classified keeps that
+  // classification and gains a name beside it.
+  const listed = lookupPlaneAlertAircraft(icao24);
 
   return {
     id: `${sourcePrefix}-${icao24}`,
@@ -1704,6 +1714,14 @@ function buildMilitaryFlightRecord(state, classified, sourceHints) {
     onGround: state[8],
     squawk: state[14] || undefined,
     ...classified,
+    watchlist: listed ? {
+      operator: listed.operator,
+      category: listed.category,
+      registration: listed.registration,
+      aircraftModel: listed.type,
+      icaoType: listed.icaoType,
+      group: listed.group,
+    } : undefined,
     sourceMeta: summarizeSourceMeta(state[15] || {}),
     sourceHints: {
       authoritativeMilitary: sourceHints.authoritativeMilitary,

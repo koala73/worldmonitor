@@ -207,7 +207,7 @@ describe('premium gateway API key enforcement', () => {
           : input.url;
       if (url.endsWith('/api/internal-validate-api-key')) {
         return new Response(
-          JSON.stringify({ userId: 'free_api_user', keyId: 'free-key', name: 'Free API key' }),
+          JSON.stringify({ id: 'free-key', userId: 'free_api_user', name: 'Free API key', keyKind: 'api' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
@@ -277,7 +277,7 @@ describe('premium gateway API key enforcement', () => {
           : input.url;
       if (url.endsWith('/api/internal-validate-api-key')) {
         return new Response(
-          JSON.stringify({ userId: 'pro_api_user', keyId: 'pro-key', name: 'Pro API key' }),
+          JSON.stringify({ id: 'pro-key', userId: 'pro_api_user', name: 'Pro API key', keyKind: 'api' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
@@ -424,7 +424,7 @@ describe('premium gateway API key enforcement', () => {
             : input.url;
       if (url.endsWith('/api/internal-validate-api-key')) {
         return new Response(
-          JSON.stringify({ userId: 'owner_pro', keyId: 'k1', name: 'test' }),
+          JSON.stringify({ id: 'k1', userId: 'owner_pro', name: 'test', keyKind: 'api' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
@@ -913,7 +913,7 @@ describe('premium gateway bearer token auth', () => {
           : input.url;
       if (url.endsWith('/api/internal-validate-api-key')) {
         return new Response(
-          JSON.stringify({ userId: 'free_api_user', keyId: 'free-key', name: 'Free API key' }),
+          JSON.stringify({ id: 'free-key', userId: 'free_api_user', name: 'Free API key', keyKind: 'api' }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }

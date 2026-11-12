@@ -22,6 +22,7 @@
 //   - Plan: docs/plans/2026-04-17-003-feat-worldmonitor-brief-magazine-plan.md
 
 import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../shared/brief-envelope.js';
+import { BRIEF_FONTS } from './brief-fonts.generated.js';
 
 /**
  * @typedef {import('../../shared/brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -33,8 +34,19 @@ import { BRIEF_ENVELOPE_VERSION, SUPPORTED_ENVELOPE_VERSIONS } from '../../share
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const FONTS_HREF =
-  'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap';
+// Self-hosted subsets of Google's Playfair Display, Source Serif 4 and IBM Plex Mono, one set per
+// rendering platform because Google serves different files to Windows/Linux, macOS and mobile.
+// The route picks the set with briefFontPlatform(user-agent). Regenerate with
+// `npm run brief-fonts:subset` after changing font CSS here; see scripts/brief-fonts/README.md.
+const DEFAULT_FONT_PLATFORM = 'plain';
+
+function briefFonts(platform) {
+  const fonts = BRIEF_FONTS[Object.hasOwn(BRIEF_FONTS, platform) ? platform : DEFAULT_FONT_PLATFORM];
+  return {
+    preloads: fonts.preload.map((f) => `<link rel="preload" as="font" type="${f.type}" href="${f.href}" crossorigin>`).join(''),
+    style: `<style>${fonts.css}</style>`,
+  };
+}
 
 const MAX_THREADS_PER_PAGE = 6;
 
@@ -781,6 +793,13 @@ const STYLE_BLOCK = `<style>
     --mint: #4ade80;            /* bright WM brand mint for dark-page accents (AAA on #0a0a0a) */
     --paper: #fafafa;
     --paper-ink: #0a0a0a;
+    /* Pager geometry. --pager-band is the strip the fixed .nav-dots pill
+       occupies above the viewport bottom (offset + pill height) plus 2vh
+       of air; digest pages keep their text out of it. */
+    --pager-bottom: 3.5vh;
+    --pager-pad-y: 0.9vh;
+    --pager-dot: 9px;
+    --pager-band: calc(var(--pager-bottom) + 2 * var(--pager-pad-y) + var(--pager-dot) + 2vh);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -857,10 +876,26 @@ const STYLE_BLOCK = `<style>
   .cover.back .meta-bottom {
     width: 100%; position: absolute; bottom: 6vh; left: 0; padding: 0 6vw;
   }
-  .digest { background: var(--cream); color: var(--cream-ink); }
+  /* Digest pages scroll when their copy outgrows the viewport, and the
+     fixed pager pill would sit on top of that text. The bottom border is
+     outside the scrollport, so the pager band is a non-scrolling strip;
+     it is transparent and the page background (clipped to the border
+     box) fills it. Border + padding keep the old 10vh bottom inset. */
+  .digest {
+    background: var(--cream); color: var(--cream-ink);
+    border-bottom: var(--pager-band) solid transparent;
+    padding-bottom: max(0px, calc(10vh - var(--pager-band)));
+  }
+  /* The absolute .page-number (top 5vh, right 4vw) sits inside this row,
+     past the 6vw page gutter. Reserve its width on the right: the counter
+     is always 7 characters ("NN / NN") of the same mono face and size, at
+     0.2em tracking, so 7ch + 1.4em is its width, less the 2vw it hangs
+     into the gutter, plus 1em of air. ch/em resolve in that mono font. */
   .digest .running-head {
     display: flex; justify-content: space-between; align-items: center;
     padding-bottom: 2vh; border-bottom: 1px solid rgba(26, 22, 18, 0.18);
+    font-family: 'IBM Plex Mono', monospace; font-size: max(11px, 0.85vw);
+    padding-right: calc(7ch + 1.4em - 2vw + 1em);
   }
   .digest .running-head .left {
     display: flex; align-items: center; gap: 0.8vw;
@@ -1028,15 +1063,18 @@ const STYLE_BLOCK = `<style>
     overflow-wrap: anywhere;
   }
   .nav-dots {
-    position: fixed; bottom: 3.5vh; left: 50%;
+    position: fixed; bottom: var(--pager-bottom); left: 50%;
     transform: translateX(-50%);
     display: flex; gap: 0.9vw; z-index: 20;
-    padding: 0.9vh 1.4vw;
+    padding: var(--pager-pad-y) 1.4vw;
     background: rgba(20, 20, 20, 0.55);
     backdrop-filter: blur(8px); border-radius: 999px;
   }
+  /* The dots are built by NAV_SCRIPT; until it runs (or if it never
+     does) an empty pill would show as a bare grey bar. */
+  .nav-dots:empty { display: none; }
   .nav-dots button {
-    width: 9px; height: 9px; border-radius: 50%; border: none;
+    width: var(--pager-dot); height: var(--pager-dot); border-radius: 50%; border: none;
     background: rgba(255, 255, 255, 0.3);
     cursor: pointer; padding: 0;
     transition: all 220ms ease;
@@ -1063,6 +1101,7 @@ const STYLE_BLOCK = `<style>
   }
   @media (max-width: 640px) {
     .page { padding: 5vh 6vw 8vh; }
+    .digest { padding-bottom: max(0px, calc(8vh - var(--pager-band))); }
     /* padding-right must clear the absolute .page-number block on the
        right. "09 / 12" in IBM Plex Mono at 11px is ~65-70px wide and
        .page-number sits at right:5vw; on a 360px Android ~19px + 70px
@@ -1460,7 +1499,7 @@ function derivePublicThreadsStub(stories) {
 
 /**
  * @param {BriefEnvelope} envelope
- * @param {{ publicMode?: boolean; refCode?: string; shareUrl?: string }} [options]
+ * @param {import('./brief-render.d.ts').RenderBriefMagazineOptions} [options]
  * @returns {string}
  */
 export function renderBriefMagazine(envelope, options = {}) {
@@ -1646,6 +1685,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     ? '<meta name="robots" content="noindex,nofollow">'
     : '';
 
+  const fonts = briefFonts(options.fontPlatform);
   return (
     '<!DOCTYPE html>' +
     '<html lang="en">' +
@@ -1654,11 +1694,10 @@ export function renderBriefMagazine(envelope, options = {}) {
     '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
     headMeta +
     `<title>${title}</title>` +
-    '<link rel="preconnect" href="https://fonts.googleapis.com">' +
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-    `<link href="${FONTS_HREF}" rel="stylesheet">` +
+    fonts.preloads +
     UMAMI_LOADER +
     STYLE_BLOCK +
+    fonts.style +
     '</head>' +
     '<body>' +
     LOGO_SYMBOL +

@@ -118,7 +118,7 @@ function isTruthyDebugFlag(value: string | null): boolean {
 function isFlagEnabled(queryParam: string, storageKeys: string[]): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    const params = new URL(window.location.href).searchParams;
+    const params = new URLSearchParams(window.location.search);
     if (isTruthyDebugFlag(params.get(queryParam))) return true;
   } catch {
     // Ignore URL parsing failures in unusual embedded runtimes.

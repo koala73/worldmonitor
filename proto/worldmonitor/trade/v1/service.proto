@@ -16,7 +16,7 @@ import "worldmonitor/trade/v1/list_comtrade_flows.proto";
 service TradeService {
   option (sebuf.http.service_config) = {base_path: "/api/trade/v1"};
 
-  // Get quantitative restrictions and export controls.
+  // GetTradeRestrictions returns each WTO reporter's latest MFN applied tariff average from the WTO Timeseries API, highest first, up to 100 economies.
   rpc GetTradeRestrictions(GetTradeRestrictionsRequest) returns (GetTradeRestrictionsResponse) {
     option (sebuf.http.config) = {path: "/get-trade-restrictions", method: HTTP_METHOD_GET};
   }
@@ -33,27 +33,27 @@ service TradeService {
     option (sebuf.http.config) = {path: "/get-bilateral-tariff", method: HTTP_METHOD_GET};
   }
 
-  // Current US duty on one product from one country (USITC HTS).
+  // GetUsImportDuty returns the USITC HTS base rate and Section 301 and 232 duties on one HS code from one country.
   rpc GetUsImportDuty(GetUsImportDutyRequest) returns (GetUsImportDutyResponse) {
     option (sebuf.http.config) = {path: "/get-us-import-duty", method: HTTP_METHOD_GET};
   }
 
-  // Get bilateral merchandise trade flows.
+  // GetTradeFlows returns a reporter's annual merchandise exports and imports with the World from seeded WTO data, up to 30 years, with a reason when uncovered.
   rpc GetTradeFlows(GetTradeFlowsRequest) returns (GetTradeFlowsResponse) {
     option (sebuf.http.config) = {path: "/get-trade-flows", method: HTTP_METHOD_GET};
   }
 
-  // Get SPS/TBT barrier notifications.
+  // GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
   rpc GetTradeBarriers(GetTradeBarriersRequest) returns (GetTradeBarriersResponse) {
     option (sebuf.http.config) = {path: "/get-trade-barriers", method: HTTP_METHOD_GET};
   }
 
-  // Get US customs duties revenue (Treasury MTS data, seeded by Railway).
+  // GetCustomsRevenue returns monthly and fiscal-year-to-date US customs duty receipts in billions from the Monthly Treasury Statement, up to 50 recent months.
   rpc GetCustomsRevenue(GetCustomsRevenueRequest) returns (GetCustomsRevenueResponse) {
     option (sebuf.http.config) = {path: "/get-customs-revenue", method: HTTP_METHOD_GET};
   }
 
-  // List UN Comtrade strategic commodity flows with anomaly detection.
+  // ListComtradeFlows returns UN Comtrade strategic-commodity flows by reporter and HS code, flagging 30% yearly swings.
   rpc ListComtradeFlows(ListComtradeFlowsRequest) returns (ListComtradeFlowsResponse) {
     option (sebuf.http.config) = {path: "/list-comtrade-flows", method: HTTP_METHOD_GET};
   }

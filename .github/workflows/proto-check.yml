@@ -50,7 +50,9 @@ env:
     scripts/shared/geography.js
     scripts/shared/giving-published-estimate-claims.json
     scripts/shared/iso2-to-region.json
+    server/_shared/account-rate-limit.ts
     server/_shared/api-key-rate-limit.ts
+    server/_shared/api-only-paths.ts
     server/_shared/auth-session.ts
     server/_shared/bounded-jmespath.ts
     server/_shared/bounded-json.ts
@@ -58,6 +60,8 @@ env:
     server/_shared/client-ip.ts
     server/_shared/country-history-access.ts
     server/_shared/deprecation-policy.ts
+    server/_shared/desktop-key-meter.ts
+    server/_shared/desktop-key-principal.ts
     server/_shared/direct-llm-quota.ts
     server/_shared/entitlement-check.ts
     server/_shared/entitlement-coverage.ts
@@ -76,6 +80,7 @@ env:
     server/_shared/sub-request-admission.ts
     server/_shared/usage-identity.ts
     server/_shared/usage.ts
+    server/_shared/user-api-key.ts
     server/auth-session.ts
     server/cors.ts
     server/error-mapper.ts
@@ -95,6 +100,7 @@ env:
     shared/decision-signal-provenance-contract.ts
     shared/decision-signal-provenance-families.ts
     shared/decision-signal-provenance.ts
+    shared/desktop-key-access.js
     shared/embed-access.ts
     shared/embed-panels.ts
     shared/event-triggers.json
@@ -520,19 +526,18 @@ jobs:
           echo "pushed=true" >> "$GITHUB_OUTPUT"
           echo "generated-sha=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
 
+  # Runs beside internal-generate, not after it: it reads nothing that job
+  # produces, and waiting put both ~2 min generations on the critical path.
+  # The trust gate is internal-generate's, verbatim. When the writer pushes a
+  # generated commit, this verdict is for a superseded head and the aggregate
+  # ignores it; the pushed commit gets its own run.
   internal-merge-freshness:
-    needs: [changes, internal-generate, internal-auto-generate]
+    needs: changes
     if: >-
-      always() &&
-      needs.changes.result == 'success' &&
-      needs.internal-generate.result == 'success' &&
       needs.changes.outputs.codegen == 'true' &&
       ((github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]' &&
-      needs.internal-auto-generate.result == 'success' &&
-      needs.internal-auto-generate.outputs.pushed != 'true') ||
-      (needs.changes.outputs.owner_trusted_head == 'true' &&
-      needs.internal-auto-generate.result == 'skipped'))
+      github.event.pull_request.user.login != 'dependabot[bot]') ||
+      needs.changes.outputs.owner_trusted_head == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -707,10 +712,8 @@ jobs:
           fi
 
           if [ "$GENERATED_PUSHED" = "true" ]; then
-            if [ "$MERGE_RESULT" != "skipped" ]; then
-              echo "ERROR: Merge freshness ran against a superseded internal head."
-              exit 1
-            fi
+            # Merge freshness ran in parallel against the head the writer just
+            # replaced. A stale verdict is expected there and decides nothing.
             echo "Generated artifacts were committed. A follow-up run will validate the new head."
             exit 0
           fi

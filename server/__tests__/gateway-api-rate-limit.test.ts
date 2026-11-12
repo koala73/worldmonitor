@@ -68,8 +68,10 @@ vi.mock("../_shared/entitlement-check", async (importActual) => {
 });
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId ----------
+// The gateway resolves wm_ keys through the desktop-aware principal (plan
+// 2026-10-25-001 U4); an `api` principal with rank 0 is today's API customer.
 vi.mock("../_shared/user-api-key", () => ({
-  validateUserApiKey: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", name: "t" })),
+  validateUserApiKeyPrincipal: vi.fn(async () => ({ userId: "acct_starter", keyId: "k1", keyKind: "api", keyHash: "h".repeat(64), activeKeyRank: 0 })),
 }));
 
 import { createDomainGateway } from "../gateway";
@@ -338,4 +340,20 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkBurst).not.toHaveBeenCalled();
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
+});
+
+test('cyber network responses stay no-store so provider disablement takes effect immediately', async () => {
+  endpointPolicy = true;
+  const gateway = createDomainGateway([{
+    method: 'GET', path: '/api/cyber/v1/get-network-info',
+    handler: async () => Response.json({ status: 'disabled', ip: '1.1.1.1', asns: [] }),
+  }]);
+  const response = await gateway(new Request('https://www.worldmonitor.app/api/cyber/v1/get-network-info?ip=1.1.1.1', {
+    headers: { 'X-Api-Key': 'wm_test_starter_key' },
+  }), ctx);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(await response.json()).toMatchObject({ status: 'disabled', ip: '1.1.1.1' });
+  const { ENDPOINT_RATE_POLICIES } = await vi.importActual<typeof import('../_shared/rate-limit')>('../_shared/rate-limit');
+  expect(ENDPOINT_RATE_POLICIES['/api/cyber/v1/get-network-info']).toEqual({ limit: 20, window: '60 s' });
 });

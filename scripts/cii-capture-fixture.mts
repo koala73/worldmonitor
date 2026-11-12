@@ -19,6 +19,7 @@ import { CII_FIXTURE_DIR, buildCiiFixture, ciiFiresInput, scoreCiiFixture } from
 import { CROSS_BORDER_SOURCES } from '../server/worldmonitor/displacement/v1/cross-border-data.ts';
 import { unwrapEnvelope } from '../server/_shared/seed-envelope.ts';
 import { CII_FORMULA_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { CII_ADVISORY_LAST_GOOD_KEY } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 
 const { values } = parseArgs({
   options: {
@@ -73,6 +74,9 @@ const [
   'intelligence:military-cii:v1', 'gdelt:bulk:country-events:v1', 'conflict:strike-pressure:v1',
 ].map((key) => get(key)));
 const displacement = displacementCurrent ?? await get(`displacement:summary:v1:${year - 1}`);
+// Production reads it only when the live advisory read cannot be scored; the
+// scorer ignores it otherwise, so it is captured whenever it exists.
+const advisoriesLastGood = await get(CII_ADVISORY_LAST_GOOD_KEY);
 const fires = ciiFiresInput(firesSummary, firesSummary == null ? await get('wildfire:fires:v1') : null);
 const crossBorder = Object.fromEntries(await Promise.all(
   CROSS_BORDER_SOURCES.map(async (source) => [source.id, await get(source.key, true)] as const),
@@ -88,8 +92,8 @@ if (stored && before?.ciiScores?.[0]?.computedAt !== stored.ciiScores![0]!.compu
 const nowMs = stored ? stored.ciiScores![0]!.computedAt : capturedAt;
 const label = `${new Date(nowMs).toISOString().slice(0, 16).replace(':', '')}Z`;
 const fixture = buildCiiFixture({
-  ucdp, outages, climate, fires, gpsjam, iranEvents, oref, advisories, displacement, newsInsights, threatSummary,
-  aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii, gdeltCountryEvents,
+  ucdp, outages, climate, fires, gpsjam, iranEvents, oref, advisories, advisoriesLastGood, displacement, newsInsights,
+  threatSummary, aviation, earthquakes, sanctionsPressure, sanctionsCounts, temporalAnomalies, militaryCii, gdeltCountryEvents,
   strikePressure, crossBorder,
 }, {
   label,

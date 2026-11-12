@@ -1,6 +1,6 @@
 'use strict';
 
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const { Resend } = require('resend');
 const { appendUnsubscribeText, listUnsubscribeHeaders, unsubscribeUrlFor } = require('./lib/email-unsubscribe.cjs');
 const { sendResendEmail } = require('./lib/resend-send.cjs');
@@ -33,7 +33,9 @@ const {
   buildDedupMaterial,
   classifySetNxResult,
   recordDedupOutcome,
+  releaseFailOpenFallback,
 } = require('./shared/notification-dedup.cjs');
+const { COMPARE_AND_DELETE_SCRIPT } = require('./shared/compare-and-delete-script.cjs');
 const {
   parseSuppressionEntries,
   isLinkSuppressed,
@@ -100,9 +102,16 @@ async function fetchEnabledRules(enabled = true) {
 // ── Upstash REST helpers ──────────────────────────────────────────────────────
 
 async function upstashRest(...args) {
+  return upstashRequest(args);
+}
+
+// Queue reads/writes get one bounded attempt. A timed-out pop/push may have
+// committed; replaying it blindly can lose or duplicate a notification.
+async function upstashRequest(args, { signal = AbortSignal.timeout(10_000) } = {}) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+    signal,
   });
   if (!res.ok) {
     console.warn(`[relay] Upstash error ${res.status} for command ${args[0]}`);
@@ -112,9 +121,9 @@ async function upstashRest(...args) {
   return json.result;
 }
 
-async function upstashDedupSetNx(key) {
+async function upstashDedupSetNx(key, value = '1') {
   try {
-    const res = await fetch(`${UPSTASH_URL}/${['SET', key, '1', 'NX', 'EX', String(DEDUP_TTL_SECONDS)].map(encodeURIComponent).join('/')}`, {
+    const res = await fetch(`${UPSTASH_URL}/${['SET', key, value, 'NX', 'EX', String(DEDUP_TTL_SECONDS)].map(encodeURIComponent).join('/')}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
       signal: AbortSignal.timeout(10000),
@@ -279,7 +288,7 @@ function sha256Hex(str) {
   return createHash('sha256').update(str).digest('hex');
 }
 
-async function checkDedup(userId, eventType, title, coalesceKey) {
+function dedupKeyFor(userId, eventType, title, coalesceKey) {
   // Slot B: when the publisher provides a coalesceKey (e.g. NWS VTEC family
   // string), key the per-user dedup on it instead of the title hash. This
   // collapses adjacent-zone NWS alerts (same storm system, different counties)
@@ -288,8 +297,34 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   // See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
   const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
-  const key = `wm:notif:dedup:${userId}:${hash}`;
-  return upstashDedupSetNx(key);
+  return `wm:notif:dedup:${userId}:${hash}`;
+}
+
+// claimToken is the value written under the key. The real-time path passes a
+// per-claim token so it can later release exactly its own claim.
+async function checkDedup(userId, eventType, title, coalesceKey, claimToken = '1') {
+  return upstashDedupSetNx(dedupKeyFor(userId, eventType, title, coalesceKey), claimToken);
+}
+
+// Compare-and-delete: removes the key only while it still holds our token, so a
+// release can never delete a claim another relay worker wrote after ours
+// expired. Sent as a JSON body (like ais-relay's owner check) because the
+// self-host redis-rest proxy pins EVAL to this exact script text. Returns true
+// only when our claim was deleted.
+async function releaseDedupClaim(key, token) {
+  try {
+    const res = await fetch(UPSTASH_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      body: JSON.stringify(['EVAL', COMPARE_AND_DELETE_SCRIPT, '1', key, token]),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return false;
+    const json = await res.json();
+    return Number(json.result) === 1;
+  } catch {
+    return false;
+  }
 }
 
 // ── Channel deactivation ──────────────────────────────────────────────────────
@@ -485,7 +520,14 @@ async function drainHeldForUser(userId, variant, allowedChannelTypes) {
         link: NOTIFY_DASHBOARD_URL,
         linkTitle: 'Open dashboard',
       }));
-      else if (ch.channelType === 'email' && ch.email) ok = await sendEmail(ch.email, subject, text, unsubscribeUrlFor(ch, 'alerts'));
+      else if (ch.channelType === 'email' && ch.email) {
+        // Key the exact email Resend receives: a drain that filters out a
+        // newly blocked link changes `text`, and reusing the key with a
+        // different payload would be rejected as an idempotency conflict.
+        const unsubscribeUrl = unsubscribeUrlFor(ch, 'alerts');
+        const batchKey = createHash('sha256').update(JSON.stringify([userId, variant, ch.email, subject, text, unsubscribeUrl])).digest('hex');
+        ok = await sendEmail(ch.email, subject, text, unsubscribeUrl, `quiet-held-${batchKey}`);
+      }
       else if (ch.channelType === 'webhook' && ch.webhookEnvelope) ok = await sendWebhook(userId, ch.webhookEnvelope, {
         eventType: 'quiet_hours_batch',
         severity: 'info',
@@ -820,13 +862,13 @@ function buildTeamsAlertForEvent(event, impact) {
 
 // ── Delivery: Email ───────────────────────────────────────────────────────────
 
-async function sendEmail(email, subject, text, unsubscribeUrl) {
+async function sendEmail(email, subject, text, unsubscribeUrl, idempotencyKey) {
   const payload = { from: RESEND_FROM, to: email, subject, text };
   if (unsubscribeUrl !== undefined) {
     payload.text = appendUnsubscribeText(text, unsubscribeUrl, 'Unsubscribe from alert emails');
     payload.headers = listUnsubscribeHeaders(unsubscribeUrl);
   }
-  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]' });
+  const result = await sendResendEmail(resend, payload, { logPrefix: '[relay]', idempotencyKey });
   return result.ok;
 }
 
@@ -1618,6 +1660,7 @@ async function shadowLogScore(event) {
   // and bounds growth even if writes stop and the rolling prune stalls.
   try {
     const res = await fetch(`${UPSTASH_URL}/pipeline`, {
+      signal: AbortSignal.timeout(30_000),
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_TOKEN}`,
@@ -1720,10 +1763,97 @@ ${profile}`;
   return impact;
 }
 
+// A rules-read failure used to drop the event on the floor. The read is shared
+// across every tenant (one Convex transaction over every enabled rule), so a
+// transient failure there — a Convex blip, or the read limit tripped by an
+// oversized row before the shape bounds existed — silently lost alerts for
+// everyone. Now the event goes back on the queue (LPUSH = behind everything
+// already queued; the loop RPOPs from the tail) with an attempt counter, and
+// the relay backs off so an outage does not spin. After the last attempt the
+// drop is logged loudly instead of quietly.
+const RULES_FETCH_RETRY_MAX = 5;
+const RULES_FETCH_RETRY_BACKOFF_MS = 2000;
+const RULES_FETCH_RETRY_BACKOFF_MAX_MS = 10000;
+// Same 10 s policy as the relay's Convex calls: a stalled re-queue write is a
+// re-queue failure, not a blocked poll loop.
+const REQUEUE_UPSTASH_TIMEOUT_MS = 10000;
+
+// The same bounded re-queue serves the per-user /relay/channels read (SM-115).
+// Its attempt counter is separate so a rules outage followed by a channels
+// outage does not share one budget.
+const CHANNELS_FETCH_RETRY_MAX = RULES_FETCH_RETRY_MAX;
+
+async function requeueAfterFetchFailure(event, err, { counterField, maxAttempts, failure, dropReason }) {
+  const attempts = (Number.isInteger(event[counterField]) ? event[counterField] : 0) + 1;
+  if (attempts > maxAttempts) {
+    console.error(`[relay] Dropping ${event.eventType} after ${maxAttempts} ${dropReason}:`, err.message);
+    return false;
+  }
+  let requeued = null;
+  try {
+    requeued = await upstashRequest(
+      ['LPUSH', EVENT_QUEUE_KEY, JSON.stringify({ ...event, [counterField]: attempts })],
+      {
+        signal: AbortSignal.timeout(REQUEUE_UPSTASH_TIMEOUT_MS) },
+    );
+  } catch (requeueErr) {
+    console.error(`[relay] ${failure} and the re-queue of ${event.eventType} failed (${requeueErr.message}) — dropped:`, err.message);
+    return false;
+  }
+  if (requeued === null) {
+    console.error(`[relay] ${failure} and could not re-queue ${event.eventType} — dropped:`, err.message);
+    return false;
+  }
+  console.warn(`[relay] ${failure} (attempt ${attempts}/${maxAttempts}); re-queued ${event.eventType}:`, err.message);
+  await new Promise(r => setTimeout(r, Math.min(RULES_FETCH_RETRY_BACKOFF_MS * attempts, RULES_FETCH_RETRY_BACKOFF_MAX_MS)));
+  return true;
+}
+
+async function requeueAfterRulesFailure(event, err) {
+  return requeueAfterFetchFailure(event, err, {
+    counterField: 'rulesFetchAttempts',
+    maxAttempts: RULES_FETCH_RETRY_MAX,
+    failure: 'Failed to fetch alert rules',
+    dropReason: 'alert-rules fetch failures',
+  });
+}
+
+// A failed /relay/channels read happens after the per-user dedup claim but
+// before any send, so nothing reached the user. The caller has already
+// released the claims it held for those users; the re-queued event then
+// delivers to them on the next pass, and every user who was already handled
+// on this pass hits their own claim and is skipped.
+async function requeueAfterChannelsFailure(event, err, userCount) {
+  return requeueAfterFetchFailure(event, err, {
+    counterField: 'channelsFetchAttempts',
+    maxAttempts: CHANNELS_FETCH_RETRY_MAX,
+    failure: `Failed to fetch channels for ${userCount} user(s)`,
+    dropReason: 'channel fetch failures',
+  });
+}
+
+// Undo a real-time dedup claim when nothing was sent for it. Only the claim
+// this pass wrote is released: the Redis key through compare-and-delete on our
+// token, or the in-process fallback entry when SET NX errored and the relay
+// failed open. A SET NX "error" can be a lost response to a write Redis
+// committed, so the fail-open path also compare-and-deletes the Redis key; the
+// token check leaves any other worker's claim alone. Any other outcome (a
+// duplicate, a fail-closed skip) holds no claim of ours.
+async function releaseRealtimeClaim(dedupDecision, claim) {
+  if (dedupDecision.dedupResult === 'new') return releaseDedupClaim(claim.key, claim.token);
+  if (dedupDecision.action === 'fail_open') {
+    await releaseDedupClaim(claim.key, claim.token);
+    return releaseFailOpenFallback(claim.fallbackKey);
+  }
+  return false;
+}
+
 async function processEvent(event) {
   if (event.eventType === 'channel_welcome') { await processWelcome(event); return; }
   if (event.eventType === 'flush_quiet_held') { await processFlushQuietHeld(event); return; }
-  console.log(`[relay] Processing event: ${event.eventType} (${event.severity ?? 'high'})`);
+  const eventLog = JSON.stringify({ eventType: event.eventType, severity: event.severity ?? 'high' })
+    .replace(/[\u007f-\u009f\u061c\u200e\u200f\u2028-\u202e\u2066-\u2069]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  console.log('[relay] Processing event:', eventLog);
 
   // Shadow log importanceScore for comparison. Gate at caller: only rss_alert
   // events carry importanceScore; for everything else shadowLogScore would
@@ -1747,7 +1877,7 @@ async function processEvent(event) {
   try {
     enabledRules = await fetchEnabledRules(true);
   } catch (err) {
-    console.error('[relay] Failed to fetch alert rules:', err.message);
+    await requeueAfterRulesFailure(event, err);
     return;
   }
 
@@ -1810,6 +1940,8 @@ async function processEvent(event) {
   const text = formatMessage(event);
   const subject = formatSubject(event);
   const eventSeverity = event.severity ?? 'high';
+  let channelsFailedUsers = 0;
+  let channelsFetchError = null;
 
   for (const rule of matching) {
     if (!proSet.has(rule.userId)) continue;
@@ -1845,12 +1977,17 @@ async function processEvent(event) {
       continue;
     }
 
-    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+    const claim = {
+      key: dedupKeyFor(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey),
+      token: randomUUID(),
+      fallbackKey: `realtime:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+    };
+    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey, claim.token);
     const dedupDecision = recordDedupOutcome(dedupResult, {
       surface: 'notification-relay',
       eventType: event.eventType,
       severity: eventSeverity,
-      fallbackKey: `realtime:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+      fallbackKey: claim.fallbackKey,
       fallbackTtlSeconds: DEDUP_TTL_SECONDS,
       emitTelemetry: ({ line }) => console.warn(line),
     });
@@ -1874,8 +2011,17 @@ async function processEvent(event) {
       if (!chRes.ok) throw new Error(`HTTP ${chRes.status}`);
       channels = (await chRes.json()) ?? [];
     } catch (err) {
+      // Pre-send failure: no channel was attempted. Release the claim so a
+      // retry is not suppressed for the whole dedup window (SM-115). Send
+      // failures below keep their claim (at-most-once).
       console.warn(`[relay] Failed to fetch channels for ${rule.userId}:`, err.message);
-      channels = [];
+      if (await releaseRealtimeClaim(dedupDecision, claim)) {
+        channelsFailedUsers += 1;
+        channelsFetchError = err;
+      } else {
+        console.warn(`[relay] Could not release the dedup claim for ${rule.userId}; this event stays suppressed for them until it expires`);
+      }
+      continue;
     }
 
     const verifiedChannels = channels.filter(c =>
@@ -1931,6 +2077,8 @@ async function processEvent(event) {
       }
     }
   }
+
+  if (channelsFailedUsers > 0) await requeueAfterChannelsFailure(event, channelsFetchError, channelsFailedUsers);
 }
 
 async function popNextEvent(pollNumber) {
@@ -2060,4 +2208,10 @@ module.exports = {
   popNextEvent,
   holdEvent,
   QUIET_HELD_MAX,
+  // Exported so the re-queue suite drives the real retry path.
+  requeueAfterRulesFailure,
+  requeueAfterChannelsFailure,
+  CHANNELS_FETCH_RETRY_MAX,
+  RULES_FETCH_RETRY_MAX,
+  EVENT_QUEUE_KEY,
 };

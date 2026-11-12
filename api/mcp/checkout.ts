@@ -15,6 +15,7 @@ import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { rpcError } from './rpc';
+import type { McpPlanFeature } from './types';
 
 export const START_UPGRADE_TOOL = 'start_upgrade';
 
@@ -59,6 +60,24 @@ const NEXT_PLAN_BY_TIER_GROUP: Record<string, string> = {
 export function recommendedPlanFor(planKey: string | undefined): string | undefined {
   const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
   const next = tierGroup === undefined ? undefined : NEXT_PLAN_BY_TIER_GROUP[tierGroup];
+  return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
+}
+
+// The cheapest self-serve plan in the caller's line that carries the feature.
+// Pro is the one step up for a free account in general, but Pro lacks these
+// features, so a free account is pointed at Pro Business instead.
+const FEATURE_PLAN_BY_TIER_GROUP: Record<McpPlanFeature, Record<string, string>> = {
+  travelRiskAssessment: {
+    free: 'pro_business_monthly',
+    pro: 'pro_business_monthly',
+    api_starter: 'api_business',
+  },
+};
+
+/** The plan to offer a caller whose plan lacks `feature`, as `recommendedPlanFor` does for a tier. */
+export function recommendedPlanForFeature(planKey: string | undefined, feature: McpPlanFeature): string | undefined {
+  const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
+  const next = tierGroup === undefined ? undefined : FEATURE_PLAN_BY_TIER_GROUP[feature][tierGroup];
   return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
 }
 
@@ -177,8 +196,8 @@ function alreadySubscribedNextStep(subscription: McpCheckoutSubscription | null,
   const target = plan.startsWith('pro_business') ? 'pro_business' : plan.startsWith('api_business') ? 'api_business' : null;
   const existing = subscription?.planKey ?? '';
   if (target === 'pro_business' && (existing === 'pro_monthly' || existing === 'pro_annual')) {
-    return 'Pro and Pro Business are separate products, not a plan change. Ask the user to cancel Pro in the billing portal '
-      + `(${BILLING_PORTAL_HINT}); Pro access runs to the end of the paid term. Then call start_upgrade again.`;
+    return 'Pro moves to Pro Business as a prorated upgrade on the same subscription, not through a new checkout. '
+      + 'Ask the user to open worldmonitor.app/pro and choose Pro Business while signed in; they confirm the prorated charge there.';
   }
   if (target === 'api_business' && existing.startsWith('api_starter')) {
     return `API Starter moves to API Business as a prorated plan change in the billing portal (${BILLING_PORTAL_HINT}), not through a new checkout.`;

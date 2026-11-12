@@ -1070,8 +1070,9 @@ function computeStats({ sourceAttribution: suppliedAttribution } = {}) {
   const freshnessSources = (metaBlock.match(/^\s+\w+:\s*\{\s*name:/gm) || []).length;
   const freshnessRequiredForRisk = (metaBlock.match(/requiredForRisk:\s*true/g) || []).length;
 
-  // ---- Feed definitions (src/config/feeds.ts) — floor metric ----
-  const feedDefinitions = (read('src/config/feeds.ts').match(/name:\s*'/g) || []).length;
+  // ---- Feed definitions (shared/news-catalog.json) ----
+  // One record per feed; a feed placed in several categories counts once.
+  const feedDefinitions = JSON.parse(read('shared/news-catalog.json')).feeds.length;
 
   // ---- Source attribution inventory (scripts/server/api/src URL contracts) ----
   // Keep this separate from the feed-label count: one provider can expose
@@ -1365,7 +1366,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
     { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
-    { path: 'docs/overview.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/platform-evaluation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
     { path: 'public/llms.txt', text: /live in 190\+ countries/ },
     { path: 'public/llms.txt', text: /structural resilience ranked for/ },
@@ -1398,9 +1399,9 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`high-event`.*\+5 sources/ },
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`sanctions-regulatory`.*\+5 sources/ },
     { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`med`.*\+5 sources/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
-    { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
+    { path: 'docs/mcp-tools/military-escalation.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
+    { path: 'docs/mcp-tools/military-escalation.mdx', text: /across seven domains/ },
+    { path: 'docs/mcp-tools/movement-infrastructure.mdx', text: /between two airports/ },
     { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
     { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
     { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },

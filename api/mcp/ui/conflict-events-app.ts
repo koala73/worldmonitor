@@ -44,6 +44,7 @@ const STYLES = `
   .conflict-control { color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 12px; max-width: 100%; overflow-wrap: anywhere; }
   .conflict-control:focus-visible { outline: 2px solid var(--accent); }
   .conflict-control:disabled { opacity: 0.5; cursor: default; }
+  .conflict-note { margin: 10px 0 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; line-height: 1.5; color: var(--fg); }
 `;
 
 const BODY = `
@@ -66,6 +67,7 @@ const BODY = `
       <div id="conflict-selection" role="status" aria-live="polite"></div>
       <div id="conflict-chooser" aria-label="Events at the selected location"></div>
     </div>
+    <div class="conflict-note" id="conflict-note" role="status" hidden></div>
     <div id="list"></div>
     <div class="foot" id="foot"></div>
   </div>
@@ -125,7 +127,7 @@ const RENDER = `
       item.row.setAttribute("aria-pressed", "true");
       item.location.marker.setAttribute("aria-pressed", "true");
       focusLocation(item.location);
-      selection.textContent = item.label + " · Coordinates: " + item.location.latitude + ", " + item.location.longitude;
+      selection.textContent = item.label;
       reportSize();
     }
     function activate(node, action) {
@@ -152,9 +154,10 @@ const RENDER = `
       var ct = collapseWs(ev.country);
       if (ct) metaParts.push(ct);
       if (vt && a && b) metaParts.push(vt);
+      // A zero or negative epoch is a missing date, not 1 Jan 1970.
       var dv = ev.dateStart;
-      var dt = dv != null ? new Date(typeof dv === "number" ? dv : String(dv)) : null;
-      if (dt && !isNaN(dt.getTime())) metaParts.push(dt.toISOString().slice(0, 10));
+      var dayText = typeof dv === "number" && dv <= 0 ? "" : utcTime(dv);
+      if (dayText) metaParts.push(dayText.slice(0, dayText.indexOf(",")));
       main.appendChild(el("div", "evt-meta", metaParts.join(" · ")));
       if (typeof ev.sourceOriginal === "string" && collapseWs(ev.sourceOriginal)) {
         main.appendChild(el("div", "evt-meta", "Source: " + collapseWs(ev.sourceOriginal)));
@@ -198,7 +201,8 @@ const RENDER = `
       marker.setAttribute("class", "conflict-marker");
       marker.setAttribute("transform", "translate(" + location.x + " " + location.y + ")");
       marker.setAttribute("aria-label", location.events.length === 1
-        ? "Select " + location.events[0].label : "Choose " + location.events.length + " events at " + location.latitude + ", " + location.longitude);
+        ? "Select " + location.events[0].label
+        : "Choose one of " + location.events.length + " events here, including " + location.events[0].label);
       var hit = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       hit.setAttribute("r", "24"); hit.setAttribute("fill", "transparent");
       hit.setAttribute("transform", marker.getAttribute("transform")); hitTargets.appendChild(hit);
@@ -212,7 +216,7 @@ const RENDER = `
         if (!host.contains(location.events[0].row)) return;
         if (location.events.length === 1) { selectEvent(location.events[0]); return; }
         clearSelection(); focusLocation(location);
-        selection.textContent = "Choose one of " + location.events.length + " events at " + location.latitude + ", " + location.longitude + ".";
+        selection.textContent = location.events.length + " events at this location. Choose one:";
         location.events.forEach(function(item) {
           var button = el("button", "conflict-control", item.label);
           button.type = "button"; button.onclick = function() { selectEvent(item, true); }; chooser.appendChild(button);
@@ -226,20 +230,22 @@ const RENDER = `
     q("conflict-geography").hidden = shown === 0;
     map.style.display = selectable.length ? "block" : "none";
     q("conflict-world").disabled = selectable.length === 0;
-    q("conflict-locations").textContent = selectable.length
-      ? "Locations for " + selectable.length + " of " + shown + " displayed events."
-      : "Locations unavailable for the displayed events.";
+    q("conflict-locations").textContent = !selectable.length ? "None of these events has a map location."
+      : selectable.length === shown ? (shown === 1 ? "The event is on the map." : "All " + shown + " events are on the map.")
+      : selectable.length + " of " + shown + " events have map locations.";
     if (!host.childNodes.length) {
       host.appendChild(el("div", "empty", eventState.available
-        ? (isSummary && total !== 0 ? "Summary contains no supplied event samples." : "No conflict events available.")
+        ? (isSummary && total !== 0 ? "This response left out the event list, so there is nothing to show." : "No conflict events available.")
         : "Conflict event data is temporarily unavailable."));
     }
 
+    // The footer carries the count (only when the list is cut short) and the
+    // update time; source problems go in the note above the list.
     var footParts = [];
+    var notes = [];
     if (eventState.available) {
-      footParts.push(isSummary
-        ? "Summary sample: " + shown + (total == null ? " UCDP events; total unknown." : " of " + total + " UCDP events.")
-        : "Showing " + shown + " of " + total + " loaded UCDP events.");
+      if (isSummary && total == null) footParts.push("Showing " + shown + (shown === 1 ? " event" : " events") + "; total unknown.");
+      else if (total != null && shown < total) footParts.push("Showing " + shown + " of " + total.toLocaleString("en-US") + (isSummary ? " events." : " returned events."));
     }
     if (uc) {
       var source = envelope && envelope.conflict_source && envelope.conflict_source.ucdp || {};
@@ -248,32 +254,38 @@ const RENDER = `
       });
       var incomplete = source.candidateComplete === false || uc.candidateComplete === false || fetchedPartial;
       var confirmed = source.candidateComplete === true || uc.candidateComplete === true;
-      footParts.push(incomplete ? "Candidate completeness not confirmed."
-        : confirmed ? "Candidate completeness confirmed." : "Candidate completeness unknown.");
-      if (fetchedPartial) footParts.push("Candidate release fetched partially.");
+      // "Candidate" events are UCDP's preliminary monthly release.
+      // The loaded release may not be the newest one, so it is not called "latest".
+      if (fetchedPartial) notes.push("Recent events may be incomplete: a monthly UCDP release was only partly loaded.");
+      else if (incomplete) notes.push("Recent events may be incomplete: the monthly UCDP release is not confirmed complete.");
+      else if (!confirmed) notes.push("Whether recent events are complete is unknown.");
       var sourceFailures = source.annualFailedPages;
       var payloadFailures = uc.annualFailedPages;
       var sourceFailuresKnown = Number.isSafeInteger(sourceFailures) && sourceFailures >= 0;
       var payloadFailuresKnown = Number.isSafeInteger(payloadFailures) && payloadFailures >= 0;
       if (sourceFailuresKnown && payloadFailuresKnown && sourceFailures !== payloadFailures) {
-        footParts.push("Annual base failed-page counts disagree: source metadata " + sourceFailures
-          + "; events payload " + payloadFailures + ".");
+        notes.push("Some older events may be missing; two load reports disagree (" + sourceFailures + " and "
+          + payloadFailures + " failed pages).");
       } else {
         var failedPages = sourceFailuresKnown ? sourceFailures : payloadFailuresKnown ? payloadFailures : null;
-        footParts.push(failedPages != null
-          ? "Annual base pages failed: " + failedPages + "." : "Annual base failed-page count unknown.");
+        if (failedPages == null) notes.push("Whether older events loaded fully is unknown.");
+        else if (failedPages > 0) notes.push(failedPages + (failedPages === 1 ? " page" : " pages") + " of older UCDP events failed to load, so some may be missing.");
       }
     }
     if (d.partial === true && d.truncation && typeof d.truncation === "object") {
       var returnedCount = num(d.truncation.returned_event_count);
       var originalCount = num(d.truncation.original_event_count);
       if (returnedCount != null && originalCount != null) {
-        footParts.push("Source response includes " + returnedCount.toLocaleString() + " of "
-          + originalCount.toLocaleString() + " events (output limit).");
+        notes.push("This response includes " + returnedCount.toLocaleString("en-US") + " of "
+          + originalCount.toLocaleString("en-US") + " events because of its size limit.");
       }
     }
+    var noteEl = q("conflict-note");
+    noteEl.textContent = notes.join(" ");
+    noteEl.hidden = !notes.length;
     if (envelope && envelope.cached_at) {
-      footParts.push("Snapshot: " + collapseWs(envelope.cached_at) + (envelope.stale ? " (stale)" : ""));
+      var updated = utcTime(envelope.cached_at) || collapseWs(envelope.cached_at);
+      footParts.push("Updated " + updated + (envelope.stale ? " (out of date)." : "."));
     }
     q("foot").textContent = footParts.join(" ");
 `;

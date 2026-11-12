@@ -244,6 +244,31 @@ describe('gtfsrtAdapter(feedUrl)', () => {
     );
   });
 
+  // AbortSignal.timeout rejects as TimeoutError, not AbortError, so the
+  // deadline was reported as FETCH_FAILED (#10189 follow-up).
+  it('reports its own deadline as TIMEOUT', async () => {
+    await assert.rejects(
+      () => gtfsrtAdapter('https://gtfsrt.ttc.ca/slow', {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        timeoutMs: 5,
+        fetch: (_url, init) => new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        }),
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'TIMEOUT',
+    );
+  });
+
+  it('still reports an AbortError-shaped deadline as TIMEOUT', async () => {
+    await assert.rejects(
+      () => gtfsrtAdapter('https://gtfsrt.ttc.ca/slow', {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        fetch: async () => { throw new DOMException('Fetch is aborted', 'AbortError'); },
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'TIMEOUT',
+    );
+  });
+
   it('rejects HTTP 404 without inventing a feed', async () => {
     await assert.rejects(
       () => gtfsrtAdapter('https://gtfsrt.ttc.ca/missing', {

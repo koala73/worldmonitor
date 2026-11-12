@@ -35,6 +35,11 @@ export interface RenderBriefMagazineOptions {
    * NOT pass this; the public mirror has no recipient identity.
    */
   followedCountries?: readonly string[];
+  /**
+   * Which self-hosted font file set to link, from briefFontPlatform(user-agent) in
+   * brief-font-platform.js. Unknown or missing values use the 'plain' set.
+   */
+  fontPlatform?: string;
 }
 
 export function renderBriefMagazine(

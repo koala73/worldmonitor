@@ -38,7 +38,7 @@ const EXPECTED: Record<string, { category: string; query: string }> = {
 };
 const NAMES = Object.keys(EXPECTED);
 // Appended after this pack by the 2026-10-17 audit (tests/deeper-feed-pool.test.mts).
-const LATER = ['BBC UK', 'BBC Northern Ireland'];
+const LATER = ['BBC UK', 'BBC Northern Ireland', 'Deutschlandfunk', 'ZDFheute'];
 
 let feeds: FeedsModule;
 before(async () => { feeds = await bundleFeedsModule<FeedsModule>({ repoRoot, tempDir }); });

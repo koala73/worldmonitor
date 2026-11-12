@@ -7,9 +7,9 @@ The **Tech Readiness Index** panel (internal id `tech-readiness`) ranks countrie
 
 ## What the panel shows
 
-A ranked list of countries with flag, ISO-3 code, and score. Flag emojis come from a built-in map of ~60 ISO-3 codes in `src/components/TechReadinessPanel.ts:6`; countries outside that list still appear in the ranking but without a flag.
+A list of up to 25 countries with a flag or globe icon, rank, score, and the number of available indicators out of four. Countries with fewer than three available indicators have no score or rank. They follow the ranked countries, and their observations remain available in the data.
 
-The panel holds the full `TechReadinessScore[]` in memory and re-renders on refresh. A count badge in the panel header shows how many countries are in the ranking (`showCount: true`).
+The count badge shows how many countries qualify for a rank. The panel also shows the total number of unranked countries.
 
 Panel id is `tech-readiness`; canonical component is `src/components/TechReadinessPanel.ts`. Title resolves from i18n (`panels.techReadiness`).
 
@@ -22,6 +22,7 @@ Panel id is `tech-readiness`; canonical component is `src/components/TechReadine
 
 - `getTechReadinessRankings()` in `@/services/economic` — reads bootstrap-hydrated `techReadiness` data when available, then falls back to `GET /api/bootstrap?keys=techReadiness`.
 - The data is precomputed by the World Bank indicator seed pipeline; the frontend does not call the World Bank API directly.
+- The score is the weighted mean of the available normalized indicators. The weights are 35% for research and development spending, 30% for internet use, 20% for broadband subscriptions, and 15% for mobile subscriptions. An observed zero counts toward coverage.
 
 ## Refresh cadence
 

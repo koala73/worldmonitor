@@ -70,9 +70,18 @@ async function seedFixture(entries, plan, now, redisOrigin) {
     }
     if (name === 'DEL') return Number(store.delete(key));
     if (name === 'EXPIRE') return store.has(key) ? 1 : 0;
-    if (name === 'EVAL') return 1;
+    // runSeed's lock renewal (SM-122) finds the lock held; other EVALs are
+    // the compare-and-delete release.
+    if (name === 'EVAL') return String(command[1]).includes('PEXPIRE') ? [1, ''] : 1;
     throw new Error(`unexpected Redis command ${name}`);
   };
+  // runSeed writes canonical and seed-meta through a lock-fenced EVAL (two
+  // keys: lock, target). With the lock held it is exactly this SET.
+  const unfence = (command) => (
+    command[0] === 'EVAL' && command[2] === 2 && String(command[1]).includes('PEXPIRE')
+      ? (command[8] === '' ? ['SET', command[4], command[7]] : ['SET', command[4], command[7], 'EX', command[8]])
+      : command
+  );
 
   const radar = (spec, body) => {
     if (spec === 'ok') return Response.json(body);
@@ -155,8 +164,10 @@ async function seedFixture(entries, plan, now, redisOrigin) {
           rejects(command) ? { error: 'READONLY injected failure' } : { result: apply(command) }
         )));
       }
-      if (rejects(body)) return Response.json({ error: 'READONLY injected failure' });
-      return Response.json({ result: apply(body) });
+      const command = unfence(body);
+      if (rejects(command)) return Response.json({ error: 'READONLY injected failure' });
+      const result = apply(command);
+      return Response.json({ result: command === body ? result : [1, ''] });
     }
 
     if (url.hostname !== 'api.cloudflare.com') throw new Error(`unexpected host ${url.hostname}`);

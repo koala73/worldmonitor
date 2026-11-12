@@ -5,12 +5,24 @@ retailer:
   currencyCode: KES
   adapter: search
   baseUrl: https://www.naivas.online
-  enabled: false
+  enabled: true
 
   searchConfig:
-    numResults: 5
-    urlPathContains: /product/
+    # Naivas serves product pages from root slugs
+    # (`naivas.online/brookside-fresh-milk-500ml-std`), so no path filter. The
+    # old `/product/` filter rejected all 12 essentials-ke URLs Exa returned
+    # (2026-10-29). Neural search ranked unrelated products first; keyword
+    # search returned the right product for 12/12 items, and Firecrawl priced
+    # 10 of the 12 top URLs with on-page evidence. Search wide, extract from
+    # at most 4.
+    numResults: 10
+    searchType: keyword
+    maxExtractionCandidates: 4
     queryTemplate: "{canonicalName} grocery Kenya {currency} price"
+    allowedHosts:
+      - www.naivas.online
+    requireStrictValidator: true
+    requirePageTitleMatch: true
 
   rateLimit:
     requestsPerMinute: 10

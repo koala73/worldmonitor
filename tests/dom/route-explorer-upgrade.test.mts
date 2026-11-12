@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DODO_PRODUCTS } from '@/config/products';
-
 const {
   hasPremiumAccess,
   startCheckout,
+  openUpgradePlans,
   getAuthState,
   track,
   trackGateHit,
 } = vi.hoisted(() => ({
   hasPremiumAccess: vi.fn(() => false),
   startCheckout: vi.fn(async () => true),
+  openUpgradePlans: vi.fn(async () => {}),
   getAuthState: vi.fn(() => ({ user: null, isPending: false })),
   track: vi.fn(),
   trackGateHit: vi.fn(),
@@ -25,6 +25,7 @@ vi.mock('@/services/auth-state', () => ({ getAuthState }));
 vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess }));
 vi.mock('@/services/analytics', () => ({ track, trackGateHit }));
 vi.mock('@/services/checkout', () => ({ startCheckout }));
+vi.mock('@/services/upgrade-flow', () => ({ openUpgradePlans }));
 
 import { RouteExplorer } from '@/components/RouteExplorer/RouteExplorer';
 
@@ -39,6 +40,7 @@ describe('Route Explorer free upgrade', () => {
     hasPremiumAccess.mockReturnValue(false);
     startCheckout.mockReset();
     startCheckout.mockResolvedValue(true);
+    openUpgradePlans.mockClear();
     track.mockReset();
     trackGateHit.mockReset();
     explorer = new RouteExplorer();
@@ -50,7 +52,7 @@ describe('Route Explorer free upgrade', () => {
     vi.useRealTimers();
   });
 
-  it('passes the Pro Monthly Dodo product id to checkout', async () => {
+  it('opens the plan picker instead of a Pro Monthly checkout', async () => {
     explorer.open();
     await vi.advanceTimersByTimeAsync(250);
 
@@ -59,8 +61,9 @@ describe('Route Explorer free upgrade', () => {
     button?.click();
 
     await vi.waitFor(() => {
-      expect(startCheckout).toHaveBeenCalledTimes(1);
+      expect(openUpgradePlans).toHaveBeenCalledTimes(1);
     });
-    expect(startCheckout).toHaveBeenCalledWith(DODO_PRODUCTS.PRO_MONTHLY);
+    expect(startCheckout).not.toHaveBeenCalled();
+    expect(document.querySelector('.re-content .checkout-consent')).toBeNull();
   });
 });

@@ -50,12 +50,13 @@ describe('physical premium production registration', () => {
       ['BIS', 'China'],
     );
 
-    assert.equal(macro?.cronSchedule, '0 8,9 * * *');
+    assert.equal(macro?.cronSchedule, '0 8,9,10 * * *');
     assert.equal(EDUCATION_PRIORITY_UTC_DAY, 0);
     assert.equal(EDUCATION_PRIORITY_UTC_HOUR, 8);
     assert.deepEqual(orderAt('2026-09-06T08:00:00Z'), ['Education', 'Physical', 'BIS', 'China']);
     assert.deepEqual(orderAt('2026-09-06T09:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
     assert.deepEqual(orderAt('2026-09-07T08:00:00Z'), ['Physical', 'BIS', 'China', 'Education']);
+    assert.deepEqual(orderMacroSections(new Date('2026-09-06T10:00:00Z'), 'Education', 'Physical', ['BIS', 'China'], 1), ['China', 'Physical', 'BIS', 'Education']);
   });
 
   it('aligns paper freshness with the daily publisher and health alarm', () => {
@@ -70,7 +71,7 @@ describe('physical premium production registration', () => {
     );
     assert.match(
       runbook,
-      /seed-bundle-macro[\s\S]*?`0 8,9 \* \* \*` \(daily 08:00 and 09:00 UTC\)/,
+      /seed-bundle-macro[\s\S]*?`0 8,9,10 \* \* \*` \(daily 08:00, 09:00 and 10:00 UTC\)/,
       'the documented Railway invocation cadence must include one bounded retry',
     );
     assert.equal(PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS, 36 * 60 * 60 * 1000);

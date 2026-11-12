@@ -13,7 +13,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetResilienceScore
-            description: PRO-gated. Requires an active Pro subscription.
+            description: GetResilienceScore returns a country's resilience score with domain and pillar scores, trend and confidence. PRO-gated. Requires an active Pro subscription.
             operationId: GetResilienceScore
             security:
                 - WorldMonitorKey: []
@@ -278,7 +278,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
+            description: GetFoodStocks returns USDA PSD grain and oilseed stocks-to-use by country or WORLD; FAOSTAT fills supply gaps without stock ratios (see hasStocksToUse). PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []
@@ -1411,7 +1411,7 @@ components:
                     type: number
                     format: double
                     description: |-
-                        Ending stocks divided by total use (0.18 = 18%). Read has_stocks_to_use
+                        Ending stocks divided by total use (0.18 = 18%). Read hasStocksToUse
                          BEFORE this value: proto3 has no presence for a bare double, so an unknown
                          ratio and a genuine 0% are the same wire value. USDA/PSD estimates ending
                          stocks only for selected countries, so a minor producer routinely reports

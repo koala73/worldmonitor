@@ -1,0 +1,24 @@
+[
+  {
+    "fecha": "2026-10-29T00:00:00.000-0300",
+    "demHoy": 15407,
+    "demAyer": 15558,
+    "demSemanaAnt": 15966,
+    "demPrevista": 16319,
+    "tempHoy": 16.6,
+    "tempAyer": 15,
+    "tempSemanaAnt": 18.5
+  },
+  {
+    "fecha": "2026-10-29T00:05:00.000-0300",
+    "demHoy": 15240,
+    "demAyer": 15514,
+    "demSemanaAnt": 15892
+  },
+  {
+    "fecha": "2026-10-29T00:10:00.000-0300",
+    "demHoy": 14991,
+    "demAyer": 15356,
+    "demSemanaAnt": 15670
+  }
+]

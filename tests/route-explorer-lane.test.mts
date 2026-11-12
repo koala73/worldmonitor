@@ -11,11 +11,16 @@
  * empty-state work.
  */
 
+import { readFileSync } from 'node:fs';
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeLane } from '../server/worldmonitor/supply-chain/v1/get-route-explorer-lane.ts';
 import type { GetRouteExplorerLaneRequest } from '../src/generated/server/worldmonitor/supply_chain/v1/service_server.ts';
+import { countryBox, inBox } from '../shared/country-bbox.ts';
+import { STRATEGIC_WATERWAYS } from '../shared/geo-data.ts';
+import { TRADE_ROUTES } from '../src/config/trade-routes.ts';
+import { CHOKEPOINT_REGISTRY } from '../server/_shared/chokepoint-registry.ts';
 
 const PAIRS: Array<[string, string, string]> = [
   ['CN', 'DE', 'high-volume baseline'],
@@ -316,6 +321,170 @@ describe('get-route-explorer-lane smoke matrix (30 queries)', () => {
         routeChokepointIds.has(exp.chokepointId),
         `chokepoint ${exp.chokepointId} is not on the primary route ${res.primaryRouteId}`,
       );
+    }
+  });
+});
+
+describe('US-Northeast Asia lanes (#7990)', () => {
+  for (const toIso2 of ['JP', 'KR']) {
+    it(`US -> ${toIso2} container and bulk use the West Coast lane with no chokepoint`, async () => {
+      for (const cargoType of ['container', 'bulk']) {
+        const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '85', cargoType }, new Map());
+        assert.equal(res.noModeledLane, false);
+        assert.equal(res.primaryRouteId, 'us-west-northeast-asia');
+        assert.deepEqual(res.chokepointExposures, []);
+        assert.deepEqual(res.bypassOptions, []);
+        assert.deepEqual(res.estTransitDaysRange, { min: 10, max: 14 });
+      }
+    });
+
+    it(`US -> ${toIso2} tanker uses the Gulf lane through Panama with its bypass`, async () => {
+      const res = await computeLane({ fromIso2: 'US', toIso2, hs2: '27', cargoType: 'tanker' }, new Map());
+      assert.equal(res.noModeledLane, false);
+      assert.equal(res.primaryRouteId, 'us-gulf-asia-panama');
+      assert.deepEqual(res.chokepointExposures.map((e) => e.chokepointId), ['panama']);
+      assert.deepEqual(res.bypassOptions.map((b) => b.id), ['panama_cape_horn']);
+      assert.deepEqual(res.estTransitDaysRange, { min: 24, max: 32 });
+    });
+  }
+});
+
+describe('route waypoints and chokepoint registries agree', () => {
+  // Exposure arithmetic reads registry routeIds, while supplier route risk and
+  // lane geometry read route waypoints. A route that crosses a chokepoint in
+  // one source and not the other draws a lane through the canal with no
+  // chokepoint on it (US→JP tanker via us-gulf-asia-panama, #7990).
+  it('lists every waypoint route in that chokepoint registry entry, and back', async () => {
+    const { TRADE_ROUTES } = await import('../src/config/trade-routes.ts');
+    const { CHOKEPOINT_REGISTRY } = await import('../server/_shared/chokepoint-registry.ts');
+    const byWaypoint = new Map<string, { id: string; routeIds: string[] }>();
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      byWaypoint.set(cp.id, cp);
+      byWaypoint.set(cp.geoId, cp);
+    }
+    const mismatches: string[] = [];
+    for (const route of TRADE_ROUTES) {
+      for (const waypoint of route.waypoints) {
+        const cp = byWaypoint.get(waypoint);
+        if (cp && !cp.routeIds.includes(route.id)) mismatches.push(`${route.id} crosses ${cp.id} but is not in its routeIds`);
+      }
+    }
+    for (const cp of CHOKEPOINT_REGISTRY) {
+      for (const routeId of cp.routeIds) {
+        const route = TRADE_ROUTES.find((r) => r.id === routeId);
+        if (!route) mismatches.push(`${cp.id} lists unknown route ${routeId}`);
+        else if (!route.waypoints.includes(cp.id) && !route.waypoints.includes(cp.geoId)) {
+          mismatches.push(`${cp.id} lists ${routeId}, whose waypoints do not include it`);
+        }
+      }
+    }
+    assert.deepEqual(mismatches, []);
+  });
+
+  it('keeps the browser and seeder registry routeIds equal to the server registry', async () => {
+    const { CHOKEPOINT_REGISTRY: server } = await import('../server/_shared/chokepoint-registry.ts');
+    const { CHOKEPOINT_REGISTRY: browser } = await import('../src/config/chokepoint-registry.ts');
+    const expected = Object.fromEntries(server.map((cp) => [cp.id, [...cp.routeIds].sort()]));
+    assert.deepEqual(Object.fromEntries(browser.map((cp) => [cp.id, [...cp.routeIds].sort()])), expected);
+    const seederSource = readFileSync(new URL('../scripts/seed-hs2-chokepoint-exposure.mjs', import.meta.url), 'utf8');
+    const seeder: Record<string, string[]> = {};
+    for (const match of seederSource.matchAll(/^ {2}\{ id: '([a-z0-9_]+)'[^\n]*routeIds: \[([^\]]*)\]/gm)) {
+      seeder[match[1]] = match[2].split(',').map((entry) => entry.trim().replace(/'/g, '')).filter(Boolean).sort();
+    }
+    assert.deepEqual(seeder, expected);
+  });
+});
+
+describe('lanes start and end in the requested countries', () => {
+  const lane = (fromIso2: string, toIso2: string, cargoType: string) =>
+    computeLane({ fromIso2, toIso2, hs2: cargoType === 'tanker' ? '27' : '85', cargoType }, new Map());
+  type Lane = Awaited<ReturnType<typeof computeLane>>;
+  const ends = (res: Lane) => {
+    const g = res.primaryRouteGeometry;
+    return { first: g[0]!, last: g[g.length - 1]! };
+  };
+  const assertIn = (iso2: string, point: { lat: number; lon: number }, label: string) => {
+    assert.ok(inBox(countryBox(iso2), point.lat, point.lon), `${label} ${JSON.stringify(point)} is not in ${iso2}`);
+  };
+  const cps = (res: Lane) => res.chokepointExposures.map((e) => e.chokepointId);
+
+  for (const origin of ['SA', 'AE', 'IR']) {
+    it(`${origin} -> IN stops in India before Malacca`, async () => {
+      const res = await lane(origin, 'IN', 'tanker');
+      assert.equal(res.primaryRouteId, 'gulf-asia-oil');
+      assert.deepEqual(cps(res), ['hormuz_strait']);
+      assertIn('IN', ends(res).last, 'lane end');
+      assert.ok(res.bypassOptions.every((b) => !/malacca|kra|sunda|lombok/i.test(b.id)), 'bypasses follow Hormuz, not Malacca');
+    });
+  }
+
+  it('IN -> SA runs the Gulf route backwards from India and keeps only Hormuz', async () => {
+    const res = await lane('IN', 'SA', 'tanker');
+    assert.deepEqual(cps(res), ['hormuz_strait']);
+    assertIn('IN', ends(res).first, 'lane start');
+    assertIn('SA', ends(res).last, 'lane end');
+  });
+
+  it('SA -> KR ends in Korea and keeps Hormuz and Malacca', async () => {
+    const res = await lane('SA', 'KR', 'tanker');
+    assert.deepEqual([...cps(res)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('SA', ends(res).first, 'lane start');
+    assertIn('KR', ends(res).last, 'lane end');
+  });
+
+  it('CN -> KR does not cross Suez or Bab el-Mandeb', async () => {
+    const res = await lane('CN', 'KR', 'container');
+    for (const cp of ['suez', 'bab_el_mandeb', 'gibraltar']) assert.ok(!cps(res).includes(cp), `${cp} is not on a China-Korea lane`);
+    assertIn('CN', ends(res).first, 'lane start');
+    assertIn('KR', ends(res).last, 'lane end');
+  });
+
+  it('keeps a full route whose endpoints are already in the requested countries', async () => {
+    const res = await lane('CN', 'NL', 'container');
+    assert.equal(res.primaryRouteId, 'china-europe-suez');
+    assert.ok(cps(res).includes('suez') && cps(res).includes('malacca_strait'));
+    assertIn('CN', ends(res).first, 'lane start');
+    assertIn('NL', ends(res).last, 'lane end');
+  });
+
+  it('keeps every route chokepoint when a country has no modeled port', async () => {
+    // Kuwait has no entry in PORTS, so nothing says where it sits on the
+    // route; dropping Malacca there would be a guess that reads as safer.
+    const kuwait = await lane('KW', 'IN', 'tanker');
+    assert.deepEqual([...cps(kuwait)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('IN', ends(kuwait).last, 'lane end');
+    const australia = await lane('AU', 'KR', 'container');
+    assertIn('KR', ends(australia).last, 'lane end');
+    assert.ok(australia.primaryRouteGeometry.length >= 2);
+  });
+
+  it('keeps Hormuz for UAE cargo although the straight leg passes Jebel Ali', async () => {
+    for (const toIso2 of ['NL', 'GR', 'IN']) {
+      const res = await lane('AE', toIso2, 'tanker');
+      assert.ok(cps(res).includes('hormuz_strait'), `AE -> ${toIso2} must cross Hormuz`);
+    }
+  });
+
+  it('counts Malacca for Gulf cargo to Laem Chabang, which projects just short of the strait', async () => {
+    const res = await lane('SA', 'TH', 'tanker');
+    assert.deepEqual([...cps(res)].sort(), ['hormuz_strait', 'malacca_strait']);
+    assertIn('TH', ends(res).last, 'lane end');
+  });
+
+  it('drops chokepoints a lane never reaches', async () => {
+    assert.deepEqual(cps(await lane('JP', 'KR', 'container')), []);
+    assert.deepEqual(cps(await lane('NL', 'GR', 'tanker')), ['gibraltar']);
+  });
+
+  // The lane is built from the browser's waterway coordinates so free visitors
+  // see the same lane as subscribers; the server reports exposure from its
+  // chokepoint registry. The two must not drift apart.
+  it('route waypoints sit at the same coordinates in the waterway list and the chokepoint registry', () => {
+    for (const id of new Set(TRADE_ROUTES.flatMap((r) => r.waypoints))) {
+      const waterway = STRATEGIC_WATERWAYS.find((w) => w.id === id);
+      const registered = CHOKEPOINT_REGISTRY.find((c) => c.geoId === id);
+      assert.ok(waterway && registered, `${id} is missing from the waterway list or the registry`);
+      assert.deepEqual([waterway.lat, waterway.lon], [registered.lat, registered.lon], id);
     }
   });
 });

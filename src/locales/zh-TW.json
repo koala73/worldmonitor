@@ -385,7 +385,6 @@
     "liveNews": "即時新聞",
     "markets": "市場",
     "map": "全球態勢",
-    "techMap": "全球科技",
     "techHubs": "熱門科技中心",
     "status": "系統狀態",
     "insights": "AI洞察",
@@ -478,7 +477,7 @@
     "bigmacDesc": "中東國家的巨無霸漢堡價格（巨無霸指數）",
     "bigmacWow": "周環比",
     "bigmacCountry": "國家",
-    "faoFoodPriceIndex": "糧農組織食品價格指數",
+    "faoFoodPriceIndex": "食品價格",
     "fuelPrices": "燃料價格",
     "fuelPricesDesc": "全球 30 多個國家的零售汽油和柴油價格",
     "fuelPricesCountry": "國家",
@@ -490,7 +489,9 @@
     "consumerPrices": "消費者價格",
     "marketBreadth": "市場廣度",
     "climateNews": "氣候新聞",
-    "fx": "外匯匯率"
+    "fx": "外匯匯率",
+    "ukmtoIncidents": "UKMTO事件",
+    "reservoirLevels": "戰略水位"
   },
   "commands": {
     "prefixes": {
@@ -760,15 +761,17 @@
       "logCleared": "日誌已清除。",
       "worldMonitor": {
         "apiKey": {
-          "title": "許可證 / API 金鑰",
+          "title": "桌面金鑰",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter 和 API Business 訂閱者可在網頁控制檯的 Settings → API Keys 中建立此金鑰。如果完整金鑰丟失，請撤銷並建立替代金鑰。"
+          "description": "適用於無登入功能的構建版本。Pro 使用者：在網頁版Settings → API Keys中建立；API 計劃金鑰也可使用。僅供個人使用；共享或公開部署需要 API 計劃。幫助：worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "或",
         "register": {
-          "title": "需要 API 金鑰？",
-          "description": "請造訪 worldmonitor.app/docs/api-keys 檢視分步說明。手動 API 金鑰需要 API Starter 或 API Business 方案。",
-          "submitBtn": "檢視 API 方案"
+          "submitBtn": "檢視套餐"
+        },
+        "signIn": {
+          "title": "使用 Pro 登入",
+          "description": "登入主視窗後，Pro 功能即可在此處使用。無需金鑰。"
         }
       },
       "table": {
@@ -867,7 +870,7 @@
         "asia": "亞洲",
         "space": "太空"
       },
-      "play": "播放",
+      "play": "觀看即時直播",
       "previewStatus": "準備播放",
       "connecting": "正在連線…",
       "unverified": "無法確認此直播流是否即時",
@@ -924,7 +927,12 @@
         "permissive": "寬鬆",
         "undefined": "未定義"
       },
-      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。"
+      "infoTooltip": "<strong>監管</strong> 全球監管機構的監管行動、政策變更和執法更新：金融、科技、能源和貿易部門。來源：政府和監管機構官方出版物。",
+      "latestActions": "最新記錄的行動",
+      "otherDeadlines": "其他合規截止日期",
+      "daysAgo": "天前",
+      "revokedCount": "已撤銷法規（{{count}}）",
+      "lapsedCount": "已失效提案 ({{count}})"
     },
     "economic": {
       "indicators": "指標",
@@ -990,7 +998,10 @@
       "stageUnavailable": "該階段暫無公開資料",
       "withheldNote": "W 表示資料隱去",
       "productionCaption": "各國在實際產量中的份額。地圖礦藏圖層顯示資源分佈，此表顯示由誰開採或冶煉。",
-      "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。"
+      "productionProLocked": "升級至PRO版本以獲取按階段分類的採礦和煉油廠國家份額及集中度（生產商集中度指數）。",
+      "partialTransitCoverage": "過境資料不可用：{{names}}",
+      "oilPipelinesUnavailable": "石油管道資料不可用",
+      "gasPipelinesUnavailable": "天然氣管道資料不可用"
     },
     "tradePolicy": {
       "tariffs": "關稅",
@@ -1081,10 +1092,12 @@
       "skipToStart": "跳到開頭",
       "previous": "上一個",
       "next": "下一個",
-      "skipToEnd": "跳到結尾"
+      "skipToEnd": "跳到結尾",
+      "storageUnavailable": "回放功能不可用，因為瀏覽器正在阻止網站儲存。請允許此網站的網站資料以開始儲存快照。"
     },
     "pizzint": {
-      "indexSource": "指數：World Monitor · 場所資料：",
+      "indexSource": "指數：World Monitor",
+      "venueSource": "場所資料：",
       "statusNormal": "正常",
       "statusNoData": "無資料",
       "statusNoBaseline": "無基準",
@@ -1095,6 +1108,16 @@
       "tensionsTitle": "地緣政治緊張局勢",
       "tensionsSource": "緊張局勢：World Monitor 根據 GDELT 事件計算",
       "insufficientData": "資料不足",
+      "evidenceStrikes": "3天內報告的打擊（{{countries}}）：{{value}}",
+      "evidenceAirports": "受影響機場：{{value}}",
+      "evidenceAirportClosed": "{{name}}機場關閉",
+      "evidenceAirportHalted": "{{name}}：大部分航班取消",
+      "evidenceAirportRestricted": "{{name}}：航班受限",
+      "evidenceMilitaryAircraft": "該地區軍用飛機（{{country}}）：{{value}}",
+      "evidencePlaAircraft": "臺灣附近的中國軍機：{{value}}",
+      "evidencePlaShips": "臺灣附近的中國海軍艦艇：{{value}}",
+      "evidenceSanctions": "本週美國新制裁（{{country}}）：{{value}}",
+      "evidenceUsual": "（通常 {{value}}）",
       "pizzaUnavailable": "披薩店活動資料不可用",
       "source": "來源：",
       "statusClosed": "已關閉",
@@ -1181,6 +1204,7 @@
       "emojiKeyNaval": "海軍資產"
     },
     "countryBrief": {
+      "moreActions": "更多操作",
       "shareLink": "分享連結",
       "shareStory": "分享報道",
       "printPdf": "列印 / PDF",
@@ -1206,26 +1230,10 @@
       "resetView": "重置檢視",
       "legend": {
         "title": "圖例",
-        "startupHub": "創業中心",
-        "techHQ": "科技總部",
-        "accelerator": "加速器",
-        "cloudRegion": "雲端計算區域",
-        "datacenter": "資料中心",
-        "stockExchange": "證券交易所",
-        "financialCenter": "金融中心",
-        "centralBank": "央行",
-        "commodityHub": "大宗商品樞紐",
-        "waterway": "水道",
         "highAlert": "高度警報",
         "elevated": "升高",
         "monitoring": "監控中",
-        "base": "基地",
-        "nuclear": "核設施",
-        "aircraft": "飛機",
-        "miningSite": "採礦場",
-        "commodityPort": "商品港口",
         "pipeline": "管道",
-        "processingPlant": "加工廠",
         "conflict": "衝突區域",
         "diseaseAlert": "疾病警報",
         "diseaseWarning": "疾病預警",
@@ -1276,7 +1284,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流離失所流向",
         "climateAnomalies": "氣候異常",
-        "weatherAlerts": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
+        "weatherAlerts": "天氣預警",
         "strategicWaterways": "戰略水道",
         "economicCenters": "經濟中心",
         "criticalMinerals": "關鍵礦產",
@@ -1298,7 +1306,10 @@
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
         "canadaRoads": "Canada 道路",
-        "canadaAlerts": "加拿大警報（AB + BC + SK）"
+        "canadaAlerts": "加拿大警報",
+        "notamAirspace": "NOTAM 空域限制",
+        "no2Activity": "工業活動",
+        "reservoirLevels": "水位"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1413,16 +1424,33 @@
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
           "ciiChoropleth": "國家不穩定指數熱力圖 — 按評分為各國著色（綠色=穩定，紅色=嚴重）",
           "canadaRoads": "加拿大（Canada）受支援轄區的官方道路事件、警報、路況、封閉、施工和危險資訊",
-          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報"
+          "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報",
+          "notamAirspace": "FAA NOTAM 中的臨時飛行限制和受限、危險及禁飛空域，當前生效或將在 24 小時內生效",
+          "no2Activity": "Sentinel-5P NO2 活動方向，覆蓋 167 個國家和 32 個工業叢集：最新 56 天視窗與往年同期日期對比，經 10% 死區處理。包含經修改的 Copernicus Sentinel 資料。",
+          "reservoirLevels": "來自 NASA ICESat-2 衛星光達的戰略水庫和湖泊水面水位，與該月的常年水位對比。NASA 在每次過境測量後約兩個月釋出資料。"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
         }
+      },
+      "measure": {
+        "title": "測量距離",
+        "units": "距離單位",
+        "pointA": "選擇點 A。點選地圖或按 Enter 鍵到地圖中心。",
+        "pointB": "選擇點 B。平移地圖並按 Enter 鍵使用其中心。",
+        "geodesic": "大地線距離",
+        "note": "基於點選的座標；不是路線或經過驗證的資產分離。按 Escape 退出。",
+        "cancel": "取消選擇",
+        "cancelShort": "取消",
+        "resetShort": "重置",
+        "exitShort": "退出",
+        "reset": "重置測量",
+        "exit": "退出測量"
       }
     },
     "cii": {
       "noSignals": "未檢測到不穩定訊號",
-      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>安</strong>全：領土上空軍用飛機/艦艇</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:S:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
+      "infoTooltip": "<strong>方法論</strong><ul><li><strong>動</strong>蕩：社會騷亂與抗議</li><li><strong>衝</strong>突：武裝衝突強度</li><li><strong>信</strong>息：新聞速度和焦點關聯</li><li>熱點鄰近度提升（戰略位置）</li></ul><em>U:C:I值顯示各分項評分。</em>焦點檢測將新聞實體與地圖訊號關聯以實現精確評分。",
       "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "包含各國基準線 + 事件乘數 — 請參閱 /docs/methodology/cii-risk-scores 瞭解已釋出的表格",
       "sectionFollowing": "關注中",
@@ -1469,8 +1497,8 @@
       "badgeAnimDesc": "在面板標題中顯示更新徽章動畫",
       "headlineMemoryLabel": "標題記憶",
       "headlineMemoryDesc": "記住已閱標題以突出顯示新內容",
-      "streamAlwaysOnLabel": "在儀表板上自動播放直播流",
-      "streamAlwaysOnDesc": "當 Live News 和 Live Webcams 可見時自動啟動。保持關閉則僅在點選“播放”後載入影片。",
+      "streamAlwaysOnLabel": "自動播放即時攝影機",
+      "streamAlwaysOnDesc": "直播攝影機影片出現在螢幕上時立即開始載入。保持關閉可僅在您手動啟動時載入影片。",
       "analysisFrameworksLabel": "分析框架",
       "analysisFrameworksActivePerPanel": "每個面板啟用",
       "analysisFrameworksSkillLibrary": "技能庫",
@@ -1511,7 +1539,9 @@
       "briefStoryDetails": "報道詳情 ({{count}})",
       "streamIdleStopLabel": "空閒時停止即時影片",
       "streamIdleStopNever": "從不",
-      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。"
+      "streamIdleStopDesc": "在此時間內無活動後停止即時新聞和即時網路攝影機，並在面板中顯示通知。",
+      "liveNewsAutoplayLabel": "自動播放即時新聞",
+      "liveNewsAutoplayDesc": "即時新聞影片出現在螢幕上時自動開始播放，靜音狀態。關閉此選項可僅在您手動啟動時載入影片。"
     },
     "settings": {
       "exportSettings": "匯出設定",
@@ -1616,6 +1646,10 @@
       "infoTooltip": "<strong>科技活動</strong> 即將舉行和近期的科技活動：會議、產品釋出、監管聽證會和財報電話會議。從官方活動日曆和行業來源彙總。"
     },
     "techReadiness": {
+      "ranked": "已排名",
+      "unranked": "未排名",
+      "coverageRequirement": "參與排名所需的最少指標數",
+      "coverageLabel": "可用指標",
       "internetUsers": "網際網路使用者",
       "mobileSubscriptions": "移動訂閱",
       "rdSpending": "研究和開發支出",
@@ -1631,10 +1665,16 @@
       "dataPreparing": "重新整理技術就緒資料中——即將顯示。"
     },
     "populationExposure": {
-      "totalAffected": "受影響總數",
-      "affectedCount": "{{count}}人受影響",
-      "radiusKm": "{{km}}km半徑",
-      "infoTooltip": "<strong>人口暴露估計</strong>事件影響半徑內的估計人口。基於WorldPop國家人口密度資料。<ul><li>衝突：50km半徑</li><li>地震：100km半徑</li><li>洪水：100km半徑</li><li>野火：30km半徑</li></ul>"
+      "estimateWithin": "半徑 {{km}} 公里內約有 {{count}} 人",
+      "method": "估算使用該國的平均人口密度。",
+      "empty": "沒有符合條件的事件地點",
+      "infoTooltip": "顯示有國家人口密度資料的事件。缺少位置精度資訊的 UCDP 事件會標記為待更新。估計區域可能重疊。 動亂事件需要精確位置；標記為位置不精確的 UCDP 事件會被排除。同一地點由兩個來源（動亂和 UCDP）報告時，會顯示為兩行。",
+      "eventCount_other": "{{count}} 起事件",
+      "locationPending": "位置精度待更新",
+      "unrestCoverage": "動亂資料覆蓋範圍",
+      "ucdpPending": "UCDP 資料覆蓋範圍待更新",
+      "coverageShown": "已顯示事件：{{shown}} / {{total}}",
+      "coverageLeftOut": "未顯示：{{imprecise}} 起無精確位置，{{noEstimate}} 起位於無人口密度資料的國家，{{otherPlaces}} 起在每個來源前 10 個地點之後"
     },
     "securityAdvisories": {
       "loading": "正在載入旅行警告...",
@@ -1803,8 +1843,6 @@
       "summaryFailed": "摘要失敗",
       "sources": "{{count}}個來源",
       "relatedAssetsNear": "{{location}}附近的相關資產",
-      "sourceCoverage": "{{covered}}/{{total}} 個來源",
-      "sourceCoverageHint": "已顯示 {{total}} 個已啟用來源中的 {{covered}} 個 — 該面板每次重新整理會輪換抓取不同來源",
       "sortBy": "排序方式",
       "sortNewest": "最新",
       "sortRelevance": "相關性",
@@ -1941,6 +1979,8 @@
       "infoTooltip": "<strong>預測市場</strong>真金白銀的預測市場：<ul><li>價格反映群體機率估計</li><li>交易量越高 = 訊號越可靠</li><li>聚焦地緣政治和時事</li></ul>來源：Polymarket (polymarket.com)"
     },
     "etfFlows": {
+      "previousColumns": "前面的欄",
+      "moreColumns": "更多欄",
       "unavailable": "交易所交易基金資料暫時不可用",
       "rateLimited": "交易所交易基金資料暫時不可用（受速率限制）— 正在重試",
       "netFlow": "淨流量",
@@ -2031,6 +2071,7 @@
       }
     },
     "liveNews": {
+      "audioUnavailable": "音訊不可用",
       "notLive": "{{name}} 當前未直播",
       "signInToYouTube": "登入YouTube",
       "openOnYouTube": "在 YouTube 開啟",
@@ -2069,7 +2110,8 @@
       "channelOrVideoUrl": "YouTube 頻道或影片 URL",
       "channelUrlHint": "貼上頻道 URL (youtube.com/channel/UC…) 或直播影片 URL",
       "youtubeChannel": "YouTube 頻道",
-      "httpsStreamHint": "瀏覽器會阻止不安全的 (http) 流。請貼上安全的 (https) 流 URL"
+      "httpsStreamHint": "瀏覽器會阻止不安全的 (http) 流。請貼上安全的 (https) 流 URL",
+      "tapToPlay": "點選播放"
     },
     "map": {
       "showMap": "顯示地圖",
@@ -2285,20 +2327,21 @@
       "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>荷爾木茲海峽貿易追蹤器</strong>透過全球最關鍵油氣運輸通道荷爾木茲海峽的即時船舶追蹤。監測油輪數量、中斷事件和周度流量變化。全球約20%的日均石油供應透過此處。",
+      "infoTooltip": "<strong>霍爾木茲貿易追蹤</strong> WTO DataLab 關於霍爾木茲海峽的日貨運指數：離開波斯灣的原油、液化天然氣和化肥，以及抵達的農產品。按體積計，2025年1–3月平均值 = 100，僅包括 AIS 可見船舶。狀態和日期來自 WTO 的最新分析。",
       "title": "霍爾木茲貿易追蹤",
       "noData": "無資料",
       "notAvailable": "不適用",
       "chartUnavailable": "圖表資料不可用",
       "sourcePrefix": "來源：",
       "units": {
-        "ktPerDay": "千噸/天",
-        "generic": "單位"
+        "index": "指數"
       },
       "errors": {
         "unavailable": "霍爾木茲資料不可用",
         "failedToLoad": "載入失敗"
-      }
+      },
+      "analysisDate": "WTO分析 {{date}}",
+      "indexNote": "貨運指數（按體積），2025年1–3月平均值 = 100"
     },
     "liveWebcams": {
       "infoTooltip": "<strong>即時攝影機</strong> 來自全球地緣政治重要地點的直播：衝突區、首都、邊境口岸和戰略咽喉要道。流媒體來自YouTube和公共網路。"
@@ -2337,7 +2380,15 @@
       "noData": "能源資料暫時不可用 - 將重試",
       "liveTape": "即時行情",
       "liveTapeSource": "市場報價",
-      "infoTooltip": "<strong>能源市場</strong> 實物和可交易能源訊號整合顯示：<ul><li><strong>美國能源資訊署指標</strong>：WTI、布倫特油價、美國產量和庫存</li><li><strong>即時行情</strong>：原油和天然氣等可交易能源價格</li><li><strong>目的</strong>：將實物能源壓力與更廣泛的宏觀和商品面板分離</li></ul>"
+      "infoTooltip": "<strong>能源市場</strong> 實物和可交易能源訊號整合顯示：<ul><li><strong>美國能源資訊署指標</strong>：WTI、布倫特油價、美國產量和庫存</li><li><strong>即時行情</strong>：原油和天然氣等可交易能源價格</li><li><strong>目的</strong>：將實物能源壓力與更廣泛的宏觀和商品面板分離</li></ul>",
+      "marketTape": "市場報價",
+      "futures": "期貨",
+      "dailySpot": "每日現貨價",
+      "eiaWeeklySpot": "EIA 現貨價 · 周均價",
+      "weekEnding": "截至 {{date}} 的一週",
+      "unknownPriceDate": "觀測時間不可用",
+      "unknownQuoteSource": "報價來源不可用",
+      "stalePrice": "已過時"
     },
     "consumerPrices": {
       "tabs": {
@@ -2535,8 +2586,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro已上線",
-      "tagline": "更多訊號，更少噪音。更多AI簡報。專屬於您的地緣政治和股票研究員。",
+      "headline": "每日AI情報摘要，透過郵件或Slack接收",
+      "tagline": "另含WM Analyst、告警規則和適用於Claude的MCP",
       "cta": "升級到Pro →",
       "dismiss": "關閉"
     },
@@ -2549,7 +2600,15 @@
       "renewalFailedDesc": "我們無法核實您的訂閱續訂。請管理賬單，如問題持續請聯絡支援。",
       "manageBilling": "管理賬單",
       "lapsedDesc": "您的 Pro 訂閱已結束。重新訂閱以恢復進階存取權限。",
-      "resubscribe": "重新訂閱"
+      "resubscribe": "重新訂閱",
+      "billingEmailBouncedMessage": "傳送至 {{email}} 的賬單郵件被退回。請更新您的賬單郵箱，以便收到收據和付款提醒。",
+      "fixBillingEmail": "修正賬單郵箱",
+      "billingEmailLabel": "新的賬單郵箱",
+      "save": "儲存",
+      "billingEmailUpdated": "賬單郵箱已更新為 {{email}}。此後收據和付款提醒將傳送至該郵箱。",
+      "billingEmailInvalid": "請輸入有效的電子郵箱地址。",
+      "billingEmailSuppressed": "我們也無法向該地址送達郵件。請換一個地址。",
+      "billingEmailUpdateFailed": "無法更新您的賬單郵箱。請重試，如果仍然失敗，請聯絡支援團隊。"
     },
     "checkoutFailureBanner": {
       "message": "支付無法完成。未進行任何扣款。",
@@ -2604,6 +2663,15 @@
             "mcpClients": "設定 MCP",
             "channels": "在通知設定中進行配置"
           }
+        },
+        "about": {
+          "heading": "最後一件事：您將使用 World Monitor 做什麼？",
+          "body": "三個快速問題能幫助我們為你打造合適的工具。你可以跳過任何問題。",
+          "confirmCta": "儲存我的答案",
+          "confirming": "儲存中…",
+          "doneNote": "感謝，我們已收到你的答案。",
+          "summaryLabel": "關於你",
+          "summaryVerified": "已儲存。謝謝。"
         }
       },
       "status": {
@@ -2644,7 +2712,7 @@
     },
     "sanctionsPressure": {
       "title": "制裁與指定",
-      "infoTooltip": "美國外交資產凍結辦公室特別指定國民和綜合清單以及加拿大全球事務部SEMA/JVCFOA名單。顯示哪些國家面臨最高列表壓力、驅動列表的計劃以及自上次更新以來新增的內容。",
+      "infoTooltip": "OFAC SDN和綜合名單，以及加拿大SEMA/JVCFOA制裁名單。國家行使用直接關聯。船旗和航空器註冊在註冊資訊中單獨計數；某國資產數量為零並不表示沒有受制裁資產。",
       "loading": "正在載入制裁資料...",
       "unavailable": "制裁資料不可用。",
       "summary": {
@@ -2656,7 +2724,9 @@
       "sections": {
         "countries": "受制裁國家",
         "entries": "最近指定",
-        "programs": "計劃"
+        "programs": "計劃",
+        "flagRegistries": "船舶旗籍與航空器登記",
+        "regulationTargets": "SEMA法規目標國家"
       },
       "empty": {
         "countries": "無國家歸屬資訊。",
@@ -2678,7 +2748,8 @@
         "unattributed": "未歸屬",
         "program": "計劃",
         "undated": "無日期"
-      }
+      },
+      "targetExplanation": "法規目標國家並非國籍或地址證據，不計入國家風險評分和簡報統計。"
     },
     "radiationWatch": {
       "title": "輻射監測",
@@ -2792,7 +2863,7 @@
         "babElMandeb": "曼德海峽",
         "bosphorus": "土耳其海峽",
         "panama": "巴拿馬",
-        "danishStraits": "丹麥海峽"
+        "doverStrait": "多佛海峽"
       },
       "flow": {
         "mbd": "{{value}} 萬桶/天",
@@ -2956,6 +3027,144 @@
       "rosterSummary": "由{{publishers}}報道",
       "rosterSummaryTier1": "由{{publishers}}報道，其中{{tier1}}家為一級來源",
       "rosterPublishers_other": "{{count}}家媒體"
+    },
+    "foodPrices": {
+      "title": "本地食品價格",
+      "method": "周環比將相同商品、市場、產地和單位的價格與恰好七天前的價格比較。各國採用不同的商品籃子和貨幣。",
+      "loading": "正在載入食品價格…",
+      "unavailable": "暫無資料",
+      "retry": "重試",
+      "country": "國家",
+      "market": "市場",
+      "retail": "零售",
+      "wholesale": "批發",
+      "farmgate": "農場收購價",
+      "export": "出口",
+      "prices": "食品價格",
+      "product": "商品",
+      "price": "價格 / 單位",
+      "weekly": "周環比",
+      "origin": "產地",
+      "versus": "對比",
+      "noBaseline": "上週資料不可用",
+      "context": "糧食安全與月度背景",
+      "contextNote": "這些報告提供帶日期的背景資訊，不提供每週價格變化。突尼西亞的報告可能滯後數月。",
+      "briefCountry": "國家簡報",
+      "report": "報告日期",
+      "checked": "最近檢查",
+      "current": "最新",
+      "partial": "部分報告不可用或已過時",
+      "stale": "較早資料",
+      "global": "糧農組織全球月度指數"
+    },
+    "aboutYou": {
+      "title": "幫助我們為您打造 World Monitor",
+      "ariaLabel": "關於您",
+      "progress": "第 {{current}} / {{total}}",
+      "skip": "跳過",
+      "close": "關閉",
+      "done": "完成",
+      "saving": "儲存中…",
+      "saveFailed": "儲存失敗。請重試。",
+      "retry": "重試",
+      "thanks": "感謝。這有助於我們決定下一步要開發什麼。",
+      "questions": {
+        "primaryUse": {
+          "label": "您主要用 World Monitor 做什麼？",
+          "options": {
+            "news": "新聞和世界事件",
+            "markets": "市場和交易",
+            "commodities": "商品和供應鏈",
+            "travel": "旅行和航班",
+            "security": "安全和 OSINT",
+            "research": "研究和新聞",
+            "api-agent": "使用 API 或 AI 智慧體開發",
+            "other": "其他"
+          }
+        },
+        "usageContext": {
+          "label": "您是工作使用還是個人使用？",
+          "options": {
+            "personal": "個人",
+            "work": "工作"
+          }
+        },
+        "payer": {
+          "label": "誰支付或將支付費用？",
+          "options": {
+            "self": "我",
+            "employer": "我的僱主或團隊",
+            "not-paying": "暫時沒有"
+          }
+        },
+        "role": {
+          "label": "以下哪項最準確地描述您的角色？",
+          "options": {
+            "analyst": "分析師或研究員",
+            "trader": "交易員或投資者",
+            "journalist": "記者",
+            "security": "安全或風險",
+            "government": "政府或政策",
+            "supply-chain": "供應鏈或運營",
+            "developer": "開發者",
+            "student": "學生",
+            "other": "其他"
+          }
+        },
+        "alternative": {
+          "label": "如果 World Monitor 不存在，您會使用什麼？",
+          "placeholder": "可選"
+        }
+      }
+    },
+    "githubStarPrompt": {
+      "title": "喜歡 World Monitor 嗎？",
+      "body": "在 GitHub 上標星可以幫助其他人發現它。",
+      "star": "在 GitHub 上標星",
+      "dismiss": "關閉，不再提示"
+    },
+    "reservoirLevels": {
+      "note": "水面水位來自 NASA ICESat-2 衛星光達。NASA 在每次過境測量後約兩個月釋出資料，因此這裡追蹤的是數週和季節尺度的變化，而不是逐日變化。僅為水位，不是庫容。",
+      "source": "來源：",
+      "processedWith": "處理工具：",
+      "empty": "暫無讀數",
+      "filterEmpty": "沒有符合此篩選條件的水體",
+      "unavailable": "水位資料當前不可用",
+      "filterLabel": "篩選水體",
+      "filter": {
+        "all": "全部",
+        "attention": "需要關注",
+        "transboundary": "跨境"
+      },
+      "status": {
+        "record_low": "創紀錄低位",
+        "record_high": "創紀錄高位",
+        "falling_fast": "快速下降",
+        "rising_fast": "快速上升",
+        "low": "低於同期",
+        "high": "高於同期",
+        "normal": "正常",
+        "insufficient_history": "歷史資料不足",
+        "no_recent_data": "近期無過境",
+        "lowInRange": "在其範圍內較低",
+        "highInRange": "在其範圍內較高"
+      },
+      "vsUsual": "較{{month}}常年 {{value}}",
+      "in12Months": "12 個月 {{value}}",
+      "noComparison": "暫無對比",
+      "measured": "測量於 {{date}}（{{age}}）",
+      "noPass": "暫無可用過境",
+      "popup": {
+        "level": "水位",
+        "levelValue": "海拔 {{value}}（EGM2008）",
+        "anomaly": "較{{month}}常年",
+        "anomalyPlain": "較當月常年",
+        "changePrev": "較上次過境",
+        "change90": "90 天內",
+        "change365": "12 個月內",
+        "measured": "測量時間",
+        "sparkline": "36 個月水位"
+      }
     }
   },
   "popups": {
@@ -2982,7 +3191,8 @@
         "major": "重大",
         "moderate": "中等",
         "minor": "輕微"
-      }
+      },
+      "relativePlace": "{{place}}{{direction}}方向 {{distance}} km"
     },
     "base": {
       "types": {
@@ -3033,7 +3243,9 @@
         "africa": "非洲"
       },
       "scheduled": "計劃",
-      "estimated": "預計"
+      "estimated": "預計",
+      "normalOperations": "正常運營",
+      "open": "開放"
     },
     "aircraft": {
       "altitude": "高度",
@@ -3044,7 +3256,44 @@
       "airborne": "空中"
     },
     "cyberThreat": {
-      "title": "網路威脅"
+      "title": "網路威脅",
+      "evidence": "威脅資料來源證據",
+      "firstSeen": "首次發現",
+      "explanations": {
+        "c2_server": "資料來源報告了用於向惡意軟體傳送指令的命令控制伺服器。",
+        "malware_host": "資料來源報告了用於託管惡意軟體的地址。",
+        "phishing": "資料來源報告了與釣魚攻擊相關的指標。",
+        "malicious_url": "資料來源報告了與惡意活動相關的URL。"
+      },
+      "downloadTag": "malware_download：來源報告的惡意軟體下載位置。",
+      "familyNote": "惡意軟體家族標籤來自威脅資料來源。它不用於標識個人或組織。",
+      "approximateLocation": "對映的位置是根據IP推導的近似上下文，而非已驗證的物理主機位置。",
+      "network": {
+        "title": "網路資訊",
+        "privacy": "展開以從RIPEstat請求被動網路資料。指標IP將與該提供商共享。",
+        "disclaimer": "網路註冊和路由資訊不能用於識別攻擊者或確定提供商對該活動的責任。",
+        "loading": "正在載入網路資訊…",
+        "unknown": "不可用",
+        "disabled": "網路查詢未啟用。",
+        "invalid": "網路查詢需要公網IP地址。",
+        "unavailable": "網路查詢失敗。關閉並重新開啟彈窗稍後重試。",
+        "rateLimited": "網路查詢暫時受限。請稍後重試。",
+        "noData": "提供商未返回此IP的網路資訊。",
+        "partial": "部分網路資訊無法檢索。",
+        "ip": "IP",
+        "asn": "源ASN",
+        "operator": "報告的ASN持有人/網路運營商",
+        "prefix": "報告的路由字首",
+        "hostname": "反向DNS主機名（rDNS）",
+        "lookupAt": "網路查詢時間",
+        "routingAt": "路由資料時間",
+        "broaderPrefix": "提供商匹配了更廣泛的路由字首。這不是精確的IP分配記錄。",
+        "rdnsNote": "rDNS是DNS標籤，不是所有權證明。此查詢不提供註冊組織和精確位置。",
+        "copy": "複製",
+        "copied": "已複製。",
+        "copyFailed": "複製失敗。請選中文字後複製。"
+      },
+      "firstSeenNote": "這是跨源和 World Monitor 觀察中最早可用的指標日期；可能與列出的源的日期不同。"
     },
     "nuclear": {
       "types": {
@@ -3081,6 +3330,14 @@
         "construction": "建設中"
       },
       "description": "主要{{type}}管道基礎設施。{{status}}"
+    },
+    "storageFacility": {
+      "openInAtlas": "在儲存圖集中開啟",
+      "types": {
+        "lngExport": "LNG出口",
+        "lngImport": "LNG進口",
+        "crudeTankFarm": "原油樞紐"
+      }
     },
     "pipelineStatusDesc": {
       "operating": "目前正在運營並輸送資源。",
@@ -3206,6 +3463,28 @@
       "readReport": "閱讀完整報告"
     },
     "datacenter": {
+      "details": {
+        "more": "更多詳情",
+        "owner": "叢集所有者 / 提供商（資料集）",
+        "power": "資料集功率數值",
+        "powerCaveat": "功率容量可能為報告值或估算值。這不是當前用電量的測量值。",
+        "powerBasis": "功率數值依據",
+        "reported": "報告值",
+        "estimated": "估算值",
+        "notAvailable": "暫無資訊",
+        "location": "位置精度",
+        "locationUnknown": "未經核實的地圖點；請勿用作設施的準確地址。",
+        "site": "設施位置（來源已核實）",
+        "city": "僅城市",
+        "region": "僅地區",
+        "country": "僅國家",
+        "dataset": "Epoch AI GPU 叢集資料集",
+        "evidence": "佐證來源",
+        "sourceDate": "來源釋出日期",
+        "metadataReviewedAt": "後設資料核查日期",
+        "firstOperationalDate": "首次運營日期（資料集）",
+        "freshness": "已儲存的資料集快照。當前狀態和規格可能已發生變化。"
+      },
       "status": {
         "existing": "運營中",
         "planned": "計劃中",
@@ -3226,6 +3505,11 @@
         "planned": "計劃中",
         "moreDataCenters": "還有{{count}}個資料中心",
         "sampledSites": "顯示{{count}}個站點的抽樣列表。"
+      },
+      "sectors": {
+        "private": "私營",
+        "public": "公共",
+        "publicPrivate": "公私合營"
       }
     },
     "startupHub": {
@@ -3351,7 +3635,8 @@
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
       "trackedVessels": "跟蹤艦艇",
-      "showLess": "顯示更少"
+      "showLess": "顯示更少",
+      "backToGroup": "返回艦船組"
     },
     "naturalEvent": {
       "closed": "已結束",
@@ -3438,6 +3723,423 @@
       "uae_ecsr": "阿聯酋/ECSR",
       "venezuela_crisis": "委內瑞拉危機",
       "yemen_houthis": "葉門/胡塞武裝"
+    },
+    "upcomingForecast": "即將生效的預報",
+    "currentForecast": "當前有效預報",
+    "expiredForecast": "已過期預報",
+    "validFrom": "生效時間",
+    "validUntil": "失效時間",
+    "levels": {
+      "extreme": "極端",
+      "severe": "嚴重",
+      "moderate": "中等",
+      "minor": "輕微",
+      "unknown": "未知",
+      "critical": "危急",
+      "high": "高",
+      "medium": "中",
+      "low": "低",
+      "elevated": "偏高",
+      "normal": "正常",
+      "spike": "激增",
+      "watch": "關注",
+      "stable": "穩定"
+    },
+    "statusValues": {
+      "active": "執行中",
+      "inactive": "停用",
+      "contested": "有爭議",
+      "decommissioned": "已退役",
+      "construction": "在建",
+      "operating": "運營中",
+      "planned": "規劃中",
+      "producing": "生產中",
+      "development": "開發中",
+      "exploration": "勘探中",
+      "unknown": "未知",
+      "deployed": "已部署",
+      "underway": "航行中",
+      "inPort": "在港",
+      "oil": "石油",
+      "gas": "天然氣",
+      "products": "成品油",
+      "protest": "抗議",
+      "riot": "騷亂",
+      "strike": "罷工",
+      "demonstration": "示威",
+      "civilUnrest": "社會動盪",
+      "c2Server": "C2 伺服器",
+      "malwareHost": "惡意軟體主機",
+      "phishing": "網路釣魚",
+      "maliciousUrl": "惡意 URL",
+      "operational": "執行中",
+      "reduced": "減量執行",
+      "offline": "停運",
+      "disputed": "有爭議"
+    },
+    "aptTactics": {
+      "reconnaissance": "偵察",
+      "resourceDevelopment": "資源開發",
+      "initialAccess": "初始存取",
+      "execution": "執行",
+      "persistence": "持久化",
+      "privilegeEscalation": "權限提升",
+      "defenseEvasion": "防禦規避",
+      "credentialAccess": "憑據存取",
+      "discovery": "發現",
+      "lateralMovement": "橫向移動",
+      "collection": "收集",
+      "commandAndControl": "命令與控制",
+      "exfiltration": "資料滲出",
+      "impact": "影響"
+    },
+    "aptSectors": {
+      "government": "政府",
+      "finance": "金融",
+      "defense": "國防",
+      "healthcare": "醫療衛生",
+      "military": "軍隊",
+      "technology": "科技",
+      "manufacturing": "製造業",
+      "energy": "能源",
+      "telecommunications": "電信",
+      "media": "媒體",
+      "ngo": "非政府組織",
+      "diplomatic": "外交",
+      "criticalInfrastructure": "關鍵基礎設施",
+      "research": "科研",
+      "banking": "銀行業",
+      "aerospace": "航空航天",
+      "civilSociety": "公民社會",
+      "aviation": "航空",
+      "hospitality": "酒店業",
+      "cryptocurrency": "加密貨幣",
+      "retail": "零售",
+      "thinkTanks": "智庫",
+      "education": "教育",
+      "telecoms": "電信運營商",
+      "oilAndGas": "石油天然氣",
+      "academia": "學術界",
+      "transportation": "交通運輸",
+      "humanRights": "人權",
+      "pharmaceutical": "製藥",
+      "dissidents": "異見人士",
+      "journalists": "記者",
+      "business": "商業",
+      "engineering": "工程",
+      "utilities": "公用事業",
+      "gaming": "遊戲",
+      "embassies": "使館",
+      "legal": "法律",
+      "construction": "建築業",
+      "mining": "採礦",
+      "petroleum": "石油",
+      "insurance": "保險",
+      "travel": "旅遊",
+      "maritime": "海事",
+      "chemical": "化工",
+      "financial": "金融服務",
+      "lawEnforcement": "執法機構",
+      "electricUtilities": "電力公司",
+      "managedServiceProviders": "託管服務提供商",
+      "satellite": "衛星",
+      "lawFirms": "律師事務所",
+      "navalDefense": "海軍防務",
+      "defenseContractors": "國防承包商",
+      "water": "水務",
+      "religious": "宗教團體",
+      "unBodies": "聯合國機構",
+      "supplyChain": "供應鏈",
+      "itServices": "IT服務",
+      "electronics": "電子",
+      "biotechnology": "生物技術",
+      "industrialChemistry": "工業化學",
+      "digitalCertificates": "數字證書",
+      "semiconductor": "半導體",
+      "airline": "航空公司",
+      "gambling": "博彩",
+      "tradePolicy": "貿易政策",
+      "foreignAffairs": "外交事務",
+      "automobile": "汽車",
+      "politicalOrganizations": "政治組織",
+      "cloud": "雲端計算",
+      "general": "綜合",
+      "minorityGroups": "少數群體",
+      "nuclearResearch": "核研究",
+      "defectors": "叛逃者",
+      "financialInstitutions": "金融機構",
+      "swiftNetwork": "SWIFT網路",
+      "petrochemical": "石油化工",
+      "airlines": "各航空公司",
+      "politicalOpposition": "政治反對派",
+      "activists": "活動人士",
+      "police": "警察",
+      "intelligence": "情報",
+      "businessExecutives": "企業高管",
+      "automotive": "汽車行業",
+      "restaurant": "餐飲",
+      "paymentSystems": "支付系統",
+      "cardProcessing": "卡處理",
+      "remoteBanking": "遠端銀行",
+      "naturalResources": "自然資源",
+      "industrial": "工業",
+      "cybersecurity": "網路安全",
+      "fintech": "金融科技",
+      "investment": "投資",
+      "containerInfrastructure": "容器基礎設施"
+    },
+    "compass": {
+      "n": "北",
+      "ne": "東北",
+      "e": "東",
+      "se": "東南",
+      "s": "南",
+      "sw": "西南",
+      "w": "西",
+      "nw": "西北",
+      "nne": "東北偏北",
+      "ene": "東北偏東",
+      "ese": "東南偏東",
+      "sse": "東南偏南",
+      "ssw": "西南偏南",
+      "wsw": "西南偏西",
+      "wnw": "西北偏西",
+      "nnw": "西北偏北"
+    },
+    "mapPopup": {
+      "noSectorData": "暫無行業資料",
+      "disruption": "中斷",
+      "warRisk": "戰爭風險",
+      "warZone": "戰區",
+      "historicalProfile": "歷史概況",
+      "noData": "暫無資料",
+      "coverageUnavailable": "無覆蓋資料",
+      "targets": "目標",
+      "listSeparator": "、",
+      "radiation": {
+        "confirmed": "已確認",
+        "conflictingSources": "來源相互矛盾",
+        "cpmDerived": "由 CPM 換算的分量",
+        "reading": "讀數",
+        "baseline": "基線",
+        "delta": "差值",
+        "confidence": "置信度",
+        "sources": "來源",
+        "sourceCount": "來源數量"
+      },
+      "history": {
+        "conflictSince": "衝突始於",
+        "peaceAgreements": "和平協議",
+        "recordedFatalities": "記錄死亡人數",
+        "totalFatalities": "死亡總數",
+        "operationalSince": "投運時間",
+        "treaties": "條約",
+        "iaeaStatus": "IAEA 狀態",
+        "keyEvents": "重要事件"
+      },
+      "flight": {
+        "departure": "出發",
+        "arrival": "到達",
+        "bookRoute": "預訂此航線",
+        "registration": "註冊號",
+        "model": "機型",
+        "operator": "運營方",
+        "climb": "爬升率",
+        "liveData": "即時資料",
+        "loadingWingbits": "正在載入 Wingbits 即時資料…"
+      },
+      "base": {
+        "airForce": "空軍",
+        "naval": "海軍",
+        "nuclear": "核",
+        "space": "太空",
+        "training": "訓練",
+        "branch": "軍種",
+        "categories": "類別"
+      },
+      "waterway": {
+        "tradeSectorMix": "貿易行業構成",
+        "sectorExposure": "行業敞口",
+        "transitHistory": "通行歷史",
+        "sectorBreakdown": "行業細分"
+      },
+      "natural": {
+        "minuteMean": "{{count}} 分鐘平均",
+        "windNotReported": "未報告風況",
+        "windAverage": "風速平均",
+        "canonicalMatch": "規範匹配",
+        "agencyIdentifier": "機構標識",
+        "agencyObservations": "機構觀測"
+      },
+      "placeReports_other": "{{place}}（{{count}} 篇報道）",
+      "issuedBy": "釋出機構"
+    },
+    "weatherEvents": {
+      "911TelephoneOutage": "911緊急電話中斷",
+      "administrativeMessage": "管理訊息",
+      "airQualityAlert": "空氣質量警示",
+      "airStagnationAdvisory": "空氣停滯提示",
+      "ashfallAdvisory": "降灰提示",
+      "ashfallWarning": "降灰警告",
+      "avalancheAdvisory": "雪崩提示",
+      "avalancheWarning": "雪崩警告",
+      "avalancheWatch": "雪崩預警關注",
+      "beachHazardsStatement": "海灘危險宣告",
+      "blizzardWarning": "暴風雪警告",
+      "blowingDustAdvisory": "揚塵提示",
+      "blowingDustWarning": "揚塵警告",
+      "blueAlert": "藍色警報（警方搜尋）",
+      "briskWindAdvisory": "強風提示",
+      "childAbductionEmergency": "緊急情況：兒童綁架",
+      "civilDangerWarning": "民防危險警告",
+      "civilEmergencyMessage": "民防緊急訊息",
+      "coastalFloodAdvisory": "沿海洪水提示",
+      "coastalFloodStatement": "沿海洪水宣告",
+      "coastalFloodWarning": "沿海洪水警告",
+      "coastalFloodWatch": "沿海洪水預警關注",
+      "coldWeatherAdvisory": "寒冷天氣提示",
+      "denseFogAdvisory": "濃霧提示",
+      "denseSmokeAdvisory": "濃煙提示",
+      "dustAdvisory": "沙塵提示",
+      "dustStormWarning": "沙塵暴警告",
+      "earthquakeWarning": "地震警告",
+      "evacuationImmediate": "立即疏散",
+      "extremeHeatWarning": "極端高溫警告",
+      "extremeHeatWatch": "極端高溫預警關注",
+      "extremeColdWarning": "極端嚴寒警告",
+      "extremeColdWatch": "極端嚴寒預警關注",
+      "extremeFireDanger": "極端火災危險",
+      "extremeWindWarning": "極端大風警告",
+      "fireWarning": "火災警告",
+      "fireWeatherWatch": "火險天氣預警關注",
+      "flashFloodStatement": "山洪宣告",
+      "flashFloodWarning": "山洪警告",
+      "flashFloodWatch": "山洪預警關注",
+      "floodAdvisory": "洪水提示",
+      "floodStatement": "洪水宣告",
+      "floodWarning": "洪水警告",
+      "floodWatch": "洪水預警關注",
+      "freezeWarning": "冰凍警告",
+      "freezeWatch": "冰凍預警關注",
+      "freezingFogAdvisory": "凍霧提示",
+      "freezingSprayAdvisory": "凍結浪花提示",
+      "frostAdvisory": "霜凍提示",
+      "galeWarning": "烈風警告",
+      "galeWatch": "烈風預警關注",
+      "hazardousMaterialsWarning": "危險品警告",
+      "hazardousSeasWarning": "危險海況警告",
+      "hazardousSeasWatch": "危險海況預警關注",
+      "hazardousWeatherOutlook": "危險天氣展望",
+      "heatAdvisory": "高溫提示",
+      "heavyFreezingSprayWarning": "嚴重凍結浪花警告",
+      "heavyFreezingSprayWatch": "嚴重凍結浪花預警關注",
+      "highSurfAdvisory": "大浪提示",
+      "highSurfWarning": "大浪警告",
+      "highWindWarning": "大風警告",
+      "highWindWatch": "大風預警關注",
+      "hurricaneForceWindWarning": "颶風級大風警告",
+      "hurricaneForceWindWatch": "颶風級大風預警關注",
+      "hurricaneWarning": "颶風警告",
+      "hurricaneWatch": "颶風預警關注",
+      "hydrologicOutlook": "水文展望",
+      "iceStormWarning": "冰暴警告",
+      "lakeEffectSnowWarning": "湖泊效應降雪警告",
+      "lakeWindAdvisory": "湖面大風提示",
+      "lakeshoreFloodAdvisory": "湖岸洪水提示",
+      "lakeshoreFloodStatement": "湖岸洪水宣告",
+      "lakeshoreFloodWarning": "湖岸洪水警告",
+      "lakeshoreFloodWatch": "湖岸洪水預警關注",
+      "lawEnforcementWarning": "警方警告",
+      "localAreaEmergency": "地方緊急狀態",
+      "lowWaterAdvisory": "低水位提示",
+      "marineWeatherStatement": "海洋天氣宣告",
+      "nuclearPowerPlantWarning": "核電站警告",
+      "radiologicalHazardWarning": "放射性危險警告",
+      "redFlagWarning": "高火險警告",
+      "ripCurrentStatement": "離岸流宣告",
+      "severeThunderstormWarning": "強雷暴警告",
+      "severeThunderstormWatch": "強雷暴預警關注",
+      "severeWeatherStatement": "惡劣天氣宣告",
+      "shelterInPlaceWarning": "警告：就地避險",
+      "shortTermForecast": "短時預報",
+      "smallCraftAdvisory": "小型船隻提示",
+      "snowSquallWarning": "雪颮警告",
+      "specialMarineWarning": "特別海洋警告",
+      "specialWeatherStatement": "特別天氣宣告",
+      "stormSurgeWarning": "風暴潮警告",
+      "stormSurgeWatch": "風暴潮預警關注",
+      "stormWarning": "風暴警告",
+      "stormWatch": "風暴預警關注",
+      "test": "測試",
+      "tornadoWarning": "龍捲風警告",
+      "tornadoWatch": "龍捲風預警關注",
+      "tropicalCycloneLocalStatement": "熱帶氣旋地方宣告",
+      "tropicalStormWarning": "熱帶風暴警告",
+      "tropicalStormWatch": "熱帶風暴預警關注",
+      "tsunamiAdvisory": "海嘯提示",
+      "tsunamiWarning": "海嘯警告",
+      "tsunamiWatch": "海嘯預警關注",
+      "typhoonWarning": "颱風警告",
+      "typhoonWatch": "颱風預警關注",
+      "volcanoWarning": "火山警告",
+      "windAdvisory": "大風提示",
+      "winterStormWarning": "冬季風暴警告",
+      "winterStormWatch": "冬季風暴預警關注",
+      "winterWeatherAdvisory": "冬季天氣提示",
+      "arcticOutflowWarning": "北極冷空氣外流警告",
+      "blowingSnowAdvisory": "吹雪提示",
+      "flashFreezeWarning": "驟凍警告",
+      "fogAdvisory": "霧提示",
+      "freezingDrizzleAdvisory": "凍毛毛雨提示",
+      "freezingRainWarning": "凍雨警告",
+      "heatWarning": "高溫警告",
+      "airQualityWarning": "空氣質量警告",
+      "airQualityAdvisory": "空氣質量提示",
+      "specialAirQualityStatement": "空氣質量特別宣告",
+      "rainfallWarning": "暴雨警告",
+      "snowfallWarning": "降雪警告",
+      "snowSquallWatch": "雪颮預警關注",
+      "squallWarning": "颮線警告",
+      "weatherAdvisory": "天氣提示",
+      "weatherWarning": "天氣警告",
+      "windWarning": "大風警告",
+      "imdCoastalBulletin": "IMD沿海公報",
+      "imdSeaAreaBulletin": "IMD海區公報",
+      "forestFire": "森林火災",
+      "forestFireWarning": "森林火災警告",
+      "gale": "烈風",
+      "wind": "風",
+      "fog": "霧",
+      "denseFog": "濃霧",
+      "roadIceAndSnow": "道路結冰和積雪",
+      "riverineFlood": "河流洪水",
+      "thunderstorm": "雷暴",
+      "severeThunderstorms": "強雷暴",
+      "otherDangers": "其他危險",
+      "freezingRainIcing": "凍雨、結冰",
+      "freezingRain": "凍雨",
+      "landslideWarning": "山體滑坡警告",
+      "rain": "雨",
+      "lightRain": "小雨",
+      "heavyRain": "大雨",
+      "moderateRainWarning": "中雨警告",
+      "severeRainWarning": "強降雨警告",
+      "moderateThunderstormWarning": "中等雷暴警告",
+      "yellowWindWarning": "大風黃色預警",
+      "orangeWindWarning": "大風橙色預警",
+      "yellowThunderstormWarning": "雷暴黃色預警",
+      "yellowRainWarning": "暴雨黃色預警",
+      "orangeRainWarning": "暴雨橙色預警",
+      "extremeHeat": "極端高溫",
+      "icyRoad": "道路結冰",
+      "drought": "乾旱",
+      "snow": "雪",
+      "haze": "霾",
+      "rainstorm": "暴風雨",
+      "severeWeatherWarning": "惡劣天氣警告",
+      "yellowWarning": "黃色預警",
+      "orangeWarning": "橙色預警",
+      "redWarning": "紅色預警"
     }
   },
   "signals": {
@@ -3642,7 +4344,48 @@
     "fontMono": "等寬字型",
     "fontSystem": "系統預設",
     "panelFontScale": "文字大小",
-    "followGlobalFontScale": "使用全域性設定"
+    "followGlobalFontScale": "使用全域性設定",
+    "selfHostKey": {
+      "heading": "桌面金鑰",
+      "description": "使用您自己的桌面金鑰在此 dashboard 上解鎖 Pro。在 worldmonitor.app 的設定 → API 金鑰 → 建立桌面金鑰中建立一個。",
+      "relay": "該金鑰傳送到此部署的伺服器，伺服器將您的 Pro 請求轉發到 World Monitor。使用情況計入您帳戶的桌面金鑰額度，與桌面應用相同。",
+      "trust": "如果其他人執行此部署，請為其建立單獨的桌面金鑰。您可以隨時在 worldmonitor.app 撤銷它。",
+      "inputLabel": "桌面金鑰",
+      "placeholder": "wm_…",
+      "save": "儲存金鑰",
+      "saving": "檢查中…",
+      "remove": "移除金鑰",
+      "removing": "移除中…",
+      "empty": "請輸入桌面金鑰。",
+      "saveFailed": "無法儲存金鑰。請重試。",
+      "removeFailed": "無法移除金鑰。請重試。",
+      "rateLimited": "嘗試次數過多。{{seconds}} 秒後重試。",
+      "rateLimitedSoon": "嘗試次數過多。1 分鐘後重試。",
+      "insecure": "此頁面未使用 HTTPS，您的金鑰將以未加密方式透過網路傳輸。",
+      "insecureConfirm": "此頁面未使用 HTTPS，您的金鑰將以未加密方式透過網路傳輸。僅在您信任的網路上傳送。",
+      "insecureConfirmButton": "傳送金鑰",
+      "staleNote": "最後一次檢查無法連線到 World Monitor。",
+      "disabled": "此部署的運營者已禁用桌面金鑰。",
+      "state": {
+        "none": "無金鑰",
+        "active": "活躍",
+        "invalid": "無效",
+        "not_desktop_key": "非桌面金鑰",
+        "over_cap": "超過金鑰限制",
+        "lapsed": "計劃未啟用",
+        "unavailable": "無法驗證",
+        "disabled": "已禁用"
+      },
+      "detail": {
+        "none": "此瀏覽器中未儲存金鑰。",
+        "active": "Pro 在此瀏覽器中已解鎖。",
+        "invalid": "此金鑰無效或已被撤銷。",
+        "not_desktop_key": "這是 API 金鑰。請改用桌面金鑰。",
+        "over_cap": "帳戶的桌面金鑰數量超過了其計劃允許的數量。在 worldmonitor.app 上撤銷一個。",
+        "lapsed": "帳戶的 Pro 計劃未啟用。",
+        "unavailable": "無法連線到 World Monitor 來檢查此金鑰。請稍後重試。"
+      }
+    }
   },
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",
@@ -3741,6 +4484,7 @@
   "auth": {
     "signIn": "登入",
     "createAccount": "建立帳戶",
+    "freeReason": "免費：儲存佈局、關注國家、獲取提醒",
     "settings": "設定",
     "passkeyOffer": {}
   },
@@ -3785,7 +4529,17 @@
     "renameHint": "{{name}} — 雙擊重新命名",
     "deleteTab": "刪除標籤頁",
     "deleteTabAria": "刪除標籤頁 {{name}}",
-    "tabNameAria": "標籤頁名稱"
+    "tabNameAria": "標籤頁名稱",
+    "addTabTitleSaved": "新標籤頁（使用已儲存的面板）",
+    "newTabOptions": "新標籤頁選項",
+    "newTabStartsDefault": "新標籤頁將從預設面板開始。",
+    "newTabStartsSaved": "新標籤頁將從已儲存的面板開始。",
+    "newTabOptionsHint": "已有的標籤頁不會改變。",
+    "useThisTabPanels": "使用此標籤頁的面板",
+    "useDefaultPanels": "使用預設面板",
+    "newTabPanelsNotSaved": "無法儲存。瀏覽器阻止了網站儲存。",
+    "team": "團隊",
+    "teamDashboards": "團隊儀表盤"
   },
   "theaterPresets": {
     "label": "覆蓋預設",
@@ -3834,5 +4588,495 @@
     "noEvents": "此日期未採集到精選新聞標題。這不代表沒有事件發生。",
     "unlock90": "使用 Pro 解鎖 90 天歷史",
     "unlock365": "使用 API 套餐解鎖 365 天歷史"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "來源",
+      "freshness": "新鮮度",
+      "confidence": "置信度",
+      "limitations": "侷限",
+      "related": "相關",
+      "groundedIn": "依據",
+      "curated": "精選 v1",
+      "fallback": "備用",
+      "layerGuide": "圖層指南"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "新聞 / 熱點",
+        "purpose": "標出受監測的地緣政治熱點，並在相關新聞與升級訊號匯合時提高其等級。",
+        "source": "WorldMonitor熱點名錄、RSS/GDELT新聞情報、熱點升級評分、軍事活動，以及國家不穩定性背景。",
+        "freshness": "熱點位置經過精選，並且是靜態的。新聞源的新鮮度另行跟蹤。熱點等級在儀表板新聞源重新整理時重算，間隔大約10分鐘。GDELT情報的種子與快取時限更長。",
+        "confidence": "可以用來分流優先順序。若不開啟底層新聞和國家背景，它不是可以引用的結論。",
+        "limitations": {
+          "0": "新聞量和關鍵詞匹配可能讓報道密集的地區顯得比實際更突出。",
+          "1": "RSS/GDELT覆蓋稀疏或滯後時，可能漏掉關注度低的事件。"
+        },
+        "related": {
+          "0": "即時新聞面板",
+          "1": "戰略風險概覽面板",
+          "2": "國家簡報",
+          "3": "熱點彈窗"
+        }
+      },
+      "no2Activity": {
+        "category": "經濟",
+        "purpose": "按 Sentinel-5P 對流層 NO2（一種燃燒痕跡）的方向為國家和工業叢集著色：最新 56 天視窗與往年同期日期對比。",
+        "source": "透過 CDSE Sentinel Hub Statistical API 獲取的 Copernicus Sentinel-5P TROPOMI NO2，由 seed-no2-activity 服務按區域每日聚合。包含經修改的 Copernicus Sentinel 資料。",
+        "freshness": "每 24 小時播種一次；視窗在執行前 3 天結束，以便遲到的顆粒資料到達，新鮮度預算為 72 小時。",
+        "confidence": "僅當至少有 14 個有效日和 2 個基線年時區域才會給出讀數；雲量是主要噪聲，因此資料稀薄的視窗會拒絕讀數而非猜測。",
+        "limitations": {
+          "0": "區域加入後的數週內，“基線待定”是預期狀態，此時往年視窗仍在獲取中。",
+          "1": "NO2 跟蹤燃燒，因此更清潔的發電或更清潔的車輛會被讀作活動減弱。"
+        },
+        "related": {
+          "0": "中國活動即時預測",
+          "1": "國家簡報"
+        }
+      },
+      "reservoirLevels": {
+        "category": "氣候",
+        "purpose": "按水面水位與一年中同期常年水位的對比以及變化速度，標示戰略水庫和湖泊。",
+        "source": "經由 NSIDC 獲取的 NASA ICESat-2 ATL13 內陸水面高度，使用 SlideRule Earth 處理，並由 seed-reservoir-levels 服務按每次衛星過境彙總。",
+        "freshness": "每日更新。NASA 在測量後 50 至 70 天釋出每次過境資料，每座水庫的重訪間隔從幾天到約一個月不等。",
+        "confidence": "只有當至少 5 個水面段在 0.25 米內一致時，該次過境才計入。季節對比需要至少 3 個往年同期的過境資料。",
+        "limitations": {
+          "0": "僅為水位，不是庫容：同樣的下降在不同水庫意味著不同的蓄水損失。",
+          "1": "150 天內沒有過境的水體會標記為近期無過境；其最後一次讀數、變化和日期仍會顯示。"
+        },
+        "related": {
+          "0": "戰略水位面板",
+          "1": "氣候異常"
+        }
+      },
+      "conflicts": {
+        "category": "衝突",
+        "purpose": "顯示精選衝突區和地緣政治邊界疊加，便於把即時訊號放到已知戰區裡看。",
+        "source": "WorldMonitor衝突區名錄、UCDP/ACLED衝突背景，以及有文獻記錄的邊界後設資料，例如朝鮮半島DMZ。",
+        "freshness": "基礎區域經過精選，並且是靜態的。動態衝突事件輸入透過ACLED/UCDP源和健康狀態訊號另行跟蹤。",
+        "confidence": "適合做地理定向。它本身不能確認事件正在即時發生。",
+        "limitations": {
+          "0": "靜態區域可能跟不上快速的戰術變化。",
+          "1": "部分衝突證據出現在衝突事件、國家不穩定性或相關面板中，而不是衝突區多邊形。"
+        },
+        "related": {
+          "0": "UCDP事件",
+          "1": "國家不穩定性面板",
+          "2": "戰略風險概覽",
+          "3": "國家簡報"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "航空",
+        "purpose": "顯示已報告的應答機程式碼7500、7600和7700，與軍事分類無關。",
+        "source": "對adsb.lol的精確應答碼查詢。航空器詳情使用提供方欄位。署名遵循ODbL。",
+        "freshness": "可見時每分鐘檢查一次。最後一條訊息不得超過120秒。地圖位置不得超過90秒。未知報告在15分鐘後過期。",
+        "confidence": "已報告的應答機訊號不能確認事件、原因、著陸或解除。",
+        "limitations": {
+          "0": "接收機覆蓋不完整。",
+          "1": "最後一條訊息的時間不是選定應答碼的時間。",
+          "2": "沒有新位置的航空器只出現在詳情列表中。",
+          "3": "資訊衝突和失去接收會變為未知。"
+        },
+        "related": {
+          "0": "航空器詳情"
+        }
+      },
+      "ais": {
+        "category": "海事",
+        "purpose": "顯示戰略水域和咽喉要道附近的船舶密度與AIS中斷訊號。",
+        "source": "AISStream中繼快照、WorldMonitor海事服務，以及咽喉要道中斷分類器。",
+        "freshness": "AIS中繼快照預設每5秒重建一次。伺服器可能把基礎密度快照快取5分鐘。中繼憑據或連線不可用時，圖層會停用或過期。",
+        "confidence": "可用於篩查海事異常。AIS由船舶自行報告，船舶可以關閉訊號。",
+        "limitations": {
+          "0": "岸基AIS覆蓋不均勻。已有記錄表明中東、亞洲和遠海的可見性較弱。",
+          "1": "暗船由空隙和擁堵形態推斷而來，不是意圖的直接證據。"
+        },
+        "related": {
+          "0": "供應鏈面板",
+          "1": "咽喉要道條",
+          "2": "軍用船舶",
+          "3": "國家簡報的AIS訊號"
+        }
+      },
+      "tradeRoutes": {
+        "category": "海事",
+        "purpose": "畫出經過戰略咽喉要道的主要集裝箱、能源和散貨航線，用來判斷中斷會沿哪條路徑傳遞。",
+        "source": "WorldMonitor貿易航線名錄，加上供應鏈咽喉要道狀態和過境摘要。",
+        "freshness": "航線幾何是靜態的。咽喉要道狀態每6分鐘預熱拉取一次。過境摘要經供應鏈快取和中繼路徑每10分鐘重新整理一次。",
+        "confidence": "適合看航線層面的暴露。它不是船舶層面的航線資料。",
+        "limitations": {
+          "0": "航線是建模廊道，可能與某次具體航次計劃不一致。",
+          "1": "中斷疊加取決於當前咽喉要道和AIS的健康狀態。"
+        },
+        "related": {
+          "0": "供應鏈面板",
+          "1": "航線探索",
+          "2": "情景引擎",
+          "3": "戰略水道圖層"
+        }
+      },
+      "flights": {
+        "category": "航空",
+        "purpose": "標出機場中斷和NOTAM關閉。也顯示當前有效或在24小時內開始的空域NOTAM（臨時飛行限制、限制區、危險區、禁區、軍事活動區、空域保留和關閉）。在能夠跟蹤時，還顯示航空器的即時位置。",
+        "source": "FAA ASWS、AviationStack、FAA NOTAM管理服務（NMS-API）和ICAO NOTAM、adsb.lol（ODbL）、Wingbits、舊版OpenSky服務恢復、可選的非商業airplanes.live/adsb.fi補缺，以及航空服務。空域NOTAM在NMS提供形狀時畫成多邊形，在NOTAM給出不超過250海里的半徑時畫成圓，其餘畫成標記。",
+        "freshness": "機場中斷種子按30分鐘節奏執行。空域NOTAM根據NMS變更拉取每5分鐘寫入一次種子，並每天做一次全量重新同步，新鮮度時限為20分鐘。航空面板還按5分鐘輪詢重新整理執行檢視。",
+        "confidence": "最適合給中斷做分流。單架即時航空器的覆蓋取決於ADS-B是否可用以及配置的提供方。NOTAM正文以FAA分發的文字為準。",
+        "limitations": {
+          "0": "沒有API金鑰時，可能出現基於AviationStack的模擬演示資料。",
+          "1": "ADS-B覆蓋弱或被阻斷的地方，即時航空器位置可能延遲或缺失。",
+          "2": "空域NOTAM區域只畫在deck.gl地圖上。SVG地圖和地球地圖顯示機場標記。",
+          "3": "多數美國TFR只在正文裡描述形狀，因此顯示為NOTAM位置上的標記，而不是限制區形狀。",
+          "4": "NOTAM有效視窗內的時刻表（例如每日時段）顯示在提示中，但不用於決定是否可見。"
+        },
+        "related": {
+          "0": "航空公司情報面板",
+          "1": "航空指揮欄",
+          "2": "國家簡報的航空訊號",
+          "3": "航空器緊急情況",
+          "4": "導航干擾"
+        }
+      },
+      "ucdpEvents": {
+        "category": "衝突",
+        "purpose": "標出事件級武裝衝突記錄，包含國家、行為體、日期和死亡人數區間。",
+        "source": "烏普薩拉衝突資料計劃的GED API，經由衝突服務和UCDP事件種子。",
+        "freshness": "在UCDP種子健康時，每6小時寫入一次種子。",
+        "confidence": "編輯一致性高於未經處理的突發資訊流，但延遲是有意的，它不是戰場即時資訊。",
+        "limitations": {
+          "0": "按年釋出、面向研究的節奏可能漏掉非常新的事件。",
+          "1": "死亡人數區間是估計值，應按區間理解，而不是精確人數。"
+        },
+        "related": {
+          "0": "UCDP衝突事件面板",
+          "1": "國家不穩定指數的衝突分量",
+          "2": "國家時間線"
+        }
+      },
+      "weather": {
+        "category": "天氣",
+        "purpose": "顯示各國氣象機構釋出且仍然有效的惡劣天氣預警，合併為一條weather:alerts:v1資訊流。",
+        "source": "美國國家氣象局（NWS）、加拿大環境與氣候變化部（ECCC），以及WMO惡劣天氣資訊中心（SWIC）的CAP彙總。經由WorldMonitor中繼寫入種子。",
+        "freshness": "NWS、ECCC和SWIC預警由中繼每15分鐘寫入一次種子，並對照45分鐘的新鮮度時限進行監測。",
+        "confidence": "對參與國機構釋出的預警具有權威性，取決於上游的釋出時間。NWS和ECCC繪製為多邊形。已做地理編碼的SWIC預警繪製在釋出機構所在國的質心，並帶有明確的精度標記。",
+        "limitations": {
+          "0": "多數SWIC成員釋出的是地理編碼，不是多邊形。這些預警顯示為國家級點，並附上區域描述原文，而不是警戒區疊加。",
+          "1": "SWIC覆蓋取決於哪些WMO成員當前向匯聚端釋出。密度因地區而異。",
+          "2": "美國和加拿大的SWIC行會被跳過，因為NWS和ECCC已經為這些國家提供多邊形級別的覆蓋。"
+        },
+        "related": {
+          "0": "自然事件圖層",
+          "1": "天氣預警彈窗",
+          "2": "資料新鮮度狀態"
+        }
+      },
+      "canadaRoads": {
+        "category": "交通",
+        "purpose": "顯示受支援的加拿大轄區的官方道路事件、警報、路況、封閉、施工和危險。",
+        "source": "安大略511、艾伯塔511和曼尼託巴511的省級資訊源、多倫多市道路限制，以及DriveBC Open511。經由WorldMonitor寫入種子。",
+        "freshness": "安大略、艾伯塔和曼尼託巴511每15分鐘寫入一次種子，並對照45分鐘的新鮮度時限進行監測。多倫多限制每2小時寫入一次種子。DriveBC Open511每30分鐘寫入一次種子。",
+        "confidence": "對受支援的省級和市級釋出方具有權威性，取決於上游釋出時間和已對映的幾何。",
+        "limitations": {
+          "0": "未接入艾伯塔511的roadconditions（提供方端點返回404）。艾伯塔的即時繪製只有事件和警報。",
+          "1": "沒有座標的省級警報不會顯示為地圖點。",
+          "2": "路況折線可能簡化複雜的公路幾何。"
+        },
+        "related": {
+          "0": "天氣預警",
+          "1": "資料新鮮度狀態"
+        }
+      },
+      "canadaAlerts": {
+        "category": "緊急警報",
+        "purpose": "把艾伯塔、不列顛哥倫比亞和薩斯喀徹溫仍然有效的公共安全警報顯示為地圖點，並與美國NWS天氣並列。",
+        "source": "艾伯塔緊急警報的Atom、OGL-BC疏散令和警報GeoJSON圖層、SaskAlert公開JSON源，以及同一主機上的CAP 1.2詳情，歸併為一個 canadaAlerts 並集。CAP/GeoRSS多邊形、不列顛哥倫比亞疏散多邊形和SaskAlert的CAP多邊形變為質心。沒有幾何的記錄使用來源省份的質心。",
+        "freshness": "省級來源每15分鐘寫入一次種子，並集對照45分鐘的新鮮度時限進行監測。空資訊流（沒有有效警報）是零條記錄的有效成功。",
+        "confidence": "對艾伯塔緊急警報、不列顛哥倫比亞疏散令和警報、SaskAlert釋出的警報具有權威性，取決於上游釋出時間和已對映的警報幾何。",
+        "limitations": {
+          "0": "覆蓋僅限艾伯塔、不列顛哥倫比亞和薩斯喀徹溫。安大略除已排除的NAAD外，沒有由省運營且符合條件的機器可讀源。",
+          "1": "不能替代美國NWS天氣預警，也不能替代安大略和多倫多的道路圖層。",
+          "2": "沒有可對映嚴重程度的條目（艾伯塔CAP與顏色語義、不列顛哥倫比亞疏散狀態，或SaskAlert的CAP嚴重程度）會被丟棄，而不會被編造。SaskAlert摘要中的顏色或級別不視為CAP嚴重程度。"
+        },
+        "related": {
+          "0": "天氣預警",
+          "1": "自然事件圖層",
+          "2": "資料新鮮度狀態"
+        }
+      },
+      "cyberThreats": {
+        "category": "網路",
+        "purpose": "在地圖上標出經過地理充實的失陷指標，例如C2伺服器、惡意軟體主機、釣魚、惡意URL和勒索軟體基礎設施。",
+        "source": "abuse.ch的Feodo Tracker和URLhaus、C2IntelFeeds、AlienVault OTX、AbuseIPDB、ransomware.live的RSS與新聞源，以及IP地理定位充實。",
+        "freshness": "網路威脅種子每2小時執行一次。顯示的IOC使用14天滾動視窗，併為地圖效能設定數量上限。",
+        "confidence": "適合檢視基礎設施。歸屬和IP地理定位可能有噪聲。",
+        "limitations": {
+          "0": "IP地理定位可能指向託管基礎設施，而不是運營者或受害者。",
+          "1": "源是否可用、API金鑰，以及各源的濫用報告，都可能使覆蓋產生偏差。"
+        },
+        "related": {
+          "0": "網路威脅地圖彈窗",
+          "1": "對國家不穩定性的網路貢獻",
+          "2": "資料新鮮度狀態"
+        }
+      },
+      "natural": {
+        "category": "自然災害",
+        "purpose": "顯示地震、嚴重災害警報和仍在持續的地球觀測事件，用於掌握態勢。",
+        "source": "USGS地震、GDACS警報和NASA EONET事件，合併進自然事件服務。",
+        "freshness": "自然事件每30分鐘寫入一次種子。USGS地震的預期在文件中約為5分鐘的來源節奏。",
+        "confidence": "對已探測到的公開災害訊號較強。置信度因災害型別和上游報告延遲而不同。",
+        "limitations": {
+          "0": "為保持地圖可讀，低嚴重程度的GDACS警報會被濾除。",
+          "1": "EONET野火按新鮮度過濾，因此較早開始且仍未結束的事件可能不會顯示為活動地圖點。"
+        },
+        "related": {
+          "0": "自然事件圖層彈窗",
+          "1": "天氣預警",
+          "2": "國家簡報的自然訊號"
+        }
+      },
+      "waterways": {
+        "category": "海事",
+        "purpose": "標出戰略水道和咽喉要道，使中斷訊號可以對照固定的海事地理來讀。",
+        "source": "WorldMonitor戰略水道名錄，併疊加來自AIS、NGA警告和PortWatch衍生源的供應鏈咽喉要道狀態。",
+        "freshness": "水道位置是靜態的。即時咽喉要道狀態每6分鐘預熱拉取一次。當中繼與PortWatch路徑健康時，過境摘要每10分鐘重新整理一次。",
+        "confidence": "對固定地理的置信度高。即時中斷的置信度取決於配套的AIS、NGA和PortWatch源。",
+        "limitations": {
+          "0": "看得到咽喉要道標記，並不表示當前存在中斷。",
+          "1": "區域地理圍欄和建模航線可能簡化複雜的交通形態。"
+        },
+        "related": {
+          "0": "供應鏈面板",
+          "1": "貿易航線圖層",
+          "2": "航線探索",
+          "3": "情景引擎"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "國家風險",
+        "purpose": "按國家不穩定指數的當前分數給國家著色，用於對戰略風險做粗分流。",
+        "source": "WorldMonitor國家不穩定指數評分服務，使用衝突、動盪、旅行提醒、網路、船舶追蹤、航空、自然事件和新聞訊號。",
+        "freshness": "風險分數快取每8分鐘預熱拉取一次。seed-meta和health.riskScores對照30分鐘的新鮮度時限，暴露即時、過期、部分或降級狀態。",
+        "confidence": "這是複合模型訊號，不是官方國家評級，也不是機率預測。",
+        "limitations": {
+          "0": "來源族稀疏或降級時，即使國家仍有分數，置信度也會下降。",
+          "1": "國家級顏色可能掩蓋國內差異。引用前應對照面板核對。"
+        },
+        "related": {
+          "0": "國家不穩定性面板",
+          "1": "戰略風險概覽面板",
+          "2": "資料新鮮度狀態",
+          "3": "國家簡報"
+        }
+      }
+    },
+    "fallback": {
+      "category": "圖層",
+      "purpose": "這個圖層可以在地圖上開關，但精選的來源與置信度卡片尚未加入。",
+      "source": "不在v1圖層可解釋性集合的精選範圍內。",
+      "freshness": "這裡沒有宣告圖層級的新鮮度約定。若有可見的面板徽章、彈窗或資料新鮮度狀態，請檢視。",
+      "confidence": "在加入特定來源的後設資料之前，置信度未知。",
+      "limitations": {
+        "0": "沒有精選卡片，並不表示該圖層不受支援。",
+        "1": "特定來源的背景請使用圖層彈窗和相關面板。"
+      },
+      "related": {
+        "0": "圖層指南"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "UKMTO資料不可用。",
+    "empty": "UKMTO未返回任何事件。",
+    "stale": "來源資料已過時。上次檢查",
+    "current": "來源已檢查",
+    "reportedClaims": "釋出方報告。相關說法可能仍在調查中。",
+    "occurred": "事件",
+    "reported": "釋出"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "全球市場地圖",
+      "liveNews": "市場頭條",
+      "insights": "AI市場洞察"
+    },
+    "tech": {
+      "map": "全球科技地圖",
+      "liveNews": "科技頭條"
+    },
+    "commodity": {
+      "map": "商品地圖",
+      "liveNews": "商品頭條",
+      "insights": "AI商品洞察"
+    },
+    "energy": {
+      "map": "能源地圖",
+      "liveNews": "能源頭條",
+      "insights": "AI能源洞察"
+    },
+    "happy": {
+      "map": "好訊息地圖"
+    }
+  },
+  "pwaInstall": {
+    "title": "安裝應用",
+    "share": "在 Safari 中輕點分享（帶向上箭頭的方框）。你可能需要先開啟更多選單。",
+    "add": "選擇新增到主螢幕。",
+    "confirm": "輕點新增，然後從主螢幕開啟 World Monitor。",
+    "close": "關閉",
+    "alertsHint": "將 World Monitor 安裝到主螢幕，以便在此 iPhone 或 iPad 上接收提醒。",
+    "how": "如何安裝"
+  },
+  "teamDashboards": {
+    "desc": "團隊共享的儀表盤。開啟一個可將其作為新標籤頁新增。",
+    "empty": "你的團隊還未共享任何儀表盤。共享此標籤頁可讓團隊成員獲得相同的面板、尺寸和地圖。",
+    "open": "以新標籤頁開啟 {{name}}",
+    "stopSharing": "停止共享 {{name}}",
+    "confirmStop": "停止與團隊共享 {{name}}？已開啟的標籤頁將保持不變。",
+    "shareTab": "將此標籤頁與團隊共享",
+    "shareChanges": "將此標籤頁的更改與團隊共享",
+    "behind": "你開啟此儀表盤後，團隊進行了更改。",
+    "getLatest": "獲取最新版本",
+    "opened": "從團隊共享中開啟了 {{name}}。",
+    "shared": "已將 {{name}} 與團隊共享。",
+    "updated": "此標籤頁現已是團隊的最新版本。",
+    "stopped": "停止共享 {{name}}。",
+    "failed": "無法連線團隊儀表盤。請重試。",
+    "limit": "你的團隊已在此共享 {{limit}} 個儀表盤。請先停止共享其中一個。",
+    "focusNotEntitled": "您的套餐不支援共享聚焦儀表板。清除此標籤頁的聚焦以共享其面板。",
+    "focusUnreadable": "{{name}} 有一個此版本無法顯示的聚焦。重新載入以更新，然後重新開啟。"
+  },
+  "focus": {
+    "barLabel": "聚焦",
+    "summary": "聚焦於 {{countries}}",
+    "neighboursOff": "未包含相鄰國家",
+    "chosenLabel": "已選擇",
+    "neighboursLabel": "相鄰國家",
+    "neighbourItem": "相鄰國家：{{name}}",
+    "range": "{{start}} 至 {{end}}",
+    "windowEnded": "時間視窗已於 {{date}} 結束",
+    "windowStarts": "開始於 {{date}}",
+    "windowUntil": "至 {{date}}",
+    "windowFrom": "從 {{date}}",
+    "edit": "編輯",
+    "clear": "清除",
+    "clearAria": "清除聚焦並顯示整個世界",
+    "clearFocus": "清除聚焦",
+    "notFiltered": "未篩選",
+    "notFilteredGlobal": "全球資料：未按國家篩選",
+    "notFilteredYet": "尚未按國家篩選",
+    "gateSignedOutDesc": "登入以將儀表板標籤頁的聚焦設定在您覆蓋的國家。",
+    "gateUpgradeDesc": "將標籤頁聚焦在所選國家需要 Pro Business、API Business 或 Enterprise 套餐。",
+    "gateUpgradeCta": "升級",
+    "tabButton": "聚焦",
+    "tabButtonTitle": "將此標籤頁聚焦在所選國家",
+    "tabButtonTitleActive": "編輯此標籤頁的聚焦",
+    "newTitle": "聚焦此標籤頁",
+    "editTitle": "編輯聚焦",
+    "intro": "可按國家篩選的面板只顯示這些國家。其他面板顯示\"未篩選\"。",
+    "countriesLabel": "國家",
+    "count": "{{n}}/{{max}}",
+    "searchPlaceholder": "搜尋國家",
+    "resultsLabel": "匹配的國家",
+    "limitReached": "您已選擇 {{max}} 個國家，這是聚焦可容納的最大數量。",
+    "removeCountry": "移除 {{name}}",
+    "includeNeighbours": "包含相鄰國家",
+    "neighboursHint": "風險跨越邊界。相鄰國家已標記，不計入 {{max}} 的限制中。",
+    "startLabel": "從（可選）",
+    "endLabel": "至（可選）",
+    "datesHint": "用於行程或任務。當時間視窗結束時，聚焦保持不變且狀態列會顯示。",
+    "errorNoCountries": "至少選擇一個國家。",
+    "errorTooMany": "聚焦最多可容納 {{max}} 個國家。",
+    "errorDates": "結束日期早於開始日期。",
+    "save": "儲存",
+    "cancel": "取消",
+    "saved": "此標籤頁聚焦於 {{countries}}。",
+    "cleared": "聚焦已清除。此標籤頁顯示整個世界。",
+    "notSaved": "無法儲存。此瀏覽器阻止了網站儲存。",
+    "plusNeighbours_other": "+ {{count}} 個相鄰國家",
+    "filter": {
+      "showing": "顯示 {{countries}}",
+      "showingNeighbours": "顯示 {{countries}} + 鄰國",
+      "showAll": "顯示全部",
+      "focusOff": "此面板已關閉聚焦：顯示全部內容",
+      "applyFocus": "應用聚焦",
+      "applyFocusAria": "按聚焦重新篩選此面板",
+      "show": "顯示",
+      "hide": "隱藏",
+      "noCountryTag": "無國家",
+      "emptyHint": "其他一切內容已計入上方。",
+      "emptyNews": "當前頭條新聞中沒有這些國家的內容",
+      "emptyAdvisories": "這些國家沒有旅行建議",
+      "emptyConflict": "這些國家沒有 UCDP 衝突事件",
+      "emptyConflictPartial": "最新事件中這些國家沒有衝突事件。完整列表未載入。",
+      "loadingConflict": "正在載入這些國家的所有衝突事件…",
+      "emptyAirports": "您監控的機場中沒有位於這些國家的機場",
+      "emptyFlights": "此面板中沒有往返這些國家的航班",
+      "emptyAviationNews": "最近 24 小時內這些國家沒有航空新聞",
+      "tabNotFiltered": "此選項卡未按國家篩選",
+      "hidden_other": "聚焦隱藏了 {{count}} 項",
+      "showAllAria_other": "顯示此面板中的全部內容，包括聚焦範圍外的 {{count}} 項",
+      "unattributed_other": "{{count}} 項無國家標記",
+      "showUnattributedAria_other": "顯示 {{count}} 項無國家標記的內容",
+      "hideUnattributedAria_other": "隱藏 {{count}} 項無國家標記的內容",
+      "partialConflict": "僅顯示最近150條衝突事件。完整列表未載入。",
+      "partialConflictLoading": "正在載入完整列表，目前顯示最新150條衝突事件。",
+      "emptyInstability": "這些國家沒有不穩定性評分",
+      "emptyOutbreaks": "這些國家沒有疾病爆發",
+      "emptyOutages": "這些國家沒有網際網路中斷",
+      "emptyRadiation": "這些國家沒有輻射讀數",
+      "emptyFuelShortages": "這些國家沒有燃料短缺",
+      "emptyEnergyDisruptions": "這些國家沒有能源中斷",
+      "emptyDisplacement": "這些國家沒有人口流離失所資料",
+      "emptyCorrelation": "這些國家沒有訊號"
+    },
+    "draftAssessment": "草稿評估",
+    "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
+    "draftCopied": "請求已複製。將其貼上到您的AI助手中。",
+    "draftCopiedPartial": "已為前 {{count}} 個國家複製請求。一份評估最多涵蓋 {{max}} 個國家。未包含的國家：{{omitted}}。",
+    "draftCopyFailed": "無法複製請求。"
+  },
+  "tripAssessment": {
+    "heading": "行程評估",
+    "intro": "由資料支援的旅行風險評估初稿，供分析師完成。它報告資料顯示的內容，不提供建議。",
+    "privacy": "僅包括國家、城市和日期。請勿輸入旅行者姓名、酒店或街道地址。您輸入的任何內容都不會被儲存。",
+    "taskLabel": "任務標籤（可選）",
+    "taskLabelPlaceholder": "區域實地存取",
+    "windowStart": "行程開始",
+    "windowEnd": "行程結束",
+    "countriesLabel": "國家，按旅行順序",
+    "count": "{{n}}/{{max}}",
+    "searchPlaceholder": "新增國家",
+    "addCountry": "向行程中新增國家",
+    "limit": "一趟行程最多涵蓋 {{max}} 個國家。",
+    "omitted": "被遺漏，因為一趟行程最多涵蓋 {{max}} 個國家：{{names}}。",
+    "cities": "城市，用逗號分隔（最多 {{max}} 個）",
+    "arrive": "抵達",
+    "depart": "出發",
+    "moveEarlier": "將 {{name}} 移至行程較早位置",
+    "moveLater": "將 {{name}} 移至行程較晚位置",
+    "remove": "從行程中移除 {{name}}",
+    "downloadMarkdown": "下載 Markdown",
+    "downloadWord": "下載為 Word 格式",
+    "print": "列印或儲存為 PDF",
+    "copyRequest": "複製 AI 助手請求",
+    "close": "關閉",
+    "building": "從最新資料生成初稿中…",
+    "downloaded": "已下載 {{file}}。每次下載都是從最新資料生成，並附帶其自身的捕獲時間戳。",
+    "printOpened": "列印對話方塊已開啟。選擇\"另存為 PDF\"來保留副本。",
+    "errNoCountries": "至少新增一個國家。",
+    "errTooMany": "一趟行程最多涵蓋 {{max}} 個國家。",
+    "errWindow": "行程必須在開始日期的當天或之後結束。",
+    "errCities": "{{name}}：最多列出 {{max}} 個城市。",
+    "errCountryDates": "{{name}}：出發日期必須在抵達日期的當天或之後。",
+    "errOutsideWindow": "{{name}}：日期必須在行程視窗內。",
+    "errInvalid": "無法從此行程生成初稿：",
+    "errAuth": "重新登入以生成初稿。",
+    "errUpgrade": "行程評估包含在 Pro Business、API Business 和 Enterprise 計劃中。",
+    "errBusy": "請求過於頻繁。請在一分鐘後重試。",
+    "errUnavailable": "初稿背後的資料暫時不可用。請在一分鐘後重試。",
+    "errGeneric": "初稿生成失敗。請重試。",
+    "errDownload": "無法在此處下載檔案。請改用列印或另存為 PDF。",
+    "errLoad": "無法開啟行程評估。請重新整理頁面後重試。"
   }
 }

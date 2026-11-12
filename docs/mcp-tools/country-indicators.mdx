@@ -1,0 +1,265 @@
+---
+title: "MCP tools: Country indicators & resources"
+sidebarTitle: "Country indicators & resources"
+description: "World Monitor MCP tool reference for NO2 activity, demographics, scorecards, resilience, minerals, mine sites and dated macro history: parameters, freshness, backing API endpoints and example calls."
+---
+
+Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
+
+The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"`.
+
+### `get_no2_activity`
+
+Industrial activity direction from Sentinel-5P tropospheric NO2 for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in the prior three years, as changePercent and a direction after a 10% dead band. A region with no reading carries an exclusion; baseline_backfill_pending is expected while prior years are still being fetched, not a fault. Filter by country_code (the country plus its clusters), region_id or kind. Daily seed, never a live Copernicus call; reproduce attribution. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.
+
+Each region reports `windowStart`, `windowEnd`, `validDays` (days with enough cloud-free, quality-filtered pixels), the mean NO2 column in mol/m2, the prior years that entered the baseline, `changePercent`, `signalValue` (the change outside the 10% dead band, 0 inside it) and `direction` (`strengthening`, `weakening`, `unchanged`). A region without a reading has `direction: null` and an `exclusion` from the closed vocabulary `request_failed`, `baseline_backfill_pending`, `insufficient_valid_days`, `insufficient_baseline_years`. The response carries `method` (the constants pinned by the route's `methodVersion`), `generatedAt`, `stale` (true past the 72 h health budget) and the required credit line in `attribution`, for example "Contains modified Copernicus Sentinel data 2023-2026". See [China activity nowcast methodology](/methodology/china-activity-nowcast#satellite-no2) for the method.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country_code` | string | Country to read. ISO 3166-1 alpha-2 code ("DE"), alpha-3 ("DEU") or an English name ("Germany"). Returns the country region and every cluster inside it; clusters spanning several countries (`gulf-states`, `rotterdam-antwerp`) carry no code. |
+| `region_id` | string | Registry id of one region, for example `country-cn` or `yangtze-river-delta` (the `id` field of a returned region). Combines with the other filters as AND. |
+| `kind` | `string: country / cluster` | Region type: whole-country polygons or named industrial clusters such as `yangtze-river-delta`. Omitted: both types. |
+
+**Response distinctions:** `unavailableReason` is the closed `No2ActivityUnavailableReason` enum from the RPC. `NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer (the filters name no registered region, a retry cannot help) with `upstreamUnavailable: false`. `NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` is a client error (a malformed filter reached the handler directly; the gateway answers HTTP 400 first) with `upstreamUnavailable: false`. The remaining reasons name faults (`seed_missing`, `invalid_dataset`, `cache_unavailable`) with `upstreamUnavailable: true`. A per-region `exclusion` never withholds the response: `baseline_backfill_pending`, `insufficient_valid_days` and `insufficient_baseline_years` mean the method refused a reading it cannot support, while `request_failed` means that region's own source refresh has been failing for longer than the retained data lasts.
+
+- **API endpoint:** `GET /api/economic/v1/get-no2-activity`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC proxy over the canonical NO2 activity route (the handler owns filtering, contract validation and miss classification).
+- **Freshness budget:** up to **72 h** before `stale` (daily seeder cadence times three, matching `/api/health`).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_no2_activity","arguments":{"country_code":"CN","kind":"cluster"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_demographics_capability`
+
+Country age structure, education capacity, and industrial-workforce observations from UN WPP, World Bank/UNESCO UIS, and ILOSTAT. The three groups are independent: one source can be unavailable while the other groups remain usable.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
+
+- **API endpoint:** `GET /api/resilience/v1/get-demographics-capability`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** subscription RPC proxy over the annual demographics seed.
+- **Freshness:** read each observation's `year`; it is the source observation year, not the seed run year. Stage metadata reports whether the current snapshot is `fresh`, retained a last-good stage, or is unavailable.
+
+Each observation returns `available`, `value`, `year`, `source`, and `unit`. Always check `available` before reading `value`: an unavailable proto3 number is serialized as zero. The combined trained-industrial-workforce observation is published only when the two underlying ILOSTAT occupation groups form a valid same-year cohort.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_demographics_capability","arguments":{"country_code":"DE"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_five_factor_scorecard`
+
+Return the frozen v1 scorecard for exactly one country or bloc. Choose one of a country code, an official bloc preset, or a custom member list. The response comes from one atomic seeded snapshot, so its country and bloc evidence share the same cohort and methodology version.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | one selector | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
+| `preset` | string | one selector | `USMCA`, `EU27`, `BRICS`, `GCC`, `ASEAN`, or `NATO`. |
+| `members` | string[] | one selector | Custom bloc of 2–30 unique member countries, each a code or name in the same forms as `country_code`. |
+
+- **API endpoints:** `GET /api/scorecard/v1/get-five-factor-scorecard`, `GET /api/scorecard/v1/get-bloc-scorecard` — free for anonymous REST callers, unlike this MCP tool.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument; use `jmespath` to trim evidence.
+- **Kind:** canonical RPC proxy over `scorecard:five-factor:v1`; it does not fetch source datasets at request time.
+- **Freshness:** daily seed with a 36-hour freshness budget. Read `computedAt`, `methodologyVersion`, and the seed health metadata separately when operational freshness matters.
+
+Read `hasScore` before every pillar `score` and `subScore`. A false flag means the proto3 zero is a placeholder, not a resilience score. Read each input's `available` and `hasValue` before its numeric `value`. `insufficientReasons` and `unavailableReason` explain missing coverage, including the source-policy case `redistribution-blocked`.
+
+Food and energy blocs aggregate physical production and consumption before scoring. Demographics, technology, and defense continuous sub-scores use population weighting. This means a bloc score is deliberately not an average of member bands. See the [Five-Factor Scorecard methodology](/methodology/five-factor-scorecard).
+
+<CodeGroup>
+
+```bash Country
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"country_code":"DE"}}
+  }'
+```
+
+```bash Official bloc
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"preset":"ASEAN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+List a compact summary for every country in the frozen scorecard cohort. Each row keeps the pillar score, band, input coverage, and insufficient-data reasons, but omits raw inputs and source observations so the complete country set stays within the MCP output budget.
+
+- **Parameters:** none
+- **API endpoint:** `GET /api/scorecard/v1/list-five-factor-scorecards` — free for anonymous REST callers, unlike this MCP tool.
+- **Access:** `subscription` — requires a Pro subscription.
+- **Kind:** compact projection of the same atomic `scorecard:five-factor:v1` snapshot.
+
+Use `get_five_factor_scorecard` when you need input provenance, raw observations, or bloc aggregation.
+Always read `hasScore` before `score` or `subScore`. When `hasScore` is false, both numeric zeros are protobuf placeholders for insufficient data, not measured zero resilience.
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
+### `get_resilience_indicators`
+
+Explain one country's Country Resilience Index score across the complete 72-row indicator registry. Each row carries the normalized component score, the runtime weight the active scorer used, the post-policy effective contribution, the observed or imputed state, observation age, and source provenance. Contributions reconcile to each published dimension score, so a score can be audited without reimplementing the conditional formulas.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`). |
+
+- **API endpoint:** `GET /api/resilience/v1/get-resilience-indicators`
+- **Access:** `subscription` — requires a Pro subscription on both the REST and MCP paths.
+- **Kind:** request-local trace of the scorer branch that actually ran; it is not a second scoring implementation.
+- **Freshness:** reads the immutable trace generation referenced by the six-hour public score cache. The trace lives in a separate seven-hour sidecar so score and ranking reads stay small.
+- **Spoken mode:** `response_mode: "spoken"` returns 2-3 sentences: the number of scored dimensions and the data snapshot month, the two strongest and two weakest dimensions in plain words, and how many indicators are directly observed. Citations are the score plus each distinct indicator source with URL and retrieval time.
+
+This tool does not accept `jmespath`. Both runtimes reject a non-empty projection with JSON-RPC `-32602` or HTTP 400, because a projection could detach a permitted raw value from the attribution and retrieval fields that authorize redistributing it.
+
+Rows distinguish `observed`, `imputed`, `missing`, `fallback`, `source-failure`, `inactive`, `retired`, and `not-applicable` states. Read the state before the value: a retired or inactive row is explicit and does not claim a false reconciliation.
+
+Raw source values are selective and fail closed. A row includes a raw value only when the observation is measured, every contributing provider has a completed redistribution review, the required attribution is present, and the contributing seed has a retrieval timestamp. A restricted row still returns WorldMonitor's normalized score, contribution, source attribution, and source year when known — suppression is reported through the raw-policy status and reason, never as a numeric zero. `observationProvenance` distinguishes an exact selected source from registry-only attribution. See the [indicator licensing decisions](/methodology/resilience-indicator-licensing) for the per-source table.
+
+`sourceYear` is when the provider measured the phenomenon; `retrievedAt` is when WorldMonitor fetched it. They are not interchangeable, and observation age is always derived from the observation date. For a composite, `sourceYear` is the oldest contributing year.
+
+The public `get_resilience_score` response is unaffected by this tool and remains schema compatible.
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
+  }'
+```
+
+### `get_mineral_production`
+
+Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `commodity` | string | no | Commodity id or label (`cobalt`, `lithium`, `ree`, …) |
+| `iso2` | string | no | Producer-country filter: ISO alpha-2 or alpha-3 code, or a country name in any supported dashboard locale (e.g. `"Egypt"`, `"مصر"`) |
+| `stage` | string: mine / refinery | no | Restrict to one stage |
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-mineral-production`
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** RPC fetch — proxies `GET /api/supply-chain/v1/get-mineral-production`, which serves the Redis seed `supply-chain:mineral-production:v1`. An `_execute` tool, hence `subscription` access and no `summary` argument.
+- **Freshness budget:** annual MCS edition. Withheld USGS values stay flagged and are never treated as zero.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_mineral_production","arguments":{"commodity":"cobalt","stage":"mine"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_commodity_geo`
+
+A curated, static list of 71 major mine sites with coordinates, country, mineral, operator, status (producing, development, exploration) and, where recorded, annual output and a production-rank label. Minerals: gold, silver, copper, lithium, cobalt, rare earths, nickel, platinum, palladium, iron ore and uranium. It answers where a mineral is mined and who operates a mine; it has no national output totals, market shares, refining or prices. `mineral` is an exact, case-sensitive match ("Gold", "Rare Earths"); `country` is a case-insensitive substring.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `mineral` | string | no | Filter by mineral type (e.g. "Gold", "Copper", "Lithium") |
+| `country` | string | no | Filter by country name (e.g. "Australia", "Chile") |
+
+- **API endpoints:** none — this tool reads no cache and makes no HTTP fetch.
+- **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
+- **Kind:** static registry — filters the bundled `MINING_SITES_RAW` constant (in-memory, ships with the MCP server's edge bundle). Sub-millisecond, no upstream call. The dataset updates only when the MCP server is redeployed with a refreshed registry. Implemented as an `_execute` tool, so its access class is `subscription` and it takes no `summary` argument despite making no fetch.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_commodity_geo","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_macro_history`
+
+Dated CPI, interest-rate, and sovereign-yield observations from the existing EconomicService seed readers. This tool preserves source labels, CPI index bases, observation frequency, and yield measures. It does not claim that every source is current.
+
+| Name | Type | Description |
+|------|------|-------------|
+| `dataset` | `us-cpi / us-interest-rates / us-treasury-yields / world-cpi / government-yields` | Required. Select one dataset. |
+| `country` | string | Required for `world-cpi` and `government-yields`. Accepts an ISO code or country name. Rejected for US-only datasets. |
+| `history` | boolean | Default true. False requests the latest available snapshot. |
+| `limit` | integer | Maximum newest observations per series, retained in chronological order. Default 30; range 1 through 365. |
+
+The result contains `dataset`, `history`, `truncated`, and the original API `data` with bounded observation lists. `truncated: true` means that the response omits older observations. `unavailable: true` or an empty list is not a confirmed zero rate. Missing CPI components and missing yield tenors remain absent.
+
+Dates use Unix milliseconds. Interest rates and yields use percentages. CPI index levels retain each source's index base. Country CPI can have different frequencies and definitions. Sovereign curves can use par, spot, benchmark, or monthly 10-year measures. Preserve those labels when comparing observations.
+
+- **API endpoints:** `GET /api/economic/v1/get-us-cpi-monthly`, `GET /api/economic/v1/get-us-interest-rates`, `GET /api/economic/v1/get-us-treasury-par-yield-curve`, `GET /api/economic/v1/get-world-cpi-monthly`, `GET /api/economic/v1/get-government-yield-curve`
+- **Access:** `subscription`. Each call makes one signed gateway request and uses the existing MCP quota policy. It accepts the universal `jmespath` argument.
+- **Example:** `{"dataset":"government-yields","country":"Japan","limit":30}` returns the newest available Japanese curve observations.

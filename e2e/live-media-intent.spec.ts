@@ -2,9 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 const LIVE_MEDIA_REQUEST = /(?:youtube\.com\/embed|youtube\.com\/iframe_api|googlevideo\.com|\/api\/youtube-embed|\/videoplayback(?:[?#/]|$)|\.m3u8(?:[?#]|$))/i;
 
+/** Click-to-play everywhere: the viewer has switched Live News autoplay off in Settings. */
 async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
     localStorage.removeItem('wm-live-streams-always-on');
+    localStorage.setItem('wm-live-news-autoplay', 'false');
     localStorage.removeItem('wm-live-media-idle-stop');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
@@ -18,6 +20,7 @@ async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<strin
 async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
   await page.addInitScript((prefs) => {
     localStorage.setItem('wm-live-streams-always-on', 'true');
+    localStorage.removeItem('wm-live-news-autoplay');
     localStorage.removeItem('wm-live-media-idle-stop');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
@@ -89,6 +92,30 @@ async function setPanelEnabledViaStoredSettings(page: Page, panelId: string, ena
 }
 
 test.describe('live media intent gating', () => {
+  test('a first visit autoplays Live News while the webcam wall waits for a click', async ({ page }) => {
+    await page.addInitScript(() => {
+      for (const key of ['wm-live-streams-always-on', 'wm-live-news-autoplay', 'wm-live-media-idle-stop', 'worldmonitor-active-channel', 'worldmonitor-webcam-prefs']) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    await page.goto('/dashboard?liveMediaDefault=1', { waitUntil: 'domcontentloaded' });
+    const liveNews = page.locator('.panel[data-panel="live-news"]');
+    const webcams = page.locator('.panel[data-panel="live-webcams"]');
+    await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForRealPanel(page, 'live-news');
+    await liveNews.scrollIntoViewIfNeeded();
+    // No click: the default starts Live News on its own.
+    await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await expect(liveNews.getByRole('button', { name: /play live feed/i })).toHaveCount(0);
+
+    await waitForRealPanel(page, 'live-webcams');
+    await webcams.scrollIntoViewIfNeeded();
+    await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(3000);
+    expect(await webcamTransportCount(page)).toBe(0);
+  });
+
   test('keeps live media idle until click, then one click lights up the whole wall + Live News', async ({ page }) => {
     await installCleanLiveMediaPrefs(page);
     const mediaRequests: string[] = [];

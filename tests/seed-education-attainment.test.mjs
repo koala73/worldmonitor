@@ -200,7 +200,7 @@ describe('fetch and Railway bundle budgets', () => {
       new URL('../scripts/seed-bundle-macro.mjs', import.meta.url),
       'utf8',
     );
-    assert.match(bundleSource, /maxBundleMs:\s*570_000/);
+    assert.match(bundleSource, /maxBundleMs:\s*550_000/);
     assert.match(
       bundleSource,
       /Education-Attainment[^\n]+timeoutMs:\s*EDUCATION_SECTION_TIMEOUT_MS/,
@@ -211,7 +211,7 @@ describe('fetch and Railway bundle budgets', () => {
     );
     assert.match(
       bundleSource,
-      /normally last[\s\S]+first priority on the 08:00 Sunday tick[\s\S]+09:00 retry always restores[\s\S]+Physical to the first slot/,
+      /normally last[\s\S]+first priority on the 08:00 Sunday tick[\s\S]+Physical leads the other 08:00 ticks/,
     );
   });
 });

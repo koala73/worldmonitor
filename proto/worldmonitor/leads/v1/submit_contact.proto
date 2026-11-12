@@ -9,7 +9,8 @@ message SubmitContactRequest {
   string email = 1 [(buf.validate.field).required = true];
   string name = 2 [(buf.validate.field).required = true];
   string organization = 3 [(buf.validate.field).required = true];
-  string phone = 4 [(buf.validate.field).required = true];
+  // Optional: an empty phone is accepted; a non-empty one must look like a phone number.
+  string phone = 4;
   string message = 5;
   string source = 6;
   // Honeypot — bots auto-fill this hidden field; real submissions leave it empty.

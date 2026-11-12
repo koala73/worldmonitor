@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { __testing__ as health } from '../api/health.js';
-import { isSourceFailurePendingProblem } from '../scripts/check-seed-freshness.mjs';
 import {
   fetchMergedEarthquakes, earthquakesAfterPublish, earthquakesContentMeta, fetchNrcanAtom, NRCAN_ATOM_URL,
 } from '../scripts/seismology/nrcan-atom.mjs';
@@ -61,7 +60,6 @@ test('first transient miss retains provider events and clock; second run warns; 
   assert.equal(pending.status, 'SEED_ERROR', 'diagnosis remains visible');
   assert.equal(health.healthStatusBucket(pending, NOW + 5 * MIN), 'ok');
   assert.equal(pending.sourceFailurePendingUntil, new Date(NOW + 15 * MIN).toISOString());
-  assert.equal(isSourceFailurePendingProblem(pending, NOW + 5 * MIN), true);
   const compact = health.healthResponseBody({ status: 'HEALTHY', summary: { pending: 1 }, checkedAt: new Date(NOW + 5 * MIN).toISOString(), checks: { earthquakes: pending } }, true);
   assert.deepEqual(compact.pending, { earthquakes: pending });
   assert.equal(health.snapshotTtlSeconds(compact, NOW + 15 * MIN - 20_000), 20);
@@ -218,7 +216,6 @@ test('pending ends at the provider deadline and cannot hide absent clocks, stale
   ]) {
     assert.notEqual(health.healthStatusBucket(verdict(first, NOW + 29 * MIN, overrides), NOW + 29 * MIN), 'ok');
   }
-  assert.equal(isSourceFailurePendingProblem({ ...entry, sourceFailurePendingUntil: new Date(NOW + 60 * MIN).toISOString() }, NOW + 29 * MIN), false);
 });
 
 // Exercise the actual entrypoint and runSeed writes in separate cron processes.
@@ -239,8 +236,19 @@ async function seedProcess(initial, now, nrcanMode, failStateWrite = false) {
     const url = String(input);
     if (url.startsWith('https://redis.earthquake.test/get/')) return Response.json({ result: store.get(decodeURIComponent(url.split('/get/')[1])) ?? null });
     if (url === 'https://redis.earthquake.test' || url === 'https://redis.earthquake.test/pipeline') {
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (failStateWrite && body[0] === 'SET' && body[1] === 'seismology:earthquakes:providers:v1') return new Response('', { status: 403 });
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
+      }
       return Response.json(Array.isArray(body[0]) ? body.map(command => ({ result: redis(command) })) : { result: redis(body) });
     }
     if (url === 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson') {

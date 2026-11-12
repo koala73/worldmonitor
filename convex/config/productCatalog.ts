@@ -52,6 +52,18 @@ export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
  */
 export const SHARED_API_BUDGET = "shared-api-budget";
 
+/**
+ * Per-account daily ceiling on desktop-key traffic (KTD6), shared by Pro and
+ * Pro Business. Counted per owner userId and UTC date across every route, so
+ * revoking and recreating keys cannot reset it.
+ */
+// Desktop-key daily ceiling per account: 3x the p99 daily request count of
+// desktop-like clients (Axiom wm_api_usage, 2026-10-25), rounded up. Sized to
+// a dashboard, not to scripted API traffic, so a key cannot back another app.
+export const DESKTOP_KEY_DAILY_CEILING = 7_500;
+/** Per-minute burst for desktop keys; covers startup bursts (p99.9 ~200/IP). */
+export const DESKTOP_KEY_BURST_PER_MINUTE = 120;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -86,6 +98,15 @@ export type PlanLimits = {
    * telemetry is durable enough to scan.
    */
   mcpBurstRequestsPerMinute: number | null;
+  /**
+   * Per-account daily ceiling on desktop-key requests, across every route
+   * (plan 2026-10-25-001, KTD6). `0` on plans without `desktopKeyAccess`.
+   * Plan structure: the catalog value wins over a stored row in
+   * `mergeEntitlementFeatures`, so a ceiling change reaches existing rows.
+   */
+  desktopKeyRequestsPerDay: number;
+  /** Per-account per-minute burst on desktop-key requests. Catalog wins, as above. */
+  desktopKeyBurstPerMinute: number;
 };
 
 export type PlanLimitDimension =
@@ -145,6 +166,25 @@ export type PlanFeatures = {
    */
   embedAccess?: boolean;
   /**
+   * Desktop-key issuance and use (plan 2026-10-25-001) — a `wm_` key for the
+   * official desktop app or a self-built desktop copy, scoped to what a
+   * signed-in Pro session reaches minus the API-only surfaces. True for Pro
+   * and Pro Business only; deliberately not `apiAccess`.
+   * `shared/desktop-key-access.js` holds the single predicate that reads it.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  desktopKeyAccess?: boolean;
+  /**
+   * Most active desktop keys one account may hold (R5). `0` where
+   * `desktopKeyAccess` is false. Plan structure: catalog wins in
+   * `mergeEntitlementFeatures`. Optional only because legacy rows omit it.
+   */
+  maxDesktopKeys?: number;
+  /**
    * Per-account daily REST request allowance (the "included" number). Read by
    * the per-account rate-limit layer (#3199): the daily usage meter counts but
    * never rejects at this value; the hard safety ceiling is 10× this number.
@@ -174,6 +214,32 @@ export type PlanFeatures = {
    * entries below ALWAYS set the field explicitly.
    */
   dataExport?: boolean;
+  /**
+   * Dashboard focus (#10453): scoping a tab to chosen countries (plus their
+   * neighbours) and a date window, and sharing a focused team dashboard. True
+   * for Pro Business, API Business and Enterprise. `tier` cannot express this:
+   * Pro Business shares `tier: 1` with Pro, and API Starter shares `tier: 2`
+   * with API Business. `shared/tab-focus-access.ts` holds the predicate.
+   *
+   * Optional for the same reason as `embedAccess`: rows written before the
+   * field existed omit it, the read-time catalog merge supplies the plan
+   * default, and consumers treat `undefined` as false (fail-closed). Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  tabFocus?: boolean;
+  /**
+   * Multi-country travel risk assessment drafts (#10451): the
+   * `prepare_travel_risk_assessment` MCP tool. Granted to Pro Business, API
+   * Business and Enterprise. Neither `tier` nor `dataExport` can express that
+   * split: Pro Business shares `tier: 1` with Pro, and API Starter exports
+   * but is not entitled.
+   *
+   * Optional only because rows written before the field existed omit it; the
+   * read-time merge supplies the catalog value. Unlike `dataExport`, consumers
+   * treat `undefined` as **not entitled (fail-CLOSED)** at every tier. Catalog
+   * entries below ALWAYS set the field explicitly.
+   */
+  travelRiskAssessment?: boolean;
 };
 
 export interface CatalogEntry {
@@ -226,12 +292,18 @@ const FREE_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 0,
     dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: false,
   embedAccess: false,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: false,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -247,12 +319,18 @@ const PRO_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 50,
     dashboardAiCallsPerDay: 500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: false,
   exportFormats: [],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 2,
   dataExport: false,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 /**
@@ -279,12 +357,18 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
     mcpCallsPerDay: 250,
     dashboardAiCallsPerDay: 2_500,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+    desktopKeyBurstPerMinute: DESKTOP_KEY_BURST_PER_MINUTE,
   },
   prioritySupport: true,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: true,
+  maxDesktopKeys: 3,
   dataExport: true,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -300,12 +384,18 @@ const API_STARTER_FEATURES: PlanFeatures = {
     mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: false,
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: false,
+  travelRiskAssessment: false,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -321,35 +411,45 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
     mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
-// Enterprise is sold as "Unlimited API requests" under fair use. The daily
-// numbers below are circuit breakers against a leaked key, not plan limits:
-// every one is at least 2.5× the largest self-serve plan, and the high-usage
-// alarm (server/_shared/high-usage-alarm.ts) pages at a quarter of each. An
-// unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
-// payments/subscriptionHelpers.ts), so "unlimited" was reachable without a
-// sales contract. Pinned by tests/high-usage-alarm.test.mts.
+// Enterprise is sold by contract. These numbers are the contract default —
+// 10,000 requests a day and 300 a minute, the same as API Business, with MCP
+// charged to the REST budget — and apply to every Enterprise user outside a
+// pooled enterprise account. Larger allowances are set per contract, not here.
+// An unknown Dodo product also resolves here (FALLBACK_PLAN_KEY in
+// payments/subscriptionHelpers.ts), so this must stay a finite, sellable
+// default. The read-time merge (lib/entitlements.ts) applies these numbers to
+// stored Enterprise rows too. Pinned by tests/high-usage-alarm.test.mts and
+// convex/__tests__/entitlement-merge-enterprise.test.ts.
 const ENTERPRISE_FEATURES: PlanFeatures = {
   tier: 3,
   historyDays: 365,
   maxDashboards: -1,
   apiAccess: true,
-  apiRateLimit: 1000,
-  apiDailyAllowance: 100_000,
+  apiRateLimit: 300,
+  apiDailyAllowance: 10_000,
   planLimits: {
-    apiRequestsPerDay: 100_000,
-    apiBurstRequestsPerMinute: 1000,
-    mcpCallsPerDay: 25_000,
-    dashboardAiCallsPerDay: 25_000,
-    mcpBurstRequestsPerMinute: 1000,
+    apiRequestsPerDay: 10_000,
+    apiBurstRequestsPerMinute: 300,
+    mcpCallsPerDay: SHARED_API_BUDGET,
+    dashboardAiCallsPerDay: 10_000,
+    mcpBurstRequestsPerMinute: 300,
+    desktopKeyRequestsPerDay: 0,
+    desktopKeyBurstPerMinute: 0,
   },
   prioritySupport: true,
   // xlsx + api-stream removed for the same reason xlsx left API Business
@@ -357,7 +457,11 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   exportFormats: ["csv", "json", "pdf"],
   mcpAccess: true,
   embedAccess: true,
+  desktopKeyAccess: false,
+  maxDesktopKeys: 0,
   dataExport: true,
+  tabFocus: true,
+  travelRiskAssessment: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -402,6 +506,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
       "Custom widgets & 10 dashboards (vs 3)",
+      "Desktop key for the desktop app (2 keys)",
     ],
     highlightFeatures: ["Personal license", "1 named user"],
     selfServe: true,
@@ -426,10 +531,8 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
   },
 
   pro_business_monthly: {
-    // PLACEHOLDER — no such product exists in Dodo. Replaced with the real
-    // product ID before launch (activation runbook, plan 2026-07-25-001).
-    // Reaching checkout with this ID is a launch-sequencing bug, not a
-    // supported path.
+    // Live Dodo product "Pro Business Monthly" (USD 49.99/month), created
+    // 2026-07-25 under the activation runbook (plan 2026-07-25-001).
     dodoProductId: "pdt_0NjyFDbhURh2oROgPIU3G",
     planKey: "pro_business_monthly",
     displayName: "Pro Business Monthly",
@@ -443,7 +546,9 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Data export — CSV, JSON & PDF reports",
       "25 custom dashboards (vs 10)",
       "MCP + SDK: 250 calls/day (vs 50)",
+      "Desktop key for the desktop app (3 keys)",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],
     selfServe: true,
@@ -451,13 +556,15 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     currentForCheckout: true,
     // Pro and Pro Business are separate Dodo products, not a
     // subscription-updatable collection — the customer portal cannot perform
-    // the change, so the plan-limit CTA must not point at it.
+    // the change, so the plan-limit CTA must not point at it. Pro subscribers
+    // upgrade in place through the change-plan API instead
+    // (runProBusinessUpgrade in payments/billing.ts).
     canChangePlanSelfServe: false,
     publicVisible: true,
   },
 
   pro_business_annual: {
-    // PLACEHOLDER — see pro_business_monthly.
+    // Live Dodo product "Pro Business Yearly" (USD 449.99/year), created 2026-07-26.
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
@@ -482,6 +589,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
     marketingFeatures: [
+      "Full Pro dashboard included (1 named user)",
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "License / API key included",
       "Real-time data streams",
@@ -489,7 +597,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications",
     ],
-    highlightFeatures: ["Commercial license — for your organization"],
+    highlightFeatures: ["Commercial use — internal only, not customer-facing"],
     selfServe: true,
     highlighted: false,
     currentForCheckout: true,
@@ -529,12 +637,14 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
+      "Shared team dashboards",
       "Priority support",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
     // disposable addresses and enforces the four-invite cap.
-    highlightFeatures: ["Commercial license — for your customers"],
+    highlightFeatures: ["Commercial use — in your customer-facing products"],
     // Published + self-serve since #4945 (bet B4): the tier existed in the
     // billing system but was invisible on every pricing surface and had
     // zero customers. Starter→Business upgrades for existing subscribers
@@ -576,16 +686,18 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: ENTERPRISE_FEATURES,
     marketingFeatures: [
       "Everything in Pro + API",
-      "Unlimited API requests",
+      "Shared team dashboards",
+      "10,000 API requests a day, more by contract",
       "Dedicated support",
       "Custom integrations",
-      "SLA guarantee",
+      "SLA guarantee (by contract)",
       "On-premise option",
       "Data processing agreement (DPA)",
       "Purchase-order billing",
-      "SAML SSO, SCIM",
+      "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     selfServe: false,
     highlighted: false,

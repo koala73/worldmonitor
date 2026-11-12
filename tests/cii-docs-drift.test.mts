@@ -23,7 +23,7 @@ it('current public and translated CII claims use the published formula version',
     'public/ai-search.md', 'public/llms.txt', 'public/llms-full.txt',
     'public/home.md', 'public/agent-view.json', 'docs/PRESS_KIT.md',
     'docs/health-endpoints.mdx', 'docs/zh/health-endpoints.mdx',
-    'docs/zh/algorithms.mdx', 'docs/zh/overview.mdx', 'docs/zh/features.mdx',
+    'docs/zh/algorithms.mdx', 'docs/zh/overview.mdx', 'docs/zh/platform-evaluation.mdx', 'docs/zh/features.mdx',
     'docs/zh/country-instability-index.mdx', 'docs/zh/strategic-risk.mdx',
   ];
   for (const path of paths) {
@@ -235,13 +235,17 @@ describe('CII docs drift guards', () => {
       'USA ↔ Russia',
       'Russia ↔ Ukraine',
       'USA ↔ China',
+      'China ↔ Taiwan',
       'USA ↔ Iran',
+      'Israel ↔ Iran',
+      'Iran ↔ GCC',
+      'Saudi Arabia ↔ Yemen',
     ]) {
       assert.match(gdeltSection, new RegExp(`\\|\\s*${pair}\\s*\\|`));
     }
     assert.doesNotMatch(
       gdeltSection,
-      /Israel ↔ Iran|China ↔ Taiwan|USA ↔ Venezuela/,
+      /USA ↔ Venezuela/,
       'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
     assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
@@ -457,7 +461,7 @@ describe('CII docs drift guards', () => {
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v14 has a versioned fixed country universe
     assert.match(llmsFull, /Country Instability Index \(CII v14\)[\s\S]{0,240}31 Tier-1 countries/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: the CII event formula is a fixed behavioral contract
-    assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
+    assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0 \+ information \* 0\.25/i);
     // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(llmsFull, /Country Resilience Index \(CRI\)[\s\S]{0,160}196-country public rankable universe/i);
     assert.match(llmsFull, /specialized variants/i);
@@ -535,6 +539,27 @@ describe('CII docs drift guards', () => {
     for (const path of ['server/worldmonitor/intelligence/v1/_risk-config.ts', 'server/worldmonitor/intelligence/v1/get-risk-scores.ts']) {
       assert.ok(readFileSync(resolve(root, path), 'utf8').includes('docs/methodology/cii-change-brief.md'), `${path} change protocol must point at the brief`);
     }
+  });
+
+  it('CII docs publish no input the register removed as a score term (v15 B4)', () => {
+    // docs/methodology/cii-input-register.md removes sanctions counts, climate
+    // anomalies, fires, foreign military flights and vessels, GPS jamming and
+    // aviation delays, and shows earthquakes and AIS disruptions as context only;
+    // Security is left with no inputs and weight 0.
+    const scorer = readFileSync(resolve(root, 'server/worldmonitor/intelligence/v1/get-risk-scores.ts'), 'utf8');
+    for (const term of ['climateBoost', 'fireBoost', 'sanctionsBoost', 'earthquakeBoost', 'aisBoost', 'flightScore', 'vesselScore', 'aviationScore', 'gpsJammingScore']) {
+      assert.ok(!scorer.includes(term), `get-risk-scores.ts still computes ${term}`);
+    }
+    for (const path of ['docs/methodology/cii-risk-scores.mdx', 'docs/zh/methodology/cii-risk-scores.mdx']) {
+      const doc = readFileSync(resolve(root, path), 'utf8');
+      const formula = doc.slice(doc.indexOf('eventScore = U'), doc.indexOf('```', doc.indexOf('eventScore = U')));
+      assert.match(formula, /eventScore = U \* 0\.25 \+ C \* 0\.30 \+ S \* 0 \+ I \* 0\.25/, `${path} must publish Security at weight 0`);
+      for (const term of ['climateBoost', 'fireBoost', 'sanctionsBoost', 'earthquakeBoost', 'aisBoost']) {
+        assert.ok(!formula.includes(term), `${path} formula still lists ${term}`);
+      }
+    }
+    const boosts = markdownSection(readFileSync(resolve(root, 'docs/country-instability-index.mdx'), 'utf8'), '## Boosts And Floors');
+    assert.doesNotMatch(boosts, /^\| (?:Climate anomalies|Wildfires|Sanctions|Earthquakes|AIS disruptions) \|/m, 'country-instability-index boosts table lists a removed input');
   });
 
   it('public CII surfaces point to the canonical live rankings page', () => {

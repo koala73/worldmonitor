@@ -8,6 +8,13 @@ import { FORECAST_ACCURACY_AUDIT_OVERRIDE, forecastAccuracyAudit } from '../shar
 import { compactForecastDashboardPayload } from '../scripts/_forecast-dashboard.mjs';
 import { HMAC_SECRET, callBody, makeProDeps, proReq } from './helpers/mcp-pro-deps.mjs';
 
+// The clock fields are wall-clock ISO strings: a capturedAt of :X0.074Z matches the
+// fixture's 0.074 Brier without any score being served.
+function assertNoScore(reliability) {
+  const { asOf, capturedAt, ...scored } = reliability;
+  assert.doesNotMatch(JSON.stringify(scored), /0\.074|brier/i);
+}
+
 const opening = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_predictions');
 const detail = TOOL_REGISTRY.find(tool => tool.name === 'get_forecast_case');
 const generation = 1791113000000;
@@ -93,7 +100,7 @@ describe('public forecast family history transport', () => {
       assert.equal(result.reliability.status, 'unavailable');
       assert.deepEqual(result.reliability.byDomain, []);
       assert.deepEqual(result.reliability.underAudit, { since: audit.since, issue: audit.issue, reason: audit.reason });
-      assert.doesNotMatch(JSON.stringify(result.reliability), /0\.074|brier/i);
+      assertNoScore(result.reliability);
     } else {
       assert.equal(result.reliability.status, 'ready');
     }
@@ -289,7 +296,13 @@ describe('published forecast reliability under the accuracy audit (#8990)', () =
     assert.deepEqual(reliability.underAudit, { since: '2026-10-07', issue: 8990, reason: 'Fixture reason.' });
     assert.equal(reliability.windowDays, 90);
     assert.equal(reliability.stale, false);
-    assert.doesNotMatch(JSON.stringify(reliability), /0\.074|brier/i);
+    assertNoScore(reliability);
+  });
+  it('never mistakes the clock for a withheld score', (t) => {
+    t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-02T19:04:30.074Z') });
+    const reliability = served(scorecard);
+    assert.equal(reliability.capturedAt, '2026-11-02T19:04:30.074Z');
+    assertNoScore(reliability);
   });
   it('still says why when the scorecard itself is unhealthy', () => {
     assert.deepEqual(served(null).underAudit?.issue, 8990);

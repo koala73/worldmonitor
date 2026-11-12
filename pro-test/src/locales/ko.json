@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "노이즈",
     "signalWord": "시그널",
-    "valueProps": "지정학 AI 레이어 — 질문하고, 구독하고, 그 위에 쌓으세요.",
+    "valueProps": "AI 분석가에게 질문하고, 알림 규칙을 설정하며, 브리핑을 받고, Claude에서 사용하세요.",
     "launchingDate": "지금 이용 가능",
     "tryFreeDashboard": "무료 대시보드 체험",
     "choosePlan": "플랜 선택",
-    "signIn": "로그인",
     "goToDashboard": "대시보드로 이동"
   },
   "wired": {
     "asFeaturedIn": "소개된 매체"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "당신의 AI 분석가. 개인 인텔리전스 데스크. 구축할 수 있는 플랫폼.",
-    "proF1": "WM Analyst 채팅 — 라이브 서비스를 자연어로 조회",
-    "proF2": "AI 다이제스트 — 매일, 하루 두 번 또는 매주 — Slack, Discord, Telegram, 이메일 또는 웹훅으로",
-    "proF3": "커스텀 위젯 빌더 — HTML/CSS/JS에 AI 보조 수정",
-    "proF4": "MCP 커넥터 — WorldMonitor를 Claude, GPT, 자체 LLM에 연결",
-    "proF5": "Equity research, 주식 분석과 백테스팅",
-    "proF6": "항공편 검색 및 가격 비교",
-    "proF7": "알림 규칙 엔진 — 사용자 트리거, 무음 시간, AES-256 암호화 채널",
-    "proF8": "시장 관심 목록, 매크로 및 중앙은행 추적",
-    "proF9": "AI 시장 영향 및 지역 인텔리전스",
-    "choosePlan": "플랜 선택",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "공유 모니터링, API 접근, 배포 옵션, TV 앱, 직접 지원이 필요한 팀을 위한.",
-    "entF1": "Pro의 모든 것, 추가로:",
-    "entF2": "라이브 엣지 위성 이미지와 SAR",
-    "entF3": "투자자 페르소나의 AI 에이전트와 MCP",
-    "entF4": "인프라 자산 지도화",
-    "entF5": "데이터 커넥터 (Splunk, Snowflake, Sentinel...)",
-    "entF6": "REST API + 웹훅 + 벌크 내보내기",
-    "entF7": "SSO/MFA/RBAC 팀 워크스페이스",
-    "entF8": "화이트 라벨과 임베딩 가능한 패널",
-    "entF9": "SOC 벽과 트레이딩 플로어용 Android TV 앱",
-    "entF10": "클라우드, 온프레미스 또는 에어갭 배포",
-    "entF11": "전담 온보딩과 지원",
-    "entCta": "영업 문의",
-    "freeF2": "큐레이션된 피드, 출처 표시, 지도 레이어",
-    "proF10": "인텔 메모리 — 과거 검색, 타임라인 및 유사 사건 조회"
-  },
   "whyUpgrade": {
-    "title": "World Monitor Pro로 업그레이드해야 하는 이유는 무엇인가요?",
+    "title": "헤드라인보다 먼저 소식을 받으세요",
     "noiseTitle": "가장 먼저 알기",
     "noiseDesc": "AIS 이상 → Brent 급등 → 1분 이내 당신의 Slack. 시그널, 헤드라인이 아닙니다.",
     "fasterTitle": "무엇이든 질문",
@@ -88,10 +57,7 @@
     "uniqueVisitors": "순 방문자",
     "peakDailyUsers": "일일 사용자 (최고치)",
     "countriesReached": "도달한 국가",
-    "liveDataSources": "실시간 데이터 소스",
-    "quote": "시장, 통화 정책, 지정학, 에너지 — 이제 모든 것이 함께 움직입니다. 이러한 힘들이 실시간으로 어떻게 연결되는지 보여주는 것이 필요했습니다. 헤드라인이 아니라 근저의 동인을.",
-    "ceo": "CEO",
-    "asToldTo": "전해진 대상"
+    "liveDataSources": "실시간 데이터 소스"
   },
   "audience": {
     "title": "World Monitor는 누구를 위해 만들어졌나요?",
@@ -105,6 +71,10 @@
     "journalistsDesc": "소스를 수작업으로 잇지 않고도 시장과 지역 전반의 빠른 전개를 추적.",
     "govTitle": "정부와 기관",
     "govDesc": "지정학과 인프라 시그널 전반의 매크로 정책 추적, 중앙은행 모니터링, 상황 인식.",
+    "strategyTitle": "전략 및 시장 인텔리전스 팀",
+    "strategyDesc": "담당 국가, 에너지 시장, 무역 회랑의 변화를 출처가 있는 경영진 브리핑으로 정리하세요.",
+    "aiTeamsTitle": "사내 AI 및 데이터 팀",
+    "aiTeamsDesc": "MCP로 회사 어시스턴트에 실시간 세계 맥락을 제공하며, 내부 사용 권리는 서면으로 보장합니다.",
     "teamsTitle": "팀과 조직",
     "teamsDesc": "개인 사용에서 공유 워크플로, API 접근, TV 앱, 관리형 배포로 이동."
   },
@@ -146,7 +116,7 @@
   },
   "proShowcase": {
     "proTier": "PRO 티어",
-    "title": "World Monitor AI 분석가는 무엇을 하나요?",
+    "title": "주식, 거시경제, 지정학 분석 AI",
     "subtitle": "무료 대시보드는 세상을 보여줍니다. Pro는 질문할 애널리스트, 구독할 다이제스트, 그 위에 쌓을 프리미티브를 제공합니다. 주식, 매크로, 지정학 리스크 — 그리고 그들 사이의 연결.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "재무 시각화, 애널리스트 목표 가격, 평가 지표가 포함된 글로벌 주식 분석. 시장을 움직이는 것을 추적.",
@@ -164,15 +134,6 @@
     "supplyChainLab": "공급망 스트레스 랩",
     "supplyChainLabDesc": "여러 국가와 산업 전반에서 비용 충격을 모델링합니다. 병목 의존성별로 상품 취약성을 순위 매깁니다. 광산에서 정제소까지의 집중도 및 SGE–COMEX 물리적 프리미엄 괴리(헤드라인보다 먼저 움직이는 지표)를 추적합니다.",
     "roadmapNote": "로드맵: 위성 감시, 더 긴 과거 데이터, 프리미엄 지도 레이어."
-  },
-  "slackMock": {
-    "morningBrief": "모닝 브리프",
-    "markets": "시장",
-    "marketsText": "S&P 500 선물 프리마켓 -1.2%. EST 10시 Fed 의장 증언 — 금리 민감 섹터 압박. 애널리스트의 Q2 실적 컨센서스가 이동 중.",
-    "elevated": "매크로",
-    "elevatedText": "ECB는 금리를 3.75%로 유지. 유로존 GDP가 1.1%로 상향 조정. 중앙은행 분기 확대 — USD/EUR가 3개월 고점.",
-    "watch": "지정학",
-    "watchText": "호르무즈의 AIS 이상으로 Brent +2.3%. 6시간 동안 4척의 다크 선박. 원자재 공급망 리스크 상승 — 에너지 섹터 상관관계 급등."
   },
   "apiSection": {
     "apiTier": "API 티어",
@@ -194,16 +155,16 @@
     "enterpriseTier": "ENTERPRISE 티어",
     "title": "World Monitor Enterprise에는 무엇이 포함되나요?",
     "subtitle": "최대 보안, AI 에이전트, TV 앱, 데이터 깊이를 갖춘 풀 플랫폼이 필요한 정부, 기관, 트레이딩 데스크, 조직을 위해.",
-    "security": "정부급 보안",
-    "securityDesc": "에어갭 배포, 온프레미스 Docker, 전용 클라우드 테넌트, SOC 2 Type II 경로, SSO/MFA, 전체 감사 추적.",
+    "security": "정부 수준 보안(계약 시 제공)",
+    "securityDesc": "계약 시 제공: 네트워크 격리 배포, 온프레미스 Docker, 전용 클라우드 테넌트, SSO/MFA, 전체 감사 추적, SOC 2 Type II 인증 경로.",
     "aiAgents": "AI 에이전트와 MCP",
     "aiAgentsDesc": "투자자 페르소나를 가진 자율 인텔리전스 에이전트. World Monitor를 MCP를 통해 Claude, GPT, 자체 LLM에 도구로 연결.",
     "dataLayers": "확장된 데이터 레이어",
-    "dataLayersDesc": "전 세계 매핑된 수만 개의 인프라 자산. 변화 감지와 SAR를 갖춘 위성 이미지 통합.",
+    "dataLayersDesc": "전 세계 수만 개의 인프라 자산을 매핑합니다. 변화 탐지와 SAR을 갖춘 위성 이미지는 계약 시 제공됩니다.",
     "connectors": "데이터 커넥터",
-    "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams 등. PDF, CSV, JSON으로 내보내기.",
+    "connectorsDesc": "Slack 및 Teams 알림과 PDF, CSV, JSON 내보내기. PostgreSQL, Snowflake, Splunk, Sentinel, Jira 커넥터는 계약 시 제공됩니다.",
     "whiteLabel": "화이트 라벨, TV, 임베딩 가능",
-    "whiteLabelDesc": "당신의 브랜드, 당신의 도메인, 당신의 데스크톱 앱. SOC 벽과 트레이딩 플로어용 Android TV 앱. 임베딩 가능한 iframe 패널.",
+    "whiteLabelDesc": "귀사의 브랜드, 도메인, 데스크톱 앱. 임베드 가능한 iframe 패널. SOC 월과 트레이딩 플로어용 Android TV 앱은 계약 시 제공됩니다.",
     "financial": "금융 인텔리전스",
     "financialDesc": "실적 캘린더, 에너지 그리드 데이터, 화물 추론이 포함된 고급 원자재 추적, AIS 상관의 제재 스크리닝.",
     "commodity": "원자재 트레이딩",
@@ -220,7 +181,7 @@
     "namePlaceholder": "성함",
     "emailPlaceholder": "업무 이메일",
     "orgPlaceholder": "회사 *",
-    "phonePlaceholder": "전화번호 *",
+    "phonePlaceholder": "전화번호(선택)",
     "messagePlaceholder": "무엇을 찾으십니까?",
     "workEmailRequired": "업무 이메일을 사용해 주세요",
     "submitContact": "메시지 보내기",
@@ -231,64 +192,30 @@
   "pricingTable": {
     "title": "World Monitor 플랜들을 어떻게 비교하나요?",
     "feature": "기능",
-    "freeHeader": "Free ($0)",
-    "proHeader": "Pro ($39.99)",
-    "apiHeader": "API ($99.99)",
-    "entHeader": "Enterprise (문의)",
-    "dataRefresh": "데이터 갱신",
-    "dashboard": "대시보드",
-    "ai": "AI",
-    "briefsAlerts": "브리프와 알림",
-    "delivery": "전달",
-    "apiRow": "API",
-    "infraLayers": "인프라 레이어",
-    "satellite": "궤도 감시",
-    "connectorsRow": "커넥터",
-    "deployment": "배포",
-    "securityRow": "보안",
-    "f5_15min": "5-15분",
-    "fLt60s": "<60초",
-    "fPerRequest": "요청당",
-    "fLiveEdge": "Live-edge",
-    "f50panels": "패널",
-    "fWhiteLabel": "화이트 라벨",
-    "fBYOK": "BYOK",
+    "rowPrice": "가격",
+    "rowLicense": "라이선스",
+    "rowUsers": "지정 사용자",
+    "rowDashboards": "맞춤 대시보드",
+    "rowAi": "일일 대시보드 AI 요청",
+    "rowMcp": "일일 MCP + SDK 호출",
+    "rowApi": "일일 REST API 요청",
+    "rowExport": "데이터 내보내기(CSV, JSON, PDF)",
+    "rowRedistribution": "고객 대상 재배포",
+    "rowSupport": "지원",
+    "licClient": "고객 업무 및 내부 사용",
+    "licInternal": "내부 도구 전용",
+    "licCustomer": "고객 대상 제품",
+    "noAccount": "계정 불필요",
+    "freeMcp": "무료 계정으로 캐시된 호출 5회",
+    "sharedWithRest": "REST 한도와 공유",
+    "supportStandard": "최선 노력",
+    "supportPriority": "우선 지원",
+    "supportDedicated": "전담 지원",
+    "notIncluded": "포함되지 않음",
+    "scrollHint": "가로로 스크롤해 6개 플랜을 모두 비교하세요",
     "fIncluded": "포함",
-    "fAgentsPersonas": "에이전트 + 페르소나",
-    "fDailyFlash": "일일 + 속보",
-    "fTeamDist": "팀 배포",
-    "fSlackTgWa": "Slack/Discord/TG/이메일/Webhook",
-    "fWebhook": "웹훅",
-    "fSiemMcp": "+ SIEM/MCP",
-    "fRestWebhook": "REST + 웹훅",
-    "fMcpBulk": "+ MCP + 벌크",
-    "fTensOfThousands": "+ 수만 개",
-    "fLiveTracking": "라이브 트래킹",
-    "fPassAlerts": "통과 알림 + 분석",
-    "fImagerySar": "이미지 + SAR",
-    "f100plus": "사용 가능",
-    "fCloud": "클라우드",
-    "fCloudOnPrem": "클라우드/온프레/에어갭",
-    "fStandard": "표준",
-    "fKeyAuth": "키 인증",
-    "fSsoMfa": "SSO/MFA/RBAC/감사",
-    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다.",
-    "f50plus": "사용 가능",
-    "sourcesRow": "출처",
-    "followedRow": "모니터링 국가",
-    "tabsRow": "대시보드 탭",
     "fUnlimited": "무제한",
-    "f3": "3",
-    "f10": "10",
-    "f25": "25",
-    "fAllLayers": "모든 레이어",
-    "fLayersNoResilience": "회복력 제외한 모든 레이어",
-    "fStandardCadence": "표준",
-    "fQuotes30s": "시장 호가: 30초",
-    "panelsRow": "활성화된 패널",
-    "f40": "40",
-    "f80": "80",
-    "fAll": "모두"
+    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다."
   },
   "faq": {
     "title": "World Monitor Pro 자주 묻는 질문",
@@ -299,7 +226,7 @@
     "q3": "Enterprise는 누구를 위한 것인가요?",
     "a3": "Enterprise는 공유 사용, API, 통합, 배포 옵션, 직접 지원이 필요한 팀을 위한 것입니다.",
     "q4": "Pro로 시작해서 나중에 업그레이드할 수 있나요?",
-    "a4": "예. Pro는 개인용입니다. Pro Business(월 $49.99)는 상용 라이선스, 데이터 내보내기, 대시보드 25개, AI 클라이언트용 MCP 일일 250회 호출을 추가합니다. API 플랜은 프로그래밍 방식 액세스를 지원하고, Enterprise는 맞춤형 배포를 지원합니다. 업그레이드는 청구 포털을 통해 진행되며, 앱이 단계별로 안내합니다.",
+    "a4": "예. Pro는 개인용입니다. Pro Business(월 $49.99)는 상용 라이선스, 데이터 내보내기, 대시보드 25개, AI 클라이언트용 MCP 일일 250회 호출을 추가합니다. API 플랜은 프로그래밍 방식 액세스를 지원하고, Enterprise는 맞춤형 배포를 지원합니다. Pro에서 Pro Business로 바꾸려면 로그인한 상태에서 Pro Business를 선택하세요. 구독이 전환되며, 확정하기 전에 오늘 결제 금액을 확인할 수 있고, 청구 기간은 그날부터 새로 시작됩니다.",
     "q5": "이것은 분쟁 모니터링만을 위한 것인가요?",
     "a5": "아닙니다. World Monitor는 주로 주식 시장, 거시경제, 지정학 분석, 에너지, 인프라 등을 다루는 글로벌 인텔리전스 플랫폼입니다. 분쟁 추적은 여러 기능 중 하나일 뿐 — 초점은 아닙니다.",
     "q6": "왜 핵심 플랫폼을 무료로 유지하나요?",
@@ -307,11 +234,11 @@
     "q7": "여전히 자체 API 키를 사용할 수 있나요?",
     "a7": "네, 가능합니다. 자신의 키 사용은 항상 작동합니다. Pro는 단순히 별도 서비스에 등록할 필요가 없다는 뜻입니다.",
     "q8": "MCP란 무엇인가요?",
-    "a8": "MCP는 AI 에이전트 — Claude, GPT, 커스텀 LLM — 이 WorldMonitor를 도구로 사용하여 등록된 서비스를 조회할 수 있게 합니다. Pro에 포함됨. Enterprise는 프라이빗 MCP 서버와 커스텀 배포를 추가합니다.",
+    "a8": "MCP는 AI 에이전트 — Claude, GPT, 커스텀 LLM — 이 World Monitor를 도구로 사용하여 등록된 서비스를 조회할 수 있게 합니다. Pro에 포함됨. Enterprise는 프라이빗 MCP 서버와 커스텀 배포를 추가합니다.",
     "q9": "자체 패널을 만들 수 있나요?",
     "a9": "네. Pro에는 커스텀 위젯 빌더가 포함되어 있습니다 — HTML, CSS, JavaScript로 패널을 만들고 AI 보조 수정 가능.",
-    "q10": "Claude나 GPT를 WorldMonitor에 연결할 수 있나요?",
-    "a10": "네. MCP는 Pro에 포함되어 있습니다 — WorldMonitor를 Claude, GPT, 또는 MCP 호환 LLM에 라이브 도구로 연결하세요.",
+    "q10": "Claude나 GPT를 World Monitor에 연결할 수 있나요?",
+    "a10": "네. MCP는 Pro에 포함되어 있습니다 — World Monitor를 Claude, GPT, 또는 MCP 호환 LLM에 라이브 도구로 연결하세요.",
     "q11": "다이제스트는 얼마나 개인화되나요?",
     "a11": "일일, 하루 2회, 또는 주간으로 선택하세요. 감시 중인 모든 뉴스를 경고 규칙 및 감시 목록과 재점수 매김하고, 출처별 중복 제거하여, AI 평가 및 주시할 신호와 함께 최대 30개의 순위가 매겨진 항목을 컨텍스트에 전송합니다. 중대 이벤트에 대한 실시간 알림도 사용 가능합니다.",
     "q12": "갱신 주기는 어떻게 되나요?",
@@ -331,7 +258,7 @@
   },
   "soonBadge": "출시 예정",
   "meta": {
-    "title": "World Monitor Pro | AI Intelligence & MCP",
+    "title": "World Monitor Pro | AI 인텔리전스 및 MCP",
     "description": "World Monitor Pro는 AI 분석가, 예약된 인텔리전스 다이제스트, 맞춤 위젯, 시장 조사, 그리고 실시간 지정학 및 금융 데이터에 대한 MCP 액세스를 추가합니다.",
     "ogTitle": "World Monitor Pro | 지정학 AI",
     "ogDescription": "물어보고, 구독하고, 구축하세요. WM Analyst 채팅(매일, 하루 2회 또는 주간 AI 요약), 커스텀 위젯 빌더, Claude/GPT용 MCP — 하나의 키로 모든 라이브 서비스 통합."
@@ -372,7 +299,8 @@
           "물리적 금속 괴리, 광물 집중도 및 국가 채무 데이터",
           "예약된 AI 다이제스트 + 알림 규칙 엔진",
           "Claude Desktop 및 기타 AI 클라이언트용 MCP + SDK 액세스 (일일 50회 호출)",
-          "커스텀 위젯 및 10개 대시보드 (기본 3개 대비)"
+          "커스텀 위젯 및 10개 대시보드 (기본 3개 대비)",
+          "데스크톱 키 (2개)"
         ],
         "highlightFeatures": [
           "개인 라이선스",
@@ -382,46 +310,51 @@
       "api": {
         "description": "실시간 인텔리전스 데이터로 내부 도구 구축",
         "features": [
+          "전체 Pro 대시보드 포함 (지정 사용자 1명)",
           "REST API + 공식 SDK (npm, PyPI, RubyGems, Go)",
           "라이선스 / API 키 포함",
           "실시간 데이터 스트림",
-          "분당 60개 요청",
-          "1,000개 요청/일 포함 (REST + MCP 합계; 라이브 MCP 호출은 2-3으로 계산)",
+          "분당 60 요청",
+          "일 1,000 요청 포함 (REST + MCP 합산; MCP 라이브 호출 1회는 2-3으로 계산)",
           "웹훅 알림"
         ],
         "highlightFeatures": [
-          "상용 라이선스 — 조직용"
+          "상용 사용 — 내부용 전용, 고객 대면 제품 불가"
         ]
       },
       "enterprise": {
         "description": "조직을 위한 커스텀 솔루션",
         "features": [
           "Pro + API의 모든 기능",
-          "무제한 API 요청",
+          "팀 공유 대시보드",
+          "하루 10,000회의 API 요청, 계약으로 추가 가능",
           "전담 지원",
           "커스텀 통합",
-          "SLA 보증",
+          "SLA 보증(계약 시 제공)",
           "온프레미스 옵션",
           "데이터 처리 계약(DPA)",
           "구매 주문 청구",
-          "SAML SSO, SCIM",
+          "SAML SSO 및 SCIM(계약 시 제공)",
           "맞춤 보안 및 개인정보 보호 설정",
-          "완전히 화이트라벨 처리됨 — 수익 공유 포함 또는 미포함"
+          "완전히 화이트라벨 처리됨 — 수익 공유 포함 또는 미포함",
+          "대시보드 및 MCP를 통한 여행 위험 평가 초안"
         ],
         "cta": "영업팀에 문의"
       },
       "apiBusiness": {
-        "description": "WorldMonitor 데이터로 자체 제품 출시",
+        "description": "World Monitor 데이터로 자체 제품 출시",
         "features": [
           "API Starter의 모든 기능",
           "고객 대면 제품에 대한 R1–R3 재배포 권리",
           "분당 300회 요청",
           "10,000개 요청/일 포함 (REST + MCP 합계; 라이브 MCP 호출은 2-3으로 계산)",
           "Pro 라이선스 5개 — 모든 기업 이메일 도메인의 사용자를 초대하세요",
-          "우선 지원"
+          "팀 공유 대시보드",
+          "우선 지원",
+          "대시보드 및 MCP를 통한 여행 위험 평가 초안"
         ],
         "highlightFeatures": [
-          "상용 라이선스 — 고객용"
+          "상용 사용 — 고객 대면 제품에 사용 가능"
         ]
       },
       "proBusiness": {
@@ -431,8 +364,10 @@
           "클라이언트 작업, 내부 도구 및 보고용으로 사용",
           "데이터 내보내기 — CSV, JSON 및 PDF 보고서",
           "커스텀 대시보드 25개 (vs 10개)",
-          "MCP + SDK: 250 calls/day (vs 50)",
-          "우선 지원"
+          "MCP + SDK: 하루 250회 (50회 대비)",
+          "데스크톱 키 (3개)",
+          "우선 지원",
+          "대시보드 및 MCP를 통한 여행 위험 평가 초안"
         ],
         "highlightFeatures": [
           "상용 라이선스 포함",
@@ -447,7 +382,8 @@
     "axisPersonal": "개인용",
     "axisPersonalNote": "개인 사용",
     "axisCommercial": "상용",
-    "axisCommercialNote": "업무, 클라이언트 및 제품"
+    "axisCommercialNote": "업무, 클라이언트 및 제품",
+    "cancelAnytime": "언제든지 계정에서 취소할 수 있습니다. 결제한 기간이 끝날 때까지 접근 권한이 유지됩니다."
   },
   "welcome": {
     "meta": {
@@ -457,7 +393,7 @@
       "ogDescription": "World Monitor: 실시간 지정학 인텔리전스 대시보드. 분쟁, 해운, 항공, 시장 및 사이버를 다루는 무료 라이브 맵(API 및 MCP 서버 포함)."
     },
     "nav": {
-      "useCases": "상관관계",
+      "useCases": "활용 사례",
       "firstFive": "첫 5분",
       "depth": "깊이 분석",
       "pricing": "가격",
@@ -476,17 +412,17 @@
       "sub": "뉴스가 되기 전에, 이미 알고 있을 겁니다.",
       "ctaPrimary": "대시보드 열기",
       "ctaFree": "무료 · 가입 불필요 · 초 단위로 로드됨",
-      "ctaSecondary": "사용 방법 보기 ↓",
       "trustUsers": "200만+ 사용자",
       "trustOpenSource": "오픈소스 · AGPL-3.0",
       "screenshotAlt": "World Monitor 실시간 인텔리전스 대시보드 — 분쟁, 해운 및 시장 레이어가 포함된 글로벌 지도",
       "plateNote": "실시간 지도에서 캡처됨 — 클릭하여 열기",
       "trustBuild": "기반 구축:",
-      "positioningLink": "WorldMonitor는 오픈소스 Palantir이 아닙니다",
+      "positioningLink": "World Monitor는 오픈소스 Palantir이 아닙니다",
       "asOf": "{{date}} 기준",
       "whatIsTitle": "World Monitor란 무엇인가요?",
       "whatIsBody": "World Monitor는 2백만 명 이상이 사용하는 무료($0), 오픈소스(AGPL-3.0) 대시보드입니다. {{feeds}}개의 뉴스와 OSINT 피드를 {{providers}}개 출처에서 가져와 {{mapLayers}}가지 지도 레이어 유형으로 하나의 실시간 세계 지도에 스트리밍합니다. 지정학, 시장, 해상 운송, 항공, 사이버 분야를 아우르며, 수렴하는 사건들이 헤드라인보다 먼저 드러나도록 상관관계를 분석합니다. 모든 수치는 출처가 명시되고 모든 방법론은 문서화되어 있습니다.",
-      "whatIsBestFor": "실시간 지정학 신호가 필요한 애널리스트, 기자, 트레이더, 개발자에게 가장 적합합니다."
+      "whatIsBestFor": "실시간 지정학 신호가 필요한 애널리스트, 기자, 트레이더, 개발자에게 가장 적합합니다.",
+      "ctaPro": "Pro {{price}}/월부터"
     },
     "live": {
       "eyebrow": "지금 실시간",
@@ -506,7 +442,8 @@
       "marketWeakest": "최약",
       "trendRising": "상승 중",
       "trendFalling": "하락 중",
-      "trendStable": "안정적"
+      "trendStable": "안정적",
+      "situationLink": "상황 모니터링: 위기, 속보, 병목 지점, 장애를 하나의 대시보드에서 추적하세요"
     },
     "moments": {
       "eyebrow": "상관관계 엔진",
@@ -650,13 +587,13 @@
       "title1": "무료는 관측소입니다.",
       "title2": "Pro는 운영실입니다.",
       "sub": "대시보드는 $0으로 무료입니다 — Resilience를 제외한 모든 지도 레이어, 가입 불필요. Pro는 의사결정 레이어를 추가합니다.",
-      "freeTitle": "무료",
+      "freeTitle": "무료 플랜",
       "freeDesc": "무료 티어는 완전한 제품이며 평가판이 아닙니다. Resilience를 제외한 모든 지도 레이어, 6개 모니터 모두 — 가입 불필요, 평가판 기간 없음.",
       "freeF1": "Resilience & 큐레이션된 피드를 제외한 모든 지도 레이어",
       "freeF2": "국가 브리프, 핫스팟, 불안정성 점수",
       "freeF3": "병목 지점, 케이블, 연쇄 분석",
       "freeF4": "긴급 알림 파이프라인 & 감시 목록",
-      "proTitle": "Pro",
+      "proTitle": "Pro 플랜",
       "proDesc": "실시간으로 대응하세요. 위의 순간들에서 사용되는 의사결정 계층:",
       "proF1": "WM Analyst — 라이브 서비스 전반에서 채팅(인용 포함)",
       "proF2": "시나리오 엔진 & 경로 탐색기 — 장애가 발생하기 전에 시뮬레이션",
@@ -664,7 +601,8 @@
       "proF4": "MCP, REST API & 공식 SDK — 하나의 키로 라이브 도구 사용",
       "proF5": "자신만의 패널을 위한 커스텀 위젯 빌더",
       "cta": "요금제 및 가격 확인",
-      "note": "$39.99/월부터 · 연간 결제 시 3개월 무료"
+      "note": "$39.99/월부터 · 연간 결제 시 3개월 무료",
+      "disclaimer": "World Monitor는 정보 제공만을 목적으로 하며 금융, 투자, 법률, 보안 또는 안전에 관한 조언에 해당하지 않습니다. 보시는 내용을 검증하시고, 오류로 인해 손실이나 피해가 발생할 수 있는 결정을 내리기 전에 자격을 갖춘 전문가와 상담하시기 바랍니다."
     },
     "faq": {
       "eyebrow": "숨은 비용 없음",
@@ -686,7 +624,7 @@
       "q8": "계정이 필요한가요?",
       "a8": "아니요. 대시보드는 가입 없이 즉시 작동합니다. 계정은 Pro로 업그레이드하거나 설정을 여러 기기에 동기화하려고 할 때만 필요합니다.",
       "q9": "오픈 소스인가요?",
-      "a9": "네 — GitHub에서 AGPL-3.0 오픈 소스: 코드를 읽고, 자체 호스팅하거나, 이를 기반으로 빌드할 수 있습니다. Windows, macOS, Linux용 네이티브 데스크톱 앱도 제공되며, 벽면 디스플레이용 Android TV 앱도 있습니다.",
+      "a9": "네 — GitHub에서 AGPL-3.0 오픈소스로 공개됩니다: 코드를 읽거나 직접 호스팅하거나 빌드할 수 있습니다. Pro와 Pro Business에는 데스크톱 키가 포함되므로 자체 데스크톱 빌드에서 Pro 클라우드 데이터를 로드할 수 있고, Docker 인스턴스는 자체 데이터에서 실행됩니다. Windows, macOS, Linux용 네이티브 데스크톱 앱과 벽면 디스플레이용 Android TV 앱도 제공됩니다(Enterprise 계약 시 제공).",
       "q10": "World Monitor가 Palantir가 아닌 이유는?",
       "a10": "Palantir는 기관의 자체 데이터를 그 기관 내에서 운영 가능하게 만듭니다. World Monitor는 반대편에서 시작합니다. 공개 세계 데이터를 수집, 정규화, 상관관계 파악, 모니터링한 후 무료 대시보드와 오픈소스 코드를 통해 인텔리전스 계층을 발행합니다. 다른 역할, 다른 제품입니다.",
       "q11": "어떤 World Monitor 라이선스가 필요한가요?",
@@ -711,8 +649,17 @@
       "chokepointTitle": "병목 지점 확인",
       "chokepointDesc": "{{chokepoints}}개 주요 해상 교통로의 해운 차질 상황, 선박 흐름, 위험도를 점검합니다.",
       "countryRiskTitle": "국가 위험 변화 설명",
-      "countryRiskDesc": "국가의 변화를 주도하는 정치, 보안, 경제, 회복력 신호를 추적합니다. {{resilienceRanked}}개국의 회복력 순위가 산출됩니다.",
-      "open": "증거 보기"
+      "countryRiskDesc": "국가의 변화 뒤에 있는 정치, 안보, 경제, 회복력 신호를 추적합니다. {{resilienceUniverse}}개국 중 {{resilienceRanked}}개국, 약 {{resilienceRankedPct}}%에 대해 회복력 순위가 산출되므로, 이번 주 뉴스 헤드라인만으로 변화를 판단하는 대신 해당 국가의 장기적인 구조적 기준에 비추어 해석할 수 있습니다.",
+      "open": "증거 보기",
+      "workflow": "단계별 워크플로"
+    },
+    "voices": {
+      "eyebrow": "그들의 말",
+      "title": "사람들이 말하는 World Monitor",
+      "sub": "{{countries}}개국 {{users}}명이 World Monitor를 사용했습니다. The Atlantic은 2026년 3월 14일에, El País는 이틀 후에 이를 다뤘으며 WIRED, The Economic Times, Arabian Business, L'Orient Today도 보도했습니다. 언론과 일부 사용자의 이야기를 소개합니다.",
+      "translatedJa": "일본어에서 번역",
+      "prev": "이전 인용문",
+      "next": "더 많은 인용문"
     }
   },
   "whatsNew": {
@@ -720,13 +667,16 @@
     "title": "World Monitor의 새로운 기능",
     "subtitle": "지난 30일 동안의 새로운 기능 — 버그 수정 및 기술 개선사항은 제외됩니다.",
     "proTag": "PRO",
-    "m1": "물리적 프리미엄 괴리 지수 — SGE vs COMEX, 과거 데이터 포함",
-    "m2": "상품 공급 취약성 순위 — 병목 의존성 분산도",
-    "m3": "광물 생산 집중도 및 방위산업기지",
-    "m4": "5개 요소 탄력성 스코어카드(지표 수준 점수 포함)",
-    "m5": "커스텀 Telegram 채널 감시 목록",
-    "m6": "Passkey 로그인",
-    "m7": "AI 에이전트가 대시보드를 조종할 수 있음 — 패널, 탭, 지도 레이어 및 미션",
-    "m8": "더 풍부한 국가 탄력성 페이지"
+    "m1": "미디어 관점 — 각국 언론이 특정 국가를 어떻게 보도하는지, AI 에이전트와 API용",
+    "m2": "전략 수위 — 50개 저수지와 호수의 위성 라이다 수위, 지도와 AI 에이전트용",
+    "m3": "알림, 다이제스트, 지도 팝업에 교차 확인 출처 수 표시, 공개 /trust 페이지 추가",
+    "m4": "공격 자동 추적 — 공격을 받으면 국가 위험도가 오르고 공격이 멈추면 회복",
+    "m5": "FAA NOTAM 기반 공역 폐쇄와 보고된 항공기 비상 상황 지도 레이어",
+    "m6": "Sentinel-5P 위성 NO2 데이터 기반 산업 활동 지도",
+    "m7": "230개 경제권과 모든 국가 쌍의 자본 흐름, AI 에이전트와 API용",
+    "m8": "터미널 대시보드와 확대 가능한 CLI 지도 — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "모니터링하는 소스"
   }
 }

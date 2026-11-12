@@ -2,6 +2,7 @@
 // through mpv (kitty graphics or truecolor cells), in an mpv window, or in the
 // browser. Sources per channel come from the generated catalog; YouTube
 // channel entries resolve through the liveVideoResolved bootstrap key.
+import { sanitize } from '../term/ansi.mjs';
 import { ATTR } from '../term/screen.mjs';
 import { rect, splitH, splitV } from '../ui/layout.mjs';
 import { button, heading, kv, label, panel, segments, tabs } from '../ui/widgets.mjs';
@@ -124,7 +125,9 @@ export class LiveView extends PaneView {
     }
     this.remember(cur, cand, 'terminal');
     const result = await this.app.suspendFor(async () => {
-      process.stdout.write(`\n  ▶ ${cur.name} — ${cand.label} (${cand.kind})\n  mpv --vo=${player.vo} · press q to return to the dashboard\n\n`);
+      // Raw stdout bypasses the screen buffer's escaping; strip control
+      // sequences from catalog and bootstrap text here.
+      process.stdout.write(`\n  ▶ ${sanitize(cur.name)} — ${sanitize(cand.label)} (${sanitize(cand.kind)})\n  mpv --vo=${sanitize(player.vo)} · press q to return to the dashboard\n\n`);
       return playInTerminal(cand.url, { player, title });
     });
     if (result && !result.ok) {

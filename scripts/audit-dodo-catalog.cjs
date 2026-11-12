@@ -189,7 +189,7 @@ async function listDodoProducts(apiKey) {
   } catch (err) {
     fail(`[audit-dodo-catalog] dodopayments npm package not found. Run \`npm install\` and retry.\n  ${err.message}`);
   }
-  const client = new DodoPayments({ bearerToken: apiKey });
+  const client = new DodoPayments({ bearerToken: apiKey, timeout: DODO_API_TIMEOUT_MS, maxRetries: 0 });
 
   // 30s wall-clock cap on the entire enumeration. The SDK's `for await`
   // iterator paginates internally — without a timeout, a network partition

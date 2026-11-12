@@ -62,6 +62,7 @@ export function toSocialUnrestEvent(e: UnrestEvent): SocialUnrestEvent {
     summary: e.summary || undefined,
     eventType: mediaSignal ? 'civil_unrest' : mapEventType(e.eventType),
     city: e.city || undefined,
+    hasPreciseLocation: e.sourceType === 'UNREST_SOURCE_TYPE_ACLED' && e.hasPreciseLocation === true,
     country: e.country,
     region: e.region || undefined,
     lat: e.location?.latitude ?? 0,

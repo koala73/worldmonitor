@@ -13,13 +13,41 @@ export function getPool(): pg.Pool {
   if (!_pool) {
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) throw new Error('DATABASE_URL is not set');
+    let url: URL | null = null;
+    if (!databaseUrl.startsWith('/')) {
+      // URL parse errors carry the input, which holds the database password.
+      try { url = new URL(databaseUrl); } catch { throw new Error('DATABASE_URL is not a valid connection URL'); }
+    }
+    if (['host', 'hostaddr', 'port'].some(name => url?.searchParams.has(name))) {
+      throw new Error('DATABASE_URL must not override the connection endpoint via query parameters');
+    }
+    const local = !url || ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url && !local && (
+      url.searchParams.getAll('ssl').some(value => !['true', '1'].includes(value)) ||
+      url.searchParams.getAll('sslmode').some(value => value !== 'verify-full')
+    )) throw new Error('Remote DATABASE_URL requires verified TLS; use sslmode=verify-full');
+    // Railway Postgres serves a chain from its own private root CA. Pinning that
+    // root keeps chain and hostname verification on without trusting any CA.
+    const ca = process.env.DATABASE_SSL_CA?.replace(/\\n/g, '\n').trim();
+    if (ca && !ca.startsWith('-----BEGIN CERTIFICATE-----')) {
+      throw new Error('DATABASE_SSL_CA must be a PEM certificate');
+    }
+
+    // pg lets URL TLS params replace the `ssl` object below (dropping a pinned
+    // CA). They were checked to be strict above, so the object is authoritative.
+    if (url && !local) for (const name of ['ssl', 'sslmode', 'uselibpqcompat']) url.searchParams.delete(name);
 
     _pool = new Pool({
-      connectionString: databaseUrl,
+      connectionString: url && !local ? url.href : databaseUrl,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+      // Ten slots cover the five retailer workers plus API/aggregation reads.
+      // Cancel on the server before the client abandons the query.
+      statement_timeout: 30_000,
+      query_timeout: 35_000,
+      idle_in_transaction_session_timeout: 30_000,
+      ssl: local ? false : { rejectUnauthorized: true, ...(ca ? { ca } : {}) },
     });
 
     _pool.on('error', (err) => {
@@ -40,6 +68,7 @@ export async function query<T extends pg.QueryResultRow = Record<string, unknown
 export async function withTransaction<T>(work: (execute: QueryExecutor) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
   const execute: QueryExecutor = (sql, params) => client.query(sql, params);
+  let discard = false;
   try {
     await client.query('BEGIN');
     const result = await work(execute);
@@ -49,11 +78,12 @@ export async function withTransaction<T>(work: (execute: QueryExecutor) => Promi
     try {
       await client.query('ROLLBACK');
     } catch (rollbackErr) {
+      discard = true;
       console.error('[db] rollback error:', rollbackErr);
     }
     throw err;
   } finally {
-    client.release();
+    client.release(discard);
   }
 }
 

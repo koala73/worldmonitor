@@ -8,6 +8,7 @@ import {
   orderServerFeedEntries,
   VARIANT_FEEDS,
 } from '../server/worldmonitor/news/v1/_feeds.ts';
+import { buildBrowserCategoryFeeds } from '../shared/news-catalog.ts';
 import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
 import { parseMiitNews, renderMiitRss } from '../api/miit-news.js';
@@ -43,37 +44,11 @@ const CHINA_BASKET: StockEntry[] = [
   { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H', region: 'asia' },
 ];
 
-const CLIENT_VARIANT_BLOCKS: Record<string, string> = {
-  full: 'FULL_FEEDS',
-  finance: 'FINANCE_FEEDS',
-};
-
-function clientCategoryBlock(variant: string, category: string): string | null {
-  const src = readText('src/config/feeds.ts');
-  const variantBlock = CLIENT_VARIANT_BLOCKS[variant];
-  assert.ok(variantBlock, `client variant ${variant} must have a feed block mapping`);
-  const variantMarker = `const ${variantBlock}: Record<string, Feed[]> = {`;
-  const variantStart = src.indexOf(variantMarker);
-  assert.notEqual(variantStart, -1, `client variant block ${variantBlock} must exist`);
-  const variantRest = src.slice(variantStart + variantMarker.length);
-  const nextVariant = variantRest.search(/^const [A-Z_]+_FEEDS:/m);
-  const variantBody = nextVariant === -1 ? variantRest : variantRest.slice(0, nextVariant);
-  const marker = `  ${category}: [`;
-  const start = variantBody.indexOf(marker);
-  if (start === -1) return null;
-  const bodyStart = start + marker.length;
-  const rest = variantBody.slice(bodyStart);
-  const nextCategory = rest.search(/^ {2}[A-Za-z][\w-]*:\s*\[/m);
-  return nextCategory === -1 ? rest : rest.slice(0, nextCategory);
-}
-
 function clientRouteClass(variant: string, category: string, name: string): 'google-news' | 'direct' | null {
-  const block = clientCategoryBlock(variant, category);
-  if (!block) return null;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = block.match(new RegExp(`name:\\s*['"]${escaped}['"][^\\n]*url:\\s*([^\\n]+)`));
-  if (!match) return null;
-  return /news\.google\.com\/rss\/search/i.test(match[1]!) ? 'google-news' : 'direct';
+  const feed = buildBrowserCategoryFeeds(variant)[category]?.find((entry) => entry.name === name);
+  if (!feed) return null;
+  const urls = typeof feed.url === 'string' ? [feed.url] : Object.values(feed.url);
+  return urls.some((url) => /news\.google\.com\/rss\/search/i.test(url)) ? 'google-news' : 'direct';
 }
 
 function serverRouteClass(variant: string, category: string, name: string): 'google-news' | 'direct' | null {

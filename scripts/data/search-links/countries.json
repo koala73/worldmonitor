@@ -1,0 +1,24 @@
+{
+  "snapshot": "docs/research/seo-ai-visibility/gsc/2026-11-10.json",
+  "pages": {
+    "/countries/angola/": [
+      {
+        "href": "/countries/",
+        "anchor": "Country risk index"
+      }
+    ],
+    "/countries/france/": [
+      {
+        "href": "/docs/country-instability-index",
+        "anchor": "Instability index"
+      }
+    ],
+    "/countries/saudi-arabia/": [
+      {
+        "href": "/docs/country-instability-index",
+        "anchor": "Instability index"
+      }
+    ]
+  },
+  "exclusions": []
+}
