@@ -18,9 +18,9 @@ Each region reports `windowStart`, `windowEnd`, `validDays` (days with enough cl
 
 | Name | Type | Description |
 |------|------|-------------|
-| `country_code` | string | Optional. ISO 3166-1 alpha-2 code ("DE"), alpha-3 ("DEU") or an English name ("Germany"). Returns the country region and every cluster inside it; clusters spanning several countries (`gulf-states`, `rotterdam-antwerp`) carry no code. |
-| `region_id` | string | Optional registry id, for example `country-cn` or `yangtze-river-delta`. Combines with the other filters as AND. |
-| `kind` | `string: country / cluster` | Optional. `country` for country polygons, `cluster` for named industrial clusters; omit for both. |
+| `country_code` | string | Country to read. ISO 3166-1 alpha-2 code ("DE"), alpha-3 ("DEU") or an English name ("Germany"). Returns the country region and every cluster inside it; clusters spanning several countries (`gulf-states`, `rotterdam-antwerp`) carry no code. |
+| `region_id` | string | Registry id of one region, for example `country-cn` or `yangtze-river-delta` (the `id` field of a returned region). Combines with the other filters as AND. |
+| `kind` | `string: country / cluster` | Region type: whole-country polygons or named industrial clusters such as `yangtze-river-delta`. Omitted: both types. |
 
 **Response distinctions:** `unavailableReason` is the closed `No2ActivityUnavailableReason` enum from the RPC. `NO2_ACTIVITY_UNAVAILABLE_REASON_NOT_COVERED` is a contract answer (the filters name no registered region, a retry cannot help) with `upstreamUnavailable: false`. `NO2_ACTIVITY_UNAVAILABLE_REASON_INVALID_REQUEST` is a client error (a malformed filter reached the handler directly; the gateway answers HTTP 400 first) with `upstreamUnavailable: false`. The remaining reasons name faults (`seed_missing`, `invalid_dataset`, `cache_unavailable`) with `upstreamUnavailable: true`. A per-region `exclusion` never withholds the response: `baseline_backfill_pending`, `insufficient_valid_days` and `insufficient_baseline_years` mean the method refused a reading it cannot support, while `request_failed` means that region's own source refresh has been failing for longer than the retained data lasts.
 

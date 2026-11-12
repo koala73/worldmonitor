@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcomeSchema } from '../../../shared/country-signal-observations';
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
@@ -11,6 +11,7 @@ import { readBoundedResponseBody } from '../bounded-body';
 import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 import { COUNTRY_VIEW_UI_URI } from '../ui/news-dashboard-app';
+import { describedPanelReceipt } from './news-dashboard';
 
 const COUNTRY_SECTION_BUDGET_BYTES = 524288;
 
@@ -39,51 +40,54 @@ function countrySectionArguments(params: Record<string, unknown>) {
 // here is what tools/list advertises on every nested `arguments` property, so
 // an agent can fill a branch without a failed call first. The module-load
 // guard below fails when a reader gains an argument this map does not cover.
-const ISO2 = 'Uppercase ISO 3166-1 alpha-2 country code, e.g. "DE".';
-const M49 = 'UN M49 numeric country code with 1-3 digits, e.g. "840" for the United States.';
-const HS2 = 'Two-digit HS chapter: 10 cereals, 27 fuels, 29 organic chemicals, 30 pharmaceuticals, 39 plastics, 62 apparel, 72 iron and steel, 84 machinery, 85 electrical equipment, 87 vehicles.';
-const CHOKEPOINT_ID = 'Chokepoint registry id as a lowercase slug, e.g. "hormuz_strait".';
-const FIXED_EMPTY = 'Fixed to the empty string: this reader returns every value and accepts no narrowing.';
+const ISO2 = 'Country to read, as an ISO 3166-1 alpha-2 code such as "DE".';
+const M49 = 'Country as a UN M49 numeric code, such as "840" for the United States.';
+const HS2 = 'HS chapter of the goods: 10 cereals, 27 fuels, 29 organic chemicals, 30 pharmaceuticals, 39 plastics, 62 apparel, 72 iron and steel, 84 machinery, 85 electrical equipment, 87 vehicles.';
+const CHOKEPOINT_ID = 'Chokepoint to model, by registry id such as "hormuz_strait" or "suez".';
+const FIXED_EMPTY = 'Unused: the reader always returns the full list, with no narrowing.';
+const BOX_UNUSED = 'Unused: the reader returns the global snapshot rather than a box query.';
+const NEXT_CURSOR = 'pagination.nextCursor from the previous page; empty for the first page.';
+const SIGNAL_FAMILY = 'Source family to read, one per request: COUNTRY_SIGNAL_FAMILY_OUTAGES (Internet outages), _UNREST (protests and riots), _FIRES (satellite fire detections), _RADIATION (radiation readings), _SANCTIONS (sanctions pressure), _CONFLICT (conflict events), _POSTURE (military theater posture) or _FLIGHT_PAGE (one page of military flights over the country).';
 const COUNTRY_SECTION_DOCS: Record<CountryReader, { summary: string; args: Record<string, string> }> = {
-  countrySignals: { summary: 'One bounded country-qualified source family or eligible flight page. Requires a verified same-country panel.', args: { country_code: ISO2, family: 'Fixed source family enum; one source per request.', window_index: 'Country-derived flight window index, 0 or 1; otherwise 0.', cursor: 'Prior eligible flight page cursor, at most 200 characters; otherwise empty.' } },
+  countrySignals: { summary: 'One bounded country-qualified source family or eligible flight page. Requires a verified same-country panel.', args: { country_code: ISO2, family: SIGNAL_FAMILY, window_index: 'FLIGHT_PAGE only: which part of the country\'s flight search area to page; countries split into two boxes use 0 and 1, others 0.', cursor: `FLIGHT_PAGE only: ${NEXT_CURSOR}` } },
   signalsRaw: { summary: 'Attributed raw signal samples for one country: earthquakes, Internet outages, travel advisories and thermal escalations, each with scope, snapshot time and attribution. Needs a verified same-country paid panel token.', args: { country_code: `${ISO2} Must equal the country of the verified panel token.` } },
-  flights: { summary: 'Military flight observations inside a bounding box, 100 per page, with provider attribution.', args: { ne_lat: 'North-east corner latitude of the bounding box in degrees (-90 to 90).', ne_lon: 'North-east corner longitude of the bounding box in degrees (-180 to 180).', sw_lat: 'South-west corner latitude of the bounding box in degrees (-90 to 90).', sw_lon: 'South-west corner longitude of the bounding box in degrees (-180 to 180).', page_size: 'Fixed page size of 100 rows.', operator: 'Fixed to the unspecified operator filter; no operator narrowing is available.', aircraft_type: 'Fixed to the unspecified aircraft-type filter; no type narrowing is available.', cursor: 'Opaque cursor from the previous page\'s pagination block; empty string for the first page.' } },
-  vessels: { summary: 'Live AIS vessel snapshot with connection status, snapshot time, density zones and disruptions; unavailable when the snapshot is older than one hour.', args: { ne_lat: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', ne_lon: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', sw_lat: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', sw_lon: 'Fixed to 0: the reader returns the global snapshot rather than a box query.', include_candidates: 'Fixed to "true": candidate vessel matches are included in the snapshot.' } },
-  fleet: { summary: 'The latest USNI fleet and marine tracker report; takes no arguments.', args: {} },
+  flights: { summary: 'Military flight observations inside a bounding box, 100 per page, with provider attribution.', args: { ne_lat: 'Latitude of the box\'s north-east corner, degrees.', ne_lon: 'Longitude of the box\'s north-east corner, degrees.', sw_lat: 'Latitude of the box\'s south-west corner, degrees.', sw_lon: 'Longitude of the box\'s south-west corner, degrees.', page_size: 'Rows per page.', operator: 'Unused: no operator narrowing is available.', aircraft_type: 'Unused: no aircraft-type narrowing is available.', cursor: NEXT_CURSOR } },
+  vessels: { summary: 'Live AIS vessel snapshot with connection status, snapshot time, density zones and disruptions; unavailable when the snapshot is older than one hour.', args: { ne_lat: BOX_UNUSED, ne_lon: BOX_UNUSED, sw_lat: BOX_UNUSED, sw_lon: BOX_UNUSED, include_candidates: 'Candidate vessel matches are always included in the snapshot.' } },
+  fleet: { summary: 'The latest USNI fleet and marine tracker report.', args: {} },
   facts: { summary: 'Reference facts about the country.', args: { country_code: ISO2 } },
   energy: { summary: 'The country\'s energy profile.', args: { country_code: ISO2 } },
   maritime: { summary: 'Port activity for the country\'s monitored ports.', args: { country_code: ISO2 } },
   risk: { summary: 'Country risk: Composite Instability Index with components, travel-advisory level and sanctions exposure.', args: { country_code: ISO2 } },
   stock: { summary: 'The country\'s benchmark stock index quote.', args: { country_code: ISO2 } },
-  food: { summary: 'Food stock observations for one country or the WORLD aggregate, optionally narrowed to one commodity.', args: { countryCode: 'Uppercase ISO 3166-1 alpha-2 code, or WORLD for the global aggregate.', commodity: 'Commodity name to narrow to, up to 40 characters; empty string for every commodity.' } },
+  food: { summary: 'Food stock observations for one country or the WORLD aggregate, optionally narrowed to one commodity.', args: { countryCode: 'Country to read as an ISO alpha-2 code, or WORLD for the global aggregate.', commodity: 'Commodity to narrow to: wheat, corn, rice, soybeans, barley or palmOil; empty for every commodity.' } },
   demographics: { summary: 'Demographic capability observations: age structure, education and industrial workforce.', args: { countryCode: ISO2 } },
   resilience: { summary: 'The country\'s resilience score with its domain breakdown.', args: { countryCode: ISO2 } },
   factors: { summary: 'The five-factor scorecard with provenance and raw observations.', args: { countryCode: ISO2 } },
-  debt: { summary: 'National debt levels for every country; takes no arguments.', args: {} },
-  flows: { summary: 'UN COMTRADE trade flows reported by one country, optionally narrowed to one commodity or to anomalies.', args: { reporter_code: M49, cmd_code: 'HS commodity code of up to 6 digits; empty string for every commodity.', anomalies_only: '"true" keeps only flows flagged as anomalous; "false" (default) returns every flow.' } },
-  tariffs: { summary: 'Applied tariff trend series for one reporting country.', args: { reporting_country: M49, product_sector: 'Product sector code of up to 20 characters; empty string for all products.', years: 'Trailing years of history to return, 1-10 (default 10).', partner_country: 'UN M49 numeric partner code; empty string for all partners.' } },
-  products: { summary: 'The country\'s supply-chain product profile, optionally narrowed to one HS heading.', args: { iso2: ISO2, hs4: 'Optional 4-digit HS heading to narrow to one product group.' } },
+  debt: { summary: 'National debt levels for every country.', args: {} },
+  flows: { summary: 'UN COMTRADE trade flows reported by one country, optionally narrowed to one commodity or to anomalies.', args: { reporter_code: `Reporting ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, cmd_code: 'HS commodity code (chapter, heading or subheading) to narrow to; empty for every commodity.', anomalies_only: '"true" keeps only flows flagged as anomalous; "false" returns every flow.' } },
+  tariffs: { summary: 'Applied tariff trend series for one reporting country.', args: { reporting_country: `Importing ${M49.charAt(0).toLowerCase()}${M49.slice(1)}`, product_sector: 'WITS product group to narrow to, such as "84-85_MachElec"; empty for all products.', years: 'Number of most recent years of history to return.', partner_country: 'Exporting partner as a UN M49 numeric code; empty for all partners.' } },
+  products: { summary: 'The country\'s supply-chain product profile, optionally narrowed to one HS heading.', args: { iso2: ISO2, hs4: 'HS heading (4 digits) to narrow to one product group; omit for the full profile.' } },
   commodities: { summary: 'Commodity supply vulnerabilities for the country.', args: { iso2: ISO2 } },
   exposure: { summary: 'Chokepoint exposure index for one country and HS chapter.', args: { iso2: ISO2, hs2: HS2 } },
   dependency: { summary: 'Sector dependency on maritime chokepoints for one country and HS chapter.', args: { iso2: ISO2, hs2: HS2 } },
-  bypass: { summary: 'Rerouting options when one chokepoint closes, by cargo type and closure share.', args: { chokepointId: CHOKEPOINT_ID, cargoType: 'Cargo type: container (default), tanker or bulk.', closurePct: 'Share of the chokepoint closed, 0-100 percent (default 0).' } },
-  chokepoints: { summary: 'Current status of every monitored chokepoint; takes no arguments.', args: {} },
-  cost: { summary: 'Multi-sector cost shock for one country from a chokepoint closure of a given length.', args: { iso2: ISO2, chokepointId: CHOKEPOINT_ID, closureDays: 'Closure length in days, 1-365 (default 30).' } },
+  bypass: { summary: 'Rerouting options when one chokepoint closes, by cargo type and closure share.', args: { chokepointId: CHOKEPOINT_ID, cargoType: 'Kind of cargo to reroute; only corridors suited to it are listed.', closurePct: 'Share of the chokepoint closed, percent; corridors that open only on a full closure are listed at 100.' } },
+  chokepoints: { summary: 'Current status of every monitored chokepoint.', args: {} },
+  cost: { summary: 'Multi-sector cost shock for one country from a chokepoint closure of a given length.', args: { iso2: ISO2, chokepointId: CHOKEPOINT_ID, closureDays: 'How long the chokepoint stays closed, days; scales the cost totals.' } },
   pipelines: { summary: 'The pipeline registry.', args: { commodityType: FIXED_EMPTY } },
   facilities: { summary: 'The energy storage facility registry.', args: { facilityType: FIXED_EMPTY } },
   shortages: { summary: 'Current fuel shortages.', args: { country: FIXED_EMPTY, product: FIXED_EMPTY, severity: FIXED_EMPTY } },
-  pipelineDetail: { summary: 'One pipeline\'s detail; unavailable when the pipeline does not originate in, end in or transit the country.', args: { country_code: `${ISO2} The pipeline must originate in, end in or transit this country.`, pipelineId: 'Pipeline id as listed by the pipelines section.' } },
-  facilityDetail: { summary: 'One storage facility\'s detail; unavailable when the facility is not in the country.', args: { country_code: `${ISO2} The facility must be located in this country.`, facilityId: 'Facility id as listed by the facilities section.' } },
-  shortageDetail: { summary: 'One fuel shortage\'s detail; unavailable when the shortage is not in the country.', args: { country_code: `${ISO2} The shortage must be located in this country.`, shortageId: 'Shortage id as listed by the shortages section.' } },
-  disruptions: { summary: 'Energy disruption events, optionally only those still ongoing.', args: { assetId: FIXED_EMPTY, assetType: FIXED_EMPTY, ongoingOnly: '"true" keeps only disruptions still ongoing; "false" (default) includes resolved ones.' } },
-  scenario: { summary: 'Energy supply shock scenario for one country and chokepoint at a chosen disruption share and fuel.', args: { country_code: ISO2, chokepoint_id: CHOKEPOINT_ID, disruption_pct: 'Share of the chokepoint flow disrupted, 0-100 percent (default 0).', fuel_mode: 'Fuel scope: oil (default), gas or both.' } },
+  pipelineDetail: { summary: 'One pipeline\'s detail; unavailable when the pipeline does not originate in, end in or transit the country.', args: { country_code: `${ISO2} The pipeline must originate in, end in or transit this country.`, pipelineId: 'The id of a pipeline returned by the pipelines section.' } },
+  facilityDetail: { summary: 'One storage facility\'s detail; unavailable when the facility is not in the country.', args: { country_code: `${ISO2} The facility must be located in this country.`, facilityId: 'The id of a facility returned by the facilities section.' } },
+  shortageDetail: { summary: 'One fuel shortage\'s detail; unavailable when the shortage is not in the country.', args: { country_code: `${ISO2} The shortage must be located in this country.`, shortageId: 'The id of a shortage returned by the shortages section.' } },
+  disruptions: { summary: 'Energy disruption events, optionally only those still ongoing.', args: { assetId: FIXED_EMPTY, assetType: FIXED_EMPTY, ongoingOnly: '"true" keeps only disruptions still ongoing; "false" includes resolved ones.' } },
+  scenario: { summary: 'Energy supply shock scenario for one country and chokepoint at a chosen disruption share and fuel.', args: { country_code: ISO2, chokepoint_id: CHOKEPOINT_ID, disruption_pct: 'Share of the chokepoint flow disrupted, percent. Omitted or below 10: modelled as 10.', fuel_mode: 'Fuel to model: oil, gas or both.' } },
   defense: { summary: 'Defense industrial base indicators and arms-supplier shares for the country.', args: { country_code: ISO2 } },
-  no2: { summary: 'Sentinel-5P NO2 industrial activity direction for the country against the same window in prior years, with the Copernicus credit.', args: { country_code: ISO2, kind: 'Fixed to NO2_REGION_KIND_COUNTRY: this reader returns the country region only.' } },
-  markets: { summary: 'Prediction markets list with optional title and category narrowing.', args: { page_size: 'Markets per page, 1-100 (default 50).', query: 'Case-insensitive title substring, up to 100 characters; empty string for every market.', category: 'Category bucket name, up to 40 characters; empty string for every category.', cursor: 'Fixed to the empty string: only the first page is readable here.' } },
-  china: { summary: 'China decision signals; takes no arguments.', args: {} },
-  production: { summary: 'Mine and refinery production for one commodity across countries and stages.', args: { commodity: 'Commodity slug in lowercase, e.g. "copper".', iso2: FIXED_EMPTY, stage: FIXED_EMPTY } },
-  housing: { summary: 'BIS housing datasets: debt-service ratio and residential and commercial property prices.', args: { keys: 'Fixed list of the bootstrap keys this reader fetches.' } },
-  imf: { summary: 'IMF macro datasets: macro, growth, labor and external accounts.', args: { keys: 'Fixed list of the bootstrap keys this reader fetches.' } },
+  no2: { summary: 'Sentinel-5P NO2 industrial activity direction for the country against the same window in prior years, with the Copernicus credit.', args: { country_code: ISO2, kind: 'Region type read: the country polygon only, not its industrial clusters.' } },
+  markets: { summary: 'Prediction markets list with optional title and category narrowing.', args: { page_size: 'Markets to return.', query: 'Case-insensitive text to find in market titles; empty for every market.', category: 'Category bucket name to narrow to; empty for every category.', cursor: 'Unused: only the first page is readable here.' } },
+  china: { summary: 'China decision signals.', args: {} },
+  production: { summary: 'Mine and refinery production for one commodity across countries and stages.', args: { commodity: 'Commodity slug, such as "copper".', iso2: FIXED_EMPTY, stage: FIXED_EMPTY } },
+  housing: { summary: 'BIS housing datasets: debt-service ratio and residential and commercial property prices.', args: { keys: 'The datasets read: BIS debt-service ratio, residential property prices and commercial property prices.' } },
+  imf: { summary: 'IMF macro datasets: macro, growth, labor and external accounts.', args: { keys: 'The datasets read: IMF macro, growth, labor and external-accounts indicators.' } },
 };
 
 function describedSectionArguments(section: CountryReader): Record<string, unknown> {
@@ -95,7 +99,8 @@ function describedSectionArguments(section: CountryReader): Record<string, unkno
     if (!text) throw new Error(`api/mcp/registry/country-view.ts: section "${section}" argument "${field}" has no description in COUNTRY_SECTION_DOCS`);
     properties[field] = { ...properties[field], description: text };
   }
-  return { ...schema, description: `Arguments for the ${section} section.`, properties };
+  const description = Object.keys(properties).length ? `Arguments for the ${section} section.` : `Not used: the ${section} section reads one dataset with no parameters.`;
+  return { ...schema, description, properties };
 }
 
 // One shared deadline covers signing, waiting for a slot, fetch and body reads.
@@ -164,8 +169,8 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country name or ISO2 code.' },
-      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on: overview (default), all, resilience, security, economy (economy and trade), resources (resources and infrastructure), society or sources.' },
+      country_code: { type: 'string', minLength: 2, maxLength: 100, description: 'Country to open, as an ISO alpha-2 or alpha-3 code or a country name, such as "DE", "DEU" or "Germany".' },
+      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on: economy covers economy and trade, resources covers resources and infrastructure, sources lists the source evidence, all shows every group. Omitted: overview.' },
       request_id: { type: 'string', format: 'uuid', description: 'Stable ID for an explicit refresh. Retries with the same ID share one paid admission.' },
       refresh: { type: 'boolean', description: 'Start a new paid panel request and refresh loaded observations. Default false reuses the current same-country request.' },
     },
@@ -173,7 +178,11 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   },
   outputSchema: {
     type: 'object',
-    properties: { countryCode: { type: 'string' }, topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS) }, panelRequest: z.toJSONSchema(panelAdmissionSchema) },
+    properties: {
+      countryCode: { type: 'string', description: 'Resolved country, ISO alpha-2.' },
+      topic: { type: 'string', enum: Object.keys(BRIEF_TOPICS), description: 'Section group the view opens on.' },
+      panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the paid country request this open admitted or reused.'),
+    },
     required: ['countryCode', 'topic'],
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -193,8 +202,8 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      panel_request: { type: 'string', maxLength: 160, description: 'Server-issued paid country-panel request token. Only the embedded country view supplies this.' },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Which of the 39 fixed readers to run; each oneOf branch below documents one. signalsRaw requires a verified paid country-panel receipt and a matching arguments.country_code.' },
+      panel_request: { type: 'string', maxLength: 160, description: 'Request token of a verified paid country panel, issued to the embedded country view; it unlocks countrySignals and signalsRaw for that country. Other callers omit it.' },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Dataset to read; each oneOf branch documents one section and its arguments. countrySignals and signalsRaw need a panel_request for the same country as arguments.country_code.' },
       arguments: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Arguments for the chosen section, as the matching oneOf branch defines them (key names differ per section and unknown keys are rejected). Omit for sections that take none.' },
     },
     required: ['section'],
@@ -209,9 +218,11 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
   outputSchema: {
     type: 'object',
     properties: {
-      state: { type: 'string', enum: ['ready', 'locked', 'unavailable'] },
-      section: { type: 'string', enum: Object.keys(COUNTRY_READERS) },
-      value: { type: 'object' }, retrievedAt: { type: 'string' }, reason: { type: 'string' },
+      state: { type: 'string', enum: ['ready', 'locked', 'unavailable'], description: 'ready: value holds the data. locked: this connection may not read the section. unavailable: the data is missing or stale, which is unknown, not zero.' },
+      section: { type: 'string', enum: Object.keys(COUNTRY_READERS), description: 'Section read.' },
+      value: { type: 'object', description: 'The section\'s raw data when state is ready; its shape depends on the section.' },
+      retrievedAt: { type: 'string', description: 'When the data was read, ISO 8601.' },
+      reason: { type: 'string', description: 'Why state is locked or unavailable.' },
     },
     required: ['state', 'section'],
     anyOf: [
@@ -219,25 +230,27 @@ export const COUNTRY_VIEW_TOOLS: ToolDef[] = [{
       { properties: { value: {
         type: 'object',
         properties: {
-          countryCode: { type: 'string', pattern: '^[A-Z]{2}$' },
+          countryCode: { type: 'string', pattern: '^[A-Z]{2}$', description: 'Country read.' },
           sources: {
             type: 'object',
+            description: 'One entry per raw signal family.',
             propertyNames: { enum: [...RAW_SIGNAL_FAMILIES] },
             additionalProperties: {
               type: 'object',
               properties: {
-                state: { type: 'string', enum: ['observed', 'locked', 'unavailable'] },
-                records: { type: ['array', 'null'], items: { type: 'object' } },
-                partial: { type: 'boolean' }, scope: { type: 'string' }, attribution: { type: 'string' },
-                snapshotAt: { type: ['string', 'null'] }, computationAt: { type: ['string', 'null'] },
-                observationWindow: { type: ['string', 'null'] }, sourceVersion: { type: ['string', 'null'] },
-                retrievedAt: { type: 'string' }, reason: { type: 'string' },
+                state: { type: 'string', enum: ['observed', 'locked', 'unavailable'], description: 'observed: records hold the samples. locked or unavailable: records is null.' },
+                records: { type: ['array', 'null'], items: { type: 'object' }, description: 'Raw samples for the country; null unless observed.' },
+                partial: { type: 'boolean', description: 'True when some source rows were malformed and dropped, so the country count is not exact.' },
+                scope: { type: 'string', description: 'What the samples cover.' }, attribution: { type: 'string', description: 'Credit line to show with the samples.' },
+                snapshotAt: { type: ['string', 'null'], description: 'Time of the source snapshot; null when unknown.' }, computationAt: { type: ['string', 'null'], description: 'When the source data was last fetched; null when unknown.' },
+                observationWindow: { type: ['string', 'null'], description: 'Period the samples cover; null when unknown.' }, sourceVersion: { type: ['string', 'null'], description: 'Source dataset version; null when unknown.' },
+                retrievedAt: { type: 'string', description: 'When the family was read, ISO 8601.' }, reason: { type: 'string', description: 'Why the family is locked or unavailable.' },
               },
               required: ['state', 'records', 'partial', 'scope', 'attribution', 'snapshotAt', 'computationAt', 'observationWindow', 'sourceVersion', 'retrievedAt'],
             },
             required: [...RAW_SIGNAL_FAMILIES],
           },
-          missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4 },
+          missing: { type: 'array', items: { type: 'string', enum: [...RAW_SIGNAL_FAMILIES] }, maxItems: 4, description: 'Families that are not observed, or observed only partially.' },
         },
         required: ['countryCode', 'sources', 'missing'],
       } }, required: ['value'] },

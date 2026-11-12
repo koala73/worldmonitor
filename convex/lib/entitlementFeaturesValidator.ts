@@ -70,4 +70,9 @@ export const entitlementFeaturesValidator = v.object({
   // as false (fail-closed), and catalog-sourced writes carry it, so this
   // validator MUST accept it (v.object is strict on extra keys).
   tabFocus: v.optional(v.boolean()),
+  // Optional — travel risk assessment drafts (#10451). Legacy rows predate
+  // it; the read-time merge supplies the catalog value and consumers treat
+  // undefined as false (fail-closed). Catalog-sourced writes always set it,
+  // so this validator MUST accept it.
+  travelRiskAssessment: v.optional(v.boolean()),
 });

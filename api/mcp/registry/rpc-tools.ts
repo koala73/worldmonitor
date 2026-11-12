@@ -32,6 +32,9 @@ import { FORECAST_THEATER_STATUSES, forecastTheaterReadSchema, parseForecastThea
 import { readBoundedResponseBody, ResponseBodyTooLargeError } from '../bounded-body';
 import { utf8ByteLength } from '../utils';
 import { MCP_CHECKOUT_PLANS, START_UPGRADE_TOOL } from '../checkout';
+import { describedPanelReceipt } from './news-dashboard';
+import { panelAdmissionSchema } from '../../../shared/country-brief-host';
+import { worldBriefPanelAdmissionSchema } from '../../../shared/panel-admission';
 import filterParamContracts from '../../../shared/openapi-filter-param-contracts.json';
 import { normalizeCountry } from '../../../server/_shared/intel-history-client';
 import { normalizePassengerCount } from '../../../server/_shared/passenger-count';
@@ -836,14 +839,15 @@ const INTEL_HISTORY_RECORD_SCHEMA = {
 
 const DEFENSE_INDUSTRIAL_METRIC_SCHEMA = {
   type: 'object',
+  description: 'One annual indicator. Read available before value; when false, value, year and source are 0 or empty placeholders.',
   required: ['available', 'value', 'year', 'previousValue', 'previousYear', 'source'],
   properties: {
-    available: { type: 'boolean' },
-    value: { type: 'number' },
-    year: { type: 'integer' },
-    previousValue: { type: 'number' },
-    previousYear: { type: 'integer' },
-    source: { type: 'string' },
+    available: { type: 'boolean', description: 'True when the source published a value and observation year for this country.' },
+    value: { type: 'number', description: 'Latest observed value in the indicator\'s own unit: percent of GDP, current USD, people, or SIPRI TIV (a volume index, not currency).' },
+    year: { type: 'integer', description: 'Observation year of value; 0 when unavailable.' },
+    previousValue: { type: 'number', description: 'Prior observation used for change; 0 when none is recorded.' },
+    previousYear: { type: 'integer', description: 'Observation year of previousValue; 0 when none is recorded.' },
+    source: { type: 'string', description: 'Source label for value; empty when unavailable.' },
   },
 };
 
@@ -892,34 +896,34 @@ const RESILIENCE_INDICATOR_RAW_VALUE_OUTPUT_SCHEMA = {
 const RESILIENCE_INDICATOR_OUTPUT_SCHEMA = {
   type: 'object' as const,
   properties: {
-    id: { type: 'string' as const },
-    dimension: { type: 'string' as const },
+    id: { type: 'string' as const, description: 'Stable indicator id from the registry.' },
+    dimension: { type: 'string' as const, description: 'Id of the dimension this indicator feeds.' },
     tier: { type: 'string' as const, description: 'core, enrichment, or experimental.' },
-    active: { type: 'boolean' as const },
-    includedInDimensionScore: { type: 'boolean' as const },
+    active: { type: 'boolean' as const, description: 'True when the current construct version can use this indicator.' },
+    includedInDimensionScore: { type: 'boolean' as const, description: 'True when this country\'s observation took part in the dimension score.' },
     state: { type: 'string' as const, description: 'observed, imputed, missing, fallback, source-failure, inactive, retired, or not-applicable.' },
     reason: { type: 'string' as const, description: 'Explains exclusion, inactivity, retirement, or fallback.' },
     normalizedScoreAvailable: { type: 'boolean' as const },
-    normalizedScore: { type: 'number' as const },
-    nominalWeight: { type: 'number' as const },
+    normalizedScore: { type: 'number' as const, description: 'Indicator score on the 0-100 resilience scale; read normalizedScoreAvailable first.' },
+    nominalWeight: { type: 'number' as const, description: 'Configured weight before runtime selection or reweighting.' },
     runtimeWeightAvailable: { type: 'boolean' as const },
-    runtimeWeight: { type: 'number' as const },
+    runtimeWeight: { type: 'number' as const, description: 'Weight the executed scorer branch selected, before normalization.' },
     scoringWeightShareAvailable: { type: 'boolean' as const },
-    scoringWeightShare: { type: 'number' as const },
-    literalContribution: { type: 'number' as const },
+    scoringWeightShare: { type: 'number' as const, description: 'Share of the active blend after reweighting, 0 to 1.' },
+    literalContribution: { type: 'number' as const, description: 'Contribution before dimension-level caps or adjustments.' },
     effectiveContribution: { type: 'number' as const, description: 'Reconciled effective contribution to the exposed dimension score.' },
-    imputationClass: { type: 'string' as const },
+    imputationClass: { type: 'string' as const, description: 'Scorer imputation category; empty for observed or unavailable rows.' },
     sourceYearAvailable: { type: 'boolean' as const },
-    sourceYear: { type: 'integer' as const },
+    sourceYear: { type: 'integer' as const, description: 'Provider observation year, not the retrieval year.' },
     observationAgeAvailable: { type: 'boolean' as const },
-    observationAgeValue: { type: 'integer' as const },
+    observationAgeValue: { type: 'integer' as const, description: 'Age of the source observation, in observationAgeUnit.' },
     observationAgeUnit: { type: 'string' as const, description: 'days or years.' },
     observationAgeBasis: { type: 'string' as const, description: 'observation-timestamp or source-year; never retrieval time.' },
     retrievedAtAvailable: { type: 'boolean' as const },
-    retrievedAt: { type: 'string' as const },
+    retrievedAt: { type: 'string' as const, description: 'ISO-8601 time WorldMonitor retrieved the data.' },
     observedAtAvailable: { type: 'boolean' as const },
-    observedAt: { type: 'string' as const },
-    sources: { type: 'array' as const, items: RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA },
+    observedAt: { type: 'string' as const, description: 'Provider observation time, ISO-8601.' },
+    sources: { type: 'array' as const, description: 'Licence and attribution for each source behind this indicator.', items: RESILIENCE_INDICATOR_SOURCE_OUTPUT_SCHEMA },
     rawValue: RESILIENCE_INDICATOR_RAW_VALUE_OUTPUT_SCHEMA,
   },
 };
@@ -927,17 +931,17 @@ const RESILIENCE_INDICATOR_OUTPUT_SCHEMA = {
 const RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA = {
   type: 'object' as const,
   properties: {
-    id: { type: 'string' as const },
-    score: { type: 'number' as const },
-    coverage: { type: 'number' as const },
-    prePolicyScore: { type: 'number' as const },
-    policyCapName: { type: 'string' as const },
-    policyCapFactor: { type: 'number' as const },
-    literalContributionTotal: { type: 'number' as const },
+    id: { type: 'string' as const, description: 'Stable dimension id from the resilience construct.' },
+    score: { type: 'number' as const, description: 'Final dimension score, 0-100; higher is more resilient.' },
+    coverage: { type: 'number' as const, description: 'Fraction of active dimension weight backed by observations, 0 to 1.' },
+    prePolicyScore: { type: 'number' as const, description: 'Dimension score before any policy cap.' },
+    policyCapName: { type: 'string' as const, description: 'Applied policy cap; empty when none applies.' },
+    policyCapFactor: { type: 'number' as const, description: 'Multiplier the policy cap applied.' },
+    literalContributionTotal: { type: 'number' as const, description: 'Sum of literal indicator contributions before dimension-level policy.' },
     effectiveContributionTotal: { type: 'number' as const, description: 'Reconciles exactly to score.' },
     active: { type: 'boolean' as const },
     reconciliationAvailable: { type: 'boolean' as const, description: 'False for retired or runtime-disabled placeholder dimensions.' },
-    reason: { type: 'string' as const },
+    reason: { type: 'string' as const, description: 'Why the dimension is inactive or cannot reconcile; empty otherwise.' },
   },
 };
 
@@ -1025,39 +1029,42 @@ const FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA = {
   properties: {
     scorecard: {
       type: 'object' as const,
+      description: 'The country or bloc scorecard; absent when unavailable is true.',
       required: ['methodologyVersion', 'computedAt', 'pillars'],
       oneOf: [
         { required: ['countryCode'], not: { required: ['id'] } },
         { required: ['id', 'label', 'members', 'includedMembers', 'excludedMembers'], not: { required: ['countryCode'] } },
       ],
       properties: {
-        countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$' },
-        id: { type: 'string' as const },
-        label: { type: 'string' as const },
-        members: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
-        includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
-        excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
+        countryCode: { type: 'string' as const, pattern: '^[A-Z]{2}$', description: 'Scored country; present only on a country scorecard.' },
+        id: { type: 'string' as const, description: 'Bloc id; present only on a bloc scorecard.' },
+        label: { type: 'string' as const, description: 'Bloc display name.' },
+        members: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' }, description: 'Every requested bloc member, ISO-2.' },
+        includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' }, description: 'Members whose data entered the bloc scorecard.' },
+        excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA, description: 'Members left out of the bloc, each with its reason.' },
         methodologyVersion: { type: 'string' as const, const: '1.0.0' },
-        computedAt: { type: 'string' as const, format: 'date-time' },
+        computedAt: { type: 'string' as const, format: 'date-time', description: 'When the scorecard snapshot was computed.' },
         pillars: {
           type: 'array' as const,
+          description: 'One entry per factor: food, energy, demographics, technology and defense.',
           items: {
             type: 'object' as const,
             required: ['pillar', 'hasScore', 'score', 'subScore', 'band', 'inputCoverage', 'aggregationMethod', 'insufficientReasons', 'includedMembers', 'excludedMembers', 'inputs', 'memberWeights'],
             properties: {
-              pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES },
+              pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES, description: 'Capability factor this entry scores.' },
               hasScore: { type: 'boolean' as const, description: 'Read before score and subScore.' },
-              score: { type: 'integer' as const, minimum: 0, maximum: 5 },
-              subScore: { type: 'number' as const, minimum: 0, maximum: 100 },
-              band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES },
-              inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1 },
-              aggregationMethod: { type: 'string' as const, enum: SCORECARD_AGGREGATION_VALUES },
-              insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES } },
-              includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' } },
-              excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA },
-              inputs: { type: 'array' as const, items: SCORECARD_INPUT_OUTPUT_SCHEMA },
+              score: { type: 'integer' as const, minimum: 0, maximum: 5, description: 'Published 1-5 capability score, higher is stronger; 0 only as a placeholder when hasScore is false. Use it and band rather than re-deriving from subScore.' },
+              subScore: { type: 'number' as const, minimum: 0, maximum: 100, description: 'Continuous 0-100 value behind score, rounded to 2 decimals; near a band edge it can disagree with score.' },
+              band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES, description: 'Label for score; empty when hasScore is false.' },
+              inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1, description: 'Share of indicator weight that had usable data.' },
+              aggregationMethod: { type: 'string' as const, enum: SCORECARD_AGGREGATION_VALUES, description: 'How inputs, or bloc members, were combined into the score.' },
+              insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES }, description: 'Why coverage fell short; explains hasScore false.' },
+              includedMembers: { type: 'array' as const, items: { type: 'string' as const, pattern: '^[A-Z]{2}$' }, description: 'Bloc members whose data entered this pillar; empty for a country scorecard.' },
+              excludedMembers: { type: 'array' as const, items: SCORECARD_EXCLUDED_MEMBER_OUTPUT_SCHEMA, description: 'Bloc members left out of this pillar, each with its reason.' },
+              inputs: { type: 'array' as const, items: SCORECARD_INPUT_OUTPUT_SCHEMA, description: 'Evidence ledger: every input with its value, source and raw observations.' },
               memberWeights: {
                 type: 'array' as const,
+                description: 'Member populations used by population-weighted bloc aggregation.',
                 items: {
                   type: 'object' as const,
                   required: ['countryCode', 'populationMillions', 'hasPopulation'],
@@ -1073,8 +1080,8 @@ const FIVE_FACTOR_SCORECARD_OUTPUT_SCHEMA = {
         },
       },
     },
-    unavailable: { type: 'boolean' as const },
-    unavailableReason: { type: 'string' as const, enum: SCORECARD_TOP_LEVEL_REASON_VALUES },
+    unavailable: { type: 'boolean' as const, description: 'True when no scorecard could be returned; scorecard is then absent.' },
+    unavailableReason: { type: 'string' as const, enum: SCORECARD_TOP_LEVEL_REASON_VALUES, description: 'Why the scorecard is unavailable; empty when it is returned.' },
   },
 };
 
@@ -1100,10 +1107,11 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
     },
   ],
   properties: {
-    methodologyVersion: { type: 'string' as const, enum: ['', '1.0.0'] },
-    computedAt: { type: 'string' as const },
+    methodologyVersion: { type: 'string' as const, enum: ['', '1.0.0'], description: 'Scorecard methodology; empty when unavailable.' },
+    computedAt: { type: 'string' as const, description: 'When the snapshot was computed, ISO-8601; empty when unavailable.' },
     scorecards: {
       type: 'array' as const,
+      description: 'One compact scorecard per covered country.',
       items: {
         type: 'object' as const,
         required: ['countryCode', 'pillars'],
@@ -1115,55 +1123,76 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
               type: 'object' as const,
               required: ['pillar', 'hasScore', 'score', 'subScore', 'band', 'inputCoverage', 'insufficientReasons'],
               properties: {
-                pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES },
+                pillar: { type: 'string' as const, enum: SCORECARD_PILLAR_VALUES, description: 'Capability factor this entry scores.' },
                 hasScore: { type: 'boolean' as const, description: 'Read before score and subScore; false means both numeric fields are proto3 zero placeholders, not measured zero resilience.' },
-                score: { type: 'integer' as const, minimum: 0, maximum: 5 },
-                subScore: { type: 'number' as const, minimum: 0, maximum: 100 },
-                band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES },
-                inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1 },
-                insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES } },
+                score: { type: 'integer' as const, minimum: 0, maximum: 5, description: 'Published 1-5 capability score, higher is stronger.' },
+                subScore: { type: 'number' as const, minimum: 0, maximum: 100, description: 'Continuous 0-100 value behind score, rounded; do not re-derive score from it.' },
+                band: { type: 'string' as const, enum: SCORECARD_BAND_VALUES, description: 'Label for score; empty when hasScore is false.' },
+                inputCoverage: { type: 'number' as const, minimum: 0, maximum: 1, description: 'Share of indicator weight that had usable data.' },
+                insufficientReasons: { type: 'array' as const, items: { type: 'string' as const, enum: SCORECARD_REASON_VALUES }, description: 'Why coverage fell short.' },
               },
             },
           },
         },
       },
     },
-    unavailable: { type: 'boolean' as const },
-    unavailableReason: { type: 'string' as const, enum: ['', 'scorecard-snapshot-unavailable'] },
+    unavailable: { type: 'boolean' as const, description: 'True when the snapshot could not be read; scorecards is then empty.' },
+    unavailableReason: { type: 'string' as const, enum: ['', 'scorecard-snapshot-unavailable'], description: 'Why the list is unavailable; empty otherwise.' },
   },
 };
 const VULNERABILITY_INPUT_OUTPUT_SCHEMA = {
   type: 'object' as const,
+  description: 'One source input behind a component, with its provenance.',
   properties: {
     sourceKey: { type: 'string' as const }, sourceName: { type: 'string' as const }, sourceUrl: { type: 'string' as const },
-    value: { type: ['number', 'null'] }, year: { type: ['integer', 'null'] }, fetchedAt: { type: 'string' as const },
-    stale: { type: 'boolean' as const }, detail: { type: 'string' as const },
+    value: { type: ['number', 'null'] }, year: { type: ['integer', 'null'], description: 'Source observation year; null when undated.' }, fetchedAt: { type: 'string' as const, description: 'When the input was retrieved, ISO-8601.' },
+    stale: { type: 'boolean' as const, description: 'True when the input is past its freshness budget.' }, detail: { type: 'string' as const },
   },
 };
 
 const VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA = {
   type: 'object' as const,
   properties: {
-    sourceConcentration: { type: 'object' as const, properties: {
-      value: { type: ['number', 'null'] }, importHhi: { type: ['number', 'null'] },
-      mineHhi: { type: ['number', 'null'] }, refineryHhi: { type: ['number', 'null'] },
-      productionHhi: { type: ['number', 'null'] }, productionCoverage: { type: 'string' as const },
-      coverage: { type: 'string' as const }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
+    sourceConcentration: { type: 'object' as const, description: 'Supplier concentration; every HHI here is on a 0-1 scale, higher meaning fewer suppliers.', properties: {
+      value: { type: ['number', 'null'], description: 'Blended concentration, 0-1; null when no HHI is available or redistribution is blocked.' }, importHhi: { type: ['number', 'null'], description: 'Concentration of the country\'s import partners.' },
+      mineHhi: { type: ['number', 'null'], description: 'Global mine-output concentration.' }, refineryHhi: { type: ['number', 'null'], description: 'Global refinery-output concentration.' },
+      productionHhi: { type: ['number', 'null'] }, productionCoverage: { type: 'string' as const, description: 'Which production stages fed productionHhi: mine_and_refinery, refinery_only or mine_only.' },
+      coverage: { type: 'string' as const, description: 'Which HHIs fed value: import_and_production, import_mirror_only, production_only or unknown.' }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
     } },
-    transitExposure: { type: 'object' as const, properties: {
-      value: { type: ['number', 'null'] },
-      chokepoints: { type: 'array' as const, items: { type: 'object' as const, properties: {
+    transitExposure: { type: 'object' as const, description: 'Exposure to maritime chokepoints on the import routes.', properties: {
+      value: { type: ['number', 'null'], description: 'Combined exposure across the listed chokepoints, 0-1 (one minus the product of each 1 - weightedTransitShare); null when no route data.' },
+      chokepoints: { type: 'array' as const, description: 'Chokepoints on the routes, highest weighted share first.', items: { type: 'object' as const, properties: {
         id: { type: 'string' as const }, name: { type: 'string' as const },
-        transitShare: { type: ['number', 'null'] }, weightedTransitShare: { type: ['number', 'null'] },
-        status: { type: 'string' as const }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
+        transitShare: { type: ['number', 'null'], description: 'Share of supply that transits this chokepoint, 0-1.' }, weightedTransitShare: { type: ['number', 'null'], description: 'transitShare raised when the route is disrupted, capped at 1.' },
+        status: { type: 'string' as const, description: 'baseline, disrupted, unknown (status row missing; blocks the score) or uncovered (no flow-status source exists).' }, inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
       } } },
     } },
-    buffer: { type: 'object' as const, properties: {
-      state: { type: 'string' as const }, vulnerability: { type: ['number', 'null'] }, kind: { type: 'string' as const },
+    buffer: { type: 'object' as const, description: 'Stock-buffer cover for the commodity.', properties: {
+      state: { type: 'string' as const, description: 'known when a buffer measure exists, otherwise unknown.' }, vulnerability: { type: ['number', 'null'], description: 'Buffer weakness, 0-1, higher meaning less stock cover; null when unknown.' }, kind: { type: 'string' as const, description: 'Type of buffer measured.' },
       inputs: { type: 'array' as const, items: VULNERABILITY_INPUT_OUTPUT_SCHEMA },
     } },
   },
 };
+const MINERAL_STAGE_OUTPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    year: { type: 'number', description: 'Production year for this stage.' },
+    unit: { type: 'string', description: 'Unit used for output and worldTotal.' },
+    countries: { type: 'array', items: { type: 'object', properties: {
+      iso2: { type: 'string', description: 'Producer country code; may be empty for a residual row.' },
+      country: { type: 'string', description: 'Producer country or residual group label.' },
+      output: { type: 'number', description: 'Production in the stage unit; omitted when unpublished or unavailable.' },
+      share: { type: 'number', description: 'Percent of quantified production across source rows; omitted when unavailable.' },
+      withheld: { type: 'boolean', description: 'Whether output was withheld by the source.' },
+      estimated: { type: 'boolean', description: 'Whether output is an estimate.' },
+      residual: { type: 'boolean', description: 'Whether this row represents Other countries.' },
+    } } },
+    hhi: { type: 'number', description: 'Herfindahl-Hirschman concentration index on the 0–10,000 scale over named producers with published shares, excluding Other countries; unchanged by country filtering.' },
+    worldTotal: { type: 'number', description: 'World production in the stage unit; omitted when unavailable.' },
+    withheldCount: { type: 'number', description: 'Number of source rows with withheld output, before country filtering.' },
+  },
+};
+
 export const RPC_TOOLS: ToolDef[] = [
   NO2_ACTIVITY_TOOL,
   {
@@ -1171,11 +1200,11 @@ export const RPC_TOOLS: ToolDef[] = [
     _validateArgs: params => { requireCountryCode(params.country_code, 'get-defense-industrial-base'); },
     title: 'Defense industrial base',
     _outputBudgetBytes: 16_384,
-    description: 'Return one country\'s defense industrial base: the latest World Bank military-capacity indicators (spending, personnel, arms trade) and SIPRI-derived five-year major-weapons supplier shares with a concentration measure, answering who supplies the country\'s arms and how dependent it is on them. Values are annual and carry their observation year; SIPRI TIV is a transfer-volume index, not currency. Requires a paid plan; one downstream fetch of seeded data, weight 2 on API plans. country_code is ISO 3166-1 alpha-2 (UA, DE, IN). Read-only.',
+    description: 'Return one country\'s defense industrial base: the latest World Bank military-capacity indicators (spending, personnel, arms trade) and SIPRI-derived five-year major-weapons supplier shares with a concentration measure, answering who supplies the country\'s arms and how dependent it is on them. Values are annual and carry their observation year; SIPRI TIV is a transfer-volume index, not currency. Requires a paid plan; one downstream fetch of seeded data, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, such as UA, DE, or IN.' },
+        country_code: { type: 'string', description: `Country whose military-capacity indicators and arms suppliers to return. ${COUNTRY_ARG_HINT}` },
       },
       required: ['country_code'],
     },
@@ -1183,18 +1212,18 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['countryCode', 'available', 'expenditurePctGdp', 'expenditureUsd', 'personnel', 'armsExportsTiv', 'armsImportsTiv', 'suppliers', 'supplierHhi', 'windowStartYear', 'windowEndYear', 'supplierSource', 'fetchedAt', 'industrialFetchedAt', 'supplierFetchedAt', 'supplierRetained', 'supplierMappingCoverage'],
       properties: {
-        countryCode: { type: 'string' },
-        available: { type: 'boolean' },
-        expenditurePctGdp: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
-        expenditureUsd: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
-        personnel: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
-        armsExportsTiv: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
-        armsImportsTiv: DEFENSE_INDUSTRIAL_METRIC_SCHEMA,
-        suppliers: { type: 'array', items: { type: 'object', required: ['supplierIso2', 'tivShare'], properties: { supplierIso2: { type: 'string', pattern: '^[A-Z]{2}$' }, tivShare: { type: 'number', minimum: 0, maximum: 1 } } } },
+        countryCode: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code.' },
+        available: { type: 'boolean', description: 'False when neither World Bank indicators nor SIPRI suppliers exist for the country; every other field is then a placeholder.' },
+        expenditurePctGdp: { ...DEFENSE_INDUSTRIAL_METRIC_SCHEMA, description: 'Military expenditure, percent of GDP.' },
+        expenditureUsd: { ...DEFENSE_INDUSTRIAL_METRIC_SCHEMA, description: 'Military expenditure, current USD.' },
+        personnel: { ...DEFENSE_INDUSTRIAL_METRIC_SCHEMA, description: 'Armed forces personnel, people.' },
+        armsExportsTiv: { ...DEFENSE_INDUSTRIAL_METRIC_SCHEMA, description: 'Major-weapons exports, SIPRI TIV.' },
+        armsImportsTiv: { ...DEFENSE_INDUSTRIAL_METRIC_SCHEMA, description: 'Major-weapons imports, SIPRI TIV.' },
+        suppliers: { type: 'array', description: 'Major-weapons suppliers over the window, each with its share of the country\'s imported TIV. Empty when SIPRI records no transfers.', items: { type: 'object', required: ['supplierIso2', 'tivShare'], properties: { supplierIso2: { type: 'string', pattern: '^[A-Z]{2}$', description: 'Supplier country, ISO 3166-1 alpha-2.' }, tivShare: { type: 'number', minimum: 0, maximum: 1, description: 'Supplier share of imported TIV over the window, as a fraction (0.4 = 40%).' } } } },
         supplierHhi: { type: 'number', minimum: 0, maximum: 1, description: 'Herfindahl-Hirschman concentration from 0 to 1; higher means fewer dominant suppliers.' },
-        windowStartYear: { type: 'integer' },
-        windowEndYear: { type: 'integer' },
-        supplierSource: { type: 'string' },
+        windowStartYear: { type: 'integer', description: 'First year of the SIPRI supplier window; 0 when no supplier data.' },
+        windowEndYear: { type: 'integer', description: 'Last year of the SIPRI supplier window; 0 when no supplier data.' },
+        supplierSource: { type: 'string', description: 'Source label for the supplier shares; empty when no supplier data.' },
         fetchedAt: { type: 'string', description: 'Oldest source timestamp among values served.' },
         industrialFetchedAt: { type: 'string', description: 'World Bank snapshot timestamp for the country metrics served.' },
         supplierFetchedAt: { type: 'string', description: 'SIPRI timestamp for this importer row, including its original timestamp when retained.' },
@@ -1245,10 +1274,11 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['schemaVersion', 'generatedAt', 'groups', 'access'],
       properties: {
-        schemaVersion: { type: 'integer', enum: [1] },
-        generatedAt: { type: 'string' },
+        schemaVersion: { type: 'integer', enum: [1], description: 'Snapshot contract version.' },
+        generatedAt: { type: 'string', description: 'When the snapshot was assembled, ISO-8601 UTC. Not the age of any item; read each item\'s timestamps and stale flag.' },
         groups: {
           type: 'array',
+          description: 'One entry per decision-signal domain, always present even when unavailable.',
           items: {
             type: 'object',
             required: ['id', 'state', 'reason', 'items', 'metadata'],
@@ -1256,42 +1286,46 @@ export const RPC_TOOLS: ToolDef[] = [
               id: {
                 type: 'string',
                 enum: [...CHINA_DECISION_SIGNAL_GROUP_IDS],
+                description: 'Signal domain.',
               },
-              state: { type: 'string', enum: ['available', 'partial', 'stale', 'unavailable'] },
-              reason: { type: ['string', 'null'] },
+              state: { type: 'string', enum: ['available', 'partial', 'stale', 'unavailable'], description: 'available: every item fresh. partial: some items stale, rejected or upstream degraded. stale: every item stale. unavailable: no provenance-valid item; never read as zero activity.' },
+              reason: { type: ['string', 'null'], description: 'Why the domain is unavailable; null otherwise.' },
               items: {
                 type: 'array',
                 maxItems: 4,
+                description: 'Provenance-valid signals in this domain; empty when state is unavailable.',
                 items: {
                   type: 'object',
                   required: ['id', 'lineageId', 'label', 'summary', 'sourceName', 'sourceUrl', 'publisherType', 'observedAt', 'publishedAt', 'effectiveAt', 'retrievedAt', 'stale', 'metadata', 'provenance'],
                   properties: {
-                    id: { type: 'string' },
-                    lineageId: { type: 'string' },
+                    id: { type: 'string', description: 'Signal id from its provenance record.' },
+                    lineageId: { type: 'string', description: 'Id shared by revisions of the same original item; group on it to collapse revisions.' },
                     label: { type: 'string' },
-                    summary: { type: 'string' },
-                    sourceName: { type: 'string' },
-                    sourceUrl: { type: ['string', 'null'] },
+                    summary: { type: 'string', description: 'Normalized summary of the signal.' },
+                    sourceName: { type: 'string', description: 'Publisher name; "Unknown publisher" when provenance names none.' },
+                    sourceUrl: { type: ['string', 'null'], description: 'Original source link; null when provenance has none.' },
                     publisherType: {
                       type: 'string',
+                      description: 'Kind of publisher, so state-controlled media and official statements can be weighed apart from independent observation.',
                       enum: ['official_government', 'state_controlled_media', 'official_exchange', 'independent_observation', 'independent_media', 'wire_service', 'market_publisher', 'derived_output', 'unknown'],
                     },
-                    observedAt: { type: ['string', 'null'] },
-                    publishedAt: { type: ['string', 'null'] },
-                    effectiveAt: { type: ['string', 'null'] },
-                    retrievedAt: { type: ['string', 'null'] },
-                    stale: { type: 'boolean' },
-                    metadata: { type: 'object' },
-                    provenance: { type: 'object' },
+                    observedAt: { type: ['string', 'null'], description: 'When the underlying event or value was observed, ISO-8601; null when unknown.' },
+                    publishedAt: { type: ['string', 'null'], description: 'When the source published it; null when unknown.' },
+                    effectiveAt: { type: ['string', 'null'], description: 'When the policy or measure takes effect; null when not stated.' },
+                    retrievedAt: { type: ['string', 'null'], description: 'When WorldMonitor retrieved it; null when unknown.' },
+                    stale: { type: 'boolean', description: 'True when transport or content freshness is stale, missing, partial or of unknown time.' },
+                    metadata: { type: 'object', description: 'Revision, supersession, translation, extraction and classification confidence, and corroboration claims, each null when not asserted.' },
+                    provenance: { type: 'object', description: 'Canonical provenance record backing every claim on this item.' },
                   },
                 },
               },
-              metadata: { type: 'object' },
+              metadata: { type: 'object', description: 'Domain bookkeeping such as omitted item counts and missing inputs.' },
             },
           },
         },
         access: {
           type: 'object',
+          description: 'Fixed statement of what each access tier receives from this snapshot.',
           required: ['anonymous', 'pro', 'operator'],
           properties: {
             anonymous: { type: 'string', enum: ['bounded_public_summary'] },
@@ -1340,20 +1374,20 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_procurement_opportunities',
     title: 'Public procurement opportunities',
     _outputBudgetBytes: 65536,
-    description: 'Search open public-procurement notices aggregated from official national and multilateral sources (including SAM.gov, TED, Pakistan EPADS, Georgia SPA and Armenia ARMEPS) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: page_size defaults to 10 (maximum 25) and nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode "unknown" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.',
+    description: 'Search open public-procurement notices aggregated from official national and multilateral sources (including SAM.gov, TED, Pakistan EPADS, Georgia SPA and Armenia ARMEPS) and return compact records: title, buyer, country, source, deadline, estimated value, automationFit and a link, without descriptions or submission and eligibility payloads. Paged: nextCursor continues the same filters and sort. automationFit is keyword-relevance evidence only, never bidding eligibility, and participationMode "unknown" stays unknown; sourceStatuses and countryCoverage report which sources answered. Requires a paid plan; one live downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        country: { type: 'string', description: 'One ISO 3166-1 alpha-2 country code.' },
-        countries: { type: 'array', items: { type: 'string' }, description: 'Additional ISO 3166-1 alpha-2 country codes. Combined with country.' },
+        country: { type: 'string', description: 'Country of the notice as an ISO 3166-1 alpha-2 code (case-insensitive), e.g. "PK". Names and alpha-3 codes match nothing. Omit with countries for every country.' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'More ISO 3166-1 alpha-2 codes; a notice matching any code in country or countries is returned.' },
         source: { type: 'string', description: 'Official source adapter, such as sam, ted, contracts-finder, canada-buys, gets, or world-bank.' },
         query: { type: 'string', description: 'Case-insensitive text search across procurement titles and descriptions.' },
         buyer: { type: 'string', description: 'Case-insensitive buyer or contracting-authority text.' },
         deadline_from: { type: 'string', description: 'Include deadlines on or after this ISO-8601 timestamp.' },
         deadline_to: { type: 'string', description: 'Include deadlines on or before this ISO-8601 timestamp.' },
-        sort: { type: 'string', enum: ['newest', 'closing_soon', 'estimated_value', 'relevance'], description: 'Result ordering. Defaults to newest.' },
-        min_automation_score: { type: 'integer', minimum: 1, description: 'Optional positive keyword-relevance threshold. Non-integer or non-positive values are ignored; the canonical route clamps values above 100. This is not bidding-eligibility evidence.' },
-        page_size: { type: 'integer', minimum: 1, maximum: PROCUREMENT_TOOL_MAX_PAGE_SIZE, description: 'Records per call. Defaults to 10; capped at 25 to protect agent context.' },
+        sort: { type: 'string', enum: ['newest', 'closing_soon', 'estimated_value', 'relevance'], description: 'newest: latest published first (the default when omitted). closing_soon: earliest deadline first, undated last. estimated_value: largest stated amount first, compared without currency conversion. relevance: highest automationFit score first.' },
+        min_automation_score: { type: 'integer', minimum: 1, description: 'Keep only notices whose automationFit.score is at least this value, on the route\'s 1-100 scale (higher values are clamped to 100). Omit for no relevance filter. Keyword relevance only, not bidding eligibility.' },
+        page_size: { type: 'integer', minimum: 1, maximum: PROCUREMENT_TOOL_MAX_PAGE_SIZE, description: 'Notices per call; 10 when omitted. Kept small to protect agent context; continue with cursor for more.' },
         cursor: { type: 'string', description: 'Opaque nextCursor from the prior result; keep the same filters and sort when continuing.' },
       },
       required: [],
@@ -1362,16 +1396,17 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['opportunities', 'nextCursor', 'fetchedAt', 'dataAvailable', 'availability', 'sourceStatuses', 'total', 'appliedFilters', 'countryCoverage'],
       properties: {
-        opportunities: { type: 'array', items: { type: 'object', properties: {
-          id: { type: 'string' }, source: { type: 'string' }, officialUrl: { type: 'string' }, countryCode: { type: 'string' }, region: { type: 'string' },
-          title: { type: 'string' }, buyer: { type: 'string' }, publishedAt: { type: 'string' }, deadline: { type: 'string' }, status: { type: 'string' }, noticeType: { type: 'string' },
-          money: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
-          categoryCodes: { type: 'array', items: { type: 'string' } }, sectors: { type: 'array', items: { type: 'string' } }, participationMode: { type: 'string' },
-          automationFit: { type: 'object', properties: { score: { type: 'number' }, level: { type: 'string' }, classificationVersion: { type: 'string' }, matchReasons: { type: 'array', items: { type: 'string' } } } },
+        opportunities: { type: 'array', description: 'One page of matching notices in the requested sort order.', items: { type: 'object', properties: {
+          id: { type: 'string', description: 'Stable WorldMonitor notice id.' }, source: { type: 'string', description: 'Source adapter that published the notice.' }, officialUrl: { type: 'string', description: 'Link to the notice on the official portal.' }, countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 country of the notice; absent when the source gives none.' }, region: { type: 'string' },
+          title: { type: 'string' }, buyer: { type: 'string', description: 'Contracting authority.' }, publishedAt: { type: 'string', description: 'Publication time, ISO-8601.' }, deadline: { type: 'string', description: 'Submission deadline, ISO-8601; absent when the source gives none.' }, status: { type: 'string', description: 'Source-provided status, such as open or published.' }, noticeType: { type: 'string' },
+          money: { type: 'object', description: 'Estimated contract value as stated by the source; absent or empty when not stated.', properties: { amount: { type: 'number' }, currency: { type: 'string', description: 'ISO 4217 code.' } } },
+          categoryCodes: { type: 'array', items: { type: 'string' }, description: 'Source classification codes, often CPV.' }, sectors: { type: 'array', items: { type: 'string' } }, participationMode: { type: 'string', description: 'Who may take part, as the source states it; "unknown" when the source does not say.' },
+          automationFit: { type: 'object', description: 'Keyword-relevance evidence for automation-related work; never a bidding-eligibility claim.', properties: { score: { type: 'number', description: 'Relevance score, higher is more relevant.' }, level: { type: 'string', description: 'none, low, medium or high, by how many keyword reasons matched.' }, classificationVersion: { type: 'string' }, matchReasons: { type: 'array', items: { type: 'string' }, description: 'Keywords or rules that produced the score.' } } },
         } } },
-        nextCursor: { type: 'string', description: 'Opaque pagination cursor. An empty string means no further pages are available.' }, fetchedAt: { type: 'string' }, dataAvailable: { type: 'boolean' }, availability: { type: 'string' },
-        sourceStatuses: { type: 'array', items: { type: 'object' } }, total: { type: 'number' }, appliedFilters: { type: 'array', items: { type: 'string' } },
-        countryCoverage: { type: 'string', description: 'unknown means the requested country has not been observed in this snapshot, not that there are confirmed zero results.' },
+        nextCursor: { type: 'string', description: 'Opaque pagination cursor. An empty string means no further pages are available.' }, fetchedAt: { type: 'string', description: 'When the procurement snapshot was gathered, ISO-8601; empty when unavailable.' }, dataAvailable: { type: 'boolean', description: 'False when no source answered and no notices are held.' },
+        availability: { type: 'string', description: 'Snapshot health: available, partial (some sources failed), empty (sources answered with no notices), stale, or unavailable.' },
+        sourceStatuses: { type: 'array', items: { type: 'object' }, description: 'Per-source retrieval status: source, state, recordCount, fetchedAt, lastSuccessfulAt, stale, paced and error.' }, total: { type: 'number', description: 'Notices matching the filters across all pages.' }, appliedFilters: { type: 'array', items: { type: 'string' }, description: 'Names of the filters the route applied.' },
+        countryCoverage: { type: 'string', description: 'not_requested when no country filter was sent; observed when every requested country appears in the snapshot; unknown means a requested country has not been observed in this snapshot, not that there are confirmed zero results.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1430,13 +1465,13 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         reporter: {
           type: 'string',
-          description: 'Reporting country as an ISO 3166-1 alpha-2 code ("US") or a 3-digit UN M49 code ("840"); ISO2 is mapped to M49. Defaults to "840" (United States). The only partner served is the World ("000"); any other partner answers not_covered.',
+          description: 'Country whose exports and imports to return: an ISO 3166-1 alpha-2 or alpha-3 code, a country name, or a 3-digit UN M49 code ("840"). Omit for the United States. Flows are always against the World ("000"). A value that resolves to no country returns no flows with unavailableReason TRADE_FLOW_UNAVAILABLE_REASON_INVALID_REQUEST.',
         },
         years: {
           type: 'integer',
           minimum: 1,
           maximum: TRADE_FLOWS_MAX_YEARS,
-          description: 'Number of years to look back from the most recent published year, inclusive of both endpoints (10 returns 11 calendar years). Defaults to 10; 30 is the full seeded window.',
+          description: 'Years to look back from the most recent published year, counting both ends (10 returns 11 calendar years); 10 when omitted. The maximum covers the whole seeded window.',
         },
       },
       required: [],
@@ -1532,15 +1567,16 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         geo_context: { type: 'string', description: 'Deprecated compatibility field; the precomputed global snapshot is not regenerated or refocused per request.' },
-        refresh: { type: 'boolean', description: 'Paid MCP panel only. Explicit refresh starts one new request allocation; requires request_id.' },
-        request_id: { type: 'string', description: 'UUID for a paid explicit refresh. Retrying the same UUID reuses its allocation.' },
-        panel_request: { type: 'string', description: 'Signed paid World Brief receipt for loaded reads. Do not combine with refresh.' },
+        refresh: { type: 'boolean', description: 'Dedicated paid MCP allowance only: true opens a new request allocation, keyed by request_id, instead of joining the shared five-minute one. Omitted or false joins the current shared allocation. Neither regenerates the precomputed brief.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Caller-generated UUID naming one explicit refresh; required with refresh=true. Retrying with the same UUID reuses that allocation instead of opening another.' },
+        panel_request: { type: 'string', description: 'The panelRequest.token returned by an earlier paid call of this tool (or supplied by the embedded view). Rereads the brief inside that allocation without opening a new one. When omitted, the call opens or joins an allocation. Do not combine with refresh.' },
       },
       required: [],
     },
     outputSchema: {
       type: 'object',
       properties: {
+        panelRequest: describedPanelReceipt(worldBriefPanelAdmissionSchema, 'Dedicated paid plans only: the paid World Brief request this call admitted or reused. Pass its token as panel_request on later reads.'),
         brief: { type: 'string', description: 'Citation-grounded brief from the dashboard insights snapshot.' },
         summary: { type: 'string', description: 'Alternate naming used by some upstream variants.' },
         headlines: { type: 'array', items: { type: 'string' } },
@@ -1669,7 +1705,7 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_country_brief',
     _validateArgs: params => { requireCountryCode(params.country_code, 'get-country-brief'); },
-    title: 'AI-written country assessment (text)',
+    title: 'AI country assessment',
     // Two downstream fetches (brief + news digest for grounding).
     _weight: 3,
     _outputBudgetBytes: 131072,
@@ -1677,9 +1713,9 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
+        panel_request: { type: 'string', maxLength: 160, description: 'Same-country panel token: the panelRequest.token from an earlier paid call for this country, or supplied by the embedded view. Reads inside that allocation without opening a new one. When omitted on a dedicated paid allowance, the call opens or joins the shared five-minute allocation.' },
         refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
-        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Caller-generated id naming one explicit refresh; required with refresh=true. Retrying with the same id reuses that allocation instead of opening another.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
         allow_stale: { type: 'boolean', description: 'Ground the brief on a retained (stale) news digest when the live rebuild has failed. Defaults to false, which drops the stale grounding and returns an ungrounded brief rather than failing; time-sensitive automated decisions should leave this disabled. Retained content is at most six hours old.' },
@@ -1689,6 +1725,7 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
+        panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the same-country paid request this call admitted or reused. Pass its token as panel_request on later reads for this country.'),
         // GetCountryIntelBriefResponse is spread verbatim below, so these
         // mirror the proto's camelCase wire names. `framework` is an input
         // only and `provider` does not exist on this response — neither is
@@ -1928,11 +1965,11 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued same-country panel request token for loaded reads.' },
+        panel_request: { type: 'string', maxLength: 160, description: 'Same-country panel token: the panelRequest.token from an earlier paid call for this country, or supplied by the embedded view. Reads inside that allocation without opening a new one. When omitted on a dedicated paid allowance, the call opens or joins the shared five-minute allocation.' },
         refresh: { type: 'boolean', description: 'For a paid MCP allowance, start a new country allocation and reread loaded sources. Requires request_id and no panel_request. Does not force AI generation.' },
-        request_id: { type: 'string', format: 'uuid', description: 'Required UUID for an explicit paid refresh. Retrying the same UUID reuses that allocation.' },
+        request_id: { type: 'string', format: 'uuid', description: 'Caller-generated id naming one explicit refresh; required with refresh=true. Retrying with the same id reuses that allocation instead of opening another.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
-        history_days: { type: 'integer', minimum: 1, maximum: 90, description: 'Optional UTC daily CII history depth, 1-90 days. Gaps remain gaps; only current-methodology points contribute to change.' },
+        history_days: { type: 'integer', minimum: 1, maximum: 90, description: 'Days of CII history to add as ciiHistory, one UTC daily close per day. Omit for no history. Missing days stay missing; only points on the current methodology count toward change.' },
       },
       required: ['country_code'],
     },
@@ -1941,6 +1978,7 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['countryCode', 'countryName', 'advisoryLevel', 'sanctionsActive', 'sanctionsCount', 'fetchedAt', 'upstreamUnavailable'],
       properties: {
+        panelRequest: describedPanelReceipt(panelAdmissionSchema, 'Dedicated paid plans only: the same-country paid request this call admitted or reused. Pass its token as panel_request on later reads for this country.'),
         countryCode: { type: 'string', description: 'ISO 3166-1 alpha-2 code, echoed back uppercased.' },
         countryName: { type: 'string', description: 'Resolved country name, or the ISO code when no name is known.' },
         ciiHistory: CII_HISTORY_OUTPUT_SCHEMA,
@@ -2024,10 +2062,10 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        panel_request: { type: 'string', maxLength: 160, description: 'Server-issued country-panel request token, supplied by the embedded view.' },
+        panel_request: { type: 'string', maxLength: 160, description: 'Same-country panel token from a paid country call or the embedded view; the read then shares that allocation. window_hours and limit are not accepted with it. Omit for a standalone call.' },
         country_code: { type: 'string', description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")' },
-        window_hours: { type: 'integer', minimum: 0, maximum: 168, description: 'Look-back window in hours. 0 or omitted means the default 168 (7 days), which is what the UI shows. The upstream coverage query is pinned to 7 days, so a larger value is rejected rather than silently returning the same events.' },
-        limit: { type: 'integer', minimum: 0, maximum: 500, description: 'Maximum timeline events to return, keeping the most recent. 0 or omitted means the default 200.' },
+        window_hours: { type: 'integer', minimum: 0, maximum: 168, description: 'Hours of history to include, counted back from now. 0 or omitted uses the full 7 days the country panel shows; the upstream coverage query spans only those 7 days.' },
+        limit: { type: 'integer', minimum: 0, maximum: 500, description: 'Cap on timeline events; when more match, the most recent are kept. 0 or omitted returns up to 200.' },
       },
       required: ['country_code'],
     },
@@ -2139,38 +2177,39 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'list_x_feed',
     title: 'Monitored X news posts',
     _outputBudgetBytes: 65536,
-    description: 'Return recent posts from the curated set of monitored public news accounts on X: for each post the permalink, account, topic tags and derived facts, never the post text (bodies are stripped before return and are not redistributed). Shows which monitored accounts posted recently; enabled=false means the feed is switched off upstream. Requires a paid plan; one downstream fetch, weight 2 on API plans. limit returns 1-200 posts (default 50); topic filters a tag such as breaking, conflict, geopolitics or cyber; account is a handle without @. Read-only.',
+    description: 'Return recent posts from the curated set of monitored public news accounts on X: for each post the permalink, account, topic tags and derived facts, never the post text (bodies are stripped before return and are not redistributed). Shows which monitored accounts posted recently; enabled=false means the feed is switched off upstream. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        limit: { type: 'number', description: 'Maximum posts to return (1-200, default 50)' },
-        topic: { type: 'string', description: 'Optional topic filter such as breaking, conflict, geopolitics, cyber' },
-        account: { type: 'string', description: 'Optional account handle without @' },
+        limit: { type: 'number', description: 'Maximum posts to return; values are clamped to 1-200 and 50 is used when omitted.' },
+        topic: { type: 'string', description: 'Curated topic bucket to keep, such as breaking, conflict, geopolitics or cyber. Omit for every topic.' },
+        account: { type: 'string', description: 'Handle of one monitored account; a leading @ is removed. Omit for every account.' },
       },
       required: [],
     },
     outputSchema: {
       type: 'object',
       properties: {
-        enabled: { type: 'boolean', description: 'Whether the ais-relay X poller currently has credentials.' },
-        count: { type: 'number' },
-        error: { type: 'string' },
+        enabled: { type: 'boolean', description: 'False when the feed is switched off upstream because the X poller has no credentials; an empty posts list then says nothing about activity.' },
+        count: { type: 'number', description: 'Number of posts returned.' },
+        error: { type: 'string', description: 'Upstream fetch error; empty on success.' },
         posts: {
           type: 'array',
+          description: 'Monitored posts without their text, which is never redistributed.',
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string' },
-              accountId: { type: 'string' },
-              accountName: { type: 'string' },
-              handle: { type: 'string' },
-              topic: { type: 'string' },
-              timestampMs: { type: 'number' },
-              permalink: { type: 'string' },
-              facts: { type: 'array', items: { type: 'string' } },
-              hasMedia: { type: 'boolean' },
-              lang: { type: 'string' },
-              contentState: { type: 'string' },
+              id: { type: 'string', description: 'Post id as handle:postId.' },
+              accountId: { type: 'string', description: 'Numeric X account id, stable across handle renames.' },
+              accountName: { type: 'string', description: 'Human-readable account label.' },
+              handle: { type: 'string', description: 'Current handle without @.' },
+              topic: { type: 'string', description: 'Curated topic bucket.' },
+              timestampMs: { type: 'number', description: 'Post creation time, Unix epoch milliseconds.' },
+              permalink: { type: 'string', description: 'Link to the original post; read the text there.' },
+              facts: { type: 'array', items: { type: 'string' }, description: 'Derived facts about the post, such as which account posted which topic; never the post body.' },
+              hasMedia: { type: 'boolean', description: 'True when the post had media attachments at ingest.' },
+              lang: { type: 'string', description: 'Language code reported by X; empty when not provided.' },
+              contentState: { type: 'string', description: '"active", or "deleted" when the post was removed after ingest.' },
             },
           },
         },
@@ -2232,7 +2271,7 @@ export const RPC_TOOLS: ToolDef[] = [
         },
         commodity: {
           type: 'string',
-          description: 'Optional commodity slug: wheat, corn, rice, soybeans, barley, palmOil. Note palmOil is camelCase; the rest are lowercase. Omit for all six.',
+          description: 'Commodity balance to return: wheat, corn, rice, soybeans, barley or palmOil, matched case-insensitively; maize, soy and "palm oil" are accepted aliases. Omit for all six.',
         },
       },
       // country_code is REQUIRED: omitting it returned every country x six
@@ -2308,15 +2347,15 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_demographics_capability',
     _validateArgs: params => { requireCountryCode(params.country_code, 'get-demographics-capability'); },
-    title: 'Country demographics capability',
+    title: 'Country age, education and workforce',
     _outputBudgetBytes: 32768,
-    description: 'Return one country\'s demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (a missing metric is marked unavailable rather than filled with zero). Annual statistics from seeded data, not estimates or projections. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
+    description: 'Return one country\'s demographic-capability observations from UN WPP, World Bank/UNESCO UIS and ILOSTAT: age structure, education and industrial-workforce groups, each reported independently with observation year, source, unit and an explicit available flag (missing metrics are marked unavailable, not zero). Annual seeded statistics, plus one UN WPP projection of working-age population ten years ahead. Requires a paid plan; one downstream fetch, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: `Required. ${COUNTRY_ARG_HINT}`,
+          description: `Country whose demographic observations to return. ${COUNTRY_ARG_HINT}`,
         },
       },
       required: ['country_code'],
@@ -2324,19 +2363,20 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        countryCode: { type: 'string' },
+        countryCode: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code.' },
         available: { type: 'boolean', description: 'True when at least one validated observation is available.' },
         fetchedAt: { type: 'string', description: 'ISO-8601 snapshot generation time.' },
         stages: {
           type: 'array',
+          description: 'Freshness of each source pipeline behind the groups below.',
           items: {
             type: 'object',
             properties: {
               name: { type: 'string', description: 'wpp, education, or ilostat.' },
-              status: { type: 'string', description: 'fresh, retained, or unavailable.' },
-              fetchedAt: { type: 'string' },
-              recordCount: { type: 'number' },
-              newestObservationYear: { type: 'number' },
+              status: { type: 'string', description: 'fresh, retained (last good data kept after a failed refresh), or unavailable.' },
+              fetchedAt: { type: 'string', description: 'ISO-8601 time of the data retained for this stage.' },
+              recordCount: { type: 'number', description: 'Country records retained for this stage.' },
+              newestObservationYear: { type: 'number', description: 'Most recent source observation year in this stage.' },
             },
           },
         },
@@ -2349,7 +2389,7 @@ export const RPC_TOOLS: ToolDef[] = [
             oldAgeDependencyRatioPercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
             totalDependencyRatioPercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
             workingAgePopulationPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
-            workingAgePopulationProjected10yPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            workingAgePopulationProjected10yPeople: { ...DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA, description: 'UN WPP projection of the working-age population ten years after the current year, people.' },
           },
         },
         education: {
@@ -2404,13 +2444,13 @@ export const RPC_TOOLS: ToolDef[] = [
     // `observationProvenance` is deliberately not selected because it is not
     // part of the licence claim.
     _attribution: 'indicators[].{indicatorId: id, retrievedAt: retrievedAt, sources: sources[].{key: key, name: name, attribution: attribution, license: license, url: url, licenseUrl: licenseUrl, attributionUrl: attributionUrl}}',
-    description: 'Explain one country\'s resilience score across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires a country and a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
+    description: 'Explain one country\'s resilience dimension scores across all 72 registered indicators. Returns normalized scores, observed or imputed state, runtime weights, contributions reconciled to each dimension, observation age and source provenance. Raw values are included only when redistribution is permitted. 51 indicators update annually; 11 move with current events (realtime or daily feeds such as the news threat score and Reddit velocity), so a short-term score change can come from those. Answers why a country scores as it does, indicator by indicator; carries no instability index, travel advisory, sanctions status, story list or narrative. Requires a WorldMonitor Pro subscription; weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: `Required. ${COUNTRY_ARG_HINT}`,
+          description: `Country whose resilience score to break down. ${COUNTRY_ARG_HINT}`,
         },
       },
       required: ['country_code'],
@@ -2418,7 +2458,7 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        countryCode: { type: 'string' },
+        countryCode: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code used by the scorer.' },
         methodology: { type: 'string', description: 'Stable contribution-reconciliation method identifier.' },
         formula: { type: 'string', description: 'Active score formula tag, for example d6 or pc.' },
         dataVersion: { type: 'string', description: 'Source snapshot version used for the score.' },
@@ -2431,8 +2471,8 @@ export const RPC_TOOLS: ToolDef[] = [
             financialSystemExposure: { type: 'string', description: 'Active financial-system construct version.' },
           },
         },
-        dimensions: { type: 'array', items: RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA },
-        indicators: { type: 'array', items: RESILIENCE_INDICATOR_OUTPUT_SCHEMA },
+        dimensions: { type: 'array', description: 'Per-dimension scores; there is no single overall score in this result.', items: RESILIENCE_INDICATOR_DIMENSION_OUTPUT_SCHEMA },
+        indicators: { type: 'array', description: 'Every registry indicator, including inactive and unavailable ones.', items: RESILIENCE_INDICATOR_OUTPUT_SCHEMA },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -2482,12 +2522,12 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: `Mutually exclusive with preset and members. ${COUNTRY_ARG_HINT}`,
+          description: `Single country to score. ${COUNTRY_ARG_HINT}`,
         },
         preset: {
           type: 'string',
           enum: ['USMCA', 'EU27', 'BRICS', 'GCC', 'ASEAN', 'NATO'],
-          description: 'Official bloc preset. Mutually exclusive with country_code and members.',
+          description: 'Official bloc to score as one aggregate over its official membership.',
         },
         members: {
           type: 'array',
@@ -2495,7 +2535,7 @@ export const RPC_TOOLS: ToolDef[] = [
           maxItems: 30,
           uniqueItems: true,
           items: { type: 'string' },
-          description: 'Custom bloc of 2-30 unique member countries, each an ISO alpha-2 or alpha-3 code or a country name in any dashboard locale. Mutually exclusive with country_code and preset.',
+          description: 'Custom bloc to score as one aggregate; each entry is an ISO alpha-2 or alpha-3 code or a country name in any dashboard locale.',
         },
       },
       required: [],
@@ -2573,13 +2613,13 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_consumer_prices',
     title: 'Consumer prices and inflation',
     _outputBudgetBytes: 262144,
-    description: "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
+    description: "Consumer-prices intelligence for the United Arab Emirates, the only seeded country: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers and source freshness.",
     inputSchema: {
       type: 'object',
       properties: {
         country_code: {
           type: 'string',
-          description: `Currently supported: AE (United Arab Emirates). ${COUNTRY_ARG_HINT}`,
+          description: 'Country to read. Only the United Arab Emirates has data (AE, ARE or its name in any dashboard locale); any other recognized country returns an error field instead of data.',
         },
       },
       required: ['country_code'],
@@ -2589,17 +2629,18 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        cached_at: { type: ['string', 'null'] },
-        stale: { type: 'boolean' },
-        country_code: { type: 'string' },
+        cached_at: { type: ['string', 'null'], description: 'Oldest seed time across the five datasets, ISO-8601; null when any dataset lacks a freshness stamp.' },
+        stale: { type: 'boolean', description: 'True when any dataset is older than 25 hours, has no freshness stamp, or its last refresh failed; the data is still returned.' },
+        country_code: { type: 'string', description: 'Resolved country, lowercase ISO-2 (for example "ae").' },
         data: {
           type: 'object',
+          description: 'The seeded datasets as published; each is null when its key is missing.',
           properties: {
-            overview: { type: ['object', 'null'] },
-            categories: { type: ['object', 'array', 'null'] },
-            movers: { type: ['object', 'array', 'null'] },
-            retailerSpread: { type: ['object', 'array', 'null'] },
-            freshness: { type: ['object', 'null'] },
+            overview: { type: ['object', 'null'], description: '30-day consumer-price overview.' },
+            categories: { type: ['object', 'array', 'null'], description: 'Category-level inflation over 30 days.' },
+            movers: { type: ['object', 'array', 'null'], description: 'Largest 30-day price movers.' },
+            retailerSpread: { type: ['object', 'array', 'null'], description: 'Price spread across retailers for the essentials basket.' },
+            freshness: { type: ['object', 'null'], description: 'Per-source freshness of the price collection.' },
           },
         },
         error: { type: 'string', description: 'Present only on user-input failure (missing/unknown country_code).' },
@@ -2707,9 +2748,11 @@ export const RPC_TOOLS: ToolDef[] = [
     title: 'Cached macroeconomic series',
     _outputBudgetBytes: 131072,
     description:
-      'Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. ' +
-      'Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched ' +
-      'with requested. Defaults to 24 observations per series, with a 1000 maximum.',
+      'Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; ' +
+      'no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata ' +
+      'and observations ordered oldest to newest. Fewer fetched than requested can mean missing cached series or ' +
+      'failed cache reads; the result does not distinguish them. Both counts zero can mean no supported ids were ' +
+      'selected or the batch reader caught an exception.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2718,29 +2761,30 @@ export const RPC_TOOLS: ToolDef[] = [
           minItems: 1,
           items: { type: 'string', pattern: '\\S' },
           description:
-            `FRED series ids (case-insensitive), bounded to the seeded allowlist: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
+            `Identifiers of the macroeconomic indicators to retrieve, such as UNRATE for unemployment or CPIAUCSL for consumer prices. Matching ignores case and surrounding whitespace. Unlisted ids are ignored; distinct supported ids are sorted and the first 20 are read. Supported ids: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
         },
         limit: {
           type: 'integer',
           minimum: 1,
           maximum: 1000,
-          description: 'Observations per series, newest-last (default 24, max 1000). Keep small — 20 series at full history is large.',
+          description: 'Size of the recent observation window for each series; 24 when omitted. Observations retain chronological order. Oversized results are withheld with _budget_exceeded; reduce limit, request fewer series, or use jmespath to select less data.',
         },
       },
       required: ['series_ids'],
     },
     outputSchema: {
       type: 'object',
+      description: 'Cached series and lookup counts. Fewer fetched than requested can mean missing cache entries or failed cache reads, even with requested positive. Both counts zero can mean no supported ids were selected or the batch reader caught an exception. These causes are not distinguished in the result.',
       properties: {
-        results: { type: 'object', additionalProperties: { type: 'object', properties: {
-          seriesId: { type: 'string' }, title: { type: 'string' },
-          units: { type: 'string' }, frequency: { type: 'string' },
-          observations: { type: 'array', items: { type: 'object', properties: {
-            date: { type: 'string' }, value: { type: 'number' },
+        results: { type: 'object', description: 'Found cached series keyed by uppercase series id. Unsupported ids, missing cache entries, and failed cache reads produce no series entry.', additionalProperties: { type: 'object', properties: {
+          seriesId: { type: 'string', description: 'Identifier of the returned macroeconomic series.' }, title: { type: 'string', description: 'FRED series title.' },
+          units: { type: 'string', description: 'Unit of the values, as FRED labels it.' }, frequency: { type: 'string', description: 'Observation frequency, such as Monthly or Quarterly.' },
+          observations: { type: 'array', description: 'Most recent observation window selected by limit, ordered oldest to newest.', items: { type: 'object', properties: {
+            date: { type: 'string', description: 'Observation date, YYYY-MM-DD.' }, value: { type: 'number', description: 'Value in units.' },
           } } },
         } } },
-        fetched: { type: 'number' },
-        requested: { type: 'number', description: 'Allowlisted ids actually looked up; below the ids sent when some were unlisted.' },
+        fetched: { type: 'number', description: 'Number of series returned in results.' },
+        requested: { type: 'number', description: 'Number of distinct supported ids selected after normalization, filtering, sorting, and the twenty-series cap. Reset to zero when the batch reader catches an exception; cache-read failures can leave it positive.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -2786,12 +2830,12 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         country_code: {
           type: 'string',
-          description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")',
+          description: 'Country whose bounding box is scanned for aircraft: an ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")',
         },
         type: {
           type: 'string',
           enum: ['all', 'civilian', 'military'],
-          description: 'Filter: all flights (default), civilian only, or military only',
+          description: 'Which aircraft lists to fetch; all when omitted. civilian or military skips the other source and omits its list.',
         },
       },
       required: ['country_code'],
@@ -2799,32 +2843,32 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string' },
-        bounding_box: { type: 'object', properties: {
+        country_code: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code.' },
+        bounding_box: { type: 'object', description: 'Country box that was scanned, degrees; aircraft just outside the border can appear.', properties: {
           sw_lat: { type: 'number' }, sw_lon: { type: 'number' },
           ne_lat: { type: 'number' }, ne_lon: { type: 'number' },
         } },
-        civilian_count: { type: 'number' },
-        military_count: { type: 'number' },
-        civilian_flights: { type: 'array', items: { type: 'object', properties: {
-          callsign: { type: 'string' }, icao24: { type: 'string' },
+        civilian_count: { type: 'number', description: 'Civilian aircraft returned, at most 100; not a full count of traffic in the box.' },
+        military_count: { type: 'number', description: 'Military aircraft returned, at most 100.' },
+        civilian_flights: { type: 'array', description: 'ADS-B positions, deduplicated by icao24; omitted when type is military.', items: { type: 'object', properties: {
+          callsign: { type: 'string' }, icao24: { type: 'string', description: 'ICAO 24-bit transponder address.' },
           lat: { type: 'number' }, lon: { type: 'number' },
-          altitude_m: { type: ['number', 'null'] }, speed_kts: { type: ['number', 'null'] },
-          heading_deg: { type: ['number', 'null'] }, on_ground: { type: 'boolean' },
+          altitude_m: { type: ['number', 'null'], description: 'Altitude, meters.' }, speed_kts: { type: ['number', 'null'], description: 'Ground speed, knots.' },
+          heading_deg: { type: ['number', 'null'], description: 'Track, degrees.' }, on_ground: { type: 'boolean' },
         } } },
-        military_flights: { type: 'array', items: { type: 'object', properties: {
-          callsign: { type: 'string' }, hex_code: { type: 'string' },
-          aircraft_type: { type: 'string' }, aircraft_model: { type: 'string' },
-          operator: { type: 'string' }, operator_country: { type: 'string' },
+        military_flights: { type: 'array', description: 'Identified military aircraft from redistributable providers; omitted when type is civilian.', items: { type: 'object', properties: {
+          callsign: { type: 'string' }, hex_code: { type: 'string', description: 'ICAO 24-bit hex address, uppercase.' },
+          aircraft_type: { type: 'string', description: 'Military aircraft category.' }, aircraft_model: { type: 'string', description: 'Specific model, e.g. "C-17A".' },
+          operator: { type: 'string', description: 'Operating military branch or force.' }, operator_country: { type: 'string', description: 'Operating country, ISO 3166-1 alpha-2.' },
           lat: { type: ['number', 'null'] }, lon: { type: ['number', 'null'] },
-          altitude: { type: ['number', 'null'] }, heading: { type: ['number', 'null'] },
-          speed: { type: ['number', 'null'] }, is_interesting: { type: 'boolean' }, note: { type: 'string' },
+          altitude: { type: ['number', 'null'], description: 'Altitude, feet.' }, heading: { type: ['number', 'null'], description: 'Heading, degrees.' },
+          speed: { type: ['number', 'null'], description: 'Speed, knots.' }, is_interesting: { type: 'boolean', description: 'True when flagged for unusual activity.' }, note: { type: 'string', description: 'Analyst note, when present.' },
         } } },
         partial: { type: 'boolean', description: 'True if one of the two upstream sources failed.' },
-        warnings: { type: 'array', items: { type: 'string' } },
-        source: { type: 'string' },
-        updated_at: { type: 'string' },
-        error: { type: 'string', description: 'Present only on unknown country_code.' },
+        warnings: { type: 'array', items: { type: 'string' }, description: 'Which source or observations were unavailable; present with partial.' },
+        source: { type: 'string', description: 'Provider that supplied the positions; "none" when no provider is reported.' },
+        updated_at: { type: 'string', description: 'Oldest civilian provider update time, ISO-8601; the response time when there is no civilian data.' },
+        error: { type: 'string', description: 'Present instead of data when country_code cannot be resolved or the country has no usable bounding box.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -2946,11 +2990,11 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'get_maritime_activity',
     title: 'Vessel traffic and tanker port activity for a country',
     _outputBudgetBytes: 262144,
-    description: 'Return country-scoped maritime activity. view=traffic (default) returns live AIS density_zones (intensity, ships_per_day, delta_pct), disruptions (dark-ship events and chokepoint congestion), snapshot_at and bounding_box, filtered to the country box with a 3-degree pad. A missing traffic bounding box returns an error. view=ports returns up to 25 ports with 30-day tanker calls, import/export tanker deadweight tonnage and change against the prior 30 days; trend_delta_pct is null when prior calls are zero or unknown. PortWatch port data is scheduled, can lag real time, and returns available=false for uncovered or expired data. fetched_at is the retrieval time. Requires a paid plan; one downstream fetch for either view, weight 2 on API plans. country_code accepts alpha-2, alpha-3 or an English name. Read-only.',
+    description: 'Return country-scoped maritime activity. view=traffic (default) returns live AIS density_zones (intensity, ships_per_day, delta_pct), disruptions (dark-ship events and chokepoint congestion), snapshot_at and bounding_box, filtered to the country box with a 3-degree pad. A missing traffic bounding box returns an error. view=ports returns up to 25 ports with 30-day tanker calls, import/export tanker deadweight tonnage and change against the prior 30 days; trend_delta_pct is null when prior calls are zero or unknown. PortWatch port data is scheduled, can lag real time, and returns available=false for uncovered or expired data. fetched_at is the retrieval time. Requires a paid plan; one downstream fetch for either view, weight 2 on API plans. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        view: { type: 'string', enum: ['traffic', 'ports'], default: 'traffic', description: 'Live AIS traffic or scheduled PortWatch tanker activity by port.' },
+        view: { type: 'string', enum: ['traffic', 'ports'], default: 'traffic', description: 'traffic: live AIS density zones and disruptions near the country. ports: scheduled PortWatch tanker activity per port over the last 30 days.' },
         country_code: {
           type: 'string',
           description: 'ISO 3166-1 alpha-2 code (e.g. "IQ"), alpha-3 code ("IRQ"), or country name in any supported dashboard locale (e.g. "Iraq", "العراق", "Deutschland", "中国")',
@@ -2961,36 +3005,36 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string' },
-        available: { type: 'boolean' }, fetched_at: { type: 'string' },
-        ports: { type: 'array', maxItems: 25, items: {
+        country_code: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code.' },
+        available: { type: 'boolean', description: 'ports view only: false when PortWatch has no current data for the country; ports is then empty.' }, fetched_at: { type: 'string', description: 'ports view only: when the port data was retrieved, ISO-8601.' },
+        ports: { type: 'array', maxItems: 25, description: 'ports view only.', items: {
           type: 'object',
           properties: {
             port_id: { type: 'string' }, port_name: { type: 'string' },
-            lat: { type: 'number' }, lon: { type: 'number' }, tanker_calls_30d: { type: 'number' },
-            trend_delta_pct: { type: ['number', 'null'], description: 'Null if prior 30-day calls are zero or unknown.' },
-            import_tanker_dwt_30d: { type: 'number' }, export_tanker_dwt_30d: { type: 'number' },
+            lat: { type: 'number' }, lon: { type: 'number' }, tanker_calls_30d: { type: 'number', description: 'Tanker port calls in the last 30 days.' },
+            trend_delta_pct: { type: ['number', 'null'], description: 'Percent change in calls against the prior 30 days. Null if prior 30-day calls are zero or unknown.' },
+            import_tanker_dwt_30d: { type: 'number', description: 'Import tanker deadweight tonnage over 30 days.' }, export_tanker_dwt_30d: { type: 'number', description: 'Export tanker deadweight tonnage over 30 days.' },
           },
           required: ['port_id', 'port_name', 'lat', 'lon', 'tanker_calls_30d', 'trend_delta_pct', 'import_tanker_dwt_30d', 'export_tanker_dwt_30d'],
           additionalProperties: false,
         } },
-        bounding_box: { type: 'object', properties: {
+        bounding_box: { type: 'object', description: 'traffic view only: country box in degrees; zones and disruptions within 3 degrees of it are kept.', properties: {
           sw_lat: { type: 'number' }, sw_lon: { type: 'number' },
           ne_lat: { type: 'number' }, ne_lon: { type: 'number' },
         } },
-        snapshot_at: { type: 'string' },
-        total_zones: { type: 'number' },
-        total_disruptions: { type: 'number' },
-        density_zones: { type: 'array', items: { type: 'object', properties: {
-          name: { type: 'string' }, intensity: { type: ['number', 'null'] },
-          ships_per_day: { type: ['number', 'null'] }, delta_pct: { type: ['number', 'null'] }, note: { type: 'string' },
+        snapshot_at: { type: 'string', description: 'traffic view only: AIS snapshot time, ISO-8601.' },
+        total_zones: { type: 'number', description: 'Density zones returned.' },
+        total_disruptions: { type: 'number', description: 'Disruptions returned.' },
+        density_zones: { type: 'array', description: 'traffic view only: shipping-density zones near the country.', items: { type: 'object', properties: {
+          name: { type: 'string' }, intensity: { type: ['number', 'null'], description: 'Traffic intensity score, 0-100.' },
+          ships_per_day: { type: ['number', 'null'], description: 'Estimated ships per day.' }, delta_pct: { type: ['number', 'null'], description: 'Percent change from baseline.' }, note: { type: 'string' },
         } } },
-        disruptions: { type: 'array', items: { type: 'object', properties: {
-          name: { type: 'string' }, type: { type: 'string' }, severity: { type: 'string' },
-          dark_ships: { type: ['number', 'null'] }, vessel_count: { type: ['number', 'null'] },
+        disruptions: { type: 'array', description: 'traffic view only: dark-ship events and chokepoint congestion near the country.', items: { type: 'object', properties: {
+          name: { type: 'string' }, type: { type: 'string', description: 'Disruption kind, such as a dark-ship gap or congestion.' }, severity: { type: 'string' },
+          dark_ships: { type: ['number', 'null'], description: 'Vessels with AIS switched off.' }, vessel_count: { type: ['number', 'null'], description: 'Vessels in the affected area.' },
           region: { type: 'string' }, description: { type: 'string' },
         } } },
-        error: { type: 'string', description: 'Present only on unknown country_code.' },
+        error: { type: 'string', description: 'Present instead of data when country_code cannot be resolved, or when the traffic view has no bounding box for the country.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -3112,7 +3156,7 @@ export const RPC_TOOLS: ToolDef[] = [
     name: 'analyze_situation',
     title: 'Analyze a geopolitical situation',
     _outputBudgetBytes: 65536,
-    description: 'Run an LLM analytical deduction on a free-text geopolitical question and return {analysis, confidence, signals, provider, model}: a narrative assessment with a confidence level and the supporting signals the model cited. Each call generates fresh text (non-deterministic, up to 25 s) from the query, optional context and optional framework; it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.',
+    description: 'Run an LLM analytical deduction on a free-text geopolitical question and return {analysis, provider, model}: a narrative assessment and the LLM that wrote it. Text is generated from the query, optional context and optional framework (non-deterministic, up to 25 s; identical requests reuse it for an hour); it does not read a cached brief or a fixed country dataset. An empty provider result returns a source-unavailable error rather than empty text. Requires a paid plan; one live LLM request, weight 2 on API plans. Read-only; nothing is stored.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -3125,15 +3169,11 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        deduction: { type: 'string', description: 'LLM-generated analytical deduction.' },
-        analysis: { type: 'string', description: 'Alternate naming for the body.' },
-        confidence: { type: ['number', 'string', 'null'] },
-        signals: { type: ['array', 'object', 'null'] },
-        framework: { type: 'string' },
-        generatedAt: { type: ['string', 'number', 'null'] },
-        provider: { type: 'string' },
-        model: { type: 'string' },
+        analysis: { type: 'string', description: 'The LLM-written assessment of the query, as plain prose; never empty (an empty result is returned as an error instead).' },
+        provider: { type: 'string', description: 'LLM provider that generated the analysis.' },
+        model: { type: 'string', description: 'Model identifier that generated the analysis.' },
       },
+      required: ['analysis', 'provider', 'model'],
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context, execution) => {
@@ -3169,16 +3209,18 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_theaters',
-    title: 'Forecast simulation theaters',
+    title: 'Latest simulation theater summaries',
     _subscriptionOnly: true,
     _outputBudgetBytes: 131072,
     description: 'Return the latest forecast simulation theater summaries: for each theater its original paths, actors with optional roles, reactions, stabilizers, invalidators, source run and time, and completion counts. A read of the stored simulation output; there is no run selector and no simulation trigger. Source time is separate from forecast generation and does not establish freshness; partial, unknown and unavailable results are reported as such. Requires a paid plan; one downstream fetch, weight 2 on API plans. Dedicated Pro plans read it inside an open forecasts panel with its signed panel_request, sharing that allocation and its 64 uncached-read limit; API plans read it without panel_request. Read-only.',
-    inputSchema: { type: 'object', properties: { panel_request: { type: 'string', maxLength: 160, description: 'Signed forecasts panel receipt. Required on dedicated MCP plans; not accepted on API plans.' } }, required: [] },
+    inputSchema: { type: 'object', properties: { panel_request: { type: 'string', maxLength: 160, description: 'The panelRequest.token of an open forecasts panel, from a paid forecasts panel opening or the embedded view. Required on dedicated MCP plans; not accepted on API plans, which omit it.' } }, required: [] },
     outputSchema: { type: 'object', required: ['data'], properties: { data: { type: 'object', required: ['forecastTheaters'], properties: { forecastTheaters: {
       type: 'object', required: ['status', 'found', 'runId', 'schemaVersion', 'theaterCount', 'generatedAt', 'note', 'error', 'theaterSummariesJson', 'processing', 'eligibleTheaterCount', 'failedTheaterCount', 'allTheatersFailed', 'completionStatus'],
-      properties: { status: { type: 'string', enum: [...FORECAST_THEATER_STATUSES] }, found: { type: 'boolean' }, runId: { type: 'string' }, schemaVersion: { type: 'string' },
-        theaterCount: { type: 'integer' }, generatedAt: { type: 'integer' }, note: { type: 'string' }, error: { type: 'string' }, theaterSummariesJson: { type: 'string' },
-        processing: { type: 'boolean' }, eligibleTheaterCount: { type: 'integer' }, failedTheaterCount: { type: 'integer' }, allTheatersFailed: { type: 'boolean' }, completionStatus: { type: 'string' } },
+      properties: { status: { type: 'string', enum: [...FORECAST_THEATER_STATUSES], description: 'ready: every eligible theater simulated. partial: some failed. empty: no eligible theaters. failed: all failed. missing or processing: no completed run yet. unknown: unrecognized completion state. unavailable: the read failed (see error).' },
+        found: { type: 'boolean', description: 'True when a completed simulation run was found.' }, runId: { type: 'string', description: 'Source simulation run id; empty when none.' }, schemaVersion: { type: 'string' },
+        theaterCount: { type: 'integer', description: 'Theaters with summaries in theaterSummariesJson.' }, generatedAt: { type: 'integer', description: 'Source run time, Unix epoch milliseconds; 0 when none. Not proof of freshness.' }, note: { type: 'string' }, error: { type: 'string', description: 'Why the result is unavailable; empty otherwise.' },
+        theaterSummariesJson: { type: 'string', description: 'JSON-encoded array of theater summaries (paths, actors, reactions, stabilizers, invalidators); parse before reading. Empty when there are none.' },
+        processing: { type: 'boolean', description: 'True while a run is still in progress.' }, eligibleTheaterCount: { type: 'integer', description: 'Theaters the run tried to simulate.' }, failedTheaterCount: { type: 'integer', description: 'Eligible theaters whose simulation failed.' }, allTheatersFailed: { type: 'boolean' }, completionStatus: { type: 'string', description: 'Raw completion state reported by the run.' } },
     } } } } },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context, execution) => {
@@ -3212,25 +3254,25 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
         destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
-        departure_date: { type: 'string', description: 'Departure date in YYYY-MM-DD format' },
-        return_date: { type: 'string', description: 'Return date in YYYY-MM-DD format for round trips (optional)' },
-        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
-        max_stops: { type: 'string', description: 'Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional)' },
-        passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
-        sort_by: { type: 'string', description: 'Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional)' },
+        departure_date: { type: 'string', description: 'Outbound travel date, YYYY-MM-DD.' },
+        return_date: { type: 'string', description: 'Return travel date, YYYY-MM-DD, on or after departure_date. Set it to price a round trip; omit for one-way.' },
+        cabin_class: { type: 'string', description: 'Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted.' },
+        max_stops: { type: 'string', description: 'Most stops allowed: "0" or "non_stop" for nonstop only, "1" or "one_stop" for at most one stop. Omit to allow any number.' },
+        passengers: { type: 'number', description: 'Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted.' },
+        sort_by: { type: 'string', description: 'Ordering: "price" (cheapest first), "duration", "departure" or "arrival" time. Omit for the provider\'s default order.' },
       },
       required: ['origin', 'destination', 'departure_date'],
     },
     outputSchema: {
       type: 'object',
       properties: {
-        flights: { type: 'array', items: { type: 'object', properties: {
+        flights: { type: 'array', description: 'Itineraries found; empty without degraded means none were found.', items: { type: 'object', properties: {
           price: { type: 'number', description: 'Total USD price for all passengers.' },
-          durationMinutes: { type: 'number' },
-          stops: { type: 'number' },
-          legs: { type: 'array', items: { type: 'object', properties: {
-            airlineCode: { type: 'string' }, flightNumber: { type: 'string' },
-            departureAirport: { type: 'string' }, arrivalAirport: { type: 'string' },
+          durationMinutes: { type: 'number', description: 'Total journey time, minutes.' },
+          stops: { type: 'number', description: 'Stops on the outbound journey; 0 is nonstop.' },
+          legs: { type: 'array', description: 'Flight segments of the outbound journey, in order.', items: { type: 'object', properties: {
+            airlineCode: { type: 'string', description: 'IATA airline code.' }, flightNumber: { type: 'string' },
+            departureAirport: { type: 'string', description: 'IATA code.' }, arrivalAirport: { type: 'string', description: 'IATA code.' },
             departureDatetime: { type: 'string', description: 'Local time, YYYY-MM-DDTHH:MM.' },
             arrivalDatetime: { type: 'string', description: 'Local time, YYYY-MM-DDTHH:MM.' },
             durationMinutes: { type: 'number' },
@@ -3275,12 +3317,12 @@ export const RPC_TOOLS: ToolDef[] = [
       properties: {
         origin: { type: 'string', description: 'IATA code for the departure airport, e.g. "JFK"' },
         destination: { type: 'string', description: 'IATA code for the arrival airport, e.g. "LHR"' },
-        start_date: { type: 'string', description: 'Start of the date range in YYYY-MM-DD format' },
-        end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format, at most 30 days after start_date' },
+        start_date: { type: 'string', description: 'First departure date to price, YYYY-MM-DD.' },
+        end_date: { type: 'string', description: 'Last departure date to price, YYYY-MM-DD, inclusive; at most 30 days after start_date.' },
         is_round_trip: { type: 'boolean', description: 'Whether to search round-trip prices (default false). Requires trip_duration when true.' },
         trip_duration: { type: 'number', description: 'Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip)' },
-        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
-        passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
+        cabin_class: { type: 'string', description: 'Cabin to price: "economy", "premium_economy", "business" or "first"; economy when omitted.' },
+        passengers: { type: 'number', description: 'Travellers priced together; prices are totals for all of them. Clamped to 1-9; 1 when omitted.' },
         sort_by_price: { type: 'boolean', description: 'Sort results by price ascending (default false, sorts by date)' },
       },
       required: ['origin', 'destination', 'start_date', 'end_date'],
@@ -3288,13 +3330,13 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        dates: { type: 'array', items: { type: 'object', properties: {
-          date: { type: 'string' },
-          returnDate: { type: 'string', description: 'Empty for one-way searches.' },
+        dates: { type: 'array', description: 'One row per departure date that returned itineraries, by date or, with sort_by_price, cheapest first.', items: { type: 'object', properties: {
+          date: { type: 'string', description: 'Departure date, YYYY-MM-DD.' },
+          returnDate: { type: 'string', description: 'Return date, YYYY-MM-DD. Empty for one-way searches.' },
           price: { type: 'number', description: 'Lowest total USD price for all passengers.' },
         } } },
         degraded: { type: 'boolean', description: 'True when some or all dates failed; the list holds only the dates that answered.' },
-        error: { type: 'string' },
+        error: { type: 'string', description: 'The provider failure when degraded is true.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
@@ -3340,17 +3382,17 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['sites', 'total'],
       properties: {
-        sites: { type: 'array', items: { type: 'object', properties: {
-          id: { type: 'string' }, name: { type: 'string' },
+        sites: { type: 'array', description: 'Matching mine sites from the bundled reference list.', items: { type: 'object', properties: {
+          id: { type: 'string' }, name: { type: 'string', description: 'Mine name.' },
           lat: { type: 'number' }, lon: { type: 'number' },
-          mineral: { type: 'string' }, country: { type: 'string' },
-          operator: { type: 'string' }, status: { type: 'string' }, significance: { type: 'string' },
-          annualOutput: { type: 'string' },
+          mineral: { type: 'string', description: 'Primary mineral, using the same names the mineral filter matches.' }, country: { type: 'string', description: 'Country name.' },
+          operator: { type: 'string', description: 'Operating company as recorded in the list; may predate recent ownership changes.' }, status: { type: 'string', description: 'producing, development or exploration.' }, significance: { type: 'string', description: 'Short note on why the site matters.' },
+          annualOutput: { type: 'string', description: 'Free-text annual output with its unit; absent when not recorded.' },
           // A label, not an ordinal: "Australia #2", "World deepest mine" (src/config/commodity-geo.ts).
-          productionRank: { type: 'string' },
-          openPitOrUnderground: { type: 'string' },
+          productionRank: { type: 'string', description: 'Ranking label such as "Australia #2", not a number; absent when not recorded.' },
+          openPitOrUnderground: { type: 'string', description: 'Mining method; absent when not recorded.' },
         } } },
-        total: { type: 'number' },
+        total: { type: 'number', description: 'Number of sites returned.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3366,26 +3408,44 @@ export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_mineral_production',
     _validateArgs: params => { if (params.iso2 != null && params.iso2 !== '') requireCountryCode(params.iso2, 'get-mineral-production', 'iso2'); },
-    title: 'Mineral mining and refining shares',
+    title: 'Mineral production shares by country',
     _outputBudgetBytes: 131072,
     description: 'Who mines and who refines a commodity, with country shares and HHI. Answers "who refines cobalt" or "what does Chile produce". USGS Mineral Commodity Summaries plus BGS fill. Mine and deposit locations are a separate dataset.',
     inputSchema: {
       type: 'object',
       properties: {
-        commodity: { type: 'string', description: 'Commodity id or label, e.g. "cobalt", "lithium", "ree"' },
-        iso2: { type: 'string', description: `Optional producer-country filter. ${COUNTRY_ARG_HINT}` },
-        stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Mine or refinery/smelter stage. Omit for both.' },
+        commodity: { type: 'string', description: 'Commodity to return, matched case-insensitively against its id or label, e.g. "cobalt", "lithium", "ree" (rare earths). Omit for every commodity.' },
+        iso2: { type: 'string', description: `Producer country: keeps only that country's rows and adds its holdings under countries. Omit for every producer. ${COUNTRY_ARG_HINT}` },
+        stage: { type: 'string', enum: ['mine', 'refinery'], description: 'Restrict results to extraction or refining/smelting output. Omit to include both stages where available.' },
       },
       required: [],
     },
     outputSchema: {
       type: 'object',
       properties: {
-        commodities: { type: 'array' },
-        countries: { type: 'array' },
-        fetchedAt: { type: 'string' },
-        upstreamUnavailable: { type: 'boolean' },
-        dataYear: { type: 'number' },
+        commodities: { type: 'array', description: 'Matching commodities. Stage snapshots are omitted when absent or excluded by the filters.', items: { type: 'object', properties: {
+          commodityId: { type: 'string', description: 'Commodity identifier.' },
+          commodity: { type: 'string', description: 'Commodity label.' },
+          year: { type: 'number', description: 'Production year.' },
+          unit: { type: 'string', description: 'Commodity production unit.' },
+          sources: { type: 'array', items: { type: 'string' }, description: 'Source identifiers recorded in the seed.' },
+          mine: MINERAL_STAGE_OUTPUT_SCHEMA,
+          refinery: MINERAL_STAGE_OUTPUT_SCHEMA,
+        } } },
+        countries: { type: 'array', description: 'Producer portfolio when iso2 is set and matching holdings exist; otherwise empty.', items: { type: 'object', properties: {
+          iso2: { type: 'string', description: 'Producer country code.' },
+          holdings: { type: 'array', items: { type: 'object', properties: {
+            commodityId: { type: 'string', description: 'Commodity identifier.' },
+            commodity: { type: 'string', description: 'Commodity label.' },
+            stage: { type: 'string', description: 'Production stage of this holding.' },
+            output: { type: 'number', description: 'Production in the corresponding stage unit; omitted when unpublished or unavailable.' },
+            share: { type: 'number', description: 'Percent of quantified production across source rows; omitted when unavailable.' },
+            withheld: { type: 'boolean', description: 'Whether output was withheld by the source.' },
+          } } },
+        } } },
+        fetchedAt: { type: 'string', description: 'Seed retrieval timestamp, or empty when absent. On a cache read error, the handler supplies the error-time timestamp instead.' },
+        upstreamUnavailable: { type: 'boolean', description: 'True when the seeded data could not be read; empty lists then mean unknown, not zero.' },
+        dataYear: { type: 'number', description: 'Data year of the seeded snapshot; 0 when unknown.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3429,7 +3489,7 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        country_code: { type: 'string', description: `Importing country. ${COUNTRY_ARG_HINT}` },
+        country_code: { type: 'string', description: `Importing country whose commodity supply exposure to score. ${COUNTRY_ARG_HINT}` },
       },
       required: ['country_code'],
     },
@@ -3437,20 +3497,20 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['iso2', 'country', 'vulnerabilities', 'generatedAt', 'methodologyVersion', 'upstreamUnavailable'],
       properties: {
-        iso2: { type: 'string' },
-        country: { type: 'string' },
-        vulnerabilities: { type: 'array', items: { type: 'object', properties: {
+        iso2: { type: 'string', description: 'Resolved ISO 3166-1 alpha-2 code.' },
+        country: { type: 'string', description: 'Country name.' },
+        vulnerabilities: { type: 'array', description: 'One entry per covered commodity.', items: { type: 'object', properties: {
           commodityId: { type: 'string' }, commodity: { type: 'string' },
-          score: { type: ['number', 'null'] },
-          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES },
-          state: { type: 'string', enum: VULNERABILITY_STATE_VALUES },
-          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES } },
-          coverage: { type: 'array', items: { type: 'string' } },
+          score: { type: ['number', 'null'], description: 'Absolute vulnerability, 0-100, higher meaning more exposed; null means insufficient evidence, never zero risk.' },
+          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES, description: 'low below 25, moderate from 25, high from 50, critical from 75; empty when score is null.' },
+          state: { type: 'string', enum: VULNERABILITY_STATE_VALUES, description: 'ok, stale_input (scored on a stale input) or insufficient_data (no score).' },
+          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES }, description: 'Why an input is missing or stale, including redistribution_blocked.' },
+          coverage: { type: 'array', items: { type: 'string' }, description: 'Coverage caveats such as transit_status_unknown, transit_status_uncovered, buffer_unknown and source_<coverage>.' },
           components: VULNERABILITY_COMPONENTS_OUTPUT_SCHEMA, methodologyVersion: { type: 'string' },
         } } },
-        generatedAt: { type: 'string' },
-        methodologyVersion: { type: 'string' },
-        upstreamUnavailable: { type: 'boolean' },
+        generatedAt: { type: 'string', description: 'When the vulnerability snapshot was built, ISO-8601.' },
+        methodologyVersion: { type: 'string', description: 'Scoring method version; scores are comparable only within one version.' },
+        upstreamUnavailable: { type: 'boolean', description: 'True when the snapshot could not be read; an empty list then means unknown, not safe.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3484,8 +3544,8 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        chokepoint_id: { type: 'string', pattern: '^[a-z0-9_-]+$', description: 'Canonical chokepoint id, such as hormuz_strait or malacca_strait.' },
-        page_size: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum dependencies. Defaults to 25.' },
+        chokepoint_id: { type: 'string', pattern: '^[a-z0-9_-]+$', description: 'Maritime chokepoint whose dependent countries to return, by canonical id such as hormuz_strait or malacca_strait.' },
+        page_size: { type: 'integer', minimum: 1, maximum: 100, description: 'Most dependencies to return, highest score first; 25 when omitted.' },
       },
       required: ['chokepoint_id'],
     },
@@ -3493,19 +3553,19 @@ export const RPC_TOOLS: ToolDef[] = [
       type: 'object',
       required: ['chokepointId', 'chokepoint', 'dependencies', 'generatedAt', 'methodologyVersion', 'upstreamUnavailable'],
       properties: {
-        chokepointId: { type: 'string' }, chokepoint: { type: 'string' },
-        dependencies: { type: 'array', items: { type: 'object', properties: {
+        chokepointId: { type: 'string', description: 'Echo of the requested id.' }, chokepoint: { type: 'string', description: 'Chokepoint name; empty when the id is unknown.' },
+        dependencies: { type: 'array', description: 'Country and commodity pairs routed through the chokepoint, highest score first.', items: { type: 'object', properties: {
           countryIso2: { type: 'string' }, countryName: { type: 'string' },
           commodityId: { type: 'string' }, commodity: { type: 'string' },
-          transitShare: { type: 'number' }, weightedTransitShare: { type: 'number' },
-          score: { type: ['number', 'null'] },
-          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES },
+          transitShare: { type: 'number', description: 'Share of the country\'s supply of this commodity that transits the chokepoint, 0-1.' }, weightedTransitShare: { type: 'number', description: 'transitShare raised when the route is disrupted, capped at 1.' },
+          score: { type: ['number', 'null'], description: 'The pair\'s supply vulnerability, 0-100; null means insufficient coverage, never zero risk.' },
+          band: { type: 'string', enum: VULNERABILITY_BAND_VALUES, description: 'low, moderate, high or critical; empty when score is null.' },
           state: { type: 'string', enum: VULNERABILITY_STATE_VALUES },
-          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES } },
+          reasons: { type: 'array', items: { type: 'string', enum: VULNERABILITY_REASON_VALUES }, description: 'Why an input is missing or stale.' },
           methodologyVersion: { type: 'string' },
         } } },
-        generatedAt: { type: 'string' }, methodologyVersion: { type: 'string' },
-        upstreamUnavailable: { type: 'boolean' },
+        generatedAt: { type: 'string', description: 'When the snapshot was built, ISO-8601.' }, methodologyVersion: { type: 'string' },
+        upstreamUnavailable: { type: 'boolean', description: 'True when the snapshot could not be read; an empty list then means unknown.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -3544,7 +3604,7 @@ export const RPC_TOOLS: ToolDef[] = [
         country: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, uppercase, e.g. "UA". Omit to search every country. Events not attributable to a single country are excluded when this is set.' },
         from: { type: 'number', description: 'Earliest occurredAt to consider, Unix epoch milliseconds, inclusive. Omit for no lower bound.' },
         to: { type: 'number', description: 'Latest occurredAt to consider, Unix epoch milliseconds, inclusive. Omit for no upper bound.' },
-        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_SEARCH_MAX_LIMIT, description: 'Maximum matches to return. The route returns 16 when this is omitted and caps MCP responses at 16 to stay within the output budget.' },
+        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_SEARCH_MAX_LIMIT, description: 'Most matches to return, most similar first; 16 when omitted. Filters apply after ranking, so fewer can come back.' },
       },
       required: ['query'],
     },
@@ -3592,11 +3652,11 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        domain: { type: 'string', enum: INTEL_HISTORY_DOMAINS, description: 'Restrict to one producing domain. Required unless country is set.' },
-        country: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, uppercase, e.g. "UA". Required unless domain is set. Supplying both narrows to their intersection.' },
+        domain: { type: 'string', enum: INTEL_HISTORY_DOMAINS, description: 'Producing domain whose events to list. Set domain, country or both; with both, the timeline is their intersection.' },
+        country: { type: 'string', description: 'Country whose events to list, as an ISO 3166-1 alpha-2 code, e.g. "UA"; lowercase is accepted, names and alpha-3 codes are rejected. Set domain, country or both.' },
         from: { type: 'number', description: 'Earliest occurredAt to return, Unix epoch milliseconds, inclusive. Omit for no lower bound.' },
         to: { type: 'number', description: 'Latest occurredAt to return, Unix epoch milliseconds, inclusive. Omit for no upper bound.' },
-        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_TIMELINE_MAX_LIMIT, description: 'Maximum events to return. The route returns 40 when this is omitted and caps MCP responses at 40 to stay within the output budget.' },
+        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_TIMELINE_MAX_LIMIT, description: 'Most events per page, newest first; 40 when omitted. Continue with cursor for more.' },
         cursor: { type: 'string', maxLength: 4096, description: 'Opaque nextCursor from the previous page. Keep the scope and time filters unchanged. Omit for the first page.' },
       },
       required: [],
@@ -3657,10 +3717,10 @@ export const RPC_TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        situation: { type: 'string', minLength: 10, maxLength: 1000, description: 'Description of the situation to find precedents for, e.g. "a naval blockade closes a major grain export corridor for weeks". Longer than a search phrase on purpose — more context ranks better.' },
+        situation: { type: 'string', minLength: 10, maxLength: 1000, description: 'A sentence or two describing the situation to find precedents for, e.g. "a naval blockade closes a major grain export corridor for weeks". It is embedded and compared by meaning, so more context ranks better than a keyword.' },
         domain: { type: 'string', enum: INTEL_HISTORY_DOMAINS, description: 'Restrict precedents to one producing domain. Omit to search every domain.' },
         country: { type: 'string', description: 'ISO 3166-1 alpha-2 country code, uppercase, e.g. "EG". Omit to search every country — usually the right choice, since a precedent elsewhere is still a precedent.' },
-        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_PRECEDENT_MAX_LIMIT, description: 'Maximum precedents to return. The route returns 8 when this is omitted and caps MCP responses at 8 to stay within the output budget.' },
+        limit: { type: 'integer', minimum: 1, maximum: MCP_HISTORY_PRECEDENT_MAX_LIMIT, description: 'Most precedents to return, most similar first; 8 when omitted.' },
       },
       required: ['situation'],
     },
@@ -3708,24 +3768,25 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        access: { type: 'string', enum: ['subscription', 'free-account'] },
-        used: { type: 'integer', minimum: 0 },
-        limit: { type: ['integer', 'null'], minimum: 0 },
-        remaining: { type: ['integer', 'null'], minimum: 0 },
-        resetsAt: { type: 'string', format: 'date-time' },
+        access: { type: 'string', enum: ['subscription', 'free-account'], description: 'subscription for a paid plan; free-account for a signed-in account without one.' },
+        used: { type: 'integer', minimum: 0, description: 'Units spent today (UTC): data calls on a free account, metered units on a plan.' },
+        limit: { type: ['integer', 'null'], minimum: 0, description: 'Daily allowance; null when the plan has no daily cap.' },
+        remaining: { type: ['integer', 'null'], minimum: 0, description: 'Units left today; null when there is no daily cap.' },
+        resetsAt: { type: 'string', format: 'date-time', description: 'Next UTC midnight, when used returns to 0.' },
         requestWindows: {
           type: ['object', 'null'],
+          description: 'Free accounts only (null on a plan): request windows, each a burst of calls that stays open until idleGapMs passes without a call.',
           properties: {
-            used: { type: 'integer', minimum: 0 },
-            limit: { type: 'integer', minimum: 0 },
+            used: { type: 'integer', minimum: 0, description: 'Windows opened today.' },
+            limit: { type: 'integer', minimum: 0, description: 'Windows allowed per day.' },
             remaining: { type: 'integer', minimum: 0 },
-            idleGapMs: { type: 'integer', minimum: 0 },
-            active: { type: 'boolean' },
-            expiresAt: { type: ['string', 'null'], format: 'date-time' },
+            idleGapMs: { type: 'integer', minimum: 0, description: 'Idle time, milliseconds, after which the open window closes.' },
+            active: { type: 'boolean', description: 'True while a window is open; calls inside it open no new window.' },
+            expiresAt: { type: ['string', 'null'], format: 'date-time', description: 'When the open window closes if idle; null when none is open.' },
           },
           required: ['used', 'limit', 'remaining', 'idleGapMs', 'active', 'expiresAt'],
         },
-        sharedWithRestApi: { type: 'boolean' },
+        sharedWithRestApi: { type: 'boolean', description: 'True when used also counts this account\'s REST API requests, which draw on the same daily budget.' },
       },
       required: ['access', 'used', 'limit', 'remaining', 'resetsAt', 'requestWindows', 'sharedWithRestApi'],
     },
@@ -3759,9 +3820,9 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        checkoutUrl: { type: 'string', format: 'uri' },
-        plan: { type: 'string' },
-        nextStep: { type: 'string' },
+        checkoutUrl: { type: 'string', format: 'uri', description: 'HTTPS checkout page for this account and plan. Give it to the user to open and pay in a browser; opening it charges nothing by itself.' },
+        plan: { type: 'string', description: 'The plan the checkout session sells, echoed from the request.' },
+        nextStep: { type: 'string', description: 'Plain-language instruction for what the user does next to complete the upgrade.' },
       },
       required: ['checkoutUrl', 'plan', 'nextStep'],
     },
@@ -3797,16 +3858,18 @@ export const RPC_TOOLS: ToolDef[] = [
     outputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string' },
-        description: { type: 'string' },
-        inputSchema: { type: 'object' },
-        outputSchema: { type: 'object' },
-        annotations: { type: 'object' },
-        error: { type: 'string', enum: ['missing_tool_name', 'unknown_tool', 'retired_alias'], description: 'Present only on user-input failure.' },
-        hint: { type: 'string' },
-        requested: { type: 'string' },
-        replacements: { type: 'array', items: { type: 'string' } },
-        available: { type: 'array', items: { type: 'string' } },
+        name: { type: 'string', description: 'The tool\'s name, as passed to tools/call.' },
+        title: { type: 'string', description: 'Human-readable display name.' },
+        description: { type: 'string', description: 'The complete tool description.' },
+        inputSchema: { type: 'object', description: 'JSON Schema for the tool\'s arguments.' },
+        outputSchema: { type: 'object', description: 'JSON Schema for the tool\'s structured result.' },
+        annotations: { type: 'object', description: 'Behaviour hints: readOnlyHint, destructiveHint, idempotentHint, openWorldHint and title.' },
+        _meta: { type: 'object', description: 'Server metadata such as access class, call weight and any UI resource.' },
+        error: { type: 'string', enum: ['missing_tool_name', 'unknown_tool', 'retired_alias'], description: 'Present only on user-input failure; the definition fields are then absent.' },
+        hint: { type: 'string', description: 'How to correct the request.' },
+        requested: { type: 'string', description: 'Echo of the tool_name that failed.' },
+        replacements: { type: 'array', items: { type: 'string' }, description: 'retired_alias only: tools that replace the retired name.' },
+        available: { type: 'array', items: { type: 'string' }, description: 'unknown_tool only: every callable tool name, sorted.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

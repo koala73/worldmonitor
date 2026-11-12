@@ -2565,6 +2565,20 @@
       ]
     },
     {
+      "host": "cmr.earthdata.nasa.gov",
+      "provider": "NASA Earthdata CMR",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public metadata; NASA Earthdata terms apply",
+      "attribution": "NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
+        }
+      ]
+    },
+    {
       "host": "cnas.org",
       "provider": "cnas.org",
       "kind": "feed",
@@ -7378,6 +7392,23 @@
       ]
     },
     {
+      "host": "nsidc.org",
+      "provider": "NSIDC",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government/public dataset terms; collection-specific license applies",
+      "attribution": "National Snow and Ice Data Center (NSIDC); link to the dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
+        }
+      ]
+    },
+    {
       "host": "nti.org",
       "provider": "nti.org",
       "kind": "feed",
@@ -9397,6 +9428,37 @@
       ]
     },
     {
+      "host": "sliderule.slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
+        }
+      ]
+    },
+    {
+      "host": "slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
+        }
+      ]
+    },
+    {
       "host": "slidstvo.info",
       "provider": "slidstvo.info",
       "kind": "feed",
@@ -11208,9 +11270,6 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
-          "path": "api/mcp/ui/shell.ts"
-        },
-        {
           "path": "api/miit-news.js"
         },
         {
@@ -13012,6 +13071,12 @@
       "attribution": "Credit www.gdacs.org and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "api/mcp/registry/_travel-risk-document.ts"
+        },
+        {
+          "path": "scripts/build-seasonal-hazard-calendar.mjs"
+        },
         {
           "path": "scripts/seed-natural-events.mjs"
         }
@@ -15483,10 +15548,16 @@
           "path": "api/mcp/auth.ts"
         },
         {
+          "path": "api/mcp/handler.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/mcp/ui/news-dashboard-app.ts"
+        },
+        {
+          "path": "api/mcp/ui/shell.ts"
         },
         {
           "path": "api/not-found.ts"

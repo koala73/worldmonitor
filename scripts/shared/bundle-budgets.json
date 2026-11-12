@@ -7,237 +7,237 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 487262
+    "raw": 481738
   },
   "chunks": {
     "analytics": {
-      "raw": 50826,
+      "raw": 52083,
       "files": 1
     },
     "auth-state": {
-      "raw": 888,
+      "raw": 542,
       "files": 1
     },
     "clerk": {
-      "raw": 23198,
+      "raw": 22893,
       "files": 1
     },
     "convex-client": {
-      "raw": 6723,
+      "raw": 6377,
       "files": 1
     },
     "debugbear-rum": {
-      "raw": 4596,
+      "raw": 4250,
       "files": 1
     },
     "dom-utils": {
-      "raw": 3321,
+      "raw": 2980,
       "files": 1
     },
     "entitlements": {
-      "raw": 3208,
+      "raw": 2862,
       "files": 1
     },
     "font-settings": {
-      "raw": 920,
+      "raw": 574,
       "files": 1
     },
     "geo-convergence": {
-      "raw": 5390,
+      "raw": 5044,
       "files": 1
     },
     "geo-distance": {
-      "raw": 28950,
+      "raw": 28609,
       "files": 1
     },
     "globe-marker-probe": {
-      "raw": 887,
+      "raw": 541,
       "files": 1
     },
     "i18n": {
-      "raw": 52906,
+      "raw": 52560,
       "files": 1
     },
     "main": {
-      "raw": 143264,
+      "raw": 142918,
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 14912,
+      "raw": 15167,
       "files": 1
     },
     "panels": {
-      "raw": 38101,
+      "raw": 37920,
       "files": 1
     },
     "runtime-config": {
-      "raw": 10686,
+      "raw": 10340,
       "files": 1
     },
     "safe-storage": {
-      "raw": 1565,
+      "raw": 1219,
       "files": 1
     },
     "sensitive-url-params": {
-      "raw": 3290,
+      "raw": 2944,
       "files": 1
     },
     "tab-store": {
-      "raw": 13482,
+      "raw": 13131,
       "files": 1
     },
     "tauri-bridge": {
-      "raw": 1990,
+      "raw": 1644,
       "files": 1
     },
     "theme-colors": {
-      "raw": 72825,
+      "raw": 72498,
       "files": 1
     },
     "theme-manager": {
-      "raw": 1962,
+      "raw": 1616,
       "files": 1
     },
     "web-origin": {
-      "raw": 3372,
+      "raw": 3026,
       "files": 1
     }
   },
   "deferred": {
     "total": {
-      "raw": 1581312
+      "raw": 1574603
     },
     "chunks": {
       "App": {
-        "raw": 1005966,
+        "raw": 1011371,
         "files": 1
       },
       "ai-flow-settings": {
-        "raw": 2501,
+        "raw": 2155,
         "files": 1
       },
       "analysis-framework-store": {
-        "raw": 10097,
+        "raw": 9751,
         "files": 1
       },
       "audience-profile": {
-        "raw": 944,
+        "raw": 598,
         "files": 1
       },
       "base": {
-        "raw": 2752,
+        "raw": 2433,
         "files": 1
       },
       "cached-risk-scores": {
-        "raw": 15823,
+        "raw": 15477,
         "files": 1
       },
       "checkout": {
-        "raw": 15844,
+        "raw": 15498,
         "files": 1
       },
       "cloud-prefs-sync": {
-        "raw": 7306,
+        "raw": 6960,
         "files": 1
       },
       "continuous": {
-        "raw": 4969,
+        "raw": 4623,
         "files": 1
       },
       "corroboration": {
-        "raw": 14777,
+        "raw": 14431,
         "files": 1
       },
       "cross-domain-storage": {
-        "raw": 882,
+        "raw": 536,
         "files": 1
       },
       "desktop-cloud-access-hint": {
-        "raw": 602,
+        "raw": 256,
         "files": 1
       },
       "desktop-cloud-auth": {
-        "raw": 1880,
+        "raw": 1534,
         "files": 1
       },
       "feeds": {
-        "raw": 101127,
+        "raw": 100781,
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 161635,
+        "raw": 161289,
         "files": 1
       },
       "index": {
-        "raw": 40312,
+        "raw": 39620,
         "files": 2
       },
       "layout-batch": {
-        "raw": 3722,
+        "raw": 3348,
         "files": 1
       },
       "markets": {
-        "raw": 9864,
+        "raw": 9518,
         "files": 1
       },
       "news-credibility": {
-        "raw": 9739,
+        "raw": 9393,
         "files": 1
       },
       "page-unload-signal": {
-        "raw": 776,
+        "raw": 420,
         "files": 1
       },
       "panel-display-name": {
-        "raw": 879,
+        "raw": 533,
         "files": 1
       },
       "panel-gating": {
-        "raw": 4565,
+        "raw": 4219,
         "files": 1
       },
       "panel-storage": {
-        "raw": 2198,
+        "raw": 1857,
         "files": 1
       },
       "persistent-cache": {
-        "raw": 4277,
+        "raw": 3936,
         "files": 1
       },
       "pinned-webcams": {
-        "raw": 2529,
+        "raw": 2183,
         "files": 1
       },
       "sanitize": {
-        "raw": 1616,
+        "raw": 1280,
         "files": 1
       },
       "select": {
-        "raw": 809,
+        "raw": 463,
         "files": 1
       },
       "settings-persistence": {
-        "raw": 8486,
+        "raw": 8158,
         "files": 1
       },
       "source-provenance": {
-        "raw": 91744,
+        "raw": 90675,
         "files": 1
       },
       "storage-facility-registry-store": {
-        "raw": 15749,
+        "raw": 15403,
         "files": 1
       },
       "storage-quota": {
-        "raw": 702,
+        "raw": 356,
         "files": 1
       },
       "user-location": {
-        "raw": 7878,
+        "raw": 7532,
         "files": 1
       },
       "widget-store": {
-        "raw": 28362,
+        "raw": 28016,
         "files": 1
       }
     }

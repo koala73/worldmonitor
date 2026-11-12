@@ -426,6 +426,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 |------|-------------|
 | `get_natural_disasters` | USGS and Earthquakes Canada / NRCan earthquakes, NASA FIRMS wildfires, hazard events. |
 | `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
+| `get_reservoir_levels` | ICESat-2 lidar water levels for 50 strategic reservoirs and lakes, metres above the EGM2008 geoid; status, change windows, seasonal anomaly, optional 36-month series. |
 | `get_imd_cyclone_marine` | Bounded IMD sea-area and coastal marine bulletins with storm warnings and port signals. Cyclone track, wind, and cone are API-only and disabled. Always read `coverageState`; disabled or degraded is not an all-clear. |
 | `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
 | `get_research_signals` | Emerging technology events from curated research feeds. |
@@ -499,6 +500,7 @@ Reverse lookup workflow:
 | `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
 | `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_reservoir_levels` | `GET /api/climate/v1/list-reservoir-levels` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
 | `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
@@ -585,6 +587,7 @@ Resources have three access classes. **Public concrete resources** are surfaced 
 | Resource URI | Backing data |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | Stock market-data bootstrap write-age only: `cached_at` and `stale` for `seed-meta:market:stocks`. Does **not** certify sector valuation completeness — use `get_market_data` `valuationCoverage` (`sourceStatus`, unavailable/last-good/diagnostics). Cheap seeder health probe — no auth, no quota. |
+| `worldmonitor://guide/agents` | The full agent guide (`text/markdown`): which tool fits which question, availability flags, access and weight metering, JMESPath limits, and webcam and market-data semantics. The `initialize` instructions stay under 2 KB, the point where Claude Code truncates them, and name this resource for the rest. Static text — no auth, no quota. |
 
 Authenticated `resources/list` additionally exposes `worldmonitor://account/mcp-allowance`. Its read returns the current account's `used`, `limit`, `remaining`, `resetsAt`, and `sharedWithRestApi` fields. `sharedWithRestApi` is `true` when the budget being reported is the account's REST allowance, which means `used` counts REST requests as well as tool calls — read it before treating that number as your own call history. Free accounts also receive request-window usage, remaining windows, the idle-gap duration, and the active-window expiry. The read uses the enforcement counters directly and never reserves an allowance slot. Hosts that expose tools without `resources/read` can call `get_mcp_allowance({})` for the same snapshot. It requires verified user-bound OAuth or `wm_…` credentials, accepts only optional `jmespath`, and rejects account selectors and `panel_request` before admission. It remains available at the daily cap, spends no daily allowance, and uses the shared 192/minute protocol bucket. Unreadable counters return an error instead of a zero snapshot. Account totals do not identify individual callers.
 

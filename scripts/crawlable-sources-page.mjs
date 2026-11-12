@@ -138,6 +138,9 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['SaskAlert', 'environment'],
   ['Hyperliquid', 'finance'],
   ['Barchart', 'finance'],
+  // ICESat-2 ATL13 granule search and subsetting for Strategic Water Levels.
+  ['NASA Earthdata CMR', 'environment'],
+  ['SlideRule Earth', 'environment'],
   ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
   // #6229: NVD CVE reference store for the cyber surface (scripts/seed-cve-reference.mjs).

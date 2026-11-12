@@ -55,13 +55,13 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_cyber_threats`
 
-活跃网络威胁情报：恶意软件 IOC（URLhaus、Feodotracker）、CISA 已知被利用漏洞和活跃的命令与控制基础设施。
+活跃网络威胁情报：来自 Feodo Tracker、URLhaus、C2Intel、OTX 和 AbuseIPDB 的入侵指标（IP、域名、URL），类型为 C2 服务器、恶意软件主机、钓鱼或恶意 URL。不含漏洞目录。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `threat_type` | string | 筛选为一种威胁类型（不区分大小写的子串，例如 "malware"、"vulnerability"、"c2"）。 |
+| `threat_type` | string | 要保留的威胁类型，按 type 值的不区分大小写子串匹配（CYBER_THREAT_TYPE_C2_SERVER、_MALWARE_HOST、_PHISHING 或 _MALICIOUS_URL），例如 "c2"、"malware" 或 "phishing"。 |
 | `min_severity` | string: low / medium / high / critical | 仅保留严重级别已知且达到或高于此级别的威胁；排除严重级别缺失或无法识别的威胁。 |
 | `country` | string | 筛选为一个 ISO 3166-1 alpha-2 国家代码（许多威胁没有国家，会被此筛选丢弃）。 |
 | `limit` | number | 将威胁列表限制为最多这么多项（默认 30，传 0 表示不限）。 |

@@ -496,7 +496,8 @@
     "marketBreadth": "Šíře trhu",
     "climateNews": "Zprávy o klimatu",
     "fx": "Kurzy zahraniční měny",
-    "ukmtoIncidents": "Incidenty UKMTO"
+    "ukmtoIncidents": "Incidenty UKMTO",
+    "reservoirLevels": "Strategické vodní hladiny"
   },
   "commands": {
     "prefixes": {
@@ -1304,7 +1305,8 @@
         "canadaRoads": "Silnice Kanada",
         "canadaAlerts": "Výstrahy Kanada",
         "notamAirspace": "Omezení vzdušného prostoru NOTAM",
-        "no2Activity": "Průmyslová aktivita"
+        "no2Activity": "Průmyslová aktivita",
+        "reservoirLevels": "Vodní hladiny"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1421,7 +1423,8 @@
           "canadaRoads": "Oficiální dopravní události, varování, podmínky, uzavírky, stavby a nebezpečí z podporovaných kanadských jurisdikcí.",
           "canadaAlerts": "Provinční výstrahy pro veřejnou bezpečnost z Alberta Emergency Alert, B.C. Evacuation Orders and Alerts a SaskAlert.",
           "notamAirspace": "Dočasná omezení letů a omezený, nebezpečný a zakázaný vzdušný prostor z NOTAMů FAA, která jsou právě v platnosti nebo začínají do 24 hodin",
-          "no2Activity": "Směr aktivity NO2 ze Sentinel-5P pro 167 zemí a 32 průmyslových klastrů: poslední 56denní okno oproti stejným datům v předchozích letech, po 10% mrtvém pásmu. Obsahuje upravená data Copernicus Sentinel."
+          "no2Activity": "Směr aktivity NO2 ze Sentinel-5P pro 167 zemí a 32 průmyslových klastrů: poslední 56denní okno oproti stejným datům v předchozích letech, po 10% mrtvém pásmu. Obsahuje upravená data Copernicus Sentinel.",
+          "reservoirLevels": "Výška vodní hladiny strategických nádrží a jezer ze satelitního lidaru NASA ICESat-2 ve srovnání s obvyklou hladinou pro daný měsíc. NASA zveřejňuje každý přelet asi dva měsíce po měření."
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
@@ -1656,7 +1659,7 @@
       "estimateWithin": "Přibližně {{count}} lidí v okruhu {{km}} km",
       "method": "Odhady vycházejí z průměrné hustoty zalidnění dané země.",
       "empty": "Žádné vhodné lokality událostí",
-      "infoTooltip": "Zobrazují se události s údaji o hustotě obyvatelstva země. Polohy ze starších dat bez údajů o přesnosti jsou označeny jako čekající na aktualizaci. Odhadované oblasti se mohou překrývat. Nepokoje vyžadují přesnou polohu; události UCDP označené jako nepřesné se nezobrazují. Jedno místo ze dvou zdrojů (nepokoje a UCDP) se zobrazí ve dvou řádcích.",
+      "infoTooltip": "Zobrazují se události s údaji o hustotě obyvatelstva země. Polohy událostí UCDP bez údajů o přesnosti jsou označeny jako čekající na aktualizaci. Odhadované oblasti se mohou překrývat. Nepokoje vyžadují přesnou polohu; události UCDP označené jako nepřesné se nezobrazují. Jedno místo ze dvou zdrojů (nepokoje a UCDP) se zobrazí ve dvou řádcích.",
       "eventCount_one": "{{count}} událost",
       "eventCount_few": "{{count}} události",
       "eventCount_many": "{{count}} událostí",
@@ -2742,7 +2745,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "Seznamy OFAC SDN a konsolidované seznamy spolu s kanadskými sankcemi SEMA/JVCFOA. Řádky zemí používají přímé vazby. Vlajky plavidel a registrace letadel se počítají odděleně v registrech; nulový počet aktiv u země neznamená, že neexistují sankcionovaná aktiva. Země mateřských subjektů jsou odděleny od údajů o adrese a nevstupují do skóre rizika.",
+      "infoTooltip": "Seznamy OFAC SDN a konsolidované seznamy spolu s kanadskými sankcemi SEMA/JVCFOA. Řádky zemí používají přímé vazby. Vlajky plavidel a registrace letadel se počítají odděleně v registrech; nulový počet aktiv u země neznamená, že neexistují sankcionovaná aktiva.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {
@@ -3182,6 +3185,47 @@
       "body": "Hvězda na GitHubu pomůže ostatním lidi ji najít.",
       "star": "Dát hvězdu na GitHubu",
       "dismiss": "Skrýt a neptat se znovu"
+    },
+    "reservoirLevels": {
+      "note": "Výška vodní hladiny ze satelitního lidaru NASA ICESat-2. NASA zveřejňuje každý přelet asi dva měsíce po měření, takže tento přehled sleduje změny v řádu týdnů a sezón, ne dní. Pouze hladina, ne objem.",
+      "source": "Zdroj:",
+      "processedWith": "zpracováno pomocí",
+      "empty": "Zatím žádná měření",
+      "filterEmpty": "Tomuto filtru neodpovídají žádné vodní plochy",
+      "unavailable": "Data o vodních hladinách nejsou momentálně k dispozici",
+      "filterLabel": "Filtrovat vodní plochy",
+      "filter": {
+        "all": "Vše",
+        "attention": "Vyžaduje pozornost",
+        "transboundary": "Přeshraniční"
+      },
+      "status": {
+        "record_low": "Rekordní minimum",
+        "record_high": "Rekordní maximum",
+        "falling_fast": "Rychlý pokles",
+        "rising_fast": "Rychlý vzestup",
+        "low": "Nízká na roční období",
+        "high": "Vysoká na roční období",
+        "normal": "Běžná",
+        "insufficient_history": "Krátká historie",
+        "no_recent_data": "Žádný nedávný přelet"
+      },
+      "vsUsual": "{{value}} oproti obvyklé hladině ({{month}})",
+      "in12Months": "{{value}} za 12 měsíců",
+      "noComparison": "Zatím bez srovnání",
+      "measured": "měřeno {{date}} ({{age}})",
+      "noPass": "Zatím žádný použitelný přelet",
+      "popup": {
+        "level": "Hladina",
+        "levelValue": "{{value}} nad mořem (EGM2008)",
+        "anomaly": "Oproti obvyklé hladině ({{month}})",
+        "anomalyPlain": "Oproti obvyklé hladině v měsíci",
+        "changePrev": "Od předchozího přeletu",
+        "change90": "Za 90 dní",
+        "change365": "Za 12 měsíců",
+        "measured": "Měřeno",
+        "sparkline": "Vodní hladina za 36 měsíců"
+      }
     }
   },
   "popups": {
@@ -4652,6 +4696,21 @@
         "related": {
           "0": "Nowcast aktivity Číny",
           "1": "Přehled země"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klima",
+        "purpose": "Označuje strategické nádrže a jezera podle toho, jak se jejich hladina liší od obvyklé hladiny v daném ročním období a jak rychle se mění.",
+        "source": "Výška hladiny vnitrozemských vod z NASA ICESat-2 ATL13 přes NSIDC, zpracovaná pomocí SlideRule Earth a sloučená za každý přelet družice službou seed-reservoir-levels.",
+        "freshness": "Aktualizuje se denně. NASA zveřejňuje každý přelet 50 až 70 dní po měření a nádrž je znovu měřena jednou za několik dní až zhruba za měsíc.",
+        "confidence": "Přelet se započítá jen tehdy, když se alespoň 5 vodních segmentů shoduje v rozmezí 0,25 m. Sezónní srovnání vyžaduje přelety z alespoň 3 předchozích let ve stejném ročním období.",
+        "limitations": {
+          "0": "Pouze hladina, ne objem: stejný pokles znamená v každé nádrži jinou ztrátu zásoby.",
+          "1": "Vodní plocha bez přeletu za 150 dní je označena jako bez nedávného přeletu; její poslední údaj, změny a datum se dál zobrazují."
+        },
+        "related": {
+          "0": "Panel Strategické vodní hladiny",
+          "1": "Klimatické anomálie"
         }
       },
       "conflicts": {

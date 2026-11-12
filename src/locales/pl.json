@@ -496,7 +496,8 @@
     "marketBreadth": "Szerokość Rynku",
     "climateNews": "Wiadomości Klimatyczne",
     "fx": "Kursy walutowe",
-    "ukmtoIncidents": "Incydenty UKMTO"
+    "ukmtoIncidents": "Incydenty UKMTO",
+    "reservoirLevels": "Strategiczne poziomy wód"
   },
   "commands": {
     "prefixes": {
@@ -1105,7 +1106,8 @@
         "canadaRoads": "Drogi w Kanadzie",
         "canadaAlerts": "Alerty z Kanady",
         "notamAirspace": "Ograniczenia przestrzeni powietrznej NOTAM",
-        "no2Activity": "Aktywność przemysłowa"
+        "no2Activity": "Aktywność przemysłowa",
+        "reservoirLevels": "Poziomy wód"
       },
       "layersTitle": "Warstwy",
       "layerSearch": "Szukaj warstw...",
@@ -1229,7 +1231,8 @@
           "canadaRoads": "Oficjalne zdarzenia drogowe, alerty, warunki, zamknięcia, roboty i zagrożenia w obsługiwanych jurysdykcjach kanadyjskich",
           "canadaAlerts": "Prowincjonalne alerty bezpieczeństwa publicznego z Alberta Emergency Alert, B.C. Evacuation Orders and Alerts i SaskAlert",
           "notamAirspace": "Tymczasowe ograniczenia lotów oraz strefy ograniczone, niebezpieczne i zakazane z NOTAM-ów FAA, obowiązujące obecnie lub rozpoczynające się w ciągu 24 godzin",
-          "no2Activity": "Kierunek aktywności NO2 z Sentinel-5P dla 167 krajów i 32 klastrów przemysłowych: ostatnie 56-dniowe okno względem tych samych dat w poprzednich latach, po 10% strefie martwej. Zawiera zmodyfikowane dane Copernicus Sentinel."
+          "no2Activity": "Kierunek aktywności NO2 z Sentinel-5P dla 167 krajów i 32 klastrów przemysłowych: ostatnie 56-dniowe okno względem tych samych dat w poprzednich latach, po 10% strefie martwej. Zawiera zmodyfikowane dane Copernicus Sentinel.",
+          "reservoirLevels": "Poziom lustra wody w strategicznych zbiornikach i jeziorach z satelitarnego lidaru NASA ICESat-2 w porównaniu ze zwykłym poziomem dla danego miesiąca. NASA publikuje każdy przelot około dwóch miesięcy po pomiarze."
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
@@ -1591,7 +1594,7 @@
       "estimateWithin": "Około {{count}} osób w promieniu {{km}} km",
       "method": "Szacunki opierają się na średniej gęstości zaludnienia kraju.",
       "empty": "Brak lokalizacji zdarzeń spełniających kryteria",
-      "infoTooltip": "Wyświetlane są zdarzenia z danymi o gęstości zaludnienia kraju. Lokalizacje ze starszych danych bez informacji o dokładności są oznaczane jako oczekujące na aktualizację. Szacowane obszary mogą się nakładać. Niepokoje wymagają dokładnej lokalizacji; zdarzenia UCDP oznaczone jako niedokładne są pomijane. Jedno miejsce z dwóch źródeł (niepokoje i UCDP) pojawia się w dwóch wierszach.",
+      "infoTooltip": "Wyświetlane są zdarzenia z danymi o gęstości zaludnienia kraju. Lokalizacje zdarzeń UCDP bez informacji o dokładności są oznaczane jako oczekujące na aktualizację. Szacowane obszary mogą się nakładać. Niepokoje wymagają dokładnej lokalizacji; zdarzenia UCDP oznaczone jako niedokładne są pomijane. Jedno miejsce z dwóch źródeł (niepokoje i UCDP) pojawia się w dwóch wierszach.",
       "eventCount_one": "{{count}} zdarzenie",
       "eventCount_few": "{{count}} zdarzenia",
       "eventCount_many": "{{count}} zdarzeń",
@@ -2742,7 +2745,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankcje i desygnacje",
-      "infoTooltip": "Listy OFAC SDN i skonsolidowane oraz kanadyjskie sankcje SEMA/JVCFOA. Wiersze krajów wykorzystują bezpośrednie powiązania. Bandery statków i rejestracje samolotów są liczone osobno w rejestrach; zerowa liczba aktywów dla kraju nie oznacza braku aktywów objętych sankcjami. Kraje podmiotów nadrzędnych są oddzielone od danych adresowych i nie wpływają na oceny ryzyka.",
+      "infoTooltip": "Listy OFAC SDN i skonsolidowane oraz kanadyjskie sankcje SEMA/JVCFOA. Wiersze krajów wykorzystują bezpośrednie powiązania. Bandery statków i rejestracje samolotów są liczone osobno w rejestrach; zerowa liczba aktywów dla kraju nie oznacza braku aktywów objętych sankcjami.",
       "loading": "Ładowanie danych sankcji...",
       "unavailable": "Dane sankcji niedostępne.",
       "summary": {
@@ -3182,6 +3185,47 @@
       "body": "Gwiazdka na GitHub-ie pomaga innym osobom je znaleźć.",
       "star": "Gwiazdka na GitHub-ie",
       "dismiss": "Ukryj i nie pytaj ponownie"
+    },
+    "reservoirLevels": {
+      "note": "Poziom lustra wody z satelitarnego lidaru NASA ICESat-2. NASA publikuje każdy przelot około dwóch miesięcy po pomiarze, więc dane pokazują zmiany w skali tygodni i pór roku, a nie dni. Tylko poziom, nie objętość.",
+      "source": "Źródło:",
+      "processedWith": "przetworzone w",
+      "empty": "Brak odczytów",
+      "filterEmpty": "Żaden akwen nie pasuje do tego filtra",
+      "unavailable": "Dane o poziomie wód są teraz niedostępne",
+      "filterLabel": "Filtruj akweny",
+      "filter": {
+        "all": "Wszystkie",
+        "attention": "Wymaga uwagi",
+        "transboundary": "Transgraniczne"
+      },
+      "status": {
+        "record_low": "Rekordowo nisko",
+        "record_high": "Rekordowo wysoko",
+        "falling_fast": "Szybki spadek",
+        "rising_fast": "Szybki wzrost",
+        "low": "Nisko jak na porę roku",
+        "high": "Wysoko jak na porę roku",
+        "normal": "Typowy",
+        "insufficient_history": "Za krótka historia",
+        "no_recent_data": "Brak niedawnego przelotu"
+      },
+      "vsUsual": "{{value}} względem normy ({{month}})",
+      "in12Months": "{{value}} w 12 miesięcy",
+      "noComparison": "Brak porównania",
+      "measured": "pomiar {{date}} ({{age}})",
+      "noPass": "Brak użytecznego przelotu",
+      "popup": {
+        "level": "Poziom",
+        "levelValue": "{{value}} n.p.m. (EGM2008)",
+        "anomaly": "Względem normy ({{month}})",
+        "anomalyPlain": "Względem normy dla miesiąca",
+        "changePrev": "Od poprzedniego przelotu",
+        "change90": "W 90 dni",
+        "change365": "W 12 miesięcy",
+        "measured": "Pomiar",
+        "sparkline": "Poziom wody w ciągu 36 miesięcy"
+      }
     }
   },
   "popups": {
@@ -4652,6 +4696,21 @@
         "related": {
           "0": "Nowcast aktywności Chin",
           "1": "Brief kraju"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klimat",
+        "purpose": "Oznacza strategiczne zbiorniki i jeziora według tego, jak ich poziom wody wypada na tle zwykłego poziomu o tej porze roku i jak szybko się zmienia.",
+        "source": "Wysokość lustra wód śródlądowych z NASA ICESat-2 ATL13 za pośrednictwem NSIDC, przetworzona w SlideRule Earth i zbiorczo liczona dla każdego przelotu satelity przez usługę seed-reservoir-levels.",
+        "freshness": "Aktualizacja codzienna. NASA publikuje każdy przelot 50–70 dni po pomiarze, a każdy zbiornik jest mierzony ponownie co kilka dni do mniej więcej raz w miesiącu.",
+        "confidence": "Przelot liczy się tylko wtedy, gdy co najmniej 5 odcinków wody zgadza się z dokładnością do 0,25 m. Porównanie sezonowe wymaga przelotów z co najmniej 3 wcześniejszych lat o tej samej porze roku.",
+        "limitations": {
+          "0": "Tylko poziom, nie objętość: ten sam spadek oznacza w każdym zbiorniku inną utratę zapasu.",
+          "1": "Akwen bez przelotu od 150 dni jest oznaczany jako bez niedawnego przelotu; jego ostatni odczyt, zmiany i data są nadal pokazywane."
+        },
+        "related": {
+          "0": "Panel Strategiczne poziomy wód",
+          "1": "Anomalie klimatyczne"
         }
       },
       "conflicts": {

@@ -15,6 +15,7 @@ import { MCP_ATTRIBUTION_SOURCE } from '../../shared/mcp-attribution';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { rpcError } from './rpc';
+import type { McpPlanFeature } from './types';
 
 export const START_UPGRADE_TOOL = 'start_upgrade';
 
@@ -59,6 +60,24 @@ const NEXT_PLAN_BY_TIER_GROUP: Record<string, string> = {
 export function recommendedPlanFor(planKey: string | undefined): string | undefined {
   const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
   const next = tierGroup === undefined ? undefined : NEXT_PLAN_BY_TIER_GROUP[tierGroup];
+  return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
+}
+
+// The cheapest self-serve plan in the caller's line that carries the feature.
+// Pro is the one step up for a free account in general, but Pro lacks these
+// features, so a free account is pointed at Pro Business instead.
+const FEATURE_PLAN_BY_TIER_GROUP: Record<McpPlanFeature, Record<string, string>> = {
+  travelRiskAssessment: {
+    free: 'pro_business_monthly',
+    pro: 'pro_business_monthly',
+    api_starter: 'api_business',
+  },
+};
+
+/** The plan to offer a caller whose plan lacks `feature`, as `recommendedPlanFor` does for a tier. */
+export function recommendedPlanForFeature(planKey: string | undefined, feature: McpPlanFeature): string | undefined {
+  const tierGroup = PLANS.find((plan) => plan.planKey === planKey)?.tierGroup;
+  const next = tierGroup === undefined ? undefined : FEATURE_PLAN_BY_TIER_GROUP[feature][tierGroup];
   return next !== undefined && MCP_CHECKOUT_PLANS.includes(next) ? next : undefined;
 }
 

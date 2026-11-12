@@ -102,6 +102,8 @@ describe('entitlement crosswalk classifier', () => {
       'desktopKeyAccess',
       // #10453 dashboard focus.
       'tabFocus',
+      // #10451: the travel risk assessment MCP tool's named flag.
+      'travelRiskAssessment',
     ]);
     for (const [re, v] of SITE_MAP) {
       for (const p of v.preds ?? []) {

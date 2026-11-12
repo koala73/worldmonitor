@@ -18,10 +18,10 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 |------|------|-------------|
 | `panel_request` | string | Server-issued closed News Intelligence panel token. Omit for a paid opening; repeat and filters reuse its original source snapshot. |
 | `refresh` | boolean | Paid panel only. Explicitly open a new allocation without panel_request and with a UUID request_id. |
-| `request_id` | string | Refresh identity. Retrying the same UUID reuses that allocation. |
-| `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | Filter GDELT intelligence to a single topic. |
+| `request_id` | string | Client-generated UUID that names one refresh. Retrying with the same UUID reuses that allocation. |
+| `topic` | string: conflict / economy / cyber / nuclear / intelligence / maritime | GDELT signal topic to keep in gdelt-intel.topics. Stories, cross-source signals and advisories are not filtered by it. Omit for every topic. |
 | `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
-| `country` | string | Filter stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). Matches any country named in a story headline, across every scored story of the latest run, not only the top 8. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `country` | string | Country to filter stories and travel advisories to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Matches any country named in a story headline, across every scored story of the latest run, not only the top 8. Unresolved inputs return Invalid params. |
 | `alerts_only` | boolean | Keep only top stories flagged as alerts. |
 | `query` | string | Keep only stories whose headline, primary source, or one of the first six clustered member headlines contains this text (case-insensitive substring), across every scored story of the latest run. This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that. |
 | `min_importance` | number | Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero. |
@@ -120,14 +120,14 @@ Coverage comes from WorldMonitor's cached feeds (up to 96 hours) and is mostly E
 
 ### `get_positive_events`
 
-Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. category selects one of the six buckets; limit caps the list (default 30, 0 for no cap).
+Return the seeded map of positive-news locations: each entry is a place (name, latitude, longitude) with the count of positive-toned GDELT bulk reports that mention it, a category classified from report keywords (science-health, nature-wildlife, climate-wins, innovation-tech, humanity-kindness, culture-community) and the timestamp of the latest report. Location buckets, not individual stories: there are no titles, article text or source URLs, and a bucket needs at least 3 reports before it appears. Seeded from the GDELT bulk feed and flagged stale after 1 h. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `category` | string: science-health / nature-wildlife / climate-wins / innovation-tech / humanity-kindness / culture-community | Filter to one positive-event category. |
-| `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
+| `category` | string: science-health / nature-wildlife / climate-wins / innovation-tech / humanity-kindness / culture-community | Keyword-classified theme of the location bucket to keep (e.g. climate-wins for renewable-energy and emissions reports; humanity-kindness for volunteering, charity and rescues, and for reports no keyword matches). Omit for every category. |
+| `limit` | number | Maximum location buckets to return. Omitted keeps 30; 0 keeps every bucket. |
 
 - **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
 - **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.

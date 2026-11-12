@@ -56,14 +56,14 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_military_posture`
 
-Return the seeded theater posture assessment: for each global theater (Iran, Taiwan, Baltic, Korea and others) a posture level, military risk score and the aggregated positioning and escalation signals behind it. Flagged stale after 2 hours; theater-level summaries only, no individual aircraft or vessel tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. theater is a case-insensitive id substring, posture_level filters one level exactly, limit caps the list (default 30, 0 for no cap).
+Return the seeded theater posture assessment: for each global theater (Iran, Taiwan, Baltic, Korea and others) a posture level with the military flight and vessel counts and operation flags behind it. Flagged stale after 2 hours; theater-level summaries only, no individual aircraft or vessel tracks. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
 | `theater` | string | Filter to one theater by id (case-insensitive substring, e.g. "iran", "taiwan", "baltic", "korea"). |
-| `posture_level` | string | Filter to a single posture level. |
+| `posture_level` | string | Posture band to keep: normal, elevated or critical. The band reflects how many military flights, plus a capped vessel count, the theater holds against its thresholds. Exact match, ignoring case. |
 | `limit` | number | Cap the theaters list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/military/v1/get-theater-posture`
@@ -94,8 +94,8 @@ Hotspot escalation scores: the 29 curated intelligence hotspots ranked on the do
 
 | Name | Type | Description |
 |------|------|-------------|
-| `hotspot_id` | string | Return only this curated hotspot id (see any full response for the id list). |
-| `limit` | number | Cap the ranked hotspot list (default 29, the full curated set; pass 0 for no cap). |
+| `hotspot_id` | string | Curated hotspot id to score alone: the exact, case-sensitive `hotspotId` of a full response, a lowercase slug such as `tehran`, `taipei` or `horn_africa`. An unknown id returns an error with `known_ids`. |
+| `limit` | number | Maximum hotspots returned, highest `combinedScore` first; omitted, 0 or a negative value returns all 29. |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).
@@ -129,11 +129,11 @@ In events mode, conflict rows are one per location, folded using coordinates rou
 
 | Name | Type | Description |
 |------|------|-------------|
-| `mode` | string: events / point / countries | events enriches live feeds (default); point takes lat/lon; countries lists the population table. |
-| `event_source` | string: earthquakes / wildfires / conflicts / all | Which event feeds to enrich in events mode (default all). |
+| `mode` | string: events / point / countries | What to estimate: events ranks current earthquake, wildfire and conflict events by exposed population; point estimates one circle around lat/lon; countries returns the population table, i.e. the countries that can get an estimate. Omitted means events. |
+| `event_source` | string: earthquakes / wildfires / conflicts / all | Event feed to rank in events mode; all merges earthquakes, wildfires and conflicts into one ranking. Omitted means all; ignored in other modes. |
 | `lat` | number | Latitude for point mode. |
 | `lon` | number | Longitude for point mode. |
-| `radius_km` | number | Radius in km for point mode (default 50, clamped to 1000). |
+| `radius_km` | number | Circle radius in kilometres for point mode, clamped to 1-1000; omitted means 50. Events mode ignores it and uses the fixed per-type radii. |
 | `limit` | number | Cap locations after conflict folding (default 20, pass 0 for no cap). Use a limit or `jmespath` to stay within the output budget. |
 
 - **API endpoints:** `GET /api/displacement/v1/get-population-exposure`
@@ -167,9 +167,9 @@ Pass `countries` to compare subsea cable exposure. Each `data.exposure` entry li
 | Name | Type | Description |
 |------|------|-------------|
 | `source_id` | string | Node id to disrupt (see the no-argument catalog for valid ids). |
-| `source_ids` | array | Cut several nodes at once (e.g. a list of cable ids); all ids must be known and per-country impacts add up across the cut. Ignored when `source_id` is given. |
+| `source_ids` | array | Node ids from the no-argument catalog to cut at once (up to 50), e.g. several cable ids; per-country impacts add up across the cut, and an unknown id returns an error naming it. Ignored when `source_id` is given. |
 | `cut_cables_through` | string | Chokepoint id (e.g. `chokepoint:hormuz_strait`): cut every cable whose route crosses it. Ignored when `source_id` or `source_ids` is given. |
-| `disruption_level` | number | Initial failure severity between 0.1 and 1 (default 1). |
+| `disruption_level` | number | Severity of the initial failure, multiplying every propagated impact: 1 is a total outage, 0.5 halves downstream impacts. Clamped to 0.1-1; omitted means 1. |
 | `countries` | array | Up to 10 countries (ISO alpha-2, alpha-3 or English name) for the per-country cable exposure comparison in `data.exposure`. Combines with the cut arguments. |
 
 - **API endpoints:** none (MCP-only derived analysis).
@@ -237,7 +237,7 @@ The weekly view adds `weekly.cii_movers` with up to five risers and five fallers
 
 | Name | Type | Description |
 |------|------|-------------|
-| `view` | string: today / weekly | today lists current threshold trips (default); weekly adds trend context. |
+| `view` | string: today / weekly | today returns the current threshold trips; weekly returns the same trips plus military-activity trends, current anomalies and CII movers. Omitted means today. |
 | `movers_days` | integer | Weekly CII comparison window, 7-90 days, default 7; rejected with the today view |
 
 - **API endpoints:** none (MCP-only derived analysis).
@@ -302,7 +302,7 @@ Focal-point detection: entities where news coverage and live map signals converg
 | Name | Type | Description |
 |------|------|-------------|
 | `country_code` | string | Filter focal points to one country (ISO-2) and entities the registry relates to it. |
-| `limit` | number | Cap the focal point list (default 10, pass 0 for no cap). |
+| `limit` | number | Maximum focal points returned, highest `focalScore` first; omitted means 10, and 0 or a negative value returns all. |
 
 - **API endpoints:** none (MCP-only derived analysis).
 - **Access:** `subscription` — requires a Pro subscription. RPC tool: no `summary` argument (use `jmespath` to trim the response).

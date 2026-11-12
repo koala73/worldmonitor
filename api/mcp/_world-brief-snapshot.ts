@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { INSIGHTS_MAX_AGE_MS } from '../../shared/insights-snapshot.js';
 import { OUTLET_AUDIENCES, OWNERSHIP_CLASSES } from '../../server/_shared/outlet-profile';
 

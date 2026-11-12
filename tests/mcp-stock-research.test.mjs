@@ -69,6 +69,20 @@ describe('stock research MCP workflow', () => {
     assert.equal((await call({ operation: 'backtest', symbols: ['UNKNOWN'], eval_window_days: 30 })).data.available, false);
   });
 
+  it('documents operation-specific payloads and empty saved results', () => {
+    const ajv = new Ajv2020({ strict: true, strictRequired: false, validateFormats: false });
+    const validate = ajv.compile(tool().outputSchema);
+    for (const operation of ['history', 'stored-backtests']) {
+      assert.ok(validate({ operation, data: { items: [] } }), JSON.stringify(validate.errors));
+      assert.equal(validate({ operation, data: analysis }), false);
+    }
+    for (const operation of ['analysis', 'backtest']) {
+      assert.equal(validate({ operation, data: { items: [] } }), false);
+    }
+    assert.equal(validate({ operation: 'history', data: { items: [backtest] } }), false);
+    assert.equal(validate({ operation: 'stored-backtests', data: { items: [{ symbol: 'AAPL', snapshots: [analysis] }] } }), false);
+  });
+
   it('rejects malformed symbols, limits and operation-specific options before fetching', async () => {
     globalThis.fetch = async () => assert.fail('invalid requests must not fetch');
     for (const args of [ {}, { operation: 'other', symbols: ['AAPL'] },

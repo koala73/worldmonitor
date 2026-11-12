@@ -494,7 +494,8 @@
     "marketBreadth": "Amplitud de Mercado",
     "climateNews": "Noticias de Clima",
     "fx": "Tipos de cambio",
-    "ukmtoIncidents": "Incidentes de UKMTO"
+    "ukmtoIncidents": "Incidentes de UKMTO",
+    "reservoirLevels": "Niveles de agua estratégicos"
   },
   "commands": {
     "prefixes": {
@@ -1142,7 +1143,8 @@
         "canadaRoads": "Carreteras de Canadá",
         "canadaAlerts": "Alertas de Canadá",
         "notamAirspace": "Restricciones de espacio aéreo NOTAM",
-        "no2Activity": "Actividad industrial"
+        "no2Activity": "Actividad industrial",
+        "reservoirLevels": "Niveles de agua"
       },
       "layersTitle": "capas",
       "layerSearch": "Buscar capas...",
@@ -1266,7 +1268,8 @@
           "canadaRoads": "Incidentes viales oficiales, alertas, condiciones, cierres, obras y peligros en las jurisdicciones canadienses compatibles",
           "canadaAlerts": "Alertas provinciales de seguridad pública de Alberta Emergency Alert, B.C. Evacuation Orders and Alerts y SaskAlert",
           "notamAirspace": "Restricciones de vuelo temporales y espacio aéreo restringido, de peligro y prohibido de NOTAMs de la FAA, en vigencia ahora o comenzando dentro de 24 horas",
-          "no2Activity": "Dirección de la actividad de NO2 de Sentinel-5P para 167 países y 32 clústeres industriales: la última ventana de 56 días frente a las mismas fechas de años anteriores, tras una banda muerta del 10 %. Contiene datos modificados de Copernicus Sentinel."
+          "no2Activity": "Dirección de la actividad de NO2 de Sentinel-5P para 167 países y 32 clústeres industriales: la última ventana de 56 días frente a las mismas fechas de años anteriores, tras una banda muerta del 10 %. Contiene datos modificados de Copernicus Sentinel.",
+          "reservoirLevels": "Nivel de la superficie del agua en embalses y lagos estratégicos según el lidar satelital ICESat-2 de la NASA, frente al nivel habitual del mes. La NASA publica cada pasada unos dos meses después de medirla."
         },
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
@@ -1682,7 +1685,7 @@
       "estimateWithin": "Unas {{count}} personas en un radio de {{km}} km",
       "method": "Las estimaciones se basan en la densidad media de población del país.",
       "empty": "No hay ubicaciones de eventos que cumplan los criterios",
-      "infoTooltip": "Se muestran eventos con datos de densidad de población del país. Las ubicaciones de datos antiguos sin información de precisión se marcan como pendientes de actualización. Las áreas estimadas pueden superponerse. Los disturbios requieren una ubicación precisa; se excluyen los eventos UCDP marcados como imprecisos. Un lugar registrado por dos fuentes (disturbios y UCDP) aparece en dos filas.",
+      "infoTooltip": "Se muestran eventos con datos de densidad de población del país. Las ubicaciones de eventos UCDP sin información de precisión se marcan como pendientes de actualización. Las áreas estimadas pueden superponerse. Los disturbios requieren una ubicación precisa; se excluyen los eventos UCDP marcados como imprecisos. Un lugar registrado por dos fuentes (disturbios y UCDP) aparece en dos filas.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventos",
       "eventCount_other": "{{count}} eventos",
@@ -2731,7 +2734,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanciones y Designaciones",
-      "infoTooltip": "Listas OFAC SDN y consolidadas, junto con las designaciones SEMA/JVCFOA de Canadá. Las filas de países usan asociaciones directas. Las banderas de buques y los registros de aeronaves se cuentan por separado en registros; un recuento de activos de cero para un país no implica que no haya activos sancionados. Los países de las entidades matrices se separan de las pruebas de domicilio y se excluyen de las puntuaciones de riesgo.",
+      "infoTooltip": "Listas OFAC SDN y consolidadas, junto con las designaciones SEMA/JVCFOA de Canadá. Las filas de países usan asociaciones directas. Las banderas de buques y los registros de aeronaves se cuentan por separado en registros; un recuento de activos de cero para un país no implica que no haya activos sancionados.",
       "loading": "Cargando datos de sanciones...",
       "unavailable": "Datos de sanciones no disponibles.",
       "summary": {
@@ -3161,6 +3164,47 @@
       "body": "Una estrella en GitHub ayuda a que otras personas lo encuentren.",
       "star": "Marcar con estrella en GitHub",
       "dismiss": "Descartar y no volver a preguntar"
+    },
+    "reservoirLevels": {
+      "note": "Nivel de la superficie del agua según el lidar satelital ICESat-2 de la NASA. La NASA publica cada pasada unos dos meses después de medirla, así que esto sigue cambios a lo largo de semanas y estaciones, no de días. Solo nivel, no volumen.",
+      "source": "Fuente:",
+      "processedWith": "procesado con",
+      "empty": "Aún no hay lecturas",
+      "filterEmpty": "Ninguna masa de agua coincide con este filtro",
+      "unavailable": "Los datos de nivel del agua no están disponibles ahora",
+      "filterLabel": "Filtrar masas de agua",
+      "filter": {
+        "all": "Todas",
+        "attention": "Requieren atención",
+        "transboundary": "Transfronterizas"
+      },
+      "status": {
+        "record_low": "Mínimo histórico",
+        "record_high": "Máximo histórico",
+        "falling_fast": "Bajada rápida",
+        "rising_fast": "Subida rápida",
+        "low": "Bajo para la época",
+        "high": "Alto para la época",
+        "normal": "Habitual",
+        "insufficient_history": "Historial insuficiente",
+        "no_recent_data": "Sin pasada reciente"
+      },
+      "vsUsual": "{{value}} frente a lo habitual en {{month}}",
+      "in12Months": "{{value}} en 12 meses",
+      "noComparison": "Aún sin comparación",
+      "measured": "medido el {{date}} ({{age}})",
+      "noPass": "Aún sin pasada válida",
+      "popup": {
+        "level": "Nivel",
+        "levelValue": "{{value}} sobre el nivel del mar (EGM2008)",
+        "anomaly": "Frente a lo habitual en {{month}}",
+        "anomalyPlain": "Frente a lo habitual del mes",
+        "changePrev": "Desde la pasada anterior",
+        "change90": "En 90 días",
+        "change365": "En 12 meses",
+        "measured": "Medido",
+        "sparkline": "Nivel del agua en 36 meses"
+      }
     }
   },
   "popups": {
@@ -4630,6 +4674,21 @@
         "related": {
           "0": "Nowcast de actividad de China",
           "1": "Informe de país"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Clima",
+        "purpose": "Marca embalses y lagos estratégicos según cómo se compara su nivel de agua con el habitual en esa época del año y la rapidez con que cambia.",
+        "source": "Altura de la superficie de aguas continentales de NASA ICESat-2 ATL13 vía NSIDC, procesada con SlideRule Earth y agregada por pasada del satélite por el servicio seed-reservoir-levels.",
+        "freshness": "Se actualiza a diario. La NASA publica cada pasada entre 50 y 70 días después de medirla, y cada embalse se vuelve a medir cada pocos días o hasta cerca de un mes.",
+        "confidence": "Una pasada solo cuenta si al menos 5 segmentos de agua coinciden dentro de 0,25 m. La comparación estacional necesita pasadas de al menos 3 años anteriores en la misma época del año.",
+        "limitations": {
+          "0": "Solo nivel, no volumen: la misma bajada supone una pérdida de reserva distinta en cada embalse.",
+          "1": "Una masa de agua sin pasadas en 150 días se marca sin pasada reciente; su última lectura, sus variaciones y su fecha se siguen mostrando."
+        },
+        "related": {
+          "0": "Panel Niveles de agua estratégicos",
+          "1": "Anomalías climáticas"
         }
       },
       "conflicts": {

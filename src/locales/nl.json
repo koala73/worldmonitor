@@ -108,7 +108,8 @@
     "marketBreadth": "Marktbreedte",
     "climateNews": "Klimaatnieuws",
     "fx": "Wisselkoersen",
-    "ukmtoIncidents": "UKMTO-incidenten"
+    "ukmtoIncidents": "UKMTO-incidenten",
+    "reservoirLevels": "Strategische waterstanden"
   },
   "commands": {
     "prefixes": {
@@ -592,7 +593,8 @@
         "canadaRoads": "Canadese wegen",
         "canadaAlerts": "Canadese waarschuwingen",
         "notamAirspace": "NOTAM-luchtruimbeperkingen",
-        "no2Activity": "Industriële activiteit"
+        "no2Activity": "Industriële activiteit",
+        "reservoirLevels": "Waterstanden"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -716,7 +718,8 @@
           "canadaRoads": "Officiële verkeersincidenten, waarschuwingen, wegcondities, afsluitingen, werkzaamheden en gevaren in ondersteunde Canadese rechtsgebieden",
           "canadaAlerts": "Provinciale openbare-veiligheidswaarschuwingen van Alberta Emergency Alert, B.C. Evacuation Orders and Alerts en SaskAlert",
           "notamAirspace": "Tijdelijke vliegbeperkingen en beperkt, gevaar- en verboden luchtruim van FAA NOTAMs, nu van kracht of binnen 24 uur van start",
-          "no2Activity": "Richting van de NO2-activiteit uit Sentinel-5P voor 167 landen en 32 industriële clusters: het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren, na een dode band van 10%. Bevat gewijzigde Copernicus Sentinel-gegevens."
+          "no2Activity": "Richting van de NO2-activiteit uit Sentinel-5P voor 167 landen en 32 industriële clusters: het laatste venster van 56 dagen tegenover dezelfde data in voorgaande jaren, na een dode band van 10%. Bevat gewijzigde Copernicus Sentinel-gegevens.",
+          "reservoirLevels": "Waterniveau van strategische stuwmeren en meren volgens de satellietlidar ICESat-2 van NASA, vergeleken met het gebruikelijke niveau voor de maand. NASA publiceert elke overkomst ongeveer twee maanden na de meting."
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -1145,7 +1148,7 @@
       "estimateWithin": "Ongeveer {{count}} mensen binnen een straal van {{km}} km",
       "method": "De schattingen zijn gebaseerd op de gemiddelde bevolkingsdichtheid van het land.",
       "empty": "Geen geschikte gebeurtenislocaties",
-      "infoTooltip": "Gebeurtenissen met gegevens over de bevolkingsdichtheid van het land worden getoond. Locaties uit oudere gegevens zonder nauwkeurigheidsinformatie worden gemarkeerd als wachtend op een update. De geschatte gebieden kunnen overlappen. Onrust vereist een precieze locatie; UCDP-gebeurtenissen met een onnauwkeurige locatie worden uitgesloten. Eén plaats uit twee bronnen (onrust en UCDP) verschijnt in twee rijen.",
+      "infoTooltip": "Gebeurtenissen met gegevens over de bevolkingsdichtheid van het land worden getoond. Locaties van UCDP-gebeurtenissen zonder nauwkeurigheidsinformatie worden gemarkeerd als wachtend op een update. De geschatte gebieden kunnen overlappen. Onrust vereist een precieze locatie; UCDP-gebeurtenissen met een onnauwkeurige locatie worden uitgesloten. Eén plaats uit twee bronnen (onrust en UCDP) verschijnt in twee rijen.",
       "eventCount_one": "{{count}} gebeurtenis",
       "eventCount_other": "{{count}} gebeurtenissen",
       "locationPending": "Locatienauwkeurigheid wacht op update",
@@ -2336,7 +2339,7 @@
     },
     "sanctionsPressure": {
       "title": "Sancties & Aanwijzingen",
-      "infoTooltip": "OFAC SDN- en geconsolideerde lijsten plus Canadese SEMA/JVCFOA-sancties. Landrijen gebruiken directe koppelingen. Scheepsvlaggen en vliegtuigregistraties worden apart geteld onder registers; nul activa bij een land betekent niet dat er geen gesanctioneerde activa zijn. Landen van moederorganisaties staan los van adresgegevens en tellen niet mee voor risicoscores.",
+      "infoTooltip": "OFAC SDN- en geconsolideerde lijsten plus Canadese SEMA/JVCFOA-sancties. Landrijen gebruiken directe koppelingen. Scheepsvlaggen en vliegtuigregistraties worden apart geteld onder registers; nul activa bij een land betekent niet dat er geen gesanctioneerde activa zijn.",
       "loading": "Sanctiegegevens laden...",
       "unavailable": "Sanctiegegevens niet beschikbaar.",
       "summary": {
@@ -2756,6 +2759,47 @@
       "body": "Een ster op GitHub helpt anderen het te vinden.",
       "star": "Ster geven op GitHub",
       "dismiss": "Sluiten en niet meer vragen"
+    },
+    "reservoirLevels": {
+      "note": "Waterniveau volgens de satellietlidar ICESat-2 van NASA. NASA publiceert elke overkomst ongeveer twee maanden na de meting, dus dit volgt veranderingen over weken en seizoenen, niet over dagen. Alleen niveau, geen volume.",
+      "source": "Bron:",
+      "processedWith": "verwerkt met",
+      "empty": "Nog geen metingen",
+      "filterEmpty": "Geen waterlichamen voldoen aan dit filter",
+      "unavailable": "Waterstandgegevens zijn nu niet beschikbaar",
+      "filterLabel": "Waterlichamen filteren",
+      "filter": {
+        "all": "Alle",
+        "attention": "Vraagt aandacht",
+        "transboundary": "Grensoverschrijdend"
+      },
+      "status": {
+        "record_low": "Recordlaag",
+        "record_high": "Recordhoog",
+        "falling_fast": "Daalt snel",
+        "rising_fast": "Stijgt snel",
+        "low": "Laag voor het seizoen",
+        "high": "Hoog voor het seizoen",
+        "normal": "Gebruikelijk",
+        "insufficient_history": "Te korte reeks",
+        "no_recent_data": "Geen recente overkomst"
+      },
+      "vsUsual": "{{value}} t.o.v. gebruikelijk in {{month}}",
+      "in12Months": "{{value}} in 12 maanden",
+      "noComparison": "Nog geen vergelijking",
+      "measured": "gemeten op {{date}} ({{age}})",
+      "noPass": "Nog geen bruikbare overkomst",
+      "popup": {
+        "level": "Niveau",
+        "levelValue": "{{value}} boven zeeniveau (EGM2008)",
+        "anomaly": "T.o.v. gebruikelijk in {{month}}",
+        "anomalyPlain": "T.o.v. gebruikelijk voor de maand",
+        "changePrev": "Sinds vorige overkomst",
+        "change90": "In 90 dagen",
+        "change365": "In 12 maanden",
+        "measured": "Gemeten",
+        "sparkline": "Waterstand over 36 maanden"
+      }
     }
   },
   "popups": {
@@ -4608,6 +4652,21 @@
         "related": {
           "0": "Nowcast activiteit China",
           "1": "Landenbrief"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klimaat",
+        "purpose": "Markeert strategische stuwmeren en meren naar hoe hun waterniveau zich verhoudt tot het gebruikelijke niveau in die tijd van het jaar en hoe snel het verandert.",
+        "source": "Hoogte van het binnenwateroppervlak uit NASA ICESat-2 ATL13 via NSIDC, verwerkt met SlideRule Earth en per satellietoverkomst samengevoegd door de dienst seed-reservoir-levels.",
+        "freshness": "Dagelijks bijgewerkt. NASA publiceert elke overkomst 50 tot 70 dagen na de meting, en elk stuwmeer wordt om de paar dagen tot ongeveer eens per maand opnieuw gemeten.",
+        "confidence": "Een overkomst telt alleen als minstens 5 watersegmenten binnen 0,25 m overeenkomen. Een seizoensvergelijking vraagt overkomsten uit minstens 3 eerdere jaren in dezelfde tijd van het jaar.",
+        "limitations": {
+          "0": "Alleen niveau, geen volume: dezelfde daling betekent in elk stuwmeer een ander voorraadverlies.",
+          "1": "Een waterlichaam zonder overkomst in 150 dagen wordt gemarkeerd als zonder recente overkomst; de laatste meting, de veranderingen en de datum blijven zichtbaar."
+        },
+        "related": {
+          "0": "Paneel Strategische waterstanden",
+          "1": "Klimaatafwijkingen"
         }
       },
       "conflicts": {

@@ -301,6 +301,7 @@ describe('MapContainer focus scope', () => {
       rendererDemandRequested: false,
       releaseRendererDemand: null,
       pendingChokepointOpen: null,
+      pendingReservoirOpen: null,
       viewportActionToken: 0,
       humanViewportInteractionToken: 0,
       pendingViewportActions: [],

@@ -103,6 +103,7 @@ export const PANEL_SCOPE_BEHAVIOUR: Readonly<Record<string, PanelScopeBehaviour>
   // Germany. Weather alerts and natural events have no panel; they are map
   // layers.
   climate: 'unsupported', // Climate Anomalies
+  'reservoir-levels': 'unsupported', // Strategic Water Levels
   // Exposure keeps the 10 largest events per source worldwide before it
   // reaches the panel, so filtering that slice would call a focused country
   // quiet when its events were simply cut. Needs filtering before the cut.

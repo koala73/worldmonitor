@@ -195,7 +195,8 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
-    "ukmtoIncidents": "UKMTO Incidents"
+    "ukmtoIncidents": "UKMTO Incidents",
+    "reservoirLevels": "Strategic Water Levels"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -739,7 +740,7 @@
       "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and US Energy Information Administration."
     },
     "sanctionsPressure": {
-      "infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets. Parent countries are separate from address evidence and excluded from risk scores.",
+      "infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets.",
       "title": "Sanctions & Designations"
     },
     "satelliteFires": {

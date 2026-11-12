@@ -564,7 +564,8 @@
     "marketBreadth": "Širina Tržišta",
     "climateNews": "Klimatske Vijesti",
     "fx": "Tečajevi deviza",
-    "ukmtoIncidents": "Incidenti UKMTO-a"
+    "ukmtoIncidents": "Incidenti UKMTO-a",
+    "reservoirLevels": "Strateški vodostaji"
   },
   "commands": {
     "prefixes": {
@@ -1468,7 +1469,8 @@
         "canadaRoads": "Ceste Kanada",
         "canadaAlerts": "Upozorenja Kanada",
         "notamAirspace": "NOTAM ograničenja zračnog prostora",
-        "no2Activity": "Industrijska aktivnost"
+        "no2Activity": "Industrijska aktivnost",
+        "reservoirLevels": "Vodostaji"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1585,7 +1587,8 @@
           "canadaRoads": "Službeni prometni incidenti, upozorenja, uvjeti, zatvaranja, radovi i opasnosti iz podržanih kanadskih jurisdikcija.",
           "canadaAlerts": "Pokrajinska upozorenja za javnu sigurnost iz Alberta Emergency Alert, B.C. Evacuation Orders and Alerts i SaskAlert.",
           "notamAirspace": "Privremena ograničenja letenja i ograničeni, opasni i zabranjeni zračni prostor prema FAA NOTAM-ima, koji su trenutno na snazi ili počinju u roku od 24 sata",
-          "no2Activity": "Smjer NO2 aktivnosti iz Sentinel-5P za 167 zemalja i 32 industrijska klastera: najnoviji 56-dnevni prozor u odnosu na iste datume prethodnih godina, nakon mrtve zone od 10 %. Sadrži izmijenjene podatke Copernicus Sentinel."
+          "no2Activity": "Smjer NO2 aktivnosti iz Sentinel-5P za 167 zemalja i 32 industrijska klastera: najnoviji 56-dnevni prozor u odnosu na iste datume prethodnih godina, nakon mrtve zone od 10 %. Sadrži izmijenjene podatke Copernicus Sentinel.",
+          "reservoirLevels": "Razina vodene površine strateških akumulacija i jezera iz satelitskog lidara NASA ICESat-2, u usporedbi s uobičajenom razinom za mjesec. NASA objavljuje svaki prelet otprilike dva mjeseca nakon mjerenja."
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
@@ -1828,7 +1831,7 @@
       "estimateWithin": "Oko {{count}} ljudi u krugu od {{km}} km",
       "method": "Procjene se temelje na prosječnoj gustoći stanovništva države.",
       "empty": "Nema odgovarajućih lokacija događaja",
-      "infoTooltip": "Prikazuju se događaji s podacima o gustoći stanovništva zemlje. Lokacije iz starijih podataka bez informacija o preciznosti označene su kao one koje čekaju ažuriranje. Procijenjena područja mogu se preklapati. Nemiri zahtijevaju preciznu lokaciju; UCDP događaji označeni kao neprecizni se isključuju. Jedno mjesto iz dva izvora (nemiri i UCDP) prikazuje se u dva retka.",
+      "infoTooltip": "Prikazuju se događaji s podacima o gustoći stanovništva zemlje. Lokacije UCDP događaja bez informacija o preciznosti označene su kao one koje čekaju ažuriranje. Procijenjena područja mogu se preklapati. Nemiri zahtijevaju preciznu lokaciju; UCDP događaji označeni kao neprecizni se isključuju. Jedno mjesto iz dva izvora (nemiri i UCDP) prikazuje se u dva retka.",
       "eventCount_one": "{{count}} događaj",
       "eventCount_few": "{{count}} događaja",
       "eventCount_other": "{{count}} događaja",
@@ -2807,7 +2810,7 @@
     },
     "sanctionsPressure": {
       "title": "Sankcije i Označavanja",
-      "infoTooltip": "Popisi OFAC SDN i konsolidirani popisi te kanadske sankcije SEMA/JVCFOA. Redci država koriste izravne veze. Zastave plovila i registracije zrakoplova broje se zasebno u registrima; nula imovine za državu ne znači da nema sankcionirane imovine. Države matičnih subjekata odvojene su od dokaza o adresi i isključene iz ocjena rizika.",
+      "infoTooltip": "Popisi OFAC SDN i konsolidirani popisi te kanadske sankcije SEMA/JVCFOA. Redci država koriste izravne veze. Zastave plovila i registracije zrakoplova broje se zasebno u registrima; nula imovine za državu ne znači da nema sankcionirane imovine.",
       "loading": "Učitavanje podataka sankcija...",
       "unavailable": "Podaci sankcija nisu dostupni.",
       "summary": {
@@ -3237,6 +3240,47 @@
       "body": "Zvijezda na GitHubu pomaže drugim ljudima da ga pronađu.",
       "star": "Daj zvijezdu na GitHubu",
       "dismiss": "Odbaci i ne pitaj ponovno"
+    },
+    "reservoirLevels": {
+      "note": "Razina vodene površine iz satelitskog lidara NASA ICESat-2. NASA objavljuje svaki prelet otprilike dva mjeseca nakon mjerenja, pa se ovdje prate promjene kroz tjedne i godišnja doba, a ne kroz dane. Samo razina, ne volumen.",
+      "source": "Izvor:",
+      "processedWith": "obrađeno alatom",
+      "empty": "Još nema očitanja",
+      "filterEmpty": "Nijedno vodno tijelo ne odgovara ovom filtru",
+      "unavailable": "Podaci o vodostaju trenutačno nisu dostupni",
+      "filterLabel": "Filtriraj vodna tijela",
+      "filter": {
+        "all": "Sve",
+        "attention": "Traže pozornost",
+        "transboundary": "Prekogranična"
+      },
+      "status": {
+        "record_low": "Rekordno nisko",
+        "record_high": "Rekordno visoko",
+        "falling_fast": "Brzo opada",
+        "rising_fast": "Brzo raste",
+        "low": "Nisko za sezonu",
+        "high": "Visoko za sezonu",
+        "normal": "Uobičajeno",
+        "insufficient_history": "Prekratka povijest",
+        "no_recent_data": "Nema nedavnog preleta"
+      },
+      "vsUsual": "{{value}} u odnosu na uobičajeno ({{month}})",
+      "in12Months": "{{value}} u 12 mjeseci",
+      "noComparison": "Još nema usporedbe",
+      "measured": "izmjereno {{date}} ({{age}})",
+      "noPass": "Još nema upotrebljivog preleta",
+      "popup": {
+        "level": "Razina",
+        "levelValue": "{{value}} iznad razine mora (EGM2008)",
+        "anomaly": "U odnosu na uobičajeno ({{month}})",
+        "anomalyPlain": "U odnosu na uobičajeno za mjesec",
+        "changePrev": "Od prethodnog preleta",
+        "change90": "U 90 dana",
+        "change365": "U 12 mjeseci",
+        "measured": "Izmjereno",
+        "sparkline": "Vodostaj kroz 36 mjeseci"
+      }
     }
   },
   "popups": {
@@ -4641,6 +4685,21 @@
         "related": {
           "0": "Nowcast aktivnosti Kine",
           "1": "Sažetak zemlje"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klima",
+        "purpose": "Označava strateške akumulacije i jezera prema tome kako se njihova razina vode odnosi prema uobičajenoj za to doba godine i koliko se brzo mijenja.",
+        "source": "Visina vodene površine kopnenih voda iz NASA ICESat-2 ATL13 putem NSIDC-a, obrađena alatom SlideRule Earth i objedinjena po preletu satelita uslugom seed-reservoir-levels.",
+        "freshness": "Ažurira se svakodnevno. NASA objavljuje svaki prelet 50 do 70 dana nakon mjerenja, a svaka akumulacija ponovno se mjeri svakih nekoliko dana do otprilike jednom mjesečno.",
+        "confidence": "Prelet se računa samo ako se barem 5 vodenih segmenata slaže unutar 0,25 m. Sezonska usporedba traži prelete iz barem 3 prethodne godine u isto doba godine.",
+        "limitations": {
+          "0": "Samo razina, ne volumen: isti pad znači različit gubitak zalihe u svakoj akumulaciji.",
+          "1": "Vodno tijelo bez preleta 150 dana označava se kao bez nedavnog preleta; posljednje očitanje, promjene i datum i dalje se prikazuju."
+        },
+        "related": {
+          "0": "Ploča Strateški vodostaji",
+          "1": "Klimatske anomalije"
         }
       },
       "conflicts": {

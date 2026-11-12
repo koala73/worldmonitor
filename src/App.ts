@@ -4013,6 +4013,13 @@ export class App {
       () => (SITE_VARIANT === 'full' && this.state.mapLayers.ais) || this.state.panelSettings['ukmto-incidents']?.enabled === true,
     );
 
+    this.refreshScheduler.scheduleRefresh(
+      'reservoirLevels',
+      () => this.dataLoader.loadReservoirLevels(),
+      REFRESH_INTERVALS.reservoirLevels,
+      () => this.state.mapLayers.reservoirLevels === true || this.state.panelSettings['reservoir-levels']?.enabled === true,
+    );
+
     // Other geopolitical, financial and military refreshes exclude Happy.
     if (SITE_VARIANT !== 'happy') {
       this.refreshScheduler.registerAll([

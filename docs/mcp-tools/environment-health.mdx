@@ -10,14 +10,14 @@ The `curl` examples assume `export WM_KEY="wm_…"`. With an OAuth token, replac
 
 ### `get_climate_data`
 
-Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Freshness follows each source seed time and budget (anomalies 9 h, CO2 3 days, sea ice 2 days), plus producer content-age limits for anomalies and news. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. dataset selects sub-datasets, country narrows the disaster and air-quality lists, limit caps each list (default 30, 0 for no cap).
+Return the seeded climate bundle: temperature and precipitation anomalies against 30-year WMO normals, climate-relevant disaster alerts (ReliefWeb, GDACS, FIRMS), the NOAA Mauna Loa CO2 trend, OpenAQ/WAQI PM2.5 station readings, NSIDC/NOAA Arctic sea-ice extent and ocean-heat indicators, active weather alerts and climate news. Freshness follows each source seed time and budget (anomalies 9 h, CO2 3 days, sea ice 2 days), plus producer content-age limits for anomalies and news. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts>` | Restrict the response to one or more climate sub-datasets. Omit for the full bundle. |
-| `country` | string | Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `dataset` | `array<string: anomalies / disasters / co2-monitoring / air-quality / ocean-ice / news-intelligence / alerts>` | Climate sub-datasets to return: anomalies (zone temperature and precipitation anomalies), disasters, co2-monitoring (Mauna Loa CO2 trend), air-quality (PM2.5 stations), ocean-ice (sea ice, sea level and ocean heat), news-intelligence (climate news) or alerts (active weather alerts). Omit for the full bundle. |
+| `country` | string | Country to filter the country-tagged datasets (climate disasters, air-quality stations) to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
 | `limit` | number | Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
@@ -40,6 +40,39 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_reservoir_levels`
+
+Return NASA ICESat-2 lidar water levels for the 50 strategic reservoirs and lakes on the watchlist (GERD, Lake Nasser, Ataturk, Mosul, Tarbela, Three Gorges, Kariba, Lake Mead and others): latest pass level, change since the previous pass and over 30, 90 and 365 days, seasonal anomaly and z-score, record range and a status. Levels are metres above the EGM2008 geoid from ATL13, or ATL06 where ATL13 covers the water poorly; they are lake levels, not storage volumes. Passes publish about 50-70 days after the overpass, so latest.ageDays is normally large. no_recent_data means no qualifying pass in the last 150 days, not a stale tool. stale follows the seed run (3 days) and a full 50-reservoir watchlist, never pass age. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Returns every reservoir without its series by default.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | Keep reservoirs whose country or riparian list includes this country, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
+| `status` | `string: record_low / falling_fast / low / normal / high / rising_fast / record_high / no_recent_data / insufficient_history` | Keep reservoirs with this status. record_low and record_high mark the latest pass as the record; falling_fast and rising_fast a 90-day move beyond the seasonal swing; low and high a seasonal z-score of 1.5 or more (percent of range when there is no seasonal baseline); no_recent_data no qualifying pass in 150 days; insufficient_history too short a record to judge. |
+| `id` | string | Keep one reservoir by watchlist id, e.g. "gerd", "mead" or "three-gorges". |
+| `include_series` | boolean | Also return each reservoir's pass series over the 36 months before its latest pass as `{date, levelM}` points. Default false. |
+
+- **API endpoints:** `GET /api/climate/v1/list-reservoir-levels`
+- **Access:** `free-account` — callable by any signed-in account; free accounts spend the daily free allowance, Pro calls spend the daily quota. Accepts the universal `summary` argument.
+- **Kind:** cache read — sub-second response from the seeded ICESat-2 reservoir snapshot.
+- **Freshness budget:** up to **72 h** since the last seed run, and `stale: true` when fewer than **50** watchlist reservoirs are tracked (matches `seed-meta:climate:reservoir-levels` in `/api/health`). A reservoir counts as tracked when it carries a level and its pass discovery is not failing, so `stale` can be true while all 50 still show their last good level. Pass age is never staleness: ICESat-2 passes publish about 50-70 days after the overpass, so `latest.ageDays` is normally large, and `no_recent_data` marks a reservoir with no qualifying pass in 150 days.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_reservoir_levels","arguments":{"country":"EG","include_series":true}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_imd_cyclone_marine`
 
 Bounded India Meteorological Department sea-area and coastal marine bulletins from the public `mausam.imd.gov.in` pages: storm warnings, port signals, storm-surge or tidal warnings, wind, visibility, and sea state per area, each with its validity window. Products stay typed and are not merged into `weather:alerts:v1`. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS tropical cyclones cover the North Indian Ocean. Port warning and fishermen warning PDFs are not parsed. Always read `coverageState`: `degraded` means some bulletin pages failed and their last-good records were carried, `unavailable` means no page was readable, and `ok` is live. Per-page status is under `products.<id>.pages`. Empty lists with `degraded` or `unavailable` coverage are not an India all-clear. A response over the 64 KB output budget trims lists from the end, the repeated `records` list and the alert-shaped copies first, and reports each trimmed list under `transportCoverage.collections`.
@@ -48,7 +81,7 @@ Bounded India Meteorological Department sea-area and coastal marine bulletins fr
 
 | Name | Type | Description |
 |------|------|-------------|
-| `dataset` | `array<string: cyclone / port / marine>` | Restrict to cyclone tracks/wind/cones, port warnings, or sea-area/coastal bulletins. Omit for the full snapshot. coverageState and per-product health are always returned. |
+| `dataset` | `array<string: cyclone / port / marine>` | Lists to keep: cyclone (tracks, wind radii and cones; empty while IMD cyclone products are disabled), port (port warnings; empty because port PDFs are not parsed) or marine (sea-area and coastal bulletins). Other lists come back empty. Omit for every list; coverageState and per-product health are always returned. |
 | `limit` | number | Cap each product list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** none (MCP-only cache read of `weather:imd-cyclone-marine:v1`; no equivalent public REST operation yet).
@@ -81,16 +114,16 @@ Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires
 |------|------|-------------|
 | `panel_request` | string | Server-issued Natural Disasters panel token, or the existing news token for its exact bounded map reads. Omit for an ordinary paid opening; a news token cannot widen its map scope. |
 | `refresh` | boolean | Paid standalone panel only. Explicitly open one new allocation. Omit panel_request and supply a UUID request_id. |
-| `request_id` | string | Paid standalone refresh identity. Retrying the same UUID reuses that allocation. |
-| `dataset` | `array<string: earthquakes / wildfires / other>` | Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all. |
-| `min_magnitude` | number | Drop earthquakes and natural events below this magnitude. |
+| `request_id` | string | Client-generated UUID that names one standalone-panel refresh. Retrying with the same UUID reuses that allocation. |
+| `dataset` | `array<string: earthquakes / wildfires / other>` | Hazard lists to return: earthquakes (USGS and NRCan quakes), wildfires (NASA FIRMS fire detections) or other (natural hazard events such as storms and volcanoes). Omit for all three. |
+| `min_magnitude` | number | Minimum magnitude to keep. For earthquakes this is the reported seismic magnitude (e.g. 6 keeps M6.0+); for other natural events it is compared with each event's magnitude in that event's own magnitudeUnit (tropical cyclones use maximum wind in knots). Rows without a magnitude are dropped; wildfires are unaffected. |
 | `active_only` | boolean | Keep only natural events that are still active (not closed). |
 | `limit` | number | Cap each hazard list to at most this many items (default 30, pass 0 for no cap). |
-| `bbox` | object | Keep events inside this box. sw_lon > ne_lon crosses the antimeridian. Not combinable with lat/lon/radius_km. |
-| `lat` | number | Centre latitude for radius_km; requires lon and radius_km. |
-| `lon` | number | Centre longitude for radius_km; requires lat and radius_km. |
-| `radius_km` | number | Keep events within this great-circle distance of lat/lon (max 2000). |
-| `since_days` | integer | Keep events dated within the last N days. |
+| `bbox` | object | Keep only events inside this box, given by its south-west and north-east corners in decimal degrees. sw_lon > ne_lon crosses the antimeridian. Use either bbox or lat/lon/radius_km, not both. |
+| `lat` | number | Latitude of the search centre, in decimal degrees (north positive). Give lat, lon and radius_km together. |
+| `lon` | number | Longitude of the search centre, in decimal degrees (east positive). Give lat, lon and radius_km together. |
+| `radius_km` | number | Search radius in kilometres around lat/lon, measured along the Earth's surface. |
+| `since_days` | integer | Look-back window in days: keep events dated within that many days of now. Omit to apply no date filter. |
 
 - **API endpoints:** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
 - **Area and age filters:** `bbox` takes `sw_lat`, `sw_lon`, `ne_lat` and `ne_lon` (all required). Pass either `bbox` or all three of `lat`, `lon` and `radius_km`; mixing them or passing part of the radius returns Invalid params before any allowance is spent. The filters apply to earthquakes, fire detections and natural events, including the regional `events.westernPacific.events` and `events.hkoWarnings.warnings` lists, after `min_magnitude` and `active_only` and before `limit`. A row without valid coordinates (or, with `since_days`, without a date) is dropped, and `data.geo_filter.excluded` counts those rows per dataset so an empty result is not mistaken for no nearby events. When `since_days` reaches further back than a list's oldest dated row, `data.geo_filter.oldest_held` gives that row's time in epoch milliseconds, so a wide window is not mistaken for full coverage. Without these arguments the response has no `geo_filter` key.
@@ -119,13 +152,13 @@ Each uncached execution reads three fixed data keys and the existing seismology 
 
 ### `get_radiation_data`
 
-Return the seeded radiation monitoring snapshot: gamma dose-rate readings from public monitoring stations worldwide with station, country, value, unit, time and a severity flag (normal, elevated, spike) that marks anomalous readings. Flagged stale after 30 minutes. Station observations only; an elevated reading is a flag for review, not a confirmed nuclear incident. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. country is a case-insensitive name substring; anomalous_only drops normal readings; limit caps the list (default 30, 0 for no cap).
+Return the seeded radiation monitoring snapshot: gamma dose-rate readings from public monitoring stations worldwide with station, country, value, unit, time and a severity flag (normal, elevated, spike) that marks anomalous readings. Flagged stale after 30 minutes. Station observations only; an elevated reading is a flag for review, not a confirmed nuclear incident. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `country` | string | Filter to one country by name (case-insensitive substring). |
+| `country` | string | Country or territory name as stations report it (e.g. "United States", "Japan"). Keeps observations whose country contains this text, ignoring case. |
 | `anomalous_only` | boolean | Drop observations with severity "normal" — keep only elevated/spike readings. |
 | `limit` | number | Cap the observation list to at most this many items (default 30, pass 0 for no cap). |
 
@@ -151,14 +184,14 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_research_signals`
 
-Return the seeded technology and research event list: upcoming and recent conferences, earnings dates, IPOs and other tech events from curated feeds such as Techmeme and dev.events, each with type, source, date and link. Flagged stale after 8 hours. Calendar-style event signals only; no papers, patents or funding data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance. type selects conference, earnings, ipo or other; source filters one feed; limit caps the list (default 30, 0 for no cap).
+Return the seeded technology and research event list: upcoming and recent conferences, earnings dates, IPOs and other tech events from curated feeds such as Techmeme and dev.events, each with type, source, dates and link. Flagged stale after 8 hours. Calendar-style event signals only; no papers, patents or funding data. Seeded-cache read with no live fetch: weight 1 on API plans, included in the signed-in free allowance.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `type` | string: conference / earnings / ipo / other | Filter to one tech-event type. |
-| `source` | string | Filter to one source feed (e.g. "techmeme", "dev.events", "curated"). |
+| `type` | string: conference / earnings / ipo / other | Event kind to keep: conference, earnings (company earnings dates), ipo (listing dates) or other. |
+| `source` | string | Feed the event came from, matched exactly, ignoring case: "techmeme", "dev.events" or "curated". |
 | `limit` | number | Cap the event list to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/research/v1/list-tech-events`
@@ -189,10 +222,10 @@ Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings
 
 | Name | Type | Description |
 |------|------|-------------|
-| `signal_type` | `array<string: outbreaks / air-quality>` | Restrict to disease outbreaks, air-quality stations, or both. Omit for both. |
-| `country` | string | Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code. Country names and alpha-3 codes are accepted; unresolved inputs return Invalid params. |
+| `signal_type` | `array<string: outbreaks / air-quality>` | Lists to return: outbreaks (disease outbreak reports) and air-quality (PM2.5 station readings). Omit for both. |
+| `country` | string | Country to filter outbreaks and air-quality stations to, as an ISO 3166-1 alpha-2 or alpha-3 code or a country name. Unresolved inputs return Invalid params. |
 | `disease` | string | Keep only outbreaks whose disease name contains this text (case-insensitive). |
-| `min_aqi` | number | Drop air-quality stations below this AQI value. |
+| `min_aqi` | number | Minimum US EPA Air Quality Index (0-500 scale derived from PM2.5; e.g. 151 keeps "unhealthy" and worse). Stations below it, or with no AQI, are dropped; outbreaks are unaffected. |
 | `limit` | number | Cap the outbreak and station lists to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`

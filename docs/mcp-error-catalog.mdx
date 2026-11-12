@@ -18,6 +18,7 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
   - Free-allowance -32029 (HTTP 429)    api/mcp/dispatch.ts (reserveFreeAccountAllowance rejection)
   - Free tool-scope -32002 (HTTP 403)   api/mcp/dispatch.ts (upgrade-required guard)
+  - Plan-feature -32002 (HTTP 403)      api/mcp/dispatch.ts (_planFeature guard) + api/mcp/auth.ts (travelRiskAssessment pre-check)
   - Free-account allowance meter        api/mcp/free-account-allowance.ts (reserveFreeAccountAllowance)
   - Structured denial data payload      api/mcp/upgrade.ts (buildMcpStructuredDenial, DENIAL_COPY)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
@@ -201,6 +202,26 @@ Content-Type: application/json
 **Checkout hint.** `upgrade-required` from `api/mcp/dispatch.ts`, `allowance-exhausted` and `quota-exceeded` (both under `-32029` below) gain `recommendedPlan` and `checkoutTool` when the caller holds a user-bound credential and a self-serve plan sits one step up. `recommendedPlan` maps free → `pro_monthly`, Pro → `pro_business_monthly` and API Starter → `api_business`. `checkoutTool` is `"start_upgrade"` and appears only for a free account, because only that caller can buy the plan through a new checkout: Pro → Pro Business is a prorated in-place upgrade confirmed on the pricing page, and API Starter → API Business is a prorated change in the billing portal, so a paid caller gets `recommendedPlan` alone. Pro Business, API Business, Enterprise, operator keys and anonymous callers get neither field. `message` and `upgradeUrl` are unchanged, so clients that cannot call tools keep the static link. The `upgrade-required` from the auth pre-check carries no hint, because that caller cannot reach any tool.
 
 **ChatGPT.** ChatGPT's app guidelines do not allow an app to start a checkout or promote an upgrade, so a request whose `User-Agent` is ChatGPT's `openai-mcp/…` (Codex excluded) gets neither `recommendedPlan` nor `checkoutTool`. Its `nextStep` states what the current plan covers and that `upgradeUrl` describes the plans, and the lapse and API-plan messages drop their call to resubscribe or upgrade. `reason`, the JSON-RPC code, the HTTP status and `upgradeUrl` are the same as for every other client. `start_upgrade` is not listed to ChatGPT, and calling it returns `Unknown tool`.
+
+**Plan-feature refusal.** A tool that needs a named plan flag on top of a subscription refuses every identity-bound caller whose plan lacks the flag. The refusal comes before argument validation and before any allowance is charged. The only such flag is `travelRiskAssessment`, which `prepare_travel_risk_assessment` needs and which only the Pro Business, API Business and Enterprise plans carry. The denial is `-32002` at HTTP 403 with the same `reason: "upgrade-required"` plus `data.planFeature`, so clients that branch on `reason` keep working. `message` names the plans that include the tool. `recommendedPlan` is `pro_business_monthly` for free and Pro callers, because Pro does not include the flag, and `api_business` for API Starter callers. `checkoutTool` still appears only for a free account, and ChatGPT gets an inform-only `nextStep`. Operator keys are not plan-gated.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32002,
+    "message": "Travel risk assessment drafts are included in the Pro Business, API Business and Enterprise plans. The current plan does not include them.",
+    "data": {
+      "reason": "upgrade-required",
+      "nextStep": "Upgrade to Pro Business or API Business at the upgrade URL to use this tool. Every other tool the current plan includes still works.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "planFeature": "travelRiskAssessment",
+      "recommendedPlan": "pro_business_monthly"
+    }
+  }
+}
+```
 
 **`start_upgrade` refusals.** The tool creates no checkout session in these cases. All are `-32002` inside **HTTP 200** with `data.reason` and `data.nextStep`:
 

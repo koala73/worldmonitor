@@ -52,9 +52,12 @@ const UI_FRAME_ANCESTORS = ['https://chatgpt.com', 'https://claude.ai', 'https:/
 // base URI (postMessage + inline CSS/JS only). `prefersBorder` asks the host to
 // frame the card.
 // The one HTTPS origin every view declares as `_meta.ui.domain` (ChatGPT app
-// submission requires an exact origin, no path, shared by all views). It is
-// the MCP endpoint's own origin.
-export const UI_DOMAIN = 'https://worldmonitor.app';
+// submission requires an exact origin, no path, shared by all views). It is the
+// canonical site host, which answers directly: the apex root is a permanent
+// redirect to www, and platform checks that probe the view domain without
+// following a cross-host redirect report the apex as not responding. The MCP
+// and OAuth endpoint identities stay on the apex; this is only the view origin.
+export const UI_DOMAIN = 'https://www.worldmonitor.app';
 
 export interface UiResourceMeta {
   ui: {
@@ -67,13 +70,17 @@ export interface UiResourceMeta {
     };
     prefersBorder: boolean;
   };
+  // ChatGPT's model-facing summary of what the view shows, read from the
+  // resource contents `_meta` when the view loads (OpenAI Apps reference).
+  'openai/widgetDescription': string;
 }
 
 // SINGLE source of truth for every widget's `_meta.ui` — shared so the fleet's
 // CSP policy can't drift entry-to-entry. Returns a fresh object per call so a
 // mutating consumer can't poison siblings.
-export function buildUiMeta(): UiResourceMeta {
+export function buildUiMeta(widgetDescription: string): UiResourceMeta {
   return {
+    'openai/widgetDescription': widgetDescription,
     ui: {
       domain: UI_DOMAIN,
       csp: {

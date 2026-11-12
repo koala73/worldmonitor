@@ -125,7 +125,7 @@ import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpEvents, fetchIranEvents, type UcdpExposureInput } from '@/services/conflict';
 import { fetchCrossBorderArrivals, fetchDisplacementEvents, fetchInternalDisplacement, fetchUnhcrPopulation } from '@/services/displacement';
-import { fetchClimateAnomalies } from '@/services/climate';
+import { fetchClimateAnomalies, fetchReservoirLevels } from '@/services/climate';
 import { fetchImdCycloneMarine } from '@/services/imd-cyclone-marine';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
 import { fetchThermalEscalations } from '@/services/thermal-escalation';
@@ -1400,6 +1400,9 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'sanctions', task: () => runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
     if (this.ctx.mapLayers.no2Activity) tasks.push({ name: 'no2Activity', task: () => runGuarded('no2Activity', () => this.loadNo2Activity()) });
+    if (this.ctx.mapLayers.reservoirLevels || (this.ctx.panelSettings['reservoir-levels']?.enabled && shouldLoad('reservoir-levels'))) {
+      tasks.push({ name: 'reservoirLevels', task: () => runGuarded('reservoirLevels', () => this.loadReservoirLevels()) });
+    }
     if (this.ctx.mapLayers.resilienceScore) {
       if (hasPremiumAccess()) {
         tasks.push({ name: 'resilienceRanking', task: () => runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
@@ -1551,6 +1554,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'no2Activity':
           await this.loadNo2Activity();
+          break;
+        case 'reservoirLevels':
+          await this.loadReservoirLevels();
           break;
       }
     } finally {
@@ -5317,6 +5323,20 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('sanctions_pressure', String(error));
       this.ctx.statusPanel?.updateApi('OFAC', { status: 'error' });
     }
+  }
+
+  /**
+   * Strategic Water Levels. Opt-in panel and layer: the RPC is read only while
+   * either is on, never at bootstrap. An unseeded dataset is an empty state;
+   * a failed request with nothing cached is an error.
+   */
+  async loadReservoirLevels(): Promise<void> {
+    const result = await fetchReservoirLevels();
+    if (this.ctx.isDestroyed) return;
+    this.callPanel('reservoir-levels', 'setResult', result);
+    const reservoirs = result.snapshot?.reservoirs ?? [];
+    if (result.ok || reservoirs.length > 0) this.ctx.map?.setReservoirLevels(reservoirs);
+    this.ctx.map?.setLayerReady('reservoirLevels', reservoirs.length > 0);
   }
 
   /** Opt-in layer: the route is read only while the layer is on, never at bootstrap. */

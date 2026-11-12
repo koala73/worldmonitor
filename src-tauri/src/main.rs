@@ -1522,7 +1522,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2024-2026 Elie Habib".into()),
+        copyright: Some("\u{00a9} 2026 Elie Habib".into()),
         license: Some("AGPL-3.0-only".into()),
         credits: Some(
             "Licensed under AGPL-3.0-only.\nThird-party notices: resources/notices/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"

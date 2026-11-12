@@ -583,7 +583,8 @@
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
     "fx": "Foreign exchange rates",
-    "ukmtoIncidents": "UKMTO Incidents"
+    "ukmtoIncidents": "UKMTO Incidents",
+    "reservoirLevels": "Strategic Water Levels"
   },
   "panelVariants": {
     "finance": {
@@ -1520,7 +1521,8 @@
         "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts",
         "notamAirspace": "NOTAM Airspace Restrictions",
-        "no2Activity": "Industrial Activity"
+        "no2Activity": "Industrial Activity",
+        "reservoirLevels": "Water Levels"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1637,7 +1639,8 @@
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert",
           "notamAirspace": "Temporary flight restrictions and restricted, danger and prohibited airspace from FAA NOTAMs, in effect now or starting within 24 hours",
-          "no2Activity": "Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data."
+          "no2Activity": "Sentinel-5P NO2 activity direction for 167 countries and 32 industrial clusters: the latest 56-day window against the same dates in prior years, after a 10% dead band. Contains modified Copernicus Sentinel data.",
+          "reservoirLevels": "Water-surface level of strategic reservoirs and lakes from NASA ICESat-2 satellite lidar, against the usual level for the month. NASA publishes each pass about two months after it is measured."
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -2944,7 +2947,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions & Designations",
-      "infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets. Parent countries are separate from address evidence and excluded from risk scores.",
+      "infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets.",
       "loading": "Loading sanctions data...",
       "unavailable": "Sanctions data unavailable.",
       "summary": {
@@ -3255,6 +3258,47 @@
       "partial": "Some reports unavailable or old",
       "stale": "Older data",
       "global": "FAO global monthly index"
+    },
+    "reservoirLevels": {
+      "note": "Water-surface level from NASA ICESat-2 satellite lidar. NASA publishes each pass about two months after it is measured, so this tracks change over weeks and seasons, not days. Level only, not volume.",
+      "source": "Source:",
+      "processedWith": "processed with",
+      "empty": "No readings yet",
+      "filterEmpty": "No water bodies match this filter",
+      "unavailable": "Water level data is unavailable right now",
+      "filterLabel": "Filter water bodies",
+      "filter": {
+        "all": "All",
+        "attention": "Needs attention",
+        "transboundary": "Transboundary"
+      },
+      "status": {
+        "record_low": "Record low",
+        "record_high": "Record high",
+        "falling_fast": "Falling fast",
+        "rising_fast": "Rising fast",
+        "low": "Low for season",
+        "high": "High for season",
+        "normal": "Normal",
+        "insufficient_history": "Too little history",
+        "no_recent_data": "No recent pass"
+      },
+      "vsUsual": "{{value}} vs usual for {{month}}",
+      "in12Months": "{{value}} in 12 months",
+      "noComparison": "No comparison yet",
+      "measured": "measured {{date}} ({{age}})",
+      "noPass": "No usable pass yet",
+      "popup": {
+        "level": "Level",
+        "levelValue": "{{value}} above sea level (EGM2008)",
+        "anomaly": "Vs usual for {{month}}",
+        "anomalyPlain": "Vs usual for the month",
+        "changePrev": "Since previous pass",
+        "change90": "Over 90 days",
+        "change365": "Over 12 months",
+        "measured": "Measured",
+        "sparkline": "Water level over 36 months"
+      }
     }
   },
   "popups": {
@@ -4733,6 +4777,21 @@
         "related": {
           "0": "China activity nowcast",
           "1": "Country brief"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Climate",
+        "purpose": "Marks strategic reservoirs and lakes by how their water-surface level compares with the usual level for the time of year, and by how fast it is changing.",
+        "source": "NASA ICESat-2 ATL13 inland water-surface height from NSIDC, processed with SlideRule Earth and combined per satellite pass by the seed-reservoir-levels service.",
+        "freshness": "Seeded daily. NASA publishes each pass 50 to 70 days after it is measured, and a reservoir is revisited every few days to about a month.",
+        "confidence": "A pass counts only when at least 5 water segments agree within 0.25 m. A seasonal reading needs passes from at least 3 earlier years at the same time of year.",
+        "limitations": {
+          "0": "Level only, not volume: the same drop means a different loss of storage in each reservoir.",
+          "1": "A water body with no pass in 150 days is marked as having no recent pass; its last reading, changes and date are still shown."
+        },
+        "related": {
+          "0": "Strategic Water Levels panel",
+          "1": "Climate anomalies"
         }
       },
       "conflicts": {

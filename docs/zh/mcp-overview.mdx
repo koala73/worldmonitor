@@ -361,6 +361,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |------|-------------|
 | `get_natural_disasters` | USGS 地震、NASA FIRMS 野火、灾害事件。 |
 | `get_climate_data` | 相对 WMO 常态的气温/降水异常、GDACS/FIRMS 警报、Mauna Loa CO2、OpenAQ PM2.5、海冰、海洋热含量。 |
+| `get_reservoir_levels` | 50 座战略水库和湖泊的 ICESat-2 激光雷达水位(相对 EGM2008 大地水准面的米数);状态、变化窗口、季节距平,可选 36 个月序列。 |
 | `get_radiation_data` | 全球辐射监测站读数 + 异常标记。 |
 | `get_research_signals` | 来自精选研究源的新兴技术事件。 |
 
@@ -426,6 +427,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
 | `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_reservoir_levels` | `GET /api/climate/v1/list-reservoir-levels` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
 | `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
@@ -511,6 +513,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
+| `worldmonitor://guide/agents` | 完整的智能体指南（`text/markdown`）：各类问题该用哪个工具、可用性标志、访问与权重计量、JMESPath 限制，以及网络摄像头和市场数据的语义。`initialize` 的 instructions 保持在 2 KB 以内（Claude Code 在此处截断），其余内容由该资源提供。静态文本 —— 无需认证，不计配额。 |
 
 已认证的 `resources/list` 还会额外公开 `worldmonitor://account/mcp-allowance`：当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。 只支持工具而不支持 `resources/read` 的客户端可以调用 `get_mcp_allowance({})` 读取同一快照。它要求已验证、绑定用户的凭据，只接受可选的 `jmespath`，在分配前拒绝账户选择器及 `panel_request`。每日额度耗尽后仍可读取，不消耗每日额度，但受账户共享的每分钟 192 次协议限流约束。计数器不可读取时返回错误，不能当作零使用量。API 共享额度还包含 REST 流量；账户总数不能识别具体调用者。
 

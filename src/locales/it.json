@@ -494,7 +494,8 @@
     "marketBreadth": "Ampiezza di Mercato",
     "climateNews": "Notizie Clima",
     "fx": "Tassi di cambio",
-    "ukmtoIncidents": "Incidenti UKMTO"
+    "ukmtoIncidents": "Incidenti UKMTO",
+    "reservoirLevels": "Livelli idrici strategici"
   },
   "commands": {
     "prefixes": {
@@ -1142,7 +1143,8 @@
         "canadaRoads": "Strade del Canada",
         "canadaAlerts": "Allerte Canada",
         "notamAirspace": "Restrizioni Spazio Aereo NOTAM",
-        "no2Activity": "Attività industriale"
+        "no2Activity": "Attività industriale",
+        "reservoirLevels": "Livelli idrici"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1266,7 +1268,8 @@
           "canadaRoads": "Incidenti stradali ufficiali, allerte, condizioni, chiusure, cantieri e pericoli nelle giurisdizioni canadesi supportate",
           "canadaAlerts": "Allerte provinciali di sicurezza pubblica da Alberta Emergency Alert, B.C. Evacuation Orders and Alerts e SaskAlert",
           "notamAirspace": "Restrizioni di volo temporanee e spazio aereo ristretto, pericoloso e proibito dai NOTAM della FAA, in vigore ora o a partire entro 24 ore",
-          "no2Activity": "Direzione dell’attività NO2 da Sentinel-5P per 167 paesi e 32 distretti industriali: l’ultima finestra di 56 giorni rispetto alle stesse date degli anni precedenti, dopo una banda morta del 10%. Contiene dati Copernicus Sentinel modificati."
+          "no2Activity": "Direzione dell’attività NO2 da Sentinel-5P per 167 paesi e 32 distretti industriali: l’ultima finestra di 56 giorni rispetto alle stesse date degli anni precedenti, dopo una banda morta del 10%. Contiene dati Copernicus Sentinel modificati.",
+          "reservoirLevels": "Livello della superficie dell’acqua di bacini e laghi strategici dal lidar satellitare ICESat-2 della NASA, rispetto al livello abituale del mese. La NASA pubblica ogni passaggio circa due mesi dopo la misurazione."
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
@@ -1682,7 +1685,7 @@
       "estimateWithin": "Circa {{count}} persone entro {{km}} km",
       "method": "Le stime si basano sulla densità media di popolazione del paese.",
       "empty": "Nessun luogo di evento soddisfa i criteri",
-      "infoTooltip": "Sono mostrati gli eventi con dati sulla densità di popolazione del paese. Le posizioni di dati precedenti senza informazioni sulla precisione sono contrassegnate come in attesa di aggiornamento. Le aree stimate possono sovrapporsi. I disordini richiedono una posizione precisa; gli eventi UCDP contrassegnati come imprecisi sono esclusi. Un luogo segnalato da due fonti (disordini e UCDP) appare in due righe.",
+      "infoTooltip": "Sono mostrati gli eventi con dati sulla densità di popolazione del paese. Le posizioni degli eventi UCDP senza informazioni sulla precisione sono contrassegnate come in attesa di aggiornamento. Le aree stimate possono sovrapporsi. I disordini richiedono una posizione precisa; gli eventi UCDP contrassegnati come imprecisi sono esclusi. Un luogo segnalato da due fonti (disordini e UCDP) appare in due righe.",
       "eventCount_one": "{{count}} evento",
       "eventCount_many": "{{count}} eventi",
       "eventCount_other": "{{count}} eventi",
@@ -2731,7 +2734,7 @@
     },
     "sanctionsPressure": {
       "title": "Sanzioni e designazioni",
-      "infoTooltip": "Liste OFAC SDN e consolidate, oltre alle designazioni SEMA/JVCFOA del Canada. Le righe dei paesi usano associazioni dirette. Le bandiere delle navi e i registri degli aeromobili sono conteggiati separatamente nei registri; un conteggio pari a zero per un paese non indica assenza di beni sanzionati. I paesi delle entità madri sono separati dalle prove di indirizzo ed esclusi dai punteggi di rischio.",
+      "infoTooltip": "Liste OFAC SDN e consolidate, oltre alle designazioni SEMA/JVCFOA del Canada. Le righe dei paesi usano associazioni dirette. Le bandiere delle navi e i registri degli aeromobili sono conteggiati separatamente nei registri; un conteggio pari a zero per un paese non indica assenza di beni sanzionati.",
       "loading": "Caricamento dati sanzioni in corso...",
       "unavailable": "Dati sanzioni non disponibili.",
       "summary": {
@@ -3161,6 +3164,47 @@
       "body": "Una stella su GitHub aiuta altri a scoprirlo.",
       "star": "Stella su GitHub",
       "dismiss": "Nascondi e non chiedere più"
+    },
+    "reservoirLevels": {
+      "note": "Livello della superficie dell’acqua dal lidar satellitare ICESat-2 della NASA. La NASA pubblica ogni passaggio circa due mesi dopo la misurazione, quindi qui si seguono cambiamenti su settimane e stagioni, non su giorni. Solo livello, non volume.",
+      "source": "Fonte:",
+      "processedWith": "elaborato con",
+      "empty": "Ancora nessuna lettura",
+      "filterEmpty": "Nessun corpo idrico corrisponde a questo filtro",
+      "unavailable": "I dati sui livelli idrici non sono disponibili al momento",
+      "filterLabel": "Filtra i corpi idrici",
+      "filter": {
+        "all": "Tutti",
+        "attention": "Da monitorare",
+        "transboundary": "Transfrontalieri"
+      },
+      "status": {
+        "record_low": "Minimo storico",
+        "record_high": "Massimo storico",
+        "falling_fast": "Calo rapido",
+        "rising_fast": "Aumento rapido",
+        "low": "Basso per la stagione",
+        "high": "Alto per la stagione",
+        "normal": "Nella norma",
+        "insufficient_history": "Storico insufficiente",
+        "no_recent_data": "Nessun passaggio recente"
+      },
+      "vsUsual": "{{value}} rispetto al solito a {{month}}",
+      "in12Months": "{{value}} in 12 mesi",
+      "noComparison": "Ancora nessun confronto",
+      "measured": "misurato il {{date}} ({{age}})",
+      "noPass": "Ancora nessun passaggio utilizzabile",
+      "popup": {
+        "level": "Livello",
+        "levelValue": "{{value}} sul livello del mare (EGM2008)",
+        "anomaly": "Rispetto al solito a {{month}}",
+        "anomalyPlain": "Rispetto al solito del mese",
+        "changePrev": "Dal passaggio precedente",
+        "change90": "In 90 giorni",
+        "change365": "In 12 mesi",
+        "measured": "Misurato",
+        "sparkline": "Livello dell’acqua in 36 mesi"
+      }
     }
   },
   "popups": {
@@ -4630,6 +4674,21 @@
         "related": {
           "0": "Nowcast dell’attività cinese",
           "1": "Scheda paese"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Clima",
+        "purpose": "Segnala bacini e laghi strategici in base a come il loro livello si confronta con quello abituale per il periodo dell’anno e alla velocità con cui cambia.",
+        "source": "Altezza della superficie delle acque interne da NASA ICESat-2 ATL13 tramite NSIDC, elaborata con SlideRule Earth e aggregata per passaggio del satellite dal servizio seed-reservoir-levels.",
+        "freshness": "Aggiornato ogni giorno. La NASA pubblica ogni passaggio da 50 a 70 giorni dopo la misurazione, e ogni bacino viene rimisurato ogni pochi giorni o fino a circa un mese.",
+        "confidence": "Un passaggio conta solo se almeno 5 segmenti d’acqua concordano entro 0,25 m. Il confronto stagionale richiede passaggi di almeno 3 anni precedenti nello stesso periodo dell’anno.",
+        "limitations": {
+          "0": "Solo livello, non volume: lo stesso calo indica una perdita di riserva diversa in ogni bacino.",
+          "1": "Un corpo idrico senza passaggi da 150 giorni viene segnato come senza passaggio recente; l’ultima lettura, le variazioni e la data restano visibili."
+        },
+        "related": {
+          "0": "Pannello Livelli idrici strategici",
+          "1": "Anomalie climatiche"
         }
       },
       "conflicts": {

@@ -96,6 +96,7 @@ Worked example — the `outputSchema` documented shape (its `anyOf[0]`) for `get
     "countryCode": { "type": "string" },
     "countryName": { "type": "string" },
     "ciiHistory": { "type": "object", "description": "Optional UTC daily history, added only with history_days." },
+    "panelRequest": { "type": "object", "description": "Dedicated paid plans only: the same-country paid request this call admitted or reused." },
     "cii": {
       "type": ["object", "null"],
       "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
@@ -144,6 +145,8 @@ A typed-parsing sketch in TypeScript using the schema for compile-time hints:
 type CountryRisk = {
   countryCode: string;
   countryName: string;
+  // Dedicated paid plans only: the same-country paid request this call admitted or reused.
+  panelRequest?: { token: string; expiresAt: string; reused: boolean; countryCode: string; usage: { used: number; limit: number | null; remaining: number | null; resetsAt: string; unit: "requests" } };
   ciiHistory?: {
     methodologyVersion: string; requestedDays: number; returnedDays: number; stale: boolean;
     points: Array<{ date: string; combinedScore: number; components: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number } }>;
