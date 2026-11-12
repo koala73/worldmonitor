@@ -26,6 +26,7 @@ const d = (type: string, description: string) => ({ type, description });
 const SIGNAL_LABELS = 'a six-step label from strongest bullish to strongest bearish, with Hold and Watch in the middle';
 const ANALYSIS_SCHEMA = {
   type: 'object',
+  required: ['available', 'symbol'],
   description: 'One stock analysis.',
   properties: {
     available: d('boolean', 'False when no analysis could be produced; the other fields are then placeholders.'),
@@ -49,6 +50,7 @@ const ANALYSIS_SCHEMA = {
 };
 const BACKTEST_SCHEMA = {
   type: 'object',
+  required: ['available', 'symbol'],
   description: 'One backtest of past technical signals.',
   properties: {
     available: d('boolean', 'False when no past signal could be evaluated; the other fields are then placeholders.'), symbol: d('string', 'Ticker tested.'), currency: d('string', 'Price currency code.'),
@@ -106,14 +108,14 @@ export const STOCK_TOOLS: ToolDef[] = [{
   name: 'get_stock_research',
   title: 'Stock research',
   _outputBudgetBytes: 524288,
-  description: 'Run one stock-research operation and return {operation, data}: analysis (current rating with ratingBasis, model and engineVersion provenance), backtest (technical-signal simulation over a trading-day window), history (saved analysis snapshots per symbol) or stored-backtests (saved backtests per symbol). analysis and backtest take exactly one symbol; history and stored-backtests take up to 50. Results record availability and observation dates; backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. A cold analysis may fetch upstream market data and call an LLM (up to 55 s) and may save a shared research snapshot, so readOnlyHint is false; no trades or account changes occur. Requires a paid plan; weight 2 on API plans, with the gateway\'s provider quotas also applying. include_news applies to analysis/history, limit_per_symbol to history, eval_window_days to backtests.',
+  description: 'Run one stock-research operation and return {operation, data}: analysis (current rating with model and engineVersion provenance), backtest (technical-signal simulation with ratingBasis provenance), history (saved analysis snapshots per symbol) or stored-backtests (saved backtests per symbol). Use analysis/backtest for a named ticker and history/stored-backtests for saved watchlist research. Results record availability and observation dates; backtests omit point-in-time fundamentals and are simulations, not trading results or forecasts. A cold analysis may fetch upstream market data and call an LLM (up to 55 s) and may save a shared research snapshot, so readOnlyHint is false; no trades or account changes occur. Requires a paid plan; weight 2 on API plans, with the gateway\'s provider quotas also applying.',
   inputSchema: {
     type: 'object',
     properties: {
       operation: { type: 'string', enum: Object.keys(OPERATIONS), description: 'What to run: a current rating (analysis), a simulation of the symbol\'s past technical signals (backtest), saved analysis snapshots (history) or saved backtest results (stored-backtests).' },
-      symbols: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string', minLength: 1, maxLength: 32 }, description: 'Yahoo Finance ticker symbols, such as AAPL or 7203.T; analysis and backtest take exactly one. Trimmed and uppercased.' },
+      symbols: { type: 'array', minItems: 1, maxItems: 50, items: { type: 'string', minLength: 1, maxLength: 32 }, description: 'Yahoo Finance tickers identifying the instruments to research, such as AAPL or 7203.T. Use a single ticker for analysis/backtest or a watchlist for saved results. Values are trimmed and uppercased.' },
       include_news: { type: 'boolean', default: false, description: 'analysis/history only: search recent headlines for the symbol and use them in the analysis (headlines, newsSummary); history then reads snapshots saved with news.' },
-      limit_per_symbol: { type: 'integer', minimum: 1, maximum: 32, default: 4, description: 'history only: number of saved snapshots returned per symbol, newest first.' },
+      limit_per_symbol: { type: 'integer', minimum: 1, maximum: 32, default: 4, description: 'For history, controls how many saved analysis snapshots to read for each ticker, newest first.' },
       eval_window_days: { type: 'integer', minimum: 3, maximum: 30, default: 10, description: 'backtest/stored-backtests only: trading days each historical signal is held before its simulated return is measured.' },
     },
     required: ['operation', 'symbols'],
@@ -122,14 +124,27 @@ export const STOCK_TOOLS: ToolDef[] = [{
     type: 'object', required: ['operation', 'data'],
     properties: {
       operation: { type: 'string', enum: Object.keys(OPERATIONS), description: 'Operation that ran.' },
-      data: { description: 'An analysis, a backtest, or for history and stored-backtests an items list per symbol.', anyOf: [ANALYSIS_SCHEMA, BACKTEST_SCHEMA, {
-        type: 'object', required: ['items'], properties: { items: { type: 'array', description: 'One entry per requested symbol.', items: { anyOf: [BACKTEST_SCHEMA, {
-          type: 'object', required: ['symbol', 'snapshots'], properties: {
-            symbol: { type: 'string', description: 'Ticker.' }, snapshots: { type: 'array', items: ANALYSIS_SCHEMA, description: 'Saved analyses, newest first.' },
-          },
-        }] } } },
-      }] },
+      data: { type: 'object', description: 'The selected operation\'s API payload; saved-result operations return an items array, which may be empty.' },
     },
+    anyOf: [
+      { properties: { operation: { const: 'analysis' }, data: ANALYSIS_SCHEMA } },
+      { properties: { operation: { const: 'backtest' }, data: BACKTEST_SCHEMA } },
+      { properties: { operation: { const: 'history' }, data: {
+        type: 'object', required: ['items'], properties: { items: {
+          type: 'array', description: 'Entries for requested symbols with saved analyses; symbols without snapshots are omitted.',
+          items: { type: 'object', required: ['symbol', 'snapshots'], properties: {
+            symbol: { type: 'string', description: 'Ticker.' },
+            snapshots: { type: 'array', items: ANALYSIS_SCHEMA, description: 'Saved analyses, newest first.' },
+          } },
+        } },
+      } } },
+      { properties: { operation: { const: 'stored-backtests' }, data: {
+        type: 'object', required: ['items'], properties: { items: {
+          type: 'array', items: BACKTEST_SCHEMA,
+          description: 'Available saved backtests for requested symbols, newest first; symbols without an available result are omitted.',
+        } },
+      } } },
+    ],
   },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   _validateArgs: params => { stockResearchArguments(params); },
