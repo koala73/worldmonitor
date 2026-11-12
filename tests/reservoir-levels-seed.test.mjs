@@ -261,8 +261,9 @@ describe('reservoir seeder run', () => {
     const first = await run({ ...fakeUpstream({ cmr: { alpha: [a1, b1] }, flownRgt: 23 }) });
     const failed = await run({ ...fakeUpstream({ cmr: { alpha: [a2, b1] }, flownRgt: 23, failGranules: [b1], level: { alpha: 302 } }), readState: async () => first._state });
     assert.deepEqual(failed._state.byId.alpha.passes, first._state.byId.alpha.passes);
-    assert.ok(!failed._state.byId.alpha.processed.includes(a2));
-    assert.equal(failed._state.byId.alpha.failures[a2], 1);
+    assert.ok(failed._state.byId.alpha.processed.includes(a2));
+    assert.equal(failed._state.byId.alpha.failures[a2], undefined, 'successful fetch is not charged for a companion failure');
+    assert.equal(failed._state.byId.alpha.failures[b1], 1);
     const retry = fakeUpstream({ cmr: { alpha: [a2, b1] }, flownRgt: 23, level: { alpha: 302 } });
     const recovered = await run({ ...retry, readState: async () => failed._state });
     assert.deepEqual(retry.calls.slide.flat(), [a2, b1]);
@@ -305,14 +306,45 @@ describe('reservoir seeder run', () => {
     const blocked = fakeUpstream({ cmr: { alpha: [a, b] }, failGranules: [a], flownRgt: 23 });
     state = (await run({ ...blocked, readState: async () => state }))._state;
     assert.deepEqual(blocked.calls.slide.flat(), [a, b]);
-    assert.equal(state.byId.alpha.failures[b], 1, 'new member is tracked rather than silently dropped');
-    assert.ok(!state.byId.alpha.processed.includes(b), 'never publishes a partial combined pass');
+    assert.equal(state.byId.alpha.failures[b], undefined);
+    assert.ok(state.byId.alpha.processed.includes(b), 'new member is tracked rather than silently dropped');
+    assert.equal(state.byId.alpha.failures[a], 1, 'a late member reopens the failed companion retry allowance');
+    assert.ok(!state.byId.alpha.passes.some(t => t[0].startsWith('2026-09-02')), 'never publishes a partial combined pass');
     const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23 });
     const recovered = await run({ ...upstream, readState: async () => state });
     assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
     assert.ok(recovered._state.byId.alpha.processed.includes(b));
     assert.ok(!recovered._state.byId.alpha.gaveUp.includes(a));
     assert.equal(recovered._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23)[4], 40);
+  });
+
+  it('never abandons a healthy companion and recovers when the failed orbit is revised', async () => {
+    const a = gran('2026-09-02', 21);
+    const b = gran('2026-09-02', 22);
+    let state = null;
+    for (let i = 0; i < MAX_GRANULE_FAILURES; i++) {
+      state = (await run({ ...fakeUpstream({ cmr: { alpha: [a, b] }, failGranules: [a], flownRgt: 23 }), readState: async () => state }))._state;
+      assert.ok(state.byId.alpha.processed.includes(b));
+      assert.equal(state.byId.alpha.failures[b], undefined);
+      assert.ok(!state.byId.alpha.gaveUp.includes(b));
+    }
+    assert.ok(state.byId.alpha.gaveUp.includes(a));
+    const a2 = gran('2026-09-02', 21, '02');
+    const upstream = fakeUpstream({ cmr: { alpha: [a2, b] }, flownRgt: 23 });
+    const recovered = await run({ ...upstream, readState: async () => state });
+    assert.deepEqual(upstream.calls.slide.flat(), [a2, b]);
+    assert.equal(recovered._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23)[4], 40);
+  });
+
+  it('retains retry discovery and companions after the cursor advances beyond their date', async () => {
+    const a = gran('2026-05-02', 21);
+    const b = gran('2026-05-02', 22);
+    const state = { schema: STATE_SCHEMA, byId: { alpha: { cursor: '2026-11-01', failures: { [a]: 1 } } } };
+    const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23 });
+    const data = await run({ ...upstream, readState: async () => state });
+    assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
+    assert.ok(data._state.byId.alpha.passes.some(t => t[0].startsWith('2026-05-02') && t[1] === 23));
+    assert.equal(data._state.byId.alpha.failures[a], undefined);
   });
 
   it('refreshes pending days even when a known companion chain crosses the listing boundary', async () => {
@@ -353,7 +385,8 @@ describe('reservoir seeder run', () => {
     assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
     assert.ok(data._state.byId.alpha.passes.some(t => t[0].startsWith('2026-09-04') && t[1] === 22));
     assert.ok(!data._state.byId.alpha.passes.some(t => t[0].startsWith('2026-09-02')));
-    assert.equal(data._state.byId.alpha.failures[b], 1);
+    assert.equal(data._state.byId.alpha.failures[b], undefined);
+    assert.ok(data._state.byId.alpha.processed.includes(b));
   });
 
   it('records a failed group attempt even if another member is deferred', async () => {
@@ -371,7 +404,7 @@ describe('reservoir seeder run', () => {
         return response;
       } });
       assert.equal(data._state.byId.alpha.failures[a], 1);
-      assert.equal(data._state.byId.alpha.failures[b], 1, 'uncommitted members share the failed atomic attempt');
+      assert.equal(data._state.byId.alpha.failures[b], undefined, 'deferred member is not charged for a source failure');
       assert.deepEqual(data._state.byId.alpha.processed, []);
     } finally { Date.now = realNow; }
   });
@@ -396,7 +429,8 @@ describe('reservoir seeder run', () => {
         },
       });
       assert.deepEqual(data._state.byId.alpha.passes, first._state.byId.alpha.passes);
-      assert.ok(!data._state.byId.alpha.processed.includes(a2));
+      assert.ok(data._state.byId.alpha.processed.includes(a2));
+      assert.ok(!data._state.byId.alpha.processed.includes(b), 'deferred companion remains pending');
       assert.deepEqual(data._state.byId.alpha.failures, {});
       assert.deepEqual(upstream.calls.slide.flat(), [a2]);
     } finally { Date.now = realNow; }

@@ -100,13 +100,14 @@ within the existing per-product granule budget. Publication is atomic per UTC da
 a failed or deferred granule prevents replacement of every day it could contribute
 to, while independent days remain publishable. A CMR listing failure defers the
 reservoir entirely. An oversized group fails closed rather
-than exceeding the budget or silently publishing a partial pass. Pure deadline
-deferral spends no retry allowance; an actual source error counts as a failed
-atomic attempt for every uncommitted member, even if another member was deferred.
-After the existing three-attempt limit the group stops retrying. A newly listed
-member reopens it, including abandoned companions, and is recorded in retry state
-if the group still fails. Successful complete refreshes clear abandonment. This
-permits natural recovery without dropping failed contributors from a combined pass.
+than exceeding the budget or silently publishing a partial pass. Only actual failed requests spend a granule's three-attempt allowance;
+successful and deadline-deferred resources never inherit a companion's failures.
+Successful fetches are recorded individually, while missing companions are left
+pending even if an older attempt had processed them. A newly listed member reopens
+abandoned companions for another bounded retry cycle. A corrected release of a
+failed orbit reloads its healthy processed companions and can complete the held
+day. Retry discovery includes older failed dates even after another success
+advances the cursor, so their companion listing remains complete.
 
 The tuple's optional revision value sums the candidate orbit revisions for that
 UTC day (granule acquisition date +/- one day). Updating any member or adding a late companion raises this value,

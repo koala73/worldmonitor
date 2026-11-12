@@ -124,7 +124,7 @@ export function loadBaseline(path = BASELINE_PATH) {
 //       refreshed: { date: revision },    complete UTC days, including empty reductions
 //       cursor: 'YYYY-MM-DD' | null,       newest processed granule acquisition date
 //       processed: [granule, ...],         processed granules newer than cursor - 120 d
-//       failures: { granule: count },      failed atomic attempts per uncommitted granule
+//       failures: { granule: count },      actual failed requests per granule
 //       gaveUp: [granule, ...]             granules dropped after 3 failed runs (pruned like processed)
 //   } } }
 
@@ -246,7 +246,8 @@ export function granuleQueue(state, listed) {
  * covers both sides of the +/- one-day granule-to-pass attribution window. */
 export function granuleGroups(state, listed, { pendingSince = null } = {}) {
   const all = dedupeGranules([...listed, ...state.processed, ...state.gaveUp, ...Object.keys(state.failures || {})]);
-  const pending = new Set(granuleQueue(state, all).filter(g => !pendingSince || granuleDate(g) >= pendingSince));
+  const pending = new Set(granuleQueue(state, all).filter(g => !pendingSince
+    || granuleDate(g) >= pendingSince || g in (state.failures || {})));
   const groups = [];
   for (const g of all) {
     const last = groups.at(-1);
@@ -376,7 +377,8 @@ export async function fetchReservoirLevels({
       ? new Date(Date.parse(s.cursor) - DISCOVERY_LOOKBACK_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
     const since = s.cursor
-      ? new Date(Date.parse(pendingSince) - DISCOVERY_COMPANION_DAYS * DAY_MS).toISOString().slice(0, 10)
+      ? new Date(Math.min(Date.parse(pendingSince), ...Object.keys(s.failures).map(g => Date.parse(granuleDate(g))))
+        - DISCOVERY_COMPANION_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
     const completeSince = s.cursor ? new Date(Date.parse(since) + 2 * DAY_MS).toISOString().slice(0, 10) : null;
     completeBoundaries.set(e.id, completeSince);
@@ -436,7 +438,6 @@ export async function fetchReservoirLevels({
       attempted += r.processed.length + r.failed.length;
       succeeded += r.processed.length;
       const s = byId[e.id];
-      const complete = r.processed.length === granules.length;
       const unavailable = [...r.failed, ...r.skipped].map(g => Date.parse(granuleDate(g)));
       const covered = new Set();
       const refreshed = { ...s.refreshed };
@@ -452,16 +453,18 @@ export async function fetchReservoirLevels({
         refreshed[date] = revisionForDay(date, granules);
       }
       const fresh = withRevisions(acc.finish().filter(p => covered.has(p.date)), granules);
-      const accepted = complete ? r.processed : [];
+      const accepted = r.processed;
       const processed = new Set([...s.processed, ...accepted]);
+      const completed = new Set(accepted);
+      // Publication is day-atomic, but request bookkeeping remains per resource.
+      // Invalidate missing companions so even a previously processed one retries.
+      for (const g of granules) if (!completed.has(g)) processed.delete(g);
       const failures = { ...s.failures };
       const gaveUp = new Set(s.gaveUp);
+      for (const g of granules) gaveUp.delete(g); // a new pending member reopens its group
       for (const g of accepted) { delete failures[g]; gaveUp.delete(g); }
-      // Pure deadline deferral spends no allowance. Any actual error fails the
-      // atomic attempt for every uncommitted member, including deferred ones;
-      // otherwise a broken companion could evade the group's retry limit forever.
-      const failed = r.failed.length ? granules.filter(g => !processed.has(g) && !gaveUp.has(g)) : [];
-      for (const g of failed) {
+      // Successes and deadline deferrals never consume a source-error allowance.
+      for (const g of r.failed) {
         failures[g] = (failures[g] || 0) + 1;
         if (failures[g] >= MAX_GRANULE_FAILURES) { gaveUp.add(g); delete failures[g]; }
       }
