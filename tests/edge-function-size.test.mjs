@@ -28,8 +28,9 @@ for (const [entry, budget] of [
 // zod export, all locales included: about 63 KB gzip in api/mcp.ts.
 // docs/solutions/performance-issues/zod-named-z-import-bloats-edge-bundle.md
 // Type-only imports (`import type { z }`, `import { type z }`) are erased and stay allowed.
+// Anchoring at line start skips commented-out imports and quoted fixtures.
 function importsZodValueZ(source) {
-  for (const [, typeOnly, specifiers] of source.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]zod['"]/g)) {
+  for (const [, typeOnly, specifiers] of source.matchAll(/^import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]zod['"]/gm)) {
     if (typeOnly) continue;
     if (specifiers.split(',').some((s) => /^z(\s+as\s+\w+)?$/.test(s.trim()))) return true;
   }
@@ -40,7 +41,7 @@ test('the zod import guard flags value imports of z and allows type-only ones', 
   for (const flagged of ["import { z } from 'zod';", 'import { ZodError, z } from "zod";', "import {\n  z as zod,\n} from 'zod';"]) {
     assert.equal(importsZodValueZ(flagged), true, flagged);
   }
-  for (const allowed of ["import * as z from 'zod';", "import type { z } from 'zod';", "import { type z } from 'zod';", "import { ZodError } from 'zod';", "import { zz } from 'zod';"]) {
+  for (const allowed of ["import * as z from 'zod';", "import type { z } from 'zod';", "import { type z } from 'zod';", "import { ZodError } from 'zod';", "import { zz } from 'zod';", "// import { z } from 'zod';", "const fixture = \"import { z } from 'zod';\";"]) {
     assert.equal(importsZodValueZ(allowed), false, allowed);
   }
 });
