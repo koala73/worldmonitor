@@ -71,8 +71,10 @@ export function connectInstruction(req: Request): string | null {
  * The field is optional, so every host except ChatGPT gets the views without it.
  *
  * Two more callers get it: Manufact Cloud's compatibility check and the
- * manufact.com leaderboard review (`mcp-use-probe`). Both read the field to
- * judge ChatGPT submission readiness. They reach the server with a browser or
+ * manufact.com leaderboard review. Both read the field to judge ChatGPT
+ * submission readiness. The review connects twice: a session client named
+ * `mcp-use-probe`, then a 2026-07-28 client under the mcp-use library's
+ * default name, `mcp-use`, which does the view reads. They reach the server with a browser or
  * Bun user agent, so the only stable marker is the `clientInfo.name` that
  * 2026-07-28 clients put in every request's `params._meta`. The name is
  * client-asserted, which is safe here: the value is the public site origin, and
@@ -84,7 +86,7 @@ export function connectInstruction(req: Request): string | null {
  * review connects that way. Such a session id gets a fixed prefix, so the
  * marker travels with the client's own header and needs no server state.
  */
-const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud', 'mcp-use-probe']);
+const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud', 'mcp-use-probe', 'mcp-use']);
 const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
 const VIEW_DOMAIN_SESSION_PREFIX = 'wmvd-';
 
