@@ -1,0 +1,17 @@
+{
+  "name": "worldmonitor",
+  "displayName": "WorldMonitor",
+  "version": "2.11.8",
+  "description": "Live global intelligence in Cursor: source-attributed news, country risk, conflicts, markets, energy, trade, maritime chokepoints and cyber signals. Adds the WorldMonitor MCP server (OAuth sign-in, read-only tools), the public documentation MCP server and task-focused agent skills that keep sources, observation times and data gaps in every answer.",
+  "author": {
+    "name": "WorldMonitor",
+    "email": "support@worldmonitor.app"
+  },
+  "homepage": "https://www.worldmonitor.app/docs/mcp-overview",
+  "repository": "https://github.com/koala73/worldmonitor",
+  "license": "AGPL-3.0-only",
+  "keywords": ["geopolitics", "news", "country-risk", "conflict", "markets", "energy", "shipping", "mcp", "agent-skills"],
+  "logo": "public/favico/worldmonitor-icon-1024.png",
+  "skills": "./skills/",
+  "mcpServers": "./.cursor-plugin/mcp.json"
+}

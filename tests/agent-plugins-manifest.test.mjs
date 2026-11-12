@@ -172,6 +172,62 @@ describe('agent readiness: Agent Plugins manifest', () => {
     }
   });
 
+  it('Cursor Marketplace manifest points at the shared skills, both servers and a committed logo', () => {
+    // Cursor reads .cursor-plugin/plugin.json at the repository root. A component path set in
+    // the manifest replaces Cursor's folder discovery, so pinning skills and mcpServers keeps
+    // the rest of the repository out of the plugin.
+    const cursor = JSON.parse(readFileSync(join(ROOT, '.cursor-plugin/plugin.json'), 'utf-8'));
+    const cursorFields = new Set([
+      'name', 'displayName', 'version', 'description', 'author', 'homepage',
+      'repository', 'license', 'keywords', 'logo', 'skills', 'mcpServers',
+    ]);
+    for (const key of Object.keys(cursor)) {
+      assert.ok(cursorFields.has(key), `.cursor-plugin/plugin.json has unexpected field "${key}"`);
+    }
+    assert.equal(cursor.name, plugin.name);
+    assertPluginName(cursor.name);
+    assert.equal(cursor.version, pkg.version, '.cursor-plugin/plugin.json version must match package.json');
+    assert.equal(cursor.license, plugin.license);
+    assert.equal(cursor.repository, plugin.repository);
+    assert.ok(cursor.description.length > 0);
+
+    // Cursor resolves every manifest path against the plugin root and rejects `..` or absolute paths.
+    for (const field of ['logo', 'skills', 'mcpServers']) {
+      assert.equal(typeof cursor[field], 'string', `${field} must be a path`);
+      assert.doesNotMatch(cursor[field], /^\/|^[a-z]+:|(^|\/)\.\.(\/|$)/i, `${field} must be relative`);
+      assert.ok(existsSync(join(ROOT, cursor[field])), `${field} path ${cursor[field]} must exist`);
+    }
+    assert.match(cursor.logo, /\.(png|svg)$/);
+    assert.deepEqual(
+      listSkillDirs(join(ROOT, cursor.skills)),
+      listSkillDirs(PLUGIN_SKILLS_DIR),
+      'Cursor must ship the same skills as the Agent Plugin',
+    );
+    // Cursor's plugin validator (cursor/plugin-template scripts/validate-template.mjs) rejects a
+    // skill whose frontmatter lacks a non-empty name or description.
+    for (const name of listSkillDirs(join(ROOT, cursor.skills))) {
+      const body = readFileSync(join(ROOT, cursor.skills, name, 'SKILL.md'), 'utf-8').replace(/\r\n/g, '\n');
+      const end = body.indexOf('\n---\n', 4);
+      assert.ok(body.startsWith('---\n') && end > 0, `skills/${name}/SKILL.md needs closed YAML frontmatter`);
+      const frontmatter = body.slice(4, end);
+      for (const key of ['name', 'description']) {
+        assert.match(frontmatter, new RegExp(`^${key}:\\s*\\S`, 'm'), `skills/${name}/SKILL.md needs a ${key}`);
+      }
+    }
+
+    const expected = {
+      worldmonitor: serverCard.url ?? serverCard.serverUrl,
+      'worldmonitor-docs': docsServerCard.url ?? docsServerCard.serverUrl,
+    };
+    const cursorMcp = JSON.parse(readFileSync(join(ROOT, cursor.mcpServers), 'utf-8'));
+    assert.deepEqual(Object.keys(cursorMcp), ['mcpServers']);
+    assert.deepEqual(Object.keys(cursorMcp.mcpServers).sort(), Object.keys(expected).sort());
+    for (const [name, entry] of Object.entries(cursorMcp.mcpServers)) {
+      // Cursor spells remote Streamable HTTP servers as type "http".
+      assert.deepEqual(entry, { type: 'http', url: expected[name] }, `${name} must match the published server card`);
+    }
+  });
+
   it('describes mcp.json as part of the repository package, not the HTTP manifest', () => {
     assert.equal(existsSync(join(ROOT, 'public/mcp.json')), false);
     // The pages claim skills/*/SKILL.md lives in the repository too, so pin that half of

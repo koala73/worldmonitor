@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "type": "http",
+      "url": "https://worldmonitor.app/mcp"
+    },
+    "worldmonitor-docs": {
+      "type": "http",
+      "url": "https://www.worldmonitor.app/docs/mcp"
+    }
+  }
+}
