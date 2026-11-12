@@ -236,6 +236,8 @@ describe('CorrelationPanel under a focus', () => {
     expect(el().querySelector('.panel-header-error')).toBeTruthy();
     expect(strip()?.hidden).toBe(true);
     expect(retry).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it('a new snapshot after a failure still recovers the panel', async () => {

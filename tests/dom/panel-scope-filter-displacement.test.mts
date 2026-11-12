@@ -161,6 +161,23 @@ describe('DisplacementPanel under a focus', () => {
     expect(rowFor('Unknown origin')?.querySelector('.panel-scope-tag-none')?.textContent).toBe('No country');
   });
 
+  it('keeps the focus visible when the active tab has no source rows', async () => {
+    panel.setData(unhcr([country('SDN', 'Sudan', 1000, 0)]));
+    panel.applyScope(SUDAN);
+    await settle();
+    await openTab('hosts');
+    expect(names()).toEqual([]);
+    expect(count()).toBe('0');
+    expect(el().querySelector('.disp-stats-grid')).toBeNull();
+    expect(strip()?.hidden).toBe(false);
+    expect(strip()?.textContent).toContain('Showing Sudan');
+    expect(el().querySelector('.panel-empty')).toBeTruthy();
+    panel.applyScope(null);
+    await settle();
+    expect(strip()?.hidden).toBe(true);
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+  });
+
   it('hosts: host countries count too', async () => {
     panel.setData(UNHCR);
     panel.applyScope(SUDAN);

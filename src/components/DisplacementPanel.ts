@@ -119,8 +119,7 @@ export class DisplacementPanel extends Panel {
    */
   private scoped<T>(items: T[], getCountry: (item: T) => ScopeCountries): { items: T[]; rowFor: Map<T, ScopeRow<T>>; emptyHtml: string | null } {
     const view = this.scopeFilter.view(items, getCountry);
-    if (items.length === 0) this.scopeFilter.hideStrip();
-    else this.scopeFilter.renderStrip(view);
+    this.scopeFilter.renderStrip(view);
     this.focusedCount = view.partition ? view.rows.length : null;
     return {
       items: view.rows.map((row) => row.item),
