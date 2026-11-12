@@ -24,6 +24,7 @@ const { strict: assert } = require('node:assert');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
+const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 const {
   mergeLastGoodQuotes,
   planYahooRefresh,
@@ -83,13 +84,16 @@ function fetchedAtValuesFor(calls, keys) {
 test('seedCommodityQuotes: envelope fetchedAt matches seed-meta fetchedAt for one publish', async () => {
   const { seedCommodityQuotes } = loadFunctions(['seedCommodityQuotes']);
   globalThis.seedCommodityQuotes = seedCommodityQuotes;
+  globalThis.crudeOilQuoteProvenance = crudeOilQuoteProvenance;
 
   globalThis.COMMODITY_SYMBOLS = ['CL=F', 'GC=F'];
   globalThis.COMMODITY_META = new Map([
     ['CL=F', { name: 'Crude Oil', display: 'Crude Oil' }],
     ['GC=F', { name: 'Gold', display: 'Gold' }],
   ]);
-  globalThis.fetchYahooChartDirect = async () => ({ price: 100, change: 1, sparkline: [1, 2, 3] });
+  const lastTradeAt = 1_699_999_880;
+  globalThis.fetchYahooChartDirect = async () => ({ price: 100, change: 1, sparkline: [1, 2, 3], lastTradeAt });
+  globalThis._commoditySparkline = async (_symbol, quote) => ({ sparkline: quote.sparkline });
   globalThis.sleep = async () => {};
   globalThis.upstashExpire = async () => true;
   globalThis.MARKET_SEED_TTL = 7200;
@@ -114,6 +118,14 @@ test('seedCommodityQuotes: envelope fetchedAt matches seed-meta fetchedAt for on
 
   assert.equal(calls.filter((c) => envelopeKeys.includes(c.key)).length, 3, 'expected three enveloped writes');
   assert.equal(calls.filter((c) => c.key === seedMetaKey).length, 1, 'expected one seed-meta write');
+
+  for (const { value } of calls.filter(call => envelopeKeys.includes(call.key))) {
+    const [wti, gold] = value.data.quotes;
+    assert.equal(wti.priceBasis, 'futures');
+    assert.equal(wti.priceSource, 'Yahoo Finance');
+    assert.equal(wti.priceAt, lastTradeAt * 1000);
+    assert.equal(gold.priceAt, undefined);
+  }
 
   const envelopeFetchedAts = fetchedAtValuesFor(calls, envelopeKeys);
   const seedMetaFetchedAt = fetchedAtValuesFor(calls, [seedMetaKey])[0];

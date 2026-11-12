@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  DESKTOP_KEY_DAILY_CEILING,
   getEntitlementFeatures,
   PLAN_PRECEDENCE,
   PRODUCT_CATALOG,
@@ -32,6 +33,8 @@ describe('U1 — Pro Business catalog entries', () => {
       mcpCallsPerDay: 250,
       mcpBurstRequestsPerMinute: 60,
       dashboardAiCallsPerDay: 2_500,
+      desktopKeyRequestsPerDay: DESKTOP_KEY_DAILY_CEILING,
+      desktopKeyBurstPerMinute: 120,
     });
     assert.deepEqual(features.exportFormats, ['csv', 'json', 'pdf']);
   });

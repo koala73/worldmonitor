@@ -10,8 +10,8 @@
  * reintroduce the layout shift this reservation exists to prevent.
  */
 
-/** Minimum track width assumed for `repeat(auto-fill, minmax(280px, 1fr))`. */
-export const PANELS_GRID_MIN_TRACK_PX = 280;
+/** Minimum track width of `.panels-grid`: `repeat(auto-fill, minmax(270px, 1fr))` in main.css. */
+export const PANELS_GRID_MIN_TRACK_PX = 270;
 /** Maximum row span supported by the CSS (`.panel.span-1` … `.panel.span-4`). */
 export const MAX_PANEL_ROW_SPAN = 4;
 /** Maximum column span supported by the CSS (`.panel.col-span-1` … `.col-span-3`). */
@@ -27,6 +27,40 @@ function getPanelGridWidth(grid: HTMLElement): number {
 }
 
 /**
+ * `.panels-grid` declares `repeat(auto-fill, minmax(270px, 1fr))`, but a
+ * rendered grid reports its resolved tracks, implicit ones included: a span
+ * wider than the real columns adds implicit tracks, and counting those would
+ * let the span keep the columns it created.
+ */
+function isPanelsGrid(grid: HTMLElement, style: CSSStyleDeclaration): boolean {
+  return grid.classList.contains('panels-grid') && style.display === 'grid';
+}
+
+/**
+ * A `.panels-grid` restyled with a fixed template (the plugin's one-column
+ * layout in plugin.css) declares its column count in `--panels-grid-columns`,
+ * because the width formula below only holds for the auto-fill template.
+ */
+function getDeclaredPanelGridColumns(style: CSSStyleDeclaration): number | null {
+  const value = style.getPropertyValue('--panels-grid-columns').trim();
+  return /^[1-9]\d*$/.test(value) ? Number(value) : null;
+}
+
+function isAutoFillPanelsGrid(grid: HTMLElement, style: CSSStyleDeclaration): boolean {
+  return isPanelsGrid(grid, style) && getDeclaredPanelGridColumns(style) === null;
+}
+
+/** Columns `repeat(auto-fill, minmax(270px, 1fr))` creates in the grid's content box. */
+function countAutoFillColumns(grid: HTMLElement, style: CSSStyleDeclaration): number {
+  const gap = Number.parseFloat(style.columnGap || '0') || 0;
+  const padding = (Number.parseFloat(style.paddingLeft || '0') || 0) + (Number.parseFloat(style.paddingRight || '0') || 0);
+  // offsetWidth - clientWidth is the border plus any vertical scrollbar.
+  const chrome = Math.max(0, (grid.offsetWidth || 0) - (grid.clientWidth || 0));
+  const content = getPanelGridWidth(grid) - padding - chrome;
+  return Math.max(1, Math.floor((content + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
+}
+
+/**
  * Whether the owning grid's column count can be trusted right now. CSS
  * `repeat(auto-fill/auto-fit, ...)` templates need a rendered width before
  * they can be converted into a column count; a connected grid can briefly
@@ -37,6 +71,8 @@ export function isPanelGridColumnCountReady(element: HTMLElement): boolean {
   if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return true;
 
   const style = window.getComputedStyle(grid);
+  if (isPanelsGrid(grid, style) && getDeclaredPanelGridColumns(style) !== null) return true;
+  if (isAutoFillPanelsGrid(grid, style)) return getPanelGridWidth(grid) > 0;
   const template = style.gridTemplateColumns;
   if (!template || template === 'none' || !template.includes('repeat(')) return true;
   if (/repeat\(\s*\d+\s*,/i.test(template)) return true;
@@ -55,6 +91,11 @@ export function getGridColumnCount(element: HTMLElement): number {
   const grid = getPanelGrid(element);
   if (!grid || typeof window === 'undefined' || typeof window.getComputedStyle !== 'function') return MAX_PANEL_COL_SPAN;
   const style = window.getComputedStyle(grid);
+  const declared = isPanelsGrid(grid, style) ? getDeclaredPanelGridColumns(style) : null;
+  if (declared !== null) return declared;
+  if (isAutoFillPanelsGrid(grid, style)) {
+    return getPanelGridWidth(grid) > 0 ? countAutoFillColumns(grid, style) : MAX_PANEL_COL_SPAN;
+  }
   const template = style.gridTemplateColumns;
   if (!template || template === 'none') return MAX_PANEL_COL_SPAN;
 
@@ -68,12 +109,7 @@ export function getGridColumnCount(element: HTMLElement): number {
     // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
     const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
     if (autoRepeatMatch) {
-      const gap = Number.parseFloat(style.columnGap || '0') || 0;
-      const width = getPanelGridWidth(grid);
-      if (width > 0) {
-        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
-      }
-      return MAX_PANEL_COL_SPAN;
+      return getPanelGridWidth(grid) > 0 ? countAutoFillColumns(grid, style) : MAX_PANEL_COL_SPAN;
     }
   }
 
@@ -84,6 +120,66 @@ export function getGridColumnCount(element: HTMLElement): number {
 /** Largest column span the current grid can accommodate (1…{@link MAX_PANEL_COL_SPAN}). */
 export function getMaxColSpan(element: HTMLElement): number {
   return Math.max(1, Math.min(MAX_PANEL_COL_SPAN, getGridColumnCount(element)));
+}
+
+/** The column span a panel renders at without a `col-span-N` class. */
+export function getDefaultColSpan(element: HTMLElement): number {
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+/** The column span a panel asks for, before clamping to the grid. */
+export function getColSpan(element: HTMLElement): number {
+  return getExplicitColSpanClass(element) ?? getDefaultColSpan(element);
+}
+
+/** Point the column resize handle's ARIA range at the grid's current columns. */
+export function syncColResizeAria(element: HTMLElement, handle: HTMLElement): void {
+  const maxSpan = getMaxColSpan(element);
+  handle.setAttribute('aria-valuemax', String(maxSpan));
+  handle.setAttribute('aria-valuenow', String(clampColSpan(getColSpan(element), maxSpan)));
+}
+
+let gridColumnObserver: ResizeObserver | null = null;
+const observedGrids = new WeakSet<HTMLElement>();
+
+function publishGridColumns(grid: HTMLElement): void {
+  if (!grid.isConnected) {
+    gridColumnObserver?.unobserve(grid);
+    observedGrids.delete(grid);
+    return;
+  }
+  if (typeof window === 'undefined' || !isPanelsGrid(grid, window.getComputedStyle(grid))) {
+    delete grid.dataset.gridCols;
+    return;
+  }
+  const cols = String(getGridColumnCount(grid));
+  if (grid.dataset.gridCols === cols) return;
+  grid.dataset.gridCols = cols;
+  for (const child of Array.from(grid.children)) {
+    if (!(child instanceof HTMLElement) || !child.classList.contains('panel')) continue;
+    const handle = child.querySelector<HTMLElement>(':scope > .panel-col-resize-handle');
+    if (handle) syncColResizeAria(child, handle);
+  }
+}
+
+/**
+ * Keep `data-grid-cols` on the panel's `.panels-grid` equal to its real column
+ * count. CSS clamps `.panel-wide` and `col-span-N` to it, so a span the grid
+ * has no room for cannot add implicit columns and squeeze the other panels.
+ * Accepts the grid or a panel in it. Idempotent per grid; follows window and
+ * map-width resizes.
+ */
+export function observePanelGridColumns(element: HTMLElement): void {
+  const grid = getPanelGrid(element);
+  if (!grid || !grid.classList.contains('panels-grid') || observedGrids.has(grid)) return;
+  if (typeof ResizeObserver !== 'function') return;
+  observedGrids.add(grid);
+  gridColumnObserver ??= new ResizeObserver((entries) => {
+    for (const entry of entries) publishGridColumns(entry.target as HTMLElement);
+  });
+  // The first notification lands after layout and before paint, so the
+  // clamped spans are what first paints.
+  gridColumnObserver.observe(grid);
 }
 
 /** Clamp `span` into the `[1, maxSpan]` range. */

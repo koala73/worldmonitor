@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-21T07:15:00Z",
+  "updatedAt": "2026-11-08T04:45:00Z",
   "note": "Product-managed curated public news-account list. Not user-configurable. Official X API only. Post text is R4. Every enabled account carries a numeric accountId verified against GET /2/users/by/username — handle renames must not fork identity, and an unverified handle silently degrades the feed (#6654).",
   "channels": {
     "full": [
@@ -675,6 +675,18 @@
         "region": "iran",
         "maxMessages": 8,
         "verifiedAt": "2026-08-21"
+      },
+      {
+        "handle": "TheIranWatcher",
+        "accountId": "91163520",
+        "label": "The Iran Watcher",
+        "sourceName": "The Iran Watcher",
+        "topic": "osint",
+        "tier": 3,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 8,
+        "verifiedAt": "2026-11-08"
       }
     ],
     "tech": [

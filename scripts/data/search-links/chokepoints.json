@@ -1,0 +1,24 @@
+{
+  "snapshot": "docs/research/seo-ai-visibility/gsc/2026-11-10.json",
+  "pages": {
+    "/chokepoints/bab-el-mandeb/": [
+      {
+        "href": "/chokepoints/",
+        "anchor": "Maritime choke point monitoring"
+      }
+    ],
+    "/chokepoints/bosporus-strait/": [
+      {
+        "href": "/chokepoints/",
+        "anchor": "Maritime choke point monitoring"
+      }
+    ],
+    "/chokepoints/strait-of-gibraltar/": [
+      {
+        "href": "/chokepoints/",
+        "anchor": "Maritime choke point monitoring"
+      }
+    ]
+  },
+  "exclusions": []
+}

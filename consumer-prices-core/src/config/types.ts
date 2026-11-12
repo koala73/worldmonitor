@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const AcquisitionConfigSchema = z.object({
   provider: z.enum(['playwright', 'exa', 'firecrawl', 'p0']),
@@ -95,6 +95,11 @@ export const SearchConfigSchema = z.object({
   // Keep the strict validator opt-in while existing shadow-mode rollouts
   // remain unchanged for unaffected retailers.
   requireStrictValidator: z.boolean().default(false),
+  // Accept an extraction only when the page declares itself (og:title or
+  // twitter:title) to be the extracted product. For storefronts whose
+  // category listings and carousels sit on URLs discovery cannot tell apart
+  // from product pages. Firecrawl-only: Exa returns no page metadata.
+  requirePageTitleMatch: z.boolean().default(false),
 });
 
 export const RetailerConfigSchema = z.object({

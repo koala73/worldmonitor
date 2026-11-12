@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.railpack.com",
   "packages": {
-    "node": "24.22.1"
+    "node": "24.22.3"
   },
   "deploy": {
     "aptPackages": ["curl"]

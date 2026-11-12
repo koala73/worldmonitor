@@ -9,6 +9,7 @@ import {
   FORECAST_SCORECARD_URL,
   RESILIENCE_DIMENSION_LABELS,
   chokepointTrackerSlug,
+  countryAirportNotamsFrom,
   type CountryBriefEvidenceItem,
 } from '../server/worldmonitor/intelligence/v1/_country-brief-evidence.ts';
 import type { ResolvedEnergyImportDependency } from '../server/worldmonitor/intelligence/v1/_energy-import-dependency.ts';
@@ -553,5 +554,45 @@ describe('mirrors of public page vocabulary stay in sync', () => {
     for (const id of Object.keys(CHOKEPOINT_COUNTRY_CODES)) {
       assert.ok(CHOKEPOINT_REGISTRY.some((entry) => entry.id === id), `${id} is a registry chokepoint`);
     }
+  });
+});
+
+describe('NOTAM airport evidence', () => {
+  const CLOSURES_KEY = 'aviation:notam:closures:v2';
+  const CLOSURES_META_KEY = 'seed-meta:aviation:notam';
+  const closures = { closedIcaos: ['OIII', 'KJFK'], restrictedIcaos: ['OIIE', 'OIII'], reasons: { OIII: 'AD CLSD (NOTAM)' } };
+
+  it('states closures first, then restrictions, for the country only', async (t) => {
+    const items = await build(t, { [CLOSURES_KEY]: closures, [CLOSURES_META_KEY]: { fetchedAt: NOW - 20 * 60 * 1000 } });
+    assert.deepEqual(byKind(items, 'airport').map(({ value, factText }) => [value, factText]), [
+      ['closed', 'Mehrabad International (THR) in Iran is closed under a NOTAM, as of Sep 21, 2026.'],
+      ['restricted', 'Imam Khomeini International (IKA) in Iran has a NOTAM restriction in force, as of Sep 21, 2026.'],
+    ]);
+    // Status only: the raw NOTAM text never enters the fact.
+    assert.ok(byKind(items, 'airport').every((item) => !item.factText.includes('AD CLSD')));
+  });
+
+  it('drops a stale closure list', async (t) => {
+    const stale = await build(t, { [CLOSURES_KEY]: closures, [CLOSURES_META_KEY]: { fetchedAt: NOW - EVIDENCE_MAX_AGE_MS.airport - 1 } });
+    assert.deepEqual(byKind(stale, 'airport'), []);
+    const unmetered = await build(t, { [CLOSURES_KEY]: closures });
+    assert.deepEqual(byKind(unmetered, 'airport'), []);
+  });
+
+  it('reads nothing more when the handler already passed the airport read', async (t) => {
+    const reads = mockRedis(t, {});
+    const items = await buildCountryBriefEvidence('IR', {
+      energyImportDependency: IRAN_ENERGY, nowMs: NOW,
+      airportNotams: [{ icao: 'OIIE', iata: 'IKA', name: 'Imam Khomeini International', status: 'closed', asOfMs: NOW }],
+    });
+    assert.equal(byKind(items, 'airport').length, 1);
+    assert.ok(!reads.includes(CLOSURES_KEY));
+  });
+
+  it('caps the list and maps airports through their country names', () => {
+    const many = { closedIcaos: ['KJFK', 'KLAX', 'KORD', 'KATL'], restrictedIcaos: [] };
+    assert.deepEqual(countryAirportNotamsFrom(many, { fetchedAt: NOW }, 'US', NOW).map((notam) => notam.iata), ['ATL', 'JFK', 'LAX']);
+    assert.deepEqual(countryAirportNotamsFrom(many, { fetchedAt: NOW }, 'IR', NOW), []);
+    assert.equal(countryAirportNotamsFrom({ data: many, _seed: {} }, { fetchedAt: NOW }, 'US', NOW).length, 3);
   });
 });

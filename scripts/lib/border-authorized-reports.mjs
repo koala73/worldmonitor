@@ -34,8 +34,14 @@ export async function parseFrontex(bytes) {
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(bytes);
   const sheet = book.getWorksheet('Detections_of_IBC');
-  const headers = sheet?.getRow(2).values;
-  if (!headers || headers[1] !== 'Route' || headers[2] !== 'Border type or inland' || headers[3] !== 'Nationality') throw new Error('invalid Frontex headers');
+  let headerRow = 0;
+  sheet?.eachRow((row, index) => {
+    if (headerRow) return;
+    const values = row.values;
+    if (values?.[1] === 'Route' && values?.[2] === 'Border type or inland' && values?.[3] === 'Nationality') headerRow = index;
+  });
+  const headers = headerRow ? sheet.getRow(headerRow).values : null;
+  if (!headers) throw new Error('invalid Frontex headers');
   const columns = Array.from(headers.slice(4), (value, i) => {
     const match = String(value).match(/^([A-Z]{3})(20\d{2})$/);
     const month = MONTHS.indexOf(match?.[1]);
@@ -46,7 +52,7 @@ export async function parseFrontex(bytes) {
   const totals = new Map();
   const seen = new Set();
   sheet.eachRow((row, i) => {
-    if (i <= 2) return;
+    if (i <= headerRow) return;
     const [route, border, nationality] = [1, 2, 3].map(c => row.getCell(c).text.trim());
     if (!Object.hasOwn(FRONTEX_ROUTES, route) || !['Sea', 'Land', 'Inland'].includes(border) || !nationality || /^(?:grand )?total$/i.test(nationality)) throw new Error('invalid Frontex route row');
     const key = `${route}|${border}|${nationality}`;

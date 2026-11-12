@@ -162,7 +162,7 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
   'shared/source-attribution-manifest.json',
   'public/.well-known/mcp/server-card.json',
   'src/components/**/*.ts',
-  'src/config/feeds.ts',
+  'shared/news-catalog.json',
   'src/config/map-layer-definitions.ts',
   'src/config/variants/*.ts',
   'src/locales/*.json',
@@ -1003,10 +1003,29 @@ describe('planned Railway service lifecycle', () => {
       // `node seed-live-video-resolved.mjs` on cron 0 */6 * * * and has
       // published once. Leaving it planned would exempt a live cron from the
       // watch-path and deploy-drift checks.
+      // seed-no2-activity (#9722) is deliberately ABSENT: service
+      // 359e5bd7-4160-41d6-8792-f4aff20a3006 runs `node seed-no2-activity.mjs`
+      // on cron 20 6 * * * with the CDSE credentials. Leaving it planned would
+      // exempt a live cron from the watch-path and deploy-drift checks.
+      // seed-bundle-regional-energy (#9842) is deliberately ABSENT now: service
+      // 441a7f0d-b3a7-464a-8328-9638c00c226c runs
+      // `node seed-bundle-regional-energy.mjs` on cron */15 * * * *. Leaving it
+      // planned would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
+      // seed-ukmto-incidents (#9832) is deliberately ABSENT now: service
+      // fa702bee-b70c-44de-9aca-9cea889e89fb runs
+      // `node seed-ukmto-incidents.mjs` on cron */30 * * * * against the
+      // hormuz.data-tracking.net republication (#9858). Leaving it planned
+      // would exempt a live cron from the watch-path and deploy-drift checks.
       'seed-weather-alerts',
+      // seed-notam-nms (#9637) is deliberately ABSENT now: it landed planned
+      // until FAA granted production NMS-API access, and service
+      // 4aa3db57-9388-4c69-a248-8a538e576454 now runs
+      // `node seed-notam-nms.mjs` on cron */5 * * * * against the production
+      // host (#9635). Leaving it planned would exempt a live cron from the
+      // watch-path and deploy-drift checks.
       // shipping-webhook-worker (#9217) is deliberately ABSENT now: #9236
       // landed it planned until the Railway service existed, and service
       // a97fa619-a8f4-4244-9748-6c0f6c3eade3 now runs
@@ -1564,6 +1583,7 @@ describe('critical ingestion Railway registry contract', () => {
     ['seed-bundle-derived-signals', '*/5 * * * *'],
     ['seed-bundle-portwatch', '0 */1 * * *'],
     ['seed-bundle-portwatch-port-activity', '0 */12 * * *'],
+    ['seed-natural-events', '*/30 * * * *'],
   ]);
 
   // Closure coverage is DERIVED from the same predicate the audit uses to decide

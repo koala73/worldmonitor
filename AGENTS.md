@@ -44,6 +44,7 @@ Merge, auto-merge, and deployment require explicit authorization in the current 
 | Proto and generated clients | `proto/`, `src/generated/`; [code generation](CONTRIBUTING.md#working-with-sebuf-rpc-framework) | `make generate` requires buf + sebuf v0.11.1 plugins; verify generated diff |
 | Desktop and sidecar | `src-tauri/`; [architecture](ARCHITECTURE.md) | Focused Rust checks or `npm run test:sidecar` |
 | CI workflows | `.github/workflows/`; [CI/CD table](ARCHITECTURE.md#11-cicd) | Add or update each workflow's table entry. Run `npm run docs:check` and validate the changed workflow before pushing. The pre-push hook enforces the documentation check for workflow changes |
+| Committed derived files (product facts, llms, AI search, catalogs) | `scripts/generate-derived.mjs`; [derived files](CONTRIBUTING.md#derived-files) | `npm run generate`, then commit what it rewrote |
 | Tests and documentation | `tests/`, `e2e/`, `docs/`; [verification guide](CONTRIBUTING.md#verify-the-changed-path) | Relevant existing test or docs check, `git diff --check` |
 
 For public documents and API collections, use `https://www.worldmonitor.app` for website and documentation links. Keep MCP and OAuth endpoint identities on the apex host. Run `node --test tests/agent-corpus-canonical-host.test.mjs` after changing published URLs.
@@ -63,12 +64,14 @@ Test path, command, and owning CI job. Read this instead of `.github/workflows/t
 
 | Test path | Command | CI job |
 |---|---|---|
-| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:data` | `unit-shards` |
+| `tests/*.test.mjs`, `tests/*.test.mts`, `cli/test/`, `api/security/report.test.mjs` | `npm run test:related` locally; `npm run test:data` is the full suite | `unit-shards` |
 | `tests/dom/` | `npm run test:dom` | `dom-tests` |
 | `convex/__tests__/`, `server/__tests__/`, `src/services/correlation-engine/` | `npm run test:convex` | `convex-tests` |
 | `api/` node suites except `api/security/report.test.mjs`, and `src-tauri/` | `npm run test:sidecar` | `sidecar` |
 
 Find a suite by subject with `ls tests/ | grep <subject>` before searching the tree.
+
+Before pushing, run `npm run test:related`. It runs the data tests that a branch's changes can reach, usually in under a minute. The full `test:data` suite takes about six minutes locally, and CI runs it on every push.
 
 ## Critical boundaries
 

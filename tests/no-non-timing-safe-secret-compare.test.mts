@@ -295,6 +295,8 @@ describe('no non-timing-safe secret comparison in api/ (#3803)', () => {
 
   it('no `<secretish> (===|!==) (process.env.* | expected* | <secretish>)` comparison exists in any api/ source', async () => {
     const files = await walk(apiDir);
+    assert.ok(files.includes(join(apiDir, 'seed-contract-probe.ts')), 'the real scan must include the original vulnerable endpoint');
+    assert.ok(files.length > 50, `the real scan must inspect api/ source files, got ${files.length}`);
     const violations: string[] = [];
 
     // See buildSecretComparePattern for the shapes this matches. The

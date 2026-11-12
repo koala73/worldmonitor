@@ -69,6 +69,37 @@ describe('resolveNonDueSynthesisReuse (#4917)', () => {
     assert.equal(out.publicLead.signals.length, 1);
   });
 
+  // Every compose rewrites issuedAt to the tick time, including ticks that
+  // reuse prose, so issuedAt alone kept reused prose "young" forever. A
+  // brief-only user (never due) kept the same lead for 48 h in review
+  // (#9758). Age is measured from when the prose was actually synthesized.
+  it('measures age from the carried synthesis time, not the re-stamped issuedAt', () => {
+    const restamped = envelope({ issuedAt: NOW - 30 * 60 * 1000 });
+    const out = resolveNonDueSynthesisReuse(restamped, {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES,
+      priorSynthesizedAt: NOW - MAX_AGE - 1,
+    });
+    assert.deepEqual(out, { reuse: false, reason: 'stale' });
+  });
+
+  it('reports the carried synthesis time so a reuse can pass it forward', () => {
+    const synthesizedAt = NOW - 2 * 60 * 60 * 1000;
+    const out = resolveNonDueSynthesisReuse(envelope({ issuedAt: NOW - 30 * 60 * 1000 }), {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES, priorSynthesizedAt: synthesizedAt,
+    });
+    assert.equal(out.reuse, true);
+    assert.equal(out.ageMs, 2 * 60 * 60 * 1000);
+    assert.equal(out.synthesizedAt, synthesizedAt);
+  });
+
+  it('falls back to issuedAt for pointers written before synthesizedAt existed', () => {
+    const out = resolveNonDueSynthesisReuse(envelope(), {
+      nowMs: NOW, maxAgeMs: MAX_AGE, currentStories: CURRENT_STORIES, priorSynthesizedAt: undefined,
+    });
+    assert.equal(out.reuse, true);
+    assert.equal(out.synthesizedAt, NOW - 60 * 60 * 1000);
+  });
+
   it('declines when the envelope is older than the budget', () => {
     const old = envelope({ issuedAt: NOW - MAX_AGE - 1 });
     const out = resolveNonDueSynthesisReuse(old, {

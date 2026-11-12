@@ -28,12 +28,12 @@ This page names and links every developer resource type. For the machine-readabl
 
 ## Authentication in one line
 
-Discovery endpoints and `tools/list` are public. `get_sources` is the sole credential-free, daily-quota-free MCP data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data call needs subscription access through an API key header `X-WorldMonitor-Key: wm_<40-hex>` (issue one at https://www.worldmonitor.app/pro) or OAuth 2.1 with scope `mcp`. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://www.worldmonitor.app/auth.md).
+Discovery endpoints and `tools/list` are public. `get_sources` is daily-quota-free, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. MCP sign-in is OAuth 2.1 with scope `mcp`; REST API keys (header `X-WorldMonitor-Key: wm_<40-hex>`, issue one at https://www.worldmonitor.app/pro) are a paid feature. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://www.worldmonitor.app/auth.md).
 
 ## Pricing, limits & support
 
 - **Pricing and plan limits:** [pricing.md](https://www.worldmonitor.app/pricing.md) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog`
-- **Rate limits:** 60 requests/minute (per user for OAuth and dashboard-issued `wm_…` keys; per key for legacy operator keys). Dashboard-issued keys use the 50 quota-consuming MCP calls/UTC day default. OAuth allowances are plan-resolved; API Starter and API Business currently use the same 50/day default, while enterprise OAuth can be unlimited. Honor `Retry-After` on 429.
+- **Rate limits:** the per-minute burst is plan-resolved and shared per user across OAuth tokens and dashboard-issued `wm_…` keys: 60 requests/minute on Pro, Pro Business and API Starter, 300 on API Business and Enterprise. Members of an Enterprise contract account share one account burst, set by the contract, with their REST requests. Legacy operator keys stay at 60/minute per key. Daily MCP allowances are plan-resolved and identical on the OAuth and dashboard-key doors: Pro 50 and Pro Business 250 calls/UTC day; API Starter, API Business and Enterprise draw MCP calls from their REST budget (Enterprise 10,000 units/day by default, more by contract). Honor `Retry-After` on 429.
 - **Support:** [support.md](https://www.worldmonitor.app/support.md) — support@worldmonitor.app · Status: https://status.worldmonitor.app
 - **Source (AGPL-3.0):** https://github.com/koala73/worldmonitor · Issues: https://github.com/koala73/worldmonitor/issues
 

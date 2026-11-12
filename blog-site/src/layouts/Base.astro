@@ -2,6 +2,11 @@
 import productFacts from '../../../shared/product-facts.generated.json';
 import TrackedProductLink from '../components/TrackedProductLink.astro';
 import { stringifyJsonLd } from '../lib/json-ld';
+// Core subsets (ASCII + common punctuation) of the three families every page renders.
+// Extended subsets are not preloaded: unicode-range fetches them only on pages that need them.
+import interCore from '../fonts/inter-core.woff2?url';
+import jetbrainsMonoCore from '../fonts/jetbrains-mono-core.woff2?url';
+import spaceGroteskCore from '../fonts/space-grotesk-core.woff2?url';
 
 interface Props {
   title: string;
@@ -43,6 +48,9 @@ const proCtaLabel = productFacts.product.primaryCtaLabel;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{pageTitle}</title>
+    <link rel="preload" href={interCore} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={spaceGroteskCore} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={jetbrainsMonoCore} as="font" type="font/woff2" crossorigin />
     <meta name="description" content={description} />
     {keywords && <meta name="keywords" content={keywords} />}
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />

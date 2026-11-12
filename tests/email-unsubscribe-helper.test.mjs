@@ -68,16 +68,30 @@ describe('workers wire the unsubscribe URL into recurring mail', () => {
   it('digest email passes the brief URL and the template has the footer slot', () => {
     const src = readFileSync(join(root, 'scripts/seed-digest-notifications.mjs'), 'utf8');
     const template = readFileSync(join(root, 'scripts/lib/digest-email-html.mjs'), 'utf8');
-    assert.match(src, /sendEmail\(ch\.email, subject, text, html, ch\)/);
+    assert.match(src, /sendEmail\(ch\.email, subject, text, html, ch, cooldownSlot\.slice\(0, 13\)\)/);
     assert.match(src, /unsubscribeUrlFor\(channel, 'brief'\)/);
     assert.ok(template.includes(UNSUBSCRIBE_SLOT), 'formatDigestHtml footer must keep the unsubscribe slot');
     assert.match(src, /headers: listUnsubscribeHeaders\(unsubscribeUrl\)/);
   });
 
+  it('digest emails carry an idempotency key bound to the scheduled hour and exact payload', () => {
+    const src = readFileSync(join(root, 'scripts/seed-digest-notifications.mjs'), 'utf8');
+    assert.match(src, /update\(JSON\.stringify\(\[occurrence, payload\.to, payload\.subject, payload\.text, payload\.html\]\)\)/);
+    assert.match(src, /sendResendEmail\(resend, payload, \{ logPrefix: '\[digest\]', idempotencyKey \}\)/);
+  });
+
   it('relay alert emails (real-time and held batches) pass the alerts URL', () => {
     const src = readFileSync(join(root, 'scripts/notification-relay.cjs'), 'utf8');
-    const calls = src.match(/sendEmail\(ch\.email, subject, (?:text|deliveryText), unsubscribeUrlFor\(ch, 'alerts'\)\)/g) ?? [];
-    assert.equal(calls.length, 2);
+    const realtime = src.match(/sendEmail\(ch\.email, subject, deliveryText, unsubscribeUrlFor\(ch, 'alerts'\)\)/g) ?? [];
+    assert.equal(realtime.length, 1, 'real-time alerts pass the alerts URL');
+    // Held batches hoist the URL so the idempotency key hashes the exact payload sent.
+    assert.match(src, /const unsubscribeUrl = unsubscribeUrlFor\(ch, 'alerts'\);/);
+    assert.match(
+      src,
+      /createHash\('sha256'\)\.update\(JSON\.stringify\(\[userId, variant, ch\.email, subject, text, unsubscribeUrl\]\)\)/,
+      'the held-batch key covers subject, text and unsubscribe URL so a changed payload gets a new key',
+    );
+    assert.match(src, /sendEmail\(ch\.email, subject, text, unsubscribeUrl, `quiet-held-\$\{batchKey\}`\)/, 'held batches keep their idempotency key');
     assert.match(src, /payload\.headers = listUnsubscribeHeaders\(unsubscribeUrl\)/);
   });
 });

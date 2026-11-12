@@ -444,7 +444,7 @@ describe('buildArticlePrompts', () => {
     const translateOpts = { mode: 'translate', geoContext: '', variant: 'Spanish', lang: 'es' };
     const result = buildArticlePrompts(headlines, unique, translateOpts);
     assert.ok(result.systemPrompt.includes('translator'));
-    assert.ok(result.userPrompt.includes('Translate to Spanish'));
+    assert.ok(result.userPrompt.includes('Output only its Spanish translation.'));
   });
 
   it('includes geo context when provided', () => {

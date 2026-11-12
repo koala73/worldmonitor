@@ -1,3 +1,9 @@
+// This pins the NewsPanel category-tag declarations and models contrast using
+// direct hex tokens, 0x20 alpha and the --surface backdrop (#8690, section 2).
+// The source declarations define this model because happy-dom does not resolve
+// rendered colours; this does not verify custom-property chains, cascade,
+// fallbacks or ancestor backgrounds.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';

@@ -146,7 +146,7 @@ paths:
             tags:
                 - AviationService
             summary: ListAirportDelays
-            description: ListAirportDelays retrieves current airport delay alerts.
+            description: ListAirportDelays returns delay status for each monitored airport from seeded FAA and AviationStack data plus NOTAM closures, marking unreported hubs unknown.
             operationId: ListAirportDelays
             parameters:
                 - name: page_size
@@ -1356,7 +1356,7 @@ paths:
             tags:
                 - AviationService
             summary: ListAviationNews
-            description: ListAviationNews retrieves filtered aviation news articles.
+            description: ListAviationNews returns articles from nine aviation RSS feeds such as FlightGlobal and Aviation Week, filtered by up to 10 entities over a 1-168 hour window.
             operationId: ListAviationNews
             parameters:
                 - name: entities
@@ -1695,7 +1695,7 @@ paths:
             tags:
                 - AviationService
             summary: SearchGoogleDates
-            description: SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+            description: SearchGoogleDates returns the cheapest Google Flights fare per departure date over up to 31 days, one-way or round trip, with cabin and stop filters.
             operationId: SearchGoogleDates
             parameters:
                 - name: origin

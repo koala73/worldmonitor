@@ -15,10 +15,10 @@ test('authorized Frontex and Panama sources have independent fetchers and report
   }
 });
 
-async function workbook(rows, months = ['MAY2026', 'JUN2026', 'JUL2026', 'AUG2026']) {
+async function workbook(rows, months = ['MAY2026', 'JUN2026', 'JUL2026', 'AUG2026'], headerRow = 2) {
   const book = new ExcelJS.Workbook();
   const sheet = book.addWorksheet('Detections_of_IBC');
-  sheet.addRow([]);
+  for (let row = 1; row < headerRow; row += 1) sheet.addRow([]);
   sheet.addRow(['Route', 'Border type or inland', 'Nationality', ...months]);
   rows.forEach(row => sheet.addRow(row));
   return new Uint8Array(await book.xlsx.writeBuffer());
@@ -90,6 +90,68 @@ test('Panama reads PDF bytes through the real text parser', async () => {
   assert.equal(route.latestCount, 71);
   assert.equal(route.asOf, '2026-09-30');
   await assert.rejects(() => parsePanama(new Uint8Array(Buffer.from('not a PDF'))));
+});
+
+test('Frontex reads route labels on a later header row', async () => {
+  const bytes = await workbook([
+    ['Eastern Mediterranean Route', 'Sea', 'Sudan', 1, 1, 1, 2],
+  ], undefined, 5);
+  const routes = await parseFrontex(bytes);
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].asOf, '2026-08-31');
+  assert.equal(routes[0].latestCount, 2);
+  assert.equal(routes[0].kind, 'encounter');
+});
+
+test('Frontex discovers the EUROSUR workbook and keeps the older monthly filename', async () => {
+  const bytes = await workbook([['Black Sea Route', 'Sea', 'Unknown', 0, 0, 0, 7]], undefined, 5);
+  const requests = [];
+  globalThis.fetch = async input => {
+    const url = String(input);
+    requests.push(url);
+    if (url === BORDER_SOURCES.frontex.url) {
+      return new Response('<a href="/assets/Migratory_routes/2026/EUROSUR_data_as_of_04NOV26.xlsx">current</a>');
+    }
+    if (url.endsWith('/EUROSUR_data_as_of_04NOV26.xlsx')) return new Response(bytes);
+    throw new Error(`unexpected request ${url}`);
+  };
+  const routes = (await FETCHERS.frontex()).routes;
+  assert.equal(routes[0].latestCount, 7);
+  assert.equal(routes[0].asOf, '2026-08-31');
+  assert.ok(requests.some(url => url.endsWith('/assets/Migratory_routes/2026/EUROSUR_data_as_of_04NOV26.xlsx')));
+
+  requests.length = 0;
+  const legacy = await workbook([['Black Sea Route', 'Sea', 'Unknown', 0, 0, 0, 3]]);
+  globalThis.fetch = async input => {
+    const url = String(input);
+    requests.push(url);
+    if (url === BORDER_SOURCES.frontex.url) {
+      return new Response('<a href="/assets/Migratory_routes/2026/Monthly_detections_of_IBC_2026_10_05.xlsx">current</a>');
+    }
+    if (url.endsWith('/Monthly_detections_of_IBC_2026_10_05.xlsx')) return new Response(legacy);
+    throw new Error(`unexpected request ${url}`);
+  };
+  assert.equal((await FETCHERS.frontex()).routes[0].latestCount, 3);
+});
+
+test('Frontex picks the newer workbook date when October sorts after November', async () => {
+  const bytes = await workbook([['Black Sea Route', 'Sea', 'Unknown', 0, 0, 0, 4]]);
+  const requests = [];
+  globalThis.fetch = async input => {
+    const url = String(input);
+    requests.push(url);
+    if (url === BORDER_SOURCES.frontex.url) {
+      return new Response([
+        '<a href="/assets/Migratory_routes/2026/EUROSUR_data_as_of_04OCT26.xlsx">october</a>',
+        '<a href="/assets/Migratory_routes/2026/EUROSUR_data_as_of_04NOV26.xlsx">november</a>',
+        '<a href="https://untrusted.test/assets/Migratory_routes/2099/EUROSUR_data_as_of_31DEC30.xlsx">bad</a>',
+      ].join(''));
+    }
+    if (url.endsWith('/EUROSUR_data_as_of_04NOV26.xlsx')) return new Response(bytes);
+    throw new Error(`unexpected request ${url}`);
+  };
+  assert.equal((await FETCHERS.frontex()).routes[0].latestCount, 4);
+  assert.ok(requests.every(url => !url.includes('04OCT26') && !url.includes('untrusted.test')));
 });
 
 test('official page discovery follows changing release links and ignores external attachments', async () => {

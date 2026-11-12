@@ -13,7 +13,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetOutages
-            description: ListInternetOutages retrieves detected internet outages from Cloudflare Radar.
+            description: ListInternetOutages returns Cloudflare Radar outage annotations from the last 28 days, filterable by country and detection time, with severity and cause.
             operationId: ListInternetOutages
             parameters:
                 - name: start
@@ -174,7 +174,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListServiceStatuses
-            description: ListServiceStatuses retrieves operational status of monitored external services.
+            description: ListServiceStatuses checks the public status pages of 30 cloud, developer, communication, AI and SaaS services, sorted worst first and filterable by status.
             operationId: ListServiceStatuses
             parameters:
                 - name: status
@@ -300,7 +300,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetTemporalBaseline
-            description: GetTemporalBaseline retrieves historical baseline data for a specific signal.
+            description: GetTemporalBaseline compares a count for signals like military flights, vessels or protests to its weekday and month baseline and flags z-score anomalies.
             operationId: GetTemporalBaseline
             parameters:
                 - name: type
@@ -450,7 +450,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetIpGeo
-            description: GetIpGeo retrieves geographic information based on the caller's IP address.
+            description: GetIpGeo returns the caller's ISO country code, region and city from Cloudflare and Vercel edge headers, with XX when unknown. Responses are never cached.
             operationId: GetIpGeo
             parameters:
                 - name: jmespath
@@ -560,7 +560,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ReverseGeocode
-            description: ReverseGeocode resolves geographic coordinates to a postal address/country.
+            description: ReverseGeocode resolves latitude and longitude to a country name, ISO code and display name via OpenStreetMap Nominatim, with results cached for 7 days.
             operationId: ReverseGeocode
             parameters:
                 - name: lat
@@ -687,7 +687,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetBootstrapData
-            description: GetBootstrapData fetches multiple data points from the system cache in a single call.
+            description: GetBootstrapData returns cached dashboard datasets as JSON strings in one call, for a fast or slow tier or named keys, and lists any keys missing from cache.
             operationId: GetBootstrapData
             parameters:
                 - name: tier
@@ -834,7 +834,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: RecordBaselineSnapshot
-            description: RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
+            description: RecordBaselineSnapshot is deprecated and DISABLED. Every call is rejected with HTTP 403 because client-supplied counts cannot safely update shared baselines.
             operationId: RecordBaselineSnapshot
             requestBody:
                 content:
@@ -1005,7 +1005,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: GetCableHealth
-            description: GetCableHealth computes health status for submarine cables from NGA maritime warning signals.
+            description: GetCableHealth rates submarine cables as ok, degraded or fault by matching fault and repair-ship keywords in NGA navigational warnings, refreshed each 30 min.
             operationId: GetCableHealth
             parameters:
                 - name: jmespath
@@ -1239,7 +1239,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetDdosAttacks
-            description: ListInternetDdosAttacks retrieves L3/L4 DDoS attack summaries from Cloudflare Radar.
+            description: ListInternetDdosAttacks returns Cloudflare Radar layer 3 DDoS summaries for the last 7 days by protocol and attack vector, with the top target locations.
             operationId: ListInternetDdosAttacks
             parameters:
                 - name: jmespath
@@ -1360,7 +1360,7 @@ paths:
             tags:
                 - InfrastructureService
             summary: ListInternetTrafficAnomalies
-            description: ListInternetTrafficAnomalies retrieves traffic anomaly events from Cloudflare Radar.
+            description: ListInternetTrafficAnomalies returns up to 100 Cloudflare Radar traffic anomalies from the last 7 days with ASN and location, filterable by country code.
             operationId: ListInternetTrafficAnomalies
             parameters:
                 - name: country

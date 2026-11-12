@@ -1,0 +1,93 @@
+name: Status Page Monitor
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/status-page-smoke.mjs'
+      - 'e2e/status-page-monitor.spec.ts'
+      - 'public/security/**'
+      - '.github/workflows/status-page-monitor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/status-page-smoke.mjs'
+      - '.github/workflows/status-page-monitor.yml'
+
+concurrency:
+  group: status-page-monitor-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && (github.event_name == 'pull_request' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run inventory:facts
+      - run: npx playwright test e2e/status-page-monitor.spec.ts --project=chromium
+
+  monitor:
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && github.repository == 'koala73/worldmonitor' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Verify rendered status page and all four uptime windows
+        run: node scripts/status-page-smoke.mjs
+      - name: Preserve rendered evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: status-page-evidence
+          path: test-results/status-page/
+          if-no-files-found: warn
+          retention-days: 7
+  report:
+    needs: monitor
+    if: always() && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && needs.monitor.result != 'skipped' && github.event_name != 'pull_request' && github.repository == 'koala73/worldmonitor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      issues: write
+    steps:
+      - name: Track monitor failures and recovery
+        env:
+          MONITOR_STATUS: ${{ needs.monitor.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          title='Status page synthetic check failing'
+          number=$(gh api --method GET search/issues \
+            -f q="repo:$GITHUB_REPOSITORY is:issue is:open in:title \"$title\" author:app/github-actions" \
+            | jq -r '[.items[] | select(.title == "Status page synthetic check failing" and .user.login == "github-actions[bot]")] | .[0].number // empty')
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ "$MONITOR_STATUS" = success ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Recovered: all four rendered uptime windows passed. Evidence: $run_url"
+            fi
+          elif [ "$MONITOR_STATUS" = failure ] || [ "$MONITOR_STATUS" = cancelled ]; then
+            if [ -z "$number" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The browser synthetic or its infrastructure ended with status $MONITOR_STATUS (including timeout/cancellation). Inspect the first failing step and rendered evidence: $run_url. Check https://status.worldmonitor.app/ for missing uptime figures or a data-fetch error. Related: #6591."
+            else
+              echo "Open alert #$number persists; failure evidence: $run_url" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi

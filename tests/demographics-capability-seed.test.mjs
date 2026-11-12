@@ -24,6 +24,7 @@ import {
 } from '../scripts/seed-demographics-capability.mjs';
 import { runSeed } from '../scripts/_seed-utils.mjs';
 import { resolveSourceOrigin } from '../scripts/source-origin.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/demographics-capability/${name}`, import.meta.url), 'utf8');
 const repoFile = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
@@ -447,7 +448,7 @@ describe('demographics completion ordering through runSeed', () => {
       delete process.env.WM_BUNDLE_COMPLETION_META_KEY;
       Date.now = () => now;
       process.exit = (code) => { throw Object.assign(new Error(`test exit ${code}`), { exitCode: code }); };
-      globalThis.fetch = async (url, options = {}) => {
+      globalThis.fetch = withSeedLockFence(async (url, options = {}) => {
         const request = new URL(url);
         assert.equal(request.origin, 'https://demographics-test.invalid');
         if (request.pathname.startsWith('/get/')) {
@@ -463,7 +464,7 @@ describe('demographics completion ordering through runSeed', () => {
           now += 222;
         } else if (command === 'DEL') redis.delete(key);
         return Response.json({ result: command === 'SET' ? 'OK' : 1 });
-      };
+      });
 
       try {
         const run = runSeed('demographics', 'capability', canonicalKey, async () => payload, DEMOGRAPHICS_CAPABILITY_SEED_OPTIONS);

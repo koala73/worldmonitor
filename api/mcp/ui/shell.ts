@@ -51,8 +51,17 @@ const UI_FRAME_ANCESTORS = ['https://chatgpt.com', 'https://claude.ai', 'https:/
 // every widget loads no external assets, embeds no frames, and needs no external
 // base URI (postMessage + inline CSS/JS only). `prefersBorder` asks the host to
 // frame the card.
+// The one HTTPS origin every view declares as `_meta.ui.domain` (ChatGPT app
+// submission requires an exact origin, no path, shared by all views). It is the
+// canonical site host, which answers directly: the apex root is a permanent
+// redirect to www, and platform checks that probe the view domain without
+// following a cross-host redirect report the apex as not responding. The MCP
+// and OAuth endpoint identities stay on the apex; this is only the view origin.
+export const UI_DOMAIN = 'https://www.worldmonitor.app';
+
 export interface UiResourceMeta {
   ui: {
+    domain: string;
     csp: {
       connectDomains: string[];
       resourceDomains: string[];
@@ -61,14 +70,19 @@ export interface UiResourceMeta {
     };
     prefersBorder: boolean;
   };
+  // ChatGPT's model-facing summary of what the view shows, read from the
+  // resource contents `_meta` when the view loads (OpenAI Apps reference).
+  'openai/widgetDescription': string;
 }
 
 // SINGLE source of truth for every widget's `_meta.ui` — shared so the fleet's
 // CSP policy can't drift entry-to-entry. Returns a fresh object per call so a
 // mutating consumer can't poison siblings.
-export function buildUiMeta(): UiResourceMeta {
+export function buildUiMeta(widgetDescription: string): UiResourceMeta {
   return {
+    'openai/widgetDescription': widgetDescription,
     ui: {
+      domain: UI_DOMAIN,
       csp: {
         connectDomains: [...UI_CONNECT_DOMAINS],
         resourceDomains: [],
@@ -107,7 +121,8 @@ const SHARED_STYLE_TOKENS = `
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg);
     font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   .wrap { padding: 16px; max-width: 560px; }
-  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+  #panel-usage { margin: 0 0 10px; font-size: 11px; color: var(--muted); }
   .title { font-size: 20px; font-weight: 650; letter-spacing: 0.2px; }
   .badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
   .empty { color: var(--muted); padding: 8px 0; }
@@ -248,6 +263,16 @@ const SHARED_BRIDGE_HEAD = `
       return (parsed.protocol === "http:" || parsed.protocol === "https:") ? parsed.href : "";
     } catch (e) { return ""; }
   }
+  // Reader-facing time: "31 Oct 2026, 11:31 UTC". Returns "" for a missing or
+  // unparseable value so callers choose their own "unknown" wording.
+  var UTC_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function utcTime(value) {
+    var date = typeof value === "number" || typeof value === "string" && value.trim() ? new Date(value) : null;
+    if (!date || !Number.isFinite(date.getTime())) return "";
+    var hours = date.getUTCHours(), minutes = date.getUTCMinutes();
+    return date.getUTCDate() + " " + UTC_MONTHS[date.getUTCMonth()] + " " + date.getUTCFullYear()
+      + ", " + (hours < 10 ? "0" : "") + hours + ":" + (minutes < 10 ? "0" : "") + minutes + " UTC";
+  }
   function countryName(code) {
     var c = String(code == null ? "" : code).toUpperCase().slice(0, 2);
     if (!c) return "";
@@ -358,8 +383,12 @@ export const PANEL_USAGE_BRIDGE = `
       document.getElementById("root").prepend(notice);
     }
     notice.hidden = false;
-    notice.textContent = (usage.remaining === null ? "Unlimited allowance" : usage.remaining + " of " + usage.limit + " requests remaining") +
-      ", at the last panel request. Resets " + new Date(usage.resetsAt).toLocaleString() + ". Opening this panel uses 1 request; its rendered details are included.";
+    var resets = new Date(usage.resetsAt);
+    var resetText = Number.isFinite(resets.getTime())
+      ? " · resets " + resets.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+      : "";
+    notice.textContent = (usage.remaining === null ? "Unlimited requests" : usage.remaining + " of " + usage.limit + " requests remaining") +
+      resetText + ". Opening this panel uses 1 request.";
   }
 `;
 

@@ -1,9 +1,12 @@
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Apex `/mcp-grant` page bootstrap.
  *
  * Clerk-protected consent screen for the cross-subdomain Pro MCP flow.
  * The user lands here from the api-subdomain consent page (U4 will add
- * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
+ * a "Sign in to World Monitor" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
  *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
@@ -22,7 +25,7 @@
 
 import {
   initClerk,
-  getClerkToken,
+  getClerkSessionToken,
   getCurrentClerkUser,
   isClerkSignInOpen,
   openSignIn,
@@ -39,6 +42,7 @@ import {
   type GrantMintPhase,
 } from '@/services/mcp-grant-denial';
 import { watchSignInDismissal, type SignInDismissalWatch } from '@/services/sign-in-dismissal';
+import type { McpAboutYouSection } from '@/services/mcp-grant-about-you';
 
 // Apply user's saved theme preference. Inlined here (not the index.html head)
 // because the page's global CSP is hash-allowlisted and adding per-page
@@ -52,6 +56,56 @@ try {
 }
 
 const API_BASE = ''; // same-origin (apex)
+
+/** How long the optional About-you questions may take to appear (KTD7). */
+const ABOUT_YOU_STATUS_TIMEOUT_MS = 3_000;
+/** How long a successful grant waits for the profile write before redirecting. */
+const ABOUT_YOU_REDIRECT_WAIT_MS = 1_500;
+/** The account the section was started for; a different user restarts it. */
+let aboutYouUserId: string | null = null;
+let aboutYouGeneration = 0;
+let aboutYouSection: McpAboutYouSection | null = null;
+
+/**
+ * Add the optional About-you questions under the consent details when the
+ * account has not answered or skipped. Loaded lazily and never awaited by the
+ * consent flow: the card is already on screen, and a slow or failed read
+ * simply renders nothing.
+ */
+async function startAboutYou(): Promise<void> {
+  const userId = getCurrentClerkUser()?.id ?? null;
+  if (userId === aboutYouUserId) return;
+  // The account changed (or signed out): the old section's callbacks write
+  // against the previous user, so drop it before anything else.
+  aboutYouSection?.destroy();
+  aboutYouSection = null;
+  aboutYouUserId = userId;
+  const generation = ++aboutYouGeneration;
+  if (!userId) return;
+  try {
+    const [profile, view] = await Promise.all([
+      import('@/services/audience-profile'),
+      import('@/services/mcp-grant-about-you'),
+    ]);
+    if (generation !== aboutYouGeneration) return;
+    const section = await view.mountMcpAboutYou(
+      $('aboutYouMount'),
+      {
+        loadStatus: () => profile.loadAboutYouStatus(userId),
+        recordAnswers: (answers) => profile.recordAboutYouAnswers(userId, 'mcp-connect', answers),
+        skip: () => profile.skipAboutYou(userId, 'mcp-connect'),
+      },
+      ABOUT_YOU_STATUS_TIMEOUT_MS,
+    );
+    if (generation !== aboutYouGeneration) {
+      section?.destroy();
+      return;
+    }
+    aboutYouSection = section;
+  } catch (error) {
+    console.warn('[mcp-grant] About-you questions unavailable', error);
+  }
+}
 
 type ContextResponse = GrantClientContext;
 
@@ -179,10 +233,12 @@ function getNonceFromQuery(): string | null {
 }
 
 async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getClerkToken();
+  // Standard session token (carries `sid`): the grant mint confirms the session
+  // is live at Clerk, and JWT-template tokens omit that claim.
+  const token = await getClerkSessionToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`${API_BASE}${path}`, { ...init, headers });
+  return fetch(`${API_BASE}${path}`, { ...init, signal: createRequestTimeoutSignal(`${API_BASE}${path}`, init, path.startsWith('/api/internal/mcp-grant-context') ? 35_000 : 120_000), headers });
 }
 
 /**
@@ -204,11 +260,34 @@ function resetMintPhase(): void {
 }
 
 const CONTEXT_AUTO_RETRY_BUDGET = 1;
+const CONTEXT_LOAD_TIMEOUT_MS = 30_000;
 let contextLoadGeneration = 0;
+let contextLoadInFlight: { generation: number; userId: string | undefined; promise: Promise<void> } | null = null;
 
 async function loadContext(nonce: string): Promise<void> {
+  const userId = getCurrentClerkUser()?.id;
+  if (contextLoadInFlight?.generation === contextLoadGeneration && contextLoadInFlight.userId === userId) return contextLoadInFlight.promise;
   const generation = ++contextLoadGeneration;
-  await loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation);
+  let timeout: number | undefined;
+  const deadline = new Promise<void>(resolve => {
+    timeout = window.setTimeout(() => {
+      if (generation === contextLoadGeneration) {
+        contextLoadGeneration += 1;
+        if (mintPhase === 'idle' || !$('loading').hidden) {
+          showRetryableContextView('The authorization service took too long to respond. Try again.');
+        }
+      }
+      resolve();
+    }, CONTEXT_LOAD_TIMEOUT_MS);
+  });
+  const promise = Promise.race([loadContextAttempt(nonce, CONTEXT_AUTO_RETRY_BUDGET, generation), deadline]);
+  contextLoadInFlight = { generation, userId, promise };
+  try {
+    await promise;
+  } finally {
+    window.clearTimeout(timeout);
+    if (contextLoadInFlight?.promise === promise) contextLoadInFlight = null;
+  }
 }
 
 async function loadContextAttempt(
@@ -238,6 +317,7 @@ async function loadContextAttempt(
   if (!resp.ok) {
     let body: ApiError | null = null;
     try { body = (await resp.json()) as ApiError; } catch { /* ignore */ }
+    if (generation !== contextLoadGeneration) return;
     const verdict = classifyGrantDenial(resp.status, body?.error);
     const action = routeGrantContextDenial(verdict.action, mintPhase, retriesRemaining);
     switch (action) {
@@ -304,6 +384,7 @@ async function loadContextAttempt(
   hide('loading');
   hide('signInView');
   show('consent');
+  void startAboutYou();
 }
 
 async function onAuthorizeClick(nonce: string): Promise<void> {
@@ -318,6 +399,9 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
   btn.disabled = true;
   btn.textContent = 'Authorizing…';
   hide('mintError');
+  // Separate write: the mint below never waits on it (KTD7). Only the final
+  // redirect waits, bounded, for it to settle.
+  aboutYouSection?.submit();
 
   let resp: Response;
   mintPhase = 'in_flight';
@@ -404,6 +488,9 @@ async function onAuthorizeClick(nonce: string): Promise<void> {
     return;
   }
 
+  // The profile write runs beside the mint; give it a bounded moment so the
+  // navigation does not cut it off.
+  await aboutYouSection?.settle(ABOUT_YOU_REDIRECT_WAIT_MS);
   window.location.assign(target.toString());
 }
 

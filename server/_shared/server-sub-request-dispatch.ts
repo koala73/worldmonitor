@@ -69,7 +69,7 @@ export async function dispatchServerSubRequest(
     method: 'GET',
     headers,
     redirect: options.redirect,
-    signal: options.signal,
+    signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
   });
   return { kind: 'dispatched', response };
 }

@@ -11,19 +11,15 @@ import type {
 import { CROSS_BORDER_SOURCES, projectCrossBorderSnapshots } from '../../displacement/v1/cross-border-data';
 import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
-import { CLIMATE_ANOMALIES_KEY, CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
-import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
-import {
-  parseWildfireFiresSummary,
-  summarizeWildfireDetections,
-  WILDFIRE_FIRES_SUMMARY_KEY,
-  type WildfireFireIntensity,
-} from '../../../../scripts/shared/wildfire-fires-summary.mjs';
+import { ciiCountryAt, ciiCountryForIso2 } from '../../../../scripts/shared/cii-country-borders.mjs';
+import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import { isAcledConfigured } from '../../../_shared/acled-auth';
 import {
+  CII_ADVISORY_MAX_AGE_MS,
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
@@ -76,7 +72,6 @@ import {
   DEFAULT_CII_BASELINE_RISK,
   DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../../../../shared/cii-weights';
-import { CII_CLIMATE_ZONE_COUNTRIES } from '../../../../shared/cii-climate-zones';
 import { isAssignedCountryCode, resolveCountryCode } from '../../../../shared/country-code-resolve';
 
 // ========================================================================
@@ -95,8 +90,6 @@ import { isAssignedCountryCode, resolveCountryCode } from '../../../../shared/co
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
-// Climate-zone attribution has the same protocol when it changes server/API
-// scores; its canonical map documents that ownership in shared/cii-climate-zones.ts.
 // ========================================================================
 
 // Exported so tests and any internal diagnostics can assert the published
@@ -138,15 +131,12 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
-const ADVISORY_LEVELS_FALLBACK: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> = {
-  // These floors are score-affecting methodology inputs; new country additions
-  // must go through a formula-version/docs changelog batch.
-  UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel',
-  IL: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider', MX: 'reconsider',
-  RU: 'caution', TR: 'caution', IQ: 'reconsider', AF: 'do-not-travel', LB: 'reconsider',
-};
-
 type AdvisoryLevel = 'do-not-travel' | 'reconsider' | 'caution';
+/**
+ * `live`: this build's advisory read. `fallback`: the last good live snapshot,
+ * read because this build's read was missing or stale (see
+ * CII_ADVISORY_MAX_AGE_MS). `absent`: no advisory level reached the score.
+ */
 type AdvisoryProvenance = 'live' | 'fallback' | 'absent';
 
 function isAdvisoryLevel(value: unknown): value is AdvisoryLevel {
@@ -161,9 +151,108 @@ function isAdvisoryProvenance(value: unknown): value is AdvisoryProvenance {
   return value === 'live' || value === 'fallback' || value === 'absent';
 }
 
-function advisoryFallbackLevel(region: string | undefined | null): AdvisoryLevel | null {
-  const code = String(region || '').trim().toUpperCase();
-  return ADVISORY_LEVELS_FALLBACK[code] ?? null;
+/**
+ * App-owned copy of the last advisory levels a build read live, with the
+ * seeder's clock. Read only when the live read is missing or stale.
+ */
+export const CII_ADVISORY_LAST_GOOD_KEY = 'intelligence:advisories:cii-last-good:v1';
+/**
+ * How long the snapshot carries a Tier-1 country the live feed stopped
+ * listing, measured from its last live sighting. Past CII_ADVISORY_MAX_AGE_MS
+ * it is no longer scored (absent) but is reported as dropped; past this it is
+ * purged and the report clears. Also the snapshot key's TTL.
+ */
+export const CII_ADVISORY_DROPPED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+const ADVISORY_ITEM_LEVELS = new Set<unknown>(['do-not-travel', 'reconsider', 'caution', 'normal']);
+
+export interface AdvisorySnapshot {
+  byCountry: Record<string, AdvisoryLevel>;
+  /** Last-good snapshot only: each country's last live sighting (seeder clock). Absent entries default to `fetchedAtMs`. */
+  seenAtMs?: Record<string, number>;
+  /** The seeder's `fetchedAt`; null for a live payload written before it carried one. */
+  fetchedAtMs: number | null;
+  /**
+   * Travel registers (scripts/shared/advisory-registers.mjs) the seeder's full
+   * fetch did not get a level from, its own `failedSources` test; null when the
+   * payload carries neither `registersPresent` nor an item list.
+   */
+  missingRegisters: string[] | null;
+}
+
+function advisoryClockMs(value: unknown): number | null {
+  const ms = typeof value === 'number' ? value : typeof value === 'string' ? Date.parse(value) : NaN;
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
+}
+
+/**
+ * An advisory payload the scorer may use at `nowMs`, or null. A payload past
+ * CII_ADVISORY_MAX_AGE_MS, or dated in the future, is unknown. `requireClock`
+ * is for the last-good copy, which is only ever written with the seeder clock;
+ * a live payload without one is dated by its producer key's 3-hour TTL.
+ */
+function advisorySnapshotFromSeed(raw: unknown, nowMs: number, requireClock: boolean): AdvisorySnapshot | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const byCountry = (raw as { byCountry?: unknown }).byCountry;
+  if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return null;
+  const fetchedAtMs = advisoryClockMs((raw as { fetchedAt?: unknown }).fetchedAt);
+  if (fetchedAtMs === null) {
+    if (requireClock || (raw as { fetchedAt?: unknown }).fetchedAt != null) return null;
+  } else if (fetchedAtMs > nowMs || nowMs - fetchedAtMs > CII_ADVISORY_MAX_AGE_MS) {
+    return null;
+  }
+  // byCountry is the max over the US and Australian registers, so losing one
+  // still clears the seeder's coverage bound; registersPresent shows which.
+  const missingRegisters = missingRegistersFromPayload(raw);
+  const seenRaw = (raw as { seenAt?: unknown }).seenAt;
+  const seenAtMs = seenRaw && typeof seenRaw === 'object' && !Array.isArray(seenRaw)
+    ? Object.fromEntries(Object.entries(seenRaw).filter(([, ms]) => typeof ms === 'number' && Number.isFinite(ms) && ms > 0 && ms <= nowMs))
+    : undefined;
+  return { byCountry: byCountry as Record<string, AdvisoryLevel>, fetchedAtMs, missingRegisters, ...(seenAtMs ? { seenAtMs } : {}) };
+}
+
+/** A snapshot country's last live sighting. */
+function advisorySeenAtMs(snapshot: AdvisorySnapshot, code: string): number {
+  return snapshot.seenAtMs?.[code] ?? snapshot.fetchedAtMs ?? 0;
+}
+
+const listsCountry = (map: Record<string, unknown>, code: string) => Object.prototype.hasOwnProperty.call(map, code);
+
+/**
+ * The advisory levels a build scores. A live read wins. A Tier-1 country it
+ * does not list (no entry at all, where the snapshot has one) is filled from
+ * the snapshot while its last live sighting is within CII_ADVISORY_MAX_AGE_MS,
+ * and is absent and reported as dropped after that. With no usable live read
+ * the snapshot stands in whole, under the same rule.
+ */
+function ciiAdvisoriesFromReads(
+  live: AdvisorySnapshot | null,
+  lastGood: AdvisorySnapshot | null,
+  nowMs: number,
+): AuxiliarySources['advisories'] {
+  if (!live && !lastGood) return null;
+  const lost = lastGood
+    ? Object.keys(TIER1_COUNTRIES).filter((code) => (!live || !listsCountry(live.byCountry, code)) && listsCountry(lastGood.byCountry, code))
+    : [];
+  const fresh = (code: string) => nowMs - advisorySeenAtMs(lastGood!, code) <= CII_ADVISORY_MAX_AGE_MS;
+  const filled = lost.filter(fresh).sort();
+  const droppedCountries = lost.filter((code) => !fresh(code)).sort();
+  const fromSnapshot = Object.fromEntries(filled.map((code) => [code, lastGood!.byCountry[code]!]));
+  const snapshotDetail = {
+    ...(filled.length ? { filled, snapshotAtMs: Math.min(...filled.map((code) => advisorySeenAtMs(lastGood!, code))) } : {}),
+    ...(droppedCountries.length ? { droppedCountries } : {}),
+  };
+  if (!live) {
+    return { byCountry: fromSnapshot, provenance: 'fallback', fetchedAtMs: lastGood!.fetchedAtMs, ...snapshotDetail };
+  }
+  const sourcesMissing = live.missingRegisters ?? [];
+  return {
+    byCountry: filled.length ? { ...live.byCountry, ...fromSnapshot } : live.byCountry,
+    provenance: 'live',
+    fetchedAtMs: live.fetchedAtMs,
+    ...snapshotDetail,
+    ...(sourcesMissing.length ? { sourcesMissing } : {}),
+  };
 }
 
 // ========================================================================
@@ -379,68 +468,10 @@ function outagePointsByCountry(outages: any[], nowMs: number): Map<string, numbe
   return points;
 }
 
-function climateSeverityScore(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const normalized = String(value || '').toLowerCase();
-  // These values are chosen so the later climateBoost = min(15, severity * 3)
-  // matches browser fallback boosts: extreme = 15 and moderate = 8.
-  if (normalized.includes('extreme')) return 5; // 5 * 3 => climateBoost 15.
-  if (normalized.includes('moderate')) return 8 / 3; // 8 / 3 * 3 => climateBoost 8.
-  return 0;
-}
-
-function getClimateAnomalyCoordinateCountry(anomaly: any): string | null {
-  const lat = anomaly?.location?.latitude ?? anomaly?.lat ?? anomaly?.latitude;
-  const lon = anomaly?.location?.longitude ?? anomaly?.lon ?? anomaly?.longitude ?? anomaly?.lng;
-  if (lat == null || lon == null) return null;
-  return geoToCountry(Number(lat), Number(lon));
-}
-
-export function climateCountriesForAnomaly(anomaly: any): string[] {
-  const zone = anomaly?.zone || anomaly?.region || '';
-  const countries = new Set<string>(CII_CLIMATE_ZONE_COUNTRIES[zone] || []);
-  const coordinateCountry = getClimateAnomalyCoordinateCountry(anomaly);
-  if (coordinateCountry) countries.add(coordinateCountry);
-  return [...countries].filter((code) => code in TIER1_COUNTRIES);
-}
-
 // Real borders (scripts/shared/cii-country-borders.mjs, generated from the
-// Natural Earth 1:50m map), shared with scripts/seed-military-cii.mjs so the
-// military seeder places flights and vessels exactly as the scorer does.
-// Points on non-Tier-1 land, or more than 12 nautical miles offshore, are null.
+// Natural Earth 1:50m map). Points on non-Tier-1 land, or more than 12 nautical
+// miles offshore, are null.
 export const geoToCountry: (lat: number, lon: number) => string | null = ciiCountryAt;
-
-// An earthquake scores where its epicentre is. Offshore beyond coastal waters,
-// where bounding boxes used to reach, it takes the country USGS names after the
-// last comma ("151 km E of Namie, Japan") when that text is exactly a country
-// name: never an ocean or region ("Southern Indian Ocean" is not India), and
-// never for an epicentre on non-Tier-1 land, which counts for no Tier-1 country
-// even when USGS describes it from a town across the border.
-function earthquakeCountry(eq: any): string | null {
-  const lat = safeNum(eq?.location?.latitude);
-  const lon = safeNum(eq?.location?.longitude);
-  const code = geoToCountry(lat, lon);
-  if (code || ciiIsLand(lat, lon)) return code;
-  const place = String(eq?.place || '');
-  const comma = place.lastIndexOf(',');
-  return comma < 0 ? null : countryNamedExactly(place.slice(comma + 1));
-}
-
-// Country names only, not news keywords: USGS writes US states after the comma
-// ("Washington") and COUNTRY_KEYWORDS carries cities and leaders.
-const COUNTRY_NAME_ALIASES: Record<string, string> = {
-  'united states of america': 'US', usa: 'US', 'russian federation': 'RU',
-  turkiye: 'TR', burma: 'MM', uae: 'AE', uk: 'GB', 'great britain': 'GB',
-  'republic of korea': 'KR', 'democratic people s republic of korea': 'KP',
-};
-const COUNTRY_NAME_TO_CODE: Map<string, string> = new Map([
-  ...Object.entries(TIER1_COUNTRIES).map(([code, name]) => [normalizeForCountryMatch(name), code] as [string, string]),
-  ...Object.entries(COUNTRY_NAME_ALIASES).map(([name, code]) => [normalizeForCountryMatch(name), code] as [string, string]),
-]);
-
-function countryNamedExactly(text: string): string | null {
-  return COUNTRY_NAME_TO_CODE.get(normalizeForCountryMatch(text)) ?? null;
-}
 
 // A strike event that carries its country (the Middle East strike feed sets
 // countryCode from its gazetteer) scores there, including at sea where no
@@ -624,13 +655,8 @@ interface CountrySignals {
   gdeltUnrestEscalation: number;
   ucdpWar: boolean;
   ucdpMinor: boolean;
-  /** Raw outage points (see outagePointsByCountry), before the cap of 50. */
+  /** Raw outage points before the cap of 50. */
   outagePoints: number;
-  climateSeverity: number;
-  fireCount: number;
-  fireHighCount: number;
-  gpsHighCount: number;
-  gpsMediumCount: number;
   /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
   strikePressure: number;
   orefAlertCount: number;
@@ -643,26 +669,9 @@ interface CountrySignals {
   // High-severity unrest event count (Phase 3b / C1) — a "high-severity" unrest event is
   // one that killed someone OR is a riot, matching seed-unrest-events.mjs classifySeverity.
   highSeverityUnrest: number;
-  // Phase 1 (CII unification, docs/archive/plans/unify-cii-single-source.md) — gathered, not yet scored.
-  aviationClosureCount: number;
-  aviationSevereCount: number;
-  aviationMajorCount: number;
-  aviationModerateCount: number;
-  earthquakeSignificantCount: number;
-  earthquakeMajorCount: number;
-  earthquakeSevereCount: number;
-  sanctionsEntryCount: number;
-  sanctionsNewEntryCount: number;
+  // Phase 1 (CII unification, docs/archive/plans/unify-cii-single-source.md).
   temporalAnomalyCount: number;
   temporalAnomalyCriticalCount: number;
-  // Phase 2 (CII unification) — gathered here and scored in the security component below.
-  militaryOwnFlights: number;
-  militaryForeignFlights: number;
-  militaryOwnVessels: number;
-  militaryForeignVessels: number;
-  aisDisruptionHighCount: number;
-  aisDisruptionElevatedCount: number;
-  aisDisruptionLowCount: number;
 }
 
 function emptySignals(): CountrySignals {
@@ -673,9 +682,6 @@ function emptySignals(): CountrySignals {
     gdeltUnrestEscalation: 0,
     ucdpWar: false, ucdpMinor: false,
     outagePoints: 0,
-    climateSeverity: 0,
-    fireCount: 0, fireHighCount: 0,
-    gpsHighCount: 0, gpsMediumCount: 0,
     strikePressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
     advisoryLevel: null,
@@ -684,13 +690,7 @@ function emptySignals(): CountrySignals {
     newsScore: 0,
     threatSummaryScore: 0,
     highSeverityUnrest: 0,
-    aviationClosureCount: 0, aviationSevereCount: 0, aviationMajorCount: 0, aviationModerateCount: 0,
-    earthquakeSignificantCount: 0, earthquakeMajorCount: 0, earthquakeSevereCount: 0,
-    sanctionsEntryCount: 0, sanctionsNewEntryCount: 0,
     temporalAnomalyCount: 0, temporalAnomalyCriticalCount: 0,
-    militaryOwnFlights: 0, militaryForeignFlights: 0,
-    militaryOwnVessels: 0, militaryForeignVessels: 0,
-    aisDisruptionHighCount: 0, aisDisruptionElevatedCount: 0, aisDisruptionLowCount: 0,
   };
 }
 
@@ -1029,15 +1029,28 @@ export function strikePressureBoost(pressure: number): number {
 export interface AuxiliarySources {
   ucdpEvents: any[];
   outages: any[];
-  climate: any[];
-  // Detections inside each Tier-1 country, from wildfire:fires-summary:v1
-  // (scripts/shared/wildfire-fires-summary.mjs). Null when the summary was
-  // present but unscorable.
-  fires: Record<string, WildfireFireIntensity[]> | null;
-  gpsHexes: any[];
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
-  advisories: { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null;
+  // `provenance` 'fallback' marks the last good live snapshot standing in for a
+  // missing or stale read; `fetchedAtMs` is the seeder clock when known.
+  // `filled` lists the Tier-1 countries whose entry came from that snapshot
+  // (all of them on a fallback read, the ones a live read lost otherwise), and
+  // `snapshotAtMs` its seeder clock. `sourcesMissing`: travel registers the
+  // seeder's full fetch got no level from.
+  advisories: {
+    byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'>;
+    provenance?: 'live' | 'fallback';
+    fetchedAtMs?: number | null;
+    filled?: string[];
+    snapshotAtMs?: number | null;
+    sourcesMissing?: string[];
+    /** Tier-1 countries the snapshot lists but no live read has for longer than CII_ADVISORY_MAX_AGE_MS: absent, reported. */
+    droppedCountries?: string[];
+  } | null;
+  /** The parsed last good snapshot this build read, for the next snapshot's carried entries. */
+  advisoriesLastGood?: AdvisorySnapshot | null;
+  /** The last good advisory snapshot could not be read; it was treated as unavailable. */
+  advisoriesSnapshotReadFailed?: boolean;
   // Per-country displaced population by ISO3 code (UNHCR — persists after ceasefires)
   displacedByIso3: Record<string, number>;
   crossBorderSurgeCountries?: string[];
@@ -1045,14 +1058,7 @@ export interface AuxiliarySources {
   // Per-country classified headline counts from relay seedClassify() — written to news:threat:summary:v1
   threatSummaryByCountry: Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null;
   // Phase 1 (CII unification) — additive signal sources, all backed by an existing Redis key.
-  aviationAlerts: any[];
-  earthquakes: any[];
-  sanctionsCountries: any[];
-  sanctionsCountryCounts?: Record<string, number> | null;
   temporalAnomalies: any[];
-  // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
-  // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
-  militaryCii: Record<string, any> | null;
   // Per-country GDELT conflict and protest volume against each country's own baseline;
   // scored only while ACLED is dark.
   gdeltCountryEvents: GdeltCountryEvents | null;
@@ -1091,21 +1097,13 @@ function emptyAuxiliarySources(): AuxiliarySources {
   return {
     ucdpEvents: [],
     outages: [],
-    climate: [],
-    fires: {},
-    gpsHexes: [],
     iranEvents: [],
     orefData: null,
     advisories: null,
     displacedByIso3: {},
     newsTopStories: [],
     threatSummaryByCountry: null,
-    aviationAlerts: [],
-    earthquakes: [],
-    sanctionsCountries: [],
-    sanctionsCountryCounts: null,
     temporalAnomalies: [],
-    militaryCii: null,
     gdeltCountryEvents: null,
     confirmedStrikes: null,
   };
@@ -1167,35 +1165,26 @@ async function readRiskInputs(inputs: ReadonlyArray<RiskInput | null>): Promise<
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, firesSummaryRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
+  // Compared with every live advisory read, so it is read on every build, alongside the inputs.
+  const advisoriesLastGoodPending = readCachedJson(CII_ADVISORY_LAST_GOOD_KEY, false);
+  // Sanctions, climate anomalies, fires, GPS jamming and aviation delays are not
+  // read: they do not measure instability inside the country
+  // (docs/methodology/cii-input-register.md).
+  const [ucdpRaw, outagesRaw, iranRaw, orefRaw, advisoriesRaw, displacementCurrentRaw, insightsRaw, threatSummaryRaw, temporalRaw, countryEventsRaw, strikePressureRaw] = await readRiskInputs([
     { key: 'conflict:ucdp-events:v1', raw: true },
     { key: 'infra:outages:v1', raw: true },
-    { key: CLIMATE_ANOMALIES_KEY, raw: true },
-    // Per-country intensity rows derived by seed-fire-detections (#9509). The
-    // canonical wildfire:fires:v1 is 2-5 MB and used to time out the 1.5 s GET,
-    // which rejected the whole build.
-    { key: WILDFIRE_FIRES_SUMMARY_KEY, raw: true },
-    { key: 'intelligence:gpsjam:v2', raw: true },
     IRAN_EVENTS_ENABLED ? { key: 'conflict:iran-events:v1', raw: true } : null,
     { key: 'relay:oref:history:v1', raw: true },
     { key: 'intelligence:advisories:v1', raw: true },
     { key: `displacement:summary:v1:${currentYear}`, raw: true },
     { key: 'news:insights:v1', raw: true },
     { key: 'news:threat:summary:v1', raw: true },
-    // Pre-merged bootstrap (seed-aviation.mjs writes it after merging FAA + intl +
-    // NOTAM-synthesized closures). Reading the intl-only key here silently dropped US
-    // FAA delays and NOTAM closures from aviationScore.
-    { key: 'aviation:delays-bootstrap:v2', raw: true },
-    { key: 'seismology:earthquakes:v1', raw: true },
-    { key: 'sanctions:pressure:v1', raw: true },
-    { key: 'sanctions:country-counts:v1', raw: true },
     // App-owned snapshot (#7674): the temporal-anomalies route stamps
     // temporal:anomalies:v1 through the prefix-aware helpers, so unlike the
     // seeder-owned sources around it this read must ride the deployment
     // prefix — otherwise a preview deployment's risk scores consume the
     // production snapshot instead of the one this deployment rebuilt.
     { key: 'temporal:anomalies:v1', raw: false },
-    { key: 'intelligence:military-cii:v1', raw: true },
     // Per-country GDELT conflict/protest counts and baselines (seed-gdelt-bulk-materializer.mjs).
     { key: 'gdelt:bulk:country-events:v1', raw: true },
     // 30-day per-country strike tally built by the relay from the strike feed (v12).
@@ -1203,74 +1192,72 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   ]);
   // The previous year covers a year not yet seeded. An errored current-year
   // read has already thrown above, so it never masquerades as that.
-  const displacementRaw = displacementCurrentRaw
-    ?? (await readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]))[0];
-  // The summary is written by the same seeder run as the canonical key, after
-  // it. A miss therefore means the reader deployed before the seeder's next
-  // tick or that extra-key write failed; recompute the projection from the
-  // canonical key then, and only then, so a present-but-unusable summary still
-  // surfaces in health instead of hiding behind the fallback. A canonical
-  // payload that cannot be summarized is passed through so the parser below
-  // reports it unusable rather than missing.
-  const firesCanonicalRaw = firesSummaryRaw == null
-    ? (await readRiskInputs([{ key: 'wildfire:fires:v1', raw: true }]))[0]
-    : null;
-  const firesRaw = firesSummaryRaw
-    ?? (firesCanonicalRaw == null ? null : summarizeWildfireDetections(firesCanonicalRaw) ?? firesCanonicalRaw);
-  const borderSnapshots = await readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true })));
+  // Displacement fallback and border snapshots are independent reads.
+  const [displacementRaw, borderSnapshots] = await Promise.all([
+    displacementCurrentRaw != null
+      ? displacementCurrentRaw
+      : readRiskInputs([{ key: `displacement:summary:v1:${currentYear - 1}`, raw: true }]).then(values => values[0]),
+    readRiskInputs(CROSS_BORDER_SOURCES.map(source => ({ key: source.key, raw: true, envelope: true }))),
+  ]);
+  // Optional: an errored read leaves the snapshot unavailable and is reported;
+  // it does not reject the build.
+  const advisoriesLastGoodRead = await advisoriesLastGoodPending;
+  const nowMs = Date.now();
   return buildCiiAuxiliarySources({
     ucdp: ucdpRaw,
     outages: outagesRaw,
-    climate: climateRaw,
-    fires: firesRaw,
-    gpsjam: gpsRaw,
     iranEvents: iranRaw,
     oref: orefRaw,
     advisories: advisoriesRaw,
+    advisoriesLastGood: advisoriesLastGoodRead.status === 'hit' ? advisoriesLastGoodRead.value : null,
+    advisoriesLastGoodReadFailed: advisoriesLastGoodRead.status === 'error',
     displacement: displacementRaw,
     newsInsights: insightsRaw,
     threatSummary: threatSummaryRaw,
-    aviation: aviationRaw,
-    earthquakes: earthquakesRaw,
-    sanctionsPressure: sanctionsRaw,
-    sanctionsCounts: sanctionsCountsRaw,
     temporalAnomalies: temporalRaw,
-    militaryCii: militaryCiiRaw,
     gdeltCountryEvents: countryEventsRaw,
     strikePressure: strikePressureRaw,
     crossBorder: Object.fromEntries(CROSS_BORDER_SOURCES.map((source, i) => [source.id, borderSnapshots[i]])),
-  }, Date.now(), { iranEventsEnabled: IRAN_EVENTS_ENABLED });
+  }, nowMs, { iranEventsEnabled: IRAN_EVENTS_ENABLED });
 }
 
 /**
  * Every payload the CII build reads, as the Redis reads return it (null or
- * absent for a miss), keyed by input id rather than Redis key. `fires` is the
- * wildfire summary (or the canonical payload when the summary is missing),
- * `displacement` the current year's summary or else the previous year's, and
+ * absent for a miss), keyed by input id rather than Redis key. `displacement`
+ * is the current year's summary or else the previous year's, and
  * `crossBorder` each CROSS_BORDER_SOURCES seed envelope by source id.
  * tests/fixtures/cii/ stores captured production inputs in this shape.
  */
 export interface CiiRawInputs {
   ucdp?: unknown;
   outages?: unknown;
-  climate?: unknown;
-  fires?: unknown;
-  gpsjam?: unknown;
   iranEvents?: unknown;
   oref?: unknown;
   advisories?: unknown;
+  /** CII_ADVISORY_LAST_GOOD_KEY: stands in for a failed read, and fills Tier-1 countries a live read lost. */
+  advisoriesLastGood?: unknown;
+  /** The snapshot read errored (runtime only; a capture fails instead). */
+  advisoriesLastGoodReadFailed?: boolean;
   displacement?: unknown;
   newsInsights?: unknown;
   threatSummary?: unknown;
-  aviation?: unknown;
-  earthquakes?: unknown;
-  sanctionsPressure?: unknown;
-  sanctionsCounts?: unknown;
   temporalAnomalies?: unknown;
-  militaryCii?: unknown;
   gdeltCountryEvents?: unknown;
   strikePressure?: unknown;
   crossBorder?: Record<string, unknown>;
+  // Read by v14 and earlier, never by this scorer: the input register removes
+  // them or shows them as context only (docs/methodology/cii-input-register.md).
+  // Fixtures and the capture keep them so an older version's scorer can still
+  // replay a fixture.
+  climate?: unknown;
+  /** The wildfire summary, or the canonical payload summarized when the summary was missing. */
+  fires?: unknown;
+  gpsjam?: unknown;
+  aviation?: unknown;
+  sanctionsPressure?: unknown;
+  sanctionsCounts?: unknown;
+  earthquakes?: unknown;
+  militaryCii?: unknown;
 }
 
 export interface CiiAuxiliaryOptions {
@@ -1290,21 +1277,15 @@ export function buildCiiAuxiliarySources(
   const { iranEventsEnabled } = options;
   const ucdpRaw = raw.ucdp ?? null;
   const outagesRaw = raw.outages ?? null;
-  const climateRaw = raw.climate ?? null;
-  const firesRaw = raw.fires ?? null;
-  const gpsRaw = raw.gpsjam ?? null;
   const iranRaw = iranEventsEnabled ? raw.iranEvents ?? null : null;
   const orefRaw = raw.oref ?? null;
   const advisoriesRaw = raw.advisories ?? null;
+  const advisoriesLastGood = advisorySnapshotFromSeed(raw.advisoriesLastGood, nowMs, true);
+  const advisories = ciiAdvisoriesFromReads(advisorySnapshotFromSeed(advisoriesRaw, nowMs, false), advisoriesLastGood, nowMs);
   const displacementRaw = raw.displacement ?? null;
   const insightsRaw = raw.newsInsights ?? null;
   const threatSummaryRaw = raw.threatSummary ?? null;
-  const aviationRaw = raw.aviation ?? null;
-  const earthquakesRaw = raw.earthquakes ?? null;
-  const sanctionsRaw = raw.sanctionsPressure ?? null;
-  const sanctionsCountsRaw = raw.sanctionsCounts ?? null;
   const temporalRaw = raw.temporalAnomalies ?? null;
-  const militaryCiiRaw = raw.militaryCii ?? null;
   const countryEventsRaw = raw.gdeltCountryEvents ?? null;
   const strikePressureRaw = iranEventsEnabled ? raw.strikePressure ?? null : null;
   const borderSnapshots = CROSS_BORDER_SOURCES.map((source) => raw.crossBorder?.[source.id] ?? null);
@@ -1312,9 +1293,6 @@ export function buildCiiAuxiliarySources(
   const inputReads: Partial<Record<CiiInputId, CiiInputRead>> = {
     ucdp: read(ucdpRaw),
     outages: read(outagesRaw),
-    climate: read(climateRaw),
-    fires: read(firesRaw),
-    gpsjam: read(gpsRaw),
     iranEvents: iranEventsEnabled ? read(iranRaw) : 'not_configured',
     oref: read(orefRaw),
     advisories: read(advisoriesRaw),
@@ -1322,11 +1300,6 @@ export function buildCiiAuxiliarySources(
     crossBorder: borderSnapshots.some(snapshot => snapshot != null) ? 'present' : 'missing',
     newsInsights: read(insightsRaw),
     threatSummary: read(threatSummaryRaw),
-    aviation: read(aviationRaw),
-    earthquakes: read(earthquakesRaw),
-    sanctionsPressure: read(sanctionsRaw),
-    sanctionsCounts: read(sanctionsCountsRaw),
-    militaryCii: read(militaryCiiRaw),
     gdeltCountryEvents: read(countryEventsRaw),
     strikePressure: iranEventsEnabled ? read(strikePressureRaw) : 'not_configured',
   };
@@ -1393,40 +1366,22 @@ export function buildCiiAuxiliarySources(
     threatSummaryRaw && typeof threatSummaryRaw === 'object' && (threatSummaryRaw as any).byCountry
       ? (threatSummaryRaw as any).byCountry
       : null;
-  const sanctionsCountryCounts: Record<string, number> = {};
-  if (sanctionsCountsRaw && typeof sanctionsCountsRaw === 'object' && !Array.isArray(sanctionsCountsRaw)) {
-    for (const [rawCode, rawCount] of Object.entries(sanctionsCountsRaw as Record<string, unknown>)) {
-      const code = String(rawCode || '').toUpperCase();
-      const count = safeNonNegativeNum(rawCount);
-      if (/^[A-Z]{2}$/.test(code) && count > 0) sanctionsCountryCounts[code] = count;
-    }
-  }
 
   return {
     ucdpEvents: arr(ucdpRaw, 'events'),
     outages,
-    climate: arr(climateRaw, 'anomalies'),
-    fires: parseWildfireFiresSummary(firesRaw)?.byCountry ?? null,
-    gpsHexes: arr(gpsRaw, 'hexes'),
     iranEvents: arr(iranRaw, 'events'),
     orefData,
-    advisories: advisoriesRaw && typeof advisoriesRaw === 'object' && (advisoriesRaw as any).byCountry
-      ? { byCountry: (advisoriesRaw as any).byCountry }
-      : null,
+    advisories,
+    advisoriesLastGood,
+    ...(raw.advisoriesLastGoodReadFailed ? { advisoriesSnapshotReadFailed: true } : {}),
     displacedByIso3,
     crossBorderSurgeCountries: borderMovements
       .filter(m => m.kind === 'arrival' && m.surge && !m.stale)
       .flatMap(m => [m.countryCode, m.originCode]).filter(Boolean),
     newsTopStories,
     threatSummaryByCountry,
-    aviationAlerts: arr(aviationRaw, 'alerts'),
-    earthquakes: arr(earthquakesRaw, 'earthquakes'),
-    sanctionsCountries: arr(sanctionsRaw, 'countries'),
-    sanctionsCountryCounts: Object.keys(sanctionsCountryCounts).length > 0 ? sanctionsCountryCounts : null,
     temporalAnomalies: arr(temporalRaw, 'anomalies'),
-    militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
-      ? (militaryCiiRaw as any).byCountry
-      : null,
     gdeltCountryEvents: gdeltCountryEventsFromSeed(countryEventsRaw, nowMs),
     confirmedStrikes: confirmedStrikeDaysFromSeed(strikePressureRaw, nowMs),
     inputReads,
@@ -1446,14 +1401,30 @@ export function buildCiiAuxiliarySources(
 
 export const CII_HEALTH_INPUT_IDS = [
   'acled', 'ucdp', 'gdeltCountryEvents', 'iranEvents', 'strikePressure', 'oref',
-  'outages', 'climate', 'fires', 'gpsjam', 'advisories', 'displacement',
-  'crossBorder', 'newsInsights', 'threatSummary', 'aviation', 'earthquakes',
-  'sanctionsPressure', 'sanctionsCounts', 'militaryCii',
+  'outages', 'advisories', 'displacement',
+  'crossBorder', 'newsInsights', 'threatSummary',
 ] as const;
 export type CiiInputId = typeof CII_HEALTH_INPUT_IDS[number];
-/** `unusable`: present, but none of its records map to a country. */
-type CiiInputRead = 'present' | 'missing' | 'unusable' | 'not_configured';
-export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured';
+type CiiInputRead = 'present' | 'unusable' | 'missing' | 'not_configured';
+/** `fallback`: the last good snapshot was scored because this build's read was missing or stale, or filled countries a read lost with a register gone. */
+export type CiiInputState = 'live' | 'quiet' | 'missing' | 'unusable' | 'not_configured' | 'fallback';
+/**
+ * `snapshotAt`/`filled`: the producer clock of the snapshot scored and the
+ * Tier-1 countries taken from it (on a `live` state: delisted at the source
+ * with every register reporting). `sourcesMissing`: level sources a live read
+ * lacked. `snapshotReadFailed`: the snapshot could not be read.
+ */
+export interface CiiInputReport {
+  excluded?: Record<string, CiiInputExclusion>;
+  state: CiiInputState;
+  quietSince?: number;
+  snapshotAt?: number;
+  filled?: string[];
+  sourcesMissing?: string[];
+  /** Tier-1 countries a source stopped listing more than CII_ADVISORY_MAX_AGE_MS ago: now absent. */
+  droppedCountries?: string[];
+  snapshotReadFailed?: boolean;
+}
 /** Records one construct rule removed from scoring: how many, and up to 5 to audit. */
 export interface CiiInputExclusion {
   count: number;
@@ -1462,8 +1433,6 @@ export interface CiiInputExclusion {
   tier1Count?: number;
   tier1Countries?: string[];
 }
-/** `excluded`: records a construct rule removed from scoring, by rule (see ciiInputExclusions). */
-export interface CiiInputReport { state: CiiInputState; quietSince?: number; excluded?: Record<string, CiiInputExclusion> }
 export type CiiInputExclusions = Partial<Record<CiiInputId, Record<string, CiiInputExclusion>>>;
 const CII_EXCLUSION_SAMPLES = 5;
 const CII_EXCLUSION_TEXT_MAX = 200;
@@ -1475,25 +1444,17 @@ const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliaryS
   strikePressure: 'confirmedStrikes',
   oref: 'orefData',
   outages: 'outages',
-  climate: 'climate',
-  fires: 'fires',
-  gpsjam: 'gpsHexes',
   advisories: 'advisories',
   displacement: 'displacedByIso3',
   crossBorder: 'crossBorderSurgeCountries',
   newsInsights: 'newsTopStories',
   threatSummary: 'threatSummaryByCountry',
-  aviation: 'aviationAlerts',
-  earthquakes: 'earthquakes',
-  sanctionsPressure: 'sanctionsCountries',
-  sanctionsCounts: 'sanctionsCountryCounts',
-  militaryCii: 'militaryCii',
 };
 
 // Parsers that return null when they reject a present payload: past their own
 // age gate (GDELT 6h, strike tally 72h) or without the field they score.
 const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
-  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary', 'militaryCii', 'fires',
+  'gdeltCountryEvents', 'strikePressure', 'oref', 'advisories', 'threatSummary',
 ]);
 
 /**
@@ -1520,7 +1481,13 @@ export function assessCiiInputAvailability(
   } as Record<CiiInputId, CiiInputState>;
   for (const [id, field] of Object.entries(CII_INPUT_AUX_FIELD) as Array<[Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources]>) {
     const read = aux.inputReads?.[id] ?? 'missing';
-    if (read !== 'present') {
+    // A live read that lost a country with every register still reporting is a
+    // change at the source: disclosed per country and as a health warning. It
+    // is a dead input only when the read failed or a register is gone.
+    if (id === 'advisories' && (aux.advisories?.provenance === 'fallback'
+      || ((aux.advisories?.filled?.length ?? 0) > 0 && (aux.advisories?.sourcesMissing?.length ?? 0) > 0))) {
+      states[id] = 'fallback';
+    } else if (read !== 'present') {
       states[id] = read;
     } else if (aux[field] == null && CII_INPUT_REJECTED_AS_NULL.has(id)) {
       states[id] = 'unusable';
@@ -1570,30 +1537,60 @@ const OUTAGE_EXCLUSION_RULES: Partial<Record<OutageVerdict, string>> = {
   asnBelowNationalShare: 'asnBelowNationalShare',
   asnImpactUnknown: 'asnImpactUnknown',
 };
+/** What a per-input report adds beyond the state. Only advisories carries any. */
+export type CiiInputDetail = Pick<CiiInputReport, 'snapshotAt' | 'filled' | 'sourcesMissing' | 'droppedCountries' | 'snapshotReadFailed'>;
+
+export function ciiInputDetails(aux: AuxiliarySources): Partial<Record<CiiInputId, CiiInputDetail>> {
+  const a = aux.advisories;
+  const detail: CiiInputDetail = {};
+  if (a?.filled?.length) {
+    if (typeof a.snapshotAtMs === 'number') detail.snapshotAt = a.snapshotAtMs;
+    detail.filled = a.filled;
+  }
+  if (a?.sourcesMissing?.length) detail.sourcesMissing = a.sourcesMissing;
+  if (a?.droppedCountries?.length) detail.droppedCountries = a.droppedCountries;
+  if (aux.advisoriesSnapshotReadFailed) detail.snapshotReadFailed = true;
+  return Object.keys(detail).length ? { advisories: detail } : {};
+}
+
+/** Named options of withCiiInputQuietClocks. Add a new one here, never as a positional argument. */
+export interface CiiInputReportOptions {
+  /** ciiInputDetails output. */
+  details?: Partial<Record<CiiInputId, CiiInputDetail>>;
+  exclusions?: CiiInputExclusions;
+}
+const CII_INPUT_REPORT_OPTION_KEYS = new Set<string>(['details', 'exclusions']);
 
 /**
  * Attaches `quietSince`, carried from the previous report while the input
- * stays quiet, and each input's `excluded` counts.
+ * stays quiet, and each input's details. Options are named: tests run without
+ * type checking, so an unknown key (an object passed where an older signature
+ * took a positional argument) throws instead of being misread.
  */
 export function withCiiInputQuietClocks(
   states: Record<CiiInputId, CiiInputState>,
   previousInputs: unknown,
   nowMs: number,
-  { exclusions = {} }: { exclusions?: CiiInputExclusions } = {},
+  options: CiiInputReportOptions = {},
 ): Record<CiiInputId, CiiInputReport> {
+  const unknownOptions = Object.keys(options ?? {}).filter((key) => !CII_INPUT_REPORT_OPTION_KEYS.has(key));
+  if (unknownOptions.length > 0) {
+    throw new TypeError(`withCiiInputQuietClocks: unknown option(s) ${unknownOptions.join(', ')}`);
+  }
+  const details = options.details ?? {};
   const previous = previousInputs && typeof previousInputs === 'object'
     ? previousInputs as Record<string, Partial<CiiInputReport> | undefined>
     : {};
   const reports = {} as Record<CiiInputId, CiiInputReport>;
   for (const id of CII_HEALTH_INPUT_IDS) {
     const state = states[id];
-    const excluded = exclusions[id] ? { excluded: exclusions[id] } : {};
+    const detail = { ...details[id], ...(options.exclusions?.[id] ? { excluded: options.exclusions[id] } : {}) };
     if (state !== 'quiet') {
-      reports[id] = { state, ...excluded };
+      reports[id] = { state, ...detail };
       continue;
     }
     const since = previous[id]?.state === 'quiet' ? Number(previous[id]?.quietSince) : NaN;
-    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs, ...excluded };
+    reports[id] = { state, quietSince: Number.isFinite(since) && since > 0 && since <= nowMs ? since : nowMs, ...detail };
   }
   return reports;
 }
@@ -1607,13 +1604,12 @@ export interface CiiCountryTerms {
   parts: {
     unrestBase: number; unrestFatalityBoost: number; unrestSeverityBoost: number; outageBoost: number; gdeltUnrest: number;
     acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number;
-    flightScore: number; vesselScore: number; aviationScore: number; gpsJammingScore: number;
     newsScore: number; threatSummaryScore: number;
   };
   eventScore: number;
   boosts: {
-    climate: number; fire: number; advisory: number; orefBlend: number; displacement: number; crossBorder: number;
-    newsUrgency: number; earthquake: number; sanctions: number; ais: number; strikePressure: number;
+    advisory: number; orefBlend: number; displacement: number; crossBorder: number;
+    newsUrgency: number; strikePressure: number;
   };
   /** baseline and eventScore weighted, plus every boost: the score before floors, rounding and the cap. */
   blended: number;
@@ -1635,12 +1631,11 @@ export function computeCIIScores(
   const data: Record<string, CountrySignals> = {};
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     data[code] = emptySignals();
-    const liveLevel = isAdvisoryLevel(aux.advisories?.byCountry?.[code])
-      ? aux.advisories.byCountry[code]
-      : null;
-    const fallbackLevel = advisoryFallbackLevel(code);
-    data[code].advisoryLevel = liveLevel || fallbackLevel;
-    data[code].advisoryProvenance = liveLevel ? 'live' : fallbackLevel ? 'fallback' : 'absent';
+    // Only the advisory feed sets a level; a country it does not list is absent.
+    const level = aux.advisories?.byCountry?.[code];
+    data[code].advisoryLevel = isAdvisoryLevel(level) ? level : null;
+    data[code].advisoryProvenance = !isAdvisoryLevel(level) ? 'absent'
+      : aux.advisories!.provenance === 'fallback' || aux.advisories!.filled?.includes(code) ? 'fallback' : 'live';
   }
 
   // --- Displacement ingestion (UNHCR — persists after ceasefires) ---
@@ -1717,84 +1712,22 @@ export function computeCIIScores(
     if (data[code]) data[code].outagePoints = points;
   }
 
-  // --- Climate ---
-  for (const a of aux.climate) {
-    const severity = climateSeverityScore(a.severity ?? a.score);
-    for (const code of climateCountriesForAnomaly(a)) {
-      if (data[code]) data[code].climateSeverity = Math.max(data[code].climateSeverity, severity);
-    }
-  }
-
-  // Cyber IOC feeds (AbuseIPDB, Feodo, URLhaus, C2Intel, OTX) are not read since v14:
-  // each row's country is where the malicious IP or URL is hosted, not the victim, so
-  // they scored datacenter countries (US, GB, DE, FR) instead of countries under attack.
-
-  // --- Fires --- (already attributed to Tier-1 countries by the summary producer)
-  for (const [code, fires] of Object.entries(aux.fires ?? {})) {
-    if (!data[code]) continue;
-    for (const f of fires) {
-      data[code].fireCount++;
-      // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
-      if (safeNonNegativeNum(f.brightness) >= 360 || safeNonNegativeNum(f.frp) >= 50) data[code].fireHighCount++;
-    }
-  }
-
-  // --- GPS hex severity split ---
-  for (const h of aux.gpsHexes) {
-    const lat = safeNum(h.lat || h.latitude);
-    const lon = safeNum(h.lon || h.longitude);
-    const code = geoToCountry(lat, lon);
-    if (!code || !data[code]) continue;
-    if (h.level === 'high') data[code].gpsHighCount++;
-    else data[code].gpsMediumCount++;
-  }
-
-  // --- Aviation disruptions (Phase 1 — gathered, not yet scored) ---
-  // country is a name; delayType/severity may be lowercase or proto-enum form
-  // (FLIGHT_DELAY_TYPE_CLOSURE / FLIGHT_DELAY_SEVERITY_SEVERE) — substring match handles both.
-  for (const a of aux.aviationAlerts ?? []) {
-    const code = normalizeCountryName(String(a.country || ''));
-    if (!code || !data[code]) continue;
-    const dt = String(a.delayType || '').toLowerCase();
-    const sev = String(a.severity || '').toLowerCase();
-    if (dt.includes('closure')) data[code].aviationClosureCount++;
-    else if (sev.includes('severe')) data[code].aviationSevereCount++;
-    else if (sev.includes('major')) data[code].aviationMajorCount++;
-    else if (sev.includes('moderate')) data[code].aviationModerateCount++;
-  }
-
-  // --- Earthquakes (Phase 1) — magnitude >= 5.5, within 7-day lookback ---
-  const eqCutoff = computedAt - 7 * 24 * 60 * 60 * 1000;
-  for (const eq of aux.earthquakes ?? []) {
-    const mag = safeNonNegativeNum(eq.magnitude);
-    if (mag < 5.5) continue;
-    if (safeNum(eq.occurredAt) < eqCutoff) continue;
-    const code = earthquakeCountry(eq);
-    if (!code || !data[code]) continue;
-    if (mag >= 7.5) data[code].earthquakeSevereCount++;
-    else if (mag >= 6.5) data[code].earthquakeMajorCount++;
-    else data[code].earthquakeSignificantCount++;
-  }
-
-  // --- Sanctions pressure (Phase 1) — direct ISO2 attribution ---
-  // Prefer the full ISO2→entryCount map because the pressure payload's `countries`
-  // array is intentionally a top-pressure display summary.
-  const fullSanctionsCounts = aux.sanctionsCountryCounts ?? null;
-  for (const [rawCode, rawCount] of Object.entries(fullSanctionsCounts ?? {})) {
-    const code = String(rawCode || '').toUpperCase();
-    if (!data[code]) continue;
-    data[code].sanctionsEntryCount = safeNonNegativeNum(rawCount);
-  }
-  for (const c of aux.sanctionsCountries ?? []) {
-    const code = String(c.countryCode || '').toUpperCase();
-    if (!data[code]) continue;
-    // Accumulate (not assign): the producer keys per-country rows by `code:name`, so one
-    // ISO2 can appear in multiple rows when the source spells the name differently.
-    if (!fullSanctionsCounts || !Object.prototype.hasOwnProperty.call(fullSanctionsCounts, code)) {
-      data[code].sanctionsEntryCount += safeNonNegativeNum(c.entryCount);
-    }
-    data[code].sanctionsNewEntryCount += safeNonNegativeNum(c.newEntryCount);
-  }
+  // Not read, because they do not measure instability inside the country
+  // (rule I1, docs/methodology/cii-input-register.md):
+  // - Cyber IOC feeds (AbuseIPDB, Feodo, URLhaus, C2Intel, OTX), since v14. Each row's
+  //   country is where the malicious IP or URL is hosted, not the victim.
+  // - Climate anomalies, since v15: a natural hazard, fanned out from one zone to up to 9 countries.
+  // - FIRMS fires, since v15: in the Gulf most detections are gas flares; elsewhere,
+  //   farm burning and wildfire.
+  // - GPS jamming, since v15: it scores where the effect lands, not the jammer
+  //   (Kaliningrad scores Poland), and its hex count scales with ADS-B receivers.
+  // - Aviation delay alerts, since v15: their count scales with reporting airports
+  //   (the US reports 30, most countries 1).
+  // - Sanctions entry counts, since v15: they score the country where a designated
+  //   entity is registered.
+  // - Earthquakes, since v15: a natural hazard; the register shows them as context.
+  // - intelligence:military-cii:v1, since v15: its flight and vessel counts are not
+  //   instability, and its AIS disruptions measure station density (context).
 
   // --- Temporal anomalies (Phase 1) — region is ISO2 or country name; skip 'global' ---
   for (const an of aux.temporalAnomalies ?? []) {
@@ -1804,20 +1737,6 @@ export function computeCIIScores(
     if (!code || !data[code]) continue;
     data[code].temporalAnomalyCount++;
     if (String(an.severity || '').toLowerCase() === 'critical') data[code].temporalAnomalyCriticalCount++;
-  }
-
-  // --- Military activity (Phase 2) — per-country aggregate from intelligence:military-cii:v1 ---
-  // Own counts are gathered but not scored since v14 (see the Security score below).
-  for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
-    const d = data[code];
-    if (!d || !m || typeof m !== 'object') continue;
-    d.militaryOwnFlights = safeNonNegativeNum((m as any).ownFlights);
-    d.militaryForeignFlights = safeNonNegativeNum((m as any).foreignFlights);
-    d.militaryOwnVessels = safeNonNegativeNum((m as any).ownVessels);
-    d.militaryForeignVessels = safeNonNegativeNum((m as any).foreignVessels);
-    d.aisDisruptionHighCount = safeNonNegativeNum((m as any).aisDisruptionHigh);
-    d.aisDisruptionElevatedCount = safeNonNegativeNum((m as any).aisDisruptionElevated);
-    d.aisDisruptionLowCount = safeNonNegativeNum((m as any).aisDisruptionLow);
   }
 
   // --- Strike pressure (v12): confirmed feed and GDELT, per day the larger, decayed ---
@@ -1904,23 +1823,14 @@ export function computeCIIScores(
       acledScore + fatalityScore + civilianBoost + orefBoost + d.gdeltConflictEscalation,
     );
 
-    // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
-    // Flights + vessels + aviation + GPS. Military presence counts only FOREIGN aircraft
-    // and vessels located in the country, weighted ×2 as before. Since v14 a country's own
-    // air force and navy score nothing: own counts follow the operator anywhere in the
-    // world, so routine training (RAF/French sorties took GB 9 → 31, FR 9 → 25 overnight)
-    // and own vessels saturated Security for GB/FR/DE/US every day.
-    const milFlights = d.militaryForeignFlights * 2;
-    const milVessels = d.militaryForeignVessels * 2;
-    const flightScore = Math.min(50, milFlights * 3);
-    const vesselScore = Math.min(30, milVessels * 5);
-    const aviationScore = Math.min(
-      40,
-      d.aviationClosureCount * 20 + d.aviationSevereCount * 15
-        + d.aviationMajorCount * 10 + d.aviationModerateCount * 5,
-    );
-    const gpsJammingScore = Math.min(35, d.gpsHighCount * 5 + d.gpsMediumCount * 2);
-    const security = Math.min(100, Math.round(flightScore + vesselScore + aviationScore + gpsJammingScore));
+    // --- Security score: no inputs since v15 ---
+    // Its four inputs (foreign military flights, foreign military vessels, aviation delays
+    // and GPS jamming) left the score under rule I1. They measured NATO transports at
+    // cruise altitude, AIS types 35 and 50-59 (pilot boats, SAR, tugs), airport counts and
+    // jamming effects far from the jammer (docs/methodology/cii-input-register.md).
+    // AIS disruptions, the last term read from the same feed, left with earthquakes (both
+    // context only). The component stays on the wire as militaryActivity, always 0.
+    const security = 0;
 
     // information cap raised 20 → 100 to match unrest/conflict/security ranges.
     // Previous cap silently limited information's max contribution to 5 points
@@ -1928,11 +1838,9 @@ export function computeCIIScores(
     // Issue #3739.
     const information = Math.min(100, d.newsScore + d.threatSummaryScore);
 
-    const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
-
-    const climateBoost = Math.min(15, d.climateSeverity * 3);
-    // fire (Phase 3b / D8) — severity-weighted. (The cyber boost beside it was removed in v14.)
-    const fireBoost = Math.min(8, d.fireHighCount * 1.5 + Math.min(20, d.fireCount) * 0.25);
+    // Security's weight is 0, not redistributed: the event score's maximum drops from
+    // 100 to 80 until reweighting (Stage C of the v15 review) sets new weights.
+    const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0 + information * 0.25;
 
     // --- Advisory boost ---
     const advisoryBoost = d.advisoryLevel === 'do-not-travel' ? 15
@@ -1956,45 +1864,23 @@ export function computeCIIScores(
     // --- Phase 3b blend reconciliation (decisions D2/D4/D5/D6) ---
     // newsUrgencyBoost (D2): pure function of the information component.
     const newsUrgencyBoost = information >= 70 ? 5 : information >= 50 ? 3 : 0;
-    // earthquakeBoost (D5): ported verbatim from the frontend getEarthquakeBoost.
-    const earthquakeBoost = Math.min(
-      25,
-      d.earthquakeSevereCount * 10 + d.earthquakeMajorCount * 5 + d.earthquakeSignificantCount * 2,
-    );
-    // sanctionsBoost (D6): ported verbatim from the frontend getSanctionsBoost.
-    let sanctionsBoost = 0;
-    if (d.sanctionsEntryCount > 0) {
-      sanctionsBoost = d.sanctionsEntryCount >= 2000 ? 12
-        : d.sanctionsEntryCount >= 501 ? 8
-        : d.sanctionsEntryCount >= 101 ? 5 : 3;
-      if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
-    }
     // supplementalSignalBoost (D4): the frontend's helper summed AIS + fire + cyber +
-    // temporal. AIS is its own blend term below; fire is the severity-weighted
-    // term above; cyber was removed in v14. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
-    // producer (list-temporal-anomalies.ts) emits every anomaly with region:'global', so
-    // they cannot be country-attributed. `temporalAnomaly*Count` stay gathered-not-scored
-    // (Phase 1 intent); re-wire a temporalBoost only if the producer emits country-scoped
-    // anomalies. The frontend's temporal sub-boost has the same dormancy for the same reason.
-    const aisBoost = Math.min(
-      10,
-      d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
-    );
+    // temporal. Cyber was removed in v14, fire and AIS in v15. The temporal sub-boost is
+    // NOT wired — the temporal:anomalies:v1 producer (list-temporal-anomalies.ts) emits
+    // every anomaly with region:'global', so they cannot be country-attributed.
+    // `temporalAnomaly*Count` stay gathered-not-scored (Phase 1 intent); re-wire a
+    // temporalBoost only if the producer emits country-scoped anomalies. The frontend's
+    // temporal sub-boost has the same dormancy for the same reason.
 
     // Assigned inside the sum so termsSink reports it without restating its constant.
     let crossBorderBoost: number;
     const blended = baseline * 0.4
       + eventScore * 0.6
-      + climateBoost
-      + fireBoost
       + advisoryBoost
       + orefBlendBoost
       + displacementBoost
       + (crossBorderBoost = aux.crossBorderSurgeCountries?.includes(code) ? 5 : 0)
       + newsUrgencyBoost
-      + earthquakeBoost
-      + sanctionsBoost
-      + aisBoost
       // Strike pressure (v12), capped; replaces the 72h strikeBoost inside Conflict.
       + strikePressureBoost(d.strikePressure);
 
@@ -2015,14 +1901,12 @@ export function computeCIIScores(
         parts: {
           unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
           acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation,
-          flightScore, vesselScore, aviationScore, gpsJammingScore,
           newsScore: d.newsScore, threatSummaryScore: d.threatSummaryScore,
         },
         eventScore,
         boosts: {
-          climate: climateBoost, fire: fireBoost, advisory: advisoryBoost, orefBlend: orefBlendBoost,
+          advisory: advisoryBoost, orefBlend: orefBlendBoost,
           displacement: displacementBoost, crossBorder: crossBorderBoost, newsUrgency: newsUrgencyBoost,
-          earthquake: earthquakeBoost, sanctions: sanctionsBoost, ais: aisBoost,
           strikePressure: strikePressureBoost(d.strikePressure),
         },
         blended,
@@ -2252,12 +2136,8 @@ export function normalizeRiskScoreAdvisoryDisclosure(response: GetRiskScoresResp
         return score;
       }
 
-      const fallbackLevel = advisoryFallbackLevel(score.region);
-      return {
-        ...score,
-        advisoryLevel: fallbackLevel ?? '',
-        advisoryProvenance: fallbackLevel ? 'fallback' : 'absent',
-      };
+      // The level this score used is not recorded, so none is claimed.
+      return { ...score, advisoryLevel: '', advisoryProvenance: 'absent' };
     }),
   };
 }
@@ -2475,12 +2355,49 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
   ).catch(() => undefined);
 }
 
-async function buildRiskScoresPayload(): Promise<{
-  response: GetRiskScoresResponse;
+/** What a build hands to persistence besides the response. */
+interface RiskScoresBuildSide {
   realtimeSignalDensityCoverageCount: number;
-  ciiInputs: Record<CiiInputId, CiiInputState>;
   ciiInputExclusions: CiiInputExclusions;
-}> {
+  ciiInputs: Record<CiiInputId, CiiInputState> | null;
+  ciiInputDetails: Partial<Record<CiiInputId, CiiInputDetail>>;
+  /** The next last-good snapshot: Tier-1 levels (`normal` included), the seeder clock, and each country's last live sighting. */
+  advisoriesLastGood: { byCountry: Record<string, string>; fetchedAt: number; seenAt: Record<string, number> } | null;
+}
+
+/**
+ * The snapshot after a live read. A Tier-1 country the read lists (`normal`
+ * included) is stored at this read's seeder clock; one it does not list keeps
+ * its previous entry and last sighting until CII_ADVISORY_DROPPED_RETENTION_MS,
+ * so a source that stops listing a country is filled, then reported dropped,
+ * then purged. A build with no live read writes nothing.
+ */
+export function ciiAdvisoryLastGoodSnapshot(aux: AuxiliarySources, nowMs: number): RiskScoresBuildSide['advisoriesLastGood'] {
+  const advisories = aux.advisories;
+  if (!advisories || advisories.provenance === 'fallback' || typeof advisories.fetchedAtMs !== 'number') return null;
+  const previous = aux.advisoriesLastGood ?? null;
+  const fromSnapshot = new Set(advisories.filled ?? []);
+  const byCountry: Record<string, string> = {};
+  const seenAt: Record<string, number> = {};
+  for (const code of Object.keys(TIER1_COUNTRIES)) {
+    const level: unknown = advisories.byCountry[code];
+    if (!fromSnapshot.has(code) && listsCountry(advisories.byCountry, code)) {
+      if (typeof level === 'string' && ADVISORY_ITEM_LEVELS.has(level)) {
+        byCountry[code] = level;
+        seenAt[code] = advisories.fetchedAtMs;
+      }
+    } else if (previous && listsCountry(previous.byCountry, code)) {
+      const seen = advisorySeenAtMs(previous, code);
+      if (nowMs - seen <= CII_ADVISORY_DROPPED_RETENTION_MS) {
+        byCountry[code] = previous.byCountry[code]!;
+        seenAt[code] = seen;
+      }
+    }
+  }
+  return { byCountry, fetchedAt: advisories.fetchedAtMs, seenAt };
+}
+
+async function buildRiskScoresPayload(): Promise<RiskScoresBuildSide & { response: GetRiskScoresResponse }> {
   const nowMs = Date.now();
   const [acled, aux, priorCiiScores] = await Promise.all([
     fetchACLEDEvents(),
@@ -2499,6 +2416,8 @@ async function buildRiskScoresPayload(): Promise<{
     realtimeSignalDensityCoverageCount,
     ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
     ciiInputExclusions: ciiInputExclusions(aux, nowMs),
+    ciiInputDetails: ciiInputDetails(aux),
+    advisoriesLastGood: ciiAdvisoryLastGoodSnapshot(aux, nowMs),
   };
 }
 
@@ -2506,16 +2425,16 @@ const RISK_SEED_META_KEY = 'seed-meta:intelligence:risk-scores';
 
 async function persistFreshRiskScorePayload(
   freshResult: GetRiskScoresResponse,
-  realtimeSignalDensityCoverageCount: number,
-  ciiInputs: Record<CiiInputId, CiiInputState> | null,
-  options: { liveCache?: boolean; exclusions?: CiiInputExclusions } = {},
+  side: RiskScoresBuildSide,
+  options: { liveCache?: boolean } = {},
 ): Promise<void> {
+  const { realtimeSignalDensityCoverageCount, ciiInputs, advisoriesLastGood } = side;
   const fetchedAt = Date.now();
   // The previous report carries each quiet input's clock. An unreadable one
   // restarts the clocks, which can only delay a quiet-too-long verdict.
   const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
   const inputs = ciiInputs
-    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { exclusions: options.exclusions })
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { details: side.ciiInputDetails, exclusions: side.ciiInputExclusions })
     : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
@@ -2527,6 +2446,10 @@ async function persistFreshRiskScorePayload(
       604800,
     ),
   ];
+  // Expires when it could no longer be scored; the reader re-checks the age.
+  if (advisoriesLastGood) {
+    writes.push(setCachedJson(CII_ADVISORY_LAST_GOOD_KEY, advisoriesLastGood, Math.ceil(CII_ADVISORY_DROPPED_RETENTION_MS / 1000)));
+  }
 
   if (options.liveCache) writes.unshift(setCachedJson(RISK_CACHE_KEY, freshResult, RISK_CACHE_TTL));
   await Promise.all(writes.map((write) => write.catch(() => undefined)));
@@ -2541,18 +2464,16 @@ export async function getRiskScores(
   req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
-    let realtimeSignalDensityCoverageCount = 0;
-    let ciiInputs: Record<CiiInputId, CiiInputState> | null = null;
-    let exclusions: CiiInputExclusions = {};
+    let side: RiskScoresBuildSide = {
+      realtimeSignalDensityCoverageCount: 0, ciiInputs: null, ciiInputDetails: {}, ciiInputExclusions: {}, advisoriesLastGood: null,
+    };
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
-        const built = await buildRiskScoresPayload();
-        realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
-        ciiInputs = built.ciiInputs;
-        exclusions = built.ciiInputExclusions;
-        return built.response;
+        const { response, ...built } = await buildRiskScoresPayload();
+        side = built;
+        return response;
       },
       undefined,
       // A rejected build must leave RISK_CACHE_KEY untouched: no NEG_SENTINEL,
@@ -2564,11 +2485,9 @@ export async function getRiskScores(
       let liveCacheBackfill = false;
       if (!hasCompleteRiskScoreAdvisoryDisclosure(freshResult)) {
         try {
-          const built = await buildRiskScoresPayload();
-          realtimeSignalDensityCoverageCount = built.realtimeSignalDensityCoverageCount;
-          ciiInputs = built.ciiInputs;
-          exclusions = built.ciiInputExclusions;
-          freshResult = withRiskScoreRuntimeState(built.response, { degraded: false, stale: false });
+          const { response, ...built } = await buildRiskScoresPayload();
+          side = built;
+          freshResult = withRiskScoreRuntimeState(response, { degraded: false, stale: false });
           liveCacheBackfill = true;
         } catch {
           freshResult = withRiskScoreRuntimeState(normalizeRiskScoreAdvisoryDisclosure(freshResult), {
@@ -2602,10 +2521,7 @@ export async function getRiskScores(
       // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
       // logic is unchanged.
       if ((source === 'fresh' && leader) || liveCacheBackfill) {
-        await persistFreshRiskScorePayload(freshResult, realtimeSignalDensityCoverageCount, ciiInputs, {
-          liveCache: liveCacheBackfill,
-          exclusions,
-        });
+        await persistFreshRiskScorePayload(freshResult, side, { liveCache: liveCacheBackfill });
       }
       return filterRiskScoresResponse(freshResult, req.region);
     }

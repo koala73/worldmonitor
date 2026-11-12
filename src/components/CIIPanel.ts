@@ -16,6 +16,9 @@ import {
   shouldRenderSectionLabels,
 } from './_cii-panel-partition';
 import { bindActivationKeys } from '@/utils/activation';
+import { displayedCiiComponents } from '@/utils/cii-components';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { PanelScopeFilter, focusedEmptyNode, scopeTagNode, type ScopeRow } from './panel-scope-filter';
 
 export const CII_METHODOLOGY_HREF = '/docs/methodology/cii-risk-scores';
 
@@ -34,6 +37,8 @@ export class CIIPanel extends Panel {
   // changes (anonymous: localStorage write or cross-tab `storage` event;
   // signed-in: Convex `listFollowed` snapshot). Fired on `destroy()`.
   private followedUnsubscribe: (() => void) | null = null;
+  // Dashboard focus (#10453): every score carries the ISO code of its country.
+  private readonly scopeFilter: PanelScopeFilter;
 
   constructor() {
     super({
@@ -46,6 +51,7 @@ export class CIIPanel extends Panel {
       infoTooltip: `${t('components.cii.infoTooltip')} ${t('components.cii.methodologyLink')}`,
       defaultRowSpan: 2,
     });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.renderList() });
     this.showLoading(t('common.loading'));
 
     // U6 — re-render rows on every watchlist mutation so the pinned-to-top
@@ -101,7 +107,7 @@ export class CIIPanel extends Panel {
     return h('span', { className: 'trend-stable' }, '→');
   }
 
-  private buildCountry(country: CountryScore): HTMLElement {
+  private buildCountry(country: CountryScore, row?: ScopeRow<CountryScore>): HTMLElement {
     const color = this.getLevelColor(country.level);
     const emoji = this.getLevelEmoji(country.level);
 
@@ -138,11 +144,19 @@ export class CIIPanel extends Panel {
     // stopPropagation pattern in `bindShareButtons`).
     followHost.addEventListener('click', (e) => e.stopPropagation());
 
+    const componentDisplay = {
+      unrest: { letter: 'U', title: t('common.unrest') },
+      conflict: { letter: 'C', title: t('common.conflict') },
+      security: { letter: 'S', title: t('common.security') },
+      information: { letter: 'I', title: t('common.information') },
+    };
+
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
       followHost,
       h('div', { className: 'cii-header' },
         h('span', { className: 'cii-emoji' }, emoji),
         h('span', { className: 'cii-name', role: 'button', tabindex: '0' }, country.name),
+        scopeTagNode(row),
         h('span', { className: 'cii-score' }, String(country.score)),
         this.buildTrendArrow(country.trend, country.change24h),
         shareBtn,
@@ -151,10 +165,8 @@ export class CIIPanel extends Panel {
         h('div', { className: 'cii-bar', style: `width: ${country.score}%; background: ${color};` }),
       ),
       h('div', { className: 'cii-components' },
-        h('span', { title: t('common.unrest') }, `U:${country.components.unrest}`),
-        h('span', { title: t('common.conflict') }, `C:${country.components.conflict}`),
-        h('span', { title: t('common.security') }, `S:${country.components.security}`),
-        h('span', { title: t('common.information') }, `I:${country.components.information}`),
+        ...displayedCiiComponents(country.components).map(({ key, value }) =>
+          h('span', { title: componentDisplay[key].title }, `${componentDisplay[key].letter}:${value}`)),
       ),
     );
   }
@@ -183,7 +195,7 @@ export class CIIPanel extends Panel {
    * (every row mounts a fresh FollowButton; the previous batch's
    * subscriptions must be released first).
    */
-  private buildList(scores: CountryScore[]): HTMLElement {
+  private buildList(scores: CountryScore[], rowFor: ReadonlyMap<string, ScopeRow<CountryScore>>): HTMLElement {
     // Gate the partition input on the feature flag — `getFollowed()` reads
     // localStorage even when the flag is off (anonymous mode reads aren't
     // short-circuited, only mutations are). When the flag is OFF, treat
@@ -194,13 +206,16 @@ export class CIIPanel extends Panel {
     const followedCodes = isFollowFeatureEnabled() ? getFollowed() : [];
     const partition = partitionByFollowed(scores, followedCodes);
 
-    if (!shouldRenderSectionLabels(partition)) {
+    // Under a focus the order is chosen countries, then neighbours; grouping
+    // the followed ones first would put a followed neighbour above a chosen
+    // country.
+    if (this.scopeFilter.filtering || !shouldRenderSectionLabels(partition)) {
       // Zero-followed OR all-followed → render the original order with
       // no divider. Behaviour identical to pre-U6.
       return h(
         'div',
         { className: 'cii-list' },
-        ...scores.map((s) => this.buildCountry(s)),
+        ...scores.map((s) => this.buildCountry(s, rowFor.get(s.code))),
       );
     }
 
@@ -220,9 +235,9 @@ export class CIIPanel extends Panel {
       'div',
       { className: 'cii-list' },
       followingLabel,
-      ...followed.map((s) => this.buildCountry(s)),
+      ...followed.map((s) => this.buildCountry(s, rowFor.get(s.code))),
       allLabel,
-      ...unfollowed.map((s) => this.buildCountry(s)),
+      ...unfollowed.map((s) => this.buildCountry(s, rowFor.get(s.code))),
     );
   }
 
@@ -260,12 +275,42 @@ export class CIIPanel extends Panel {
    * watchlist on its own).
    */
   private rerenderRows(): void {
-    if (this.scores.length === 0) return;
+    this.renderList();
+  }
+
+  /**
+   * Draw the rows for the focus (if any) from the loaded scores. A no-op until
+   * scores have loaded. A data render also recovers the panel from a load
+   * failure (setContentNodes commits it); only a focus change must not erase one.
+   */
+  private renderList(): void {
     const withData = this.scores.filter((s) => s.score > 0);
     if (withData.length === 0) return;
+    const view = this.scopeFilter.view(withData, (s) => s.code);
+    this.scopeFilter.renderStrip(view);
+    this.setCount(view.rows.length);
+    // Tear down previous FollowButtons before mounting the new batch.
     this.tearDownFollowButtons();
-    this.setContentNodes(this.buildList(withData), this.buildMethodologyFooter());
+    const rowFor = new Map(view.rows.map((row) => [row.item.code, row]));
+    const list = view.emptyByFocus
+      ? focusedEmptyNode(t('focus.filter.emptyInstability'))
+      : this.buildList(view.rows.map((row) => row.item), rowFor);
+    this.setContentNodes(list, this.buildMethodologyFooter());
     this.bindShareButtons();
+  }
+
+  public override applyScope(scope: ResolvedScope | null): void {
+    if (this.scopeFilter.setScope(scope) && !this.showingLoadFailure) this.renderList();
+  }
+
+  public override showLoading(message?: string): void {
+    this.scopeFilter?.hideStrip();
+    super.showLoading(message);
+  }
+
+  public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.scopeFilter.hideStrip();
+    super.showError(message, onRetry, autoRetrySeconds);
   }
 
   private bindShareButtons(): void {
@@ -303,6 +348,7 @@ export class CIIPanel extends Panel {
     this.scores = [];
     this.setCount(0);
     this.setDataBadge('unavailable');
+    this.scopeFilter.hideStrip();
     this.tearDownFollowButtons();
     this.setContentNodes(
       h('div', { className: 'empty-state' }, t('common.failedCII')),
@@ -315,11 +361,7 @@ export class CIIPanel extends Panel {
     if (scores.length === 0) return;
     this.scores = scores;
     this.updateSourceBadge(cached);
-    this.setCount(scores.length);
-    // Tear down previous FollowButtons before mounting the new batch.
-    this.tearDownFollowButtons();
-    this.setContentNodes(this.buildList(scores), this.buildMethodologyFooter());
-    this.bindShareButtons();
+    this.renderList();
     console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }
 

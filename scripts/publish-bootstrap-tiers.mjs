@@ -13,7 +13,7 @@ import {
 import { buildBootstrapTierEnvelope } from '../shared/bootstrap-tier-envelope.js';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { evaluatePublishedBootstrapVolume } from './_bootstrap-payload-budget.mjs';
-import { sanitizeBootstrapValue } from './_bootstrap-public-payload.mjs';
+import { restoreWildfireBootstrapMetadata, sanitizeBootstrapValue } from './_bootstrap-public-payload.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
   putR2JsonObject,
@@ -67,7 +67,7 @@ function redisCredentials(env) {
   return { url, token };
 }
 
-function parseBootstrapPipelineEntry(entry, index) {
+function parseBootstrapPipelineEntry(entry, index, key) {
   if (!entry || typeof entry !== 'object' || !Object.hasOwn(entry, 'result') || entry.error != null) {
     throw new Error(`Bootstrap Redis pipeline command failed at index ${index}`);
   }
@@ -79,7 +79,11 @@ function parseBootstrapPipelineEntry(entry, index) {
       // Presence is independent of the unwrapped value. A well-formed envelope
       // can unwrap to `data === undefined`; origin still records Map.has(key)
       // and reports that field missing instead of applying a sibling fallback.
-      return { present: true, value: unwrapEnvelope(parsed).data };
+      const { data, _seed } = unwrapEnvelope(parsed);
+      return {
+        present: true,
+        value: key === BOOTSTRAP_CACHE_KEYS.wildfires ? restoreWildfireBootstrapMetadata(data, _seed) : data,
+      };
     }
   } catch {
     // Malformed values match /api/bootstrap: omit from data and report missing.
@@ -127,7 +131,7 @@ export async function assembleBootstrapTierPayload(registry, options = {}) {
 
   const valuesByKey = new Map();
   for (let index = 0; index < readKeys.length; index += 1) {
-    const parsed = parseBootstrapPipelineEntry(results[index], index);
+    const parsed = parseBootstrapPipelineEntry(results[index], index, readKeys[index]);
     if (parsed.present) valuesByKey.set(readKeys[index], parsed.value);
   }
 

@@ -57,7 +57,6 @@ async function mountSandboxWidget(
 }
 
 const SANDBOX_CSP = "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;";
-const SANDBOX_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
 test.describe('PRO widget sandbox', () => {
   test.beforeEach(async ({ page }) => {
@@ -123,17 +122,7 @@ test.describe('PRO widget sandbox', () => {
   });
 
   test('enforces the response sandbox when the iframe has no sandbox attribute', async ({ page }) => {
-    await page.route('**/wm-widget-sandbox.html*', async (route) => {
-      const response = await route.fetch();
-      await route.fulfill({
-        response,
-        headers: {
-          ...response.headers(),
-          'content-security-policy': SANDBOX_CSP,
-          'cache-control': SANDBOX_CACHE_CONTROL,
-        },
-      });
-    });
+    const responsePromise = page.waitForResponse(response => response.url().includes('/wm-widget-sandbox.html'));
 
     const frame = await mountSandboxWidget(page, 'response-sandbox-widget', `<!doctype html>
 <script>
@@ -146,5 +135,42 @@ test.describe('PRO widget sandbox', () => {
       () => frame.evaluate(() => (window as SandboxProbeWindow).__widgetScriptRan),
     ).toBe(true);
     expect(await frame.evaluate(() => window.origin)).toBe('null');
+    expect((await responsePromise).headers()['content-security-policy']).toBe(SANDBOX_CSP);
+  });
+
+  test('renders a same-origin widget and blocks a different loopback parent origin', async ({ page }, testInfo) => {
+    await page.evaluate(() => {
+      document.body.innerHTML = '<style>body{font:18px system-ui;padding:24px}iframe{width:700px;height:240px;display:block;margin:20px 0}</style><h1>Widget sandbox security check</h1><p>Controlled local fixture. Same-origin widget below.</p>';
+    });
+    const frame = await mountSandboxWidget(page, 'visible-widget', `<!doctype html><body style="font:20px system-ui;background:#142130;color:white;padding:20px"><h2>WorldMonitor widget</h2><p id="rendered">Same-origin render passed</p><script>try { parent.document.body.dataset.compromised = 'true'; } catch { document.body.dataset.isolated = 'true'; }</script></body>`, { iframeSandbox: false });
+    await expect(frame.locator('#rendered')).toBeVisible();
+    expect(await frame.evaluate(() => document.body.dataset.isolated)).toBe('true');
+    expect(await page.evaluate(() => document.body.dataset.compromised)).toBeUndefined();
+    await page.screenshot({ path: testInfo.outputPath('widget-sandbox-normal.png') });
+    const sandboxUrl = new URL('/wm-widget-sandbox.html#id=foreign&token=foreign-token', page.url());
+    const foreignParent = new URL('/widget-sandbox-parent', page.url());
+    foreignParent.hostname = 'localhost';
+    await page.context().grantPermissions(['local-network-access'], { origin: foreignParent.origin });
+    await page.goto(foreignParent.href);
+    await page.evaluate(() => {
+      document.body.innerHTML = '<style>body{font:18px system-ui;padding:24px}iframe{width:700px;height:240px;display:block;margin:20px 0}</style><h1>Widget sandbox security check</h1><p>Controlled local fixture. Parent and sandbox have different loopback origins.</p>';
+    });
+    const foreignResponse = page.waitForResponse(response => response.url().includes('/wm-widget-sandbox.html'));
+    await page.evaluate(async url => {
+      const iframe = document.createElement('iframe');
+      iframe.dataset.testid = 'foreign';
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      await new Promise(resolve => { iframe.onload = () => resolve(null); });
+      iframe.contentWindow!.postMessage({ type: 'wm-html', id: 'foreign', token: 'foreign-token', html: '<body id="attack">ATTACK RENDERED</body>' }, '*');
+    }, sandboxUrl.href);
+    expect((await foreignResponse).status()).toBe(200);
+    const foreign = page.frames().find(candidate => candidate.url().includes('#id=foreign'))!;
+    await foreign.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(foreign.locator('#attack')).toHaveCount(0);
+    await page.evaluate(() => {
+      document.body.insertAdjacentHTML('beforeend', '<p>Different loopback parent origin: HTML delivery blocked.</p>');
+    });
+    await page.screenshot({ path: testInfo.outputPath('widget-sandbox-blocked.png') });
   });
 });

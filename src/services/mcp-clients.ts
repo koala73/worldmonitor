@@ -1,3 +1,4 @@
+import { createTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Frontend service for the Connected MCP clients tab (plan 2026-05-10-001 U9).
  *
@@ -77,6 +78,8 @@ export async function revokeMcpClient(tokenId: string): Promise<void> {
   if (!token) throw new Error('Sign in to revoke MCP clients.');
 
   const resp = await fetch('/api/user/mcp-revoke', {
+
+    signal: createTimeoutSignal(15_000),
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -111,6 +114,8 @@ export async function fetchMcpQuota(): Promise<McpQuota> {
   if (!token) throw new Error('Quota unavailable');
 
   const resp = await fetch('/api/user/mcp-quota', {
+
+    signal: createTimeoutSignal(15_000),
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });

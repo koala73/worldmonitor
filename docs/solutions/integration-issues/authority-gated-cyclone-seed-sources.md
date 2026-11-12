@@ -58,8 +58,8 @@ Keep source admission, identity matching, and publication metadata explicit:
 - The `CycloneAgencyObservation` protobuf contract carries agency identifiers,
   status, wind, and wind-averaging period to the natural-event map popup.
 - `seed-natural-events.mjs` publishes separate western-Pacific and HKO snapshots
-  with `seed-meta:*` records; the Railway climate bundle runs the seed every
-  three hours.
+  with `seed-meta:*` records; the `seed-natural-events` Railway service runs the
+  seed every 30 minutes (it also ran in the climate bundle until 2026-11-07).
 
 ## Why This Works
 

@@ -103,13 +103,14 @@ describe('ChatAnalystPanel deferred markdown render (#4537)', () => {
     const { panel, messages } = mountPanel();
     await panel.send('question');
 
-    // Before the yield: the raw streamed text is shown and the frames already
-    // requested scroll to the raw height.
+    // Before the yield: the stream ended before its partial-render frame ran,
+    // so the bubble still holds only the streaming indicator (never literal
+    // markdown) and the frames already requested scroll to the raw height.
     const body = answerBody(panel);
     expect(yieldControl.releases).toHaveLength(1);
-    expect(body.querySelector('strong')).toBeNull();
-    expect(body.textContent).toBe('**Bold** answer');
     flushFrames();
+    expect(body.querySelector('strong')).toBeNull();
+    expect(body.textContent).not.toContain('**');
     expect(messages.scrollTop).toBe(RAW_HEIGHT);
 
     await releaseYields();
@@ -125,12 +126,13 @@ describe('ChatAnalystPanel deferred markdown render (#4537)', () => {
     const body = answerBody(panel);
     flushFrames();
     const scrollBefore = messages.scrollTop;
+    const htmlBefore = body.innerHTML;
 
     panel.getElement().remove();
     await releaseYields();
 
     expect(body.querySelector('strong')).toBeNull();
-    expect(body.textContent).toBe('**Bold** answer');
+    expect(body.innerHTML).toBe(htmlBefore);
     expect(frames).toHaveLength(0);
     expect(messages.scrollTop).toBe(scrollBefore);
     panel.destroy();

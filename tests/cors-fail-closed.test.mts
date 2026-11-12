@@ -241,6 +241,23 @@ describe('every CORS surface exposes the same header set', () => {
   }
 });
 
+/**
+ * Same drift on the request side: the MCP 2026-07-28 metadata headers
+ * (Mcp-Method, Mcp-Name) reached api/_cors.js only, so the Worker's preflight
+ * on api.worldmonitor.app refused browser MCP clients that sent them.
+ * Every surface must allow exactly the set api/_cors.js does.
+ */
+describe('every CORS surface allows the same request header set', () => {
+  const allowedHeaders = (headers: Record<string, string>) =>
+    [...new Set(headers['Access-Control-Allow-Headers'].split(',').map((name) => name.trim()))].sort();
+  const canonical = allowedHeaders(getCorsHeadersJs(corsRequest()));
+  for (const [label, build] of CORS_SURFACES) {
+    it(`${label} matches api/_cors.js getCorsHeaders`, () => {
+      assert.deepEqual(allowedHeaders(build()), canonical);
+    });
+  }
+});
+
 describe('IETF RateLimit headers are readable across every CORS surface', () => {
   const IETF_RATE_LIMIT_HEADERS = [
     'RateLimit',

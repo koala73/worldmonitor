@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, runSeed, parseYahooChart, writeExtraKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
-import { fetchYahooJson } from './_yahoo-fetch.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, runSeed, writeExtraKey, writeExtraKeyWithMeta, getRedisCredentials, redisCommand } from './_seed-utils.mjs';
+import { previousSessionClose } from './shared/yahoo-closed-session.cjs';
+import { fetchYahooJson, fetchYahooQuoteChart, createSparklineHistoryCache } from './_yahoo-fetch.mjs';
 import { AV_PHYSICAL_MAP, fetchAvPhysicalCommodity, fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const commodityConfig = loadSharedConfig('commodities.json');
@@ -39,7 +40,8 @@ async function fetchYahooChart1y(symbol) {
     price: meta?.regularMarketPrice ?? null,
     dayHigh: meta?.regularMarketDayHigh ?? null,
     dayLow: meta?.regularMarketDayLow ?? null,
-    prevClose: meta?.chartPreviousClose ?? meta?.previousClose ?? null,
+    // chartPreviousClose here is the close before the 1y range, a year old.
+    prevClose: previousSessionClose(json),
     fiftyTwoWeekHigh: meta?.fiftyTwoWeekHigh ?? null,
     fiftyTwoWeekLow: meta?.fiftyTwoWeekLow ?? null,
     history,
@@ -156,6 +158,12 @@ async function fetchGoldExtended() {
 const COMMODITY_SYMBOLS = commodityConfig.commodities.map(c => c.symbol);
 
 async function fetchCommodityQuotes() {
+  const { url: redisUrl, token: redisToken } = getRedisCredentials();
+  const historyCache = createSparklineHistoryCache(
+    (command) => redisCommand(redisUrl, redisToken, command),
+    // v2: the history chart moved from 2 to 3 days (#10424).
+    'market:commodity-sparkline-history:v2:',
+  );
   const quotes = [];
   let misses = 0;
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
@@ -194,15 +202,13 @@ async function fetchCommodityQuotes() {
     yahooIdx++;
 
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-      let chart;
+      let parsed;
       try {
-        chart = await fetchYahooJson(url, { label: symbol });
+        parsed = await fetchYahooQuoteChart(symbol, { delayMs: YAHOO_DELAY_MS, sparklineWindow: true, historyCache });
       } catch {
         misses++;
         continue;
       }
-      const parsed = parseYahooChart(chart, symbol);
       if (parsed) {
         quotes.push(parsed);
         covered.add(symbol);

@@ -9,7 +9,7 @@ import "worldmonitor/positive_events/v1/list_positive_geo_events.proto";
 service PositiveEventsService {
   option (sebuf.http.service_config) = {base_path: "/api/positive-events/v1"};
 
-  // ListPositiveGeoEvents retrieves geocoded positive news events from GDELT GEO API.
+  // ListPositiveGeoEvents returns places named in positive-tone GDELT GKG articles, grouped by location with at least 3 reports and tagged by category.
   rpc ListPositiveGeoEvents(ListPositiveGeoEventsRequest) returns (ListPositiveGeoEventsResponse) {
     option (sebuf.http.config) = {path: "/list-positive-geo-events", method: HTTP_METHOD_GET};
   }

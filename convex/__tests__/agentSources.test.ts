@@ -56,7 +56,7 @@ describe("users.ensureRecord sign-up source", () => {
   });
 });
 
-describe("apiKeys.createApiKey source", () => {
+describe("apiKeys.createApiKeyForUser source", () => {
   const createKey = async (t: ReturnType<typeof convexTest>) => {
     await t.run(async (ctx) => {
       await ctx.db.insert("entitlements", {
@@ -67,7 +67,7 @@ describe("apiKeys.createApiKey source", () => {
         updatedAt: Date.now(),
       });
     });
-    const { id } = await t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+    const { id } = await t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
       name: "agent key",
       keyPrefix: "wm_a1b2c",
       keyHash: "a1b2c".repeat(13).slice(0, 64),
@@ -97,7 +97,7 @@ describe("apiKeys.createApiKey source", () => {
 
   test("rejects a client-supplied source", async () => {
     const t = convexTest(schema, modules);
-    await expect(t.withIdentity(API_USER).mutation(api.apiKeys.createApiKey, {
+    await expect(t.mutation(internal.apiKeys.createApiKeyForUser, { userId: API_USER.subject,
       name: "agent key",
       keyPrefix: "wm_a1b2c",
       keyHash: "a1b2c".repeat(13).slice(0, 64),

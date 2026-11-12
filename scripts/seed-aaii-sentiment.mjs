@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, readCanonicalValue, httpRetryError } from './_seed-utils.mjs';
+import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 loadEnvFile(import.meta.url);
 
 const AAII_KEY = 'market:aaii-sentiment:v1';
@@ -343,7 +344,7 @@ export function parseHtmlSentiment(html) {
 
   // Current page: <div class="ssv2-snum bull">36.9%</div>, one per bull/neut/bear.
   const byClass = {};
-  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^>]*>\s*([\d.]+)%/g)) {
+  for (const m of html.matchAll(/class="ssv2-snum\s+(bull|neut|bear)"[^<>]{0,64}>\s*([\d.]+)%/g)) {
     byClass[m[1]] ??= parseFloat(m[2]);
   }
   if (byClass.bull != null && byClass.neut != null && byClass.bear != null) {
@@ -358,7 +359,7 @@ export function parseHtmlSentiment(html) {
   }
 
   // Pre-2026-10 page: tableTxt cells in Bullish, Neutral, Bearish order.
-  const pcts = [...html.matchAll(/<td[^>]*class="tableTxt"[^>]*>([\d.]+)%/g)]
+  const pcts = [...html.matchAll(/<td[^<>]*class="tableTxt"[^<>]*>([\d.]+)%/g)]
     .map(m => parseFloat(m[1]));
 
   if (pcts.length >= 3) {
@@ -373,8 +374,18 @@ export function parseHtmlSentiment(html) {
   return rows;
 }
 
-async function fetchAaiiSentiment() {
+// Far above any real survey page; a runaway body is cancelled here.
+export const MAX_AAII_PAGE_BYTES = 5 * 1024 * 1024;
+
+export async function readAaiiPage(resp) {
+  return new TextDecoder().decode(await readBoundedResponseBytes(resp, MAX_AAII_PAGE_BYTES));
+}
+
+async function fetchAaiiSentiment({ fetchDeadlineAtMs }) {
   const retained = await readCanonicalValue(AAII_KEY, { strict: true });
+  if (Date.now() >= fetchDeadlineAtMs) {
+    throw Object.assign(new Error('AAII fetch deadline reached'), { nonRetryable: true });
+  }
   let data = [];
   // AAII robots.txt disallows /files/*, including sentiment.xls.
   try {
@@ -383,11 +394,26 @@ async function fetchAaiiSentiment() {
       headers: { 'User-Agent': CHROME_UA, Accept: 'text/html,application/xhtml+xml' },
       signal: AbortSignal.timeout(8_000),
     });
-    if (!resp.ok) throw httpRetryError(resp);
-    data = parseHtmlSentiment(await resp.text());
+    if (!resp.ok) {
+      const err = httpRetryError(resp);
+      const retryAfter = resp.headers.get('Retry-After');
+      const seconds = Number(retryAfter);
+      const retryAt = Date.parse(retryAfter);
+      // AAII requires the full provider delay; the shared helper caps it at 60s.
+      if (Number.isFinite(seconds) && seconds > 0) err.retryAfterMs = seconds * 1000;
+      else if (Number.isFinite(retryAt)) err.retryAfterMs = Math.max(0, retryAt - Date.now());
+      throw err;
+    }
+    data = parseHtmlSentiment(await readAaiiPage(resp));
   } catch (e) {
     // AAII's crawl delay also applies to retries after transport failures.
-    if (!e.nonRetryable) e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+    if (!e.nonRetryable) {
+      e.retryAfterMs = Math.max(10_000, e.retryAfterMs ?? 0);
+      if (e.retryAfterMs >= fetchDeadlineAtMs - Date.now()) {
+        e.nonRetryable = true;
+        e.message += ': required retry delay exceeds the remaining AAII fetch budget';
+      }
+    }
     throw e;
   }
 

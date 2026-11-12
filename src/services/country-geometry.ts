@@ -1,5 +1,6 @@
 import type { FeatureCollection, Geometry, GeoJsonProperties, Position } from 'geojson';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { staticAssetUrl } from '@/config/static-asset-url';
 
 interface IndexedCountryGeometry {
   code: string;
@@ -56,10 +57,15 @@ const nameToIso2 = new Map<string, string>();
 const codeToName = new Map<string, string>();
 let sortedCountryNames: Array<{ name: string; code: string; regex: RegExp }> = [];
 
-/** Map political / non-ISO2 country stamps onto the ISO 3166-1 alpha-2 code APIs accept. */
+/**
+ * Map political / non-ISO2 country stamps onto the ISO 3166-1 alpha-2 code APIs accept.
+ * Placeholder stamps with no country (Natural Earth's `-99` on Somaliland,
+ * Northern Cyprus, Bir Tawil, ...) return `''`, the map's "no country" value.
+ */
 export function canonicalizeCountryCode(code: string): string {
   const trimmed = code.trim().toUpperCase();
-  return POLITICAL_OVERRIDES[trimmed] ?? trimmed;
+  const canonical = POLITICAL_OVERRIDES[trimmed] ?? trimmed;
+  return /^[A-Z]{2}$/.test(canonical) ? canonical : '';
 }
 
 function rewritePoliticalIso2Properties(properties: GeoJsonProperties | null | undefined): void {
@@ -293,7 +299,7 @@ async function ensureLoaded(): Promise<void> {
       // the map never renders country boundaries and coordinate lookups
       // silently degrade. The override fetch below already carries a signal;
       // this is the same treatment for the primary asset.
-      const response = await fetch(COUNTRY_GEOJSON_URL, {
+      const response = await fetch(staticAssetUrl(COUNTRY_GEOJSON_URL), {
         signal: makeTimeout(COUNTRY_GEOJSON_TIMEOUT_MS),
       });
       if (!response.ok) {
@@ -311,7 +317,7 @@ async function ensureLoaded(): Promise<void> {
 
       // Apply optional higher-resolution boundary overrides (sourced from Natural Earth)
       try {
-        const overrideResp = await fetch(COUNTRY_OVERRIDES_URL, {
+        const overrideResp = await fetch(staticAssetUrl(COUNTRY_OVERRIDES_URL), {
           signal: makeTimeout(COUNTRY_OVERRIDE_TIMEOUT_MS),
         });
         if (overrideResp.ok) {

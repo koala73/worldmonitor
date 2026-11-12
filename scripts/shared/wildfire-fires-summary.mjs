@@ -1,7 +1,7 @@
 // Derived projection of the canonical `wildfire:fires:v1` payload for the server
-// hot paths that never render a detection: the CII risk-scores build needs the
-// intensity of each detection inside a Tier-1 country, and the temporal-anomaly
-// rebuild needs the total count and the FIRMS observation clock. The canonical
+// hot paths that never render a detection: the temporal-anomaly rebuild needs the
+// total count and the FIRMS observation clock. (The CII risk-scores build read the
+// per-country intensity rows until v15 removed fires from the score.) The canonical
 // key is 1.9-5 MB; this one is bounded by the Tier-1 share of detections, so it
 // clears the 1.5 s Redis GET deadline with room to spare.
 //

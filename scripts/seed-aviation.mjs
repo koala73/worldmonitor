@@ -45,6 +45,7 @@ import notificationDedup from './shared/notification-dedup.cjs';
 import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { airportNotifyLocation } from './lib/airport-notify-location.mjs';
+import { NARROW_CLOSURE_TEXT, NMS_ACTIVATION_KEY, NMS_CLOSURES_KEY, isFreshNmsClosures, mergeClosureSources } from './lib/nms-notam.mjs';
 
 const {
   buildDedupMaterial,
@@ -153,6 +154,9 @@ export const AIRPORTS = [
   { iata: 'BOG', icao: 'SKBO', name: 'El Dorado International',   city: 'Bogotá',       country: 'Colombia', lat: 4.7016,   lon: -74.1469, region: 'americas', sources: ['aviationstack', 'notam'] },
   { iata: 'SCL', icao: 'SCEL', name: 'Arturo Merino Benítez',     city: 'Santiago',     country: 'Chile',    lat: -33.3930, lon: -70.7858, region: 'americas', sources: ['aviationstack', 'notam'] },
 
+  // Americas NOTAM-only
+  { iata: 'LIM', icao: 'SPJC', name: 'Jorge Chávez International', city: 'Lima', country: 'Peru', lat: -12.0219, lon: -77.1143, region: 'americas', sources: ['notam'] },
+
   // ── Americas — FAA + NOTAM (US only; many dual-covered with AviationStack too for intl flights) ──
   { iata: 'ATL', icao: 'KATL', name: 'Hartsfield–Jackson Atlanta',            city: 'Atlanta',       country: 'USA', lat: 33.6407, lon: -84.4277, region: 'americas', sources: ['faa', 'notam'] },
   { iata: 'ORD', icao: 'KORD', name: "Chicago O'Hare",                         city: 'Chicago',       country: 'USA', lat: 41.9742, lon: -87.9073, region: 'americas', sources: ['faa', 'notam'] },
@@ -206,6 +210,8 @@ export const AIRPORTS = [
   { iata: 'OSL', icao: 'ENGM', name: 'Oslo Gardermoen',      city: 'Oslo',      country: 'Norway',  lat: 60.1939, lon: 11.1004, region: 'europe', sources: ['notam'] },
   { iata: 'ARN', icao: 'ESSA', name: 'Stockholm Arlanda',    city: 'Stockholm', country: 'Sweden',  lat: 59.6519, lon: 17.9186, region: 'europe', sources: ['notam'] },
   { iata: 'HEL', icao: 'EFHK', name: 'Helsinki-Vantaa',      city: 'Helsinki',  country: 'Finland', lat: 60.3172, lon: 24.9633, region: 'europe', sources: ['notam'] },
+  { iata: 'LGW', icao: 'EGKK', name: 'London Gatwick',             city: 'London', country: 'UK',     lat: 51.1537, lon: -0.1821, region: 'europe', sources: ['notam'] },
+  { iata: 'SVO', icao: 'UUEE', name: 'Sheremetyevo International', city: 'Moscow', country: 'Russia', lat: 55.9736, lon: 37.4125, region: 'europe', sources: ['notam'] },
 
   // ── APAC — AviationStack + NOTAM ──
   { iata: 'HND', icao: 'RJTT', name: 'Tokyo Haneda',                 city: 'Tokyo',        country: 'Japan',       lat: 35.5494, lon: 139.7798, region: 'apac', sources: ['aviationstack', 'notam'] },
@@ -220,6 +226,13 @@ export const AIRPORTS = [
   { iata: 'KUL', icao: 'WMKK', name: 'Kuala Lumpur International',   city: 'Kuala Lumpur', country: 'Malaysia',    lat: 2.7456,  lon: 101.7099, region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'TPE', icao: 'RCTP', name: 'Taiwan Taoyuan International', city: 'Taipei',       country: 'Taiwan',      lat: 25.0797, lon: 121.2342, region: 'apac', sources: ['aviationstack'] },
   { iata: 'MNL', icao: 'RPLL', name: 'Ninoy Aquino International',   city: 'Manila',       country: 'Philippines', lat: 14.5086, lon: 121.0197, region: 'apac', sources: ['aviationstack'] },
+  // APAC NOTAM-only
+  { iata: 'MEL', icao: 'YMML', name: 'Melbourne Airport',            city: 'Melbourne', country: 'Australia',   lat: -37.6690, lon: 144.8410, region: 'apac', sources: ['notam'] },
+  { iata: 'CGK', icao: 'WIII', name: 'Soekarno-Hatta International', city: 'Jakarta',   country: 'Indonesia',   lat: -6.1256,  lon: 106.6558, region: 'apac', sources: ['notam'] },
+  { iata: 'AKL', icao: 'NZAA', name: 'Auckland Airport',             city: 'Auckland',  country: 'New Zealand', lat: -37.0082, lon: 174.7850, region: 'apac', sources: ['notam'] },
+  { iata: 'KHI', icao: 'OPKC', name: 'Jinnah International',         city: 'Karachi',   country: 'Pakistan',    lat: 24.9065,  lon: 67.1610, region: 'apac', sources: ['notam'] },
+  { iata: 'ISB', icao: 'OPIS', name: 'Islamabad International',      city: 'Islamabad', country: 'Pakistan',    lat: 33.5605,  lon: 72.8526, region: 'apac', sources: ['notam'] },
+  { iata: 'LHE', icao: 'OPLA', name: 'Allama Iqbal International',   city: 'Lahore',    country: 'Pakistan',    lat: 31.5216,  lon: 74.4036, region: 'apac', sources: ['notam'] },
 
   // ── MENA — AviationStack + NOTAM ──
   { iata: 'DXB', icao: 'OMDB', name: 'Dubai International',          city: 'Dubai',       country: 'UAE',         lat: 25.2532, lon: 55.3657, region: 'mena', sources: ['aviationstack', 'notam'] },
@@ -247,7 +260,20 @@ export const AIRPORTS = [
   { iata: 'BND', icao: 'OIKB', name: 'Bandar Abbas International',    city: 'Bandar Abbas', country: 'Iran',         lat: 27.2181, lon: 56.3778, region: 'mena', sources: ['notam'] },
   { iata: 'TUN', icao: 'DTTA', name: 'Tunis–Carthage',                city: 'Tunis',        country: 'Tunisia',      lat: 36.8510, lon: 10.2272, region: 'mena', sources: ['notam'] },
   { iata: 'ALG', icao: 'DAAG', name: 'Houari Boumediene',             city: 'Algiers',      country: 'Algeria',      lat: 36.6910, lon: 3.2154, region: 'mena', sources: ['notam'] },
-  { iata: 'TIP', icao: 'HLLT', name: 'Tripoli International',         city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
+  { iata: 'MJI', icao: 'HLLM', name: 'Mitiga International',          city: 'Tripoli',      country: 'Libya',        lat: 32.8951, lon: 13.2760, region: 'mena', sources: ['notam'] },
+  { iata: 'THR', icao: 'OIII', name: 'Mehrabad International',      city: 'Tehran',   country: 'Iran',   lat: 35.6892, lon: 51.3134, region: 'mena', sources: ['notam'] },
+  { iata: 'IFN', icao: 'OIFM', name: 'Isfahan International',       city: 'Isfahan',  country: 'Iran',   lat: 32.7508, lon: 51.8613, region: 'mena', sources: ['notam'] },
+  { iata: 'BSR', icao: 'ORMM', name: 'Basra International',         city: 'Basra',    country: 'Iraq',   lat: 30.5491, lon: 47.6622, region: 'mena', sources: ['notam'] },
+  { iata: 'EBL', icao: 'ORER', name: 'Erbil International',         city: 'Erbil',    country: 'Iraq',   lat: 36.2376, lon: 43.9632, region: 'mena', sources: ['notam'] },
+  { iata: 'NJF', icao: 'ORNI', name: 'Al Najaf International',      city: 'Najaf',    country: 'Iraq',   lat: 31.9900, lon: 44.4040, region: 'mena', sources: ['notam'] },
+  { iata: 'ALP', icao: 'OSAP', name: 'Aleppo International',        city: 'Aleppo',   country: 'Syria',  lat: 36.1807, lon: 37.2244, region: 'mena', sources: ['notam'] },
+  { iata: 'SAH', icao: 'OYSN', name: "Sana'a International",        city: "Sana'a",   country: 'Yemen',  lat: 15.4763, lon: 44.2197, region: 'mena', sources: ['notam'] },
+  { iata: 'ADE', icao: 'OYAA', name: 'Aden International',          city: 'Aden',     country: 'Yemen',  lat: 12.8295, lon: 45.0288, region: 'mena', sources: ['notam'] },
+  { iata: 'DWC', icao: 'OMDW', name: 'Al Maktoum International',    city: 'Dubai',    country: 'UAE',    lat: 24.8960, lon: 55.1614, region: 'mena', sources: ['notam'] },
+  { iata: 'SAW', icao: 'LTFJ', name: 'Sabiha Gökçen International', city: 'Istanbul', country: 'Turkey', lat: 40.8986, lon: 29.3092, region: 'mena', sources: ['notam'] },
+  { iata: 'ESB', icao: 'LTAC', name: 'Esenboğa International',      city: 'Ankara',   country: 'Turkey', lat: 40.1281, lon: 32.9951, region: 'mena', sources: ['notam'] },
+  { iata: 'ADB', icao: 'LTBJ', name: 'Adnan Menderes Airport',      city: 'Izmir',    country: 'Turkey', lat: 38.2924, lon: 27.1570, region: 'mena', sources: ['notam'] },
+  { iata: 'AYT', icao: 'LTAI', name: 'Antalya Airport',             city: 'Antalya',  country: 'Turkey', lat: 36.8987, lon: 30.8005, region: 'mena', sources: ['notam'] },
 
   // ── Africa — AviationStack + NOTAM ──
   { iata: 'JNB', icao: 'FAOR', name: "O.R. Tambo International",      city: 'Johannesburg', country: 'South Africa', lat: -26.1392, lon: 28.2460, region: 'africa', sources: ['aviationstack', 'notam'] },
@@ -257,6 +283,11 @@ export const AIRPORTS = [
   { iata: 'CPT', icao: 'FACT', name: 'Cape Town International',       city: 'Cape Town',    country: 'South Africa', lat: -33.9715, lon: 18.6021, region: 'africa', sources: ['aviationstack'] },
   // Africa NOTAM-only
   { iata: 'GBE', icao: 'FBSK', name: 'Sir Seretse Khama International', city: 'Gaborone',    country: 'Botswana',    lat: -24.5553, lon: 25.9183, region: 'africa', sources: ['notam'] },
+  { iata: 'ACC', icao: 'DGAA', name: 'Kotoka International',         city: 'Accra',         country: 'Ghana',     lat: 5.6052,   lon: -0.1668, region: 'africa', sources: ['notam'] },
+  { iata: 'DAR', icao: 'HTDA', name: 'Julius Nyerere International', city: 'Dar es Salaam', country: 'Tanzania',  lat: -6.8781,  lon: 39.2026, region: 'africa', sources: ['notam'] },
+  { iata: 'MRU', icao: 'FIMP', name: 'Sir Seewoosagur Ramgoolam',    city: 'Mauritius',     country: 'Mauritius', lat: -20.4302, lon: 57.6836, region: 'africa', sources: ['notam'] },
+  { iata: 'BEN', icao: 'HLLB', name: 'Benina International',         city: 'Benghazi',      country: 'Libya',     lat: 32.0968,  lon: 20.2695, region: 'africa', sources: ['notam'] },
+  { iata: 'KRT', icao: 'HSSK', name: 'Khartoum International',       city: 'Khartoum',      country: 'Sudan',     lat: 15.5895,  lon: 32.5532, region: 'africa', sources: ['notam'] },
 ];
 
 // Derived per-source views (built once at module load)
@@ -462,8 +493,20 @@ async function fetchAviationStackSingle(
       const authFailed = AVIATIONSTACK_AUTH_ERROR_CODES.has(json.error.code);
       return { iata, status: 'failed', alert: null, flightCount: 0, authFailed };
     }
-    const flights = Array.isArray(json?.data) ? json.data : [];
+    const flights = operatingFlights(Array.isArray(json?.data) ? json.data : []);
     if (flights.length === 0) {
+      const dataType = json.data === undefined ? 'missing'
+        : json.data === null ? 'null' : Array.isArray(json.data) ? 'array' : typeof json.data;
+      const pagination = Object.fromEntries(['limit', 'offset', 'count', 'total'].map(key => {
+        const value = json.pagination?.[key];
+        return [key, Number.isSafeInteger(value) && value >= 0 ? value : null];
+      }));
+      logger.warn(JSON.stringify({
+        event: 'aviationstack_omission', iata, requestDate: today, requestLimit: 100,
+        httpStatus: resp.status, dataType,
+        rawCount: Array.isArray(json.data) ? json.data.length : null,
+        operatingCount: flights.length, pagination,
+      }));
       logger.warn(`[Aviation] ${iata}: provider omitted hub (0 flight records)`);
       return { iata, status: 'omitted', alert: null, flightCount: 0 };
     }
@@ -480,6 +523,50 @@ async function fetchAviationStackSingle(
   }
 }
 
+// A codeshare row repeats its operating flight under another airline's number,
+// so rows count once per operating flight. The operating row is often not on
+// the page, and late pages can hold codeshares only, so a codeshare stands in.
+function operatingFlights(rows) {
+  const seen = new Set();
+  const operatingFirst = [...rows.filter(f => !f?.flight?.codeshared), ...rows.filter(f => f?.flight?.codeshared)];
+  return operatingFirst.filter(f => {
+    const shared = f?.flight?.codeshared;
+    const number = shared ? shared.flight_iata : f?.flight?.iata;
+    if (!number) return !shared;
+    const key = `${String(number).toUpperCase()} ${f?.departure?.scheduled ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+const zoneFormats = new Map();
+
+// AviationStack writes departure times as the airport's local wall clock with
+// a "+00:00" suffix, so the wall clock is read in the departure time zone.
+function departureMs(departure) {
+  const wall = Date.parse(departure?.scheduled ?? '');
+  const zone = departure?.timezone;
+  if (!Number.isFinite(wall) || !zone) return wall;
+  try {
+    if (!zoneFormats.has(zone)) {
+      zoneFormats.set(zone, new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+      }));
+    }
+    const offsetAt = (at) => {
+      const p = Object.fromEntries(zoneFormats.get(zone).formatToParts(at).map(({ type, value }) => [type, Number(value)]));
+      return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - at;
+    };
+    // The offset at the wall clock read as UTC can be the other side of a
+    // clock change, so take it again at the first estimate of the departure.
+    return wall - offsetAt(wall - offsetAt(wall));
+  } catch {
+    return wall;
+  }
+}
+
 function aviationAggregateFlights(iata, flights) {
   if (flights.length === 0) return null;
   const meta = AIRPORT_META[iata];
@@ -493,13 +580,15 @@ function aviationAggregateFlights(iata, flights) {
   // cancellations as "resolved" — cancelled/cancelled = 100%, and RUH read as
   // closed (22/22) after it reopened. Delays are counted over the same flights
   // as the denominator; counting every row against a resolved-only total once
-  // reported "179% delayed". Too few due flights → the whole page.
+  // reported "179% delayed". Too few due flights → the whole page, which only
+  // shows a closure: advance cancellations in the day's last hours are schedule
+  // changes, and RUH read "67% flights cancelled" from one such page.
   const now = Date.now();
   const page = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   const dueOnly = { flights: 0, cancelled: 0, delayed: 0, totalDelay: 0 };
   for (const f of flights) {
     const status = f.flight_status || '';
-    const scheduledAt = Date.parse(f.departure?.scheduled ?? '');
+    const scheduledAt = departureMs(f.departure);
     const isDue = DEPARTED_STATUSES.has(status) || (Number.isFinite(scheduledAt) && scheduledAt <= now);
     const delay = f.departure?.delay > 0 ? f.departure.delay : 0;
     for (const bucket of isDue ? [page, dueOnly] : [page]) {
@@ -512,14 +601,19 @@ function aviationAggregateFlights(iata, flights) {
     }
   }
 
-  const sample = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE ? dueOnly : page;
-  const { flights: total, cancelled: cancelledCount, delayed, totalDelay } = sample;
+  const fromDue = dueOnly.flights >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  const sample = fromDue ? dueOnly : page;
+  const { flights: total, cancelled, delayed, totalDelay } = sample;
+  const closed = cancelled / total >= 0.8 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE;
+  // get-airport-ops-summary rebuilds the cancellation rate from the alert, so
+  // cancellations that set no level here are not reported either.
+  const cancelledCount = fromDue || closed ? cancelled : 0;
   const cancelledPct = (cancelledCount / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
 
   let severity, delayType, reason;
-  if (cancelledPct >= 80 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
+  if (closed) {
     severity = 'severe'; delayType = 'closure';
     reason = 'Airport closure / airspace restrictions';
   } else if (cancelledPct >= 50 && total >= AVIATION_MIN_FLIGHTS_FOR_CLOSURE) {
@@ -654,7 +748,7 @@ function faaSeverityFromAvg(avgDelay) {
   return 'normal';
 }
 
-function parseFaaXml(text) {
+export function parseFaaXml(text) {
   const delays = new Map();
   const parseTag = (xml, tag) => {
     const re = new RegExp(`<${tag}>(.*?)</${tag}>`, 'gs');
@@ -693,6 +787,9 @@ function parseFaaXml(text) {
   }
   for (const ac of parseTag(text, 'Airport')) {
     const arpt = getVal(ac, 'ARPT');
+    // The FAA lists LAX, SAN and LAS here all year for a NOTAM that only
+    // closes them to non-scheduled transient GA. Airline service runs.
+    if (NARROW_CLOSURE_TEXT.test(getVal(ac, 'Reason').toUpperCase())) continue;
     if (arpt && FAA_LIST.includes(arpt)) {
       delays.set(arpt, { airport: arpt, reason: 'Airport closure', avgDelay: 120, type: 'ground_stop' });
     }
@@ -946,7 +1043,7 @@ async function dispatchAviationNotifications(alerts) {
   }
 }
 
-async function dispatchNotamNotifications(closedIcaos, reasons) {
+async function dispatchNotamNotifications(closedIcaos, reasons, sourceByIcao = {}) {
   const prev = await upstashGet(NOTAM_PREV_CLOSED_KEY);
   const prevSet = new Set(Array.isArray(prev) ? prev : []);
   const newClosures = closedIcaos.filter(icao => !prevSet.has(icao));
@@ -967,7 +1064,7 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
       eventType: 'notam_closure',
       payload: {
         title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`,
-        source: 'ICAO NOTAM',
+        source: sourceByIcao[icao] || 'ICAO NOTAM',
         coalesceKey: `notam:closure:${icao}`,
         ...(countryCode ? { countryCode } : {}),
         ...site,
@@ -1030,6 +1127,16 @@ function buildUnknownOpsAlert(airport) {
     reason: 'Coverage unavailable',
     source: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
     updatedAt: Date.now(),
+  };
+}
+
+const NOTAM_OPEN_REASON = 'Open';
+
+// The NOTAM feed carries this airport's NOTAMs and none closes or restricts it.
+function buildNotamOpenAlert(airport) {
+  return {
+    ...buildNotamAlert(airport, NOTAM_OPEN_REASON, 'normal', 'general'),
+    id: `notam-open-${airport.iata}`,
   };
 }
 
@@ -1179,6 +1286,7 @@ export function buildDelaysBootstrapPayload({
   const closedIcaos = Array.isArray(notamPayload?.closedIcaos) ? notamPayload.closedIcaos : [];
   const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
   const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
+  const notamCoveredIcaos = new Set(Array.isArray(notamPayload?.coveredIcaos) ? notamPayload.coveredIcaos : []);
 
   const allAlerts = [...faaAlerts, ...intlAlerts];
   const existingIatas = new Set(allAlerts.map(a => a.iata));
@@ -1207,6 +1315,8 @@ export function buildDelaysBootstrapPayload({
         airport,
         isFaaCovered ? 'FLIGHT_DELAY_SOURCE_FAA' : 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK',
       ));
+    } else if (notamCoveredIcaos.has(airport.icao)) {
+      allAlerts.push(buildNotamOpenAlert(airport));
     } else {
       allAlerts.push(buildUnknownOpsAlert(airport));
     }
@@ -1317,20 +1427,65 @@ async function preserveLastGoodNotam(reason) {
   }
 }
 
+// FAA NMS closures (scripts/seed-notam-nms.mjs) cover every aerodrome NMS
+// reports, foreign ones included. A snapshot older than its own freshness
+// budget is not a current observation and is ignored.
+async function loadNmsClosures() {
+  try {
+    const snapshot = await upstashGetUnwrapped(NMS_CLOSURES_KEY);
+    return isFreshNmsClosures(snapshot, Date.now()) ? snapshot : null;
+  } catch {
+    return null;
+  }
+}
+
+// An unreadable marker counts as activated: holding last-good is the safe miss.
+async function isNmsActivated() {
+  try {
+    // upstashGet swallows read errors as null; EXISTS through upstashCommand
+    // throws, so an unreadable marker reaches the catch.
+    const res = await upstashCommand(['EXISTS', NMS_ACTIVATION_KEY]);
+    return res?.result !== 0;
+  } catch {
+    return true;
+  }
+}
+
+const NOTAM_SOURCE_LABELS = { nms: 'FAA NMS NOTAM', icao: 'ICAO NOTAM' };
+
 async function runNotamSideCar() {
   await withLock('aviation:notam', async () => {
-    let notam;
+    let icao = null;
+    let icaoError = null;
     try {
-      notam = await seedNotamClosures();
+      const result = await seedNotamClosures();
+      if (!result.skipped) icao = result;
     } catch (err) {
-      await preserveLastGoodNotam(`ICAO fetch failed: ${err?.message || err}`);
+      icaoError = err;
+    }
+    const nms = await loadNmsClosures();
+    if (!nms && await isNmsActivated()) {
+      // NMS is the primary source once activated. Publishing ICAO alone would
+      // present a partial (today: empty) list as current and reset the
+      // prev-closed state, so every standing closure re-notifies on recovery.
+      const icaoStatus = icaoError ? `ICAO fetch failed: ${icaoError?.message || icaoError}` : 'ICAO alone is partial';
+      await preserveLastGoodNotam(`FAA NMS closures are not current (${icaoStatus})`);
       return;
     }
-    if (notam.skipped) return; // no ICAO_API_KEY
+    if (!icao && !nms) {
+      if (icaoError) await preserveLastGoodNotam(`ICAO fetch failed: ${icaoError?.message || icaoError}`);
+      return; // no source configured
+    }
+    if (icaoError) console.warn(`[NOTAM] ICAO fetch failed: ${icaoError?.message || icaoError} — publishing FAA NMS closures alone`);
+    // NMS first: its classifier is stricter, so its reason text wins.
+    const notam = mergeClosureSources(
+      [{ label: NOTAM_SOURCE_LABELS.nms, snapshot: nms }, { label: NOTAM_SOURCE_LABELS.icao, snapshot: icao }],
+      NOTAM_LIST,
+    );
     try {
       const metaWritten = await writeExtraKeyWithMeta(
         NOTAM_KEY,
-        { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons },
+        { closedIcaos: notam.closedIcaos, restrictedIcaos: notam.restrictedIcaos, reasons: notam.reasons, coveredIcaos: notam.coveredIcaos },
         NOTAM_TTL,
         notam.closedIcaos.length + notam.restrictedIcaos.length,
         NOTAM_META_KEY,
@@ -1341,7 +1496,7 @@ async function runNotamSideCar() {
       await preserveLastGoodNotam(`write error: ${err?.message || err}`);
       return;
     }
-    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons); }
+    try { await dispatchNotamNotifications(notam.closedIcaos, notam.reasons, notam.sourceByIcao); }
     catch (e) { console.warn(`[NOTAM] notify error: ${e?.message || e}`); }
   });
 }

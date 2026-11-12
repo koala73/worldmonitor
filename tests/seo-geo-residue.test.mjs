@@ -408,7 +408,7 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
     const required = [
       ['docs/methodology/country-resilience-index.mdx', `Live resilience scoring with ${ranked} of ${universe} countries ranked`],
       ['docs/zh/methodology/country-resilience-index.mdx', `其中 ${ranked} 个国家进入排名（${ranked}/${universe}）`],
-      ['docs/overview.mdx', `ranks ${ranked} of ${universe} countries`],
+      ['docs/platform-evaluation.mdx', `ranks ${ranked} of ${universe} countries`],
       ['blog-site/src/content/blog/country-instability-index-methodology-explained.md', `Ranked for ${ranked} of ${universe} countries, refreshed every six hours`],
       ['public/llms-full.txt', `refreshed every six hours, ranking ${ranked} of ${universe} countries.`],
     ];
@@ -538,7 +538,7 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
     const productFacts = step('scripts/generate-public-product-facts.mjs');
     assert.ok(productFacts < step('npm run inventory:facts'), 'product facts must be regenerated before inventory:facts');
     assert.ok(productFacts < step('npm run build:llms-full'), 'product facts must be regenerated before build:llms-full');
-    assert.ok(step('npm run resilience:coverage') < step('node --import tsx --test'));
+    assert.ok(step('npm run resilience:coverage') < step('node scripts/run-data-tests.mjs'));
     const staged = workflow.slice(workflow.indexOf('git add "$snapshot_path"'), workflow.indexOf('git commit'));
     for (const path of [
       ...RESILIENCE_COVERAGE_SURFACES.map((surface) => surface.path),

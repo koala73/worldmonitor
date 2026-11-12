@@ -7,6 +7,11 @@
   // The API serves at most 200 entries; the page says so when it is full.
   var PAGE_LIMIT = 200;
   var STATE_TEXT = { 'single-publisher': 'Single publisher', corroborated: 'Corroborated' };
+  function requestDeadline() {
+    var controller = new AbortController();
+    setTimeout(function () { controller.abort(); }, 15000);
+    return controller.signal;
+  }
 
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -30,7 +35,7 @@
     return score < 40 ? 'low' : score < 70 ? 'medium' : 'high';
   }
   function getJson(url) {
-    return fetch(url, { credentials: 'omit' }).then(function (res) {
+    return fetch(url, { signal: requestDeadline(), credentials: 'omit' }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
     });
@@ -217,6 +222,7 @@
     status.textContent = 'Sending…';
     status.className = '';
     fetch(SUBMIT_URL, {
+      signal: requestDeadline(),
       method: 'POST',
       credentials: 'omit',
       headers: { 'Content-Type': 'application/json' },

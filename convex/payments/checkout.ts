@@ -38,6 +38,7 @@ import {
   recordTerminalCheckoutRateLimit,
   recordTerminalCheckoutTimeout,
 } from "./checkoutRateLimitAlarm";
+import { recordCreatedCheckoutSession } from "./checkoutSessionLog";
 
 // MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
 // second copy of this normalisation is exactly the drift that produced the
@@ -294,7 +295,7 @@ async function _createCheckoutSession(
   args: CheckoutArgs,
   user: UserInfo,
 ): Promise<
-  | (Awaited<ReturnType<typeof createDodoCheckoutSession>> & { anonymous_claim_token?: string })
+  | (Omit<Awaited<ReturnType<typeof createDodoCheckoutSession>>, "session_id"> & { anonymous_claim_token?: string })
   | CheckoutRateLimitedOutcome
   | CheckoutTimedOutOutcome
 > {
@@ -483,9 +484,16 @@ async function _createCheckoutSession(
       });
       return result;
     }
+    const { session_id: sessionId, ...session } = result;
+    await recordCreatedCheckoutSession(ctx, {
+      userId: user.userId,
+      productId: args.productId,
+      ...(sessionId ? { sessionId } : {}),
+      anonymous: anonymousClaimToken !== null,
+    });
     return anonymousClaimToken
-      ? { ...result, anonymous_claim_token: anonymousClaimToken }
-      : result;
+      ? { ...session, anonymous_claim_token: anonymousClaimToken }
+      : session;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(
@@ -507,6 +515,7 @@ const acquisitionValidator = v.object({
   campaign: v.optional(v.string()),
   referrer: v.optional(v.string()),
   landing: v.optional(v.string()),
+  path: v.optional(v.string()),
   firstSeen: v.optional(v.string()),
 });
 

@@ -4,10 +4,12 @@ import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS
 import {
   formatIdleStopMinutes,
   getLiveMediaIdleStop,
+  getLiveNewsAutoplay,
   getLiveStreamsAlwaysOn,
   LIVE_MEDIA_IDLE_STOP_OPTIONS,
   parseLiveMediaIdleStop,
   setLiveMediaIdleStop,
+  setLiveNewsAutoplay,
   setLiveStreamsAlwaysOn,
 } from '@/services/live-stream-settings';
 import { getGlobeVisualPreset, setGlobeVisualPreset, GLOBE_VISUAL_PRESET_OPTIONS, type GlobeVisualPreset } from '@/services/globe-render-settings';
@@ -26,8 +28,10 @@ import {
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+import { mountInstallEntry } from '@/services/pwa-install';
 import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
 import { declareOverlay } from '@/utils/open-modal';
+import { createFocusTrap } from '@/utils/focus-trap';
 
 const SYNC_STATE_LABELS: Record<string, string> = {
   synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
@@ -166,6 +170,9 @@ function handlePreferenceChange(
       setMapTheme(getMapProvider(), target.value);
       window.dispatchEvent(new CustomEvent('map-theme-changed'));
       return true;
+    case 'us-live-news-autoplay':
+      setLiveNewsAutoplay(target.checked);
+      return true;
     case 'us-live-streams-always-on':
       setLiveStreamsAlwaysOn(target.checked);
       return true;
@@ -221,6 +228,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
   const currentLang = getCurrentLanguageTag();
   let html = '';
+  if (!host.isDesktopApp) html += '<div data-pwa-install-entry></div>';
 
   // ── Display group ──
   html += `<details class="wm-pref-group" open>`;
@@ -421,7 +429,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       </div>
       <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
         <div class="fw-import-field">
-          <label class="fw-import-label">agentskills.io URL or ID</label>
+          <label class="fw-import-label" for="fwAgentskillsUrl">agentskills.io URL or ID</label>
           <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
         </div>
         <button type="button" class="btn btn-secondary" id="fwFetchBtn">Fetch</button>
@@ -434,7 +442,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       </div>
       <div class="fw-import-tab-panel" id="fwTabPanelJson">
         <div class="fw-import-field">
-          <label class="fw-import-label">${t('components.insights.analysisFrameworksPasteJson')}</label>
+          <label class="fw-import-label" for="fwJsonInput">${t('components.insights.analysisFrameworksPasteJson')}</label>
           <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
         </div>
         <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
@@ -463,6 +471,13 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
   }
   html += `</select>`;
+
+  html += toggleRowHtml(
+    'us-live-news-autoplay',
+    t('components.insights.liveNewsAutoplayLabel'),
+    t('components.insights.liveNewsAutoplayDesc'),
+    getLiveNewsAutoplay(),
+  );
 
   html += toggleRowHtml(
     'us-live-streams-always-on',
@@ -545,9 +560,20 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
       // after mount. Pasted JSON and a URL input make it blocking.
       const importModal = container.querySelector<HTMLElement>('.fw-import-modal');
       if (importModal) declareOverlay(importModal, { reload: 'blocking' });
+      const importBackdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+      const closeFrameworkImport = (): void => {
+        if (importBackdrop) importBackdrop.style.display = 'none';
+        importFocusTrap?.deactivate();
+      };
+      const importFocusTrap = importModal ? createFocusTrap(importModal, {
+        onEscape: closeFrameworkImport,
+        initialFocus: () => container.querySelector<HTMLElement>('.fw-import-tab-panel.active input, .fw-import-tab-panel.active textarea'),
+      }) : null;
 
       const ac = new AbortController();
       const { signal } = ac;
+      const installEntry = container.querySelector<HTMLElement>('[data-pwa-install-entry]');
+      if (installEntry) signal.addEventListener('abort', mountInstallEntry(installEntry), { once: true });
 
       window.addEventListener(FONT_SCALE_CHANGED_EVENT, (event) => {
         const select = container.querySelector<HTMLSelectElement>('#us-font-scale');
@@ -599,14 +625,15 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         // ── Framework settings handlers ──
 
         if (target.closest('#fwImportBtn')) {
-          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
-          if (backdrop) backdrop.style.display = 'flex';
+          if (importBackdrop) {
+            importBackdrop.style.display = 'flex';
+            importFocusTrap?.activate();
+          }
           return;
         }
 
         if (target.closest('#fwImportModalClose') || target.id === 'fwImportModalBackdrop') {
-          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
-          if (backdrop) backdrop.style.display = 'none';
+          closeFrameworkImport();
           return;
         }
 
@@ -684,8 +711,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           try {
             saveImportedFramework({ id: crypto.randomUUID(), name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
             refreshFrameworkLibrary(container);
-            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
-            if (backdrop) backdrop.style.display = 'none';
+            closeFrameworkImport();
           } catch (err) {
             showImportError(errEl, (err as Error).message);
           }
@@ -717,8 +743,7 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
             });
             textarea.value = '';
             refreshFrameworkLibrary(container);
-            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
-            if (backdrop) backdrop.style.display = 'none';
+            closeFrameworkImport();
           } catch (err) {
             showImportError(errEl, (err as Error).message);
           }
@@ -766,7 +791,10 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
         signal.addEventListener('abort', () => clearInterval(syncPollId));
       }
 
-      return () => ac.abort();
+      return () => {
+        importFocusTrap?.deactivate({ restoreFocus: false });
+        ac.abort();
+      };
     },
   };
 }

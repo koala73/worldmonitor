@@ -7,6 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import iso3ToIso2 from '../../shared/iso3-to-iso2.json' with { type: 'json' };
+import { isLevelledAdvisoryItem } from '../shared/advisory-registers.mjs';
 import { ciiCountryForIso2 } from '../shared/cii-country-borders.mjs';
 import { parseWildfireFiresSummary, summarizeWildfireDetections } from '../shared/wildfire-fires-summary.mjs';
 import {
@@ -87,9 +88,10 @@ export function readCiiVersionClaim(path = CII_VERSION_CLAIM_PATH): CiiVersionCl
 /** The fixture table key the working tree's scorer reproduces: the in-progress `next`, else the released version. */
 export function ciiScoredVersion(claim: CiiVersionClaim = readCiiVersionClaim(), released = CII_FORMULA_VERSION): string {
   if (claim.inProgress !== true) return released;
-  // Otherwise `next: "v14"` would make the released v14 table writable.
-  if (claim.next === released) {
-    throw new Error(`cii-next.json marks ${claim.next} in progress but names the released ${released}; an in-progress version must be unreleased`);
+  // Otherwise `next: "v14"` or `next: "v13"` would make a released table writable.
+  const versionNumber = (version: string) => (/^v\d+$/.test(version) ? Number(version.slice(1)) : Number.NaN);
+  if (!(versionNumber(claim.next) > versionNumber(released))) {
+    throw new Error(`cii-next.json marks ${claim.next} in progress, but ${claim.next} is not after the released ${released}; an in-progress version must be unreleased`);
   }
   return claim.next;
 }
@@ -231,6 +233,28 @@ function trimStrikeTally(raw: unknown): unknown {
   return { version: raw.version, updatedAt: raw.updatedAt, days };
 }
 
+/**
+ * Tier-1 levels, `fetchedAt` (the producer clock the advisory age gate reads)
+ * and, from the stored item list, one levelled `{ sourceCountry, country, level }`
+ * item per source, plus the seeder's `registersPresent`: the scorer reads which
+ * travel registers are present.
+ */
+function trimAdvisories(v: any): Obj {
+  if (!isObj(v.byCountry)) return {};
+  const items = Array.isArray(v.advisories)
+    ? [...new Map(v.advisories
+      .filter((item: any) => isLevelledAdvisoryItem(item))
+      .map((item: any) => [String(item.sourceCountry ?? ''), { sourceCountry: item.sourceCountry, country: item.country, level: item.level }])).values()]
+    : null;
+  return {
+    byCountry: tier1Entries(v.byCountry),
+    ...(v.fetchedAt != null ? { fetchedAt: v.fetchedAt } : {}),
+    ...(isObj(v.seenAt) ? { seenAt: tier1Entries(v.seenAt) } : {}),
+    ...(items ? { advisories: items } : {}),
+    ...(Array.isArray(v.registersPresent) ? { registersPresent: v.registersPresent } : {}),
+  };
+}
+
 export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
   const nullable = <T,>(v: unknown, fn: (v: any) => T): T | null => (v == null ? null : fn(v));
   return {
@@ -274,7 +298,9 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
       }),
     })),
     oref: nullable(raw.oref, (v) => pick(v, ['activeAlertCount', 'historyCount24h'])),
-    advisories: nullable(raw.advisories, (v) => (isObj(v.byCountry) ? { byCountry: tier1Entries(v.byCountry) } : {})),
+    advisories: nullable(raw.advisories, trimAdvisories),
+    // Read by production only when the live advisory read cannot be scored.
+    ...(raw.advisoriesLastGood != null ? { advisoriesLastGood: trimAdvisories(raw.advisoriesLastGood) } : {}),
     displacement: trimDisplacement(raw.displacement),
     newsInsights: nullable(raw.newsInsights, (v) => ({
       topStories: (Array.isArray(v.topStories) ? v.topStories : []).map(trimNewsStory),

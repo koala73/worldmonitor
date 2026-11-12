@@ -2650,7 +2650,8 @@
           "display": "CL=F",
           "price": 101.02,
           "change": 4.23,
-          "sparkline": []
+          "sparkline": [],
+          "stale": true
         },
         {
           "symbol": "BZ=F",
@@ -2658,7 +2659,11 @@
           "display": "BZ=F",
           "price": 109.26,
           "change": 3.35,
-          "sparkline": []
+          "sparkline": [],
+          "priceBasis": "futures",
+          "priceSource": "Yahoo Finance",
+          "priceAt": 1779010200000,
+          "stale": true
         },
         {
           "symbol": "NG=F",

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { renderDigestEmailHtml, DIGEST_EMAIL_MAX_HTML_BYTES } from '../scripts/lib/digest-email-html.mjs';
+import { buildBriefOnlyRules, orderBriefOnlyRulesByStaleness } from '../scripts/lib/brief-compose.mjs';
 
 // A transient Upstash timeout in one user's send path used to reach
 // main().catch and end the whole cron tick, so every user after it in the
@@ -22,23 +24,28 @@ function timeoutError() {
   return new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 }
 
-function runDigest({ failingUsers, rulesResponse, exitError }: {
+function runDigest({ failingUsers, rulesResponse, exitError, briefOnlyUserIds = [], synthesizedAt = new Map(), issueSlot = '2026-11-05-0800' }: {
   failingUsers: Set<string>;
+  issueSlot?: string;
   rulesResponse?: Response;
   exitError?: Error;
+  briefOnlyUserIds?: string[];
+  synthesizedAt?: Map<string, number>;
 }) {
   const users = ['first', 'second', 'third'];
+  const composedRules: any[][] = [];
   const delivered: string[] = [];
   const metadata: any[] = [];
   const exits: number[] = [];
   const warnings: string[] = [];
   const lifecycle: string[] = [];
+  const idempotencyKeys: string[] = [];
   const stories = [{
     severity: 'critical', phase: 'developing', title: 'Synthetic alert', description: 'Synthetic details.',
     link: 'https://example.com/1', sources: ['Synthetic wire'],
   }];
   const run = runInNewContext(`${sendEmailSource}\n${mainSource}\nmain`, {
-    Date, Map, Set, AbortSignal, Buffer,
+    Date, Map, Set, AbortSignal, Buffer, createHash,
     process: { env: {}, exit: (code: number) => {
       exits.push(code);
       lifecycle.push('exit');
@@ -58,7 +65,14 @@ function runDigest({ failingUsers, rulesResponse, exitError }: {
       return Response.json([{ channelType: 'email', email: `${userId}@example.com`, verified: true, emailOwnership: 'verified_account' }]);
     },
     parseDigestOnlyUser: () => ({ kind: 'unset' }),
-    composeBriefsForRun: async () => ({ briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 }),
+    fetchBriefOnlyUserIds: async () => briefOnlyUserIds, buildBriefOnlyRules, orderBriefOnlyRulesByStaleness,
+    fetchBriefComposeTimes: async () => synthesizedAt,
+    BRIEF_ONLY_COMPOSE_BUDGET_MS: 60_000,
+    composeBriefsForRun: async (rules: any[], _nowMs: number, opts?: { deadlineMs?: number }) => {
+      composedRules.push(rules);
+      lifecycle.push(opts?.deadlineMs ? 'compose:bounded' : 'compose');
+      return { briefByUser: new Map(), composeSuccess: 0, composeFailed: 0 };
+    },
     readCooldownConfig: () => ({ invalidRaw: null, mode: 'off' }),
     getLastSentAt: async () => 0, isDue: () => true, isUserPro: async () => true,
     digestWindowStartMs: () => 0,
@@ -73,16 +87,58 @@ function runDigest({ failingUsers, rulesResponse, exitError }: {
     formatDigest: () => 'Synthetic digest',
     renderDigestEmailHtml,
     buildChannelBodies: (lists: { plain: string }) => ({ text: lists.plain }),
-    subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => 'slot',
+    subjectForBrief: () => 'Synthetic digest', issueSlotInTz: () => issueSlot,
     emitCooldownShadowLog: () => {}, upstashRest: async () => 'OK',
-    sendResendEmail: async (_client: unknown, message: { to: string }) => {
+    sendResendEmail: async (_client: unknown, message: { to: string }, options: { idempotencyKey?: string }) => {
       delivered.push(message.to);
+      idempotencyKeys.push(options.idempotencyKey ?? '');
+      lifecycle.push('deliver');
       return { ok: true };
     },
     writeDigestLastRunMeta: async (meta: unknown) => { metadata.push(meta); lifecycle.push('metadata'); },
   });
-  return { run, delivered, metadata, exits, warnings, lifecycle };
+  return { run, delivered, metadata, exits, warnings, lifecycle, composedRules, idempotencyKeys };
 }
+
+// A paid user with no digest rule got no brief, and the dashboard said
+// "composing" forever (2026-10-27). They get a default compose-only rule, which
+// must reach compose and never reach any channel.
+// Array.from copies out of the VM realm so deepStrictEqual compares values, not prototypes.
+const ids = (rules: any[]) => Array.from(rules, (r: { userId: string; briefOnly?: boolean }) => `${r.userId}${r.briefOnly ? ':brief-only' : ''}`);
+
+test('paid users without a digest rule are composed but never sent anything', async () => {
+  const { run, delivered, composedRules, lifecycle } = runDigest({ failingUsers: new Set(), briefOnlyUserIds: ['brief_only', 'second'] });
+  await run();
+  // 'second' already has a digest rule, so it gets no duplicate default.
+  assert.deepEqual(composedRules.map(ids), [['first', 'second', 'third'], ['brief_only:brief-only']]);
+  assert.deepEqual(delivered, ['first@example.com', 'second@example.com', 'third@example.com']);
+  // Default briefs are composed after every delivery, under a deadline, so they
+  // never delay a scheduled digest (#9758 review).
+  const events = Array.from(lifecycle).filter((e) => e !== 'metadata');
+  assert.deepEqual(events, ['compose', 'deliver', 'deliver', 'deliver', 'compose:bounded']);
+});
+
+// The pass runs under a time budget, so its order decides who gets a brief.
+// First production run (2026-10-27): 99 composed, 152 deferred.
+test('the default-brief pass composes users with no brief first, then the stalest', async () => {
+  const { run, composedRules } = runDigest({
+    failingUsers: new Set(),
+    briefOnlyUserIds: ['fresh', 'never', 'stale'],
+    synthesizedAt: new Map([['fresh', 2_000], ['stale', 1_000]]),
+  });
+  await run();
+  assert.deepEqual(ids(composedRules[1]), ['never:brief-only', 'stale:brief-only', 'fresh:brief-only']);
+});
+
+test('a run with no digest rules still composes the brief-only users', async () => {
+  const { run, delivered, composedRules, metadata } = runDigest({
+    failingUsers: new Set(), rulesResponse: Response.json([]), briefOnlyUserIds: ['brief_only'],
+  });
+  await run();
+  assert.deepEqual(composedRules.map(ids), [[], ['brief_only:brief-only']]);
+  assert.deepEqual(delivered, []);
+  assert.equal(metadata.at(-1).sentCount, 0);
+});
 
 test('a non-array rules response fails after recording metadata and flushing events', async (t) => {
   for (const body of [{}, { rules: [] }, null, 'rules', 1, false]) {
@@ -144,4 +200,22 @@ test('a clean tick records a healthy run', async () => {
   assert.equal(metadata[0].status, undefined);
   assert.equal(metadata[0].sentCount, 3);
   assert.deepEqual(exits, []);
+});
+
+// Digest bodies carry only the date, so the morning and evening sends of a
+// twice_daily rule can render byte-identical. A payload-only Resend key made
+// the evening send a duplicate of the morning one (#10189 review). Retries in
+// the same scheduled hour must still share a key.
+test('the Resend key separates scheduled occurrences but not retries within an hour', async () => {
+  const keysFor = async (issueSlot: string) => {
+    const { run, idempotencyKeys } = runDigest({ failingUsers: new Set(), issueSlot });
+    await run();
+    return Array.from(idempotencyKeys);
+  };
+  const morning = await keysFor('2026-11-05-0800');
+  const morningRetry = await keysFor('2026-11-05-0814');
+  const evening = await keysFor('2026-11-05-2000');
+  assert.equal(morning.length, 3);
+  assert.deepEqual(morningRetry, morning);
+  for (let i = 0; i < morning.length; i++) assert.notEqual(evening[i], morning[i]);
 });
