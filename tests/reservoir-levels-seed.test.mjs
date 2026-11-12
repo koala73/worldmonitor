@@ -293,6 +293,47 @@ describe('reservoir seeder run', () => {
     assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
   });
 
+  it('reopens an abandoned acquisition group when a late member arrives', async () => {
+    const a = gran('2026-09-02', 21);
+    const b = gran('2026-09-02', 22);
+    let state = null;
+    for (let i = 0; i < MAX_GRANULE_FAILURES; i++) {
+      state = (await run({ ...fakeUpstream({ cmr: { alpha: [a] }, failGranules: [a] }), readState: async () => state }))._state;
+    }
+    assert.ok(state.byId.alpha.gaveUp.includes(a));
+    const blocked = fakeUpstream({ cmr: { alpha: [a, b] }, failGranules: [a], flownRgt: 23 });
+    state = (await run({ ...blocked, readState: async () => state }))._state;
+    assert.deepEqual(blocked.calls.slide.flat(), [a, b]);
+    assert.equal(state.byId.alpha.failures[b], 1, 'new member is tracked rather than silently dropped');
+    assert.ok(!state.byId.alpha.processed.includes(b), 'never publishes a partial combined pass');
+    const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23 });
+    const recovered = await run({ ...upstream, readState: async () => state });
+    assert.deepEqual(upstream.calls.slide.flat(), [a, b]);
+    assert.ok(recovered._state.byId.alpha.processed.includes(b));
+    assert.ok(!recovered._state.byId.alpha.gaveUp.includes(a));
+    assert.equal(recovered._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23)[4], 40);
+  });
+
+  it('records a failed group attempt even if another member is deferred', async () => {
+    const a = gran('2026-09-02', 21);
+    const b = gran('2026-09-02', 22);
+    const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, failGranules: [a] });
+    const realNow = Date.now;
+    let clock = realNow();
+    const deadlineAtMs = clock + 100_000;
+    try {
+      Date.now = () => clock;
+      const data = await run({ deadlineAtMs, fetchImpl: async (url, init) => {
+        const response = await upstream.fetchImpl(url, init);
+        if (String(url).includes('/source/atl13x')) clock = deadlineAtMs + 1;
+        return response;
+      } });
+      assert.equal(data._state.byId.alpha.failures[a], 1);
+      assert.equal(data._state.byId.alpha.failures[b], 1, 'uncommitted members share the failed atomic attempt');
+      assert.deepEqual(data._state.byId.alpha.processed, []);
+    } finally { Date.now = realNow; }
+  });
+
   it('does not commit a partially fetched date group when the run deadline expires', async () => {
     const a1 = gran('2026-09-02', 21);
     const a2 = gran('2026-09-02', 21, '02');

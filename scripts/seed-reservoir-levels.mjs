@@ -123,7 +123,7 @@ export function loadBaseline(path = BASELINE_PATH) {
 //       passes: [[timeIso, rgt, levelM, madM, n, beamSpreadM|null], ...],  raw pass stats
 //       cursor: 'YYYY-MM-DD' | null,       newest processed granule acquisition date
 //       processed: [granule, ...],         processed granules newer than cursor - 120 d
-//       failures: { granule: count },      failed runs per granule still being retried
+//       failures: { granule: count },      failed atomic attempts per uncommitted granule
 //       gaveUp: [granule, ...]             granules dropped after 3 failed runs (pruned like processed)
 //   } } }
 
@@ -239,7 +239,6 @@ export function granuleQueue(state, listed) {
 export function granuleGroups(state, listed, { pendingSince = null, completeSince = null } = {}) {
   const all = dedupeGranules([...listed, ...state.processed, ...state.gaveUp, ...Object.keys(state.failures || {})]);
   const pending = new Set(granuleQueue(state, all).filter(g => !pendingSince || granuleDate(g) >= pendingSince));
-  const abandoned = new Set(state.gaveUp);
   const groups = [];
   for (const g of all) {
     const last = groups.at(-1);
@@ -247,8 +246,10 @@ export function granuleGroups(state, listed, { pendingSince = null, completeSinc
     else groups.push([g]);
   }
   const retry = group => group.some(g => g in (state.failures || {}));
+  // No pending member means the group is complete or abandoned. A new member
+  // reopens it, including abandoned companions: omitting those would be partial.
   return groups.filter(group => (!completeSince || granuleDate(group[0]) >= completeSince)
-      && group.some(g => pending.has(g)) && !group.some(g => abandoned.has(g)))
+      && group.some(g => pending.has(g)))
     .sort((a, b) => Number(retry(b)) - Number(retry(a)));
 }
 
@@ -426,10 +427,11 @@ export async function fetchReservoirLevels({
       const processed = new Set([...s.processed, ...accepted]);
       const failures = { ...s.failures };
       const gaveUp = new Set(s.gaveUp);
-      for (const g of accepted) delete failures[g];
-      // A deferred group is retried without spending its failure allowance. A failed
-      // group retains the last complete pass and retries all uncommitted members.
-      const failed = !complete && !r.skipped.length ? granules.filter(g => !processed.has(g)) : [];
+      for (const g of accepted) { delete failures[g]; gaveUp.delete(g); }
+      // Pure deadline deferral spends no allowance. Any actual error fails the
+      // atomic attempt for every uncommitted member, including deferred ones;
+      // otherwise a broken companion could evade the group's retry limit forever.
+      const failed = r.failed.length ? granules.filter(g => !processed.has(g) && !gaveUp.has(g)) : [];
       for (const g of failed) {
         failures[g] = (failures[g] || 0) + 1;
         if (failures[g] >= MAX_GRANULE_FAILURES) { gaveUp.add(g); delete failures[g]; }

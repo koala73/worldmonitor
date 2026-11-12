@@ -99,7 +99,13 @@ orbit. Groups cover the +/- one-day attribution window and are fetched atomicall
 within the existing per-product granule budget. If any member fails or is deferred,
 the stored complete statistics remain unchanged and the group is retried; a CMR
 listing failure also defers that reservoir. An oversized group fails closed rather
-than exceeding the budget or silently publishing a partial pass.
+than exceeding the budget or silently publishing a partial pass. Pure deadline
+deferral spends no retry allowance; an actual source error counts as a failed
+atomic attempt for every uncommitted member, even if another member was deferred.
+After the existing three-attempt limit the group stops retrying. A newly listed
+member reopens it, including abandoned companions, and is recorded in retry state
+if the group still fails. Successful complete refreshes clear abandonment. This
+permits natural recovery without dropping failed contributors from a combined pass.
 
 The tuple's optional revision value is the sum of the complete group's orbit
 revisions. Updating any member or adding a late companion raises this value,
