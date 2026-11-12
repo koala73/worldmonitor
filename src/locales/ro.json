@@ -5084,7 +5084,11 @@
       "emptyFuelShortages": "Nicio lipsă de combustibil pentru aceste țări",
       "emptyEnergyDisruptions": "Nicio întrerupere de energie pentru aceste țări",
       "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
-      "emptyCorrelation": "Niciun semnal pentru aceste țări"
+      "emptyCorrelation": "Niciun semnal pentru aceste țări",
+      "emptyExposure": "Nu există locații de expunere a populației pentru aceste țări",
+      "emptyExposurePartial": "Datele disponibile nu conțin locații de expunere pentru aceste țări. Acoperirea completă UCDP este în așteptare.",
+      "partialExposureLoading": "Se încarcă toate locațiile UCDP înainte de filtrarea expunerii. Numărătorile de acoperire includ doar tulburările.",
+      "partialExposure": "Nu s-au putut încărca toate locațiile UCDP. Datele de expunere sunt incomplete; numărătorile de acoperire includ doar tulburările."
     },
     "draftAssessment": "Evaluare călătorie",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",

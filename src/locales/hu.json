@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Nincs üzemanyaghiány ezekhez az országokhoz",
       "emptyEnergyDisruptions": "Nincs energiaszünet ezekhez az országokhoz",
       "emptyDisplacement": "Nincs menekültadatok ezekhez az országokhoz",
-      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz"
+      "emptyCorrelation": "Nincs szignál ezekhez az országokhoz",
+      "emptyExposure": "Nincsenek lakossági kitettségi helyszínek ezekben az országokban",
+      "emptyExposurePartial": "A rendelkezésre álló adatokban nincsenek kitettségi helyszínek ezekhez az országokhoz. A teljes UCDP-lefedettség még függőben van.",
+      "partialExposureLoading": "Az összes UCDP-helyszín betöltése a kitettség szűrése előtt. A lefedettségi számok csak a zavargásokat tartalmazzák.",
+      "partialExposure": "Nem sikerült betölteni az összes UCDP-helyszínt. A kitettségi adatok hiányosak; a lefedettségi számok csak a zavargásokat tartalmazzák."
     },
     "draftAssessment": "Utazási értékelés",
     "draftAssessmentAria": "Az utazási értékelés megnyitása, amely ezzel a fókusszal van kitöltve",

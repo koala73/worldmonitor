@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "這些國家沒有燃料短缺",
       "emptyEnergyDisruptions": "這些國家沒有能源中斷",
       "emptyDisplacement": "這些國家沒有人口流離失所資料",
-      "emptyCorrelation": "這些國家沒有訊號"
+      "emptyCorrelation": "這些國家沒有訊號",
+      "emptyExposure": "這些國家沒有人口暴露地點",
+      "emptyExposurePartial": "現有資料中沒有這些國家的暴露地點。正在等待完整的 UCDP 覆蓋資料。",
+      "partialExposureLoading": "正在載入所有 UCDP 地點，然後篩選暴露資料。覆蓋統計僅包含騷亂事件。",
+      "partialExposure": "無法載入所有 UCDP 地點。暴露資料不完整；覆蓋統計僅包含騷亂事件。"
     },
     "draftAssessment": "行程評估",
     "draftAssessmentAria": "開啟行程評估，使用此焦點預填充",
