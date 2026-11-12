@@ -6,10 +6,10 @@
  * Claude with "There was a problem displaying content". Only ChatGPT gets the
  * field; every other host gets views without it.
  *
- * Manufact Cloud's compatibility check is the one other recipient. It checks
- * ChatGPT submission metadata but reaches the server through a proxy with a
- * browser or Bun user agent, so the only stable marker is the clientInfo name
- * every request carries in params._meta.
+ * Manufact Cloud's compatibility check and the manufact.com leaderboard review
+ * (`mcp-use-probe`) are the other recipients. They check ChatGPT submission
+ * metadata but reach the server with a browser or Bun user agent, so the only
+ * stable marker is the clientInfo name every request carries in params._meta.
  */
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,17 +81,21 @@ describe('view domain per host', () => {
     const meta = (name) => ({ _meta: { 'io.modelcontextprotocol/clientInfo': { name, version: '2' } } });
     const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
 
-    for (const signedIn of [true, false]) {
-      const who = signedIn ? 'signed in' : 'anonymous';
-      for (const userAgent of [BROWSER_UA, 'Bun/1.4.4']) {
-        it(`gets the site origin on every view (${who}, ${userAgent.slice(0, 7)})`, async () => {
-          const list = await rpc('resources/list', meta('Manufact Cloud'), { userAgent, signedIn });
-          const domains = viewDomains(list.resources);
-          assert.ok(domains.length >= 12);
-          assert.deepEqual([...new Set(domains)], ['https://www.worldmonitor.app']);
-          const read = await rpc('resources/read', { uri: SHELL_VIEW.uri, ...meta('Manufact Cloud') }, { userAgent, signedIn });
-          assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
-        });
+    // The manufact.com leaderboard review is a separate scanner from the Cloud
+    // check. On 2026-11-12 it initialized as `mcp-use-probe` with a Bun user agent.
+    for (const clientName of ['Manufact Cloud', 'mcp-use-probe']) {
+      for (const signedIn of [true, false]) {
+        const who = signedIn ? 'signed in' : 'anonymous';
+        for (const userAgent of [BROWSER_UA, 'Bun/1.4.4']) {
+          it(`${clientName} gets the site origin on every view (${who}, ${userAgent.slice(0, 7)})`, async () => {
+            const list = await rpc('resources/list', meta(clientName), { userAgent, signedIn });
+            const domains = viewDomains(list.resources);
+            assert.ok(domains.length >= 12);
+            assert.deepEqual([...new Set(domains)], ['https://www.worldmonitor.app']);
+            const read = await rpc('resources/read', { uri: SHELL_VIEW.uri, ...meta(clientName) }, { userAgent, signedIn });
+            assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
+          });
+        }
       }
     }
 
