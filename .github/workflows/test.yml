@@ -1206,10 +1206,14 @@ jobs:
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    #
+    # The plugin parts run the MCP Apps view specs (news and country views) on
+    # the built views in dist/plugin. No other job ran them, so a change could
+    # break a view spec and still merge green (#10494 broke 31 metering tests).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-country]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1316,6 +1320,8 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
+            # The plugin parts never load /pro.
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
@@ -1372,6 +1378,21 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
