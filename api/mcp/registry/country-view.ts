@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { COUNTRY_SIGNAL_BYTES, countrySignalResponseSchema, countrySignalOutcomeSchema } from '../../../shared/country-signal-observations';
 import { RAW_SIGNAL_READS, RAW_SIGNAL_FAMILIES, RAW_SIGNAL_BODY_BYTES, RAW_SIGNAL_ENVELOPE_BYTES, failedRawSignal, validateRawSignal, assembleRawSignals, type RawSignalsValue } from '../../../shared/country-raw-signals';
 import { COUNTRY_READERS, countryReaderSchema, countryViewSchema, panelAdmissionSchema, type CountryReader } from '../../../shared/country-brief-host';
