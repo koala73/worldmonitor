@@ -3493,8 +3493,8 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_reservoir_levels',
     _validateArgs: params => { resolveCountryFilter(params.country, 'country'); },
     title: 'Strategic reservoir water levels',
-    // 50 reservoirs with series measured 87 KB in production (tuples); the {date, levelM}
-    // objects add about a third. tests/mcp-reservoir-levels.test.mjs measures both.
+    // 50 reservoirs with {date, levelM} series measured 87 KB in production (2026-11-12,
+    // ~27 points each); series grow toward the full 36-month window, so leave headroom.
     _outputBudgetBytes: 196608,
     description: 'Return NASA ICESat-2 lidar water levels for the 50 strategic reservoirs and lakes on the watchlist (GERD, Lake Nasser, Ataturk, Mosul, Tarbela, Three Gorges, Kariba, Lake Mead and others): latest pass level, change since the previous pass and over 30, 90 and 365 days, seasonal anomaly and z-score, record range and a status. Levels are metres above the EGM2008 geoid from ATL13, or ATL06 where ATL13 covers the water poorly; they are lake levels, not storage volumes. Passes publish about 50-70 days after the overpass, so latest.ageDays is normally large. no_recent_data means no qualifying pass in the last 150 days, not a stale tool. stale follows the seed run (3 days) and a full 50-reservoir watchlist, never pass age. Seeded-cache read: weight 1 on API plans, included in the signed-in free allowance. Returns every reservoir without its series by default.',
     inputSchema: {
