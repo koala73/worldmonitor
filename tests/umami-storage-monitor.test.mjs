@@ -503,6 +503,12 @@ if (outcome === 'ok') {
 } else if (outcome === 'timeout') {
   process.stderr.write('Failed to fetch: error sending request for url (https://backboard.railway.com/graphql/v2)\\n\\nCaused by:\\n    0: error sending request for url (https://backboard.railway.com/graphql/v2)\\n    1: operation timed out\\n');
   process.exit(1);
+} else if (outcome === 'undecodable') {
+  process.stderr.write('Failed to fetch: error decoding response body\\n\\nCaused by:\\n    0: error decoding response body\\n    1: expected value at line 1 column 1\\n');
+  process.exit(1);
+} else if (outcome === 'problem') {
+  process.stderr.write('Problem processing request\\n');
+  process.exit(1);
 } else if (outcome === 'unauthorized') {
   process.stderr.write('Unauthorized. Please login with \`railway login\`\\n');
   process.exit(1);
@@ -579,6 +585,18 @@ describe('Railway volume read', () => {
     assert.deepEqual(run.output, [{ serviceName: 'Postgres Umami', currentSizeMB: 1 }]);
     assert.equal(run.githubOutput, 'read=true\n');
   });
+
+  // 2026-11-11/12: backboard answered with a non-JSON body (a gateway page or
+  // an empty 200), so the CLI printed one of these and the run died unretried.
+  for (const outcome of ['undecodable', 'problem']) {
+    it(`retries a ${outcome} Railway response`, () => {
+      const run = runVolumeRead({ plan: `${outcome},ok` });
+      assert.equal(run.status, 0, run.stderr);
+      assert.equal(run.calls.length, 2);
+      assert.deepEqual(run.output, [{ serviceName: 'Postgres Umami', currentSizeMB: 1 }]);
+      assert.equal(run.githubOutput, 'read=true\n');
+    });
+  }
 
   it('warns without failing when every attempt times out', () => {
     const run = runVolumeRead({ plan: 'timeout,timeout,timeout' });
