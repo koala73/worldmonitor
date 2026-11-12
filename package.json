@@ -186,6 +186,8 @@
     "test:e2e:pro-hero": "cross-env VITE_VARIANT=full playwright test e2e/pro-hero-animation.spec.ts --project=chromium",
     "test:e2e:pro-lcp": "cross-env VITE_VARIANT=full playwright test e2e/pro-hero-lcp.spec.ts --project=chromium",
     "test:e2e:pro-anchor": "cross-env VITE_VARIANT=full playwright test e2e/pro-pricing-anchor.spec.ts e2e/welcome-nav-fit.spec.ts --project=chromium",
+    "test:e2e:plugin-news": "npm run build:plugin && cross-env VITE_VARIANT=full playwright test e2e/plugin-display-modes.spec.ts e2e/plugin-loader.spec.ts e2e/plugin-news-metering.spec.ts",
+    "test:e2e:plugin-country": "npm run build:plugin && cross-env VITE_VARIANT=full playwright test e2e/plugin-country-view.spec.ts",
     "test:e2e:pro-gates": "cross-env VITE_VARIANT=full playwright test e2e/pro-critical-css-cls.spec.ts e2e/pro-mobile-overflow.spec.ts e2e/pro-hero-animation.spec.ts e2e/pro-hero-lcp.spec.ts e2e/pro-pricing-anchor.spec.ts e2e/welcome-nav-fit.spec.ts --project=chromium",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",
