@@ -30,6 +30,12 @@ name: Publish self-hosted Docker images
 # `release` event for other workflows, so it dispatches this workflow on the
 # release tag instead (workflow_dispatch is exempt).
 #
+# /!\ GHCR creates a package private on its first push. After the first run
+# publishes each of the three packages, a maintainer must set it to public
+# (package settings > Change visibility) or an anonymous `docker compose pull`
+# gets 401 and the installer falls back to building from source. The workflow
+# cannot do this with GITHUB_TOKEN.
+#
 # /!\ Like every scheduled workflow, the cron runs on the default branch only,
 # and GitHub disables scheduled workflows in a public repository after 60 days
 # without activity. The push trigger is immune to that, and the failure issue

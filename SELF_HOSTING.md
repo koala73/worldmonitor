@@ -426,6 +426,8 @@ docker compose pull && docker compose up -d
 ./scripts/run-seeders.sh
 ```
 
+If you pinned `WM_IMAGE_TAG`, `git pull` alone moves the compose file but not the images. Check out the tag of the release you are moving to (`git checkout v<version>`) and set `WM_IMAGE_TAG=<version>` in `.env` before `docker compose pull`, so the file and the images stay on the same release.
+
 ### ⚠️ Build Notes
 
 - The app, relay and REST-proxy images use **Node.js 24 Alpine** for every stage

@@ -37,8 +37,8 @@ test('the release publisher dispatches the self-hosted image build for the publi
   );
   assert.equal(
     dispatch.if,
-    `steps.${publish.id}.outputs.published == 'true'`,
-    'a draft-kept or refused release must not publish images'
+    `\${{ !cancelled() && steps.${publish.id}.outputs.published == 'true' }}`,
+    'a draft-kept or refused release must not publish images, and a failed frontend-image dispatch must not skip this one'
   );
   assert.match(dispatch.run, /gh workflow run docker-publish-self-hosted\.yml --ref "\$TAG"/);
   assert.equal(dispatch.env?.TAG, `\${{ steps.${publish.id}.outputs.tag }}`, 'the dispatch must target the tag that was published');

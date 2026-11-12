@@ -635,7 +635,9 @@ jobs:
       - name: Publish the self-hosted Docker images
         # Same GITHUB_TOKEN rule as above, for the images docker-compose.yml
         # pulls (worldmonitor-selfhosted, -ais-relay, -redis-rest).
-        if: steps.publish.outputs.published == 'true'
+        # !cancelled() so a failed docker-publish.yml dispatch above does not
+        # skip this one through the implicit success() check.
+        if: ${{ !cancelled() && steps.publish.outputs.published == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.publish.outputs.tag }}

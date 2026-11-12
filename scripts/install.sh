@@ -46,7 +46,8 @@ Options:
                 (default: the saved value, else 3000). Env: WM_PORT
   --no-seed     skip npm ci and ./scripts/run-seeders.sh
   --build       build the images from source instead of pulling them
-  --no-build    neither pull nor build; start what is already local
+  --no-build    skip the explicit pull and build; compose still fetches or
+                builds an image that is missing locally
   -h, --help    show this help
 
 Env overrides: WM_REPO, WM_BRANCH, WM_DIR, WM_PORT.
