@@ -558,9 +558,8 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     );
 
     // orank mcp-resource-quality: EVERY resources/list entry must resources/read
-    // cleanly for an anonymous caller. The catalog is now all concrete,
-    // metadata-only resources, so an anonymous resources/read of each must
-    // return a non-empty application/json content payload — not a 401.
+    // cleanly for an anonymous caller: a non-empty payload of its declared
+    // type, not a 401.
     for (const resource of resourceBody.result.resources) {
       const read = await fetchText(`${WEB_BASE}/mcp`, {
         method: 'POST',
@@ -574,13 +573,17 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
       assert.equal(readBody.error, undefined,
         `anonymous resources/read ${resource.uri} must not error: ${JSON.stringify(readBody.error)}`);
       const content = readBody.result?.contents?.[0];
-      // `ui://` entries are MCP-Apps app shells, not metadata: production
-      // declares them `text/html;profile=mcp-app` (api/mcp/ui/shell.ts
-      // UI_RESOURCE_MIME_TYPE). Same rule as the in-process sibling check in
-      // tests/mcp-resources.test.mjs. Still an exact-match assertion per URI
-      // scheme — a resource declaring the WRONG one of the two still fails.
+      // Same per-URI rule as the in-process sibling check in
+      // tests/mcp-resources.test.mjs: `ui://` app shells are
+      // `text/html;profile=mcp-app` (api/mcp/ui/shell.ts), the static agent
+      // guide is `text/markdown` (api/mcp/resources/index.ts), and every
+      // other resource is JSON data. Exact match, so a resource declaring
+      // another resource's type still fails.
       const isUiShell = resource.uri.startsWith('ui://');
-      const expectedMime = isUiShell ? 'text/html;profile=mcp-app' : 'application/json';
+      const isAgentGuide = resource.uri === 'worldmonitor://guide/agents';
+      const expectedMime = isUiShell
+        ? 'text/html;profile=mcp-app'
+        : isAgentGuide ? 'text/markdown' : 'application/json';
       assert.equal(content?.mimeType, expectedMime,
         `resources/read ${resource.uri} must declare a valid mimeType`);
       assert.ok(typeof content?.text === 'string' && content.text.length > 0,
@@ -589,6 +592,9 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
       if (isUiShell) {
         assert.match(content.text, /^\s*<!doctype html/i,
           `resources/read ${resource.uri} declares HTML but did not return an HTML document`);
+      } else if (isAgentGuide) {
+        assert.doesNotMatch(content.text, /^\s*(<|\{)/,
+          `resources/read ${resource.uri} declares Markdown but returned HTML or JSON`);
       } else {
         JSON.parse(content.text); // valid JSON for the declared mimeType
       }
