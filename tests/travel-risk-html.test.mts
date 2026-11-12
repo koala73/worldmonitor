@@ -155,3 +155,29 @@ describe('renderTravelRiskHtml: print and Word', () => {
     assert.doesNotMatch(html, /<script|<link|@import|url\(|var\(--|display:\s*(flex|grid)/i);
   });
 });
+
+describe('renderTravelRiskHtml: input that is built to be slow', () => {
+  // The converter is only fed the assembler's Markdown, but it is a pure
+  // function of its input, so its cost has to be linear on any input. The bound
+  // is far above the measured 10 to 35 ms for 250 KB so it never flakes, and far
+  // below what a quadratic path would take.
+  const N = 250_000;
+  const patterns: Record<string, string> = {
+    'bare angle brackets': '<'.repeat(N),
+    'unterminated autolinks': '<https://a'.repeat(N / 10),
+    'doubled stars': '**'.repeat(N / 2),
+    'unclosed bold openers': '**a '.repeat(N / 4),
+    'backslashes': '\\'.repeat(N),
+    'escaped brackets': '\\<'.repeat(N / 2),
+    'a list item per line': '- a\n'.repeat(N / 4),
+    'a table row per line': '| a | b |\n'.repeat(N / 10),
+  };
+  for (const [name, body] of Object.entries(patterns)) {
+    it(`renders ${name} in linear time`, () => {
+      const started = performance.now();
+      const html = renderTravelRiskHtml(`# T\n\n${body}\n`);
+      assert.ok(performance.now() - started < 1500, `${name} took ${Math.round(performance.now() - started)} ms`);
+      assert.doesNotMatch(html, /<(?!\/?(?:!doctype|html|head|body|meta|title|style|h[1-3]|p|ul|ol|li|a|strong|table|thead|tbody|tr|th|td)[\s>\/])/i, 'no tag other than the ones the converter writes');
+    });
+  }
+});

@@ -40,8 +40,11 @@ export default createTravelRiskExportHandler({
     const global = await checkRateLimit(request, cors, { principalUserId: userId });
     if (global) return global;
     // A build reads about 20 cached sources, so it gets its own, much tighter,
-    // per-account budget than the 600 a minute every route shares. Availability
-    // first on a Redis blip: the route is plan-gated and spends no LLM budget.
+    // per-account budget than the 600 a minute every route shares.
+    // Redis-degraded scoped limits intentionally stay availability-first here:
+    // the route is plan-gated and spends no LLM budget, and the sources it reads
+    // live in the same Redis, so an outage that degrades this limiter already
+    // makes the build answer 503.
     const scoped = await checkScopedRateLimit(RATE_SCOPE, RATE_LIMIT, RATE_WINDOW, userId);
     return scoped.allowed ? null : scopedTooManyRequestsResponse(scoped, RATE_WINDOW, cors);
   },
