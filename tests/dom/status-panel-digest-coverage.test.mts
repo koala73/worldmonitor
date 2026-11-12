@@ -54,6 +54,30 @@ describe('StatusPanel digest coverage row', () => {
   );
 });
 
+describe('StatusPanel digest coverage row truncation (#10499)', () => {
+  // The compact footer ellipsizes this row on one 28px line, so the full text
+  // (missing categories, stale cause) must stay reachable as a tooltip.
+  it.each(['complete', 'partial', 'stale', 'unavailable'] as const)(
+    'exposes the full %s text as the row title',
+    (state) => {
+      const panel = new StatusPanel();
+      panel.updateDigestCoverage(coverage(state));
+      const row = panel.getElement().querySelector<HTMLElement>('.digest-coverage-row');
+      expect(row?.title).toBe(row?.textContent);
+      expect(row?.title).toContain(`News coverage: ${state}`);
+    },
+  );
+
+  it('keeps the title in step with later updates', () => {
+    const panel = new StatusPanel();
+    panel.updateDigestCoverage(coverage('complete'));
+    panel.updateDigestCoverage(coverage('partial'));
+    const row = panel.getElement().querySelector<HTMLElement>('.digest-coverage-row');
+    expect(row?.title).toContain('News coverage: partial');
+    expect(row?.title).toContain('tech');
+  });
+});
+
 describe('StatusPanel digest coverage row reachability (#7085 reopen)', () => {
   // The component-scoped queries above cannot distinguish a mounted row from a
   // detached one — these assertions must start at `document`, because that is

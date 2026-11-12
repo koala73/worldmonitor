@@ -85,7 +85,10 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 // getCountryCentroid is imported lower in the file alongside other
 // country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
-import { initI18n, t } from '@/services/i18n';
+import { getLocale, initI18n, t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { getCSSColor } from '@/utils/theme-colors';
+import { isHollowStatus, reservoirHeadline, reservoirTone, reservoirToneRgb, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { statusLabel as popupStatusLabel, storageFacilityTypeLabel } from './map-popup-i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
 import { createIdleAwareFrameProvider } from '@/utils/idle-aware-frame-provider';
@@ -656,6 +659,7 @@ export class DeckGLMap {
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private ukmtoIncidents: UkmtoMapIncident[] = [];
+  private reservoirLevels: ReservoirLevel[] = [];
   private aisDensity: AisDensityZone[] = [];
   private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
   private liveTankersAbort: AbortController | null = null;
@@ -2273,6 +2277,10 @@ export class DeckGLMap {
         getFillColor: item => item.stale ? [135, 145, 155, 180] : [120, 180, 255, 220],
         stroked: true, getLineColor: [255, 255, 255, 200], lineWidthMinPixels: 1, pickable: true,
       }));
+    }
+
+    if (mapLayers.reservoirLevels && this.reservoirLevels.length > 0) {
+      layers.push(this.createReservoirLevelsLayer());
     }
 
     // GPS/GNSS jamming layer
@@ -5498,6 +5506,11 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'ukmto-incidents-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(ukmtoIncidentLabel(obj))}</strong><br/>${text(obj.description)}</div>` };
+      case 'reservoir-levels-layer': {
+        const r = obj as ReservoirLevel;
+        const headline = reservoirHeadline(r, { t, locale: getLocale(), nowMs: Date.now() });
+        return { html: `<div class="deckgl-tooltip"><strong>${text(r.name)}</strong><br/>${text(reservoirStatusLabel(r.status, t))} · ${text(headline)}</div>` };
+      }
       case 'cross-border-deaths-layer':
       case 'cross-border-points-layer': {
         const change = obj.change !== null && obj.change !== 0
@@ -5932,6 +5945,7 @@ export class DeckGLMap {
       'gps-jamming-layer': 'gpsJamming',
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
+      'reservoir-levels-layer': 'reservoirLevel',
     };
 
     const popupType = layerToPopupType[layerId];
@@ -6504,6 +6518,7 @@ export class DeckGLMap {
       helpItem(label('canadaRoads'), 'canadaRoads'),
       helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
+      helpItem(label('reservoirLevels'), 'reservoirLevels'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),
     ])}
@@ -7622,6 +7637,51 @@ export class DeckGLMap {
     this.cableAdvisories = advisories;
     this.repairShips = repairShips;
     this.render();
+  }
+
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirLevels = reservoirs;
+    this.render();
+  }
+
+  /** Fly to a reservoir and open its popup at the container centre, where the flight ends. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    const reveal = () => {
+      if (this.destroyed || !this.maplibreMap) return;
+      this.setCenter(reservoir.lat, reservoir.lon, 6);
+      const { x, y } = this.getContainerCenter();
+      this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
+    };
+    if (this.maplibreMap) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
+
+  /**
+   * One dot per strategic reservoir, coloured by status from the theme's
+   * semantic tokens: red and amber for falling or low, blue for rising or
+   * high, grey for normal, and a hollow ring when there is no recent pass or
+   * too little history to judge.
+   */
+  private createReservoirLevelsLayer(): ScatterplotLayer<ReservoirLevel> {
+    const theme = getCurrentTheme();
+    const rgb = (r: ReservoirLevel) => reservoirToneRgb(reservoirTone(r.status), getCSSColor);
+    const outline: [number, number, number, number] = theme === 'light' ? [255, 255, 255, 230] : [10, 12, 16, 230];
+    return new ScatterplotLayer<ReservoirLevel>({
+      id: 'reservoir-levels-layer',
+      data: this.reservoirLevels,
+      getPosition: (r) => [r.lon, r.lat],
+      getRadius: 9000,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 12,
+      filled: true,
+      stroked: true,
+      getFillColor: (r) => (isHollowStatus(r.status) ? [0, 0, 0, 0] : [...rgb(r), 235]),
+      getLineColor: (r) => (isHollowStatus(r.status) ? [...rgb(r), 255] : outline),
+      getLineWidth: (r) => (isHollowStatus(r.status) ? 2 : 1.5),
+      lineWidthUnits: 'pixels',
+      pickable: true,
+      updateTriggers: { getFillColor: theme, getLineColor: theme },
+    });
   }
 
   public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {

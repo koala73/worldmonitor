@@ -36,6 +36,8 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = {
   'gulf-economies': { name: 'Gulf & OPEC Economies', enabled: true, priority: 2 },
   // Climate — demand driver for heating/cooling
   climate: { name: 'Climate & Weather Impact', enabled: true, priority: 2 },
+  // Hydropower reservoirs and transboundary water (ICESat-2 levels)
+  'reservoir-levels': { name: 'Strategic Water Levels', enabled: true, priority: 2 },
   // Tracking
   monitors: { name: 'My Monitors', enabled: true, priority: 3 },
 };
@@ -56,6 +58,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityHubs: true,      // Energy exchanges (ICE, NYMEX, TTF, JKM hubs)
   sanctions: true,          // Sanctions directly impact energy trade
+  reservoirLevels: false,
   economic: false,
   fires: true,              // Fires near energy infrastructure / forestry
   climate: true,            // Weather / heating & cooling demand
@@ -123,6 +126,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   processingPlants: false,
   commodityHubs: false,
   sanctions: false,
+  reservoirLevels: false,
   economic: false,
   fires: false,
   climate: false,

@@ -191,11 +191,34 @@ function str(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-/** Feed text is untrusted: one line, no table breaks, no live Markdown links, images, code spans or HTML, bounded. */
+/**
+ * Feed text is untrusted: one line, no direction or invisible format controls,
+ * no table breaks, no live Markdown links, images, emphasis, code spans or
+ * HTML, bounded. Straight double quotes become single quotes, because the draft
+ * wraps publisher titles in double quotes and a quote inside one could end the
+ * quotation and add prose that reads as the draft's own.
+ */
 export function cleanText(value: unknown, max = MAX_TEXT_CHARS): string {
-  const flat = str(value).replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const flat = str(value)
+    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
+    .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   const bounded = [...flat].length > max ? `${[...flat].slice(0, max - 1).join('').trimEnd()}…` : flat;
-  return bounded.replace(/\|/g, '/').replace(/[\\[\]<>`]/g, '\\$&');
+  return bounded.replace(/\|/g, '/').replace(/"/g, "'").replace(/[\\[\]<>`*_~]/g, '\\$&');
+}
+
+/**
+ * A source name is a label, not prose: it may list outlets, but it must not be
+ * able to close the attribution the draft wraps around it and add a clause of
+ * its own such as "Source: X, 2026-11-09.".
+ */
+function sourceLabel(value: string): string {
+  return value
+    .replace(/\bsource\s*:/gi, 'source -')
+    .replace(/,\s*\d{4}-\d{2}-\d{2}\s*\.?/g, ',')
+    .replace(/\s+/g, ' ')
+    .replace(/[,\s]+$/, '');
 }
 
 function httpsUrl(value: unknown): string | null {
@@ -392,7 +415,7 @@ function embassyBlock(advice: AdviceRead, code: string, name: string, cap: numbe
     .filter((item) => item.country === code && /\bembassy\b/i.test(item.source))
     .map((item): Dated => {
       const ms = toMs(item.pubDate);
-      return { ms, finding: { text: `"${cleanText(item.title)}"`, source: cleanText(item.source, 80), observed: isoDate(ms), url: httpsUrl(item.link) } };
+      return { ms, finding: { text: `"${cleanText(item.title)}"`, source: sourceLabel(cleanText(item.source, 80)), observed: isoDate(ms), url: httpsUrl(item.link) } };
     });
   return listBlock('US embassy alerts', alerts, cap, {
     reported: `${plural(alerts.length, 'US embassy alert', 'US embassy alerts')} for ${name} in the advisory snapshot, which keeps the latest alerts each embassy feed publishes (${updated}).`,
@@ -430,13 +453,17 @@ export function rateCountry(sources: TravelRiskSources, trip: TripCountry): Coun
   const ukText = uk
     ? ` UK FCDO, on its own scale: ${ukWarning(uk.level)} (${isoDate(toMs(uk.pubDate)) ?? 'date not given by the source'}).`
     : '';
+  const cdc = latestRow(advice.registers.filter((entry) => entry.country === trip.countryCode && entry.source === REGISTER_SOURCES.cdc));
+  const cdcText = cdc
+    ? ` CDC travel health notice, on its own scale: level ${cleanText(cdc.level.replace('cdc-', ''), 10)} of 4 (${isoDate(toMs(cdc.pubDate)) ?? 'date not given by the source'}).`
+    : '';
   if (rated.length === 0) {
-    return { level: null, statement: `Unrated: no US State Dept or Australia DFAT Smartraveller level for ${trip.countryName} is on record.${ukText}` };
+    return { level: null, statement: `Unrated: no US State Dept or Australia DFAT Smartraveller level for ${trip.countryName} is on record.${ukText}${cdcText}` };
   }
   const level = Math.max(...rated.map((entry) => entry.level));
   const setBy = rated.filter((entry) => entry.level === level)
     .map((entry) => `${entry.source}, ${entry.date ?? 'date not given by the source'}`).join('; ');
-  return { level, statement: `Level ${level} of 4, the higher of the US State Dept and Australia DFAT Smartraveller levels (set by ${setBy}).${ukText}` };
+  return { level, statement: `Level ${level} of 4, the higher of the US State Dept and Australia DFAT Smartraveller levels (set by ${setBy}).${ukText}${cdcText}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -491,7 +518,7 @@ function unrestBlock(source: SourceSnapshot, trip: TripCountry, window: Window, 
     if (ms === null || ms < window.fromMs || ms > window.toMs) return [];
     const city = cleanText(event.city, 80);
     const marker = inListedCity(event.city, trip.cities) ? ' In a listed city.' : '';
-    const outlets = Array.isArray(event.sources) ? event.sources.map((item) => cleanText(item, 60)).filter(Boolean).slice(0, 2) : [];
+    const outlets = Array.isArray(event.sources) ? event.sources.map((item) => sourceLabel(cleanText(item, 60))).filter(Boolean).slice(0, 2) : [];
     const urls = Array.isArray(event.sourceUrls) ? event.sourceUrls : [];
     return [{
       ms,
@@ -596,7 +623,7 @@ const NATURAL_TOPIC = 'Natural events and tropical cyclones';
 
 const WEATHER_SOURCE_NAMES: Record<string, string> = { nws: 'US NWS', eccc: 'Environment Canada', swic: 'WMO SWIC' };
 
-function weatherBlock(source: SourceSnapshot, trip: TripCountry, cap: number): Block {
+function weatherBlock(source: SourceSnapshot, trip: TripCountry, cap: number, nowMs: number): Block {
   const topic = 'Weather alerts';
   const name = 'weather alert feed';
   if (source.status !== 'ok') return unavailableBlock(topic, name, source.reason ?? 'the alert feed could not be read');
@@ -608,8 +635,11 @@ function weatherBlock(source: SourceSnapshot, trip: TripCountry, cap: number): B
   const matched = alerts.flatMap((raw): Dated[] => {
     const alert = record(raw);
     if (!alert || str(alert.countryCode).toUpperCase() !== trip.countryCode) return [];
+    // An alert can lapse between cache refreshes; the set is "current" at retrieval.
+    const expiresMs = toMs(alert.expires);
+    if (expiresMs !== null && expiresMs <= nowMs) return [];
     const onset = toMs(alert.onset);
-    const expires = isoDate(toMs(alert.expires));
+    const expires = isoDate(expiresMs);
     const area = cleanText(alert.areaDesc, 120);
     return [{
       ms: onset,
@@ -647,7 +677,7 @@ function earthquakeBlock(source: SourceSnapshot, trip: TripCountry, cap: number)
       ms,
       finding: {
         text: `${magnitude}, ${cleanText(quake.place, 120) || 'place not given'}.`,
-        source: cleanText(quake.source, 40) || 'USGS',
+        source: sourceLabel(cleanText(quake.source, 40)) || 'USGS',
         observed: isoDate(ms),
         url: httpsUrl(quake.sourceUrl),
       },
@@ -677,7 +707,7 @@ function naturalEventBlock(source: SourceSnapshot, trip: TripCountry, cap: numbe
       ms,
       finding: {
         text: `${cleanText(event.categoryTitle, 60) || 'Natural event'}: "${cleanText(event.title)}"${alert ? `, GDACS alert ${alert}` : ''}.`,
-        source: cleanText(event.sourceName, 40) || 'NASA EONET',
+        source: sourceLabel(cleanText(event.sourceName, 40)) || 'NASA EONET',
         observed: isoDate(ms),
         url: httpsUrl(event.sourceUrl),
       },
@@ -774,9 +804,9 @@ export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: Sea
   };
 }
 
-function hazardBlocks(sources: TravelRiskSources, trip: TripCountry, input: TripInput, cap: number): Block[] {
+function hazardBlocks(sources: TravelRiskSources, trip: TripCountry, input: TripInput, cap: number, nowMs: number): Block[] {
   return [
-    withOrigin(isolated('Weather alerts', 'weather alert feed', () => weatherBlock(sources.feeds.weather, trip, cap)), 'US NWS, Environment Canada, WMO SWIC', sources.feeds.weather),
+    withOrigin(isolated('Weather alerts', 'weather alert feed', () => weatherBlock(sources.feeds.weather, trip, cap, nowMs)), 'US NWS, Environment Canada, WMO SWIC', sources.feeds.weather),
     withOrigin(isolated('Earthquakes', 'earthquake feed', () => earthquakeBlock(sources.feeds.earthquakes, trip, cap)), 'USGS and NRCan', sources.feeds.earthquakes),
     withOrigin(isolated(NATURAL_TOPIC, 'natural event feed', () => naturalEventBlock(sources.feeds.natural, trip, cap)), 'GDACS, NASA EONET, NOAA NHC', sources.feeds.natural),
     seasonalBlock(trip, input),
@@ -804,7 +834,7 @@ function outbreakBlock(source: SourceSnapshot, trip: TripCountry, cap: number): 
       ms,
       finding: {
         text: `${cleanText(outbreak.disease, 60) || 'Disease report'}${location ? `, ${location}` : ''}${level ? `. Alert level ${level}` : ''}.`,
-        source: cleanText(outbreak.sourceName, 40) || 'Disease outbreak feed',
+        source: sourceLabel(cleanText(outbreak.sourceName, 40)) || 'Disease outbreak feed',
         observed: isoDate(ms),
         url: httpsUrl(outbreak.sourceUrl),
       },
@@ -992,14 +1022,33 @@ function overallRating(countries: Array<{ trip: TripCountry; rating: CountryRati
 // Sources table and method
 // ---------------------------------------------------------------------------
 
-function sourceRow(name: string, source: SourceSnapshot): SourceRow {
+/** The list each feed's blocks read; a payload without it is unusable, whatever its age. */
+const FEED_LIST_FIELD: Record<string, string> = {
+  ucdp: 'events', unrest: 'events', earthquakes: 'earthquakes', natural: 'events',
+  weather: 'alerts', outbreaks: 'outbreaks', aviation: 'alerts', outages: 'outages',
+};
+
+/** Why the payload cannot be used, or null. Keeps the sources table in step with the blocks that read it. */
+function payloadProblem(id: string, source: SourceSnapshot): string | null {
+  if (source.status !== 'ok') return null;
+  if (id === 'advisories') {
+    const advice = readAdvice(source);
+    return advice.ok ? null : advice.reason;
+  }
+  const field = FEED_LIST_FIELD[id];
+  return field && !list(source.value, field) ? 'the snapshot did not have the expected shape' : null;
+}
+
+function sourceRow(name: string, source: SourceSnapshot, problem: string | null = null): SourceRow {
   if (source.status !== 'ok') return { source: name, updatedAt: source.updatedAt, status: 'unavailable', note: source.reason };
+  if (problem) return { source: name, updatedAt: source.updatedAt, status: 'unavailable', note: problem };
   return { source: name, updatedAt: source.updatedAt, status: source.stale ? 'out_of_date' : 'current', note: null };
 }
 
 function sourceRows(sources: TravelRiskSources, trip: TripInput): SourceRow[] {
-  const rows = TRAVEL_RISK_FEEDS.map((feed) => sourceRow(feed.name, sources.feeds[feed.id]));
-  rows.push(sourceRow(HOTSPOT_SOURCE_NAME, sources.hotspots));
+  const rows = TRAVEL_RISK_FEEDS.map((feed) => sourceRow(feed.name, sources.feeds[feed.id], payloadProblem(feed.id, sources.feeds[feed.id])));
+  rows.push(sourceRow(HOTSPOT_SOURCE_NAME, sources.hotspots,
+    sources.hotspots.status === 'ok' && !list(record(sources.hotspots.value)?.data, 'hotspots') ? 'the hotspot model returned no hotspot list' : null));
   const scored = trip.countries.filter((country) => CII_SCORED_CODES.has(country.countryCode));
   if (scored.length === 0) {
     rows.push({ source: CII_SOURCE_NAME, updatedAt: null, status: 'not_used', note: 'no listed country is scored by the index' });
@@ -1026,7 +1075,7 @@ const METHOD_NOTES: readonly string[] = [
   `Security counts cover the ${SECURITY_WINDOW_DAYS} days up to the retrieval time. Other sections report what each feed holds at retrieval, with the window each feed covers.`,
   'Earthquakes, natural events and hotspots are matched by the country\'s bounding box, which can include parts of neighbouring countries and sea.',
   'Conflict, unrest, airport and outage records are matched by the country name each feed gives. Listed cities are shown for the analyst and mark matching unrest signals and airports; they do not narrow the feeds.',
-  'Quoted titles are feed text as published, shortened to one line. Unrest items are unverified media signals.',
+  'Quoted titles are feed text as published, shortened to one line, with straight double quotes shown as single quotes and direction and invisible characters removed. Unrest items are unverified media signals.',
   'Seasonal hazards come from a calendar of past GDACS cyclone and flood records by country and month. It shows what was recorded in the same months of earlier years, not what will happen, and it has no wildfire, heat, drought or monsoon rainfall data.',
   'An unavailable source is not a quiet one: its section says why it could not be read.',
 ];
@@ -1047,7 +1096,7 @@ export function assembleTravelRiskDocument(
     const blocks = {
       advice: adviceBlocks(sources, trip, cap),
       security: securityBlocks(sources, trip, window, cap),
-      hazards: hazardBlocks(sources, trip, input, cap),
+      hazards: hazardBlocks(sources, trip, input, cap, nowMs),
       health: healthBlocks(sources, trip, cap),
       access: accessBlocks(sources, trip, cap),
       communications: communicationsBlocks(sources, trip, cap),

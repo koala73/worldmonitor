@@ -145,7 +145,7 @@ curl -s https://worldmonitor.app/mcp \
 | `date_to` | string | 否 | 行程结束日期，YYYY-MM-DD，不早于 `date_from` |
 | `task_label` | string | 否 | 印在草稿顶部的标签，最多 120 个字符，不含个人信息 |
 
-未知参数会被拒绝，因此无法提交出行人姓名、联系方式或地址。行程信息不会写入日志、遥测或缓存键。
+未知参数会被拒绝，但 `task_label` 和 `cities` 接受自由文本，请勿在其中填写出行人姓名、联系方式或地址。行程信息不会写入日志、遥测或缓存键。
 
 - **API 端点：** 无；工具直接读取预先填充的缓存。
 - **访问：** `subscription`，且仅限 Pro Business、API Business 和 Enterprise 套餐。其他套餐返回 `-32002`，并带有 `data.reason: "upgrade-required"` 和 `data.planFeature: "travelRiskAssessment"`。在 API 套餐上权重为 2。

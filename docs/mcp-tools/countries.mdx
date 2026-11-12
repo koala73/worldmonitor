@@ -181,7 +181,7 @@ Every finding names its source and the date that source gives for it. A source t
 | `date_to` | string | no | Trip end, YYYY-MM-DD, on or after `date_from` |
 | `task_label` | string | no | Label printed at the top of the draft, up to 120 characters. No personal details |
 
-Unknown arguments are rejected, so traveller names, contact details and addresses cannot be sent. Trip details are not written to logs, telemetry or cache keys.
+Unknown arguments are rejected, but `task_label` and `cities` accept free text, so do not put traveller names, contact details or addresses in them. Trip details are not written to logs, telemetry or cache keys.
 
 - **API endpoints:** none; the tool reads the seeded caches directly.
 - **Access:** `subscription`, and only on the Pro Business, API Business and Enterprise plans. Other plans get `-32002` with `data.reason: "upgrade-required"` and `data.planFeature: "travelRiskAssessment"`. Weight 2 on API plans.

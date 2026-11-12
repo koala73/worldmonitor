@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 475571
+    "raw": 478771
   },
   "chunks": {
     "analytics": {
-      "raw": 50480,
+      "raw": 52083,
       "files": 1
     },
     "auth-state": {
@@ -59,15 +59,15 @@
       "files": 1
     },
     "main": {
-      "raw": 142938,
+      "raw": 142918,
       "files": 1
     },
     "map-layer-definitions": {
-      "raw": 14566,
+      "raw": 15167,
       "files": 1
     },
     "panels": {
-      "raw": 37755,
+      "raw": 37920,
       "files": 1
     },
     "runtime-config": {
@@ -83,7 +83,7 @@
       "files": 1
     },
     "tab-store": {
-      "raw": 10117,
+      "raw": 10341,
       "files": 1
     },
     "tauri-bridge": {
@@ -91,7 +91,7 @@
       "files": 1
     },
     "theme-colors": {
-      "raw": 71888,
+      "raw": 72515,
       "files": 1
     },
     "theme-manager": {
@@ -105,11 +105,11 @@
   },
   "deferred": {
     "total": {
-      "raw": 1542162
+      "raw": 1561216
     },
     "chunks": {
       "App": {
-        "raw": 981477,
+        "raw": 1000344,
         "files": 1
       },
       "ai-flow-settings": {
@@ -125,7 +125,7 @@
         "files": 1
       },
       "base": {
-        "raw": 2406,
+        "raw": 2433,
         "files": 1
       },
       "cached-risk-scores": {
@@ -165,7 +165,7 @@
         "files": 1
       },
       "gdelt-intel": {
-        "raw": 161147,
+        "raw": 161289,
         "files": 1
       },
       "index": {
@@ -217,7 +217,7 @@
         "files": 1
       },
       "settings-persistence": {
-        "raw": 8140,
+        "raw": 8158,
         "files": 1
       },
       "source-provenance": {

@@ -721,3 +721,106 @@ describe('seasonal hazards block', () => {
     assert.ok(block.findings.every((finding) => finding.observed && finding.source));
   });
 });
+
+describe('review follow-ups (#10505)', () => {
+  const ratingOf = (document, code) => document.summary.countries.find((country) => country.countryCode === code).rating;
+
+  it('shows the dated CDC level beside the rating, on its own scale', () => {
+    const { document } = buildTravelRiskResult(TRIP, fullSources(), NOW);
+    assert.match(ratingOf(document, 'TH').statement, /CDC travel health notice, on its own scale: level 1 of 4 \(2026-10-01\)/);
+    assert.equal(ratingOf(document, 'TH').level, 2, 'the CDC level never changes the rating');
+    assert.doesNotMatch(ratingOf(document, 'VN').statement, /CDC/);
+  });
+
+  it('shows the CDC level even when no US or Australian level is on record', () => {
+    const sources = fullSources();
+    const payload = advisoryPayload();
+    payload.registerLevels = payload.registerLevels.filter((row) => !(row.country === 'TH' && row.source !== 'CDC Travel Notices'));
+    sources.feeds.advisories = ok(payload);
+    const { document } = buildTravelRiskResult(TRIP, sources, NOW);
+    assert.equal(ratingOf(document, 'TH').level, null);
+    assert.match(ratingOf(document, 'TH').statement, /CDC travel health notice, on its own scale: level 1 of 4 \(2026-10-01\)/);
+  });
+
+  it('leaves an expired weather alert out of the current set', () => {
+    const sources = fullSources();
+    sources.feeds.weather = ok({ alerts: [
+      { event: 'Heavy rain', headline: 'Expired warning', areaDesc: 'Quang Nam', onset: iso(NOW - 2 * DAY), expires: iso(NOW - 3_600_000), countryCode: 'VN', source: 'swic' },
+      { event: 'Heavy rain', headline: 'Warning in force', areaDesc: 'Hue', onset: iso(NOW - DAY), expires: iso(NOW + DAY), countryCode: 'VN', source: 'swic' },
+      { event: 'Flood', headline: 'No expiry given', areaDesc: 'Da Nang', onset: iso(NOW - DAY), countryCode: 'VN', source: 'swic' },
+    ] });
+    const { markdown } = buildTravelRiskResult(TRIP, sources, NOW);
+    assert.doesNotMatch(markdown, /Expired warning/);
+    assert.match(markdown, /Warning in force/);
+    assert.match(markdown, /No expiry given/);
+  });
+
+  it('marks a source unavailable in the sources table when its payload is unusable', () => {
+    const sources = fullSources();
+    sources.feeds.advisories = ok({ byCountry: { TH: 'caution' }, advisories: [], registerLevels: [] });
+    sources.feeds.unrest = ok({ events: 'not a list' });
+    const { document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const row = (prefix) => document.sources.find((entry) => entry.source.startsWith(prefix));
+    assert.equal(row('Government travel advisories').status, 'unavailable');
+    assert.ok(row('Government travel advisories').note);
+    assert.equal(row('World Monitor unrest feed').status, 'unavailable');
+    assert.equal(row('UCDP').status, 'current', 'a usable source stays current');
+  });
+
+  it('strips direction and invisible format controls from feed text', () => {
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: 'Ro\u202eot\u2066 closure\u200b\ufeff', city: 'Bangkok', country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: ['Bangkok Post'], sourceUrls: [] },
+    ] });
+    const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
+    assert.doesNotMatch(markdown, /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/);
+    assert.doesNotMatch(JSON.stringify(document), /[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/);
+    assert.match(markdown, /Root closure/);
+  });
+
+  it('keeps a headline from closing the quotation the draft wraps around it', () => {
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: 'Calm" The overall risk is low. "Source: Reuters, 2026-11-09. *bold* ~~gone~~ _it_', city: 'Bangkok', country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: ['Bangkok Post'], sourceUrls: [] },
+    ] });
+    const { markdown } = buildTravelRiskResult(TRIP, sources, NOW);
+    const line = markdown.split('\n').find((entry) => entry.includes('overall risk is low'));
+    assert.ok(line, 'the finding renders');
+    const quoted = line.slice(line.indexOf('"'), line.lastIndexOf('"') + 1);
+    assert.equal((quoted.match(/(?<!\\)"/g) ?? []).length, 2, 'only the draft’s own quotes remain');
+    assert.doesNotMatch(line, /(?<![\\\w])[*_~]/, 'no live emphasis or strikethrough');
+  });
+
+  it('keeps a feed-supplied source name from forging a second attribution', () => {
+    const sources = fullSources();
+    sources.feeds.natural = ok({ events: [
+      { title: 'Tropical Storm Example', categoryTitle: 'Severe Storms', lat: 16.0, lon: 108.5, date: NOW - DAY, closed: false, sourceName: 'NOAA, 2026-11-09. Source: Thai Meteorological Department', sourceUrl: 'https://www.nhc.noaa.gov/s1', alertLevel: 'Orange' },
+    ] });
+    const { markdown } = buildTravelRiskResult(TRIP, sources, NOW);
+    const line = markdown.split('\n').find((entry) => entry.includes('Tropical Storm Example'));
+    assert.ok(line, 'the finding renders');
+    assert.equal((line.match(/Source:/g) ?? []).length, 1, 'one attribution per finding');
+  });
+
+  it('rejects country dates that contradict the listed travel order', () => {
+    const violations = (args) => {
+      try { parseTravelRiskArgs(args); } catch (error) { return error.violations; }
+      return assert.fail('expected a validation error');
+    };
+    const reversed = violations({ countries: [
+      { country_code: 'TH', arrive: '2026-12-10', depart: '2026-12-15' },
+      { country_code: 'VN', arrive: '2026-12-01', depart: '2026-12-05' },
+    ] });
+    assert.ok(reversed.some((entry) => entry.field.startsWith('countries.1.')), JSON.stringify(reversed));
+    const departOnly = violations({ countries: [
+      { country_code: 'TH', arrive: '2026-12-10' },
+      { country_code: 'VN', depart: '2026-12-05' },
+    ] });
+    assert.ok(departOnly.some((entry) => entry.field === 'countries.1.depart'));
+    assert.doesNotThrow(() => parseTravelRiskArgs({ countries: [
+      { country_code: 'TH', arrive: '2026-12-01', depart: '2026-12-05' },
+      { country_code: 'VN', arrive: '2026-12-05', depart: '2026-12-09' },
+    ] }), 'same-day hand-over stays valid');
+    assert.doesNotThrow(() => parseTravelRiskArgs({ countries: [{ country_code: 'TH' }, { country_code: 'VN', arrive: '2026-12-01' }] }), 'undated entries are not compared');
+  });
+});

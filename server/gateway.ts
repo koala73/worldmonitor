@@ -361,6 +361,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/climate/v1/get-ocean-ice-data': 'daily',
   '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
+  '/api/climate/v1/list-reservoir-levels': 'daily',
   '/api/sanctions/v1/list-sanctions-pressure': 'daily',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
   '/api/radiation/v1/list-radiation-observations': 'slow',

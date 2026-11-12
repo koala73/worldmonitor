@@ -81,6 +81,9 @@ const argsSchema = z.object({
     ctx.addIssue({ code: 'custom', path: ['date_to'], message: 'Must be on or after date_from.' });
   }
   const seen = new Set<string>();
+  // The list is in travel order, so a country cannot arrive or depart before
+  // an earlier country's arrival.
+  let latestArrive: string | null = null;
   args.countries.forEach((country, index) => {
     if (seen.has(country.country_code)) {
       ctx.addIssue({ code: 'custom', path: ['countries', index, 'country_code'], message: 'List each country once, with its first arrival and last departure.' });
@@ -89,6 +92,13 @@ const argsSchema = z.object({
     if (country.arrive && country.depart && country.depart < country.arrive) {
       ctx.addIssue({ code: 'custom', path: ['countries', index, 'depart'], message: 'Must be on or after arrive.' });
     }
+    for (const field of ['arrive', 'depart'] as const) {
+      const dated = country[field];
+      if (dated && latestArrive && dated < latestArrive) {
+        ctx.addIssue({ code: 'custom', path: ['countries', index, field], message: 'Countries are listed in travel order; this date is before an earlier country\'s arrival.' });
+      }
+    }
+    if (country.arrive && (!latestArrive || country.arrive > latestArrive)) latestArrive = country.arrive;
     for (const field of ['arrive', 'depart'] as const) {
       const value = country[field];
       if (!value) continue;
