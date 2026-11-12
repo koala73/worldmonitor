@@ -16,10 +16,15 @@ describe('MCP serverInfo metadata', () => {
     assert.equal(SERVER_INFO.websiteUrl, 'https://www.worldmonitor.app');
   });
 
-  it('advertises icons of 128px or more on the MCP endpoint origin (apex /.well-known/, not redirected to www)', () => {
+  // Cloudflare Hotlink Protection answers a PNG request that carries a foreign
+  // Referer with 403 (error 1011), so a client page on another origin (Manufact's
+  // inspector, a web host's connector list) could not show the icon. Files under
+  // a `hotlink-ok` directory are exempt from the check without turning it off for
+  // the rest of the zone.
+  it('advertises icons of 128px or more on the MCP endpoint origin (apex /.well-known/, not redirected to www), under hotlink-ok', () => {
     assert.ok(SERVER_INFO.icons.length > 0);
     for (const icon of SERVER_INFO.icons) {
-      assert.match(icon.src, /^https:\/\/worldmonitor\.app\/\.well-known\/mcp\/[\w.-]+$/);
+      assert.match(icon.src, /^https:\/\/worldmonitor\.app\/\.well-known\/mcp\/hotlink-ok\/[\w.-]+$/);
       assert.ok(existsSync(new URL(`../public${new URL(icon.src).pathname}`, import.meta.url)), icon.src);
       assert.ok(icon.mimeType.startsWith('image/'));
       const px = Number(icon.sizes[0].split('x')[0]);
