@@ -51,7 +51,7 @@ describe('PANEL_SCOPE_BEHAVIOUR', () => {
       'africa', 'airline-intel', 'asia', 'cii', 'disaster-correlation', 'disease-outbreaks', 'displacement',
       'economic-correlation', 'energy-disruptions', 'escalation-correlation', 'europe', 'fuel-shortages',
       'intel', 'internet-disruptions', 'latam', 'middleeast', 'military-correlation', 'politics',
-      'radiation-watch', 'security-advisories', 'ucdp-events', 'us',
+      'radiation-watch', 'reservoir-levels', 'security-advisories', 'ucdp-events', 'us',
     ]);
   });
 
@@ -62,6 +62,11 @@ describe('PANEL_SCOPE_BEHAVIOUR', () => {
 });
 
 describe('PANEL_SCOPE_REASONS', () => {
+  it('keeps current reasons for regional zones and truncated exposure inputs', () => {
+    assert.match(PANEL_SCOPE_REASONS.climate!, /zone-to-country/);
+    assert.match(PANEL_SCOPE_REASONS['population-exposure']!, /before the source and display cuts/);
+  });
+
   it('explains only panels that are real and still not supported', () => {
     for (const [key, reason] of Object.entries(PANEL_SCOPE_REASONS)) {
       assert.ok(Object.prototype.hasOwnProperty.call(ALL_PANELS, key), `${key} is not a panel`);
