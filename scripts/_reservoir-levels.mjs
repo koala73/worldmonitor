@@ -760,7 +760,7 @@ function comparePasses(a, b) {
 }
 
 // Compact tuple storage: [timeIso, rgt, levelM, madM, n, beamSpreadM|null, revision?].
-// The complete acquisition-group revision sum is stored only when above 1, so the
+// The complete day's candidate-orbit revision sum is stored only when above 1, so the
 // committed baseline keeps its six-element form.
 export function passToTuple(p) {
   const t = [p.time, p.rgt, p.levelM, p.madM, p.n, p.beamSpreadM ?? null];
@@ -776,10 +776,10 @@ export function tupleToPass(t) {
 }
 
 /**
- * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher acquisition-group
+ * Merge new pass stats into a stored list. Keyed by UTC date + RGT. A higher complete-day
  * revision sum always wins: NASA reprocesses granules to correct them, so their values
  * replace the earlier ones whatever their segment count. Within one revision sum (the same
- * complete acquisition group re-processed) the record with more segments
+ * complete day re-processed) the record with more segments
  * wins, then lower deviation, then lower height, so merging is idempotent and
  * order-independent.
  */

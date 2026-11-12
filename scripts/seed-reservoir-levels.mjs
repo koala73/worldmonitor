@@ -121,6 +121,7 @@ export function loadBaseline(path = BASELINE_PATH) {
 // State shape (Redis key climate:reservoir-levels:passes:v1):
 //   { schema, updatedAt, byId: { <id>: {
 //       passes: [[timeIso, rgt, levelM, madM, n, beamSpreadM|null], ...],  raw pass stats
+//       refreshed: { date: revision },    complete UTC days, including empty reductions
 //       cursor: 'YYYY-MM-DD' | null,       newest processed granule acquisition date
 //       processed: [granule, ...],         processed granules newer than cursor - 120 d
 //       failures: { granule: count },      failed atomic attempts per uncommitted granule
@@ -128,7 +129,7 @@ export function loadBaseline(path = BASELINE_PATH) {
 //   } } }
 
 function emptyReservoirState() {
-  return { passes: [], cursor: null, processed: [], failures: {}, gaveUp: [] };
+  return { passes: [], refreshed: {}, cursor: null, processed: [], failures: {}, gaveUp: [] };
 }
 
 function maxDate(a, b) {
@@ -141,7 +142,13 @@ function maxDate(a, b) {
 export function mergeReservoirState(a, b) {
   const x = { ...emptyReservoirState(), ...(a || {}) };
   const y = { ...emptyReservoirState(), ...(b || {}) };
-  const passes = mergePasses(x.passes.map(tupleToPass), y.passes.map(tupleToPass)).map(passToTuple);
+  const refreshed = { ...x.refreshed };
+  for (const [date, revision] of Object.entries(y.refreshed)) refreshed[date] = Math.max(refreshed[date] || 0, revision);
+  // A complete day can legitimately contain no passes. Keep its revision as a
+  // tombstone so merging the committed baseline cannot resurrect removed keys.
+  const current = state => state.passes.map(tupleToPass)
+    .filter(p => (state.refreshed[p.date] || 0) >= (refreshed[p.date] || 0));
+  const passes = mergePasses(current(x), current(y)).map(passToTuple);
   const processed = new Set([...x.processed, ...y.processed]);
   const gaveUp = new Set([...x.gaveUp, ...y.gaveUp].filter((g) => !processed.has(g)));
   const failures = {};
@@ -153,6 +160,7 @@ export function mergeReservoirState(a, b) {
   }
   const out = {
     passes,
+    refreshed,
     cursor: maxDate(x.cursor, y.cursor),
     processed: [...processed].sort(),
     failures,
@@ -236,7 +244,7 @@ export function granuleQueue(state, listed) {
 /** Refresh potentially overlapping acquisition dates atomically. Include processed
  * companions and only the newest release of each orbit. The two-day separation
  * covers both sides of the +/- one-day granule-to-pass attribution window. */
-export function granuleGroups(state, listed, { pendingSince = null, completeSince = null } = {}) {
+export function granuleGroups(state, listed, { pendingSince = null } = {}) {
   const all = dedupeGranules([...listed, ...state.processed, ...state.gaveUp, ...Object.keys(state.failures || {})]);
   const pending = new Set(granuleQueue(state, all).filter(g => !pendingSince || granuleDate(g) >= pendingSince));
   const groups = [];
@@ -248,8 +256,7 @@ export function granuleGroups(state, listed, { pendingSince = null, completeSinc
   const retry = group => group.some(g => g in (state.failures || {}));
   // No pending member means the group is complete or abandoned. A new member
   // reopens it, including abandoned companions: omitting those would be partial.
-  return groups.filter(group => (!completeSince || granuleDate(group[0]) >= completeSince)
-      && group.some(g => pending.has(g)))
+  return groups.filter(group => group.some(g => pending.has(g)))
     .sort((a, b) => Number(retry(b)) - Number(retry(a)));
 }
 
@@ -308,13 +315,19 @@ function outage(message) {
 }
 
 /**
- * Sum the complete group's orbit revisions, so updating any member (even below the
- * group's maximum revision) or adding a late member supersedes the stored reduction.
- * Granules must be a complete group with one latest release per orbit.
+ * Sum each day's candidate orbit revisions, so updating any member (even below the
+ * day's maximum revision) or adding a late member supersedes the stored reduction.
+ * Granules must be the full discovered group, one latest release per orbit;
+ * publish only days whose possible contributors all completed.
  */
 export function withRevisions(passes, granules) {
-  const revision = granules.reduce((sum, g) => sum + (granuleRevision(g) ?? 1), 0) || 1;
-  return passes.map(p => ({ ...p, revision }));
+  return passes.map(p => ({ ...p, revision: revisionForDay(p.date, granules) }));
+}
+
+function revisionForDay(date, granules) {
+  const time = Date.parse(date);
+  return granules.reduce((sum, g) => Math.abs(Date.parse(granuleDate(g)) - time) <= DAY_MS
+    ? sum + (granuleRevision(g) ?? 1) : sum, 0) || 1;
 }
 
 async function mapLimit(items, limit, fn) {
@@ -355,6 +368,7 @@ export async function fetchReservoirLevels({
   // probe so a CMR outage fails in one timeout instead of one per reservoir.
   let cmrFailures = 0;
   const queues = new Map();
+  const completeBoundaries = new Map();
   const discoveryFailed = new Set();
   const discover = async (e) => {
     const s = byId[e.id];
@@ -365,9 +379,10 @@ export async function fetchReservoirLevels({
       ? new Date(Date.parse(pendingSince) - DISCOVERY_COMPANION_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
     const completeSince = s.cursor ? new Date(Date.parse(since) + 2 * DAY_MS).toISOString().slice(0, 10) : null;
+    completeBoundaries.set(e.id, completeSince);
     try {
       const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS, product: productOf(e).id });
-      queues.set(e.id, granuleGroups(s, listed, { pendingSince, completeSince }));
+      queues.set(e.id, granuleGroups(s, listed, { pendingSince }));
       return true;
     } catch (err) {
       cmrFailures++;
@@ -422,7 +437,21 @@ export async function fetchReservoirLevels({
       succeeded += r.processed.length;
       const s = byId[e.id];
       const complete = r.processed.length === granules.length;
-      const fresh = complete ? withRevisions(acc.finish(), r.processed) : [];
+      const unavailable = [...r.failed, ...r.skipped].map(g => Date.parse(granuleDate(g)));
+      const covered = new Set();
+      const refreshed = { ...s.refreshed };
+      const start = Date.parse(granuleDate(granules[0])) - DAY_MS;
+      const end = Date.parse(granuleDate(granules.at(-1))) + DAY_MS;
+      for (let t = start; t <= end; t += DAY_MS) {
+        const date = new Date(t).toISOString().slice(0, 10);
+        if (completeBoundaries.get(e.id) && date < completeBoundaries.get(e.id)) continue;
+        // A failed/deferred resource can affect only its acquisition day +/-1.
+        // Independent days remain complete even when the larger group fails.
+        if (unavailable.some(day => Math.abs(t - day) <= DAY_MS)) continue;
+        covered.add(date);
+        refreshed[date] = revisionForDay(date, granules);
+      }
+      const fresh = withRevisions(acc.finish().filter(p => covered.has(p.date)), granules);
       const accepted = complete ? r.processed : [];
       const processed = new Set([...s.processed, ...accepted]);
       const failures = { ...s.failures };
@@ -439,13 +468,14 @@ export async function fetchReservoirLevels({
       let cursor = s.cursor;
       for (const g of accepted) cursor = maxDate(cursor, granuleDate(g));
       byId[e.id] = pruneReservoirState({
-        passes: mergePasses(s.passes.map(tupleToPass), fresh).map(passToTuple),
+        passes: mergePasses(s.passes.map(tupleToPass).filter(p => !covered.has(p.date)), fresh).map(passToTuple),
+        refreshed,
         cursor,
         processed: [...processed].sort(),
         failures,
         gaveUp: [...gaveUp].sort(),
       });
-      log(`  [${e.id}] ${r.processed.length}/${granules.length} granules, ${complete ? 'complete' : 'retained previous group'}, +${fresh.length} passes`);
+      log(`  [${e.id}] ${r.processed.length}/${granules.length} granules, ${covered.size} complete days, +${fresh.length} passes`);
     }
   });
   // Outage = no request reached a working SlideRule. Per-granule server errors inside a

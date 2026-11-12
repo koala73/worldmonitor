@@ -95,10 +95,11 @@ Already published last-good data remains under the existing retention rules if
 an upstream request fails. Filename RGT is retained transiently as `sourceRgt` on native rows;
 persisted pass keys use segment RGT. Discovery groups overlapping acquisition
 dates, including processed companions, and selects only the newest release per
-orbit. Groups cover the +/- one-day attribution window and are fetched atomically
-within the existing per-product granule budget. If any member fails or is deferred,
-the stored complete statistics remain unchanged and the group is retried; a CMR
-listing failure also defers that reservoir. An oversized group fails closed rather
+orbit. Groups cover the existing +/- one-day attribution window and are fetched
+within the existing per-product granule budget. Publication is atomic per UTC day:
+a failed or deferred granule prevents replacement of every day it could contribute
+to, while independent days remain publishable. A CMR listing failure defers the
+reservoir entirely. An oversized group fails closed rather
 than exceeding the budget or silently publishing a partial pass. Pure deadline
 deferral spends no retry allowance; an actual source error counts as a failed
 atomic attempt for every uncommitted member, even if another member was deferred.
@@ -107,17 +108,23 @@ member reopens it, including abandoned companions, and is recorded in retry stat
 if the group still fails. Successful complete refreshes clear abandonment. This
 permits natural recovery without dropping failed contributors from a combined pass.
 
-The tuple's optional revision value is the sum of the complete group's orbit
-revisions. Updating any member or adding a late companion raises this value,
+The tuple's optional revision value sums the candidate orbit revisions for that
+UTC day (granule acquisition date +/- one day). Updating any member or adding a late companion raises this value,
 even when the maximum individual revision stays unchanged. This makes the new
-complete reduction supersede old statistics regardless of segment count. The
+complete reduction supersede old statistics regardless of segment count. A
+persisted `refreshed` map records complete-day revision sums, including days with
+no remaining passes. It prevents obsolete RGT keys and deleted observations from
+resurrecting when baseline and cached state merge; the merge stays commutative
+and idempotent. The
 150-day processed-name retention exceeds the 120-day discovery lookback, so
 companions cannot be pruned while their group is still eligible for refresh.
 CMR listing includes four extra days for boundary companions; only the original
-120-day window queues new work. Groups touching the listing boundary are deferred
-because an earlier, unlisted companion could make their reduction incomplete.
+120-day window queues new work. Only individual days touching the incomplete
+listing boundary are held; a chain of known companions cannot indefinitely defer
+the pending days.
 Regressions cover lower-than-maximum revision updates, late companions, failures,
-midnight and discovery-window boundaries, atomic budget selection, and deadline deferral. The largest
+midnight and discovery-window boundaries, obsolete/empty pass deletion, independent
+days, retry recovery, atomic budget selection, and deadline deferral. The largest
 atomic group across all 50 saved mission backfills contains two granules, within
 both existing run budgets.
 

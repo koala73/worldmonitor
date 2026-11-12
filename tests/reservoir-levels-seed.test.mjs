@@ -17,6 +17,7 @@ import {
   mergeState,
   planFetches,
   stripState,
+  withRevisions,
 } from '../scripts/seed-reservoir-levels.mjs';
 import { atl13FileRecords, csvFileRecords, csvFromAtl06Rows, exceptRecord, eventRecord, streamResponse } from './helpers/sliderule-stream.mjs';
 
@@ -57,7 +58,7 @@ const BASELINE = {
  * Fake CMR + SlideRule. cmr: { id -> [granule names] } keyed by core bbox; slide(granules)
  * returns { rows, failGranules, status }.
  */
-function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {}, trackOffset = 0, flownRgt } = {}) {
+function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], emptyGranules = [], level = {}, trackOffset = 0, flownRgt } = {}) {
   const calls = { cmr: 0, slide: [] };
   const byBbox = new Map(WATCHLIST.map((e) => [e.core.join(','), e.id]));
   const fetchImpl = async (url, init = {}) => {
@@ -79,7 +80,7 @@ function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = 
       const id = WATCHLIST.find((e) => Math.abs(parms.poly[0].lon - e.core[0]) < 1e-9).id;
       const rows = [];
       for (const g of parms.resources) {
-        if (failGranules.includes(g)) continue;
+        if (failGranules.includes(g) || emptyGranules.includes(g)) continue;
         const date = `${g.slice(6, 10)}-${g.slice(10, 12)}-${g.slice(12, 14)}`;
         const rgt = Number(g.slice(21, 25));
         for (let i = 0; i < 20; i++) rows.push({ t: `${date}T12:00:00Z`, rgt, segmentRgt: flownRgt ?? rgt + trackOffset, gt: [10, 30, 50][i % 3], h: (level[id] ?? 300) + (i % 3) * 0.01, refid: id === 'alpha' ? 11 : 99 });
@@ -308,10 +309,51 @@ describe('reservoir seeder run', () => {
     assert.ok(!state.byId.alpha.processed.includes(b), 'never publishes a partial combined pass');
     const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23 });
     const recovered = await run({ ...upstream, readState: async () => state });
-    assert.deepEqual(upstream.calls.slide.flat(), [a, b]);
+    assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
     assert.ok(recovered._state.byId.alpha.processed.includes(b));
     assert.ok(!recovered._state.byId.alpha.gaveUp.includes(a));
     assert.equal(recovered._state.byId.alpha.passes.find(t => t[0].startsWith('2026-09-02') && t[1] === 23)[4], 40);
+  });
+
+  it('refreshes pending days even when a known companion chain crosses the listing boundary', async () => {
+    const baseline = structuredClone(BASELINE);
+    baseline.reservoirs.alpha.processedThrough = '2026-09-02';
+    const floor = new Date(Date.parse('2026-09-02') - 120 * DAY).toISOString().slice(0, 10);
+    const before = days => new Date(Date.parse(floor) - days * DAY).toISOString().slice(0, 10);
+    const old = [gran(before(3), 21), gran(before(1), 22)];
+    const next = gran(floor, 23);
+    const state = { schema: STATE_SCHEMA, byId: { alpha: { processed: old } } };
+    const upstream = fakeUpstream({ cmr: { alpha: [...old, next] } });
+    const data = await run({ ...upstream, baseline, readState: async () => state });
+    assert.ok(upstream.calls.slide.flat().includes(next));
+    assert.ok(data._state.byId.alpha.passes.some(t => t[0].startsWith(floor) && t[1] === 23));
+  });
+
+  it('removes revised track keys and empty reductions without resurrecting baseline passes', async () => {
+    const baseline = structuredClone(BASELINE);
+    baseline.reservoirs.alpha.passes.push(tuple('2026-09-02', 300, 23));
+    const g = rev => gran('2026-09-02', 21, rev);
+    const first = await run({ baseline, ...fakeUpstream({ cmr: { alpha: [g('01')] }, flownRgt: 23 }) });
+    const second = await run({ baseline, ...fakeUpstream({ cmr: { alpha: [g('02')] }, flownRgt: 24 }), readState: async () => first._state });
+    const keys = state => state.byId.alpha.passes.filter(t => t[0].startsWith('2026-09-02')).map(t => t[1]);
+    assert.deepEqual(keys(second._state), [24]);
+    assert.deepEqual(keys({ byId: mergeState(baseline, second._state, WATCHLIST) }), [24]);
+    const empty = await run({ baseline, ...fakeUpstream({ cmr: { alpha: [g('03')] }, emptyGranules: [g('03')] }), readState: async () => second._state });
+    assert.deepEqual(keys(empty._state), []);
+    assert.deepEqual(keys({ byId: mergeState(baseline, empty._state, WATCHLIST) }), []);
+    assert.equal(empty._state.byId.alpha.passes.length, BASELINE.reservoirs.alpha.passes.length);
+  });
+
+  it('publishes an independent day when an abandoned companion still fails', async () => {
+    const a = gran('2026-09-02', 21);
+    const b = gran('2026-09-04', 22);
+    const state = { schema: STATE_SCHEMA, byId: { alpha: { gaveUp: [a] } } };
+    const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, failGranules: [a] });
+    const data = await run({ ...upstream, readState: async () => state });
+    assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
+    assert.ok(data._state.byId.alpha.passes.some(t => t[0].startsWith('2026-09-04') && t[1] === 22));
+    assert.ok(!data._state.byId.alpha.passes.some(t => t[0].startsWith('2026-09-02')));
+    assert.equal(data._state.byId.alpha.failures[b], 1);
   });
 
   it('records a failed group attempt even if another member is deferred', async () => {
@@ -362,13 +404,27 @@ describe('reservoir seeder run', () => {
 });
 
 describe('planning and state', () => {
+  it('orders revisions by the day contributors rather than distant chain members', () => {
+    const pass = { date: '2026-09-04', rgt: 23 };
+    const earlier = gran('2026-09-01', 20, '50');
+    const companion = gran('2026-09-03', 21);
+    assert.equal(withRevisions([pass], [earlier, companion, gran('2026-09-04', 22, '02')])[0].revision, 3);
+    assert.equal(withRevisions([pass], [companion, gran('2026-09-04', 22, '03')])[0].revision, 4);
+  });
+  it('merges complete-day deletions commutatively and idempotently', () => {
+    const a = { passes: [tuple('2026-09-02', 300)], refreshed: { '2026-09-02': 1 } };
+    const b = { passes: [], refreshed: { '2026-09-02': 2 } };
+    const merged = mergeReservoirState(a, b);
+    assert.deepEqual(merged.passes, []);
+    assert.deepEqual(mergeReservoirState(b, a), merged);
+    assert.deepEqual(mergeReservoirState(merged, a), merged);
+  });
   it('keeps overlapping date groups together across midnight and the remaining budget', () => {
     const a = gran('2026-09-02', 21);
     const b = gran('2026-09-03', 22);
     const c = gran('2026-09-10', 30);
     const groups = granuleGroups({ processed: [a], gaveUp: [], failures: {} }, [a, b, c]);
     assert.deepEqual(groups, [[a, b], [c]]);
-    assert.deepEqual(granuleGroups({ processed: [a], gaveUp: [], failures: {} }, [a, b, c], { completeSince: '2026-09-03' }), [[c]], 'defers groups touching an incomplete listing boundary');
     assert.deepEqual([...planFetches(new Map([['a', groups]]), 1).values()], []);
     assert.deepEqual([...planFetches(new Map([['a', groups]]), 2).values()], [[a, b]]);
   });
