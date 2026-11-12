@@ -168,7 +168,15 @@ export async function requestTripAssessment(
   if (response.ok) {
     const { extension, mimeType } = FILES[format];
     const stamp = new Date((options.now ?? Date.now)()).toISOString().slice(0, 10);
-    return { ok: true, content: await response.text(), filename: `travel-risk-assessment-${stamp}.${extension}`, mimeType };
+    let content: string;
+    try {
+      content = await response.text();
+    } catch {
+      // The connection can break after the headers arrive; reading the file
+      // then rejects. That is a failed build, not a thrown error.
+      return { ok: false, reason: 'error', violations: [] };
+    }
+    return { ok: true, content, filename: `travel-risk-assessment-${stamp}.${extension}`, mimeType };
   }
   switch (response.status) {
     case 401: return { ok: false, reason: 'auth', violations: [] };

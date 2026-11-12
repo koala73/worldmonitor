@@ -134,6 +134,12 @@ describe('requestTripAssessment', () => {
     expect(result).toEqual({ ok: false, reason: 'invalid', violations: [{ field: 'countries.0.arrive', description: 'Must be a date.' }] });
   });
 
+  it('reports a download that breaks after the headers as an error, not an unhandled rejection', async () => {
+    const broken = new Response(new ReadableStream({ start(controller) { controller.error(new TypeError('connection reset')); } }), { status: 200 });
+    const result = await requestTripAssessment(draft(), 'markdown', { fetcher: async () => broken });
+    expect(result).toEqual({ ok: false, reason: 'error', violations: [] });
+  });
+
   it('reports a network failure as a generic error, not a plan verdict', async () => {
     const result = await requestTripAssessment(draft(), 'markdown', { fetcher: async () => { throw new TypeError('offline'); } });
     expect(result).toEqual({ ok: false, reason: 'error', violations: [] });
@@ -297,6 +303,16 @@ describe('TripAssessmentDialog', () => {
     ]);
   });
 
+  it('clears "Building" and says so when the file breaks off mid-download', async () => {
+    const broken = () => new Response(new ReadableStream({ start(controller) { controller.error(new TypeError('reset')); } }), { status: 200 });
+    open({ fetcher: async () => broken() });
+    click('.trip-assessment-markdown');
+    await tick(); await tick(); await tick();
+    expect(error().textContent).toBe('The draft could not be built. Try again.');
+    expect(status()).toBe('');
+    expect(q<HTMLButtonElement>('.trip-assessment-markdown').disabled).toBe(false);
+  });
+
   it('says when the data is unavailable and when the browser cannot save the file', async () => {
     open({ fetcher: async () => fail(503) });
     click('.trip-assessment-markdown');
@@ -365,6 +381,27 @@ describe('opening from a focus', () => {
     expect(rows()).toEqual(['TH', 'VN', 'ID', 'MY', 'SG', 'PH']);
     expect(document.querySelector<HTMLInputElement>('.trip-assessment-from')!.value).toBe('2026-12-01');
     expect(document.body.textContent).toContain('Cambodia, Laos');
+  });
+
+  it('opens one dialog however many times the action is pressed while it loads', async () => {
+    await Promise.all([openTripAssessmentForScope(SEA), openTripAssessmentForScope(SEA), openTripAssessmentForScope(SEA)]);
+    expect(document.querySelectorAll('.trip-assessment')).toHaveLength(1);
+  });
+
+  it('does not open a second dialog over an open one, and brings the open one back into focus', async () => {
+    await openTripAssessmentForScope(SEA);
+    (document.activeElement as HTMLElement | null)?.blur();
+    await openTripAssessmentForScope(SEA);
+    expect(document.querySelectorAll('.trip-assessment')).toHaveLength(1);
+    expect(document.activeElement).toBe(document.querySelector('.trip-assessment-label'));
+  });
+
+  it('opens again after the dialog is closed', async () => {
+    await openTripAssessmentForScope(SEA);
+    document.querySelector<HTMLButtonElement>('.trip-assessment .modal-close')!.click();
+    expect(document.querySelector('.trip-assessment')).toBeNull();
+    await openTripAssessmentForScope(SEA);
+    expect(document.querySelectorAll('.trip-assessment')).toHaveLength(1);
   });
 
   it('copies the request for the trip as edited, not for the focus it started from', async () => {

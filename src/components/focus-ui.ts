@@ -25,7 +25,28 @@ export function applyScopeNotice(key: string, panel: Panel, resolved: ResolvedSc
  * The dialog and its service load here, on the first press, so neither is in
  * the chunk the focus bar ships in.
  */
+let tripAssessmentLoading = false;
+
 export async function openTripAssessmentForScope(scope: TabScope): Promise<void> {
+  // One dialog at a time. A second press while the first is still loading, or
+  // while it is open, must not stack a second form over the first: closing one
+  // would reveal the other with different edits in it. The open dialog is found
+  // in the DOM rather than remembered, so it cannot go stale.
+  const open = document.querySelector<HTMLElement>('.trip-assessment');
+  if (open) {
+    open.querySelector<HTMLElement>('.trip-assessment-label')?.focus();
+    return;
+  }
+  if (tripAssessmentLoading) return;
+  tripAssessmentLoading = true;
+  try {
+    await openTripAssessmentDialog(scope);
+  } finally {
+    tripAssessmentLoading = false;
+  }
+}
+
+async function openTripAssessmentDialog(scope: TabScope): Promise<void> {
   const [{ openTripAssessment }, { draftFromHandoff, parseCities }, { copyHandoffRequest }, { reportHandoffFromScope }] = await Promise.all([
     import('./TripAssessmentDialog'),
     import('@/services/travel-risk-export'),
