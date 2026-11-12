@@ -18,6 +18,8 @@ export interface FocusBarCallbacks {
 
 let nextId = 0;
 
+const FOCUS_ACTIONS = ['focus-bar-draft', 'focus-bar-edit', 'focus-bar-clear'] as const;
+
 /**
  * The bar at the top of a focused tab (#10453): "Focused on Thailand,
  * Vietnam, Indonesia + 9 neighbours · Nov 14 – 18", with Edit and Clear. It is
@@ -174,7 +176,12 @@ export class FocusBar {
     row.className = 'focus-bar-row';
     row.append(text, actions);
 
+    // A redraw replaces the buttons; a keyboard user who was on one of them
+    // stays on its replacement.
+    const focusedAction = FOCUS_ACTIONS.find((cls) => document.activeElement?.classList.contains(cls)
+      && this.element.contains(document.activeElement));
     this.element.replaceChildren(row, details);
+    if (focusedAction) this.element.querySelector<HTMLElement>(`.${focusedAction}`)?.focus();
     this.scheduleRefresh(resolved);
   }
 

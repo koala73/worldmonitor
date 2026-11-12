@@ -166,6 +166,33 @@ describe('FocusBar', () => {
     expect(callbacks.onClear).toHaveBeenCalledTimes(1);
   });
 
+  describe('keyboard focus across a redraw', () => {
+    function barWith(onDraft: () => void): FocusBar {
+      bar.destroy();
+      document.body.replaceChildren();
+      bar = new FocusBar({ onEdit: vi.fn(), onClear: vi.fn(), canDraftAssessment: () => true, onDraftAssessment: onDraft }, () => now);
+      document.body.appendChild(bar.getElement());
+      return bar;
+    }
+
+    it.each([['focus-bar-edit'], ['focus-bar-clear'], ['focus-bar-draft']])('keeps focus on %s when the bar redraws', (cls) => {
+      barWith(vi.fn()).render(resolved(SEA));
+      q<HTMLButtonElement>(`.${cls}`)!.focus();
+      expect(document.activeElement?.classList.contains(cls)).toBe(true);
+      bar.render(resolved(SEA));
+      expect(document.activeElement).toBe(q(`.${cls}`));
+    });
+
+    it('leaves focus alone when no action had it', () => {
+      barWith(vi.fn()).render(resolved(SEA));
+      const outside = document.createElement('button');
+      document.body.appendChild(outside);
+      outside.focus();
+      bar.render(resolved(SEA));
+      expect(document.activeElement).toBe(outside);
+    });
+  });
+
   describe('draft assessment action (#10451 hand-off)', () => {
     const draft = () => q<HTMLButtonElement>('.focus-bar-draft');
 

@@ -29546,8 +29546,13 @@ body.map-width-resizing {
 
 .focus-bar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  /* Longer labels (German "Entwurf einer Bewertung") must wrap inside the
+     row on a narrow phone instead of pushing it wider than the screen. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .focus-bar-btn {

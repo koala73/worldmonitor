@@ -41,8 +41,9 @@ describe('copyAssessmentRequest', () => {
     expect(await copyAssessmentRequest(scope, { writeText })).toBe(true);
     const text = writeText.mock.calls[0]![0] as string;
     expect(text).toContain('Philippines (PH)');
-    expect(text).not.toContain('Cambodia');
-    expect(text).not.toContain('Laos');
+    const [, countries, omitted] = text.split('\n');
+    expect(countries).not.toMatch(/Cambodia|Laos/);
+    expect(omitted).toBe('Not part of this request (an assessment covers at most 6 countries): Cambodia (KH), Laos (LA).');
     expect(toast()).toBe('Request copied for the first 6 countries. An assessment covers at most 6 countries.');
   });
 

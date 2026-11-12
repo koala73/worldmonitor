@@ -44,5 +44,10 @@ export function assessmentRequestText(handoff: ReportHandoff, nameOf: (code: str
   if (handoff.dateFrom && handoff.dateTo) lines.push(`Date window: ${handoff.dateFrom} to ${handoff.dateTo}.`);
   else if (handoff.dateFrom) lines.push(`From ${handoff.dateFrom}.`);
   else if (handoff.dateTo) lines.push(`Until ${handoff.dateTo}.`);
+  // Named so the analyst and the assistant both see what was left out; the
+  // wording tells the assistant not to add them back.
+  if (handoff.omitted.length > 0) {
+    lines.push(`Not part of this request (an assessment covers at most ${REPORT_MAX_COUNTRIES} countries): ${handoff.omitted.map((code) => `${nameOf(code)} (${code})`).join(', ')}.`);
+  }
   return lines.join('\n');
 }

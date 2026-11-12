@@ -69,12 +69,18 @@ test('the request states a one-sided window and leaves out a missing one', () =>
   assert.doesNotMatch(assessmentRequestText({ ...base, dateFrom: null, dateTo: null }, nameOf), /[Dd]ate/);
 });
 
-test('the request never names a country the report left out', () => {
+test('the request tells the assistant which countries it left out, as not requested', () => {
   const text = assessmentRequestText(
-    { countries: ['TH'], omitted: ['LA'], dateFrom: null, dateTo: null },
+    { countries: ['TH'], omitted: ['LA', 'VN'], dateFrom: null, dateTo: null },
     nameOf,
   );
-  assert.doesNotMatch(text, /Laos|LA\b/);
+  assert.match(text, /Not part of this request \(an assessment covers at most 6 countries\): Laos \(LA\), Vietnam \(VN\)\./);
+  assert.doesNotMatch(text.split('\n')[1]!, /Laos|Vietnam/);
+});
+
+test('the request has no omission line when nothing was left out', () => {
+  const text = assessmentRequestText({ countries: ['TH'], omitted: [], dateFrom: null, dateTo: null }, nameOf);
+  assert.doesNotMatch(text, /Not part of this request/);
 });
 
 const entitlement = (over: Partial<{ tier: number; travelRiskAssessment: boolean | undefined; validUntil: number }> = {}) => ({
