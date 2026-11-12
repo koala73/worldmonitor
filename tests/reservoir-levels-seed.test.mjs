@@ -366,6 +366,14 @@ describe('ATL06 entries in the seeder run', () => {
     assert.equal(calls.slide.length, 0);
   });
 
+  it('starts ATL06 entries before ATL13 entries so the run deadline cannot always skip them', async () => {
+    // Watchlist order puts ATL13 first; ATL06 entries are few and capped by their own
+    // budget, so starting them first cannot starve ATL13 the same way.
+    const { fetchImpl, calls } = fake({ cmr: { alpha: [gran('2026-09-02', 21)], gamma: [gran06('2026-09-03', 33)] } });
+    await fetchReservoirLevels({ nowMs: NOW, baseline, watchlist, readState: async () => null, log: () => {}, fetchImpl });
+    assert.deepEqual(calls.slide.map((c) => c.path), ['/source/atl06x', '/source/atl13x']);
+  });
+
   it('budgets ATL06 granules separately from ATL13 granules', async () => {
     assert.ok(MAX_ATL06_GRANULES_PER_RUN < MAX_GRANULES_PER_RUN);
     const g06 = Array.from({ length: 6 }, (_, i) => gran06(`2026-09-${String(10 + i).padStart(2, '0')}`, 40 + i));

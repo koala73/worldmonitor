@@ -88,7 +88,8 @@ export const MIN_LATEST_SHARE = 0.8;
 export const SOURCE = Object.freeze({
   name: 'NASA ICESat-2 ATL13 and ATL06 (NSIDC), processed via SlideRule Earth',
   product: 'ATL13 v007 inland water surface height; ATL06 v007 land ice height for reservoirs ATL13 covers poorly',
-  url: 'https://nsidc.org/data/atl13',
+  // ICESat-2 product catalog: it lists both ATL13 and ATL06.
+  url: 'https://nsidc.org/data/icesat-2',
   processing: 'https://slideruleearth.io',
 });
 
@@ -367,7 +368,10 @@ export async function fetchReservoirLevels({
   let attempted = 0;
   let succeeded = 0;
   let skippedForTime = 0;
-  const entries = watchlist.filter((e) => plan.has(e.id));
+  // ATL06 entries start first: they are few and capped by their own budget, and in
+  // watchlist order they would sit behind ATL13 work that can run past the deadline.
+  const planned06 = (e) => productOf(e).id === 'atl06';
+  const entries = [...watchlist.filter((e) => plan.has(e.id) && planned06(e)), ...watchlist.filter((e) => plan.has(e.id) && !planned06(e))];
   await mapLimit(entries, SLIDERULE_CONCURRENCY, async (e) => {
     const granules = plan.get(e.id);
     if (Date.now() > deadlineAtMs) { skippedForTime += granules.length; return; }
