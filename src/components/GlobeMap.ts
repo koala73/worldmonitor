@@ -534,6 +534,7 @@ export class GlobeMap {
   private pendingPremiumLayerChanges = new Set<keyof MapLayers>();
   private savedDefaultMaterial: any = null;
   private controls: GlobeControlsLike | null = null;
+  private pendingMarkerGestureCleanup: (() => void) | null = null;
   private renderPaused = false;
   private outerGlow: any = null;
   private innerGlow: any = null;
@@ -865,16 +866,14 @@ export class GlobeMap {
     if (canvas) {
       // Wake globe on any user interaction (idle rendering optimization)
       const wakeOnInteraction = () => this.wakeGlobe();
-      canvas.addEventListener('mousedown', () => { pauseAutoRotate(); wakeOnInteraction(); });
-      canvas.addEventListener('touchstart', () => { pauseAutoRotate(); wakeOnInteraction(); }, { passive: true });
+      canvas.addEventListener('pointerdown', () => { pauseAutoRotate(); wakeOnInteraction(); });
       canvas.addEventListener('wheel', wakeOnInteraction, { passive: true });
       let lastMoveWake = 0;
       canvas.addEventListener('mousemove', () => {
         const now = performance.now();
         if (now - lastMoveWake > 500) { lastMoveWake = now; wakeOnInteraction(); }
       }, { passive: true });
-      canvas.addEventListener('mouseup', scheduleResumeAutoRotate);
-      canvas.addEventListener('touchend', scheduleResumeAutoRotate);
+      canvas.addEventListener('pointerup', scheduleResumeAutoRotate);
       canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault();
         this.webglLost = true;
@@ -1117,7 +1116,7 @@ export class GlobeMap {
 
   private buildMarkerElement(d: GlobeMarker): HTMLElement {
     const el = document.createElement('div');
-    el.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;';
+    el.style.cssText = 'pointer-events:auto;cursor:pointer;user-select:none;touch-action:none;';
 
     if (d._kind === 'conflict') {
       const size = Math.min(12, 6 + (d.fatalities ?? 0) * 0.4);
@@ -1411,8 +1410,52 @@ export class GlobeMap {
         </div>`, "legacy direct innerHTML migration"));
     }
 
+    // HTML markers sit above the canvas that owns OrbitControls. Preserve a
+    // press as a click; only capture its pointer on the canvas once it is a drag.
+    let dragged = false;
+    el.addEventListener('wheel', (event) => {
+      const canvas = this.container.querySelector('canvas');
+      if (!canvas || this.destroyed) return;
+      event.preventDefault();
+      event.stopPropagation();
+      canvas.dispatchEvent(new WheelEvent('wheel', event));
+    }, { passive: false });
+    el.addEventListener('pointerdown', (down) => {
+      if (!down.isPrimary || down.button !== 0 || this.destroyed) return;
+      this.pendingMarkerGestureCleanup?.();
+      dragged = false;
+      const canvas = this.container.querySelector('canvas');
+      if (!canvas) return;
+      const doc = el.ownerDocument;
+      const cleanup = () => {
+        doc.removeEventListener('pointermove', move);
+        doc.removeEventListener('pointerup', end);
+        doc.removeEventListener('pointercancel', end);
+        this.pendingMarkerGestureCleanup = null;
+      };
+      const end = (event: PointerEvent) => {
+        if (event.pointerId === down.pointerId) cleanup();
+      };
+      const move = (event: PointerEvent) => {
+        if (event.pointerId !== down.pointerId) return;
+        // A mouse release outside the document may not deliver pointerup here.
+        if (event.buttons === 0) { cleanup(); return; }
+        if (Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < 4) return;
+        dragged = true;
+        cleanup();
+        // OrbitControls captures the real pointer, then receives subsequent
+        // native moves/up, including when the pointer leaves the marker.
+        canvas.dispatchEvent(new PointerEvent('pointerdown', down));
+        canvas.dispatchEvent(new PointerEvent('pointermove', event));
+      };
+      doc.addEventListener('pointermove', move);
+      doc.addEventListener('pointerup', end);
+      doc.addEventListener('pointercancel', end);
+      this.pendingMarkerGestureCleanup = cleanup;
+    });
     el.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (dragged) return;
       this.handleMarkerClick(d, el);
     });
 
@@ -4267,6 +4310,7 @@ export class GlobeMap {
   // ─── Destroy ──────────────────────────────────────────────────────────────
 
   public destroy(): void {
+    this.pendingMarkerGestureCleanup?.();
     this.controlDisclosureCleanups.forEach(cleanup => cleanup());
     this.controlDisclosureCleanups = [];
     this.popup?.hide();
