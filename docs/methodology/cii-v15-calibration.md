@@ -19,7 +19,6 @@ Compare linear evidence with a high cap and smooth saturating evidence; per-fami
 
 OQ1–4 remain owner decisions. Candidate exploration is throwaway; only study results and proposed exact amendments enter the docs PR. No U4 before owner rulings.
 
-
 ## Result and stop condition
 
 Study run on 2026-11-12 UTC after preregistration commit `0cb082e534`.
