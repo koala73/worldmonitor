@@ -212,7 +212,7 @@ npm run build:full       # Production build
 
 See [LICENSE](LICENSE) for the full code license and [docs/license.mdx](docs/license.mdx) for a plain-language summary. Commercial licensing is available as an alternative option for teams that need non-AGPL terms.
 
-Copyright (C) 2024-2026 Elie Habib. All rights reserved.
+Copyright (C) 2026 Elie Habib. All rights reserved.
 
 ---
 

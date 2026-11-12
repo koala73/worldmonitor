@@ -45,6 +45,7 @@ export const STEPS = [
   ['resilience coverage', [...TSX, 'scripts/sync-resilience-coverage.mjs']],
   ['agent skills index', [NODE, 'scripts/build-agent-skills-index.mjs']],
   ['source attribution', [NODE, 'scripts/source-attribution.mjs'], '--write'],
+  ['MCP source providers', [NODE, 'scripts/generate-mcp-source-providers.mjs']],
   ['locale keys', [NODE, 'scripts/sync-locale-keys.mjs']],
   ['zh-TW locales', ['python3', 'scripts/convert-zh-tw.py']],
   ['bootstrap tier keys', [NODE, 'scripts/sync-bootstrap-tier-keys.mjs']],

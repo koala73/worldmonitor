@@ -11,6 +11,7 @@ import { strict as assert } from 'node:assert';
 import {
   ANALYST_SECTIONS,
   buildTravelRiskResult,
+  seasonalBlock,
   TRAVEL_RISK_FEEDS,
 } from '../api/mcp/registry/_travel-risk-document.ts';
 import {
@@ -209,6 +210,10 @@ describe('travel risk draft for a Thailand, Vietnam and Indonesia trip', () => {
         assert.match(block.findings[0].observed ?? '', /^\d{4}-\d{2}-\d{2}$|^$/, `${section}/${country}/${block.topic}`);
         continue;
       }
+      if (block.topic === 'Seasonal hazards') {
+        assert.match(block.statement, /calendar built \d{4}-\d{2}-\d{2}\), not a forecast/, `${section}/${country}/${block.topic}`);
+        continue;
+      }
       if (block.count !== null) {
         assert.match(block.statement, /data updated 2026-11-10 11:30 UTC/, `${section}/${country}/${block.topic}`);
       }
@@ -257,8 +262,6 @@ describe('travel risk draft for a Thailand, Vietnam and Indonesia trip', () => {
   it('marks what no source covers instead of leaving it blank', () => {
     assert.equal(blockOf(document, 'access', 'VN', 'Monitored airports').status, 'not_covered');
     assert.equal(blockOf(document, 'security', 'TH', 'Instability index').status, 'not_covered');
-    assert.equal(blockOf(document, 'hazards', 'TH', 'Seasonal hazards').status, 'unavailable');
-    assert.match(blockOf(document, 'hazards', 'TH', 'Seasonal hazards').statement, /for 2026-12-01 to 2026-12-05/);
     for (const country of ['TH', 'VN', 'ID']) assert.equal(blockOf(document, 'access', country, 'Airspace').status, 'not_covered');
   });
 
@@ -270,17 +273,21 @@ describe('travel risk draft for a Thailand, Vietnam and Indonesia trip', () => {
   });
 
   it('lists every source with its update time and status', () => {
-    assert.equal(document.sources.length, TRAVEL_RISK_FEEDS.length + 2);
+    assert.equal(document.sources.length, TRAVEL_RISK_FEEDS.length + 3);
     for (const row of document.sources.slice(0, TRAVEL_RISK_FEEDS.length + 1)) {
       assert.equal(row.status, 'current', row.source);
       assert.equal(row.updatedAt, UPDATED, row.source);
     }
-    assert.deepEqual(document.sources.at(-1), {
+    assert.deepEqual(document.sources.at(-2), {
       source: 'World Monitor Country Instability Index, daily history',
       updatedAt: null,
       status: 'not_used',
       note: 'no listed country is scored by the index',
     });
+    const seasonal = document.sources.at(-1);
+    assert.equal(seasonal.source, 'GDACS event archive, seasonal calendar');
+    assert.equal(seasonal.status, 'current');
+    assert.match(seasonal.updatedAt, /^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
     assert.match(sectionText(markdown, 9), /^Retrieved: 2026-11-10 12:00 UTC\./m);
   });
 
@@ -303,6 +310,7 @@ describe('travel risk draft with missing data', () => {
     const { markdown, document } = buildTravelRiskResult(TRIP, sourcesDown(), NOW);
     for (const heading of SECTION_HEADINGS) assert.ok(markdown.includes(heading), heading);
     for (const { section, country, block } of allBlocks(document)) {
+      if (block.topic === 'Seasonal hazards') continue;
       assert.ok(['unavailable', 'not_covered'].includes(block.status), `${section}/${country}/${block.topic}: ${block.status}`);
       assert.equal(block.findings.length, 0);
       if (block.status === 'unavailable') {
@@ -318,6 +326,11 @@ describe('travel risk draft with missing data', () => {
       assert.ok(row.note, row.source);
     }
     assert.match(markdown, /\| unavailable: the source snapshot is not in the cache \|/);
+  });
+
+  it('keeps the seasonal calendar when every live feed is down, because it does not read them', () => {
+    const { document } = buildTravelRiskResult(TRIP, sourcesDown(), NOW);
+    assert.equal(blockOf(document, 'hazards', 'TH', 'Seasonal hazards').status, 'reported');
   });
 
   it('treats a thin advisory snapshot as unavailable rather than as unrated countries', () => {
@@ -637,6 +650,87 @@ describe('travel risk input validation', () => {
     assert.equal(tool.inputSchema.properties.countries.items.additionalProperties, false);
     assert.equal(tool.inputSchema.properties.countries.maxItems, 6);
     assert.equal(tool.inputSchema.properties.countries.minItems, 1);
+  });
+});
+
+describe('seasonal hazards block', () => {
+  const CALENDAR = {
+    source: 'fixture',
+    hazards: { TC: 'Tropical cyclone', FL: 'Flood' },
+    windows: { TC: { fromYear: 2011, toYear: 2025 }, FL: { fromYear: 2019, toYear: 2025 } },
+    generatedAt: '2026-11-12',
+    countries: {
+      TH: { TC: [0, 0, 0, 0, 0, 0, 1, 4, 3, 3, 2, 1], FL: [4, 2, 0, 2, 4, 5, 6, 7, 6, 3, 7, 6] },
+      EG: { FL: [0, 0, 2, 0, 0, 0, 0, 1, 0, 1, 1, 1] },
+    },
+  };
+  const trip = (countryCode, arrive, depart) => ({ countryCode, countryName: countryCode === 'TH' ? 'Thailand' : countryCode === 'EG' ? 'Egypt' : 'Nowhere', cities: [], arrive, depart });
+  const open = { countries: [], dateFrom: null, dateTo: null, taskLabel: null };
+
+  it('reports historical coverage and calendar build date without inventing an event date', () => {
+    const block = seasonalBlock(trip('TH', '2026-09-10', '2026-09-20'), open, CALENDAR);
+    assert.equal(block.status, 'reported');
+    assert.equal(block.count, 2);
+    const [cyclone, flood] = block.findings;
+    assert.match(cyclone.text, /^Tropical cyclone: GDACS recorded events affecting Thailand that began in September in 3 of 15 years \(2011 to 2025\)\. Recorded history, not a forecast\.$/);
+    assert.match(flood.text, /^Flood: .* September in 6 of 7 years \(2019 to 2025\)/);
+    for (const finding of block.findings) {
+      assert.equal(finding.source, 'GDACS event archive');
+      assert.equal(finding.observed, null);
+    }
+    assert.equal(block.asOf, CALENDAR.generatedAt);
+    assert.match(block.statement, /calendar built 2026-11-12/);
+    assert.match(block.statement, /for 2026-09-10 to 2026-09-20 \(GDACS event archive\)/);
+    assert.match(block.statement, /not a forecast, and it does not cover wildfire, extreme heat, drought or monsoon rainfall/);
+  });
+
+  it('lists every in-season month a trip spans, including across a year end', () => {
+    const block = seasonalBlock(trip('TH', '2026-11-25', '2027-01-05'), open, CALENDAR);
+    assert.equal(block.findings.length, 1, 'cyclone years in November, December and January are below the threshold');
+    assert.match(block.findings[0].text, /^Flood: .* November in 7 of 7 years, December in 6 of 7 years, January in 4 of 7 years/);
+  });
+
+  it('applies both the minimum year count and the share of the window', () => {
+    const quiet = seasonalBlock(trip('TH', '2026-03-01', '2026-03-10'), open, CALENDAR);
+    assert.equal(quiet.status, 'none', 'two flood years of seven is below the three-year floor');
+    assert.equal(quiet.count, 0);
+    assert.equal(quiet.asOf, CALENDAR.generatedAt);
+    assert.match(quiet.statement, /^No tropical cyclone or flood season recorded for Thailand/);
+    const sparse = seasonalBlock(trip('TH', '2026-07-01', '2026-07-05'), open, CALENDAR);
+    assert.equal(sparse.findings.some((f) => f.text.startsWith('Tropical cyclone')), false, 'one cyclone year of fifteen');
+  });
+
+  it('falls back to the trip window when the country has no dates, and to one month for a single date', () => {
+    const fromTrip = seasonalBlock(trip('TH', null, null), { ...open, dateFrom: '2026-09-01', dateTo: '2026-09-30' }, CALENDAR);
+    assert.equal(fromTrip.status, 'reported');
+    const startOnly = seasonalBlock(trip('TH', '2026-09-15', null), open, CALENDAR);
+    assert.equal(startOnly.status, 'reported');
+    assert.match(startOnly.statement, /for 2026-09-15 to an open end/);
+  });
+
+  it('is unavailable with the reason when there are no dates or the country has no record', () => {
+    const undated = seasonalBlock(trip('TH', null, null), open, CALENDAR);
+    assert.equal(undated.status, 'unavailable');
+    assert.match(undated.statement, /^Unavailable: the trip has no dates, so a season cannot be matched to it \(GDACS event archive\)\. This is not a finding of no risk\.$/);
+    const unknown = seasonalBlock(trip('ZZ', '2026-09-01', '2026-09-05'), open, CALENDAR);
+    assert.equal(unknown.status, 'unavailable');
+    assert.match(unknown.statement, /the archive records no tropical cyclone or flood event affecting Nowhere/);
+    assert.equal(unknown.findings.length, 0);
+  });
+
+  it('never reads inherited object keys as countries', () => {
+    for (const code of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      const block = seasonalBlock(trip(code, '2026-09-01', '2026-09-05'), open, CALENDAR);
+      assert.equal(block.status, 'unavailable', code);
+      assert.equal(block.findings.length, 0, code);
+    }
+  });
+
+  it('uses the shipped calendar for real countries without throwing on any code it holds', () => {
+    const block = seasonalBlock(trip('TH', '2026-09-01', '2026-09-30'), open);
+    assert.equal(block.status, 'reported');
+    assert.ok(block.findings.every((finding) => finding.observed === null && finding.source));
+    assert.match(block.asOf, /^\d{4}-\d{2}-\d{2}$/);
   });
 });
 

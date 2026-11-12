@@ -15,6 +15,7 @@ import { CII_COUNTRY_CODES } from '../../../shared/cii-weights';
 import { countryBox, inBox } from '../../../shared/country-bbox';
 import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import { normalizeAdvisoryRegisterLevels, normalizeAdvisorySnapshot } from '../../../shared/intelligence-snapshots.js';
+import { countries, hazards, windows, generatedAt } from '../../../shared/seasonal-hazard-calendar.json';
 
 export const TRAVEL_RISK_TOOL = 'prepare_travel_risk_assessment';
 
@@ -737,18 +738,85 @@ function naturalEventBlock(source: SourceSnapshot, trip: TripCountry, cap: numbe
   });
 }
 
-function seasonalBlock(trip: TripCountry, input: TripInput): Block {
+const SEASONAL_TOPIC = 'Seasonal hazards';
+const SEASONAL_SOURCE = 'GDACS event archive';
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** A hazard is in season for a month when GDACS recorded it in at least this many years and this share of the window. */
+export const SEASON_MIN_YEARS = 3;
+export const SEASON_MIN_SHARE = 0.2;
+
+export interface SeasonalCalendar {
+  hazards: Record<string, string>;
+  windows: Record<string, { fromYear: number; toYear: number }>;
+  generatedAt: string;
+  /** Country code, then hazard code, then 12 counts: years in the window with an event starting that month. */
+  countries: Record<string, Record<string, number[]>>;
+}
+
+// Named JSON imports keep build-time source/method metadata out of the Edge bundle.
+const SEASONAL_CALENDAR: SeasonalCalendar = { countries, hazards, windows, generatedAt };
+
+/** Calendar months (1 to 12) a trip touches, from its first and last date; null when no usable date is given. */
+function tripMonths(from: string | null, to: string | null): number[] | null {
+  const parse = (value: string | null) => {
+    const match = value ? /^(\d{4})-(\d{2})-\d{2}/.exec(value) : null;
+    return match ? { year: Number(match[1]), month: Number(match[2]) } : null;
+  };
+  const start = parse(from) ?? parse(to);
+  const end = parse(to) ?? start;
+  if (!start || !end || start.month < 1 || start.month > 12 || end.month < 1 || end.month > 12) return null;
+  const span = (end.year - start.year) * 12 + (end.month - start.month);
+  if (span < 0) return [start.month];
+  const months = new Set<number>();
+  for (let step = 0; step <= Math.min(span, 11); step++) months.add(((start.month - 1 + step) % 12) + 1);
+  return [...months];
+}
+
+export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: SeasonalCalendar = SEASONAL_CALENDAR): Block {
   const from = trip.arrive ?? input.dateFrom;
   const to = trip.depart ?? input.dateTo;
-  const dates = from || to ? ` for ${from ?? 'an open start'} to ${to ?? 'an open end'}` : '';
+  const months = tripMonths(from, to);
+  if (!months) return unavailableBlock(SEASONAL_TOPIC, SEASONAL_SOURCE, 'the trip has no dates, so a season cannot be matched to it');
+  const hazards = Object.prototype.hasOwnProperty.call(calendar.countries, trip.countryCode) ? calendar.countries[trip.countryCode] : undefined;
+  if (!hazards) {
+    return unavailableBlock(SEASONAL_TOPIC, SEASONAL_SOURCE, `the archive records no tropical cyclone or flood event affecting ${trip.countryName}, so no season can be derived`);
+  }
+  const dates = ` for ${from ?? 'an open start'} to ${to ?? 'an open end'}`;
+  const findings: Finding[] = [];
+  for (const [code, label] of Object.entries(calendar.hazards)) {
+    const counts = hazards[code];
+    const window = calendar.windows[code];
+    if (!counts || !window) continue;
+    const years = window.toYear - window.fromYear + 1;
+    const inSeason = months.filter((month) => {
+      const count = counts[month - 1] ?? 0;
+      return count >= SEASON_MIN_YEARS && count / years >= SEASON_MIN_SHARE;
+    });
+    if (inSeason.length === 0) continue;
+    const detail = inSeason.map((month) => `${MONTH_NAMES[month - 1]} in ${counts[month - 1]} of ${years} years`).join(', ');
+    findings.push({
+      text: `${label}: GDACS recorded events affecting ${trip.countryName} that began in ${detail} (${window.fromYear} to ${window.toYear}). Recorded history, not a forecast.`,
+      source: SEASONAL_SOURCE,
+      observed: null,
+      url: 'https://www.gdacs.org/',
+    });
+  }
+  const covered = Object.entries(calendar.hazards).map(([code, label]) => {
+    const window = calendar.windows[code];
+    return window ? `${label.toLowerCase()} events ${window.fromYear} to ${window.toYear}` : label.toLowerCase();
+  }).join(', ');
+  const limits = `This is a record of GDACS alerts (${covered}; calendar built ${calendar.generatedAt}), not a forecast, and it does not cover wildfire, extreme heat, drought or monsoon rainfall.`;
   return {
-    topic: 'Seasonal hazards',
-    status: 'unavailable',
-    statement: `Unavailable: World Monitor holds no climatology, so what is seasonal in ${trip.countryName}${dates} is not assessed. This is not a finding of no seasonal risk.`,
-    source: 'no climatology source',
-    asOf: null,
-    count: null,
-    findings: [],
+    topic: SEASONAL_TOPIC,
+    status: findings.length === 0 ? 'none' : 'reported',
+    statement: findings.length === 0
+      ? `No tropical cyclone or flood season recorded for ${trip.countryName}${dates} (${SEASONAL_SOURCE}). ${limits}`
+      : `${plural(findings.length, 'hazard', 'hazards')} recorded in season for ${trip.countryName}${dates} (${SEASONAL_SOURCE}). ${limits}`,
+    source: SEASONAL_SOURCE,
+    asOf: calendar.generatedAt,
+    count: findings.length,
+    findings,
     omitted: 0,
   };
 }
@@ -1010,6 +1078,12 @@ function sourceRows(sources: TravelRiskSources, trip: TripInput): SourceRow[] {
       rows.push(row);
     }
   }
+  rows.push({
+    source: `${SEASONAL_SOURCE}, seasonal calendar`,
+    updatedAt: `${SEASONAL_CALENDAR.generatedAt}T00:00:00.000Z`,
+    status: 'current',
+    note: 'recorded history built on this date, not a forecast',
+  });
   return rows;
 }
 

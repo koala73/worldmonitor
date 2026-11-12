@@ -16,7 +16,7 @@
 // presenting one inventory would mean inventing attribution for the other 533.
 // Provenance honesty is the product's differentiator; faking the join here
 // would undercut the thing this tool exists to advertise.
-import attributionManifest from '../../../shared/source-attribution-manifest.json';
+import attributionEntries from './_source-providers.generated.json';
 import { getProvenanceCoverage, getSourceProvenanceState } from '../../../shared/source-provenance';
 import { withOutletProfile } from '../../../server/_shared/outlet-profile';
 import { TELEGRAM_CHANNEL_TRUST } from '../../../shared/telegram-channel-trust';
@@ -36,7 +36,7 @@ interface ManifestEntry {
   catalogActive?: boolean;
 }
 
-const MANIFEST_ENTRIES = (attributionManifest as { entries: ManifestEntry[] }).entries;
+const MANIFEST_ENTRIES = attributionEntries as ManifestEntry[];
 const ACTIVE_PROVIDERS = MANIFEST_ENTRIES.filter((entry) => (
   entry.observed === true
   && entry.catalogActive !== false

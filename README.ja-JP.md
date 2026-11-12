@@ -181,7 +181,7 @@ npm run build:full       # プロダクションビルド
 
 コードライセンスの全文は [LICENSE](LICENSE)、平易な言葉での要約は [docs/license.mdx](docs/license.mdx) を参照してください。AGPL 以外の条件が必要なチーム向けに、商用ライセンスも別途提供しています。
 
-Copyright (C) 2024-2026 Elie Habib. All rights reserved.
+Copyright (C) 2026 Elie Habib. All rights reserved.
 
 ---
 
