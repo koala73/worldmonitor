@@ -1,6 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { track } from '@/services/analytics';
+import { isAnalyticsHost, track } from '@/services/analytics';
 import { isPageUnloading } from '@/bootstrap/page-unload-signal';
 import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
 import { getRpcBaseUrl } from '@/services/rpc-client';
@@ -913,9 +913,11 @@ export class DataLoaderManager implements AppModule {
         return this.tryFetchDigest({ error: e, deadlineExpired });
       }
       const reported = firstFailure ?? { error: e, deadlineExpired };
+      // A copy with no items puts nothing on screen, so it is not a fallback.
+      const shownFallback = digestHasItems(fallback) ? (retained ? 'retained' : 'saved') : 'none';
       this.reportDigestFetchFailure(
         reported.error,
-        retained ? 'retained' : fallback ? 'saved' : 'none',
+        shownFallback,
         reported.deadlineExpired,
         firstFailure ? 'failed' : 'none',
         firstFailure ? classifyDigestFetchFailure(e, deadlineExpired) : undefined,
@@ -945,9 +947,11 @@ export class DataLoaderManager implements AppModule {
     this.reportedDigestFailures.add(kind);
     // Sentry WORLDMONITOR-1D4: only a failure that left the panels empty is an
     // incident. Every other outcome had news on screen, so it is a rate to
-    // watch, not an issue to triage: counted in analytics instead.
+    // watch, not an issue to triage: counted in analytics instead. Hosts the
+    // analytics tracker is disabled on (tech, commodity, energy, self-host)
+    // keep reporting to Sentry, because the count would be dropped there.
     const outcome = digestFailureOutcome(fallback, retry);
-    if (outcome !== 'empty') {
+    if (outcome !== 'empty' && isAnalyticsHost()) {
       track('news-digest-degraded', { outcome, failure: kind, variant: SITE_VARIANT });
       return;
     }
@@ -5535,6 +5539,12 @@ export function classifyDigestFetchFailure(error: unknown, deadlineExpired = fal
   if (message === 'digest returned 0 categories') return 'empty-body';
   if (error instanceof TypeError) return 'network';
   return 'other';
+}
+
+/** Whether a digest carries at least one story. A copy without one shows nothing. */
+export function digestHasItems(digest: ListFeedDigestResponse | null): boolean {
+  if (!digest || typeof digest.categories !== 'object' || digest.categories === null) return false;
+  return Object.values(digest.categories).some(bucket => Array.isArray(bucket?.items) && bucket.items.length > 0);
 }
 
 /**

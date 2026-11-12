@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   analyzeCorrelations: vi.fn(),
   enqueueSentryCall: vi.fn(),
   track: vi.fn(),
+  isAnalyticsHost: vi.fn(() => true),
 }));
 
 vi.mock('@/bootstrap/sentry-defer', async (importOriginal) => ({
@@ -20,6 +21,7 @@ vi.mock('@/bootstrap/sentry-defer', async (importOriginal) => ({
 vi.mock('@/services/analytics', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/analytics')>(),
   track: mocks.track,
+  isAnalyticsHost: mocks.isAnalyticsHost,
 }));
 
 vi.mock('@/services/breaking-news-alerts', async (importOriginal) => ({
@@ -153,6 +155,8 @@ describe('digest coverage follows the selected browser response', () => {
     mocks.analyzeCorrelations.mockReset();
     mocks.enqueueSentryCall.mockReset();
     mocks.track.mockReset();
+    mocks.isAnalyticsHost.mockReset();
+    mocks.isAnalyticsHost.mockReturnValue(true);
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -507,6 +511,54 @@ describe('digest coverage follows the selected browser response', () => {
         expect(captured()).toHaveLength(0);
         expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'recovered', failure: 'timeout' }));
       });
+    });
+
+    // Codex review: the tracker disables itself on tech, commodity, energy and
+    // self-hosted origins, so a count sent there is dropped. Keep Sentry.
+    it('keeps reporting to Sentry on a host the analytics tracker is disabled on', async () => {
+      mocks.isAnalyticsHost.mockReturnValue(false);
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      internal.lastGoodDigest = { key: 'digest:current', data: digest('complete', 3) };
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'timeout', 'digest.fallback': 'retained' });
+    });
+
+    // Greptile review: a copy with no stories puts nothing on screen.
+    it('treats a retained or saved copy with no stories as empty panels', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      internal.lastGoodDigest = { key: 'digest:current', data: { ...digest('complete', 3), categories: { world: { items: [] } } } };
+      vi.mocked(globalThis.fetch).mockRejectedValueOnce(new DOMException('signal timed out', 'TimeoutError'));
+
+      await internal.tryFetchDigest();
+
+      expect(mocks.track).not.toHaveBeenCalled();
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.fallback': 'none' });
+    });
+
+    it('knows which hosts the analytics tracker runs on', async () => {
+      const actual = await vi.importActual<typeof import('@/services/analytics')>('@/services/analytics');
+      for (const host of ['worldmonitor.app', 'www.worldmonitor.app', 'happy.worldmonitor.app', 'finance.worldmonitor.app']) {
+        expect(actual.isAnalyticsHost(host), host).toBe(true);
+      }
+      for (const host of ['tech.worldmonitor.app', 'commodity.worldmonitor.app', 'energy.worldmonitor.app', 'self-host.example', '']) {
+        expect(actual.isAnalyticsHost(host), host).toBe(false);
+      }
+    });
+
+    it('reads whether a digest carries a story', async () => {
+      const { digestHasItems } = await import('@/app/data-loader');
+      expect(digestHasItems(null)).toBe(false);
+      expect(digestHasItems({ ...digest('complete', 3), categories: {} })).toBe(false);
+      expect(digestHasItems({ ...digest('complete', 3), categories: { world: { items: [] } } })).toBe(false);
+      expect(digestHasItems(digest('complete', 3))).toBe(true);
     });
 
     it('classifies the outcome from what was left on screen', async () => {
