@@ -293,6 +293,20 @@
       ]
     },
     {
+      "host": "agriculture.ld.admin.ch",
+      "provider": "agriculture.ld.admin.ch",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit agriculture.ld.admin.ch and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/foag.mjs"
+        }
+      ]
+    },
+    {
       "host": "agsi.gie.eu",
       "provider": "agsi.gie.eu",
       "kind": "structured",
@@ -579,6 +593,9 @@
       "references": [
         {
           "path": "api/_usage-telemetry.js"
+        },
+        {
+          "path": "scripts/deploy-error-canary.mjs"
         },
         {
           "path": "scripts/lib/llm-telemetry.cjs"
@@ -917,6 +934,9 @@
           "path": "api/_github-release.js"
         },
         {
+          "path": "scripts/check-review-pr-token.mjs"
+        },
+        {
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
@@ -924,6 +944,9 @@
         },
         {
           "path": "scripts/resolve-railway-reconcile-control.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         },
         {
           "path": "scripts/seed-research.mjs"
@@ -1285,6 +1308,9 @@
       "references": [
         {
           "path": "scripts/seed-economic-calendar.mjs"
+        },
+        {
+          "path": "scripts/seed-oecd-lt-rates.mjs"
         },
         {
           "path": "scripts/seed-us-cpi.mjs"
@@ -2120,9 +2146,6 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
-        },
-        {
-          "path": "src/config/live-video-sources.ts"
         }
       ]
     },
@@ -2498,6 +2521,9 @@
       "references": [
         {
           "path": "api/oauth/_client-metadata.js"
+        },
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -2535,6 +2561,20 @@
         },
         {
           "path": "server/worldmonitor/shipping/v2/webhook-shared.ts"
+        }
+      ]
+    },
+    {
+      "host": "cmr.earthdata.nasa.gov",
+      "provider": "NASA Earthdata CMR",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government public metadata; NASA Earthdata terms apply",
+      "attribution": "NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
         }
       ]
     },
@@ -2867,6 +2907,20 @@
       ]
     },
     {
+      "host": "cursor.com",
+      "provider": "cursor.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
+        }
+      ]
+    },
+    {
       "host": "customer-api.wingbits.com",
       "provider": "wingbits.com",
       "kind": "structured",
@@ -3068,6 +3122,20 @@
       ]
     },
     {
+      "host": "data.moa.gov.tw",
+      "provider": "data.moa.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.moa.gov.tw and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/twmoa.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.norges-bank.no",
       "provider": "data.norges-bank.no",
       "kind": "structured",
@@ -3106,6 +3174,34 @@
       "references": [
         {
           "path": "scripts/seed-yield-curve-ch.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.ssb.no",
+      "provider": "data.ssb.no",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (SSB Public APIs and Licence pages)",
+      "attribution": "Credit Statistics Norway (SSB), table 09654, monthly average pump prices in NOK per litre; identify FX conversion as a derived value and link the CC BY 4.0 licence.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
+        }
+      ]
+    },
+    {
+      "host": "data.stat.gov.lv",
+      "provider": "data.stat.gov.lv",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit data.stat.gov.lv and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/csblv.mjs"
         }
       ]
     },
@@ -4300,6 +4396,20 @@
       ]
     },
     {
+      "host": "fdw.fews.net",
+      "provider": "fdw.fews.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit fdw.fews.net and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/fews.mjs"
+        }
+      ]
+    },
+    {
       "host": "feed.businesswire.com",
       "provider": "Business Wire",
       "kind": "feed",
@@ -4548,6 +4658,20 @@
       ]
     },
     {
+      "host": "files.ember-energy.org",
+      "provider": "Ember electricity data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CC BY 4.0 (Ember dataset)",
+      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ember-electricity.mjs"
+        }
+      ]
+    },
+    {
       "host": "finance.worldmonitor.app",
       "provider": "finance.worldmonitor.app",
       "kind": "structured",
@@ -4668,15 +4792,10 @@
       "host": "fonts.googleapis.com",
       "provider": "fonts.googleapis.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
-      "status": "excluded",
-      "references": [
-        {
-          "path": "server/_shared/brief-render.js"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "foreignpolicy.com",
@@ -4944,7 +5063,13 @@
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/generate-airline-codes.mjs"
+        },
+        {
+          "path": "scripts/mcp-tool-canary.mjs"
         },
         {
           "path": "scripts/seed-research.mjs"
@@ -4957,6 +5082,9 @@
         },
         {
           "path": "src/services/analytics.ts"
+        },
+        {
+          "path": "src/services/github-star-prompt-state.ts"
         },
         {
           "path": "src/services/preferences-content.ts"
@@ -5428,6 +5556,20 @@
       ]
     },
     {
+      "host": "id.usembassy.gov",
+      "provider": "id.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit id.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
       "host": "identity.dataspace.copernicus.eu",
       "provider": "identity.dataspace.copernicus.eu",
       "kind": "structured",
@@ -5670,6 +5812,20 @@
       ]
     },
     {
+      "host": "iss.moex.com",
+      "provider": "iss.moex.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit iss.moex.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_country-stock-index-moex.mjs"
+        }
+      ]
+    },
+    {
       "host": "it.euronews.com",
       "provider": "it.euronews.com",
       "kind": "feed",
@@ -5895,6 +6051,20 @@
       ]
     },
     {
+      "host": "kh.usembassy.gov",
+      "provider": "kh.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit kh.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
       "host": "king-prawn-app-6bsvl.ondigitalocean.app",
       "provider": "www.sonabhy.bf",
       "kind": "structured",
@@ -6026,6 +6196,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "lindas.cz-aws.net",
+      "provider": "lindas.cz-aws.net",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit lindas.cz-aws.net and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/foag.mjs"
         }
       ]
     },
@@ -6330,6 +6514,20 @@
       ]
     },
     {
+      "host": "lustat.statec.lu",
+      "provider": "lustat.statec.lu",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit lustat.statec.lu and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/statec.mjs"
+        }
+      ]
+    },
+    {
       "host": "macleans.ca",
       "provider": "macleans.ca",
       "kind": "feed",
@@ -6368,6 +6566,20 @@
       "references": [
         {
           "path": "scripts/lib/food-prices-adapters/madr.mjs"
+        }
+      ]
+    },
+    {
+      "host": "makstat.stat.gov.mk",
+      "provider": "makstat.stat.gov.mk",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit makstat.stat.gov.mk and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/makstat.mjs"
         }
       ]
     },
@@ -6539,6 +6751,20 @@
       "references": [
         {
           "path": "scripts/seed-economy.mjs"
+        }
+      ]
+    },
+    {
+      "host": "mercadocentral.gob.ar",
+      "provider": "mercadocentral.gob.ar",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit mercadocentral.gob.ar and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/mcba.mjs"
         }
       ]
     },
@@ -6715,10 +6941,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "server/worldmonitor/infrastructure/v1/get-cable-health.ts"
-        },
-        {
-          "path": "server/worldmonitor/maritime/v1/list-navigational-warnings.ts"
+          "path": "server/_shared/nga-broadcast-warnings.ts"
         }
       ]
     },
@@ -6729,6 +6952,20 @@
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit mx.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "my.usembassy.gov",
+      "provider": "my.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit my.usembassy.gov and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
@@ -7155,6 +7392,23 @@
       ]
     },
     {
+      "host": "nsidc.org",
+      "provider": "NSIDC",
+      "kind": "structured",
+      "observed": true,
+      "license": "U.S. government/public dataset terms; collection-specific license applies",
+      "attribution": "National Snow and Ice Data Center (NSIDC); link to the dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
+        }
+      ]
+    },
+    {
       "host": "nti.org",
       "provider": "nti.org",
       "kind": "feed",
@@ -7165,6 +7419,20 @@
       "references": [
         {
           "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
+      "host": "nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
         }
       ]
     },
@@ -7645,6 +7913,20 @@
       "references": [
         {
           "path": "scripts/shared/regional-energy-feeds.json"
+        }
+      ]
+    },
+    {
+      "host": "ph.usembassy.gov",
+      "provider": "ph.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ph.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
         }
       ]
     },
@@ -8209,6 +8491,9 @@
           "path": "scripts/ais-relay.cjs"
         },
         {
+          "path": "scripts/build-plane-alert-watchlist.mjs"
+        },
+        {
           "path": "scripts/fetch-country-boundary-overrides.mjs"
         },
         {
@@ -8222,6 +8507,9 @@
         },
         {
           "path": "scripts/seed-disease-outbreaks.mjs"
+        },
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },
@@ -8920,6 +9208,20 @@
       ]
     },
     {
+      "host": "services.nvd.nist.gov",
+      "provider": "NVD (NIST)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public domain (US Federal Government work)",
+      "attribution": "This product uses the NVD API but is not endorsed or certified by the NVD.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-cve-reference.mjs"
+        }
+      ]
+    },
+    {
       "host": "services6.arcgis.com",
       "provider": "B.C. Evacuation Orders and Alerts",
       "kind": "structured",
@@ -8987,6 +9289,20 @@
       "references": [
         {
           "path": "scripts/_weather-alert-select.mjs"
+        }
+      ]
+    },
+    {
+      "host": "sg.usembassy.gov",
+      "provider": "sg.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit sg.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
         }
       ]
     },
@@ -9112,6 +9428,37 @@
       ]
     },
     {
+      "host": "sliderule.slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_reservoir-levels.mjs"
+        }
+      ]
+    },
+    {
+      "host": "slideruleearth.io",
+      "provider": "SlideRule Earth",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)",
+      "attribution": "Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-reservoir-levels.mjs"
+        },
+        {
+          "path": "src/components/reservoir-levels-view.ts"
+        }
+      ]
+    },
+    {
       "host": "slidstvo.info",
       "provider": "slidstvo.info",
       "kind": "feed",
@@ -9178,6 +9525,24 @@
       "references": [
         {
           "path": "scripts/lib/food-prices-adapters/statkz.mjs"
+        }
+      ]
+    },
+    {
+      "host": "stat.ripe.net",
+      "provider": "stat.ripe.net",
+      "kind": "structured",
+      "observed": true,
+      "catalogActive": false,
+      "license": "RIPEstat Service Terms section 3.3: commercial reuse and redistribution require prior written RIPE NCC permission. Integration disabled by default until authorized.",
+      "attribution": "RIPEstat / RIPE NCC; routing origins from RIS and ASN holders from WHOIS; optional reverse DNS. Not attacker attribution. See https://www.ripe.net/about-us/legal/ripestat-service-terms-and-conditions/.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
+          "path": "src/components/cyber-network-info.ts"
         }
       ]
     },
@@ -9418,6 +9783,20 @@
       ]
     },
     {
+      "host": "storage.data.gov.my",
+      "provider": "storage.data.gov.my",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.data.gov.my and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/pricecatcher.mjs"
+        }
+      ]
+    },
+    {
       "host": "storage.eop.bg",
       "provider": "storage.eop.bg",
       "kind": "structured",
@@ -9433,21 +9812,18 @@
     },
     {
       "host": "storage.googleapis.com",
-      "provider": "Ember electricity data",
+      "provider": "api.gdeltproject.org",
       "kind": "structured",
       "observed": true,
-      "license": "CC BY 4.0 (Ember dataset)",
-      "attribution": "Ember; link to the Ember dataset and preserve its license notice.",
-      "status": "reviewed",
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit storage.googleapis.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
       "references": [
         {
           "path": "scripts/_conflict-gdelt-bulk.mjs"
         },
         {
           "path": "scripts/_gdelt-bulk-materializer.mjs"
-        },
-        {
-          "path": "scripts/seed-ember-electricity.mjs"
         }
       ]
     },
@@ -10591,6 +10967,20 @@
       ]
     },
     {
+      "host": "vn.usembassy.gov",
+      "provider": "vn.usembassy.gov",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit vn.usembassy.gov and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
       "host": "vnexpress.net",
       "provider": "vnexpress.net",
       "kind": "feed",
@@ -10615,6 +11005,20 @@
       "references": [
         {
           "path": "src/config/live-video-sources.ts"
+        }
+      ]
+    },
+    {
+      "host": "vscode.dev",
+      "provider": "vscode.dev",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/mcp-agent-clients.ts"
         }
       ]
     },
@@ -10896,6 +11300,9 @@
           "path": "api/telegram-feed.js"
         },
         {
+          "path": "scripts/_country-stock-index-moex.mjs"
+        },
+        {
           "path": "scripts/_upstash-rest.mjs"
         },
         {
@@ -10936,6 +11343,9 @@
         },
         {
           "path": "scripts/mcp-proxy-live-smoke.mjs"
+        },
+        {
+          "path": "scripts/mcp-tool-canary.mjs"
         },
         {
           "path": "scripts/measure-mobile-mainthread.mjs"
@@ -11001,7 +11411,7 @@
           "path": "src/bootstrap/web-vitals-utils.ts"
         },
         {
-          "path": "src/components/UnifiedSettings.ts"
+          "path": "src/config/mcp-agent-clients.ts"
         },
         {
           "path": "src/config/web-origin.ts"
@@ -11051,6 +11461,20 @@
         },
         {
           "path": "src/config/docs-locale-seo.ts"
+        }
+      ]
+    },
+    {
+      "host": "ws.cso.ie",
+      "provider": "ws.cso.ie",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit ws.cso.ie and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/cso.mjs"
         }
       ]
     },
@@ -11582,6 +12006,20 @@
       "license": "Excluded: first-party, control-plane, UI, or rendering transport",
       "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "www.bloomberg.com",
+      "provider": "www.bloomberg.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
+      "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/config/live-video-sources.ts"
+        }
+      ]
     },
     {
       "host": "www.brasilparalelo.com.br",
@@ -12126,6 +12564,20 @@
       ]
     },
     {
+      "host": "www.deutschlandfunk.de",
+      "provider": "www.deutschlandfunk.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.deutschlandfunk.de and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.digi24.ro",
       "provider": "www.digi24.ro",
       "kind": "feed",
@@ -12620,7 +13072,27 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/registry/_travel-risk-document.ts"
+        },
+        {
+          "path": "scripts/build-seasonal-hazard-calendar.mjs"
+        },
+        {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.geostat.ge",
+      "provider": "www.geostat.ge",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.geostat.ge and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/food-prices-adapters/geostat.mjs"
         }
       ]
     },
@@ -15073,10 +15545,19 @@
           "path": "api/customer-portal.ts"
         },
         {
+          "path": "api/mcp/auth.ts"
+        },
+        {
+          "path": "api/mcp/handler.ts"
+        },
+        {
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "api/mcp/ui/news-dashboard-app.ts"
+        },
+        {
+          "path": "api/mcp/ui/shell.ts"
         },
         {
           "path": "api/not-found.ts"
@@ -15121,7 +15602,13 @@
           "path": "scripts/check-live-video-sources.mjs"
         },
         {
+          "path": "scripts/check-population-exposure.mjs"
+        },
+        {
           "path": "scripts/comparison-shortlist.mjs"
+        },
+        {
+          "path": "scripts/deploy-error-canary.mjs"
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
@@ -15181,6 +15668,9 @@
           "path": "server/_shared/deprecation-policy.ts"
         },
         {
+          "path": "server/worldmonitor/cyber/v1/get-network-info.ts"
+        },
+        {
           "path": "server/worldmonitor/intelligence/v1/_country-brief-evidence.ts"
         },
         {
@@ -15194,6 +15684,9 @@
         },
         {
           "path": "src/components/RuntimeConfigPanel.ts"
+        },
+        {
+          "path": "src/config/dashboard-reference-links.ts"
         },
         {
           "path": "src/config/docs-locale-seo.ts"
@@ -15307,6 +15800,20 @@
       ]
     },
     {
+      "host": "www.zdfheute.de",
+      "provider": "www.zdfheute.de",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.zdfheute.de and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "shared/news-catalog.json"
+        }
+      ]
+    },
+    {
       "host": "www.zdg.md",
       "provider": "www.zdg.md",
       "kind": "feed",
@@ -15382,6 +15889,20 @@
         },
         {
           "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
+      "host": "www2.moeaea.gov.tw",
+      "provider": "www2.moeaea.gov.tw",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public Taiwan MOEA Energy Administration oil111 survey; reuse licence unconfirmed",
+      "attribution": "Credit Taiwan MOEA Energy Administration oil111; weekly survey averages in TWD per litre.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-fuel-prices.mjs"
         }
       ]
     },

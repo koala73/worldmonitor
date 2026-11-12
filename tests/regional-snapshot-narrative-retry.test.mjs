@@ -90,7 +90,8 @@ describe('narrative callLlmDefault retry/budget', () => {
   // two equal 6s sleeps against 12s usable no longer exhaust the clock — the
   // second is fail-fast. Drive the stop via withRetry wait overshoot:
   //   usable 12s, hint 3s, retryDelayMs 8s → waits 8s then 16s → usable <= 0.
-  it('stops at the call budget without falling through to the next provider', async () => {
+  it('stops at the call budget without falling through to the next provider', async t => {
+    t.mock.method(Math, 'random', () => 0);
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const originalDateNow = Date.now;
     const originalSetTimeout = globalThis.setTimeout;

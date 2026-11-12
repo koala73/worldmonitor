@@ -1438,6 +1438,7 @@ async function evaluate({ redis, lock, deliver, fetchImpl, env, now }) {
     ];
     let rows;
     for (let attempt = 0; attempt < 2 && !rows; attempt += 1) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 50));
       rows = await redis(commands).catch(() => null);
       if (!Array.isArray(rows) || rows.length !== 2 || rows.some((row) => !row || row.error)) rows = null;
     }

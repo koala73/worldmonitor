@@ -51,6 +51,8 @@
  *   --date <YYYY-MM-DD>   snapshot date (default the observation date)
  *   --search-export <p>   also write the scorecard search-export for
  *                         scripts/seo-ai-visibility-collector.mjs
+ *   --query-set <path>    reviewed queries to look up (default
+ *                         docs/research/seo-ai-visibility/query-set.json)
  *   --sample-cap <n>      urlInspection calls per run (default 2000, the quota)
  *   --concurrency <n>     inspections in flight at once (default 5, max 10)
  *   --stdout              print the snapshot instead of writing files
@@ -72,7 +74,7 @@ import {
   robotsTagBlocksIndexing,
   sitemapUrls,
 } from './lib/seo-url-taxonomy.mjs';
-import { PAGE_FAMILIES } from './seo-ai-visibility-scorecard.mjs';
+import { PAGE_FAMILIES, computeQuerySetDigest } from './seo-ai-visibility-scorecard.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -99,6 +101,24 @@ const MAX_PAGES_PER_WINDOW = 40;
 const MAX_URLS_PER_LIST = 5;
 const MAX_FLAGGED_URLS = 50;
 const MAX_TOP_QUERIES = 20;
+const MAX_NON_BRAND_QUERIES = 500;
+const MAX_QUERY_PAGE_QUERIES = 500;
+const MAX_PAGES_PER_QUERY = 10;
+const QUERY_PAGE_HOST = 'www.worldmonitor.app';
+const MAX_LOW_CLICK_QUERIES_IN_SUMMARY = 30;
+const LOW_CLICK_CTR = 0.05;
+/**
+ * This repository is public, so a query needs real volume before its text is
+ * committed. Rarer ones still count toward the summary.
+ */
+const MIN_LISTED_QUERY_IMPRESSIONS = 20;
+/**
+ * In October 2026 "kerch strait" and "korea strait" took 25,000 impressions at
+ * 97-98% desktop and never one click, while queries people clearly search sat
+ * at 20-44% desktop. Rank trackers fit that shape. Search Console cannot name
+ * who searched, so this stays a labelled inference.
+ */
+const LIKELY_AUTOMATED = Object.freeze({ minImpressions: 200, minDesktopShare: 0.9, clicks: 0 });
 const MAX_SITEMAP_DOCUMENTS = 50;
 const SNAPSHOT_SCHEMA_VERSION = 1;
 const PAGE_FAMILY_SCHEMA_VERSION = 2;
@@ -156,10 +176,34 @@ const SITE_VIEWS = Object.freeze({
   dailyNonBrand: { dimensions: ['date'], filter: 'excludingRegex' },
 });
 const PAGE_NON_BRAND_VIEW = 'pageNonBrand';
+const QUERY_DEVICE_VIEW = 'queryNonBrandDevice';
+const QUERY_PAGE_VIEW = 'queryNonBrandPage';
+
+/**
+ * Reviewed queries are looked up one at a time rather than matched against
+ * the top queries: in every snapshot from 2026-09-25 to 2026-11-03 none of
+ * the 25 reached the top 20.
+ *
+ * Probed live on 2026-11-09: `equals` ignores case ("World Monitor" and
+ * "WORLD MONITOR" both return the row keyed "world monitor") but not spacing
+ * (a leading or doubled space returns nothing). The expression is therefore
+ * the reviewed text trimmed, with inner whitespace collapsed, and lowercased
+ * to the form Google stores.
+ */
+const REVIEWED_QUERY_OPERATOR = 'equals';
+const REVIEWED_QUERY_ROW_LIMIT = 10;
+export const reviewedQueryExpression = (text) => text.trim().replace(/\s+/g, ' ').toLowerCase();
+/**
+ * Google answers a lookup with no row both for a query nobody searched and
+ * for an anonymized one under its privacy threshold. Neither is a zero.
+ */
+export const NOT_REPORTED_REASON = 'Not reported by Search Console: below its privacy threshold or no impressions in this window.';
 const VIEW_REQUESTS = Object.freeze({
   page: { dimensions: ['page'], filter: null },
   query: { dimensions: ['query'], filter: null },
   [PAGE_NON_BRAND_VIEW]: { dimensions: ['page'], filter: 'excludingRegex' },
+  [QUERY_DEVICE_VIEW]: { dimensions: ['query', 'device'], filter: 'excludingRegex' },
+  [QUERY_PAGE_VIEW]: { dimensions: ['query', 'page'], filter: 'excludingRegex' },
   ...SITE_VIEWS,
 });
 
@@ -412,6 +456,12 @@ export function createFixtureTransport(directory) {
       if (page >= pages.length) return { rows: [] };
       return readRecorded(pages[page]);
     },
+    // Recorded by window and the expression actually sent, so a fixture keyed
+    // by the lowercased text also proves the reviewed text was normalized.
+    async lookupQuery({ windowLabel, expression }) {
+      const file = manifest.reviewedQueries?.[windowLabel]?.[expression];
+      return file === undefined ? null : readRecorded(file);
+    },
     async inspect(url) {
       const recorded = inspections[url];
       if (recorded === undefined) return null;
@@ -527,6 +577,21 @@ export function createLiveTransport({ accessToken, property, fetchImpl = fetch, 
         ...(request.filter ? { dimensionFilterGroups: [queryFilter(request.filter)] } : {}),
         rowLimit: SEARCH_ANALYTICS_ROW_LIMIT,
         startRow: page * SEARCH_ANALYTICS_ROW_LIMIT,
+        dataState: 'final',
+      });
+    },
+    // Grouped by query on purpose: with no dimension Google answers a query it
+    // never saw with a zero row, and grouped it answers with no row at all.
+    async lookupQuery({ expression, startDate, endDate }) {
+      return post(`${SEARCH_ANALYTICS_ENDPOINT}/${encodeURIComponent(property)}/searchAnalytics/query`, {
+        startDate,
+        endDate,
+        dimensions: ['query'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{ dimension: 'query', operator: REVIEWED_QUERY_OPERATOR, expression }],
+        }],
+        rowLimit: REVIEWED_QUERY_ROW_LIMIT,
         dataState: 'final',
       });
     },
@@ -768,54 +833,59 @@ async function collectIndexation(transport, inventory, { sampleCap, concurrency 
   return { sample, records, quotaReason };
 }
 
+async function collectPagedRows(transport, window, dimension) {
+  const rows = [];
+  let truncationReason = null;
+  let recorded = true;
+  for (let page = 0; page < MAX_PAGES_PER_WINDOW; page += 1) {
+    let response;
+    try {
+      response = await transport.searchAnalytics({
+        windowLabel: window.label,
+        dimension,
+        page,
+        startDate: window.startDate,
+        endDate: window.endDate,
+      });
+    } catch (error) {
+      if (error instanceof QuotaExhaustedError) {
+        truncationReason = `searchanalytics quota was exhausted after ${rows.length} ${dimension} rows: ${error.message}`;
+        // Nothing was measured, so the view is absent rather than empty.
+        if (page === 0) recorded = false;
+        break;
+      }
+      throw error;
+    }
+    if (response === null && page === 0) {
+      recorded = false;
+      break;
+    }
+    const returned = Array.isArray(response?.rows) ? response.rows : [];
+    for (const row of returned) {
+      const key = Array.isArray(row.keys) ? row.keys[0] : null;
+      if (typeof key !== 'string' || key === '') continue;
+      rows.push({
+        key,
+        secondKey: row.keys[1] ?? null,
+        clicks: finite(row.clicks) ?? 0,
+        impressions: finite(row.impressions) ?? 0,
+        position: finite(row.position),
+      });
+    }
+    if (returned.length < transport.rowLimit) break;
+    if (page === MAX_PAGES_PER_WINDOW - 1) {
+      truncationReason = `stopped after ${MAX_PAGES_PER_WINDOW} pages of ${dimension} rows`;
+    }
+  }
+  return { rows, truncationReason, recorded };
+}
+
 async function collectPerformance(transport, windows) {
   const results = [];
   for (const window of windows) {
     const dimensions = {};
     for (const dimension of ['page', 'query', PAGE_NON_BRAND_VIEW]) {
-      const rows = [];
-      let truncationReason = null;
-      let recorded = true;
-      for (let page = 0; page < MAX_PAGES_PER_WINDOW; page += 1) {
-        let response;
-        try {
-          response = await transport.searchAnalytics({
-            windowLabel: window.label,
-            dimension,
-            page,
-            startDate: window.startDate,
-            endDate: window.endDate,
-          });
-        } catch (error) {
-          if (error instanceof QuotaExhaustedError) {
-            truncationReason = `searchanalytics quota was exhausted after ${rows.length} ${dimension} rows: ${error.message}`;
-            // Nothing was measured, so the view is absent rather than empty.
-            if (page === 0) recorded = false;
-            break;
-          }
-          throw error;
-        }
-        if (response === null && page === 0) {
-          recorded = false;
-          break;
-        }
-        const returned = Array.isArray(response?.rows) ? response.rows : [];
-        for (const row of returned) {
-          const key = Array.isArray(row.keys) ? row.keys[0] : null;
-          if (typeof key !== 'string' || key === '') continue;
-          rows.push({
-            key,
-            clicks: finite(row.clicks) ?? 0,
-            impressions: finite(row.impressions) ?? 0,
-            position: finite(row.position),
-          });
-        }
-        if (returned.length < transport.rowLimit) break;
-        if (page === MAX_PAGES_PER_WINDOW - 1) {
-          truncationReason = `stopped after ${MAX_PAGES_PER_WINDOW} pages of ${dimension} rows`;
-        }
-      }
-      dimensions[dimension] = { rows, truncationReason, recorded };
+      dimensions[dimension] = await collectPagedRows(transport, window, dimension);
     }
     const site = {};
     for (const view of ['site', 'siteBrand', 'siteNonBrand']) {
@@ -863,11 +933,116 @@ async function collectSiteView(transport, window, view) {
   return { status: 'available', reason: null, rows };
 }
 
+const unmeasuredLookup = (lookup, status, reason) => ({
+  ...lookup, status, reason, clicks: null, impressions: null, position: null,
+});
+
+function readLookup(lookup, response) {
+  if (response === null) return unmeasuredLookup(lookup, 'unavailable', 'no lookup was recorded for this query');
+  const rows = Array.isArray(response?.rows) ? response.rows : [];
+  if (rows.length === 0) return unmeasuredLookup(lookup, 'not-reported', NOT_REPORTED_REASON);
+  const matching = rows.filter((row) => Array.isArray(row.keys) && row.keys[0] === lookup.expression);
+  if (matching.length !== 1) {
+    return unmeasuredLookup(lookup, 'unavailable', 'Search Console answered with rows for other queries');
+  }
+  const [row] = matching;
+  const clicks = finite(row.clicks);
+  const impressions = finite(row.impressions);
+  if (clicks === null || impressions === null) {
+    return unmeasuredLookup(lookup, 'unavailable', 'Search Console returned a row without clicks or impressions');
+  }
+  return { ...lookup, status: 'reported', reason: null, clicks, impressions, position: finite(row.position) };
+}
+
+/**
+ * One exact-match lookup per reviewed query and window: 25 queries and two
+ * windows are 50 small requests through the same retrying transport. A failed
+ * lookup is recorded against its query and the rest continue; the quota stops
+ * them all, and every query left unasked says so.
+ */
+async function collectReviewedQueries(transport, windows, querySet) {
+  if (!querySet) {
+    return {
+      status: 'unavailable',
+      reason: 'no reviewed query set was supplied',
+      querySetId: null,
+      querySetDigest: null,
+      operator: REVIEWED_QUERY_OPERATOR,
+      windows: [],
+    };
+  }
+  invariant(typeof transport.lookupQuery === 'function', 'the transport cannot look up reviewed queries');
+  let quotaReason = null;
+  const collected = [];
+  for (const window of windows) {
+    const lookups = [];
+    for (const query of querySet.queries) {
+      const lookup = { queryId: query.id, query: query.query, expression: reviewedQueryExpression(query.query) };
+      if (quotaReason) {
+        lookups.push(unmeasuredLookup(lookup, 'unavailable', quotaReason));
+        continue;
+      }
+      try {
+        lookups.push(readLookup(lookup, await transport.lookupQuery({
+          windowLabel: window.label,
+          expression: lookup.expression,
+          startDate: window.startDate,
+          endDate: window.endDate,
+        })));
+      } catch (error) {
+        if (error instanceof QuotaExhaustedError) {
+          quotaReason = `searchanalytics quota was exhausted: ${error.message}`;
+        }
+        lookups.push(unmeasuredLookup(
+          lookup,
+          'unavailable',
+          quotaReason ?? `the lookup failed: ${error?.message ?? String(error)}`,
+        ));
+      }
+    }
+    collected.push({ label: window.label, startDate: window.startDate, endDate: window.endDate, lookups });
+  }
+  const gaps = collected
+    .map((window) => [window.label, window.lookups.filter((lookup) => lookup.status === 'unavailable').length])
+    .filter(([, count]) => count > 0);
+  const answered = collected.some((window) => window.lookups.some((lookup) => lookup.status !== 'unavailable'));
+  return {
+    status: gaps.length === 0 ? 'available' : (answered ? 'partial' : 'unavailable'),
+    reason: gaps.length === 0
+      ? null
+      : gaps.map(([label, count]) => `${label}: ${count} of ${querySet.queries.length} lookups unavailable`).join('; '),
+    querySetId: querySet.querySetId,
+    querySetDigest: computeQuerySetDigest(querySet),
+    operator: REVIEWED_QUERY_OPERATOR,
+    windows: collected,
+  };
+}
+
+/** The non-brand query rows, collected for the first window only. */
+async function collectNonBrandQueries(transport, windows) {
+  const [window] = windows;
+  if (!window) return null;
+  return {
+    window,
+    device: await collectPagedRows(transport, window, QUERY_DEVICE_VIEW),
+    page: await collectPagedRows(transport, window, QUERY_PAGE_VIEW),
+  };
+}
+
+const widestWindow = (windows) => [...windows].sort((left, right) => (
+  Date.parse(left.startDate) - Date.parse(right.startDate)
+))[0];
+
+/** Every page each non-brand query showed, collected once over the widest window. */
+async function collectQueryPages(transport, windows) {
+  const widest = widestWindow(windows);
+  if (!widest) return null;
+  return { window: widest, page: await collectPagedRows(transport, widest, QUERY_PAGE_VIEW) };
+}
+
 /** The daily by-property series, collected once over the widest window. */
 async function collectDaily(transport, windows) {
-  const widest = [...windows].sort((left, right) => (
-    Date.parse(left.startDate) - Date.parse(right.startDate)
-  ))[0];
+  const widest = widestWindow(windows);
   if (!widest) return null;
   return {
     window: widest,
@@ -1000,7 +1175,178 @@ function topCoverageReasons(records) {
     .map(([state, count]) => ({ state, count }));
 }
 
-function buildPerformance(performance, inventory, indexedByFamily, daily) {
+/**
+ * One row per non-brand query. Metrics come from the query-by-device rows,
+ * which Google aggregates by property; the query-by-page rows, which count a
+ * search once per URL, only name the page.
+ *
+ * A device view cut short leaves desktop shares and totals wrong rather than
+ * merely incomplete, so it reports nothing instead of a smaller list.
+ */
+export function buildNonBrandQueries(raw) {
+  const unavailable = (reason, window = null) => ({
+    status: 'unavailable',
+    reason,
+    window,
+    method: null,
+    summary: null,
+    rows: [],
+  });
+  if (!raw) return unavailable('no window was requested');
+  const { window, device, page } = raw;
+  if (!device.recorded) return unavailable(`the ${QUERY_DEVICE_VIEW} view was not collected`, window.label);
+  if (device.truncationReason) return unavailable(device.truncationReason, window.label);
+
+  const byQuery = new Map();
+  for (const row of device.rows) {
+    const entry = byQuery.get(row.key) ?? { clicks: 0, impressions: 0, desktop: 0, weighted: 0, positioned: 0 };
+    entry.clicks += row.clicks;
+    entry.impressions += row.impressions;
+    if (row.secondKey === 'DESKTOP') entry.desktop += row.impressions;
+    if (row.position !== null) {
+      entry.weighted += row.position * row.impressions;
+      entry.positioned += row.impressions;
+    }
+    byQuery.set(row.key, entry);
+  }
+  const topPage = new Map();
+  for (const row of page.rows) {
+    const current = topPage.get(row.key);
+    if (!current || row.impressions > current.impressions) topPage.set(row.key, row);
+  }
+
+  const pageGap = page.recorded
+    ? page.truncationReason
+    : `the ${QUERY_PAGE_VIEW} view was not collected`;
+  const queries = [...byQuery].map(([query, entry]) => {
+    const desktopShare = entry.impressions > 0 ? entry.desktop / entry.impressions : null;
+    return {
+      query,
+      // The true top page may be in rows the cut-short view never returned.
+      page: pageGap ? null : (topPage.get(query)?.secondKey ?? null),
+      clicks: entry.clicks,
+      impressions: entry.impressions,
+      position: entry.positioned > 0 ? roundTo(entry.weighted / entry.positioned, 2) : null,
+      desktopShare: desktopShare === null ? null : roundTo(desktopShare, 3),
+      likelyAutomated: entry.clicks === LIKELY_AUTOMATED.clicks
+        && entry.impressions >= LIKELY_AUTOMATED.minImpressions
+        && desktopShare !== null
+        && desktopShare >= LIKELY_AUTOMATED.minDesktopShare,
+    };
+  }).sort((left, right) => right.impressions - left.impressions
+    || left.query.localeCompare(right.query));
+
+  const sumImpressions = (rows) => rows.reduce((sum, row) => sum + row.impressions, 0);
+  const automated = queries.filter((row) => row.likelyAutomated);
+  const nonBrandImpressions = sumImpressions(queries);
+  const likelyAutomatedImpressions = sumImpressions(automated);
+  return {
+    status: pageGap ? 'partial' : 'available',
+    reason: pageGap ?? null,
+    window: window.label,
+    method: {
+      basis: 'inference from zero clicks and desktop share; existing non-brand totals still include these queries',
+      ...LIKELY_AUTOMATED,
+      minListedImpressions: MIN_LISTED_QUERY_IMPRESSIONS,
+      maxListed: MAX_NON_BRAND_QUERIES,
+    },
+    summary: {
+      queries: queries.length,
+      nonBrandImpressions,
+      likelyAutomatedQueries: automated.length,
+      likelyAutomatedImpressions,
+      nonBrandImpressionsExcludingLikelyAutomated: nonBrandImpressions - likelyAutomatedImpressions,
+    },
+    rows: queries
+      .filter((row) => row.impressions >= MIN_LISTED_QUERY_IMPRESSIONS)
+      .slice(0, MAX_NON_BRAND_QUERIES),
+  };
+}
+
+/** A www URL as a bare path, or null for another host or a non-URL. */
+function queryPagePath(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  return parsed.host === QUERY_PAGE_HOST ? parsed.pathname : null;
+}
+
+/**
+ * Every www page each non-brand query showed, with that page's own impressions
+ * and position for the query, so a page that ranks for a query can be told
+ * apart from the page that ranks best. Rows that differ only by fragment or
+ * query string are one page.
+ *
+ * A page-grouped row counts a search once per URL shown, so the query total is
+ * a sum of page rows. Only a single URL's row counts distinct searches, so the
+ * publication floor is the largest one. A view cut short can be missing a query's
+ * top page, so it reports nothing instead of a smaller list. `likelyAutomated`
+ * comes from the first window's device view and is null without it.
+ */
+export function buildQueryPages(raw, nonBrandQueries) {
+  const unavailable = (reason, window = null) => ({ status: 'unavailable', reason, window, method: null, rows: [] });
+  if (!raw) return unavailable('no window was requested');
+  const { window, page } = raw;
+  if (!page.recorded) return unavailable(`the ${window.label} ${QUERY_PAGE_VIEW} view was not collected`, window.label);
+  if (page.truncationReason) return unavailable(page.truncationReason, window.label);
+
+  const byQuery = new Map();
+  for (const row of page.rows) {
+    const path = queryPagePath(row.secondKey);
+    if (path === null || isBrandQuery(row.key)) continue;
+    const pages = byQuery.get(row.key) ?? new Map();
+    const entry = pages.get(path) ?? { impressions: 0, weighted: 0, positioned: 0, largestUrl: 0 };
+    entry.impressions += row.impressions;
+    // Merged URL variants can count one search twice, so the floor reads one URL.
+    entry.largestUrl = Math.max(entry.largestUrl, row.impressions);
+    if (row.position !== null) {
+      entry.weighted += row.position * row.impressions;
+      entry.positioned += row.impressions;
+    }
+    pages.set(path, entry);
+    byQuery.set(row.key, pages);
+  }
+  const automated = nonBrandQueries.status === 'unavailable'
+    ? null
+    : new Set(nonBrandQueries.rows.filter((row) => row.likelyAutomated).map((row) => row.query));
+  const rows = [...byQuery].map(([query, pages]) => {
+    const ranked = [...pages].map(([path, entry]) => ({
+      path,
+      impressions: entry.impressions,
+      position: entry.positioned > 0 ? roundTo(entry.weighted / entry.positioned, 2) : null,
+    })).sort((left, right) => right.impressions - left.impressions || left.path.localeCompare(right.path));
+    return {
+      query,
+      impressions: ranked.reduce((sum, entry) => sum + entry.impressions, 0),
+      likelyAutomated: automated === null ? null : automated.has(query),
+      pages: ranked.slice(0, MAX_PAGES_PER_QUERY),
+      largestUrl: Math.max(...[...pages.values()].map((entry) => entry.largestUrl)),
+    };
+  })
+    .filter((row) => row.largestUrl >= MIN_LISTED_QUERY_IMPRESSIONS)
+    .map(({ largestUrl, ...row }) => row)
+    .sort((left, right) => right.impressions - left.impressions || left.query.localeCompare(right.query))
+    .slice(0, MAX_QUERY_PAGE_QUERIES);
+  return {
+    status: 'available',
+    reason: null,
+    window: window.label,
+    method: {
+      host: QUERY_PAGE_HOST,
+      impressionsBasis: 'sum-of-page-rows',
+      minSingleUrlImpressions: MIN_LISTED_QUERY_IMPRESSIONS,
+      maxQueries: MAX_QUERY_PAGE_QUERIES,
+      maxPagesPerQuery: MAX_PAGES_PER_QUERY,
+      likelyAutomatedWindow: nonBrandQueries.window,
+    },
+    rows,
+  };
+}
+
+function buildPerformance(performance, inventory, indexedByFamily, daily, nonBrandQueriesRaw, queryPagesRaw) {
   const routeFamily = new Map(inventory.urls.map((entry) => [entry.url, entry]));
   const windows = performance.map(({ window, dimensions, site }) => {
     const totals = newAccumulator();
@@ -1119,11 +1465,14 @@ function buildPerformance(performance, inventory, indexedByFamily, daily) {
     };
   });
   const partial = windows.some((window) => window.status !== 'available');
+  const nonBrandQueries = buildNonBrandQueries(nonBrandQueriesRaw);
   return {
     status: windows.length === 0 ? 'unavailable' : (partial ? 'partial' : 'available'),
     reason: windows.length === 0 ? 'no window was requested' : null,
     windows,
     daily: buildDaily(daily),
+    nonBrandQueries,
+    queryPages: buildQueryPages(queryPagesRaw, nonBrandQueries),
   };
 }
 
@@ -1170,6 +1519,7 @@ export async function collectGscSnapshot({
   concurrency = DEFAULT_CONCURRENCY,
   propertyKind = null,
   reportedTotals = {},
+  querySet = null,
   revision = repositoryRevision(),
 }) {
   const inventory = buildInventory(documents);
@@ -1178,6 +1528,9 @@ export async function collectGscSnapshot({
   // there must stop the run before any of the daily inspection quota is spent.
   const performanceRaw = await collectPerformance(transport, windows);
   const dailyRaw = await collectDaily(transport, windows);
+  const reviewedQueries = await collectReviewedQueries(transport, windows, querySet);
+  const nonBrandQueriesRaw = await collectNonBrandQueries(transport, windows);
+  const queryPagesRaw = await collectQueryPages(transport, windows);
   const { sample, records, quotaReason } = await collectIndexation(
     transport,
     inventory,
@@ -1241,7 +1594,7 @@ export async function collectGscSnapshot({
     );
   }
 
-  const performance = buildPerformance(performanceRaw, inventory, byFamily, dailyRaw);
+  const performance = buildPerformance(performanceRaw, inventory, byFamily, dailyRaw, nonBrandQueriesRaw, queryPagesRaw);
   for (const window of performance.windows) {
     if (window.status !== 'available') samplingNotes.push(`${window.label}: ${window.reason}`);
     if (window.unmapped.urls > 0) {
@@ -1374,6 +1727,7 @@ export async function collectGscSnapshot({
       ),
     },
     performance,
+    reviewedQueries,
     samplingNotes,
     guardrails: [
       'Shares are measured over inspected rows. No sampled share is projected onto a reported total.',
@@ -1502,18 +1856,82 @@ function renderSearchTotals(performance) {
     lines.push('|---|---|---:|---:|---:|---:|');
     for (const row of primary.topQueries) {
       const ctr = row.impressions > 0 ? row.clicks / row.impressions : null;
-      lines.push(`| ${markdownCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
+      lines.push(`| ${queryCell(row.query)} | ${row.brand ? 'yes' : 'no'} | ${row.impressions} | ${row.clicks} | ${percent(ctr)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} |`);
+    }
+    lines.push('');
+  }
+
+  const list = performance.nonBrandQueries;
+  if (list.summary === null) {
+    lines.push(`Non-brand queries: unavailable (${list.reason}).`);
+    lines.push('');
+    return lines;
+  }
+  const { summary } = list;
+  lines.push(`### Non-brand queries with few clicks (${list.window})`);
+  lines.push('');
+  lines.push(`${summary.likelyAutomatedQueries} of ${summary.queries} non-brand queries look automated, ${summary.likelyAutomatedImpressions} of ${summary.nonBrandImpressions} impressions. That is an inference from zero clicks and at least ${Math.round(list.method.minDesktopShare * 100)}% desktop, and the non-brand totals above still include them. Most impressions first, below ${Math.round(LOW_CLICK_CTR * 100)}% CTR.`);
+  lines.push('');
+  if (list.reason) {
+    lines.push(`Top pages are withheld: ${list.reason}.`);
+    lines.push('');
+  }
+  lines.push('| Query | Top page | Impressions | Clicks | CTR | Position | Desktop | Likely automated |');
+  lines.push('|---|---|---:|---:|---:|---:|---:|---|');
+  const lowClick = list.rows
+    .filter((row) => row.impressions > 0 && row.clicks / row.impressions < LOW_CLICK_CTR)
+    .slice(0, MAX_LOW_CLICK_QUERIES_IN_SUMMARY);
+  for (const row of lowClick) {
+    const page = row.page === null ? 'n/a' : markdownCell(row.page.replace('https://www.worldmonitor.app', '') || '/');
+    const desktop = row.desktopShare === null ? 'n/a' : `${Math.round(row.desktopShare * 100)}%`;
+    lines.push(`| ${queryCell(row.query)} | ${page} | ${row.impressions} | ${row.clicks} | ${percent(row.clicks / row.impressions)} | ${row.position === null ? 'n/a' : row.position.toFixed(1)} | ${desktop} | ${row.likelyAutomated ? 'yes' : 'no'} |`);
+  }
+  lines.push('');
+  return lines;
+}
+
+function renderReviewedQueries(section) {
+  if (!section) return [];
+  const lines = ['### Reviewed queries', ''];
+  if (section.windows.length === 0) {
+    lines.push(`Not measured: ${section.reason}.`, '');
+    return lines;
+  }
+  lines.push(`One \`${section.operator}\` lookup per reviewed query (\`${section.querySetId}\`) and window, on the reviewed text lowercased with spaces collapsed, the form Search Console stores. Not reported means Google returned no row: the query fell below its privacy threshold or had no impressions. That is not a zero.`);
+  lines.push('');
+  lines.push('| Window | Looked up | Reported | Not reported | Unavailable |');
+  lines.push('|---|---:|---:|---:|---:|');
+  const count = (window, status) => window.lookups.filter((lookup) => lookup.status === status).length;
+  for (const window of section.windows) {
+    lines.push(`| ${window.label} | ${window.lookups.length} | ${count(window, 'reported')} | ${count(window, 'not-reported')} | ${count(window, 'unavailable')} |`);
+  }
+  lines.push('');
+  const [primary] = section.windows;
+  const reported = primary.lookups.filter((lookup) => lookup.status === 'reported');
+  if (reported.length > 0) {
+    lines.push(`| Reviewed query (${primary.label}) | Impressions | Clicks | CTR | Position |`);
+    lines.push('|---|---:|---:|---:|---:|');
+    for (const lookup of reported) {
+      const ctr = lookup.impressions > 0 ? lookup.clicks / lookup.impressions : null;
+      lines.push(`| ${markdownCell(lookup.query)} | ${lookup.impressions} | ${lookup.clicks} | ${percent(ctr)} | ${lookup.position === null ? 'n/a' : lookup.position.toFixed(1)} |`);
     }
     lines.push('');
   }
   return lines;
 }
 
-// A query is user text: escape the backslash first, then the pipe that would
-// end the table cell, and flatten line breaks.
+// Escape the backslash first, then the pipe that would end the table cell, and
+// flatten line breaks.
 const markdownCell = (value) => String(value)
   .replace(/\\/g, '\\\\')
   .replace(/\|/g, '\\|')
+  .replace(/[\r\n]+/g, ' ');
+
+// A query is user text in a report that merges without a person reading it, so
+// nothing in it may render as a link, image or HTML. `:` and `.` are included
+// because GFM autolinks a bare URL, www. host or email address.
+export const queryCell = (value) => String(value)
+  .replace(/[\\|`*_[\]()<>!~:.]/g, '\\$&')
   .replace(/[\r\n]+/g, ' ');
 
 const percent = (ratio) => (ratio === null ? 'n/a' : `${(ratio * 100).toFixed(1)}%`);
@@ -1556,6 +1974,7 @@ export function renderGscMarkdown(snapshot) {
   lines.push('');
 
   lines.push(...renderSearchTotals(snapshot.performance));
+  lines.push(...renderReviewedQueries(snapshot.reviewedQueries));
 
   lines.push('## By page family');
   lines.push('');
@@ -1697,6 +2116,36 @@ export function renderGscMarkdown(snapshot) {
 }
 
 /**
+ * The lookups usable for `querySet`, by window label, and the note that says
+ * how they were measured or why there are none.
+ *
+ * A snapshot that predates the lookups has no query rows. The top-query list is
+ * not a fallback: no reviewed query appeared in it in any snapshot through
+ * 2026-11-03, and its keys are lowercased, so most reviewed text could not match.
+ */
+function reviewedLookups(section, querySet) {
+  const none = (note) => ({ byWindow: new Map(), note });
+  if (!querySet) return none('No reviewed query set was supplied, so there are no query rows');
+  if (!section) {
+    return none('This snapshot predates reviewed-query lookups, so it has no query rows; the reviewed queries are unmeasured, not zero');
+  }
+  if (section.querySetId === null) return none(`Reviewed-query lookups were not collected: ${section.reason}`);
+  const digest = computeQuerySetDigest(querySet);
+  if (section.querySetId !== querySet.querySetId || section.querySetDigest !== digest) {
+    const short = (value) => value.slice(0, 'sha256:'.length + 12);
+    return none(`Reviewed-query lookups were made for query set ${section.querySetId} (${short(section.querySetDigest)}), not the supplied ${querySet.querySetId} (${short(digest)}), so no query rows are mapped`);
+  }
+  const count = (window, status) => window.lookups.filter((lookup) => lookup.status === status).length;
+  const counts = section.windows
+    .map((window) => `${window.label}: ${count(window, 'reported')} of ${window.lookups.length} reported, ${count(window, 'not-reported')} not reported, ${count(window, 'unavailable')} unavailable`)
+    .join('; ');
+  return {
+    byWindow: new Map(section.windows.map((window) => [window.label, window.lookups])),
+    note: `Query rows come from one Search Console lookup per reviewed query and window, on the reviewed text lowercased with spaces collapsed (${counts}). A query Search Console does not report has null metrics with that reason: it fell below Google's privacy threshold or had no impressions, which is not a zero`,
+  };
+}
+
+/**
  * Shape the per-family numbers for `scripts/seo-ai-visibility-collector.mjs`.
  *
  * The scorecard stays the single report. This is the feed into it, not a
@@ -1709,8 +2158,9 @@ export function renderGscMarkdown(snapshot) {
  * - Page-family rows are page-grouped sums, which is what a family can mean.
  *   A family with no page row in a truncated window is unmeasured, not zero,
  *   so it gets no row there.
- * - Query rows exist only for reviewed queries, matched on exact text, among
- *   the top queries the snapshot lists per window. Pass `querySet` to get them.
+ * - Query rows come from the snapshot's per-query lookups, one per reviewed
+ *   query and window. A query Google did not report keeps null metrics with
+ *   that reason. Pass `querySet`; lookups made for a different set are refused.
  *
  * `reason` is always set, because the collector downgrades a window without
  * full query and family coverage to partial and must say why.
@@ -1729,11 +2179,11 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
   // else is an absence of a measurement, so null.
   const { htmlPages, sample } = snapshot.indexation;
   const complete = sample.complete === true;
-  const reviewed = new Set((querySet?.queries ?? []).map((query) => query.query));
+  const lookups = reviewedLookups(snapshot.reviewedQueries, querySet);
   const sentence = (text) => (/[.!?]$/.test(text) ? text : `${text}.`);
   const notes = [
     'Window totals are Search Console by-property site totals. Page-family rows sum page-grouped rows, where one search counts once per URL it shows, so they are not shares of the site total.',
-    `Query rows exist only for reviewed queries that appear with exact text among the top ${MAX_TOP_QUERIES} queries the snapshot lists per window; a reviewed query outside that list has no row, which is not a zero.`,
+    sentence(lookups.note),
     complete
       ? `indexedPages counts sitemap-declared HTML URLs that URL Inspection reported indexed when the snapshot ran (${snapshot.observedAt.slice(0, 10)}); the same count stands in both windows.`
       : sentence(`indexedPages is null: the URL Inspection sample is not a complete count of the ${sample.declared} declared URLs (${snapshot.indexation.reason ?? 'no reason recorded'})`),
@@ -1764,15 +2214,15 @@ export function toScorecardSearchExport(snapshot, { querySet = null } = {}) {
           position: metrics.averagePosition,
           indexedPages: htmlPages.indexedByFamily[pageFamily] ?? null,
         })),
-      queryRows: window.topQueries
-        .filter((row) => reviewed.has(row.query))
-        .map((row) => ({
-          query: row.query,
-          clicks: row.clicks,
-          impressions: row.impressions,
-          ctr: row.impressions > 0 ? roundTo(row.clicks / row.impressions, 4) : null,
-          position: finite(row.position),
-        })),
+      queryRows: (lookups.byWindow.get(window.label) ?? []).map((lookup) => ({
+        queryId: lookup.queryId,
+        query: lookup.query,
+        clicks: lookup.clicks,
+        impressions: lookup.impressions,
+        ctr: lookup.impressions > 0 ? roundTo(lookup.clicks / lookup.impressions, 4) : null,
+        position: lookup.position,
+        reason: lookup.reason,
+      })),
     };
   });
   return {
@@ -1793,6 +2243,7 @@ export function parseArgs(argv) {
     outDir: 'docs/research/seo-ai-visibility/gsc',
     date: null,
     searchExport: null,
+    querySet: DEFAULT_QUERY_SET,
     sampleCap: DEFAULT_SAMPLE_CAP,
     concurrency: DEFAULT_CONCURRENCY,
     stdout: false,
@@ -1811,6 +2262,7 @@ export function parseArgs(argv) {
       case '--out-dir': options.outDir = next(); break;
       case '--date': options.date = next(); break;
       case '--search-export': options.searchExport = next(); break;
+      case '--query-set': options.querySet = next(); break;
       case '--sample-cap': options.sampleCap = Number.parseInt(next(), 10); break;
       case '--concurrency': options.concurrency = Number.parseInt(next(), 10); break;
       case '--stdout': options.stdout = true; break;
@@ -1835,6 +2287,8 @@ export function parseArgs(argv) {
   );
   return options;
 }
+
+const DEFAULT_QUERY_SET = 'docs/research/seo-ai-visibility/query-set.json';
 
 const LIVE_SITEMAPS = Object.freeze([
   'https://www.worldmonitor.app/sitemap-main.xml',
@@ -1886,6 +2340,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
   }
 
   const windows = deriveWindows(observedAt);
+  const querySet = readJson(resolve(REPO_ROOT, options.querySet));
   const snapshot = await collectGscSnapshot({
     transport,
     documents,
@@ -1895,6 +2350,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     concurrency: options.concurrency,
     propertyKind,
     reportedTotals,
+    querySet,
   });
 
   const date = options.date ?? observedAt.slice(0, 10);
@@ -1918,7 +2374,7 @@ export async function runCli(argv, { env = process.env, log = console.log, now =
     const exportPath = resolve(REPO_ROOT, options.searchExport);
     mkdirSync(dirname(exportPath), { recursive: true });
     const exportJson = assertNoSecrets(
-      `${JSON.stringify(toScorecardSearchExport(snapshot), null, 2)}\n`,
+      `${JSON.stringify(toScorecardSearchExport(snapshot, { querySet }), null, 2)}\n`,
       { property },
     );
     writeFileSync(exportPath, exportJson);

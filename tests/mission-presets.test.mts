@@ -450,6 +450,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function trackMissionPickerShown(...args) { push('trackMissionPickerShown', args); }
       export function trackMissionSelected(...args) { push('trackMissionSelected', args); }
       export function trackVariantSwitch(...args) { push('trackVariantSwitch', args); }
+      export function trackDashboardFirstInteraction(...args) { push('trackDashboardFirstInteraction', args); }
+      export function replayPendingDashboardFirstInteraction() {}
       export function trackThemeChanged(...args) { push('trackThemeChanged', args); }
       export function trackMapViewChange(...args) { push('trackMapViewChange', args); }
       export function trackMapLayerToggle(...args) { push('trackMapLayerToggle', args); }
@@ -657,6 +659,7 @@ describe('mission preset definitions', () => {
         'good-news-explorer',
         'nq-day-trader',
         'country-watcher',
+        'protective-travel',
       ],
     );
   });
@@ -729,7 +732,9 @@ describe('applyMissionPresetToState', () => {
     assert.ok(financeIds.includes('nq-day-trader'));
     for (const variant of VARIANTS.filter((item) => item !== 'finance')) {
       const ids = getMissionPresetsForVariant(variant).map((preset) => preset.id);
-      assert.equal(ids.length, 8, `${variant} should keep the eight shared missions`);
+      // Protective Travel is offered on the full variant only (#10453).
+      const expected = variant === 'full' ? 9 : 8;
+      assert.equal(ids.length, expected, `${variant} should keep the eight shared missions${variant === 'full' ? ' plus Protective Travel' : ''}`);
       assert.ok(!ids.includes('nq-day-trader'), `${variant} must not offer NQ Day Trader`);
     }
 
@@ -1078,6 +1083,8 @@ type MissionTestCallbacks = {
   mountLiveNewsCalls: number;
   waitForAisCalls: number;
   applyPanelSettingsCalls: number;
+  focusPrompts: number;
+  focusGates: number;
 };
 
 type MissionHarness = {
@@ -1170,6 +1177,8 @@ function createMissionHarness(options: {
   storage?: MemoryStorage;
   map?: ReturnType<typeof makeMapSpy>;
   freeTierFallback?: boolean;
+  /** The account may set a focus (Pro Business, API Business, Enterprise). */
+  focusAllowed?: boolean;
   onApplyPanels?: (settings: Record<string, PanelConfig>) => void;
 } = {}): MissionHarness {
   const storage = options.storage ?? new MemoryStorage();
@@ -1189,6 +1198,8 @@ function createMissionHarness(options: {
     mountLiveNewsCalls: 0,
     waitForAisCalls: 0,
     applyPanelSettingsCalls: 0,
+    focusPrompts: 0,
+    focusGates: 0,
   };
   const unifiedSettings = {
     refreshes: 0,
@@ -1273,6 +1284,9 @@ function createMissionHarness(options: {
     stopLayerActivity: (layer: keyof MapLayers) => callbacks.stopLayerActivity.push(String(layer)),
     mountLiveNewsIfReady: () => { callbacks.mountLiveNewsCalls += 1; },
     isFreeTierFallbackActive: () => options.freeTierFallback === true,
+    canUseFocus: () => options.focusAllowed === true,
+    promptForFocus: () => { callbacks.focusPrompts += 1; },
+    showFocusGate: () => { callbacks.focusGates += 1; },
   });
 
   return { ctx, callbacks, manager: manager as MissionHarness['manager'], storage };
@@ -1323,6 +1337,43 @@ describe('mission preset shell integration', () => {
       [{ id: 'mobileMenuMission', mobile: true }],
       'mobile WebMCP opens should use the menu trigger and mobile popover mode',
     );
+  });
+
+  it('defines protective-travel on the full variant, behind the focus entitlement, asking for countries', () => {
+    const preset = MISSION_PRESETS.find((p) => p.id === 'protective-travel');
+    assert.ok(preset, 'protective-travel preset missing');
+    assert.deepEqual(preset!.variants, ['full']);
+    assert.equal(preset!.requiresFocus, true);
+    assert.equal(preset!.asksForCountries, true);
+    // The issue's list: map, live news, advisories, unrest, weather and natural
+    // hazards, aviation, health, internet outages, webcams, instability,
+    // keyword monitors. Unrest, weather and hazards have no panel; they are layers.
+    for (const key of [
+      'map', 'live-news', 'security-advisories', 'airline-intel', 'disease-outbreaks',
+      'internet-disruptions', 'live-webcams', 'cii', 'monitors',
+    ]) {
+      assert.ok(preset!.panels.includes(key), `protective-travel is missing panel ${key}`);
+    }
+    for (const layer of ['protests', 'weather', 'natural', 'flights', 'outages'] as const) {
+      assert.ok(preset!.layers.includes(layer), `protective-travel is missing layer ${layer}`);
+    }
+    for (const key of preset!.panels) {
+      if (key !== 'map') assert.ok(key in ALL_PANELS, `protective-travel panel '${key}' not in ALL_PANELS`);
+    }
+  });
+
+  it('asks Country Watcher users for countries but does not gate it', () => {
+    const preset = MISSION_PRESETS.find((p) => p.id === 'country-watcher');
+    assert.equal(preset!.asksForCountries, true);
+    assert.notEqual(preset!.requiresFocus, true, 'Country Watcher stays available to every plan');
+  });
+
+  it('offers no other preset a country prompt or a focus gate', () => {
+    for (const preset of MISSION_PRESETS) {
+      if (preset.id === 'country-watcher' || preset.id === 'protective-travel') continue;
+      assert.notEqual(preset.asksForCountries, true, `${preset.id} must not ask for countries`);
+      assert.notEqual(preset.requiresFocus, true, `${preset.id} must not require the focus entitlement`);
+    }
   });
 
   it('defines country-watcher with the verified panel keys and no variant gate', () => {
@@ -1616,5 +1667,68 @@ describe('mission preset shell integration', () => {
     assert.deepEqual(readJsonStorage<string[]>('panel-order'), priorOrder);
     assert.deepEqual(readJsonStorage<string[]>('panel-order-bottom-set'), priorBottom);
     await waitForMissionTimers();
+  });
+});
+
+describe('mission presets that ask for countries (#10453)', () => {
+  it('opens the focus editor after Country Watcher is applied, for a plan that can set a focus', async () => {
+    const { manager, callbacks } = createMissionHarness({ focusAllowed: true });
+    manager.applyMissionPreset('country-watcher');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset()?.id, 'country-watcher');
+    assert.equal(callbacks.focusPrompts, 1);
+    assert.equal(callbacks.focusGates, 0);
+  });
+
+  it('applies Country Watcher without a prompt or a gate for a plan that cannot set a focus', async () => {
+    const { manager, callbacks } = createMissionHarness({ focusAllowed: false });
+    manager.applyMissionPreset('country-watcher');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset()?.id, 'country-watcher');
+    assert.equal(callbacks.focusPrompts, 0);
+    assert.equal(callbacks.focusGates, 0);
+  });
+
+  it('applies Protective Travel and asks for the countries for an entitled plan', async () => {
+    const { manager, callbacks } = createMissionHarness({ focusAllowed: true });
+    manager.applyMissionPreset('protective-travel');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset()?.id, 'protective-travel');
+    assert.equal(callbacks.focusPrompts, 1);
+    assert.equal(callbacks.focusGates, 0);
+  });
+
+  it('does not apply Protective Travel for a plan without the entitlement, and shows the gate', async () => {
+    const { manager, callbacks, ctx } = createMissionHarness({ focusAllowed: false });
+    const before = structuredClone(ctx.panelSettings);
+    manager.applyMissionPreset('protective-travel');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset(), null);
+    assert.deepEqual(ctx.panelSettings, before, 'a refused preset must not touch the layout');
+    assert.equal(callbacks.applyPanelSettingsCalls, 0);
+    assert.equal(callbacks.focusPrompts, 0);
+    assert.equal(callbacks.focusGates, 1);
+  });
+
+  it('never opens a dialog when an agent applies a preset, and still refuses an unentitled travel preset', async () => {
+    const entitled = createMissionHarness({ focusAllowed: true });
+    entitled.manager.applyMissionPreset('protective-travel', 'agent');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset()?.id, 'protective-travel');
+    assert.equal(entitled.callbacks.focusPrompts, 0);
+
+    const unentitled = createMissionHarness({ focusAllowed: false });
+    unentitled.manager.applyMissionPreset('protective-travel', 'agent');
+    await waitForMissionTimers();
+    assert.equal(loadStoredMissionPreset(), null);
+    assert.equal(unentitled.callbacks.focusGates, 1);
+  });
+
+  it('leaves presets that do not ask for countries alone', async () => {
+    const { manager, callbacks } = createMissionHarness({ focusAllowed: true });
+    manager.applyMissionPreset('supply-chain-risk');
+    await waitForMissionTimers();
+    assert.equal(callbacks.focusPrompts, 0);
+    assert.equal(callbacks.focusGates, 0);
   });
 });

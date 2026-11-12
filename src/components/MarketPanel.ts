@@ -1,5 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
+import { sparklineSpanHtml } from './_sparkline-span';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { formatPrice, formatChange, getChangeClass, getHeatmapClass } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -225,7 +226,7 @@ export class HeatmapPanel extends Panel {
   private _buildTabBar(): string {
     const hasValuations = Object.keys(this._valuations).length > 0;
     if (!hasValuations) return '';
-    return `<div style="display:flex;gap:4px;margin-bottom:8px">
+    return `<div class="panel-tabs" style="margin-bottom:8px">
       <button class="panel-tab${this._tab === 'performance' ? ' active' : ''}" data-tab="performance" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Performance</button>
       <button class="panel-tab${this._tab === 'valuations' ? ' active' : ''}" data-tab="valuations" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">Valuations</button>
     </div>`;
@@ -360,23 +361,23 @@ export class HeatmapPanel extends Panel {
           ? ` <span title="Last known value; not refreshed this cycle" style="color:var(--text-dim);font-size:calc(9px * var(--wm-panel-effective-scale, 1))">(stale)</span>`
           : '';
         return `<tr${isStale ? ' style="opacity:0.65"' : ''}>
-  <td style="padding:3px 6px;white-space:nowrap;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(name)}${staleMark}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${fmtBeta(e.beta)}</td>
-  <td style="padding:3px 6px;text-align:right;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
+  <td style="white-space:nowrap">${escapeHtml(name)}${staleMark}</td>
+  <td style="text-align:right;color:${peColor(e.trailingPE)}">${fmtPE(e.trailingPE)}</td>
+  <td style="text-align:right;color:${peColor(e.forwardPE)}">${fmtPE(e.forwardPE)}</td>
+  <td style="text-align:right">${fmtBeta(e.beta)}</td>
+  <td style="text-align:right;color:${e.ytdReturn === null ? 'var(--text-dim)' : e.ytdReturn >= 0 ? 'var(--green)' : 'var(--red)'}">${fmtPct(e.ytdReturn)}</td>
 </tr>`;
       })
       .join('');
 
     const table = `<div style="overflow-x:auto">
-<table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
-  <thead><tr style="color:var(--text-dim);border-bottom:1px solid var(--border)">
-    <th scope="col" style="padding:3px 6px;text-align:left;font-weight:500">Sector</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Trail P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Fwd P/E</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Beta</th>
-    <th scope="col" style="padding:3px 6px;text-align:right;font-weight:500">Year to date</th>
+<table class="wm-table">
+  <thead><tr>
+    <th scope="col">Sector</th>
+    <th scope="col" style="text-align:right">Trail P/E</th>
+    <th scope="col" style="text-align:right">Fwd P/E</th>
+    <th scope="col" style="text-align:right">Beta</th>
+    <th scope="col" style="text-align:right">Year to date</th>
   </tr></thead>
   <tbody>${tableRows}</tbody>
 </table></div>`;
@@ -614,9 +615,11 @@ const XAU_CURRENCY_CONFIG: Array<{ symbol: string; label: string; flag: string; 
   { symbol: 'USDTRY=X',  label: 'TRY', flag: '🇹🇷', multiply: true  },
 ];
 
+type CommodityCard = Pick<MarketData, 'display' | 'price' | 'change' | 'sparkline' | 'sparklineIntervalSeconds' | 'sparklineStartAt'> & { symbol?: string };
+
 export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
-  private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
+  private _commodityData: CommodityCard[] = [];
   private _fxRates: EcbFxRateItem[] = [];
   private _physicalPremiums: PhysicalPremium[] = [];
   private _physicalPremiumFxAsOf = '';
@@ -667,7 +670,7 @@ export class CommoditiesPanel extends Panel {
     return { ok: true, status: 'applied', effectiveTab: this._tab };
   }
 
-  public renderCommodities(data: Array<{ symbol?: string; display: string; price: number | null; change: number | null; sparkline?: number[] }>): void {
+  public renderCommodities(data: CommodityCard[]): void {
     this._commodityData = data;
     this._render();
   }
@@ -708,6 +711,21 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
+  /**
+   * Rendering rebuilds the tab bar, and a rebuilt bar starts scrolled to the
+   * left. Scroll the selected tab back into view, clear of the bar's 24px
+   * edge fade.
+   */
+  private readonly revealActiveTab = (): void => {
+    const bar = this.content.querySelector<HTMLElement>(':scope > .panel-tabs');
+    const active = bar?.querySelector<HTMLElement>('.panel-tab.active');
+    if (!bar || !active || bar.scrollWidth <= bar.clientWidth) return;
+    const barBox = bar.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    if (tabBox.left < barBox.left) bar.scrollLeft += tabBox.left - barBox.left;
+    else if (tabBox.right > barBox.right - 24) bar.scrollLeft += tabBox.right - (barBox.right - 24);
+  };
+
   private _buildTabBar(hasPhysical: boolean, hasFx: boolean, hasXau: boolean): string {
     const firstTabLabel = t('components.commodities.commodities');
     const tabs: string[] = [
@@ -716,7 +734,7 @@ export class CommoditiesPanel extends Panel {
     if (hasPhysical) tabs.push(`<button class="panel-tab${this._tab === 'physical' ? ' active' : ''}" data-tab="physical" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">${t('components.commodities.physicalPremiums')}</button>`);
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">XAU/FX</button>`);
-    return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
+    return tabs.length > 1 ? `<div class="panel-tabs" style="margin-bottom:8px">${tabs.join('')}</div>` : '';
   }
 
   private _renderPhysicalPremiums(): string {
@@ -851,7 +869,7 @@ export class CommoditiesPanel extends Panel {
     const tabBar = this._buildTabBar(hasPhysical, hasFx, hasXau);
 
     if (this._tab === 'physical' && hasPhysical) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -871,12 +889,12 @@ export class CommoditiesPanel extends Panel {
           ${changeStr ? `<div class="commodity-change ${escapeHtml(changeClass)}">${escapeHtml(changeStr)}</div>` : ''}
         </div>`;
       }).join('');
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div class="commodities-grid">${items}</div><div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Source: ECB</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
     if (this._tab === 'xau' && hasXau) {
-      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderXau(), 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
@@ -893,21 +911,24 @@ export class CommoditiesPanel extends Panel {
         this.showRetrying(t('common.failedCommodities'));
         return;
       }
-      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'));
+      this.setSafeContent(unsafeRawHtml(tabBar + `<div style="padding:8px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('common.failedCommodities')}</div>`, 'legacy Panel.setContent() migration'), this.revealActiveTab);
       return;
     }
 
     const grid = '<div class="commodities-grid">' +
-      validData.map(c => `
+      validData.map(c => {
+        const chart = miniSparkline(c.sparkline, c.change, 60, 18);
+        return `
         <div class="commodity-item">
           <div class="commodity-name">${escapeHtml(c.display)}</div>
-          ${miniSparkline(c.sparkline, c.change, 60, 18)}
+          ${chart ? chart + sparklineSpanHtml(c) : '<div class="commodity-spark-empty" aria-hidden="true"></div>'}
           <div class="commodity-price">${escapeHtml(formatPrice(c.price!))}</div>
           <div class="commodity-change ${getChangeClass(c.change!)}">${formatChange(c.change!)}</div>
         </div>
-      `).join('') + '</div>';
+      `;
+      }).join('') + '</div>';
 
-    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(unsafeRawHtml(tabBar + grid, 'legacy Panel.setContent() migration'), this.revealActiveTab);
   }
 }
 

@@ -284,30 +284,14 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.name).toBe('AbortError');
   });
 
-  test('chunk preload reload guard is one-shot until app boot clears it', async ({ page }) => {
+  test('chunk preload reload guard reloads once per build', async ({ page }) => {
     await page.goto('/tests/runtime-harness.html');
 
     const result = await page.evaluate(async () => {
       const {
-        buildChunkReloadStorageKey,
+        CHUNK_RELOAD_STORAGE_KEY,
         installChunkReloadGuard,
-        clearChunkReloadGuard,
       } = await import('/src/bootstrap/chunk-reload.ts');
-
-      const listeners = new Map<string, Array<() => void>>();
-      const eventTarget = {
-        addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => {
-          const list = listeners.get(type) ?? [];
-          list.push(() => {
-            if (typeof listener === 'function') {
-              listener(new Event(type));
-            } else {
-              listener.handleEvent(new Event(type));
-            }
-          });
-          listeners.set(type, list);
-        },
-      };
 
       const storageMap = new Map<string, string>();
       const storage = {
@@ -315,46 +299,41 @@ test.describe('desktop runtime routing guardrails', () => {
         setItem: (key: string, value: string) => {
           storageMap.set(key, value);
         },
-        removeItem: (key: string) => {
-          storageMap.delete(key);
-        },
       };
-
-      const emit = (eventName: string) => {
-        const handlers = listeners.get(eventName) ?? [];
-        handlers.forEach((handler) => handler());
-      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
       let reloadCount = 0;
-      const storageKey = installChunkReloadGuard('9.9.9', {
-        eventTarget,
-        storage,
-        eventName: 'preload-error',
-        reload: () => {
-          reloadCount += 1;
-        },
-      });
+      // Each install models a page load that shares the surviving storage.
+      const pageLoad = async (version: string) => {
+        const eventTarget = new EventTarget();
+        installChunkReloadGuard(version, {
+          eventTarget,
+          storages: [storage],
+          eventName: 'preload-error',
+          reload: () => {
+            reloadCount += 1;
+          },
+        });
+        eventTarget.dispatchEvent(new Event('preload-error', { cancelable: true }));
+        eventTarget.dispatchEvent(new Event('preload-error', { cancelable: true }));
+        await settle();
+      };
 
-      emit('preload-error');
-      emit('preload-error');
-      const reloadCountBeforeClear = reloadCount;
-
-      clearChunkReloadGuard(storageKey, storage);
-      emit('preload-error');
+      await pageLoad('9.9.9');
+      await pageLoad('9.9.9');
+      const reloadCountSameBuild = reloadCount;
+      await pageLoad('9.9.10');
 
       return {
-        storageKey,
-        expectedKey: buildChunkReloadStorageKey('9.9.9'),
-        reloadCountBeforeClear,
-        reloadCountAfterClear: reloadCount,
-        storedValue: storageMap.get(storageKey) ?? null,
+        reloadCountSameBuild,
+        reloadCountAfterNewBuild: reloadCount,
+        storedValue: storageMap.get(CHUNK_RELOAD_STORAGE_KEY) ?? null,
       };
     });
 
-    expect(result.storageKey).toBe(result.expectedKey);
-    expect(result.reloadCountBeforeClear).toBe(1);
-    expect(result.reloadCountAfterClear).toBe(2);
-    expect(result.storedValue).toBe('1');
+    expect(result.reloadCountSameBuild).toBe(1);
+    expect(result.reloadCountAfterNewBuild).toBe(2);
+    expect(result.storedValue).toBe('9.9.10');
   });
 
   test('update badge picks architecture-correct desktop download url', async ({ page }) => {

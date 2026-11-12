@@ -6,6 +6,7 @@ import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
 import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 import { isAllowedRedirectUri } from './_redirect-uri.js';
 
 export const config = { runtime: 'edge' };
@@ -74,7 +75,7 @@ async function getRatelimit() {
   if (!url || !token) return null;
   const { Ratelimit, Redis } = await loadUpstashRatelimit();
   _rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(5, '60 s'),
     prefix: 'rl:oauth-register',
     analytics: false,
@@ -108,7 +109,7 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
-    return jsonResp({ error: 'method_not_allowed' }, 405);
+    return jsonResponse({ error: 'method_not_allowed' }, 405, { ...corsHeaders, Allow: 'POST, OPTIONS' });
   }
 
   let admission;

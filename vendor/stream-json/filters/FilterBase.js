@@ -25,6 +25,12 @@ class FilterBase extends Transform {
     super(Object.assign({}, options, {writableObjectMode: true, readableObjectMode: true}));
     this._transform = this._check;
     this._stack = [];
+    // Bound path reconstruction before it can become quadratic in input depth.
+    const maxDepth = options && options.maxDepth !== undefined ? options.maxDepth : 1024;
+    if (!(maxDepth >= 1) || (maxDepth !== Infinity && !Number.isInteger(maxDepth))) {
+      throw new RangeError('maxDepth must be a positive integer');
+    }
+    this._maxDepth = Math.min(maxDepth, 1024);
 
     const filter = options && options.filter,
       separator = (options && options.pathSeparator) || '.';
@@ -55,6 +61,9 @@ class FilterBase extends Transform {
   }
 
   _check(chunk, _, callback) {
+    if ((chunk.name === 'startObject' || chunk.name === 'startArray') && this._stack.length >= this._maxDepth) {
+      return callback(new RangeError('JSON input exceeds max depth of ' + this._maxDepth));
+    }
     // update the last stack key
     switch (chunk.name) {
       case 'startObject':

@@ -60,7 +60,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | BIS exchange rates | `GET /api/economic/v1/get-bis-exchange-rates` | BIS real effective exchange-rate table; bootstrap-first via `bisExchange`. |
 | BIS credit | `GET /api/economic/v1/get-bis-credit` | BIS credit-to-GDP rankings; bootstrap-first via `bisCredit`. |
 | FRED batch | `POST /api/economic/v1/get-fred-series-batch` | Macro tiles and FRED dashboard series in one call. |
-| Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel; bootstrap-first via `groceryBasket`. |
+| Grocery basket prices | `GET /api/economic/v1/list-grocery-basket-prices` | Grocery Index panel via `groceryBasket`. Verified retail offers are priced at standard quantities. Only baskets with all ten staples qualify for rankings. Weekly change compares each complete basket with the same country's complete basket from 7 days earlier, within 12 hours. |
 | Big Mac prices | `GET /api/economic/v1/list-bigmac-prices` | Big Mac Index panel; bootstrap-first via `bigmac`. |
 | National debt | `GET /api/economic/v1/get-national-debt` | Global Debt Clock panel; bootstrap-first via `nationalDebt`. Free. |
 | Fuel prices | `GET /api/economic/v1/list-fuel-prices` | Fuel Prices panel; bootstrap-first via `fuelPrices`. |
@@ -268,6 +268,23 @@ The Oil & Energy panel tracks four key indicators from the U.S. Energy Informati
 | **US Inventory**  | Commercial crude stocks   | Weekly         |
 
 Trend detection flags week-over-week changes exceeding ±0.5% as rising or falling, with flat readings within the threshold shown as stable. Results are cached client-side for 30 minutes. The panel provides energy market context for geopolitical analysis — price spikes often correlate with supply disruptions in monitored conflict zones and chokepoint closures.
+
+### Commodity quote sparklines
+
+Every Yahoo-sourced commodity quote uses the same window rule: the last 24 trading hours, meaning the latest 288 five-minute bars that had trades. Bars with no trades are left out, so a daily close or a weekend is a gap, not a flat line. After a close the series reaches back into the previous session instead of restarting. At 23:30 UTC on a Monday, Brent's 288 bars are the last 30 minutes of Friday, all of Monday's 23-hour session and the 30 minutes since the reopen, so the card reads "since Fri 21:30 UTC". The old rule showed 6 bars after a Sunday reopen.
+
+The bars come from the quote's default chart plus a 3-day 5-minute history chart. Yahoo cuts that chart at New York midnight and counts Sunday's evening session as a day, so on Sunday evening it still holds Thursday evening and Friday. A thin contract that trades fewer than 24 hours in those 3 days keeps every bar it has.
+
+Both writers reject isolated outliers before bucketing and again on the five-minute closes **before** taking the last 288 points. The threshold is local to each symbol and input interval: the larger of 10 times the median absolute deviation of close-to-close changes and 6 times the median absolute change, over up to 30 changes on either side (excluding the candidate's entry, internal and exit changes). A flat tape uses only a floating-point noise tolerance, not a fixed percentage floor. Every candidate must lie on the same side of both surrounding closes, exceed the threshold against both, and revert by more than half its initial excursion. First and last prints and sustained moves are kept. A trading gap on only one side preserves a session open. Two-print islands are eligible only when all three surrounding/intervening gaps exceed 15 minutes and their internal price spread is less than half their minimum departure; adjacent liquid-market closes confirm a move and are kept. Removed closes are omitted, as before; values do not carry individual timestamps.
+
+At least three independent close-to-close changes must remain after excluding the candidate's transitions; otherwise the candidate is kept because volatility cannot be estimated from that short tape.
+
+Sparse two-print neighborhoods are evaluated before singletons. If a bounded reversal fails the internal clustering rule, both prints are retained so successive singleton removals cannot erase the broader movement.
+The five-minute close pass uses each closing print's actual timestamp for trading-gap decisions; only the displayed window start is rounded to its five-minute bucket.
+
+The November 9–11, 2026 CT=F fixture records Yahoo's raw minute OHLCV, fresh five-minute bars, and the existing cached history. The cache placed 82.72 at November 10 08:20 UTC beside the zero-volume 82.37 print; the freshly fetched minute and five-minute charts place 82.72 at November 11 08:20 UTC. The cached pair reverts to 78.39 and is removed as a historical data island. The later November 11 level near 82.5 persists across closes with volume and is kept. These observations establish inconsistent historical bars, not an independently verified contract roll; the filter neither rebases nor removes a sustained level change.
+
+Each quote carries `sparklineIntervalSeconds` (300 for these bars, 86400 for Alpha Vantage daily closes) and `sparklineStartAt`, the first bar's start in epoch milliseconds. The Commodities and Energy Complex panels print the span under each sparkline, and the Gold Intelligence panel adds it to the GC=F price line (`get-gold-intelligence` returns it as `goldSparklineIntervalSeconds` and `goldSparklineStartAt`). A full 24 trading hours that end at the current time read "24h", allowing for up to 3 hours of daily breaks. Otherwise the label gives the first bar in UTC, such as "since Sun 23:00 UTC", or the first day for daily closes. When the spike filter removes a close from a continuously trading tape, the series keeps that slot with the straight line between the retained closes around it, so later points stay on the 5-minute grid the client assumes; a removal beside a trading gap stays a removal. A quote with no sparkline renders an empty chart slot instead of a collapsed card. Both writers build the series with `scripts/shared/quote-sparkline.cjs`: the commodity seeder cron and the relay's 5-minute commodity loop.
 
 ---
 

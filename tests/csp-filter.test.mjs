@@ -563,6 +563,19 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'style-src', 'https://fonts.googleapis.com/css?family=Roboto:wght@400;500&display=swap', '', false));
     });
 
+    it('suppresses the Google Fonts Early Access stylesheet path (WORLDMONITOR-J0 round 7)', () => {
+      // The only blockedURI in J0 since 2026-09: Chrome desktop and Chrome iOS
+      // loading the legacy Early Access sheet for a Noto family we never use.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/earlyaccess/notosansmalayalam.css', '', false));
+      // Exact path shape: another path, a nested path, http, or a lookalike host still surfaces.
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/earlyaccess/x.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/earlyaccess/a/b.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://fonts.googleapis.com/earlyaccess/notosansmalayalam.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com.evil.com/earlyaccess/notosansmalayalam.css', '', false));
+      // Same path under another directive still surfaces.
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://fonts.googleapis.com/earlyaccess/notosansmalayalam.css', '', false));
+    });
+
     it('suppresses 6ppn.com extension stylesheet injection (WORLDMONITOR-J0)', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.CMoYtLrp.css?v=uTaroZOITRdUkyChp', '', false));
     });

@@ -401,6 +401,10 @@ function markFallbackCoverageStale(
       ...fallback,
       coverage: {
         ...coverage,
+        // Snapshots accepted before the considered counts existed lack them;
+        // the schema promises served counts there, not omitted fields.
+        itemsConsidered: coverage.itemsConsidered ?? coverage.itemsServed,
+        publishersConsidered: coverage.publishersConsidered ?? coverage.publisherCount,
         state: 'stale',
         attemptedAt,
         servedStale: true,
@@ -428,6 +432,9 @@ function markFallbackCoverageStale(
       attemptedAt,
       itemsServed: items.length,
       publisherCount: new Set(items.map(item => publisherFamilyFor(item?.source ?? ''))).size,
+      // No record of the ranked pool survives in pre-coverage content.
+      itemsConsidered: items.length,
+      publishersConsidered: new Set(items.map(item => publisherFamilyFor(item?.source ?? ''))).size,
       feedTotal: 0,
       feedCompleted: 0,
       categoryTotal: Object.keys(categoryStates).length,
@@ -2393,6 +2400,8 @@ export async function listFeedDigest(
       attemptedAt: at,
       itemsServed: 0,
       publisherCount: 0,
+      itemsConsidered: 0,
+      publishersConsidered: 0,
       feedTotal: 0,
       feedCompleted: 0,
       categoryTotal: 0,
@@ -3888,6 +3897,7 @@ async function buildDigest(
       attemptOutcomes: attempts.attemptOutcomes,
       itemsServed: allSliced.length,
       publisherSources: allSliced.map((item) => publisherFamilyForItem(item)),
+      consideredPublisherSources: servableItems.map((item) => publisherFamilyForItem(item)),
       deadlineAborted: deadlineController.signal.aborted,
       drops: { ...ledgerDrops },
       buildStartMs: buildStart,

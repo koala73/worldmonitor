@@ -150,6 +150,28 @@ describe('set_map_mode persists map mode', () => {
     }
   });
 
+  it('survives a browser that blocks site storage (Sentry WORLDMONITOR-1D3)', async () => {
+    // With site data blocked, Chrome throws SecurityError from the
+    // `localStorage` getter itself, so even `typeof localStorage` throws.
+    const own = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Access is denied for this document.', 'SecurityError');
+      },
+    });
+
+    try {
+      const result = await applyVisibleMapDimension(makeCtx({ deck: true }), '3d');
+      expect(result.effective).toBe('3d');
+      expect(result.persisted).toBe(false);
+      expect(document.querySelector('[data-mode="globe"]')?.classList.contains('active')).toBe(true);
+    } finally {
+      if (own) Object.defineProperty(globalThis, 'localStorage', own);
+      else delete (globalThis as { localStorage?: Storage }).localStorage;
+    }
+  });
+
   it('does not replace the renderer when required persistence is unavailable', async () => {
     const spy = vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
       throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');

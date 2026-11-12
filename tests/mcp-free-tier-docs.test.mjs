@@ -44,9 +44,10 @@ describe('MCP free-tier discovery parity', () => {
     );
 
     assert.doesNotMatch(agentView.endpoints.mcp.note, /describe_tool (?:is|are) anonymous/i);
-    assert.match(agentView.endpoints.mcp.note, /describe_tool.*subscription auth/i);
+    // describe_tool is `free-account` in the server card: quota-exempt, but not anonymous.
+    assert.match(agentView.endpoints.mcp.note, /describe_tool.*signed-in account/i);
     assert.doesNotMatch(agentView.authentication.summary, /describe_tool.*anonymous/i);
-    assert.match(developerGuide, /`describe_tool` requires subscription credentials/i);
+    assert.match(developerGuide, /`describe_tool` is quota-exempt and needs a signed-in account/i);
   });
 
   it('keeps published dashboard-key quotas aligned with runtime enforcement', () => {
@@ -65,14 +66,17 @@ describe('MCP free-tier discovery parity', () => {
     // calls/day; pin both halves so the card cannot drift from the catalog again.
     const starter = PRODUCT_CATALOG.api_starter.features.planLimits;
     const business = PRODUCT_CATALOG.api_business.features.planLimits;
+    const enterprise = PRODUCT_CATALOG.enterprise.features.planLimits;
     assert.equal(starter.mcpCallsPerDay, SHARED_API_BUDGET, 'API Starter shares its REST budget');
     assert.equal(business.mcpCallsPerDay, SHARED_API_BUDGET, 'API Business shares its REST budget');
+    assert.equal(enterprise.mcpCallsPerDay, SHARED_API_BUDGET, 'Enterprise shares its REST budget');
     assert.equal(card.rateLimits.dailyByPlan.apiStarter, starter.apiRequestsPerDay);
     assert.equal(card.rateLimits.dailyByPlan.apiBusiness, business.apiRequestsPerDay);
+    assert.equal(card.rateLimits.dailyByPlan.enterprise, enterprise.apiRequestsPerDay);
     assert.equal(card.rateLimits.dailyByPlan.pro, PRODUCT_CATALOG.pro_monthly.features.planLimits.mcpCallsPerDay);
     assert.deepEqual(
       card.rateLimits.dailyBudgetSharedWithRestByPlan,
-      ['apiStarter', 'apiBusiness'],
+      ['apiStarter', 'apiBusiness', 'enterprise'],
       'the card must say WHICH plans share, or 1000 reads as a separate MCP allowance',
     );
     assert.doesNotMatch(overview, /wm_….*no MCP daily reservation/i);

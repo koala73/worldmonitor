@@ -7,21 +7,27 @@ import { join } from 'node:path';
 
 import { LIVE_TOPIC_PAGES } from './live-pages/index.mjs';
 import { LIVE_PAGE_RELATED, renderLiveDataLinks } from './live-pages/related-links.mjs';
+import { renderWorldMapSvg, WORLD_MAP_INPUT_PATHS } from './live-pages-world-map.mjs';
 
-export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-10-28';
+export const LIVE_TOPIC_PAGES_CONTENT_VERSION = '2026-11-07';
 export const LIVE_TOPIC_PAGES_INPUT_PATHS = Object.freeze([
   'scripts/build-live-topic-pages.mjs',
   'scripts/live-pages',
+  ...WORLD_MAP_INPUT_PATHS,
 ]);
 
 export function renderLiveTopicPage({ page, record, baseUrl, lastmod, tpl }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const url = absoluteUrl(baseUrl, page.path);
   const section = page.renderSection(record, { live: false });
+  // A figure is built once and sits outside the live section, so the routing
+  // middleware never re-renders it (a map's geometry stays out of the Edge
+  // bundle); the section restyles it.
+  const figure = page.renderFigure ? `${page.renderFigure({ worldMapSvg: renderWorldMapSvg })}\n` : '';
   const body = `      <p class="eyebrow">Live data</p>
       <h1>${escapeHtml(page.h1)}</h1>
       <p class="lede">${escapeHtml(page.description)}</p>
-${section}
+${figure}${section}
 ${page.explainer}
 ${renderLiveDataLinks(LIVE_PAGE_RELATED[page.slug] ?? [], escapeHtml, 'Related live data')}
       <h2>See it on the dashboard</h2>
@@ -50,6 +56,7 @@ ${renderLiveDataLinks(LIVE_PAGE_RELATED[page.slug] ?? [], escapeHtml, 'Related l
       { name: page.h1, path: page.path },
     ]),
     body,
+    inlineScript: page.script ?? '',
   });
 }
 

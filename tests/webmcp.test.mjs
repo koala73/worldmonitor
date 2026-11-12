@@ -1423,7 +1423,7 @@ describe('webmcp.ts: current API contract', () => {
 
     const page = await tool.execute({ variant: 'full', limit: 4 });
     assert.equal(page.variant, 'full');
-    assert.equal(page.total, 112);
+    assert.equal(page.total, 113);
     assert.equal(page.hasMore, true);
     assert.equal(typeof page.nextCursor, 'string');
     assert.equal(page.panels.length, 4);
@@ -2714,32 +2714,106 @@ const collectingHomepageProvider = (registered) => ({
   },
 });
 
+// Parses the homepage script and lists every way it strays from the shape
+// static WebMCP readers can trace: registerTool called only on `current`
+// (four times) or `legacy`, `current` written only with plain `=` from
+// document.modelContext or null (a conditional may pick between them), and
+// no function that takes the provider as a parameter.
+function homepageProviderViolations(source) {
+  const file = ts.createSourceFile('homepage.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  const unwrap = (node) => {
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    return node;
+  };
+  const allowedValue = (node) => {
+    node = unwrap(node);
+    if (node.kind === ts.SyntaxKind.NullKeyword) return true;
+    if (ts.isConditionalExpression(node)) return allowedValue(node.whenTrue) && allowedValue(node.whenFalse);
+    return ts.isPropertyAccessExpression(node) && node.getText(file).replace(/\s+/g, '') === 'document.modelContext';
+  };
+  const isCurrent = (node) => ts.isIdentifier(unwrap(node)) && unwrap(node).text === 'current';
+  const violations = [];
+  const receivers = [];
+  let readsDocument = false;
+  const recordWrite = (operator, value) => {
+    if (operator !== '=') violations.push(`compound write ${operator}`);
+    else if (!allowedValue(value)) violations.push(`current = ${value.getText(file)}`);
+    else if (/document\.modelContext/.test(value.getText(file))) readsDocument = true;
+  };
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = unwrap(node.expression);
+      if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'registerTool') {
+        receivers.push(unwrap(callee.expression).getText(file));
+      }
+    }
+    if (ts.isVariableDeclaration(node) && isCurrent(node.name) && node.initializer) recordWrite('=', node.initializer);
+    if (
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      && isCurrent(node.left)
+    ) {
+      recordWrite(node.operatorToken.getText(file), node.right);
+    }
+    if (ts.isParameter(node) && ts.isIdentifier(node.name) && node.name.text === 'modelContext') {
+      violations.push('modelContext parameter');
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  const stray = receivers.filter((name) => name !== 'current' && name !== 'legacy');
+  if (stray.length) violations.push(`registerTool on ${stray.join(', ')}`);
+  const currentCalls = receivers.filter((name) => name === 'current').length;
+  if (currentCalls !== WEBMCP_HOMEPAGE_TOOL_NAMES.length) violations.push(`${currentCalls} current.registerTool calls`);
+  if (!readsDocument) violations.push('current never reads document.modelContext');
+  return violations;
+}
+
 describe('homepage WebMCP source registration', () => {
 
   it('observes registerTool promises', () => {
     assert.ok(homepageSourceScript);
-    assert.match(homepageSourceScript.body, /Promise\.resolve\(provider\.registerTool\(tools\[i\]\)\)/);
+    assert.match(homepageSourceScript.body, /Promise\.resolve\(results\[i\]\)\.then\(/);
     assert.match(homepageSourceScript.body, /function \(\) \{ return false; \}/);
+  });
+
+  // ora.ai's static WebMCP reader credits only registerTool() calls whose
+  // receiver it can trace to document.modelContext. A helper that takes the
+  // provider as a parameter, or one variable that may hold either provider,
+  // dropped the homepage from 4.8/8 to 1.6/8.
+  it('keeps every registerTool call statically traceable to its provider', () => {
+    assert.deepEqual(homepageProviderViolations(homepageSourceScript.body), []);
+    const bad = [
+      'var current = null; current /* fallback */ ||= navigator.modelContext;',
+      'var current = null; (current) ||= legacy;',
+      'var current = null; current <<= 1;',
+      'var current = document.modelContext || legacy;',
+      'var current = typeof document !== "undefined" ? document.modelContext : legacy;',
+      'function registerTools(modelContext) { return modelContext.registerTool({}); }',
+      'var current = document.modelContext; (navigator.modelContext).registerTool({});',
+    ];
+    for (const source of bad) assert.notDeepEqual(homepageProviderViolations(source), [], source);
   });
 
   it('registers titled, annotated tools synchronously', () => {
     const result = runHomepage(collectingHomepageProvider);
     assert.deepEqual(result.registered.map((tool) => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
     assert.equal(result.registered[0].annotations.readOnlyHint, false);
-    assert.equal(result.registered[1].annotations.readOnlyHint, true);
+    assert.ok(result.registered.slice(1).every((tool) => tool.annotations.readOnlyHint === true));
     assert.ok(result.registered.every((tool) => typeof tool.title === 'string'));
   });
 
   it('returns native values and routes launch requests safely', async () => {
     const finance = runHomepage(collectingHomepageProvider);
-    const launch = finance.registered.find((tool) => tool.name === 'launchWorldMonitor');
+    const launch = finance.registered.find((tool) => tool.name === 'openDashboard');
     const launchResult = await launch.execute({ monitor: 'finance' });
     assert.equal(launchResult, 'Opening the finance monitor: https://finance.worldmonitor.app/dashboard');
     assert.equal(finance.navigatedTo, 'https://finance.worldmonitor.app/dashboard');
 
     for (const bad of ['xyz', 'constructor', '__proto__', 'toString', 'valueOf']) {
       const fallback = runHomepage(collectingHomepageProvider);
-      await fallback.registered.find((tool) => tool.name === 'launchWorldMonitor').execute({ monitor: bad });
+      await fallback.registered.find((tool) => tool.name === 'openDashboard').execute({ monitor: bad });
       assert.equal(fallback.navigatedTo, 'https://www.worldmonitor.app/dashboard');
     }
 
@@ -2750,6 +2824,60 @@ describe('homepage WebMCP source registration', () => {
     assert.equal(endpointResult.endpoint, 'https://worldmonitor.app/mcp');
     assert.equal(endpointResult.transport, 'streamableHttp');
     assert.equal(endpointResult.tools, undefined);
+  });
+
+  it('pages and filters the public scorecard list, and summarizes one country', async (t) => {
+    const pillar = (name, hasScore) => ({ pillar: name, hasScore, score: hasScore ? 4 : 0, band: hasScore ? 'strong-capability' : '', inputCoverage: 0.8, inputs: [{ source: 'World Bank' }, { source: 'World Bank' }, { source: 'UN WPP' }, { source: 'SIPRI' }, { source: 'OWID' }] });
+    const cards = Array.from({ length: 20 }, (_, i) => ({ countryCode: `A${String.fromCharCode(65 + i)}`, pillars: [pillar('food', true), pillar('energy', i % 2 === 0)] }));
+    const requested = [];
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      requested.push(url);
+      if (url.endsWith('countryCode=ZZ')) return new Response('{}', { status: 503 });
+      const body = url.includes('list-five-factor-scorecards')
+        ? { scorecards: cards, computedAt: '2026-11-10T12:00:00.000Z' }
+        : { scorecard: { countryCode: 'AB', methodologyVersion: '1.0.0', computedAt: '2026-11-10T12:00:00.000Z', pillars: cards[1].pillars } };
+      return new Response(JSON.stringify(body), { status: 200 });
+    });
+    const { registered } = runHomepage(collectingHomepageProvider);
+    const list = registered.find((tool) => tool.name === 'listCountryScorecards');
+    const detail = registered.find((tool) => tool.name === 'getCountryScorecard');
+
+    const first = await list.execute({});
+    assert.equal(first.total, 20);
+    assert.equal(first.scorecards.length, 15);
+    assert.equal(first.nextOffset, 15);
+    assert.deepEqual(first.scorecards[1], { countryCode: 'AB', scores: { food: 4, energy: null } });
+    const last = await list.execute({ offset: 15 });
+    assert.equal(last.scorecards.length, 5);
+    assert.equal(last.nextOffset, null);
+    const filtered = await list.execute({ countryCodes: ['ab', 'AC', 'QQ'] });
+    assert.deepEqual(filtered.scorecards.map((row) => row.countryCode), ['AB', 'AC']);
+    assert.throws(() => list.execute({ countryCodes: ['A1'] }), /two-letter ISO/);
+
+    const one = await detail.execute({ countryCode: 'ab' });
+    assert.equal(requested.at(-1), 'https://www.worldmonitor.app/api/scorecard/v1/get-five-factor-scorecard?countryCode=AB');
+    assert.deepEqual(one.pillars[0], { pillar: 'food', score: 4, band: 'strong-capability', inputCoverage: 0.8, sources: ['World Bank', 'UN WPP', 'SIPRI'] });
+    assert.equal(one.pillars[1].score, null);
+    assert.equal(one.evidenceUrl, requested.at(-1));
+    assert.throws(() => detail.execute({ countryCode: 'DEU' }), /two-letter ISO/);
+    await assert.rejects(detail.execute({ countryCode: 'ZZ' }), /HTTP 503/);
+  });
+
+  it('reads scorecards from the page origin and keeps source labels distinct after truncation', async (t) => {
+    const longName = `${'Statistical agency with a very long publication name '.repeat(2)}`;
+    const requested = [];
+    t.mock.method(globalThis, 'fetch', async (url) => {
+      requested.push(url);
+      return new Response(JSON.stringify({ scorecard: { countryCode: 'DE', pillars: [{ pillar: 'food', hasScore: true, score: 3, band: 'mixed', inputCoverage: 1, inputs: [{ source: `${longName}A` }, { source: `${longName}B` }, { source: 'World Bank' }] }] } }), { status: 200 });
+    });
+    const registered = [];
+    const document = { modelContext: collectingHomepageProvider(registered), addEventListener: () => {} };
+    const window = { location: { origin: 'http://localhost:3000', assign: () => {} }, addEventListener: () => {} };
+    runHomepageInline(window, document, {});
+    const result = await registered.find((tool) => tool.name === 'getCountryScorecard').execute({ countryCode: 'DE' });
+    assert.equal(requested[0], 'http://localhost:3000/api/scorecard/v1/get-five-factor-scorecard?countryCode=DE');
+    assert.equal(result.evidenceUrl, requested[0]);
+    assert.deepEqual(result.pillars[0].sources, [longName.slice(0, 60), 'World Bank']);
   });
 
   it('does not call the obsolete batch API', () => {
@@ -2776,7 +2904,7 @@ describe('homepage WebMCP source registration', () => {
         return Promise.reject(new DOMException('duplicate', 'InvalidStateError'));
       },
     }));
-    assert.equal(result.registered.length, 2);
+    assert.equal(result.registered.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
     await settlePromises();
   });
 
@@ -3461,7 +3589,7 @@ describe('legacy WebMCP compatibility', () => {
       result.documentListeners.get('DOMContentLoaded')();
       result.windowListeners.get('load')();
       assert.deepEqual(registered.map(tool => tool.name), WEBMCP_HOMEPAGE_TOOL_NAMES);
-      assert.equal(calls, batch ? 1 : 2);
+      assert.equal(calls, batch ? 1 : WEBMCP_HOMEPAGE_TOOL_NAMES.length);
       assert.equal(registered[1].execute({}).endpoint, 'https://worldmonitor.app/mcp');
       await settlePromises();
     });
@@ -3474,7 +3602,7 @@ describe('legacy WebMCP compatibility', () => {
     harness.runtime.navigator = navigator;
     registerWebMcpTools(createBindings(), harness.runtime);
     assert.deepEqual(registered.map(tool => tool.name), DASHBOARD_TOOL_NAMES);
-    assert.equal(runHomepage(collectingHomepageProvider, navigator).registered.length, 2);
+    assert.equal(runHomepage(collectingHomepageProvider, navigator).registered.length, WEBMCP_HOMEPAGE_TOOL_NAMES.length);
   });
 
   it('contains rejected legacy batch registrations on both pages', async () => {

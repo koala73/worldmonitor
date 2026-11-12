@@ -17,7 +17,7 @@ Account creation is an interactive browser flow, not an API:
 
 ## After signing up
 
-- **Upgrade to Pro, Pro Business, or API** from [worldmonitor.app/pro](https://www.worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing). Pro and Pro Business are separate products: moving from one to the other means cancelling the current subscription in the billing portal and starting the new checkout.
+- **Upgrade to Pro, Pro Business, or API** from [worldmonitor.app/pro](https://www.worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing). An active Pro subscription upgrades to Pro Business in place: choose Pro Business while signed in, review today's charge, and confirm. The billing period restarts on the upgrade day. If that payment fails, the subscription stays on Pro.
 - **Create an API key** from **Dashboard → Settings → API Keys** once subscribed to API Starter or API Business (`wm_` + 40 hex chars). The full value is shown only once; see [Find or replace your license / API key](/api-keys) for the exact steps and recovery instructions.
 - **Connect an agent via OAuth** instead of a key: MCP clients (Claude Desktop and others) use OAuth 2.1 + PKCE with dynamic client registration — no manual account dance; see [auth.md](https://www.worldmonitor.app/auth.md) for the self-bootstrapping discovery chain.
 
@@ -51,7 +51,11 @@ API Business advertises **five Pro licenses total**: the subscription owner plus
 - The invitee receives Pro access, not ownership of the API Business subscription or its billing portal. A higher-tier subscription already owned by the invitee remains authoritative.
 - Removing a seat revokes the grant immediately. If the owner cancels, invited access continues only through the owner's paid-through date.
 
-This is the self-serve path for the five licenses included with monthly API Business. Additional seats, SSO/RBAC, or centralized workspace administration require an Enterprise agreement.
+The owner and accepted seat members can use [team dashboards](/features#team-dashboards) to share panel layouts and map settings. Open **Team** next to the dashboard tabs to publish or open a shared layout. Every team member can update or remove a shared dashboard. Pending invitations do not grant access.
+
+Only one team is available at a time. An eligible Enterprise account takes priority over your own API Business subscription, which takes priority over an accepted seat on another owner's subscription. If either takes priority over your seat, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
+
+This is the self-serve path for the five licenses included with monthly API Business. Additional seats, SSO/RBAC, or centralized workspace administration require an Enterprise agreement. Active Enterprise account members also have team dashboards.
 
 ## For agents
 

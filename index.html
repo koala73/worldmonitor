@@ -131,7 +131,7 @@
         "Earthquake and natural disaster alerts",
         "Civil unrest and protest monitoring",
         "Cyber threat and BGP anomaly detection",
-        "468 news and OSINT feeds from 829 attributed providers across 847 observed source hosts (ACLED, UCDP, NASA FIRMS, USGS, USPTO, FRED, IMF, BIS, OFAC, ECMWF, IAEA, WHO, OpenSky, ADS-B Exchange, and more)",
+        "470 news and OSINT feeds from 854 attributed providers across 876 observed source hosts (ACLED, UCDP, NASA FIRMS, USGS, USPTO, FRED, IMF, BIS, OFAC, ECMWF, IAEA, WHO, OpenSky, ADS-B Exchange, and more)",
         "28 language support with RTL"
       ],
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
@@ -234,8 +234,8 @@
 
 
     <!-- Theme: apply stored preference before first paint to prevent FOUC. -->
-    <script data-wm-map-prepaint>(function(){var mapCollapsed=true;try{mapCollapsed=localStorage.getItem('mobile-map-collapsed')!=='false';}catch(e){}if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');else document.documentElement.classList.remove('wm-map-collapsed');})()</script>
-    <script data-wm-prepaint>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';else if(h.startsWith('commodity.'))v='commodity';else if(h.startsWith('energy.'))v='energy';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}var mapCollapsed=localStorage.getItem('mobile-map-collapsed')!=='false';if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');var dismissKey='wm-pro-banner-launched-dismissed';var legacyDismissKey='wm-pro-banner-dismissed';localStorage.removeItem(legacyDismissKey);var ts=Number(localStorage.getItem(dismissKey)||0);var dismissed=ts>0&&Date.now()-ts<=604800000;if(ts>0&&!dismissed)localStorage.removeItem(dismissKey);var entitledHint=localStorage.getItem('wm-entitlement-hint')==='pro';if(window.self===window.top&&!dismissed&&!entitledHint)document.documentElement.classList.add('wm-pro-banner-reserved');}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
+    <script data-wm-map-prepaint>(function(){var mapCollapsed=false;try{mapCollapsed=localStorage.getItem('mobile-map-collapsed')==='true';}catch(e){}if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');else document.documentElement.classList.remove('wm-map-collapsed');})()</script>
+    <script data-wm-prepaint>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';else if(h.startsWith('commodity.'))v='commodity';else if(h.startsWith('energy.'))v='energy';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}var mapCollapsed=localStorage.getItem('mobile-map-collapsed')==='true';if(mapCollapsed)document.documentElement.classList.add('wm-map-collapsed');var dismissKey='wm-pro-banner-launched-dismissed';var legacyDismissKey='wm-pro-banner-dismissed';localStorage.removeItem(legacyDismissKey);var ts=Number(localStorage.getItem(dismissKey)||0);var dismissed=ts>0&&Date.now()-ts<=604800000;if(ts>0&&!dismissed)localStorage.removeItem(dismissKey);var entitledHint=localStorage.getItem('wm-entitlement-hint')==='pro';if(window.self===window.top&&!dismissed&&!entitledHint)document.documentElement.classList.add('wm-pro-banner-reserved');}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
       :root{--wm-pro-banner-slot-height:40px;--dashboard-panel-row-min:200px;--dashboard-panel-row-max:380px;--dashboard-grid-gap:4px;--dashboard-first-grid-reservation:calc(var(--dashboard-panel-row-min) + var(--dashboard-panel-row-min) + var(--dashboard-grid-gap))}
@@ -398,12 +398,12 @@
         .skeleton-header-left,.skeleton-header-right{gap:8px;min-width:0}
         .skeleton-kicker,.skeleton-section-note{display:none}
         .skeleton-chip{padding:0 6px;font-size:10px}
-        /* Mirror the real full-viewport mobile map (.map-section @ max-width:768px in
-           main.css): the skeleton previously reserved 50vh (~422px) while the hydrated
-           map is calc(100dvh - 48px) (~796px), shoving #panelsGrid down ~374px on the
-           skeleton->app swap (#4580 item a, largest mobile CLS offender). Keep the
-           100vh fallback first for pre-dvh browsers, same order as the real rule. */
-        .skeleton-map{height:calc(100vh - 48px);height:calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));min-height:60vh;max-height:100dvh}
+        /* Mirror the real mobile map strip (.map-section @ max-width:768px in
+           main.css): 32% of the viewport, so the first content panel is on the
+           first screen (#10457). The skeleton must reserve the same height as the
+           hydrated map or #panelsGrid shifts on the skeleton->app swap (#4580 item a).
+           Keep the 32vh fallback first for pre-dvh browsers, same order as the real rule. */
+        .skeleton-map{height:32vh;height:calc(100dvh * 0.32);min-height:220px;max-height:100dvh}
         /* Match .main-content .map-section.collapsed: users who collapsed the mobile
            map previously should not reserve the expanded map before hydration. */
         html.wm-map-collapsed .skeleton-map{height:auto;min-height:0;max-height:none}
@@ -536,7 +536,12 @@
       var attempted=false;
       try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
-        var t=e.target;var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
+        var t=e.target;
+        // Vite adds modulepreload links for lazy chunks. Their failures also
+        // reach vite:preloadError, where chunk-reload.ts bounds the reload; a
+        // stale entry graph fails the module script itself.
+        if(t&&t.tagName==="LINK"&&t.rel==="modulepreload")return;
+        var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
         if(u&&/\/assets\//.test(u)){
           try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){

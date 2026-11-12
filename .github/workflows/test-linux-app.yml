@@ -100,6 +100,24 @@ jobs:
             exit 1
           fi
 
+      # The bundler downloads its AppImage tools from GitHub with no retry, so
+      # one 504 failed this canary (run 42567226797). Restore them from cache
+      # and fetch any missing one with retries before building; the bundler
+      # skips tools that already exist. The key rotates monthly so the tools
+      # served from moving `master`/`continuous` URLs are refreshed.
+      - name: AppImage tool cache month
+        id: appimage-tools-month
+        run: echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tauri AppImage tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/tauri
+          key: tauri-appimage-tools-x86_64-${{ steps.appimage-tools-month.outputs.month }}-${{ hashFiles('scripts/prefetch-appimage-tools.sh') }}
+
+      - name: Prefetch Tauri AppImage tools
+        run: bash scripts/prefetch-appimage-tools.sh x86_64
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f
         env:

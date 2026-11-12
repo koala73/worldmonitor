@@ -67,6 +67,9 @@ const SEED_DOMAINS = {
   'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
   'climate:ocean-ice':        { key: 'seed-meta:climate:ocean-ice',        intervalMin: 1440 }, // daily cron; health.js maxStaleMin:2880 (2x) tolerates one missed run
   'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
+  // Daily bundle member; health.js maxStaleMin:4320 (3x). The activation marker keeps the row
+  // pending (not degraded) until the first publication; minRecordCount matches api/health.js.
+  'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 50, activationKey: 'seed-activated:climate:reservoir-levels' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.
@@ -78,6 +81,7 @@ const SEED_DOMAINS = {
   // publisher alarms as missing/stale instead of reverting to pending.
   'news:feed-health':         { key: 'seed-meta:news:feed-health',         intervalMin: 1440, activationKey: 'seed-activated:news:feed-health' },
   'news:recall-benchmark':    { key: 'seed-meta:news:recall-benchmark',    intervalMin: 1440, activationKey: 'seed-activated:news:recall-benchmark' },
+  'open-data:chokepoints':    { key: 'seed-meta:open-data:chokepoints',    intervalMin: 1440, activationKey: 'seed-activated:open-data:chokepoints' },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },

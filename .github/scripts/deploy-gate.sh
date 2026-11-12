@@ -191,11 +191,18 @@ drift_files=""
 base_drift() {
   local head="$1"
   local merge_base main_tip head_tip head_list main_list
+  local deepen=()
   drift_files=""
+  # The workflow checks out one commit, because only this phase needs history
+  # and most evaluations never reach it. A shallow repo keeps its boundary
+  # through a plain fetch, so merge-base would stop there; unshallow instead.
+  if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+    deepen=(--unshallow)
+  fi
   # Trees are needed, file contents never are, so filter the blobs out. The
   # fetch is unauthenticated (the checkout runs with persist-credentials:false)
   # which this public repo allows; a private fork would need a token here.
-  if ! git fetch --no-tags --quiet --filter=blob:none "$BASE_DRIFT_REMOTE" \
+  if ! git fetch --no-tags --quiet --filter=blob:none "${deepen[@]}" "$BASE_DRIFT_REMOTE" \
     "+refs/heads/main:$BASE_DRIFT_MAIN_REF" "+$head:$BASE_DRIFT_HEAD_REF"; then
     echo "::error::Could not fetch main and $head for the base-drift comparison" >&2
     return 1
@@ -497,6 +504,40 @@ print(json.dumps({
   emit_output protocol_failed "$(printf '%s\n' "$plan" | jq -r .protocol_failed)"
 }
 
+# The 60s re-poll below exists for the LAST workflow_run event of a head
+# (#5479). While a gated workflow is still queued or running, its own
+# completion event is still to come and will read the checks afresh, so an
+# all-pending result can be published at once. 454 evaluations on 3-4 November
+# 2026 spent a median 62s in this step, nearly all of it that wait, while
+# holding a runner that PR jobs were queueing for. One run confirmed unfinished
+# is enough, since its completion evaluates again; a failed read never counts
+# as unfinished, so with no confirmed run the wait stays.
+#
+# The runs listing can serve a stale snapshot with HTTP 200 (see
+# docs/solutions/integration-issues/convex-deploy-monitor-outvotes-stale-github-run-listing-snapshot.md),
+# and a stale "in progress" on the head's last event would skip the only
+# re-poll. So the run whose completion fired this event never counts, and every
+# other candidate must still read as unfinished on its own run record.
+gated_run_in_flight() {
+  local eval_sha="$1" pages candidates run_id run_status
+  [ -n "${GATED_WORKFLOWS:-}" ] || return 1
+  pages=$(gh_api_with_rate_limit_retry core \
+    "repos/$REPO/actions/runs?head_sha=$eval_sha&per_page=100" --paginate --slurp) || return 1
+  candidates=$(printf '%s\n' "$pages" | jq -r --arg gated "$GATED_WORKFLOWS" --arg trigger "${TRIGGER_RUN_ID:-}" '
+    ($gated | split(",")) as $names
+    | .[].workflow_runs[]?
+    | select(.status != "completed" and (.id | tostring) != $trigger and (.name as $name | $names | index($name)))
+    | .id') || return 1
+  for run_id in $candidates; do
+    run_status=$(gh_api_with_rate_limit_retry core "repos/$REPO/actions/runs/$run_id" --jq .status) || continue
+    if [ -n "$run_status" ] && [ "$run_status" != "completed" ]; then
+      echo "Gated run $run_id is $run_status"
+      return 0
+    fi
+  done
+  return 1
+}
+
 evaluate_sha() {
 echo "── evaluating $SHA"
 active_sha="$SHA"
@@ -554,6 +595,10 @@ print('failed=' + ','.join(name for name in required if latest[name] not in ('su
     break
   fi
   if [ "$attempt" -lt 2 ]; then
+    if [ "$failed" = "$pending" ] && gated_run_in_flight "$SHA"; then
+      echo "A gated workflow is still running for $SHA; its completion event re-evaluates, so skipping the stale-read wait"
+      break
+    fi
     sleep 60
   fi
 done

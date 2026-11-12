@@ -195,7 +195,8 @@
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
     "climateNews": "Climate News",
-    "ukmtoIncidents": "UKMTO Incidents"
+    "ukmtoIncidents": "UKMTO Incidents",
+    "reservoirLevels": "Strategic Water Levels"
   },
   "common": {
     "dismiss": "Dismiss",
@@ -280,6 +281,7 @@
   "auth": {
     "signIn": "Sign In",
     "createAccount": "Create account",
+    "freeReason": "Free: save your layout, follow countries, get alerts",
     "settings": "Settings"
   },
   "mcp": {
@@ -472,6 +474,9 @@
       "viewPanel": "View related panel"
     },
     "deckgl": {
+      "tooltip": {
+        "sinceDate": "since {{date}}"
+      },
       "views": {
         "global": "Global",
         "americas": "Americas",
@@ -505,8 +510,8 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro is launched",
-      "tagline": "More Signal, Less Noise. More AI Briefings. A Geopolitical & Equity Researcher just for you.",
+      "headline": "Daily AI briefs by email or Slack",
+      "tagline": "plus WM Analyst, alert rules and MCP for Claude",
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
@@ -606,7 +611,16 @@
       "infoTooltip": "<strong>Economic Warfare</strong> Detects converging economic pressure signals:<ul><li>Sanctions, trade restrictions, and currency movements</li><li>Commodity disruptions linked to geopolitical actors</li><li>Cross-domain correlation between economic and security events</li></ul>Click a card to zoom to the affected region."
     },
     "energyComplex": {
-      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>US Energy Information Administration metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>"
+      "infoTooltip": "<strong>Energy Complex</strong> Physical and tradeable energy signals in one place:<ul><li><strong>US Energy Information Administration metrics</strong>: WTI, Brent, US production, and inventories</li><li><strong>Live tape</strong>: Tradeable energy prices like crude and natural gas</li><li><strong>Purpose</strong>: Separate physical energy stress from broader macro and commodity panels</li></ul>",
+      "marketTape": "Market quotes",
+      "futures": "Futures",
+      "dailySpot": "Daily spot",
+      "eiaWeeklySpot": "EIA spot · weekly average",
+      "weekEnding": "Week ending {{date}}",
+      "unknownPriceDate": "Observation time unavailable",
+      "unknownQuoteSource": "Quote source unavailable",
+      "stalePrice": "Stale",
+      "liveTapeSource": "Market quotes"
     },
     "escalationCorrelation": {
       "infoTooltip": "<strong>Escalation Monitor</strong> Detects converging geopolitical signals:<ul><li>Correlates military movements, conflict events, and news spikes</li><li>Scores convergence zones by severity (critical/high/medium/low)</li><li>Tracks escalation or de-escalation trends over time</li></ul>Click a card to zoom to the region on the map."
@@ -706,7 +720,7 @@
       "title": "Pentagon Pizza Index"
     },
     "populationExposure": {
-      "infoTooltip": "<strong>Population Exposure Estimates</strong> Estimated population within event impact radius. Based on WorldPop country density data.<ul><li>Conflict: 50km radius</li><li>Earthquake: 100km radius</li><li>Flood: 100km radius</li><li>Wildfire: 30km radius</li></ul>"
+      "infoTooltip": "Country density required. Unrest needs a precise location; UCDP marked imprecise is excluded, unknown is pending. One place from two sources shows as two rows. Areas may overlap."
     },
     "positioning247": {
       "infoTooltip": "<strong>24/7 Positioning</strong> Perpetual contract positioning stress from Hyperliquid. Trades around the clock, showing what's building when traditional markets are closed. Composite score (0-100) from funding rate, volume, open interest, and spot-perp basis. Green = longs crowded (bullish lean), red = shorts crowded (bearish lean).",
@@ -726,7 +740,7 @@
       "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and US Energy Information Administration."
     },
     "sanctionsPressure": {
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designations. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "infoTooltip": "OFAC SDN and Consolidated Lists plus Canada SEMA/JVCFOA designations. Country rows use direct associations. Vessel flags and aircraft registries are counted separately under registries; zero country asset counts do not mean no sanctioned assets.",
       "title": "Sanctions & Designations"
     },
     "satelliteFires": {
@@ -803,6 +817,7 @@
       "sortRelevance": "Relevance"
     },
     "webcams": {
+      "play": "Watch live",
       "previewStatus": "Ready to play"
     },
     "passkeyOffer": {
@@ -916,11 +931,21 @@
     "tabDeleted": "Tab \"{{name}}\" deleted",
     "addTab": "Add tab",
     "addTabTitle": "New tab (starts with the default panels)",
+    "addTabTitleSaved": "New tab (starts with the panels you saved)",
+    "newTabOptions": "New tab options",
+    "newTabStartsDefault": "New tabs start with the default panels.",
+    "newTabStartsSaved": "New tabs start with the panels you saved.",
+    "newTabOptionsHint": "Tabs you already have don't change.",
+    "useThisTabPanels": "Use this tab's panels",
+    "useDefaultPanels": "Use the default panels",
     "renameHint": "{{name}} — double-click to rename",
     "deleteTab": "Delete tab",
     "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "tabNameAria": "Tab name",
+    "team": "Team",
+    "teamDashboards": "Team dashboards"
   },
   "preferences":{"panelFontScale":"Text size","followGlobalFontScale":"Use global"},
-  "countryHistory":{"title":"Daily country history"}
+  "countryHistory":{"title":"Daily country history"},
+  "teamDashboards":{"desc":"Dashboards your team shares. Open one to add it as a new tab.","empty":"Your team hasn't shared a dashboard yet. Share this tab to give everyone on your team its panels, sizes and map.","open":"Open {{name}} as a new tab","stopSharing":"Stop sharing {{name}}","shareTab":"Share this tab with your team","shareChanges":"Share this tab's changes with your team","behind":"Your team changed this dashboard after you opened it.","getLatest":"Get the latest version"}
 }

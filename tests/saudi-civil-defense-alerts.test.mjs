@@ -47,7 +47,7 @@ describe('Saudi Civil Defense notification producer', () => {
         } });
       },
     }) };
-    const context = { URL, Buffer, http: transport, https: transport, CLASSIFY_SYSTEM_PROMPT: 'fixture' };
+    const context = { AbortSignal, URL, Buffer, http: transport, https: transport, CLASSIFY_SYSTEM_PROMPT: 'fixture' };
     vm.createContext(context);
     vm.runInContext(relay.slice(start, end), context);
     const text = 'x'.repeat(3000);

@@ -131,7 +131,7 @@ export class StockAnalysisPanel extends Panel {
           },
           {
             key: 'change', label: '1d %', align: 'right', sortable: true, sortOptionKey: 'change-desc',
-            cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
+            cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
           },
         ],
         filters: [
@@ -268,7 +268,7 @@ export class StockAnalysisPanel extends Panel {
           </div>
           <div style="text-align:right;min-width:110px">
             <div style="font-size:calc(18px * var(--wm-panel-effective-scale, 1));font-weight:700">${escapeHtml(formatPrice(item.currentPrice, item.currency))}</div>
-            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(item.changePercent))}</div>
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:${item.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))'}">${escapeHtml(formatChange(item.changePercent))}</div>
             <div style="margin-top:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Score ${escapeHtml(String(getStockAnalysisRatingScore(item)))} · ${escapeHtml(getStockAnalysisRatingConfidence(item))}</div>
           </div>
           ${history.length >= 2 ? (() => {
@@ -421,7 +421,7 @@ export class StockAnalysisPanel extends Panel {
 
     if (currentPrice > 0) {
       const upsidePct = ((displayMedian - currentPrice) / currentPrice) * 100;
-      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+      const upsideColor = upsidePct >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))';
       const upsideStr = `${upsidePct >= 0 ? '+' : ''}${upsidePct.toFixed(1)}%`;
       cells.push(`<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:90px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">vs Current</div><div style="margin-top:2px;color:${upsideColor}">${escapeHtml(upsideStr)}</div></div>`);
     }
@@ -431,7 +431,7 @@ export class StockAnalysisPanel extends Panel {
 
   private renderRecentUpgrades(upgrades: UpgradeDowngrade[]): string {
     const rows = upgrades.slice(0, 3).map((u) => {
-      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical)' : 'var(--text-dim)';
+      const actionColor = u.action === 'up' || u.action === 'init' ? 'var(--semantic-normal)' : u.action === 'down' ? 'var(--semantic-critical-text, var(--semantic-critical))' : 'var(--text-dim)';
       const actionLabel = u.action === 'up' ? 'Upgrade' : u.action === 'down' ? 'Downgrade' : u.action === 'init' ? 'Initiated' : escapeHtml(u.action);
       const gradeChange = u.fromGrade ? `${escapeHtml(u.fromGrade)} → ${escapeHtml(u.toGrade)}` : escapeHtml(u.toGrade);
 
@@ -477,32 +477,32 @@ export class StockAnalysisPanel extends Panel {
     const buysStr = formatDollarCompact(data.totalBuys);
     const sellsStr = formatDollarCompact(data.totalSells);
     const netStr = `${data.netValue >= 0 ? '+' : ''}${formatDollarCompact(data.netValue)}`;
-    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)';
+    const netColor = data.netValue >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical-text, var(--semantic-critical))';
 
     const summary = `
       <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-family:var(--font-mono)">
         <span>Buys: <span style="color:var(--semantic-normal)">${escapeHtml(buysStr)}</span></span>
-        <span>Sells: <span style="color:var(--semantic-critical)">${escapeHtml(sellsStr)}</span></span>
+        <span>Sells: <span style="color:var(--semantic-critical-text, var(--semantic-critical))">${escapeHtml(sellsStr)}</span></span>
         <span>Net: <span style="color:${netColor};font-weight:600">${escapeHtml(netStr)}</span></span>
       </div>`;
 
     const rows = data.transactions.slice(0, 5);
     const table = rows.length > 0 ? `
-      <table style="width:100%;border-collapse:collapse;font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-top:6px">
+      <table class="wm-table" style="margin-top:6px">
         <thead>
-          <tr style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;text-align:left">
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Name</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Type</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Shares</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right">Value</th>
-            <th scope="col" style="padding:4px 6px;border-bottom:1px solid var(--border)">Date</th>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Type</th>
+            <th scope="col" style="text-align:right">Shares</th>
+            <th scope="col" style="text-align:right">Value</th>
+            <th scope="col">Date</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map(tx => {
             const isBuy = tx.transactionCode === 'P';
             const isSell = tx.transactionCode === 'S';
-            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical)' : 'var(--text-dim)';
+            const typeColor = isBuy ? 'var(--semantic-normal)' : isSell ? 'var(--semantic-critical-text, var(--semantic-critical))' : 'var(--text-dim)';
             // Non-market rows (M/A/D/F) carry value: 0 from the server because
             // their transactionPrice is not a market execution price (strike,
             // grant price, buyback redemption, or tax withholding). Render a
@@ -511,11 +511,11 @@ export class StockAnalysisPanel extends Panel {
             const valueCell = tx.value === 0 ? '—' : formatDollarCompact(tx.value);
             return `
               <tr>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;font-family:var(--font-mono)">${valueCell}</td>
-                <td style="padding:4px 6px;border-bottom:1px solid var(--border);color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
+                <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(tx.name)}</td>
+                <td style="color:${typeColor}">${escapeHtml(txCodeLabel(tx.transactionCode))}</td>
+                <td style="text-align:right;font-family:var(--font-mono)">${Number.isFinite(tx.shares) ? tx.shares.toLocaleString() : '0'}</td>
+                <td style="text-align:right;font-family:var(--font-mono)">${valueCell}</td>
+                <td style="color:var(--text-dim)">${escapeHtml(tx.transactionDate)}</td>
               </tr>`;
           }).join('')}
         </tbody>

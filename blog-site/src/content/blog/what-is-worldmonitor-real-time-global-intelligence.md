@@ -13,7 +13,7 @@ World Monitor is a **free, open-source, real-time global intelligence dashboard*
 
 ## What Does World Monitor Do?
 
-World Monitor turns many public signals into one situational-awareness view. Instead of reading a conflict map, ship tracker, market terminal, disaster feed, and news dashboard separately, an analyst can inspect where those signals overlap and then follow the underlying sources.
+World Monitor turns many public signals into one situational-awareness view. Instead of reading a [conflict map](/blog/posts/track-global-conflicts-in-real-time/), ship tracker, market terminal, disaster feed, and [news dashboard](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/) separately, an analyst can inspect where those signals overlap and then follow the underlying sources.
 
 | Signal family | What World Monitor shows | Example primary sources |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ World Monitor turns many public signals into one situational-awareness view. Ins
 | Natural hazards | Earthquakes, fires, volcanoes, floods, weather, and radiation signals | [USGS](https://earthquake.usgs.gov/), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/), and official alert feeds |
 | Cyber and infrastructure | Outages, malicious infrastructure, datacenters, nuclear sites, and dependency cascades | Cloudflare Radar, abuse.ch feeds, and public infrastructure datasets |
 
-The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 829 attributed providers across 847 observed source hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
+The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 854 attributed providers across 876 observed source hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
 
 ## How Is It Different From a News Dashboard?
 
@@ -38,8 +38,8 @@ The public dashboard exposes a shared map-layer catalog, curated news feeds back
 
 World Monitor currently maintains:
 
-- The Tier-1 country registry in the high-frequency Country Instability Index
-- The public Country Resilience Index universe
+- The Tier-1 country registry in the high-frequency Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)
+- The public Country [Resilience Index](/blog/posts/country-resilience-index-methodology-explained/) universe
 - Stock exchanges and central-bank or supranational institutions in the generated market catalog
 - Interface languages, including right-to-left Arabic
 - Dashboard variants (registry keys): `full`, `tech`, `finance`, `commodity`, `happy`, and `energy`

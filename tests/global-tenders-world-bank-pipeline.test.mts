@@ -6,6 +6,7 @@ import type { ListGlobalTendersRequest, ServerContext } from '../src/generated/s
 import { __testing__ as health } from '../api/health.js';
 import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 import { createTenderReceipt, TENDER_RECEIPTS_KEY } from '../scripts/_global-tender-receipts.mjs';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const NOW = Date.parse('2026-09-11T14:00:00Z');
 const KEY = 'economic:global-tenders:v1';
@@ -71,7 +72,8 @@ function fixture(t: TestContext) {
     }
     throw new Error(`Unexpected Redis command ${op}`);
   };
-  t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+  // runSeed's fenced canonical/seed-meta writes reach this double as SETs.
+  t.mock.method(globalThis, 'fetch', withSeedLockFence(async (url, options = {}) => {
     const parsed = new URL(String(url));
     if (parsed.hostname === 'redis.fixture') {
       if (parsed.pathname.startsWith('/get/')) {
@@ -95,7 +97,7 @@ function fixture(t: TestContext) {
       } }));
     }
     return Response.json(state.payload);
-  });
+  }));
   const adapters = [['world-bank', fetchWorldBank], ['ted', async ({ now }: { now: number }) => {
     state.siblingCalls++;
     if (state.siblingFailed) throw new Error('sibling failed');

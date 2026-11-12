@@ -10,7 +10,7 @@ Agents report problems through the MCP tool `report_issue` and the REST route `P
 
 ## Cadence
 
-Review the `received` queue weekly. Unreviewed `received` and `triaged` rows are deleted 30 days after they arrive, and `private` rows after 180 days. Check `private` whenever the owner security email arrives, and at the latest the next day.
+A daily email at 08:20 UTC, "[WM] Agent feedback: N new report(s)", counts the `received` reports that arrived since the last one by kind and surface type. It is sent only on days with new reports and never includes report text. Review the `received` queue when it arrives, and at least weekly. Unreviewed `received` and `triaged` rows are deleted 30 days after they arrive, and `private` rows after 180 days. Check `private` whenever the owner security email arrives, and at the latest the next day.
 
 ## Credentials
 

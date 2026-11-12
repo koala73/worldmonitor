@@ -20,6 +20,7 @@ import { getCorsHeaders } from './_cors.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
+import { DESKTOP_KEY_CLIENT_ERROR } from '../server/_shared/desktop-key-principal';
 import { chargeDesktopKeyBudget, desktopKeyBudgetResponse } from '../server/_shared/desktop-key-meter';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
@@ -164,7 +165,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405, corsHeaders);
+    return json({ error: 'Method not allowed' }, 405, { ...corsHeaders, Allow: 'POST, OPTIONS' });
   }
 
   // Top-level error boundary. An edge function must never let an exception
@@ -198,6 +199,10 @@ export default async function handler(req: Request): Promise<Response> {
       // Matches api/latest-brief.ts, which has always answered 401 here.
       if (premiumIdentity.unauthenticated) {
         return json({ error: 'UNAUTHENTICATED' }, 401, corsHeaders);
+      }
+      // The owner has Pro; a script reusing their desktop key needs an API plan.
+      if (premiumIdentity.desktopClientDenied) {
+        return json({ error: DESKTOP_KEY_CLIENT_ERROR }, 403, corsHeaders);
       }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }

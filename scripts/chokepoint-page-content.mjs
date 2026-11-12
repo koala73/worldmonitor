@@ -150,6 +150,12 @@ export const CHOKEPOINT_CONTENT = {
     ],
     region: 'Persian Gulf ↔ Gulf of Oman',
     glossarySlug: 'strait-of-hormuz',
+    // Answer engines rank this page on "is the Strait of Hormuz open", so the
+    // title and H1 carry that question instead of the generic status label.
+    metaTitle: 'Is the Strait of Hormuz Open? Live Status | World Monitor',
+    metaDescription:
+      'Is the Strait of Hormuz open? Live disruption score, IMF PortWatch daily transits against the year-earlier normal, and navigational warnings for the strait.',
+    heading: 'Is the Strait of Hormuz open?',
     whyHeading: 'Why is the Strait of Hormuz the most watched energy chokepoint?',
     blurb:
       'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: about 20% of the world’s seaborne crude oil — and a large share of LNG — has no alternative route out of the Gulf.',
@@ -161,12 +167,12 @@ export const CHOKEPOINT_CONTENT = {
       'There is no second strait out of the Gulf. Overland bypass pipelines can move a fraction of crude to the Red Sea or Gulf of Oman, but they do not carry the LNG that Ras Laffan loads, and they do not recreate the 21.0 million barrels a day in the EIA 2023 World Oil Transit Chokepoints Hormuz row. World Monitor therefore enables the energy shock model on this waterway and keeps a dedicated transit research report in /research/.',
     faqs: [
       {
-        question: 'Is there a sea route that avoids the Strait of Hormuz?',
-        answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
+        question: 'Is the Strait of Hormuz open right now?',
+        answer: 'This page’s live reading at the top gives the current disruption score, active navigational warnings and the latest IMF PortWatch daily transit count with its publication lag. The score is a risk signal, not an official open or closed declaration.',
       },
       {
-        question: 'Does World Monitor model an energy shock for Hormuz?',
-        answer: 'Yes. Hormuz is shock-model supported. The committed EIA 2023 baseline is 21.0 million barrels a day, the largest row in that seven-waterway series.',
+        question: 'Is there a sea route that avoids the Strait of Hormuz?',
+        answer: 'No. Gulf exports that leave by ship must use Hormuz. Bypass pipelines move some crude overland; they are not a second seaborne strait and they do not move Qatar’s LNG.',
       },
     ],
   },

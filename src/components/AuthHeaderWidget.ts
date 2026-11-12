@@ -1,5 +1,5 @@
 import { subscribeAuthState, type AuthSession } from '@/services/auth-state';
-import { mountUserButton, openSignIn, openSignUp } from '@/services/clerk';
+import { mountUserButton, openSignIn } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -65,18 +65,26 @@ export class AuthHeaderWidget {
     this.container.setAttribute('aria-busy', 'true');
     setTrustedHtml(this.container, trustedHtml('', 'legacy direct innerHTML migration'));
 
+    const reasonSkeleton = document.createElement('span');
+    reasonSkeleton.className = 'auth-header-skeleton auth-header-skeleton-reason';
+    reasonSkeleton.setAttribute('aria-hidden', 'true');
+    this.container.appendChild(reasonSkeleton);
+
     const signInSkeleton = document.createElement('span');
     signInSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signin';
     signInSkeleton.setAttribute('aria-hidden', 'true');
     this.container.appendChild(signInSkeleton);
-
-    const signUpSkeleton = document.createElement('span');
-    signUpSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signup';
-    signUpSkeleton.setAttribute('aria-hidden', 'true');
-    this.container.appendChild(signUpSkeleton);
   }
 
   private renderSignedOut(): void {
+    // One header account action (#10464): keep Sign In, fold Create account into
+    // Clerk's withSignUp sign-in flow, and show why a free account is worth it.
+    const freeReason = document.createElement('span');
+    freeReason.className = 'auth-free-reason';
+    freeReason.textContent = t('auth.freeReason');
+    freeReason.title = freeReason.textContent;
+    this.container.appendChild(freeReason);
+
     const signInBtn = document.createElement('button');
     signInBtn.className = 'auth-signin-btn';
     signInBtn.textContent = t('auth.signIn');
@@ -85,12 +93,6 @@ export class AuthHeaderWidget {
       else openSignIn();
     });
     this.container.appendChild(signInBtn);
-
-    const signUpLink = document.createElement('button');
-    signUpLink.className = 'auth-signup-link';
-    signUpLink.textContent = t('auth.createAccount');
-    signUpLink.addEventListener('click', () => openSignUp());
-    this.container.appendChild(signUpLink);
   }
 
   private renderSignedIn(): void {

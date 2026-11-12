@@ -46,6 +46,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   // Markets & economy
   get_market_data: 'markets-economy',
   get_economic_data: 'markets-economy',
+  get_fred_series: 'markets-economy',
   get_no2_activity: 'markets-economy',
   get_procurement_opportunities: 'markets-economy',
   get_company_intelligence: 'markets-economy',
@@ -82,6 +83,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_toronto_reported_occurrences: 'geopolitical-security',
   get_toronto_calls_attended: 'geopolitical-security',
   get_country_risk: 'geopolitical-security',
+  prepare_travel_risk_assessment: 'geopolitical-security',
   get_country_history: 'geopolitical-security',
   get_country_coverage: 'geopolitical-security',
   list_x_feed: 'geopolitical-security',
@@ -100,6 +102,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   get_focal_points: 'geopolitical-security',
   simulate_infrastructure_cascade: 'geopolitical-security',
   get_military_surge: 'geopolitical-security',
+  get_global_air_activity: 'geopolitical-security',
   get_population_exposure: 'geopolitical-security',
   get_alert_digest: 'geopolitical-security',
   get_hotspot_escalation: 'geopolitical-security',
@@ -121,6 +124,7 @@ export const TOOL_CATEGORY_BY_NAME: Readonly<Record<string, McpToolCategoryId>> 
   search_flight_prices_by_date: 'movement-infrastructure',
   // Environment & science
   get_climate_data: 'environment-science',
+  get_reservoir_levels: 'environment-science',
   get_imd_cyclone_marine: 'environment-science',
   get_natural_disasters: 'environment-science',
   get_radiation_data: 'environment-science',

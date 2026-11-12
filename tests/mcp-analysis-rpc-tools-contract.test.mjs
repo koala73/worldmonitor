@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { readToolsReference } from './helpers/mcp-tools-reference-docs.mjs';
 
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../api/mcp/constants.ts';
 import { TOOL_LIST_RESPONSE, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
@@ -9,6 +9,15 @@ const findTool = (name) => TOOL_REGISTRY.find((tool) => tool.name === name);
 // ---------------------------------------------------------------------------
 // Registry contract
 // ---------------------------------------------------------------------------
+
+it('publishes population event fields including folded eventCount', () => {
+  const tool = findTool('get_population_exposure');
+  const fields = tool.outputSchema.properties.data.properties.events.items.properties;
+  for (const field of ['eventCount', 'name', 'country', 'nearestCountry', 'exposedPopulation', 'exposureRadiusKm', 'densityPerKm2']) {
+    assert.ok(fields?.[field]?.description, field);
+  }
+  assert.equal(fields.eventCount.type, 'integer');
+});
 
 describe('wave-2a analysis tools registry contract', () => {
   const expected = {
@@ -90,8 +99,8 @@ describe('wave-2a analysis tools registry contract', () => {
   });
 
   it('documents the focal-point response field with its actual wire name', () => {
-    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
-    const chinese = readFileSync(new URL('../docs/zh/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+    const english = readToolsReference('en');
+    const chinese = readToolsReference('zh');
     for (const docs of [english, chinese]) {
       const section = docs.match(/### `get_focal_points`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
       assert.match(section, /`ai_context`/);
@@ -100,7 +109,7 @@ describe('wave-2a analysis tools registry contract', () => {
   });
 
   it('publishes a valid cascade source id in the English example', () => {
-    const english = readFileSync(new URL('../docs/mcp-tools-reference.mdx', import.meta.url), 'utf8');
+    const english = readToolsReference('en');
     const section = english.match(/### `simulate_infrastructure_cascade`[\s\S]*?(?=\n### `)/)?.[0] ?? '';
     assert.match(section, /"source_id":"chokepoint:hormuz_strait"/);
     assert.doesNotMatch(section, /"source_id":"hormuz"/);
@@ -167,9 +176,7 @@ describe('wave-2 analysis tools: user-input bounds', () => {
     }
   });
 
-  it('get_population_exposure rejects out-of-range coordinates instead of guessing a country', () => {
-    // Euclidean nearest-centroid has no notion of a valid globe, so lat 999
-    // previously resolved to Mali and returned a real-looking estimate.
+  it('get_population_exposure rejects out-of-range coordinates', () => {
     const tool = findTool('get_population_exposure');
     return tool._execute({ mode: 'point', lat: 999, lon: -999 }, '', {}, {}).then((result) => {
       assert.match(result.error, /lat must be within/);
@@ -184,9 +191,40 @@ describe('wave-2 analysis tools: user-input bounds', () => {
     for (const [lat, lon] of [[90, 180], [-90, -180], [0, 0]]) {
       const result = await tool._execute({ mode: 'point', lat, lon, radius_km: 10 }, '', {}, {});
       assert.equal(result.error, undefined, `lat=${lat} lon=${lon} must be accepted`);
-      assert.equal(typeof result.data.exposure.exposedPopulation, 'number');
+      assert.equal(result.data.exposure, null, 'no density-table country there');
     }
   });
+
+  it('get_population_exposure point mode uses the country under the point, or returns null', async () => {
+    const tool = findTool('get_population_exposure');
+    for (const [lat, lon, country] of [[50.45, 30.52, 'UKR'], [6.45, 3.39, 'NGA'], [31.52, 34.45, 'PSE'], [-33.45, -70.67, null], [30.27, -97.74, null], [52.52, 13.405, null]]) {
+      const result = await tool._execute({ mode: 'point', lat, lon }, '', {}, {});
+      assert.equal(result.error, undefined);
+      assert.equal(result.data.exposure?.country ?? null, country, `lat=${lat} lon=${lon}`);
+      assert.equal(result.data.exposure?.nearestCountry ?? null, country);
+    }
+  });
+
+  for (const [name, lat, lon, country] of [
+    ['Eilat centre', 29.55, 34.95, 'ISR'],
+    ['Eilat south', 29.54, 34.94, 'ISR'],
+    ['Eilat north (atlas Jordan)', 29.57, 34.96, null],
+    ['Teknaf', 20.86, 92.30, null],
+    ['Aqaba', 29.649, 35.033, null],
+    ['Moldova', 48.40742803917716, 27.510716032731192, null],
+    ['Laos', 21.261407681930056, 100.77073645052123, null],
+    ['Cameroon', 8.846732292626287, 12.8475151779719, null],
+    ['offshore Lagos', 6.30, 3.39, null],
+    ['Haifa', 32.82, 34.99, 'ISR'],
+  ]) {
+    it(`MCP point regression: ${name}`, async () => {
+      const result = await findTool('get_population_exposure')._execute({ mode: 'point', lat, lon }, '', {}, {});
+      assert.equal(result.error, undefined);
+      assert.equal(result.data.exposure?.country ?? null, country);
+      assert.equal(result.data.exposure?.nearestCountry ?? null, country);
+      if (country === 'ISR') assert.equal(result.data.exposure.densityPerKm2, 444);
+    });
+  }
 
   it('clamps a runaway radius and reports the radius actually used', async () => {
     const tool = findTool('get_population_exposure');

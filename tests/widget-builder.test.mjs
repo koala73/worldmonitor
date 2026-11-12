@@ -1296,6 +1296,14 @@ describe('widget-agent relay — security', () => {
     assert.ok(guardIdx < anthropicIdx, 'injection check must happen before any Anthropic API call');
   });
 
+  it('widget model client timeout is the request budget, without SDK retries', () => {
+    // Turns are non-streaming messages.create calls (8192 max_tokens on Pro), so
+    // headers arrive only after generation; a fixed 60s client timeout killed
+    // turns the 150s/180s widget deadline still had time for.
+    assert.match(relay, /new Anthropic\(\{ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 \}\)/);
+    assert.match(relay, /const timeoutMs = isPro \? 180_000 : 150_000;/);
+  });
+
   it('injection guard — tool results are sanitized before context insertion', () => {
     assert.ok(relay.includes('sanitizeToolContent'), 'sanitizeToolContent must be applied to tool results');
     // Must be called on both search results and WM data results

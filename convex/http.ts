@@ -397,7 +397,11 @@ export async function internalEntitlementsHttpHandler(
           result.features.tier === 0 &&
           fallbackState?.currentEntitlement
         ) {
-          result = fallbackState.currentEntitlement;
+          // The Enterprise account block follows membership, not the winning
+          // plan, so it survives the fallback swap.
+          result = "account" in result && result.account
+            ? { ...fallbackState.currentEntitlement, account: result.account }
+            : fallbackState.currentEntitlement;
         }
         const staleFeatures = fallbackState?.strongestRecentlyStaleFeatures;
         const verificationCouldExpandCoverage = !!staleFeatures && (
@@ -2337,6 +2341,52 @@ http.route({
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
+    }
+  }),
+});
+
+// Pro → Pro Business in-place upgrade for /pro (the dashboard calls the
+// public action directly). The edge handler has already verified the Clerk JWT.
+const PRO_BUSINESS_UPGRADE_REFUSALS = new Set([
+  "NO_UPGRADEABLE_PRO",
+  "ALREADY_PRO_BUSINESS",
+  "PRO_CANCEL_SCHEDULED",
+  "UPGRADE_IN_PROGRESS",
+  "UPGRADE_RATE_LIMITED",
+  "ACCOUNT_DELETION_IN_PROGRESS",
+]);
+
+http.route({
+  path: "/relay/pro-business-upgrade",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const unauthorized = await authorizeTenantRelay(request, ["gateway"]);
+    if (unauthorized) return unauthorized;
+
+    const body = await parseJsonObjectBody<{ userId?: unknown; confirm?: unknown }>(request);
+    if (!body) {
+      return Response.json({ error: "INVALID_JSON" }, { status: 400 });
+    }
+    if (typeof body.userId !== "string" || body.userId.length === 0 || typeof body.confirm !== "boolean") {
+      return Response.json({ error: "MISSING_FIELDS", required: ["userId", "confirm"] }, { status: 400 });
+    }
+
+    try {
+      const result = await ctx.runAction(
+        internal.payments.billing.internalUpgradeToProBusiness,
+        { userId: body.userId, confirm: body.confirm },
+      );
+      return Response.json(result, { status: 200 });
+    } catch (err) {
+      const code = extractConvexErrorCode(err);
+      if (code && PRO_BUSINESS_UPGRADE_REFUSALS.has(code)) {
+        return Response.json({ error: code }, { status: 409 });
+      }
+      if (code === "DODO_PLAN_CHANGE_ERROR") {
+        return Response.json({ error: code }, { status: 502 });
+      }
+      console.error("[pro-business-upgrade] Operation failed", err);
+      return Response.json({ error: "Operation failed" }, { status: 500 });
     }
   }),
 });

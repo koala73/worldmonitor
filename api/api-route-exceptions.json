@@ -10,10 +10,24 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/travel-risk-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP travel-risk-assessment tool definition. It reads cached seed keys server-side for a plan-gated caller and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/open-data-chokepoints.js",
+      "category": "non-json",
+      "reason": "Serves the CC BY 4.0 chokepoint status open dataset at /data/v1/chokepoints/ as byte-exact dated JSON and CSV files from the Redis archive the daily open-data workflow publishes. The file contract is a published static-file layout, not an RPC envelope.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {
@@ -626,6 +640,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/travel-risk-assessment.ts",
+      "category": "non-json",
+      "reason": "Serves the plan-gated travel risk assessment draft as a downloadable file: text/markdown or text/html with Content-Disposition: attachment. The body is a document, not an RPC envelope. Errors are small JSON bodies; success is never JSON.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/download.js",
       "category": "non-json",
       "reason": "Binary file download (zip/csv/xlsx). Content-Type is not application/json.",
@@ -878,6 +899,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/desktop-key/status.ts",
+      "category": "internal-helper",
+      "reason": "Desktop-key verdict for self-hosted installs (plan 2026-11-04-001 U2). A self-hosted sidecar sends a browser's desktop key in X-WorldMonitor-Key and gets back whether it currently grants desktop scope (active, invalid, not_desktop_key, over_cap, lapsed) or a retryable 503. Not a product data API and not premium-gated: the key being checked may be lapsed or revoked, and it must not spend the owner's desktop-key daily meter the way probing a premium RPC would. Body carries only the verdict and a coarse plan family, no owner identity; always no-store.",
+      "owner": "@koala73",
+      "removal_issue": null
+    },
+    {
       "path": "api/embed/map-frame.ts",
       "category": "internal-helper",
       "reason": "The single composed read the partner /embed map frame polls, replacing four separate anonymous RPC calls. Not a product data API: it accepts one parameter (`layers`) and returns the verbatim payloads of handlers already published as sebuf RPCs — no bbox, page size, or time window, because every knob is a knob a stolen embed credential could turn. Deliberately NOT a sebuf RPC of its own: the free and keyed tiers need different Cache-Control on one path, and CACHE_TIER_BY_PATH in the domain gateway is per-path, so routing it there would let a keyless response be cached and served to a keyed caller. Shareability is decided from the URL alone, before any credential is read (a CDN hit answers before the origin sees a header — #5386): only the exact raw query `layers=<canonical free subset>&public=1` is shared-cacheable, bounding the CDN key space to the free tier's seven non-empty subsets. Every other shape, credentialed or not, is served `private, no-store`, so a near-miss degrades to correct-but-uncached rather than to a shared entry that could answer the wrong caller. Builder and validator are one module (shared/embed-map-frame.ts) so an emitted URL and a cacheable URL cannot drift.",
@@ -993,6 +1021,13 @@
       "path": "api/customer-portal.ts",
       "category": "deferred",
       "reason": "Issues a Dodo customer-portal redirect URL. Paired with create-checkout.ts; migrate together.",
+      "owner": "@SebastienMelki",
+      "removal_issue": "TBD"
+    },
+    {
+      "path": "api/pro-business-upgrade.ts",
+      "category": "deferred",
+      "reason": "Previews or applies the in-place Pro to Pro Business Dodo plan change for /pro. Paired with create-checkout.ts and customer-portal.ts; migrate together.",
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },

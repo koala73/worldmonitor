@@ -42,6 +42,20 @@ import {
 const MOUNT_CLAIM_SETTLE_MS = 75;
 const MOUNT_CLAIM_RETRY_GRACE_MS = 25;
 
+/**
+ * The store handed to the fire-once helpers, or null when it is unreachable.
+ * With site data blocked, reading `window.localStorage` throws SecurityError,
+ * so the handle has to be taken inside a try like every other access here
+ * (Sentry WORLDMONITOR-1D2).
+ */
+function activationStorage(): Storage | null {
+  try {
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function readPendingMarker(): PendingOnboardingMarker | null {
   try {
     const raw = window.localStorage.getItem(PENDING_MARKER_KEY);
@@ -249,12 +263,10 @@ export class ProActivationController implements AppModule {
     const entitlement = toEntitlementSnapshot(getEntitlementState());
     const subscription = toSubscriptionSnapshot(getSubscription());
     const currentSubscriptionKey = deriveSubscriptionKey(subscription);
-    const fireOnce = readScopedFireOnceRecord(
-      window.localStorage,
-      currentAccountKey,
-      currentSubscriptionKey,
-      now,
-    );
+    const storage = activationStorage();
+    const fireOnce = storage
+      ? readScopedFireOnceRecord(storage, currentAccountKey, currentSubscriptionKey, now)
+      : null;
     const decision = decideActivationMount({
       marker,
       entitlement,
@@ -360,10 +372,12 @@ export class ProActivationController implements AppModule {
       // Both terminal outcomes suppress future boot lookups. Never consume the
       // pending marker unless persistence succeeds, so storage failures can retry.
       const accountKey = deriveActivationAccountKey(expectedUserId);
+      const storage = activationStorage();
       if (
         accountKey &&
+        storage &&
         writeScopedFireOnceRecord(
-          window.localStorage,
+          storage,
           accountKey,
           computeFireOnceRecord(subscriptionKey, now, openResult),
         )

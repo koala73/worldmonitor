@@ -32,6 +32,7 @@ import {
 } from './crawlable-live-tools.mjs';
 import { chokepointPulseRecord } from './crawlable-chokepoint-live.mjs';
 import { LIVE_TOPIC_PAGES, liveTopicReading, liveTopicRpcPath } from './live-pages/index.mjs';
+import { activeWarsReading, palestineLocator } from './active-wars.mjs';
 import { loadEnvFile } from './_seed-utils.mjs';
 import {
   briefCitationGroundingGap,
@@ -135,8 +136,10 @@ export function minimumBriefCaptures(briefMatchedCount) {
 // pro-test is an isolated package that must not import from here, so the lists
 // are duplicated on purpose; tests/welcome-teasers.test.mjs imports both and
 // fails if they drift.
-const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
-const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// ^VIX is a commodities.json symbol: list-commodity-quotes serves it and
+// list-market-quotes answers NOT_FOUND, which kept the market card off LIVE.
+export const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC'];
+export const COMMODITY_QUOTE_SYMBOLS = ['^VIX', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
 export const QUOTE_SYMBOLS = [
   '^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH',
@@ -341,7 +344,7 @@ async function resolveLatestResilienceSnapshot() {
   const candidates = entries
     .map((filename) => ({ filename, match: filename.match(RESILIENCE_SNAPSHOT_RE) }))
     .filter(({ match }) => match)
-    .sort((a, b) => b.match[1].localeCompare(a.match[1]));
+    .sort((a, b) => b.match[1].localeCompare(a.match[1], 'en-US'));
   if (candidates.length === 0) {
     throw new Error('No resilience ranking snapshot found');
   }
@@ -593,7 +596,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ));
 
   // Dedupe BEFORE the cap so a second edition of one story never occupies a
@@ -642,7 +645,7 @@ function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMI
     .sort((a, b) => (
       b.importanceScore - a.importanceScore
       || b.publishedAtMs - a.publishedAtMs
-      || a.row.title.localeCompare(b.row.title)
+      || a.row.title.localeCompare(b.row.title, 'en-US')
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
@@ -775,7 +778,7 @@ async function findInPreviousSnapshots(rootDir, pick) {
       const snapshot = JSON.parse(
         await fs.readFile(path.join(rootDir, 'docs', 'snapshots', filename), 'utf8'),
       );
-      const found = pick(snapshot?.forecastScorecard);
+      const found = pick(snapshot);
       if (found) return found;
     } catch {
       // A malformed sibling snapshot is not this run's problem; keep looking.
@@ -785,7 +788,7 @@ async function findInPreviousSnapshots(rootDir, pick) {
 }
 
 async function retainedForecastScorecard(rootDir) {
-  return findInPreviousSnapshots(rootDir, (previous) => {
+  return findInPreviousSnapshots(rootDir, ({ forecastScorecard: previous } = {}) => {
     const scorecard = selectDeclaredScorecardFields(previous?.scorecard);
     const generatedAt = Number(previous?.generatedAt);
     return scorecard && Number.isFinite(generatedAt) && generatedAt > 0
@@ -799,11 +802,21 @@ async function retainedForecastScorecard(rootDir) {
 // record, and the page refuses them anyway.
 async function retainedHorizonGrades(rootDir, generatedAt) {
   if (!Number.isFinite(generatedAt) || generatedAt <= 0) return null;
-  return findInPreviousSnapshots(rootDir, (previous) => {
+  return findInPreviousSnapshots(rootDir, ({ forecastScorecard: previous } = {}) => {
     const captured = previous?.horizonGrades;
     const grades = selectHorizonGrades(captured?.grades);
     return grades && Number(captured.generatedAt) === generatedAt ? { generatedAt, grades } : null;
   });
+}
+
+// The war list is a monthly reading, dated by its own referenceMonth, so last
+// week's capture is still the current answer when this week's read fails.
+// The corpus build drops a carried reading once its month ages out
+// (normalizeActiveWars).
+async function retainedActiveWars(rootDir) {
+  return findInPreviousSnapshots(rootDir, (snapshot) => (
+    snapshot?.activeWars?.referenceMonth ? snapshot.activeWars : null
+  ));
 }
 
 /** Failure codes are a fixed vocabulary because /accuracy/ publishes them. */
@@ -1003,6 +1016,33 @@ export async function freezeCrawlableLivePulse({
       });
     }
   }
+
+  // The /crises/ hub answers "what wars are happening right now" from this.
+  // The handler answers an empty list on a Redis miss, which activeWarsReading
+  // rejects, so an outage carries last week's dated reading instead of
+  // publishing zero wars.
+  let activeWars = null;
+  let activeWarsRetained = false;
+  const activeWarErrors = [];
+  try {
+    const payload = await authedGet('/api/conflict/v1/list-ucdp-events', token, base, authOpts);
+    // The seeder publishes the surviving pages of a release whose candidate
+    // pages partly failed, tagged "+partial". Counting those would drop or
+    // shrink countries, so only a complete monthly release is read.
+    const candidateVersion = String(payload?.candidateVersion ?? '');
+    if (!candidateVersion || candidateVersion.endsWith('+partial')) {
+      throw new Error(`UCDP candidate release ${candidateVersion || 'absent'} is not complete`);
+    }
+    activeWars = {
+      ...activeWarsReading(payload.events, freezeStartedAt, { inPalestine: palestineLocator(REPO_ROOT) }),
+      candidateVersion,
+    };
+  } catch (error) {
+    activeWarErrors.push({ message: error instanceof Error ? error.message : String(error) });
+    activeWars = await retainedActiveWars(rootDir);
+    activeWarsRetained = activeWars !== null;
+  }
+  await sleep(requestGapMs);
 
   // Guarded like every other network step, and unlike the others it never
   // throws: a digest outage costs the strip its headline rows, not the whole
@@ -1354,6 +1394,7 @@ export async function freezeCrawlableLivePulse({
     chokepoints,
     liveTopics,
     crises: crisisSnapshots,
+    activeWars,
     headlines,
     quotes,
     quotesAsOf,
@@ -1434,6 +1475,8 @@ export async function freezeCrawlableLivePulse({
       // longer publish a digest-sized tail as a green build.
       developmentsCountryIndex: countryIndex,
       serviceKeyPresent: keyed,
+      activeWarsCaptured: activeWarErrors.length === 0,
+      activeWarsRetained,
       developmentsErrorCount: developmentsErrors.length,
       // Captured means THIS run read the scorecard. A retained older payload
       // still publishes, so `retained` distinguishes the two rather than
@@ -1452,6 +1495,7 @@ export async function freezeCrawlableLivePulse({
       // the middleware still serves the live one.
       liveTopics: liveTopicErrors,
       crises: crisisErrors,
+      activeWars: activeWarErrors,
       headlines: headlineErrors,
       quotes: quoteErrors,
       developments: developmentsErrors,

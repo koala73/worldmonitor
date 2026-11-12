@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GLOSSARY_TERMS, GLOSSARY_CATEGORIES, PIZZINT_LEVELS } from '../blog-site/src/data/glossary.ts';
+import { renderPizzaIndexSection } from '../scripts/live-pages/pentagon-pizza-index.mjs';
 import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
@@ -170,12 +171,21 @@ describe('glossary data integrity', () => {
     );
     const page = readFileSync(new URL('../blog-site/src/pages/glossary/[slug].astro', import.meta.url), 'utf8');
     const liveTools = readFileSync(new URL('../scripts/crawlable-live-tools.mjs', import.meta.url), 'utf8');
-    for (const hook of [
-      'data-live-pizzint', 'data-live-status', 'data-live-fallback', 'data-live-grid',
-      'data-pizzint-level', 'data-pizzint-label', 'data-pizzint-venues', 'data-live-updated', 'data-live-refresh',
-    ]) {
-      assert.ok(page.includes(hook), `the glossary page lacks ${hook}`);
-      assert.ok(liveTools.includes(`[${hook}]`), `live-tools.js no longer reads ${hook}`);
+    // The build and the routing middleware render the section with one
+    // function, so the hooks are checked in both of its states.
+    assert.match(page, /<Fragment set:html=\{renderPizzaIndexSection\(null\)\} \/>/);
+    const reading = {
+      available: true, level: '3', label: 'Elevated Activity', updatedAt: Date.UTC(2026, 10, 5, 12),
+      venues: [{ name: 'A', status: 'Normal' }],
+    };
+    for (const section of [renderPizzaIndexSection(null), renderPizzaIndexSection(reading)]) {
+      for (const hook of [
+        'data-live-pizzint', 'data-live-status', 'data-live-answer', 'data-live-fallback', 'data-live-grid',
+        'data-pizzint-level', 'data-pizzint-label', 'data-pizzint-venues', 'data-live-updated', 'data-live-refresh',
+      ]) {
+        assert.ok(section.includes(hook), `the live section lacks ${hook}`);
+        assert.ok(liveTools.includes(`[${hook}]`), `live-tools.js no longer reads ${hook}`);
+      }
     }
     // The site CSP is strict-dynamic with the static-bootstrap nonce; a script
     // without it is blocked and the reading never loads.

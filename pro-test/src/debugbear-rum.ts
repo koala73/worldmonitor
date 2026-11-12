@@ -1,6 +1,14 @@
 import { whenUrlFreeOfSensitiveParams } from '../../shared/sensitive-url-params';
 
-export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
+// Versioned collector pinned by subresource integrity. The unversioned
+// per-project URL (cdn.debugbear.com/lpMwA9KpC6pf.js) served attacker code on
+// 2026-10-29 after DebugBear's registrar account was hijacked; an SRI pin makes
+// the browser refuse any byte change. Bumping the version means taking the new
+// URL and hash from the DebugBear RUM embed snippet and updating both loaders.
+export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/rum-1.1.2.js';
+export const DEBUGBEAR_RUM_SCRIPT_INTEGRITY = 'sha384-8uZB5Im5AGW6nfv8sNNYXyMW8Cu+ENZElwP0SUZKqBBQay51uLwrG4cVeQfwHGD9';
+/** The collector reads this attribute off its own tag to fetch the project config. */
+export const DEBUGBEAR_RUM_SNIPPET_KEY = 'lpMwA9KpC6pf';
 // 10% sampling. 100% overran the DebugBear RUM monthly quota (~529k/500k, 2026-07). The R2-origin
 // experiment that justified full sampling is a no-go (KTD7 feasibility failure); ongoing web-vitals
 // RUM needs only a fraction. Keep in sync with src/bootstrap/debugbear-rum.ts (asserted by the test).
@@ -38,6 +46,10 @@ function loadDebugBearRumScript(): void {
 
   const script = document.createElement('script');
   script.async = true;
+  // SRI on a cross-origin script requires a CORS fetch; the CDN answers ACAO: *.
+  script.crossOrigin = 'anonymous';
+  script.integrity = DEBUGBEAR_RUM_SCRIPT_INTEGRITY;
+  script.setAttribute('snippetKey', DEBUGBEAR_RUM_SNIPPET_KEY);
   script.src = DEBUGBEAR_RUM_SCRIPT_SRC;
   if ('fetchPriority' in script) {
     script.fetchPriority = 'low';

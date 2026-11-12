@@ -1,6 +1,6 @@
 import { parseNewsDashboardRequest, NEWS_DASHBOARD_INPUT_SCHEMA } from '../../../shared/plugin-news-view';
 import { newsPanelAdmissionSchema } from '../../../shared/panel-admission';
-import { z } from 'zod';
+import * as z from 'zod';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, RpcValidationError } from '../billing-denial';
 import { fetchMcpDownstream } from '../downstream';
@@ -8,6 +8,31 @@ import type { ToolDef } from '../types';
 
 import { NEWS_DASHBOARD_UI_URI } from '../ui/news-dashboard-app';
 import { normalizeSummaryLanguage } from '../../../server/worldmonitor/news/v1/_shared';
+
+const PANEL_RECEIPT_DOCS: Record<string, string> = {
+  token: 'Signed request token the embedded view uses for its own loads.',
+  expiresAt: 'When the request token expires, ISO 8601.',
+  reused: 'True when an existing paid request was reused rather than a new one admitted.',
+  usage: 'Today\'s paid panel requests on this account.',
+  panel: 'Panel the request admits.',
+  countryCode: 'Country the request admits, ISO alpha-2.',
+};
+const PANEL_USAGE_DOCS: Record<string, string> = {
+  used: 'Requests admitted today, this one included.',
+  limit: 'Daily request limit; null when the plan has no daily cap.',
+  remaining: 'Requests left today; null when the plan has no daily cap.',
+  resetsAt: 'When the daily count resets (next UTC midnight), ISO 8601.',
+  unit: 'Unit of used, limit and remaining.',
+};
+
+/** JSON Schema for a panel admission receipt, with each field described. */
+export function describedPanelReceipt(schema: z.ZodType, description: string): Record<string, unknown> {
+  const json = z.toJSONSchema(schema) as { properties: Record<string, Record<string, unknown>> };
+  const properties = Object.fromEntries(Object.entries(json.properties).map(([key, value]) => [key, { ...value, ...(PANEL_RECEIPT_DOCS[key] ? { description: PANEL_RECEIPT_DOCS[key] } : {}) }]));
+  const usage = properties.usage as { properties?: Record<string, Record<string, unknown>> } | undefined;
+  if (usage?.properties) usage.properties = Object.fromEntries(Object.entries(usage.properties).map(([key, value]) => [key, { ...value, ...(PANEL_USAGE_DOCS[key] ? { description: PANEL_USAGE_DOCS[key] } : {}) }]));
+  return { ...json, description, properties };
+}
 
 function newsDashboardView(params: Record<string, unknown>) {
   const parsedView = parseNewsDashboardRequest(params);
@@ -23,16 +48,23 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   _openaiEntrypoints: [{ type: 'global' }, { type: 'thread' }],
   _outputBudgetBytes: 1048576,
   _apiPaths: ['GET /api/news/v1/list-feed-digest'],
-  inputSchema: NEWS_DASHBOARD_INPUT_SCHEMA,
+  inputSchema: {
+    ...NEWS_DASHBOARD_INPUT_SCHEMA,
+    properties: {
+      ...NEWS_DASHBOARD_INPUT_SCHEMA.properties,
+      query: { ...NEWS_DASHBOARD_INPUT_SCHEMA.properties.query, description: 'Text to search the news for: the rendered dashboard opens its search box with this query. Omitted: no search.' },
+      renderer: { ...NEWS_DASHBOARD_INPUT_SCHEMA.properties.renderer, description: 'Map projection to render: a flat map or a 3D globe. Omitted: the map keeps the projection it is showing. The receipt reports a fallback when the requested renderer is unavailable.' },
+    },
+  },
   outputSchema: {
     type: 'object',
     properties: {
-      categories: { type: 'object', additionalProperties: { type: 'object', properties: { items: { type: 'array', items: { type: 'object' } } }, required: ['items'] } },
-      feedStatuses: { type: 'object', additionalProperties: { type: 'string' } },
-      generatedAt: { type: 'string' },
-      coverage: { type: 'object' },
-      requestedView: { type: 'object' },
-      panelRequest: z.toJSONSchema(newsPanelAdmissionSchema),
+      categories: { type: 'object', description: 'News by panel category id, such as conflict or economy.', additionalProperties: { type: 'object', properties: { items: { type: 'array', items: { type: 'object' }, description: 'Articles, each with source, title, link, publishedAt (Unix epoch milliseconds), location and importanceScore.' } }, required: ['items'] } },
+      feedStatuses: { type: 'object', additionalProperties: { type: 'string' }, description: 'Feeds that did not return cleanly, by feed name: empty, timeout, all-undated or partial-undated. A feed not listed is ok.' },
+      generatedAt: { type: 'string', description: 'When the digest was built, ISO 8601.' },
+      coverage: { type: 'object', description: 'Counts of feeds and items served and of the latest build attempt.' },
+      requestedView: { type: 'object', description: 'The view arguments as requested, not the state an already-open dashboard applied.' },
+      panelRequest: describedPanelReceipt(newsPanelAdmissionSchema, 'Dedicated paid plans only: the paid dashboard request this open admitted or reused.'),
     },
     required: ['categories'],
   },
@@ -58,30 +90,30 @@ export const NEWS_DASHBOARD_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 500 }, description: 'Headlines to work on: 1-8 for a brief, exactly 1 for a translation. Each up to 500 characters; a longer translation is refused.' },
-      bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 }, description: 'Optional article snippets, index-aligned with headlines (up to 400 characters each), that ground the brief. Ignored for translation.' },
+      headlines: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string', maxLength: 500 }, description: 'Headline texts to summarize together, or in translate mode the one headline to translate.' },
+      bodies: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 400 }, description: 'Article snippets that ground the brief, matched to headlines by position (bodies[0] belongs to headlines[0]). Ignored for translation.' },
       mode: { type: 'string', enum: ['brief', 'translate'], description: 'brief (default) summarizes the headlines; translate renders one headline in lang.' },
-      lang: { type: 'string', maxLength: 16, description: 'BCP 47 language code: the target language for translate and the output language for brief (default en). One of the dashboard languages (en, ar, bg, cs, de, el, es, fa, fr, hi, hr, hu, it, ja, ko, nl, pl, pt, ro, ru, sv, sw, th, tr, uk, vi, zh, zh-TW); a regional tag such as pt-BR resolves to its base language, zh-Hant to zh-TW.' },
-      geoContext: { type: 'string', maxLength: 100, description: 'Optional short geographic or topical framing passed to the model with the headlines.' },
+      lang: { type: 'string', maxLength: 16, description: 'BCP 47 code of the output language: the language to translate into, or the language the brief is written in. Omitted: en. Accepts the dashboard languages (en, ar, bg, cs, de, el, es, fa, fr, hi, hr, hu, it, ja, ko, nl, pl, pt, ro, ru, sv, sw, th, tr, uk, vi, zh, zh-TW); a regional tag such as pt-BR resolves to its base language, zh-Hant to zh-TW.' },
+      geoContext: { type: 'string', maxLength: 100, description: 'Geographic or topical framing passed to the model with the headlines, such as "Sahel security". Omitted: no framing.' },
     },
     required: ['headlines'],
     oneOf: [
-      { required: ['mode'], properties: { mode: { const: 'translate', description: 'Translation mode: lang is the target language.' }, headlines: { type: 'array', maxItems: 1, description: 'Exactly one headline to translate.' } } },
-      { properties: { mode: { const: 'brief', description: 'Brief mode (the default when mode is omitted): summarize the headlines.' } } },
+      { required: ['mode'], properties: { mode: { const: 'translate', description: 'Translation mode: lang is the target language.' }, headlines: { type: 'array', maxItems: 1, description: 'The headline to translate.' } } },
+      { properties: { mode: { const: 'brief', description: 'Summarize the headlines into one brief; an omitted mode does the same.' } } },
     ],
   },
   outputSchema: {
     type: 'object',
     properties: {
-      summary: { type: 'string' },
-      provider: { type: 'string' },
-      model: { type: 'string' },
-      tokens: { type: 'integer' },
-      fallback: { type: 'boolean' },
-      error: { type: 'string' },
-      errorType: { type: 'string' },
-      status: { type: 'string' },
-      statusDetail: { type: 'string' },
+      summary: { type: 'string', description: 'Generated brief or translation; empty on error.' },
+      provider: { type: 'string', description: 'LLM provider that produced the text, or cache for a reused result.' },
+      model: { type: 'string', description: 'Model identifier that produced the text.' },
+      tokens: { type: 'integer', description: 'Tokens the LLM response used.' },
+      fallback: { type: 'boolean', description: 'True when this provider could not answer and another provider should be tried.' },
+      error: { type: 'string', description: 'Error message when the request failed.' },
+      errorType: { type: 'string', description: 'Error class, such as ValidationError or AuthError.' },
+      status: { type: 'string', description: 'SUMMARIZE_STATUS_SUCCESS, _CACHED, _SKIPPED or _ERROR.' },
+      statusDetail: { type: 'string', description: 'Reason for a skipped or failed request.' },
     },
   },
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },

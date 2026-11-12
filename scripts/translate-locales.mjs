@@ -179,7 +179,7 @@ Output (key<TAB>${langName}):`;
     model: MODEL,
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }, { signal: AbortSignal.timeout(60_000) });
   // A batch of 50 long strings (the welcome FAQ answers run 300+ chars each) can
   // exceed max_tokens, and the reply is then cut mid-stream: the tail keys are
   // simply absent from the tab-separated output and look indistinguishable from
@@ -224,7 +224,7 @@ function canonicalPluralOrder(categories) {
   return [...categories].sort((a, b) => {
     const ia = CLDR_PLURAL_ORDER.indexOf(a);
     const ib = CLDR_PLURAL_ORDER.indexOf(b);
-    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b);
+    return (ia === -1 ? CLDR_PLURAL_ORDER.length : ia) - (ib === -1 ? CLDR_PLURAL_ORDER.length : ib) || a.localeCompare(b, 'en-US');
   });
 }
 export function getPluralCategories(loc) {
@@ -715,7 +715,7 @@ async function main() {
     console.error('ANTHROPIC_API_KEY not set. Use --dry-run to see the gap without translating.');
     process.exit(1);
   }
-  const client = dryRun ? null : new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const client = dryRun ? null : new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 60_000, maxRetries: 0 });
 
   const enPath = path.join(ROOT, 'en.json');
   const enFlat = flatten(JSON.parse(readFileSync(enPath, 'utf8')));

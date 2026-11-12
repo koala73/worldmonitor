@@ -546,6 +546,9 @@ components:
                     items:
                         type: string
                         description: Source article URLs, when provided by the upstream feed.
+                hasPreciseLocation:
+                    type: boolean
+                    description: True when the source identifies a specific event location, such as ACLED geo_precision 1.
             required:
                 - id
             description: |-

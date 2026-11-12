@@ -524,7 +524,7 @@ Sentry 在生产环境中捕获未处理异常和 Promise 拒绝，具备环境�
 
 自定义 `beforeSend` 钩子提供第二阶段过滤：抑制单字符错误消息（压缩产物）、来自浏览器扩展的 `Importing a module script failed` 错误（通过栈跟踪中的 `chrome-extension:` 或 `moz-extension:` 识别），以及栈跟踪源自地图分块文件时的 MapLibre 内部空访问崩溃。
 
-**分块重载守卫** — 部署后，持有过期浏览器标签页的用户在动态导入的分块具有新内容哈希文件名时可能遇到 `vite:preloadError` 事件。守卫监听此事件并执行一次性页面重载，使用 `sessionStorage` 防止无限重载循环。如果重载成功（应用完全初始化），守卫标志被清除。这从过期资源 404 中优雅恢复，无需用户手动刷新。
+**分块重载守卫** — 部署后，持有过期浏览器标签页的用户在动态导入的分块具有新内容哈希文件名时可能遇到 `vite:preloadError` 事件。守卫监听此事件，每个构建最多重载一次页面，并将已用掉的重载记录在 `sessionStorage` 中（`sessionStorage` 不可用时改用 `localStorage`）。应用成功启动后不会清除该记录，因此每次加载都失败的分块（例如被广告拦截器屏蔽的分块）只会造成一次重载，而不是循环重载。没有任何存储能保存该记录时，守卫完全不重载。延迟加载的 Sentry 加载器通过 `preventDefault()` 认领其自身分块的失败，因此被屏蔽的 Sentry 分块永远不会触发页面重载。跨越后续部署仍保持打开的标签页由过期构建检查处理。
 
 **存储配额管理** — 当设备的 localStorage 或 IndexedDB 配额耗尽时（移动版 Safari 5MB 限制常见），全局 `_storageQuotaExceeded` 标志禁用持久缓存（IndexedDB + localStorage 回退）和工具 `saveToStorage()` 函数的所有后续写入尝试。该标志在首次 `name === 'QuotaExceededError'` 或 `code === 22` 的 `DOMException` 时设置，防止重复失败写入导致的级联错误。读取操作继续正常 — 缓存数据仍可访问，仅新写入被抑制。
 

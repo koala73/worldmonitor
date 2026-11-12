@@ -130,7 +130,7 @@ export async function anthropicComplete(opts: {
   // sends it the same way (scripts/ais-relay.cjs WIDGET_SONNET_PARAMS).
   const response = await client.messages.create(
     buildParams(opts) as unknown as Anthropic.MessageCreateParamsNonStreaming,
-    { headers: { 'anthropic-beta': FALLBACK_BETA }, timeout: opts.timeoutMs },
+    { headers: { 'anthropic-beta': FALLBACK_BETA }, timeout: opts.timeoutMs, signal: AbortSignal.timeout(opts.timeoutMs) },
   );
   const stopReason = response.stop_reason ?? null;
   return {

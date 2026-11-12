@@ -276,6 +276,8 @@ jobs:
             /^src-tauri\// { count++; next }
             /^package\.json$/ { count++; next }
             /^scripts\/repack-linux-appimage\.sh$/ { count++; next }
+            /^scripts\/prefetch-appimage-tools\.sh$/ { count++; next }
+            /^scripts\/fetch-with-retry\.sh$/ { count++; next }
             /^scripts\/check-desktop-build-env\.mjs$/ { count++; next }
             /^scripts\/sync-desktop-version\.mjs$/ { count++; next }
             /^scripts\/check-rust-security-floors\.mjs$/ { count++; next }
@@ -542,15 +544,39 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            pro-test/package-lock.json
-            blog-site/package-lock.json
       - uses: ./.github/actions/install-root-deps
+      # Like the unit shards' nested-deps cache: the two nested trees are
+      # restored whole. Before, setup-node restored the npm download cache for
+      # all three lockfiles (6-9s, most of it the root's), and the two installs
+      # still took 3s (blog-site) and 12s (pro-test). The key hashes every
+      # file that decides their contents (both trees link packages from
+      # vendor/); bump the version when an install command below, ci:blog-site,
+      # or the install half of build:pro in package.json changes.
+      - name: Restore blog-site and pro-test dependencies
+        id: built-output-deps
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          # setup-node restores the npm cache for this job's other install.
-          npm-cache: 'false'
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: built-output-deps-v1-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('blog-site/package.json', 'blog-site/package-lock.json', 'blog-site/.npmrc', 'pro-test/package.json', 'pro-test/package-lock.json', 'pro-test/.npmrc', '.npmrc', 'vendor/**') }}
+      - name: Install blog-site deps
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        run: npm run ci:blog-site
+      - name: Install /pro deps
+        # The install half of build:pro; the build step below runs the other.
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        env:
+          npm_config_allow_scripts: ''
+        run: npm --prefix pro-test ci --prefer-offline
+      - name: Save blog-site and pro-test dependencies
+        if: steps.built-output-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            blog-site/node_modules
+            pro-test/node_modules
+          key: ${{ steps.built-output-deps.outputs.cache-primary-key }}
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
@@ -634,15 +660,15 @@ jobs:
           retention-days: 14
       - name: Build and verify buying guides
         run: |
-          npm run ci:blog-site
           npm --prefix blog-site run build
           npm --prefix blog-site run verify:guides
       - name: Build /pro artifacts for built-output tests
         # public/pro/ stopped being committed in #6898, so the suites that read
         # it need the same treatment dist/ already gets. Ordered before the
         # dashboard build to mirror production: root `vite build` copies
-        # public/ into dist/, so /pro must exist by then.
-        run: npm run build:pro
+        # public/ into dist/, so /pro must exist by then. This is the build
+        # half of build:pro; its install half is the cached step above.
+        run: npm --prefix pro-test run build
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - name: Client bundle size budget (#7111, #7119)
@@ -858,8 +884,11 @@ jobs:
             echo '::error::Desktop versions out of sync — run `npm run version:sync` and commit the result.'
             exit 1
           }
-      - name: Linux AppImage post-processing script parses
-        run: bash -n scripts/repack-linux-appimage.sh
+      - name: Linux AppImage build scripts parse
+        run: |
+          bash -n scripts/repack-linux-appimage.sh
+          bash -n scripts/prefetch-appimage-tools.sh
+          bash -n scripts/fetch-with-retry.sh
       - name: Desktop build env parity (#5905)
         # A VITE_ key missing from the Tauri build steps silently disables the
         # capability in every shipped build (sign-in, Pro, Cyber Threats were
@@ -1002,8 +1031,9 @@ jobs:
         # lists in package.json (test:e2e:ci-smoke:1..4) are balanced by
         # measured test-seconds (history in docs/solutions/performance-issues/
         # ci-runners-are-cpu-bound-shard-before-parallel-steps.md). Re-balance
-        # them from the per-test durations in the list reporter output when a
-        # spec grows.
+        # them with `node scripts/balance-smoke-shards.mjs --write`, which packs
+        # the specs from per-test durations in recent main runs, when a spec is
+        # added or grows.
         shard: [1, 2, 3, 4]
     timeout-minutes: 20
     needs: changes
@@ -1176,10 +1206,14 @@ jobs:
     # 40097331565), so the gates moved off its path instead. Both parts keep the
     # full setup: each builds /pro (the legacy WebMCP tests load
     # /pro/welcome.html) and a retry records video with Playwright's ffmpeg.
+    #
+    # The plugin parts run the MCP Apps view specs (news and country views) on
+    # the built views in dist/plugin. No other job ran them, so a change could
+    # break a view spec and still merge green (#10494 broke 31 metering tests).
     strategy:
       fail-fast: false
       matrix:
-        part: [webmcp, pro-gates]
+        part: [webmcp, pro-gates, plugin-news, plugin-country]
     runs-on: ubuntu-latest
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
@@ -1286,6 +1320,8 @@ jobs:
             # public/pro/ is built output since #6898. Keep this explicit and
             # immediately before the focused specs so the browser checks cannot
             # run against missing or stale bytes from another build.
+            # The plugin parts never load /pro.
+            if: ${{ !startsWith(matrix.part, 'plugin-') }}
             run: npm run build:pro
       - name: Run fail-closed prehydration browser checks
         id: prehydration
@@ -1301,15 +1337,16 @@ jobs:
           retention-days: 14
       # Named explicitly for the same reason as the ci-smoke set above: nothing
       # runs the e2e/ glob, so an unnamed gate reported green while never
-      # executing. The four /pro gates (critical-CSS layout shift, mobile
-      # overflow, hero native animation, hero LCP) share one Playwright run:
+      # executing. The /pro gates (critical-CSS layout shift, mobile
+      # overflow, hero native animation, hero LCP, landing nav fit in every
+      # locale) share one Playwright run:
       # each run starts the Vite dev server and Chrome (~3.5s), and separate
       # runs went one after another. They read the same public/pro/ bytes the
       # build step above produced, and nothing between here and there rebuilds
       # them -- they sit after the prehydration upload rather than beside its
       # build because dashboard-build-guards.test.mjs pins that
       # build/prehydration pair as literally adjacent text.
-      - name: Run /pro critical-CSS, overflow, hero animation and LCP gates
+      - name: Run /pro critical-CSS, overflow, hero animation, LCP and nav-fit gates
         id: pro-gates
         if: matrix.part == 'pro-gates'
         run: npm run test:e2e:pro-gates
@@ -1341,6 +1378,21 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-webmcp-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Each plugin script builds dist/plugin first: the specs load the built
+      # views, never the source.
+      - name: Run MCP Apps view specs
+        id: plugin
+        if: startsWith(matrix.part, 'plugin-')
+        run: npm run test:e2e:${{ matrix.part }}
+      - name: Upload MCP Apps view Playwright artifacts
+        if: ${{ !cancelled() && steps.plugin.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-${{ matrix.part }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

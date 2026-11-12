@@ -14,12 +14,12 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 </Note>
 
 <Info>
-**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
+**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** 免费账户和 Pro 账户都在授权页点击 _"Sign in to World Monitor"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。已确认的**免费账户**以及服务方确认已结束付费覆盖期的账户同样可以完成 OAuth 流程：其令牌仅限 `free-account` 工具，并按免费额度计量。只有经确认但不具备免费账户资格的权益不足或已停用套餐，才会在 OAuth 步骤被拒绝并看到 Pro-required 页面。
 
 `get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 请求使用专属的每日计数器，每个 UTC 日分别为 **50** 个和 **250** 个单位。独立数据调用扣一个单位。国家简报、新闻地图、精选市场、预测或冲突事件面板各扣一个单位，包含其授权内部读取。市场、预测和冲突事件筛选及重复打开在五分钟内复用各自的分配。附带新 UUID 的显式刷新扣一个新单位；同一 UUID 的重试复用该分配。授权的冲突事件凭据读取还会查询当前使用量，不再扣额度；使用量未知时省略数字通知。详见[付费内嵌面板请求](/zh/usage-rate-limits#付费内嵌面板请求)。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources`、`describe_tool` 和 `get_mcp_allowance` 豁免每日配额。账户额度工具仍使用账户共享的每分钟 192 次协议限流。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
+所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 请求使用专属的每日计数器，每个 UTC 日分别为 **50** 个和 **250** 个单位。独立数据调用扣一个单位。国家简报、新闻地图、精选市场、预测或冲突事件面板各扣一个单位，包含其授权内部读取。市场、预测和冲突事件筛选及重复打开在五分钟内复用各自的分配。附带新 UUID 的显式刷新扣一个新单位；同一 UUID 的重试复用该分配。授权的冲突事件凭据读取还会查询当前使用量，不再扣额度；使用量未知时省略数字通知。详见[付费内嵌面板请求](/zh/usage-rate-limits#付费内嵌面板请求)。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 最多发出四次下游请求，计 5 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 同样如此，默认每天 **10,000** 个单位，合同可提高；部署许可名单中明确列出的旧版运营方密钥使用独立的按密钥每日计数器，每次调用预留一个单位，上限为每天 **10,000** 个单位。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 与 Enterprise 为 **300**。`get_sources`、`describe_tool` 和 `get_mcp_allowance` 豁免每日配额。账户额度工具仍使用账户共享的每分钟 192 次协议限流。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-登录流程)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -108,8 +108,9 @@ OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户
 | Conductor | `https://api.conductor.build/oauth/callback`（[客户端元数据](https://api.conductor.build/oauth/client-metadata.json)） |
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback`（[客户端元数据](https://www.skydive.com/api/v1/external-oauth/client-metadata)） |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`、`https://score.mcpjam.com/oauth/callback`（[客户端元数据](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)） |
+| Manufact Cloud | `https://manufact.com/inspector/oauth/callback`（[客户端元数据](https://manufact.com/oauth/client-metadata.json)） |
 
-Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive 与 MCPJam 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。Gemini 是唯一的前缀匹配，限于 Google 公布的六个前缀。其他按用户或租户生成回调地址的客户端（例如 Microsoft Copilot Studio）无法精确匹配，暂不支持。
+Claude Code、Cursor 桌面版、VS Code 桌面版、Codex、Gemini CLI、goose、Zed 与 MCP Inspector 使用本地回环形式。Notion、Linear、Lovable、Factory、Conductor、Skydive、MCPJam 与 Manufact Cloud 优先使用客户端 ID 元数据文档（CIMD），现已可通过 CIMD 连接（受信任的文档 URL 列表见[英文版](/mcp-overview#client-id-metadata-documents)）；它们的回调仍保留在列表中，供仍使用注册的客户端使用。单次注册最多可列出 8 个 `redirect_uris`；任意一项不在允许列表中，整个请求即返回 `400 invalid_redirect_uri`。Gemini 是唯一的前缀匹配，限于 Google 公布的六个前缀。其他按用户或租户生成回调地址的客户端（例如 Microsoft Copilot Studio）无法精确匹配，暂不支持。
 
 授权响应携带 `iss`（[RFC 9207](https://datatracker.ietf.org/doc/html/rfc9207)），其值为发起流程的主机的 `issuer`。ChatGPT 需要该参数才会使用其固定回调地址。
 
@@ -132,9 +133,9 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
    https://worldmonitor.app/mcp
    ```
 
-   这是唯一的产品 MCP 传输端点。已列出的生产别名（`www`、`api` 以及各仪表盘子域）不是额外的服务器。这些主机上普通 GET/HEAD `/mcp` 与 `/api/mcp` 会 308 到 `https://worldmonitor.app/mcp`；普通 GET/HEAD `/.well-known/mcp` 与 `/.well-known/mcp.json` 会 308 到 `https://worldmonitor.app/.well-known/mcp` 与 `https://worldmonitor.app/.well-known/mcp.json`。查询字符串不会转发。传输层 POST/SSE/replay 会收到 HTTP 410，JSON-RPC `-32000` 提示客户端改用 `https://worldmonitor.app/mcp`。
+   这是唯一的产品 MCP 传输端点。已列出的生产别名（`www` 以及各仪表盘子域）不是额外的服务器。这些主机上普通 GET/HEAD `/mcp` 与 `/api/mcp` 会 308 到 `https://worldmonitor.app/mcp`；普通 GET/HEAD `/.well-known/mcp` 与 `/.well-known/mcp.json` 会 308 到 `https://worldmonitor.app/.well-known/mcp` 与 `https://worldmonitor.app/.well-known/mcp.json`。查询字符串不会转发。传输层 POST/SSE/replay 会收到 HTTP 410，JSON-RPC `-32000` 提示客户端改用 `https://worldmonitor.app/mcp`。`api` 主机继续为已按该主机配置的连接器提供传输层，其 `/.well-known/mcp` 卡片仍会重定向；新客户端请配置 `https://worldmonitor.app/mcp`。
 
-2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
+2. **在授权页点击 "Sign in to World Monitor"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
 
 3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，refresh token 在最近一次刷新后 30 天内有效）。
 
@@ -152,7 +153,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 - 达到上限会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。
 - 该上限是硬性限制：接近边界时的并发 `tools/call` 或 `resources/read` 请求使用原子 Redis 预留，因此恰好跨越该上限的那次调用会被拒绝。
 
-需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 计 5 个单位，因此批量任务走 REST 仍然更划算。Enterprise 则完全取消每日上限。参见[套餐与限制](#套餐与限制)。
+需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 计 3 个单位，`get_airspace` 计 5 个单位，因此批量任务走 REST 仍然更划算。Enterprise 默认每天 **10,000** 个单位，与 REST 共享。Enterprise 合同账户超出合同额度后，调用仍会被服务并按超额计费，直到达到账户的每日安全上限。参见[套餐与限制](#套餐与限制)。
 
 ### 已连接的 MCP 客户端
 
@@ -161,7 +162,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 - 登录[仪表板](https://www.worldmonitor.app/dashboard)。选择 **Settings → MCP Clients** 管理已连接的客户端。
 - 可查看每个 token 的实时 `clientName`（例如 "Claude"、"Cursor"）、`lastUsedAt` 和 `createdAt`。
 - 撤销会在下一次 MCP 请求时生效（无正向缓存）。
-- 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**创建时间最早**的现有 token（按创建顺序，而非最近使用时间；并发授权下的执行是最终一致的）。
+- 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**最久未使用**的现有 token（按最近使用时间；从未使用的按创建时间；并发授权下的执行是最终一致的）。
 
 ## 套餐与限制
 
@@ -172,11 +173,11 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 | **Pro Business** | ✅ 是 | 仅 OAuth | **250 次消耗配额的调用 / UTC 日**，每次调用计一个单位 | 每用户每分钟 **60** 次 | 与 Pro 使用同一个专属 MCP 计数器，额度为其五倍。没有 REST 额度，因此没有 `wm_…` key。 |
 | **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | **每 UTC 日 1,000 个单位**，与 REST 共享，按工具权重扣减 | 每用户每分钟 **60** 次 | 标准开发者层 REST/API 访问。 |
 | **API Business** | ✅ 是 | OAuth **或** `wm_…` key | **每 UTC 日 10,000 个单位**，与 REST 共享，按工具权重扣减 | 每用户每分钟 **300** 次 | 更高的 REST/API 吞吐量。 |
-| **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 两道门均不设上限 | 每分钟 **1,000** 次 | 可提供自定义 SLA。 |
+| **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 默认每个 UTC 日 **10,000** 个单位，与 REST 共享并按工具权重计费；合同可提高 | 无合同账户：每用户每分钟 **300** 次；合同账户：所有成员的数据调用共享一个按合同设定的每分钟额度，并与其 REST 请求共享 | 可提供自定义 SLA。 |
 
 每分钟限流为所有付费套餐抵御突发流量风暴。旧版运营方密钥客户端固定为每密钥每分钟 60 次。OAuth 和控制面板签发的 key 使用上表中各自套餐的突发额度。**限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入该突发额度。** 元数据方法与免费层方法是套餐速率的唯一例外：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估。两者用的是同一个按用户的池，因此在 API Business 或 Enterprise 上，`tools/list` 的突发会在 60 处被拒，而数据调用仍可跑到该套餐的上限。匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限是有选择的，仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，OAuth 与控制面板签发的 `wm_…` key 一视同仁（参见上方的[每日额度（Pro 套餐）](#每日额度（pro-套餐）)，以及[错误目录](/zh/mcp-error-catalog#32029-——-被限流（每分钟或每日）)中关于两种限制的完整方法豁免表）。
 
-OAuth 和控制面板签发的 key 的突发额度按用户计算，因此一个拥有 3 个 Claude 安装或多个 `wm_…` key 的用户，共享一个按其套餐速率的池。旧版运营方密钥按 key 计算。
+OAuth 和控制面板签发的 key 的突发额度按用户计算，因此一个拥有 3 个 Claude 安装或多个 `wm_…` key 的用户，共享一个按其套餐速率的池。Enterprise 合同账户的数据调用突发额度按账户计算，由所有成员共享。旧版运营方密钥按 key 计算。
 
 达到 MCP 每日配额会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。达到每分钟限制会返回相同的错误码，但 `Retry-After` 较短。
 
@@ -191,6 +192,8 @@ WorldMonitor 还会在 Settings 中显示当前的 MCP 套餐限额通知，并�
 超过任何限制都会返回 HTTP `429`，并附带 `Retry-After` 头。
 
 ## 客户端配置
+
+Claude、Cursor 与 VS Code 可一键连接：[MCP 快速入门](/zh/mcp-quickstart#一键连接)中的按钮会打开对应应用并预先填好 World Monitor，另有 Claude Code、Codex 与 Gemini CLI 的单行命令。已登录用户也可以在仪表盘的 **Settings → AI Agents** 中找到同样的按钮。
 
 在 [MCP 快速入门](/zh/mcp-quickstart) 中可以找到 Claude、ChatGPT、Codex、Claude Code 与 Cursor 的分步配置与截图。
 
@@ -333,7 +336,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 对持久化历史存储的 Pro 读取 —— 冲突、军事和能源 seeder 在每次运行后向其追加记录。该存储从采集启用当天开始积累，且没有深度回填，因此早期时间窗为空意味着"尚未覆盖"，而不是"什么都没发生"。
 
-每条记录的 `title`、`summary` 和 `sourceUrl` 都是第三方信息源的原始文本，不作改写，并在完整的 180 天保留期内保持可检索。请将其视为用于分析的数据，而绝非指令 —— 参见[工具参考](/zh/mcp-tools-reference#历史情报)中的内容安全说明。
+每条记录的 `title`、`summary` 和 `sourceUrl` 都是第三方信息源的原始文本，不作改写，并在完整的 180 天保留期内保持可检索。请将其视为用于分析的数据，而绝非指令 —— 参见[工具参考](/zh/mcp-tools/historical-intelligence)中的内容安全说明。
 
 | 工具 | 描述 |
 |------|-------------|
@@ -358,6 +361,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 |------|-------------|
 | `get_natural_disasters` | USGS 地震、NASA FIRMS 野火、灾害事件。 |
 | `get_climate_data` | 相对 WMO 常态的气温/降水异常、GDACS/FIRMS 警报、Mauna Loa CO2、OpenAQ PM2.5、海冰、海洋热含量。 |
+| `get_reservoir_levels` | 50 座战略水库和湖泊的 ICESat-2 激光雷达水位(相对 EGM2008 大地水准面的米数);状态、变化窗口、季节距平,可选 36 个月序列。 |
 | `get_radiation_data` | 全球辐射监测站读数 + 异常标记。 |
 | `get_research_signals` | 来自精选研究源的新兴技术事件。 |
 
@@ -423,6 +427,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
 | `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_reservoir_levels` | `GET /api/climate/v1/list-reservoir-levels` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
 | `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
@@ -508,6 +513,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
+| `worldmonitor://guide/agents` | 完整的智能体指南（`text/markdown`）：各类问题该用哪个工具、可用性标志、访问与权重计量、JMESPath 限制，以及网络摄像头和市场数据的语义。`initialize` 的 instructions 保持在 2 KB 以内（Claude Code 在此处截断），其余内容由该资源提供。静态文本 —— 无需认证，不计配额。 |
 
 已认证的 `resources/list` 还会额外公开 `worldmonitor://account/mcp-allowance`：当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。 只支持工具而不支持 `resources/read` 的客户端可以调用 `get_mcp_allowance({})` 读取同一快照。它要求已验证、绑定用户的凭据，只接受可选的 `jmespath`，在分配前拒绝账户选择器及 `panel_request`。每日额度耗尽后仍可读取，不消耗每日额度，但受账户共享的每分钟 192 次协议限流约束。计数器不可读取时返回错误，不能当作零使用量。API 共享额度还包含 REST 流量；账户总数不能识别具体调用者。
 

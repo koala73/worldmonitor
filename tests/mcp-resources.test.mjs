@@ -481,6 +481,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const actualUris = body.result.resources.map((r) => r.uri);
     assert.deepEqual(actualUris, [
       'worldmonitor://seed-meta/freshness',
+      'worldmonitor://guide/agents',
       'ui://worldmonitor/country-risk-v3.html',
       'ui://worldmonitor/world-brief-v2.html',
       'ui://worldmonitor/country-brief-v3.html',
@@ -491,8 +492,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'ui://worldmonitor/natural-disasters-v3.html',
       'ui://worldmonitor/prediction-markets-v3.html',
       'ui://worldmonitor/forecasts-v4.html',
-      'ui://worldmonitor/news-dashboard-v3.html',
-      'ui://worldmonitor/country-view-v3.html',
+      'ui://worldmonitor/news-dashboard-v4.html',
+      'ui://worldmonitor/country-view-v4.html',
     ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
@@ -503,7 +504,9 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       assert.equal(typeof r.description, 'string', `resource ${r.uri}: description must be a string`);
       // Per-uri mimeType: DATA resources are application/json; the MCP Apps
       // ui:// shell is the extension's content profile text/html;profile=mcp-app.
-      const expectedMime = r.uri.startsWith('ui://') ? 'text/html;profile=mcp-app' : 'application/json';
+      const expectedMime = r.uri.startsWith('ui://')
+        ? 'text/html;profile=mcp-app'
+        : r.uri === 'worldmonitor://guide/agents' ? 'text/markdown' : 'application/json';
       assert.equal(r.mimeType, expectedMime, `resource ${r.uri}: mimeType must be ${expectedMime}`);
       // Internal authoring fields must NOT leak via resources/list.
       assert.equal(r.read, undefined, `resource ${r.uri}: internal "read" must not leak via resources/list`);
@@ -515,6 +518,10 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       // public DATA metadata probe advertises anonymous-free access.
       if (r.uri.startsWith('ui://')) {
         assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
+        // ChatGPT reads the view summary from openai/widgetDescription.
+        const summary = r._meta?.['openai/widgetDescription'];
+        assert.equal(typeof summary, 'string', `ui:// resource ${r.uri} must carry openai/widgetDescription`);
+        assert.ok(summary.length >= 40 && summary.length <= 300, `ui:// resource ${r.uri}: widgetDescription length ${summary.length}`);
       } else {
         assert.equal(r._meta?.['worldmonitor/access'], 'free', `DATA resource ${r.uri} must advertise free access`);
       }
@@ -590,6 +597,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-risk.html')));
     const meta = (await res.json()).result.contents[0]._meta;
     assert.ok(meta?.ui?.csp, 'contents[0]._meta.ui.csp must be present (ext-apps UIResourceMeta)');
+    assert.equal(typeof meta['openai/widgetDescription'], 'string', 'resources/read contents carry openai/widgetDescription');
     // connectDomains mirrors the HTML meta CSP's connect-src (the MCP origin);
     // the other allowlists stay empty (secure default — app loads nothing external).
     assert.deepEqual(meta.ui.csp.connectDomains, ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
@@ -766,7 +774,7 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
   it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
-    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard-v3.html', 'ui://worldmonitor/country-view-v3.html', 'ui://worldmonitor/market-radar-v3.html'].includes(u));
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://') && !['ui://worldmonitor/news-dashboard-v4.html', 'ui://worldmonitor/country-view-v4.html', 'ui://worldmonitor/market-radar-v3.html'].includes(u));
     const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri).filter(uri => uri !== 'ui://worldmonitor/market-radar-v3.html');
     assert.deepEqual(uiUris, registryUiUris, 'inline-shell audit covers the inline registry; the compiled dashboard is checked in mcp-news-dashboard and browser tests');
 

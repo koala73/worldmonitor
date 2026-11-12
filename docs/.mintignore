@@ -33,6 +33,7 @@ analytics-collector-operations.md
 api-plan-enforcement-runbook.md
 as-of-convention.md
 climate-variant-full.md
+cyber-network-information.md
 desktop-parity-matrix.md
 fear-greed-index-2.0-brief.md
 food-price-sources.md
@@ -55,3 +56,6 @@ tradingview-screener-integration.md
 user-requests.md
 zh/.glossary.md
 zh/.translation-spec.md
+
+# Engineering audit receipt; not product documentation.
+outbound-resilience-audit.md

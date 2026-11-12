@@ -41,6 +41,14 @@ function command(cmd) {
     return { result: entry ? 1 : 0 };
   }
   if (op === 'DEL') return { result: cache.delete(key) ? 1 : 0 };
+  // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+  // held; a fenced write (two keys: lock, target) is the SET it performs.
+  if (op === 'EVAL' && String(cmd[1]).includes('PEXPIRE')) {
+    if (cmd[2] === 2) {
+      command(cmd[8] === '' ? ['SET', cmd[4], cmd[7]] : ['SET', cmd[4], cmd[7], 'EX', cmd[8]]);
+    }
+    return { result: [1, ''] };
+  }
   if (op === 'EVAL') {
     cache.delete(cmd[3]);
     return { result: 1 };

@@ -390,6 +390,7 @@ export function listWebMcpMissionPresets(
   query: MissionPresetCatalogQuery = {},
   options: {
     hasPremium: boolean;
+    hasFocus?: boolean;
     targetCancellationSupported?: boolean;
     isPanelEntitled?: (panelId: string) => boolean;
   },
@@ -400,6 +401,7 @@ export function listWebMcpMissionPresets(
   return listMissionPresetCatalog({
     variant,
     hasPremium: options.hasPremium,
+    hasFocus: options.hasFocus,
     activePresetId: loadStoredMissionPreset()?.id ?? null,
     targetCancellationSupported: options.targetCancellationSupported,
     isPanelEntitled: options.isPanelEntitled,
@@ -412,6 +414,7 @@ export function applyWebMcpMissionPreset(
   presetId: unknown,
   options: {
     hasPremium: boolean;
+    hasFocus?: boolean;
     isPanelEntitled?: (panelId: string) => boolean;
     apply: (id: MissionPresetId) => { changed: boolean; priorPresetId: string | null };
   },
@@ -428,6 +431,7 @@ export function applyWebMcpMissionPreset(
   const decision = evaluateMissionPresetApply(presetId, {
     variant,
     hasPremium: options.hasPremium,
+    hasFocus: options.hasFocus,
     activePresetId: loadStoredMissionPreset()?.id ?? null,
     isPanelEntitled: options.isPanelEntitled,
   });

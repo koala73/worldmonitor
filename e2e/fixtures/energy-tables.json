@@ -443,5 +443,179 @@
     }
    }
   ]
+ },
+ "disruptions": {
+  "fetchedAt": "2026-11-01T07:31:13.665Z",
+  "classifierVersion": "v1",
+  "upstreamUnavailable": false,
+  "events": [
+   {
+    "id": "ukraine-transit-end-2025",
+    "assetId": "progress-urengoy-uzhhorod",
+    "assetType": "pipeline",
+    "eventType": "commercial",
+    "startAt": "2025-01-01T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 15,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "policy",
+     "war"
+    ],
+    "shortDescription": "Ukraine allowed the 2019 transit agreement with Gazprom to expire; Russian gas transit via Sudzha halted 1 Jan 2025 ending a ~50-year era of Russian gas transit through Ukraine.",
+    "sources": [
+     {
+      "authority": "Naftogaz",
+      "title": "Transit agreement expiry statement",
+      "url": "https://naftogaz.com/",
+      "date": "2025-01-01",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.97,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "russia-price-cap-implementation-2022",
+    "assetId": "primorsk-crude-terminal",
+    "assetType": "storage",
+    "eventType": "sanction",
+    "startAt": "2022-12-05T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sanction",
+     "policy"
+    ],
+    "shortDescription": "G7+EU $60/bbl price cap took effect on Russian seaborne crude; targeted tanker shipments from Baltic/Black Sea/Arctic export terminals (Primorsk, Ust-Luga, Novorossiysk); reshaped routing, shadow-fleet usage expanded. Linked to Primorsk (largest Baltic crude export terminal); ESPO pipeline leg to China was out of scope.",
+    "sources": [
+     {
+      "authority": "US Treasury OFAC",
+      "title": "Russian crude price cap guidance",
+      "url": "https://home.treasury.gov/news/press-releases/jy1161",
+      "date": "2022-12-05",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.95,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "nord-stream-1-sabotage-2022",
+    "assetId": "nord-stream-1",
+    "assetType": "pipeline",
+    "eventType": "sabotage",
+    "startAt": "2022-09-26T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 55,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sabotage",
+     "war"
+    ],
+    "shortDescription": "Submarine explosions rupture both Nord Stream 1 and 2 pipelines in Baltic Sea; operator declares force majeure.",
+    "sources": [
+     {
+      "authority": "Nord Stream AG",
+      "title": "Operator statement on incidents",
+      "url": "https://www.nord-stream.com/press-info/",
+      "date": "2022-09-27",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.98,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "rehden-gas-sanction-2022",
+    "assetId": "rehden",
+    "assetType": "storage",
+    "eventType": "sanction",
+    "startAt": "2022-04-01T00:00:00Z",
+    "endAt": "2022-06-14T00:00:00Z",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0,
+    "causeChain": [
+     "sanction",
+     "policy"
+    ],
+    "shortDescription": "Germany placed Gazprom Germania (operator of Rehden) under BNetzA trusteeship; operator sanctioned, facility regained access under new operator.",
+    "sources": [
+     {
+      "authority": "BNetzA",
+      "title": "Trusteeship decision",
+      "url": "https://www.bundesnetzagentur.de/",
+      "date": "2022-04-04",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.93,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "cpc-force-majeure-2022",
+    "assetId": "cpc",
+    "assetType": "pipeline",
+    "eventType": "mechanical",
+    "startAt": "2022-03-22T00:00:00Z",
+    "endAt": "2022-04-22T00:00:00Z",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0.8,
+    "causeChain": [
+     "logistics",
+     "war"
+    ],
+    "shortDescription": "CPC's Novorossiysk loading buoys damaged in storm + war tensions; operator declares one-month force majeure.",
+    "sources": [
+     {
+      "authority": "Caspian Pipeline Consortium",
+      "title": "Buoy damage notice",
+      "url": "https://www.cpc.ru/",
+      "date": "2022-03-23",
+      "sourceType": "operator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.92,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   },
+   {
+    "id": "pdvsa-designation-2019",
+    "assetId": "venezuela-anzoategui-puerto-la-cruz",
+    "assetType": "pipeline",
+    "eventType": "sanction",
+    "startAt": "2019-01-28T00:00:00Z",
+    "endAt": "",
+    "capacityOfflineBcmYr": 0,
+    "capacityOfflineMbd": 0.5,
+    "causeChain": [
+     "sanction"
+    ],
+    "shortDescription": "OFAC designated PDVSA; US refiners cut Venezuelan heavy crude intake, reshaping Latam flows.",
+    "sources": [
+     {
+      "authority": "US Treasury OFAC",
+      "title": "PDVSA designation",
+      "url": "https://home.treasury.gov/news/press-releases/sm594",
+      "date": "2019-01-28",
+      "sourceType": "regulator"
+     }
+    ],
+    "classifierVersion": "v1",
+    "classifierConfidence": 0.95,
+    "lastEvidenceUpdate": "2026-04-22T00:00:00Z",
+    "countries": []
+   }
+  ]
  }
 }

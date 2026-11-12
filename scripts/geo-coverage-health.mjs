@@ -234,7 +234,7 @@ export function validateSourceGeography({
       }
     }
   }
-  for (const name of [...requiredMappedSourceNames].sort((a, b) => a.localeCompare(b))) {
+  for (const name of [...requiredMappedSourceNames].sort((a, b) => a.localeCompare(b, 'en-US'))) {
     if (!sourceGeography.has(name)) {
       problems.push(
         `source-geography.json: required source "${name}" has no geography classification`,
@@ -282,7 +282,7 @@ export function computeGeoCoverage({ keyCountries, sourceGeography, defaultEnabl
   const floors = policy.floors ?? {};
   const allowlist = policy.zeroDefaultOnAllowlist ?? {};
   return keyCountries.map(({ iso2, regions }) => {
-    const catalogSources = [...(localByIso.get(iso2) ?? [])].sort((a, b) => a.localeCompare(b));
+    const catalogSources = [...(localByIso.get(iso2) ?? [])].sort((a, b) => a.localeCompare(b, 'en-US'));
     const defaultOnSources = catalogSources.filter((name) => defaultEnabled.has(name));
     return {
       iso2,

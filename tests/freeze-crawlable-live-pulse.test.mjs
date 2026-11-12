@@ -117,6 +117,23 @@ function jsonResponse(body) {
   return { ok: true, status: 200, text: async () => JSON.stringify(body) };
 }
 
+// Last month's state-based fighting: 40 deaths in Ukraine, 12 in Mali.
+function ucdpPayload(candidateVersion = '26.0.9') {
+  const now = new Date();
+  const lastMonth = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 10);
+  const event = (id, country, deathsBest) => ({
+    id,
+    dateStart: lastMonth,
+    dateEnd: lastMonth,
+    country,
+    sideA: 'Government of Russia (Soviet Union)',
+    sideB: 'Government of Ukraine',
+    deathsBest,
+    violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED',
+  });
+  return { events: [event('1', 'Ukraine', 30), event('2', 'Ukraine', 10), event('3', 'Mali', 12)], candidateVersion };
+}
+
 function countryPayload() {
   return {
     upstreamUnavailable: false,
@@ -352,6 +369,8 @@ function countryPayload() {
     // MCP horizon grades (#9057): 'ok' | 'fail' | 'tool-error'.
     horizonGradesStatus = 'ok',
     horizonGradesGeneratedAt = SCORECARD_GENERATED_AT,
+    // 'ok' | 'empty' (the handler's answer on a Redis miss) | 'partial' | 'fail'.
+    ucdpStatus = 'ok',
     scorecardGeneratedAt = SCORECARD_GENERATED_AT,
     onRequest = null,
     marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
@@ -380,6 +399,11 @@ function countryPayload() {
           ],
           chokepointDescriptions,
         ));
+      }
+      if (href.includes('list-ucdp-events')) {
+        if (ucdpStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
+        if (ucdpStatus === 'empty') return jsonResponse({ events: [], candidateVersion: '' });
+        return jsonResponse(ucdpPayload(ucdpStatus === 'partial' ? '26.0.9+partial' : '26.0.9'));
       }
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
@@ -583,6 +607,51 @@ describe('freeze crawlable live pulse coverage gates', () => {
       /captured only 0 of \d+ chokepoints/,
       'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
     );
+  });
+
+  it('captures the latest-month war list for the crises hub', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars.countryCount, 1, 'Mali (12 deaths) is below the threshold');
+    assert.equal(snapshot.activeWars.belowThresholdCount, 1);
+    assert.deepEqual(
+      { ...snapshot.activeWars.conflicts[0] },
+      { name: 'Ukraine', code: 'UA', deaths: 40, events: 2, sideA: 'Government of Russia', sideB: 'Government of Ukraine' },
+    );
+    assert.equal(snapshot.activeWars.candidateVersion, '26.0.9');
+    assert.equal(snapshot.coverage.activeWarsCaptured, true);
+    assert.deepEqual(snapshot.errors.activeWars, []);
+  });
+
+  for (const [ucdpStatus, reason, message] of [
+    ['empty', 'the handler empty answer', /release absent is not complete/],
+    ['partial', 'a release with failed pages', /release 26\.0\.9\+partial is not complete/],
+  ]) {
+    it(`never publishes a count from ${reason}, and carries the last reading`, async () => {
+      const rootDir = await scratchRoot();
+      stubFetch();
+      const good = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      await writeFile(
+        join(rootDir, 'docs', 'snapshots', 'crawlable-live-pulse-2026-01-15.json'),
+        JSON.stringify({ ...good.snapshot, capturedAt: '2026-01-15' }),
+      );
+      await rm(good.outPath);
+
+      stubFetch({ ucdpStatus });
+      const { snapshot } = await freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0, rootDir });
+      assert.deepEqual(snapshot.activeWars, good.snapshot.activeWars);
+      assert.equal(snapshot.coverage.activeWarsCaptured, false);
+      assert.equal(snapshot.coverage.activeWarsRetained, true);
+      assert.match(snapshot.errors.activeWars[0].message, message);
+    });
+  }
+
+  it('publishes no war list, rather than failing the freeze, when nothing can be carried', async () => {
+    stubFetch({ ucdpStatus: 'fail' });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.activeWars, null);
+    assert.equal(snapshot.coverage.activeWarsRetained, false);
+    assert.equal(snapshot.errors.activeWars.length, 1);
   });
 
   it('freezes the official IMF PortWatch figures, including a measured zero, and no relay transit count', async () => {

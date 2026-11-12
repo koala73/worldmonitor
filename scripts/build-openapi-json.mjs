@@ -308,6 +308,7 @@ export function trimResponseExampleLists(spec) {
  * and still callable: only this one artifact omits it. Every entry names why.
  */
 export const SCANNER_BUNDLE_EXCLUDED_OPERATIONS = Object.freeze({
+  '/api/cyber/v1/get-network-info': 'Budget: the optional cyber popup enrichment (#10186) puts the scanner bundle 1,793 bytes over its cap. The endpoint remains served and fully documented in the CyberService spec and YAML bundle.',
   '/api/economic/v1/get-food-prices': 'Budget: the dashboard food-price card (#9841) puts the scanner bundle 2,983 bytes over its cap. The endpoint remains served and fully documented in the EconomicService spec and YAML bundle.',
   '/api/maritime/v1/list-ukmto-incidents': 'Budget: the optional UKMTO dashboard dataset puts the scanner bundle 2,045 bytes over its cap. The endpoint remains served and fully documented in the MaritimeService spec and YAML bundle; worker activation is tracked in #9831.',
   '/api/intelligence/v1/get-country-signal-observations': 'Internal country panel observation carrier; documented in the IntelligenceService spec and YAML bundle.',
@@ -457,6 +458,14 @@ export function buildBundle({ spec: provided } = {}) {
   const successDescriptionStats = shortenGeneratedSuccessDescriptions(spec);
   const duplicateSummaryStats = dropDuplicateOperationSummaries(spec);
   const descriptionPrefixStats = dropOperationIdDescriptionPrefixes(spec);
+  // Component keys already include the proto message name. Keep the full
+  // description in the YAML and omit that repeated prefix in the served JSON.
+  for (const [key, schema] of Object.entries(spec.components?.schemas ?? {})) {
+    const prefix = `${key.split('_').at(-1)} `;
+    if (typeof schema?.description !== 'string' || !schema.description.startsWith(prefix)) continue;
+    const rest = schema.description.slice(prefix.length);
+    if (/^\S/.test(rest)) schema.description = rest[0].toUpperCase() + rest.slice(1);
+  }
   const entitlementNoteStats = compactEntitlementNotes(spec);
   const exampleListStats = trimResponseExampleLists(spec);
 

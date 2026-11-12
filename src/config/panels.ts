@@ -117,6 +117,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   displacement: { name: 'UNHCR Displacement', enabled: true, priority: 2 },
   'ukmto-incidents': { name: 'UKMTO Incidents', enabled: false, priority: 2 },
   climate: { name: 'Climate Anomalies', enabled: true, priority: 2 },
+  'reservoir-levels': { name: 'Strategic Water Levels', enabled: false, priority: 2 },
   'climate-news': { name: 'Climate News', enabled: false, priority: 2 },
   'population-exposure': { name: 'Population Exposure', enabled: true, priority: 2 },
   'security-advisories': { name: 'Security Advisories', enabled: true, priority: 2 },
@@ -1019,6 +1020,8 @@ const ENERGY_PANELS: Record<string, PanelConfig> = {
   'gcc-investments': { name: 'GCC Energy Investments', enabled: true, priority: 2 },
   // Climate — demand driver (HDD / CDD future use)
   climate: { name: 'Climate & Weather Impact', enabled: true, priority: 2 },
+  // Hydropower reservoirs and transboundary water (ICESat-2 levels)
+  'reservoir-levels': { name: 'Strategic Water Levels', enabled: true, priority: 2 },
   // Tracking
   monitors: { name: 'My Monitors', enabled: true, priority: 3 },
   'world-clock': { name: 'World Clock', enabled: true, priority: 3 },
@@ -1542,7 +1545,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
-    panelKeys: ['monitors', 'ukmto-incidents', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'climate-news', 'population-exposure', 'security-advisories', 'toronto-safety', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
+    panelKeys: ['monitors', 'ukmto-incidents', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'reservoir-levels', 'climate-news', 'population-exposure', 'security-advisories', 'toronto-safety', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
     variants: ['full', 'energy'],
   },
 

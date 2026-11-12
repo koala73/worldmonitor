@@ -63,6 +63,13 @@
 }</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="cursor" aria-label="Copy Cursor mcp.json">Copy</button></div>
       </article>
 
+      <article class="client" id="codex">
+        <h3>Codex</h3>
+        <p>Add the server, then run the login command to sign in. Codex does not open the sign-in window by itself; the login command does.</p>
+        <div class="cmd"><pre><code>codex mcp add worldmonitor --url https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="codex" aria-label="Copy Codex add command">Copy</button></div>
+        <div class="cmd"><pre><code>codex mcp login worldmonitor</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="codex" aria-label="Copy Codex login command">Copy</button></div>
+      </article>
+
       <article class="client" id="gemini">
         <h3>Gemini CLI</h3>
         <p>Add the server (use <code>-s user</code> to make it available in every project), then run <code>/mcp auth worldmonitor</code> inside Gemini CLI to sign in.</p>
@@ -86,7 +93,7 @@
 
       <article class="client" id="generic">
         <h3>Any other MCP client</h3>
-        <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves and open the sign-in window. Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
+        <p>Point it at the Streamable HTTP endpoint below. Clients that support OAuth register themselves; some open sign-in automatically, others need a login command (Codex) or an Authenticate step (Claude Code). Clients that send headers can use an API key instead: <code>X-WorldMonitor-Key: wm_...</code>. Stdio-only clients can connect through <code>mcp-remote</code>.</p>
         <div class="cmd"><pre><code>https://worldmonitor.app/mcp</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP endpoint">Copy</button></div>
         <p>Check the connection and browse the tools with the MCP Inspector:</p>
         <div class="cmd"><pre><code>npx @modelcontextprotocol/inspector --server-url https://worldmonitor.app/mcp --transport http</code></pre><button type="button" class="copy" data-copy data-umami-event="agent-copy-command" data-umami-event-client="other" aria-label="Copy MCP Inspector command">Copy</button></div>
@@ -121,6 +128,7 @@
         <li><code>monitor-internet-outages</code> Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds.</li>
         <li><code>monitor-supply-chain-stress</code> Retrieve current shipping market stress from carrier and freight indicators.</li>
         <li><code>monitor-webcams</code> Discover live webcams in a map viewport and resolve thumbnails or player URLs.</li>
+        <li><code>prepare-travel-risk-assessment</code> Draft a sourced travel risk assessment for an itinerary of up to 6 countries, for an analyst to review and finish.</li>
         <li><code>research-stocks</code> Read current stock research, technical backtests, saved analyses or saved backtests.</li>
         <li><code>scan-cyber-threats</code> Retrieve active cyber-threat intelligence — malware IOCs, C2 infrastructure, and CISA known-exploited vulnerabilities — filterable by type, source, and severity.</li>
         <li><code>trace-trade-flows</code> Retrieve strategic UN Comtrade commodity flows with anomaly flags.</li>
@@ -146,6 +154,6 @@
   </main>
   <p id="copy-status" class="sr-only" role="status" aria-live="polite"></p>
   <script type="module" nonce="wm-static-bootstrap" src="/agent/agent.js"></script>
-  <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
+  <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
 </body>
 </html>

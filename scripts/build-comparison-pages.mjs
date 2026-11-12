@@ -610,6 +610,10 @@ function comparisonWebPageLd({ name, description, url, lastmod, faqId, baseUrl }
   };
 }
 
+// The comparison is cited by answer engines; the per-waterway pages are where
+// the open/closed question is answered, and nothing on this page linked them.
+const CHOKEPOINT_STATUS_LINKS = '      <p data-chokepoint-status-links>Status by waterway: <a href="/chokepoints/strait-of-hormuz/">is the Strait of Hormuz open?</a> · <a href="/chokepoints/bab-el-mandeb/">is the Bab el-Mandeb open?</a> · <a href="/chokepoints/suez-canal/">is the Suez Canal open?</a> · <a href="/chokepoints/">all monitored chokepoints</a>.</p>';
+
 function renderMeasurement(slug, snapshotDate, escapeHtml) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate ?? '')) {
     throw new Error('Comparison measurement requires the captured snapshot date');
@@ -621,6 +625,7 @@ function renderMeasurement(slug, snapshotDate, escapeHtml) {
   return [
     '      <h2>How World Monitor measures this</h2>',
     ...renderParagraphs(paragraphs, escapeHtml),
+    ...(maritime ? [CHOKEPOINT_STATUS_LINKS] : []),
     '      <p>Coverage: the <a href="/sources/">source catalog</a> lists ' + escapeHtml(formatCount(WORLD_MONITOR_PROVIDER_COUNT)) + ' active providers across the product, not per metric. Availability varies by source and location.</p>',
     '      <p data-measurement-snapshot><a href="' + snapshotPath + '">Published ' + (maritime ? 'chokepoint status' : 'country instability') + ' snapshot</a>, captured <time datetime="' + escapeHtml(snapshotDate) + '">' + escapeHtml(snapshotDate) + '</time>. This reference remains dated when live values change.</p>',
   ];

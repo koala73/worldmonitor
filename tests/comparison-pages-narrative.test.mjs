@@ -224,6 +224,11 @@ describe('comparison page narrative depth (#7743)', () => {
         for (const source of ['AISStream', 'IMF PortWatch', 'NGA']) assert.ok(copy.includes(source));
         assert.ok(copy.includes(`${CHOKEPOINT_REGISTRY.length} maritime chokepoints`));
         assert.match(copy, /6 hours/);
+        const statusLinks = [...main.querySelectorAll('[data-chokepoint-status-links] a')].map((a) => a.getAttribute('href'));
+        assert.ok(statusLinks.includes('/chokepoints/strait-of-hormuz/'), 'chokepoint comparison must link the Hormuz status page');
+        assert.ok(statusLinks.includes('/chokepoints/'), 'chokepoint comparison must link the chokepoint hub');
+      } else {
+        assert.equal(main.querySelector('[data-chokepoint-status-links]'), null, `${slug} must not carry chokepoint status links`);
       }
     }
   });

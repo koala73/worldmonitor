@@ -720,6 +720,8 @@ export interface ListSecurityAdvisoriesRequest {
 export interface ListSecurityAdvisoriesResponse {
   advisories: SecurityAdvisoryItem[];
   byCountry: Record<string, string>;
+  registerLevels: SecurityAdvisoryItem[];
+  fetchedAt: number;
 }
 
 export interface SecurityAdvisoryItem {

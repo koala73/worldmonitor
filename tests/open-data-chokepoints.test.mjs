@@ -519,6 +519,17 @@ describe('open data chokepoint files', () => {
 });
 
 describe('open data chokepoint CLI', () => {
+  it('refuses --dry-run combined with a mode that writes to Redis', async () => {
+    for (const mode of [['--publish-redis'], ['--import-dir', tmpdir()]]) {
+      await assert.rejects(
+        run(process.execPath, [GENERATOR, '--dry-run', '--input', fileURLToPath(FIXTURE_2026_11_02), ...mode], {
+          env: { ...process.env, UPSTASH_REDIS_REST_URL: 'http://127.0.0.1:9', UPSTASH_REDIS_REST_TOKEN: 'unused' },
+        }),
+        (err) => /--dry-run cannot be combined/.test(err.stderr),
+      );
+    }
+  });
+
   it('saves the response it used and rebuilds the same snapshot from that file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'open-data-chokepoints-cli-'));
     try {

@@ -66,6 +66,8 @@ const ALLOWED_REDIRECT_URIS = new Set([
   // MCPJam production hosts (https://www.mcpjam.com/.well-known/oauth/client-metadata.json)
   'https://app.mcpjam.com/oauth/callback',
   'https://score.mcpjam.com/oauth/callback',
+  // Manufact Cloud (https://manufact.com/oauth/client-metadata.json)
+  'https://manufact.com/inspector/oauth/callback',
 ]);
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);

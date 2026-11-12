@@ -445,7 +445,7 @@ export class ConsumerPricesPanel extends Panel {
     }).join('');
     return `
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-      <table class="cp-global-table">
+      <table class="wm-table cp-global-table">
         <thead>
           <tr>
             <th scope="col">Market</th><th scope="col">Index</th><th scope="col">WoW</th><th scope="col">Spread</th><th scope="col">Updated</th>
@@ -511,7 +511,7 @@ export class ConsumerPricesPanel extends Panel {
         <span class="cp-world-count">${escapeHtml(this.inflationCountText(visible))}</span>
       </div>
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-      <table class="cp-global-table cp-world-table">
+      <table class="wm-table cp-global-table cp-world-table">
         <thead>
           <tr>
             <th scope="col">${escapeHtml(t('components.consumerPrices.world.country'))}</th>
@@ -591,7 +591,7 @@ export class ConsumerPricesPanel extends Panel {
 
     return `
       <div class="table-scroll" role="group" tabindex="0" aria-labelledby="${this.panelId}Title">
-      <table class="cp-table">
+      <table class="wm-table cp-table">
         <thead>
           <tr>
             <th scope="col">Category</th>

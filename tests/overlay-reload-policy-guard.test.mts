@@ -246,6 +246,7 @@ describe('overlay reload-contract gate', () => {
       'src/components/SignalModal.ts :: this.element',
       'src/components/StoryModal.ts :: modalEl',
       'src/components/market-chart-modal.ts :: modalEl',
+      'src/services/pwa-install.ts :: sheet',
     ]);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(el, { reload: 'blocking' })"), []);
     assert.deepEqual(safeDeclarationsIn("declareOverlay(root.querySelector('.x')!, { reload: 'safe' })"), ["root.querySelector('.x')!"]);

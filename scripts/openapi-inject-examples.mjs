@@ -387,7 +387,7 @@ function overrideStringExample(key, context = {}) {
   // both the query param (`symbols`) and response quote fields (`symbol`).
   if ((key === 'symbols' || key === 'symbol')
       && (where.includes('listcommodityquotes') || where.includes('list-commodity-quotes'))) {
-    return 'GC=F';
+    return 'BZ=F';
   }
   return undefined;
 }
@@ -878,6 +878,28 @@ function getCompanyEnrichmentExample() {
   };
 }
 
+// ListReservoirLevels: ReservoirLevel has 26 properties and none are `required`, so the
+// generic builder kept the alphabetically first five and dropped id/lat/lon, which the
+// handler requires (the record would be filtered out), and the product heuristic named the
+// ATL13 source "diesel". Real Lake Mead values from scripts/data/reservoir-levels-baseline.json,
+// trimmed to the decision fields to stay inside the public OpenAPI scanner budget.
+function getListReservoirLevelsExample() {
+  return {
+    reservoirs: [{
+      id: 'mead',
+      name: 'Lake Mead',
+      lat: 36.13,
+      lon: -114.45,
+      latest: { date: '2026-09-06', levelM: 316.757, ageDays: 24 },
+      change90dM: -2.893,
+      status: 'record_low',
+    }],
+    fetchedAt: 1790812800000,
+    dataAvailable: true,
+    source: { name: 'NASA ICESat-2 ATL13', product: 'ATL13 v007' },
+  };
+}
+
 // ShippingIndex has 12 properties and none are `required`, so the generic
 // builder's MAX_OPTIONAL_PROPERTIES cap keeps only the 5 alphabetically-first —
 // dropping the four decision-grade period-change fields (#6078) along with
@@ -947,6 +969,21 @@ function getInternalDisplacementExample() {
     fetchedAt: 1785542400000,
     dataAvailable: true,
   };
+}
+
+// One US register row, valid for both the news list and registerLevels: the
+// generic filler put level "example" and no issuer in either.
+function getListSecurityAdvisoriesExample() {
+  const row = {
+    title: 'Mexico - Level 2',
+    link: 'https://travel.state.gov/',
+    pubDate: '2026-01-15',
+    source: 'US State Dept',
+    sourceCountry: 'US',
+    level: 'caution',
+    country: 'MX',
+  };
+  return { advisories: [row], byCountry: { MX: 'caution' }, registerLevels: [row], fetchedAt: 1768478400000 };
 }
 
 function getShippingRatesExample() {
@@ -1141,6 +1178,17 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (depth === 0 && context.operationId === 'ListCommodityQuotes'
+    && context.exampleSurface === 'response') {
+    return {
+      quotes: [{
+        symbol: 'BZ=F', name: 'Brent Crude Oil', display: 'Brent',
+        price: 91.60, change: -1.05, sparkline: [93, 92, 91.60],
+        sparklineIntervalSeconds: 300, sparklineStartAt: 1794290700000,
+        priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt: 1794291360000,
+      }],
+    };
+  }
   if (depth === 0 && context.operationId === 'GetWebcamImage'
     && context.exampleSurface === 'response') {
     return {
@@ -1237,6 +1285,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   }
   if (
     depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listreservoirlevels'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListReservoirLevelsExample();
+  }
+  if (
+    depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getpricehistory'
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
@@ -1255,6 +1310,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     && String(context.name ?? '').toLowerCase().endsWith('response')
   ) {
     return getShippingRatesExample();
+  }
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'listsecurityadvisories'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getListSecurityAdvisoriesExample();
   }
   if (
     depth === 0

@@ -68,3 +68,31 @@ export function admitsDesktopKeyPrincipal(entitlement, now) {
 export const DESKTOP_KEY_LIMIT_ERROR = 'Desktop key limit reached for this account';
 /** 403 body for a desktop principal on an API-only path (KTD7). */
 export const DESKTOP_KEY_API_ONLY_ERROR = 'This endpoint requires an API plan';
+/** 403 body for a desktop key sent by something other than the desktop app or a self-hosted relay. */
+export const DESKTOP_KEY_CLIENT_ERROR =
+  'Desktop keys work only in the World Monitor desktop app and self-hosted dashboards. Scripts and integrations need an API Starter or API Business key: see worldmonitor.app/pricing';
+
+/**
+ * User-Agent prefixes of the clients a desktop key is issued for: the desktop
+ * sidecar (`cloudUserAgent()`), the desktop auth bridge in `src-tauri`, and the
+ * self-hosted relay (`selfHostRelayUserAgent()`), all in
+ * `src-tauri/sidecar/local-api-server.mjs`.
+ */
+const DESKTOP_KEY_CLIENT_PREFIXES = ['WorldMonitor-Desktop/', 'WorldMonitor-SelfHost/'];
+
+/**
+ * True when a desktop-key request may proceed given the caller's User-Agent.
+ *
+ * A User-Agent is easy to forge, so this is not a security boundary: it turns
+ * scripts that reuse a desktop key into a clear "get an API plan" answer, and
+ * the terms carry the rest. The check runs only when `mode` is `'enforce'`
+ * (env `DESKTOP_KEY_CLIENT_CHECK`), so it can ship before key holders are told.
+ *
+ * @param {string | null | undefined} userAgent
+ * @param {string | null | undefined} mode
+ * @returns {boolean}
+ */
+export function admitsDesktopKeyClient(userAgent, mode) {
+  if (mode !== 'enforce') return true;
+  return typeof userAgent === 'string' && DESKTOP_KEY_CLIENT_PREFIXES.some((prefix) => userAgent.startsWith(prefix));
+}

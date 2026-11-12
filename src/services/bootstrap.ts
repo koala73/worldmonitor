@@ -47,10 +47,8 @@ const EMPTY_TIER_STATE: BootstrapTierHydrationState = { source: 'none', updatedA
  * longer budgets for different network and dependency-loading constraints.
  * Do not move these without RUM / Sentry evidence.
  *
- * `web.fast` is ALSO hardcoded, deliberately un-imported, as
- * WEB_FAST_TIER_DEADLINE_MS in e2e/bootstrap-hydration-request-budget.spec.ts,
- * whose abort fixture delays the tier past it. That copy is a tripwire: change
- * this number and that spec must be re-examined, not silently followed.
+ * The exact web budgets are pinned by tests/bootstrap-payload-budget.test.mjs;
+ * the browser abort fixture withholds headers until the application aborts.
  */
 export const BOOTSTRAP_TIER_TIMEOUT_MS = {
   web: { fast: 1_200, slow: 3_000 },

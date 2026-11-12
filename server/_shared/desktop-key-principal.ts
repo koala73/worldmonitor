@@ -20,7 +20,9 @@
 
 import {
   DESKTOP_KEY_API_ONLY_ERROR,
+  DESKTOP_KEY_CLIENT_ERROR,
   DESKTOP_KEY_LIMIT_ERROR,
+  admitsDesktopKeyClient,
   admitsDesktopKeyPrincipal,
 } from '../../shared/desktop-key-access.js';
 import { hasCurrentEntitlementCoverage } from './entitlement-coverage.js';
@@ -101,4 +103,9 @@ export async function resolveUserKeyEntitlement(
 }
 
 /** Re-exported so the gateway and premium-check keep one import for the scope verdicts and their copy. */
-export { DESKTOP_KEY_API_ONLY_ERROR, DESKTOP_KEY_LIMIT_ERROR };
+export { DESKTOP_KEY_API_ONLY_ERROR, DESKTOP_KEY_CLIENT_ERROR, DESKTOP_KEY_LIMIT_ERROR };
+
+/** True when a desktop-key `request` comes from a desktop or self-hosted client, or the check is off. */
+export function admitsDesktopKeyClientRequest(request: Request): boolean {
+  return admitsDesktopKeyClient(request.headers.get('user-agent'), process.env.DESKTOP_KEY_CLIENT_CHECK);
+}

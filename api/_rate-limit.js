@@ -1,6 +1,7 @@
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
+import { upstashRedisOptions } from './_upstash-redis-options.js';
 import {
   durationToSeconds,
   limitWithFallback,
@@ -19,14 +20,6 @@ export {
   hasCloudflareTransitProof,
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
-
-// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
-// before surfacing an unreachable-Redis error. Under the node test runner
-// (NODE_TEST_CONTEXT is set) skip retries so fail-open / fail-closed tests that
-// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately instead of
-// stalling. Production (env unset) keeps the resilient default. Mirrors
-// REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
-const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
 const DEFAULT_RATE_LIMIT_SCOPE = 'global';
 const DEFAULT_RATE_LIMIT = 600;
@@ -53,7 +46,7 @@ async function getRatelimit(policy) {
 
   const { Ratelimit, Redis } = await loadUpstashRatelimit();
   const ratelimit = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,

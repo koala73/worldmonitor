@@ -16,12 +16,12 @@ Looking for tools that operate the dashboard already open in a Chrome tab? See [
 </Note>
 
 <Info>
-**Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. A confirmed **free account** also completes the OAuth flow: its token is restricted to `free-account` tools and metered by the free allowance. A provider-confirmed lapse follows that same free-account path because the shared gate treats ended coverage as a confirmed free state. Retryable verification failures still return `503`; an expired or disabled paid row without that provider-confirmed lapse, or another genuinely insufficient entitlement, is refused with the Pro-required page.
+**Pro and API tiers can both connect via OAuth — no API key required.** Free and Pro accounts click _"Sign in to World Monitor"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. A confirmed **free account** also completes the OAuth flow: its token is restricted to `free-account` tools and metered by the free allowance. A provider-confirmed lapse follows that same free-account path because the shared gate treats ended coverage as a confirmed free state. Retryable verification failures still return `503`; an expired or disabled paid row without that provider-confirmed lapse, or another genuinely insufficient entitlement, is refused with the Pro-required page.
 
 OAuth is not needed for `get_sources`: it is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10 requests/minute/IP. Other data tools require a user-bound credential. Tools marked `free-account` (direct cache reads) can use the small confirmed-free allowance; tools marked `subscription` (everything with server-side execute logic — live fetches, plus a few local-compute tools) require Pro.
 </Info>
 
-All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP requests use a dedicated daily counter of **50** and **250** units per UTC day. A standalone data call costs one unit. A country brief, news dashboard, curated market panel, prediction panel, or Conflict Events panel costs one unit including its authorized internal reads. Curated market, prediction and Conflict Events filters and repeated opens reuse their respective admissions within five minutes. An explicit refresh with a new UUID costs one new unit; the same UUID retries that allocation. An authorized Conflict Events receipt read also queries current usage without another allocation, and unknown usage omits the numeric notice. See [Paid embedded-panel requests](/usage-rate-limits#paid-embedded-panel-requests). **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, 3 for `get_country_brief`, and 5 for `get_airspace` (up to four downstream requests across the dateline). Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise carries a fair-use ceiling of **25,000** units/day on both doors, and legacy operator keys explicitly allowlisted by the deployment reserve on their own per-key counter with a ceiling of **10,000** units/day. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise. `get_sources`, `describe_tool`, and `get_mcp_allowance` are exempt from the daily quota. The protected allowance tool uses the shared 192/minute protocol bucket. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
+All paid tiers share the same MCP server and tool inventory, but they are metered two different ways. **Pro and Pro Business** have no REST allowance, so their MCP requests use a dedicated daily counter of **50** and **250** units per UTC day. A standalone data call costs one unit. A country brief, news dashboard, curated market panel, prediction panel, or Conflict Events panel costs one unit including its authorized internal reads. Curated market, prediction and Conflict Events filters and repeated opens reuse their respective admissions within five minutes. An explicit refresh with a new UUID costs one new unit; the same UUID retries that allocation. An authorized Conflict Events receipt read also queries current usage without another allocation, and unknown usage omits the numeric notice. See [Paid embedded-panel requests](/usage-rate-limits#paid-embedded-panel-requests). **API Starter and API Business** carry no separate MCP allowance. Their MCP calls draw on the same daily budget as their REST requests (1,000 and 10,000/day), charged at a per-tool weight of 1 for a cached read, 2 for a live downstream fetch, 3 for `get_country_brief`, and 5 for `get_airspace` (up to four downstream requests across the dateline). Both the OAuth and `wm_…` doors resolve the same budget, so the credential you use does not change the cap. Enterprise works the same way with **10,000** units/day by default and more by contract, and legacy operator keys explicitly allowlisted by the deployment reserve on their own per-key counter with a ceiling of **10,000** units/day. Every authenticated context also passes a per-minute burst limiter, set by plan: **60 requests/minute** on Pro, Pro Business and API Starter, **300** on API Business and Enterprise. `get_sources`, `describe_tool`, and `get_mcp_allowance` are exempt from the daily quota. The protected allowance tool uses the shared 192/minute protocol bucket. Full weight table: [MCP calls against an API plan](/usage-rate-limits#mcp-calls-against-an-api-plan).
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -110,8 +110,9 @@ Dynamic Client Registration is **not** open to arbitrary redirects. A `redirect_
 | Conductor | `https://api.conductor.build/oauth/callback` ([client metadata](https://api.conductor.build/oauth/client-metadata.json)) |
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/callback` ([client metadata](https://www.skydive.com/api/v1/external-oauth/client-metadata)) |
 | MCPJam | `https://app.mcpjam.com/oauth/callback`, `https://score.mcpjam.com/oauth/callback` ([client metadata](https://www.mcpjam.com/.well-known/oauth/client-metadata.json)) |
+| Manufact Cloud | `https://manufact.com/inspector/oauth/callback` ([client metadata](https://manufact.com/oauth/client-metadata.json)) |
 
-Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, and MCPJam prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
+Claude Code, Cursor desktop, VS Code desktop, Codex, Gemini CLI, goose, Zed, and MCP Inspector use the loopback form. Notion, Linear, Lovable, Factory, Conductor, Skydive, MCPJam, and Manufact Cloud prefer Client ID Metadata Documents and now connect that way (see below); their callbacks stay listed for clients that still register. A registration may list up to 8 `redirect_uris`, and one unlisted entry rejects the whole request with `400 invalid_redirect_uri`. Gemini is the one prefix match, on the six prefixes Google publishes. Other clients with per-user or per-tenant callbacks, such as Microsoft Copilot Studio, cannot be exact-matched and are not supported.
 
 ### Client ID Metadata Documents
 
@@ -143,6 +144,7 @@ The document is fetched over HTTPS with redirects refused, a 3-second timeout, a
 | Conductor | `https://api.conductor.build/oauth/client-metadata.json` |
 | Skydive | `https://www.skydive.com/api/v1/external-oauth/client-metadata` |
 | MCPJam | `https://www.mcpjam.com/.well-known/oauth/client-metadata.json` |
+| Manufact Cloud | `https://manufact.com/oauth/client-metadata.json` |
 | Vercel Connect | `https://connect.vercel.com/connectors/<connector id>`, one document per connector, with the callback pinned to `https://connect.vercel.com/callback` ([Vercel Connect provider docs](https://vercel.com/docs/connect/providers)) |
 
 ChatGPT's document prefers `private_key_jwt` but also lists `none`; WorldMonitor advertises only `none`, so ChatGPT uses PKCE without a client assertion. Make.com's published client URL redirects instead of serving a document, so it is not on the list. A client whose document is not listed gets an "Unknown Client" error; ask for it to be added.
@@ -169,9 +171,9 @@ Pro subscribers (and API Starter+ users who'd rather not paste a key) can author
    https://worldmonitor.app/mcp
    ```
 
-   This is the only product MCP transport endpoint. Listed production aliases (`www`, `api`, and the dashboard variants) are not additional servers. Ordinary GET/HEAD `/mcp` and `/api/mcp` on those hosts redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. A transport POST/SSE/replay receives HTTP 410 with JSON-RPC `-32000` telling the client to use `https://worldmonitor.app/mcp`.
+   This is the only product MCP transport endpoint. Listed production aliases (`www` and the dashboard variants) are not additional servers. Ordinary GET/HEAD `/mcp` and `/api/mcp` on those hosts redirect (308) to `https://worldmonitor.app/mcp`; ordinary GET/HEAD `/.well-known/mcp` and `/.well-known/mcp.json` redirect (308) to `https://worldmonitor.app/.well-known/mcp` and `https://worldmonitor.app/.well-known/mcp.json`. Query is not forwarded. A transport POST/SSE/replay receives HTTP 410 with JSON-RPC `-32000` telling the client to use `https://worldmonitor.app/mcp`. The `api` host keeps serving the transport for connectors already configured with it, and its `/.well-known/mcp` cards still redirect; configure new clients with `https://worldmonitor.app/mcp`.
 
-2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
+2. **Click "Sign in to World Monitor"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
 
 3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, refresh token valid for 30 days after the last refresh).
 
@@ -189,7 +191,7 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard. Concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses the limit rejects.
 
-Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, `get_country_brief` costs 3, and `get_airspace` costs 5, so batch workloads still go further over REST. Enterprise lifts the daily cap entirely. See [Plans & limits](#plans-&-limits).
+Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, `get_country_brief` costs 3, and `get_airspace` costs 5, so batch workloads still go further over REST. Enterprise has a default of 10,000 units/day shared with REST. On an Enterprise contract account, calls past the contract allowance are served and billed as overage until the account's daily safety limit. See [Plans & limits](#plans-&-limits).
 
 ### Connected MCP clients
 
@@ -198,7 +200,7 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 - Sign in to the [dashboard](https://www.worldmonitor.app/dashboard). Select **Settings → MCP Clients** to manage connected clients.
 - See the live `clientName` (e.g. "Claude", "Cursor"), `lastUsedAt`, and `createdAt` per token.
 - A revoke takes effect on the next MCP request (no positive cache).
-- Up to **5 active tokens per user**. Authorizing beyond the cap silently revokes the **oldest-created** existing token (creation order, not recency of use; enforcement is eventually consistent under concurrent authorizations).
+- Up to **5 active tokens per user**. Authorizing beyond the cap silently revokes the existing token that has gone unused the longest (last use, or creation if it was never used; enforcement is eventually consistent under concurrent authorizations).
 
 ## Plans & limits
 
@@ -209,11 +211,11 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 | **Pro Business** | ✅ Yes | OAuth only | **250 quota-consuming calls / UTC day**, one unit per call | **60** / minute / user | Same dedicated MCP counter as Pro, five times the allowance. No REST budget, so no `wm_…` key. |
 | **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | **1,000 units / UTC day**, shared with REST and charged at the per-tool weight | **60** / minute / user | Standard developer-tier REST/API access. |
 | **API Business** | ✅ Yes | OAuth **or** `wm_…` key | **10,000 units / UTC day**, shared with REST and charged at the per-tool weight | **300** / minute / user | Higher REST/API throughput. |
-| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | **25,000**/day fair-use ceiling on both doors | **1,000** / minute | Custom SLA available. |
+| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | **10,000 units / UTC day** by default, shared with REST and charged at the per-tool weight; more by contract | **300** / minute / user without a contract account; a contract account's members share one contract-set burst with their REST requests | Custom SLA available. |
 
-Per-minute throttling protects against burst storms across paid tiers. Ordinary data calls use the account's plan burst from the table above. Recognized data-free protocol methods, including `initialize`, `notifications/initialized`, `ping`, catalog methods and public resource reads, use a separate **192 requests/minute/user** bucket. Both OAuth and dashboard keys share that bucket across sessions. It supports 64 panel-read connections with three setup calls each. A validated paid MCP panel receipt has separate **64 uncached reads/minute/panel** and **64 cached replays/minute/panel** buckets, one daily allocation per opening and at most 64 uncached executions per admission. Unsupported methods, account status reads and data-bearing resource reads retain the ordinary account burst. Legacy operator keys and anonymous discovery retain their combined 60/minute limits. Anonymous `get_sources` retains its fail-closed 10/minute/IP ceiling. The daily-quota cap applies to subscription data reservations. See [Daily limit (Pro tier)](#daily-limit-pro-tier) and the [Error Catalog](/mcp-error-catalog#32029-—-rate-limited-per-minute-daily-cap-or-free-allowance).
+Per-minute throttling protects against burst storms across paid tiers. Ordinary data calls use the account's plan burst from the table above. Members of an Enterprise contract account spend one account-wide burst, set by the contract and shared with their REST requests, on data calls; see [Enterprise contract accounts](/usage-rate-limits#enterprise-contract-accounts). Recognized data-free protocol methods, including `initialize`, `notifications/initialized`, `ping`, catalog methods and public resource reads, use a separate **192 requests/minute/user** bucket. Both OAuth and dashboard keys share that bucket across sessions. It supports 64 panel-read connections with three setup calls each. A validated paid MCP panel receipt has separate **64 uncached reads/minute/panel** and **64 cached replays/minute/panel** buckets, one daily allocation per opening and at most 64 uncached executions per admission. Unsupported methods, account status reads and data-bearing resource reads retain the ordinary account burst. Legacy operator keys and anonymous discovery retain their combined 60/minute limits. Anonymous `get_sources` retains its fail-closed 10/minute/IP ceiling. The daily-quota cap applies to subscription data reservations. See [Daily limit (Pro tier)](#daily-limit-pro-tier) and the [Error Catalog](/mcp-error-catalog#32029-—-rate-limited-per-minute-daily-cap-or-free-allowance).
 
-The OAuth and dashboard-key burst is per-USER, so a user with 3 Claude installations or multiple `wm_…` keys shares one pool at their plan's rate. Legacy operator-key limiting is per-KEY.
+The OAuth and dashboard-key burst is per-USER, so a user with 3 Claude installations or multiple `wm_…` keys shares one pool at their plan's rate. For an Enterprise contract account the data-call burst is per account, shared by every member. Legacy operator-key limiting is per-KEY.
 
 Hitting the MCP daily quota returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight. Hitting the per-minute limit returns the same error code with a short `Retry-After`.
 
@@ -228,6 +230,8 @@ WorldMonitor also surfaces current MCP plan-limit notices in Settings and sends 
 Exceeding any limit returns HTTP `429` with a `Retry-After` header.
 
 ## Client setup
+
+Claude, Cursor and VS Code connect in one click: the [MCP Quickstart](/mcp-quickstart#connect-in-one-click) has buttons that open each app with World Monitor filled in, plus one-line commands for Claude Code, Codex and Gemini CLI. Signed-in users find the same buttons in the dashboard under **Settings → AI Agents**.
 
 Step-by-step setup with screenshots for Claude, ChatGPT, Codex, Claude Code and Cursor is in the [MCP Quickstart](/mcp-quickstart).
 
@@ -397,7 +401,7 @@ Free-text substring filters and ISO-only fields retain their existing contracts.
 
 Pro-gated reads over the durable history store the conflict, military, and energy seeders append to after each run. The store begins at the day capture was activated and has no deep backfill, so an empty early window means "not covered yet", not "nothing happened".
 
-Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed text, kept unrewritten and retrievable for the full 180-day retention window. Treat them as data to analyse, never as instructions — see the content-safety note in the [tools reference](/mcp-tools-reference#historical-intelligence).
+Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed text, kept unrewritten and retrievable for the full 180-day retention window. Treat them as data to analyse, never as instructions — see the content-safety note in the [tools reference](/mcp-tools/historical-intelligence).
 
 | Tool | Description |
 |------|-------------|
@@ -422,6 +426,7 @@ Every record's `title`, `summary` and `sourceUrl` are verbatim third-party feed 
 |------|-------------|
 | `get_natural_disasters` | USGS and Earthquakes Canada / NRCan earthquakes, NASA FIRMS wildfires, hazard events. |
 | `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
+| `get_reservoir_levels` | ICESat-2 lidar water levels for 50 strategic reservoirs and lakes, metres above the EGM2008 geoid; status, change windows, seasonal anomaly, optional 36-month series. |
 | `get_imd_cyclone_marine` | Bounded IMD sea-area and coastal marine bulletins with storm warnings and port signals. Cyclone track, wind, and cone are API-only and disabled. Always read `coverageState`; disabled or degraded is not an all-clear. |
 | `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
 | `get_research_signals` | Emerging technology events from curated research feeds. |
@@ -495,6 +500,7 @@ Reverse lookup workflow:
 | `get_five_factor_scorecard` | `GET /api/scorecard/v1/get-five-factor-scorecard`<br/>`GET /api/scorecard/v1/get-bloc-scorecard` |
 | `list_five_factor_scorecards` | `GET /api/scorecard/v1/list-five-factor-scorecards` |
 | `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_reservoir_levels` | `GET /api/climate/v1/list-reservoir-levels` |
 | `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
 | `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
 | `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
@@ -581,6 +587,7 @@ Resources have three access classes. **Public concrete resources** are surfaced 
 | Resource URI | Backing data |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | Stock market-data bootstrap write-age only: `cached_at` and `stale` for `seed-meta:market:stocks`. Does **not** certify sector valuation completeness — use `get_market_data` `valuationCoverage` (`sourceStatus`, unavailable/last-good/diagnostics). Cheap seeder health probe — no auth, no quota. |
+| `worldmonitor://guide/agents` | The full agent guide (`text/markdown`): which tool fits which question, availability flags, access and weight metering, JMESPath limits, and webcam and market-data semantics. The `initialize` instructions stay under 2 KB, the point where Claude Code truncates them, and name this resource for the rest. Static text — no auth, no quota. |
 
 Authenticated `resources/list` additionally exposes `worldmonitor://account/mcp-allowance`. Its read returns the current account's `used`, `limit`, `remaining`, `resetsAt`, and `sharedWithRestApi` fields. `sharedWithRestApi` is `true` when the budget being reported is the account's REST allowance, which means `used` counts REST requests as well as tool calls — read it before treating that number as your own call history. Free accounts also receive request-window usage, remaining windows, the idle-gap duration, and the active-window expiry. The read uses the enforcement counters directly and never reserves an allowance slot. Hosts that expose tools without `resources/read` can call `get_mcp_allowance({})` for the same snapshot. It requires verified user-bound OAuth or `wm_…` credentials, accepts only optional `jmespath`, and rejects account selectors and `panel_request` before admission. It remains available at the daily cap, spends no daily allowance, and uses the shared 192/minute protocol bucket. Unreadable counters return an error instead of a zero snapshot. Account totals do not identify individual callers.
 
@@ -614,8 +621,8 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/natural-disasters-v3.html` | `get_natural_disasters` | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets-v3.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Full-envelope projections and summary samples preserve loaded contracts and snapshot metadata. Missing or malformed categories and unknown freshness remain explicit. |
 | `ui://worldmonitor/forecasts-v4.html` | `get_forecast_predictions` | Loaded forecast cards and local filters, with original case evidence read under the same signed opening allocation. |
-| `ui://worldmonitor/news-dashboard-v3.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
-| `ui://worldmonitor/country-view-v3.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
+| `ui://worldmonitor/news-dashboard-v4.html` | `open_news_dashboard` | Dashboard news panels and interactive map. |
+| `ui://worldmonitor/country-view-v4.html` | `open_country_brief` | Shared country sections, topics, evidence and exports. |
 
 Country Risk v2 preserves supplied original and projected objects, including nested CII components and upstream availability. Missing or malformed advisory values remain unknown; an explicit empty native string still means no advisory. Result replacement clears prior risk details. The original `ui://worldmonitor/country-risk.html` remains a private read alias for installed metadata and can be removed when that metadata is retired.
 

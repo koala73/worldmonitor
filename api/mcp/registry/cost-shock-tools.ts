@@ -8,10 +8,17 @@ import { fetchMcpDownstream } from '../downstream';
 import type { ToolDef } from '../types';
 
 // One Gulf crude share window (compute_energy_shock preCrisisBaseline / currentFlows).
+const d = (type: string, description: string) => ({ type, description });
 const CRUDE_SHARE_BASELINE_SCHEMA = { type: 'object', properties: {
-  basis: { type: 'string', enum: ['comtrade_monthly', 'national_monthly', 'comtrade_annual'] }, fromMonth: { type: 'string' }, toMonth: { type: 'string' },
-  monthsCovered: { type: 'number' }, gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' }, crudeLossAfterBypassKbd: { type: 'number' },
+  basis: { type: 'string', enum: ['comtrade_monthly', 'national_monthly', 'comtrade_annual'], description: 'Share source: UN Comtrade monthly import value, the importer\'s own monthly statistics in tonnes, or the Comtrade annual fallback.' },
+  fromMonth: d('string', 'First month of the window, YYYY-MM.'), toMonth: d('string', 'Last month of the window, YYYY-MM.'),
+  monthsCovered: d('number', 'Monthly filings in the window.'),
+  gulfCrudeShare: d('number', 'Gulf share of crude imports times the chokepoint route factor, as a fraction.'),
+  crudeLossKbd: d('number', 'Crude loss at disruption_pct with no bypass recovery, thousand barrels per day; 0 when not modelled.'),
+  crudeLossAfterBypassKbd: d('number', 'Hormuz only: crude loss after bypass rerouting, thousand barrels per day; absent otherwise.'),
 } } as const;
+const GBP = 'War-risk insurance premium for the chokepoint, basis points.';
+const TIER = 'War-risk tier of the chokepoint, from WAR_RISK_TIER_NORMAL to WAR_RISK_TIER_WAR_ZONE.';
 
 const MODES = {
   energy: '/api/supply-chain/v1/get-country-cost-shock',
@@ -33,33 +40,38 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   name: 'get_supply_chain_cost_shock',
   _validateArgs: params => { costShockCountry(params); },
   title: 'Chokepoint closure cost shock',
-  description: 'Model existing country energy exposure or multi-sector import costs for a chokepoint closure. Select energy or multi-sector mode, country and canonical chokepoint. Energy defaults to HS 27 mineral fuels; closure_days applies only to multi-sector and defaults to 30. Energy models cover only supported chokepoints. hasEnergyModel and unavailableReason mark missing models or imports, which are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
+  description: 'Model country energy exposure or multi-sector import costs for a chokepoint closure. Returns {mode, data}: energy data contains refined-product supply deficit and IEA stock cover; multi-sector data contains sector cost estimates and totalAddedCost over closure_days. Energy models cover only supported chokepoints and HS 27 mineral fuels. Read unavailableReason for missing energy metrics or models and country-wide missing imports; partial sector imports have no missing-data reason. hasEnergyModel is true only when both energy metrics are modelled. Unavailable values are not measured zero impacts. Sector costs are estimates in USD using seeded imports, freight/insurance assumptions and closure duration, not realized losses or forecasts. Uses existing subscription access and seeded computations; no scenario is saved.',
   _outputBudgetBytes: 65536,
   inputSchema: {
     type: 'object',
     properties: {
-      mode: { type: 'string', enum: Object.keys(MODES), description: 'Energy exposure or multi-sector import-cost scenario.' },
-      country: { type: 'string', description: COUNTRY_ARG_HINT },
-      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.map(point => point.id), description: 'Canonical chokepoint ID from the shared registry.' },
-      hs2: { type: 'string', pattern: '^\\d{1,2}$', default: '27', description: 'Energy mode only: HS2 product code. HS 27 has energy coverage; other codes retain the source unavailable explanation.' },
-      closure_days: { type: 'integer', minimum: 1, maximum: 365, default: 30, description: 'Multi-sector mode only: closure duration in days.' },
+      mode: { type: 'string', enum: Object.keys(MODES), description: 'Which model: energy returns the refined-product supply deficit and stock cover for one HS2 chapter; multi-sector returns added import costs across seeded HS2 sectors over closure_days.' },
+      country: { type: 'string', description: `Importing country. ${COUNTRY_ARG_HINT}` },
+      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.map(point => point.id), description: 'Maritime chokepoint assumed closed when modelling the importing country\'s exposure or bypass freight and insurance costs.' },
+      hs2: { type: 'string', pattern: '^\\d{1,2}$', default: '27', description: 'Energy mode only: Harmonized System goods chapter to assess. The energy model covers mineral fuels (27); other chapters return hasEnergyModel false with unavailableReason.' },
+      closure_days: { type: 'integer', minimum: 1, maximum: 365, default: 30, description: 'Multi-sector mode only: days the chokepoint stays closed; scales totalCostShock and totalAddedCost.' },
     },
     required: ['mode', 'country', 'chokepoint_id'],
   },
   outputSchema: {
     type: 'object', required: ['mode', 'data'],
     properties: {
-      mode: { type: 'string', enum: Object.keys(MODES) },
-      data: { type: 'object', properties: {
-        iso2: { type: 'string' }, chokepointId: { type: 'string' }, hs2: { type: 'string' },
-        supplyDeficitPct: { type: 'number' }, coverageDays: { type: 'number' }, warRiskPremiumBps: { type: 'number' },
-        warRiskTier: { type: 'string' }, hasEnergyModel: { type: 'boolean' }, unavailableReason: { type: 'string' },
-        fetchedAt: { type: 'string' }, closureDays: { type: 'number' }, totalAddedCost: { type: 'number' },
-        sectors: { type: 'array', items: { type: 'object', properties: {
-          hs2: { type: 'string' }, hs2Label: { type: 'string' }, importValueAnnual: { type: 'number' },
-          freightAddedPctPerTon: { type: 'number' }, warRiskPremiumBps: { type: 'number' }, addedTransitDays: { type: 'number' },
-          totalCostShockPerDay: { type: 'number' }, totalCostShock30Days: { type: 'number' }, totalCostShock90Days: { type: 'number' },
-          totalCostShock: { type: 'number' }, closureDays: { type: 'number' },
+      mode: { type: 'string', enum: Object.keys(MODES), description: 'Model that ran.' },
+      data: { type: 'object', description: 'Source model result. Both modes return iso2, chokepointId, warRiskTier, unavailableReason and fetchedAt. Energy adds hs2, supplyDeficitPct, coverageDays, warRiskPremiumBps and hasEnergyModel. Multi-sector adds closureDays, totalAddedCost and sectors.', properties: {
+        iso2: d('string', 'ISO alpha-2 importing country.'), chokepointId: d('string', 'Chokepoint modelled.'), hs2: d('string', 'Energy mode: HS2 chapter modelled.'),
+        supplyDeficitPct: d('number', 'Energy mode: average deficit across refined products with demand observations under full closure, percent. Unmodelled values stay 0; read unavailableReason for metric-specific gaps even when hasEnergyModel is false.'),
+        coverageDays: d('number', 'Energy mode: IEA stock cover under the modelled loss, days. Stays 0 without an IEA stock observation or usable model, for non-energy chapters, or when import cover is inapplicable to a net exporter; read unavailableReason.'),
+        warRiskPremiumBps: d('number', `Energy mode: ${GBP}`), warRiskTier: d('string', TIER),
+        hasEnergyModel: d('boolean', 'Energy mode: whether both supplyDeficitPct and coverageDays are modelled. False can accompany one modelled metric; read unavailableReason rather than interpreting unavailable values as zero impact.'),
+        unavailableReason: d('string', 'Explanation of missing models, individual energy metrics or country-wide missing imports, including inapplicable net-exporter cover. Empty when no gap is reported, including when only some sectors lack imports.'),
+        fetchedAt: d('string', 'Response construction time, as an ISO timestamp; not the observation date of the seeded inputs.'),
+        closureDays: d('number', 'Multi-sector mode: closure duration used.'), totalAddedCost: d('number', 'Multi-sector mode: sum of totalCostShock across sectors, USD.'),
+        sectors: { type: 'array', description: 'Multi-sector mode: seeded HS2 sector estimates, largest daily cost first when imports are available. No seeded imports for the country yields zero-valued sector placeholders with data.unavailableReason. With partial imports, sectors without imports have zero import values and costs but retain route assumptions, and data.unavailableReason is empty; these zeros do not establish zero impact. Access denial can yield an empty array.', items: { type: 'object', properties: {
+          hs2: d('string', 'HS2 chapter code.'), hs2Label: d('string', 'Sector name.'), importValueAnnual: d('number', 'Annual import value, USD.'),
+          freightAddedPctPerTon: d('number', 'Freight uplift on the bypass route as a fraction per ton (0.10 is +10%).'), warRiskPremiumBps: d('number', GBP),
+          addedTransitDays: d('number', 'Extra transit days on the bypass route.'),
+          totalCostShockPerDay: d('number', 'Added cost per closure day, USD.'), totalCostShock30Days: d('number', 'Added cost over 30 days, USD.'), totalCostShock90Days: d('number', 'Added cost over 90 days, USD.'),
+          totalCostShock: d('number', 'Added cost over closureDays, USD.'), closureDays: d('number', 'Closure duration used.'),
         } } },
       } },
     },
@@ -99,37 +111,48 @@ export const COST_SHOCK_TOOLS: ToolDef[] = [{
   inputSchema: {
     type: 'object',
     properties: {
-      country: { type: 'string', description: COUNTRY_ARG_HINT },
-      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id), description: 'Registry id of the disrupted chokepoint; only chokepoints with a supported shock model are listed.' },
-      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100, description: 'Share of the chokepoint flow disrupted, 10-100 percent (default 100, a full closure).' },
-      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil', description: 'Which fuel sensitivity to compute: oil (default), gas or both.' },
+      country: { type: 'string', description: `Importing energy market to model. ${COUNTRY_ARG_HINT}` },
+      chokepoint_id: { type: 'string', enum: CHOKEPOINT_REGISTRY.filter(point => point.shockModelSupported).map(point => point.id), description: 'Chokepoint whose disruption is modelled.' },
+      disruption_pct: { type: 'integer', minimum: 10, maximum: 100, default: 100, description: 'Share of the chokepoint\'s flow lost, percent; 100 models a full closure.' },
+      fuel_mode: { type: 'string', enum: ['oil', 'gas', 'both'], default: 'oil', description: 'Fuel to model: oil fills the crude and product figures, gas fills gasSensitivity, both fills all of them.' },
     },
     required: ['country', 'chokepoint_id'],
   },
   outputSchema: {
     type: 'object',
     properties: {
-      countryCode: { type: 'string' }, chokepointId: { type: 'string' }, disruptionPct: { type: 'number' },
-      gulfCrudeShare: { type: 'number' }, crudeLossKbd: { type: 'number' }, effectiveCoverDays: { type: 'number' },
-      assessment: { type: 'string' }, dataAvailable: { type: 'boolean' },
-      jodiOilCoverage: { type: 'boolean' }, comtradeCoverage: { type: 'boolean' }, ieaStocksCoverage: { type: 'boolean' },
-      portwatchCoverage: { type: 'boolean' }, coverageLevel: { type: 'string' }, degraded: { type: 'boolean' },
-      chokepointConfidence: { type: 'string' }, liveFlowRatio: { type: 'number' },
-      preCrisisBaseline: CRUDE_SHARE_BASELINE_SCHEMA, currentFlows: CRUDE_SHARE_BASELINE_SCHEMA,
-      reportedStocks: { type: 'object', properties: {
-        source: { type: 'string', enum: ['jodi'] }, month: { type: 'string' },
-        crudeMb: { type: 'number' }, productsMb: { type: 'number' }, totalMb: { type: 'number' }, stockDays: { type: 'number' },
+      countryCode: d('string', 'ISO alpha-2 country modelled.'), chokepointId: d('string', 'Chokepoint modelled.'), disruptionPct: d('number', 'Disruption applied, percent.'),
+      gulfCrudeShare: d('number', 'Headline Gulf crude share from preCrisisBaseline, as a fraction including the route factor; 0 when absent or in gas mode.'),
+      crudeLossKbd: d('number', 'Headline crude loss, thousand barrels per day: after bypass when available, else before; 0 when not modelled or in gas mode.'),
+      effectiveCoverDays: d('number', 'Days oil stocks last under the crude loss; 0 when not modelled; -1 marks a net oil exporter, where no import cover applies.'),
+      assessment: d('string', 'Plain-language summary of the oil scenario.'),
+      dataAvailable: d('boolean', 'Whether usable inputs exist for the requested fuel_mode (either fuel for both); false is not a zero deficit.'),
+      jodiOilCoverage: d('boolean', 'JODI oil data present for the country.'), comtradeCoverage: d('boolean', 'Crude origin shares present (Comtrade or national statistics).'),
+      ieaStocksCoverage: d('boolean', 'IEA strategic stock data present.'), portwatchCoverage: d('boolean', 'PortWatch live chokepoint flow data present.'),
+      coverageLevel: d('string', 'Overall input coverage: full, partial or unsupported.'), degraded: d('boolean', 'True when PortWatch flow data is absent or stale.'),
+      chokepointConfidence: d('string', 'Confidence in the chokepoint flow reading: high, low or none.'),
+      liveFlowRatio: d('number', 'Current chokepoint flow relative to normal, 0-1.5; absent without PortWatch coverage.'),
+      preCrisisBaseline: { ...CRUDE_SHARE_BASELINE_SCHEMA, description: 'Gulf crude share over the 12 months before the 2026 Hormuz crisis; drives the headline, products and cover.' },
+      currentFlows: { ...CRUDE_SHARE_BASELINE_SCHEMA, description: 'Gulf crude share over the latest 3 monthly filings; absent when unavailable and not used for products or cover.' },
+      reportedStocks: { type: 'object', description: 'Month-end oil stocks reported to JODI by a country without IEA data; absent otherwise.', properties: {
+        source: { type: 'string', enum: ['jodi'], description: 'Data source.' }, month: d('string', 'Month the stocks closed, YYYY-MM.'),
+        crudeMb: d('number', 'Crude stocks, million barrels.'), productsMb: d('number', 'Product stocks, million barrels.'), totalMb: d('number', 'Total stocks, million barrels.'),
+        stockDays: d('number', 'totalMb in days of crude imports; absent unless it sets effectiveCoverDays.'),
       } },
-      limitations: { type: 'array', items: { type: 'string' } },
-      products: { type: 'array', items: { type: 'object', properties: {
-        product: { type: 'string' }, outputLossKbd: { type: 'number' }, demandKbd: { type: 'number' }, deficitPct: { type: 'number' },
+      limitations: { type: 'array', items: { type: 'string' }, description: 'Model assumptions and data gaps that qualify the figures.' },
+      products: { type: 'array', description: 'Refined-product impact.', items: { type: 'object', properties: {
+        product: d('string', 'Product name, such as Diesel.'), outputLossKbd: d('number', 'Lost refinery output, thousand barrels per day.'),
+        demandKbd: d('number', 'Product demand, thousand barrels per day.'), deficitPct: d('number', 'outputLossKbd as a percent of demandKbd.'),
       } } },
-      gasSensitivity: { type: 'object', properties: {
-        lngShareOfImports: { type: 'number' }, lngImportsTj: { type: 'number' }, lngDisruptionTj: { type: 'number' },
-        totalDemandTj: { type: 'number' }, deficitPct: { type: 'number' }, dataAvailable: { type: 'boolean' },
-        assessment: { type: 'string' }, dataSource: { type: 'string' }, dataMonth: { type: 'string' }, modelBasis: { type: 'string' },
-        storage: { type: 'object', properties: {
-          fillPct: { type: 'number' }, gasTwh: { type: 'number' }, trend: { type: 'string' }, date: { type: 'string' }, scope: { type: 'string' },
+      gasSensitivity: { type: 'object', description: 'Gas mode: LNG route sensitivity.', properties: {
+        lngShareOfImports: d('number', 'Share of gas imports arriving as LNG, as a fraction; absent when unmeasured.'), lngImportsTj: d('number', 'LNG imports, terajoules per month.'),
+        lngDisruptionTj: d('number', 'Monthly LNG loss at the route share, terajoules; independent of current shipping flow.'),
+        totalDemandTj: d('number', 'Gas demand, terajoules per month.'), deficitPct: d('number', 'lngDisruptionTj as a percent of demand; can exceed 100 and is not a shortage estimate.'),
+        dataAvailable: d('boolean', 'Whether gas inputs exist.'), assessment: d('string', 'Plain-language summary of the gas scenario.'),
+        dataSource: d('string', 'Source of the gas figures.'), dataMonth: d('string', 'JODI observation month, YYYY-MM; empty when unknown.'),
+        modelBasis: d('string', 'How the LNG loss was derived: comtrade_lng_origin_share (Hormuz), observed_zero_lng_imports or assumed_route_sensitivity (fixed route share, not a measured flow).'),
+        storage: { type: 'object', description: 'National gas storage observation; no endurance is estimated.', properties: {
+          fillPct: d('number', 'Storage fill, percent of capacity.'), gasTwh: d('number', 'Gas in storage, terawatt-hours.'), trend: d('string', 'Recent fill direction.'), date: d('string', 'Observation date.'), scope: d('string', 'Geography the observation covers.'),
         } },
       } },
     },

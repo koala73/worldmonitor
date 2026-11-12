@@ -567,6 +567,15 @@ describe("account deletion — business seats", () => {
         acceptedAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      await ctx.db.insert("teamDashboards", {
+        teamKey: "business:sub_owner_keep",
+        variant: "full",
+        name: "Ops wall",
+        layout: { panels: [{ key: "live-news", on: true }] },
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
@@ -585,6 +594,8 @@ describe("account deletion — business seats", () => {
       status: "active",
     });
     expect(await rowsForUser(t, "users", OWNER.subject)).toHaveLength(1);
+    // A seat holder leaving does not take the team's dashboards with them.
+    expect(await t.run(async (ctx) => ctx.db.query("teamDashboards").collect())).toHaveLength(1);
   });
 
   test("owner delete removes grants and retains the owner subscription evidence", async () => {
@@ -613,6 +624,17 @@ describe("account deletion — business seats", () => {
         createdAt: now,
         expiresAt: now + 14 * 24 * 60 * 60 * 1000,
       });
+      for (const teamKey of ["business:sub_owner_erase", "business:sub_someone_else"]) {
+        await ctx.db.insert("teamDashboards", {
+          teamKey,
+          variant: "full",
+          name: "Ops wall",
+          layout: { panels: [{ key: "live-news", on: true }] },
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
       await ctx.db.insert("dunningEmails", {
         dodoSubscriptionId: "sub_owner_erase",
         step: "dunning_day0",
@@ -643,6 +665,126 @@ describe("account deletion — business seats", () => {
     const dunning = await t.run(async (ctx) => ctx.db.query("dunningEmails").collect());
     expect(dunning[0]?.email).toBe(OWNER.email);
     expect(await rowsForUser(t, "users", INVITEE.subject)).toHaveLength(1);
+    // The team ends with the owner's account, so its shared dashboards go too;
+    // another team's are untouched.
+    const dashboards = await t.run(async (ctx) => ctx.db.query("teamDashboards").collect());
+    expect(dashboards.map((d) => d.teamKey)).toEqual(["business:sub_someone_else"]);
+  });
+});
+
+describe("account deletion — enterprise accounts", () => {
+  test("deleting a member removes their member row and leaves the account and other members", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    await seedUser(t, OWNER);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 50_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 50_000_000,
+      monthlyOutputTokens: 5_000_000,
+      overagePerThousandRequestsUsd: 2,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: INVITEE.subject });
+    await t.mutation(internal.enterpriseAccounts.addMemberByUserId, { accountId, userId: OWNER.subject });
+
+    await t.action(internal.accountDeletion.erase.eraseConfirmedUser, {
+      userId: INVITEE.subject,
+      source: "support",
+    });
+    await drainErase(t);
+
+    const members = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(members.map((m) => m.userId)).toEqual([OWNER.subject]);
+    const accounts = await t.run(async (ctx) => ctx.db.query("enterpriseAccounts").collect());
+    expect(accounts.map((a) => a._id)).toEqual([accountId]);
+  });
+});
+
+describe("account deletion — enterprise invites", () => {
+  test("self-delete erases Enterprise invites addressed to the caller's verified email", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Hexion",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      for (const email of [INVITEE.email.toLowerCase(), "someone.else@acme.test"]) {
+        await ctx.db.insert("enterpriseMembers", {
+          accountId,
+          email,
+          status: "pending",
+          role: "member",
+          invitedAt: now,
+          inviteExpiresAt: now + 14 * 24 * 60 * 60 * 1000,
+          updatedAt: now,
+        });
+      }
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.email)).toEqual(["someone.else@acme.test"]);
+  });
+
+  test("an address match alone never erases a seat another user holds", async () => {
+    const t = await makeT();
+    await seedUser(t, INVITEE);
+    const now = Date.now();
+    const { accountId } = await t.mutation(internal.enterpriseAccounts.createAccount, {
+      name: "Acme",
+      contractStart: now - 24 * 60 * 60 * 1000,
+      contractEnd: now + 365 * 24 * 60 * 60 * 1000,
+      dailyRequestAllowance: 10_000,
+      perMinuteBurst: 300,
+      monthlyInputTokens: 15_000_000,
+      monthlyOutputTokens: 3_000_000,
+      overagePerThousandRequestsUsd: 3,
+      overagePerMillionInputTokensUsd: 4,
+      overagePerMillionOutputTokensUsd: 20,
+      seatCap: 5,
+      allowedProviders: ["anthropic"],
+    });
+    await t.run(async (ctx) => {
+      // Accepted by an earlier holder of the address, who still holds the seat.
+      await ctx.db.insert("enterpriseMembers", {
+        accountId,
+        email: INVITEE.email.toLowerCase(),
+        userId: "user_previous_holder",
+        status: "active",
+        role: "member",
+        invitedAt: now,
+        joinedAt: now,
+        updatedAt: now,
+      });
+    });
+
+    await t.withIdentity(INVITEE).action(api.accountDeletion.erase.requestAccountDeletion, {});
+    await drainErase(t);
+
+    const left = await t.run(async (ctx) => ctx.db.query("enterpriseMembers").collect());
+    expect(left.map((m) => m.userId)).toEqual(["user_previous_holder"]);
   });
 });
 
@@ -1014,6 +1156,7 @@ describe("account deletion registry is enforced, not documentation", () => {
   const DEDICATED_DELETE_STEPS = new Set([
     "followedCountries",          // eraseFollows: also decrements country aggregates
     "businessProGrants",          // eraseGrants: owner vs invitee, recomputes seats
+    "teamDashboards",             // eraseOwnedTeamDashboards: the owner's business teams only
     "proActivationPresentations", // anonymizeBilling: swept alongside billing rows
     "registrations",              // eraseEmailKeyed: verified-email keyed
     "contactMessages",            // eraseEmailKeyed: verified-email keyed

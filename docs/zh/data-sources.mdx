@@ -502,6 +502,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 - 西太平洋热带气旋观测（香港天文台、日本气象厅）
 - 15 个冲突与灾害高发区域的气候异常检测（Open-Meteo ERA5）
 - 天气警报和恶劣天气状况（NWS + ECCC 多边形，WMO SWIC 官方 CAP 点位）
+- 来自 NASA ICESat-2 激光雷达的战略水库与湖泊水面水位变化（`climate:reservoir-levels:v1`，由 `/api/climate/v1/list-reservoir-levels` 提供），比实时滞后 50 至 70 天
 - 辐射监测 — 见[辐射监测面板](/zh/panels/radiation-watch)
 
 **主要提供商**
@@ -517,6 +518,8 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
 | 日本气象厅 | 西北太平洋热带气旋观测 | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 再分析气候数据 | [open-meteo.com](https://open-meteo.com) |
+| NASA ICESat-2 ATL13（NSIDC），经 SlideRule Earth 处理 | 沿每次激光过境的内陆水面高度，截取到每个水库固定的开阔水面框内 | [nsidc.org/data/atl13](https://nsidc.org/data/atl13) |
+| NASA ICESat-2 ATL06（NSIDC），经 SlideRule Earth 处理 | 沿每次激光过境的地表高度，用于 ATL13 覆盖不佳的水库 | [nsidc.org/data/atl06](https://nsidc.org/data/atl06) |
 | 美国国家气象局 | 官方美国天气警报（多边形） | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | 加拿大环境与气候变化部 | 官方加拿大天气警报（多边形） | [api.weather.gc.ca](https://api.weather.gc.ca) |
 | WMO 恶劣天气信息中心 | WMO 成员官方 CAP，合并进 `weather:alerts:v1`（点位） | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
@@ -548,6 +551,20 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | **正常**     | 在预期范围内        | 在预期范围内         |
 
 异常送入信号聚合器，在其中放大受影响国家的 CII 评分（气候压力是公认的冲突加速因素）。气候异常面板以按严重性排序的列表展示这些偏差。
+
+### 战略水位
+
+一份对水电、灌溉、航运和跨境水资源争端具有重要意义的水库与湖泊观察清单，由 NASA 的 ICESat-2 激光测高仪测量（产品 ATL13，内陆水面高度；少数 ATL13 覆盖不佳的水库使用 ATL06）。每个数值都是相对 EGM2008 大地水准面的水面**水位**，单位为米。它不是蓄水量，该数据集也不估算蓄水量。
+
+- **测量。** 对每次卫星过境，水位取落在一个固定开阔水面框内的 ATL13 水体分段高度的中位数。该框位于水库主体上，远离入流支汊和岸线，并处于该水库的 ATL13 水体之内。
+- **质量规则。** 若一次过境的分段少于 5 个、中位数绝对偏差超过 0.25 m，或各波束之间相差超过 0.3 m，则舍弃该过境。若一次过境偏离其前后两个相邻过境的范围超过 1 m 加上间隔每天 0.05 m，则作为错位过境舍弃。
+- **延迟与重访。** NASA 在过境后 50 至 70 天发布 ATL13。重访周期取决于水库的大小和纬度，大型湖泊为几天，狭窄峡谷水库约为一个月。健康检查只跟踪种子程序自身的运行时间；最新观测较旧是数据本身的属性。在首次成功发布之前，健康检查最多一天报告 `ROLLOUT_PENDING`；之后种子程序写入 `seed-activated:climate:reservoir-levels`，键缺失时读作 `EMPTY`。
+- **变化指标。** 自上一次过境以来以及 30、90 和 365 天内的变化（在过境之间插值，从不外推）、相对往年同期的异常，以及在 2018 年末以来记录范围内的位置。`record_low`、`falling_fast` 或 `no_recent_data` 等状态对这些指标进行概括。`falling_fast` 和 `rising_fast` 要求 90 天变化既超过绝对阈值，也超过通常的季节性波动，因此正常的季风或融雪蓄水读作 `normal`。`low` 和 `high` 在存在季节性异常时依据该异常，否则依据在记录范围内的位置。最新一次过境只有一个相邻过境，因此只有当它发生跳变、且其所在地面轨道此前的过境大多作为错位过境被舍弃时，才会被舍弃。
+- **验证。** 与美国垦务局在米德湖的每日水位站对比，156 次匹配过境（2018 至 2026 年，水位站量程 17.8 m）在去除 0.046 m 基准偏移后的 RMSE 为 0.052 m，最大误差 0.149 m，相关系数 0.99994。
+
+若 ATL13 记录的过境太少，则从 ATL06（陆地和冰面高度）读取水位，ATL06 没有水体掩膜。每次过境保留质量标志良好且沿轨坡度不超过 0.01 的分段，将其排序后的高度在相邻两个高度相差超过 0.5 m 处切分，并从至少包含 5 个分段且占保留分段 10% 的最低分组中读取水位：水面是框内最低的平坦表面。每个水库设有一个高度窗口，舍弃水面不可能取到的范围之外的分段，从而去除大多数只经过陆地的过境；该范围内的平坦陆地仍可能形成一个分组，上述质量规则可能会拒绝这样的过境，但并不保证。Darbandikhan 和 Gibe III 的拒绝率尚未测量。随后适用相同的质量规则，但 Gibe III 的水位每天变化可能超过 0.05 m，因此在错位过境检查中允许间隔每天 0.3 m。在整个任务期内的米德湖、Tharthar 和 Atatürk 框内，ATL06 与 ATL13 逐次过境匹配，去除基准偏移后的 RMSE 分别为 0.021、0.018 和 0.021 m（最大误差 0.068、0.062 和 0.102 m），并在 174 次过境中与米德湖水位站匹配，RMSE 为 0.045 m，最大误差为 0.139 m。Darbandikhan 和 Gibe III 使用 ATL06。
+
+数据粒通过 NASA CMR 列出，并在公共 SlideRule Earth 服务上截取子集。自 2018 年 10 月起的一次性回填随种子程序一同提交；每次每日运行都会加入此后发布的数据粒。
 
 ---
 

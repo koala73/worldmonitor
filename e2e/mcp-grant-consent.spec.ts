@@ -518,7 +518,7 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#loading')).toBeHidden();
   });
 
-  test('successful context load shows consent card with client metadata', async ({ page }) => {
+  test('successful context load shows consent card with client metadata', async ({ page }, testInfo) => {
     await stubClerkModule(page);
     const contextAuth: (string | undefined)[] = [];
     await page.route('**/api/internal/mcp-grant-context*', async (route) => {
@@ -542,6 +542,12 @@ test.describe('MCP grant consent page (#5654)', () => {
     await expect(page.locator('#loading')).toBeHidden();
     await expect(page.locator('#errorView')).toBeHidden();
     await expect(page.locator('#authorizeBtn')).toBeEnabled();
+    await expect(page.locator('.scope-list li').first()).toHaveText(/Intelligence data from \d+ attributed providers/);
+    await expect(page.locator('.scope-list li').nth(1)).toHaveText('Real-time news & events');
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.screenshot({ path: testInfo.outputPath(`consent-provider-scope-${width}.png`), fullPage: true });
+    }
 
     // authedFetch must attach the Clerk JWT; a regression to a bare fetch()
     // would fail closed in production but is invisible to a stub that ignores

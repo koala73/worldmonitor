@@ -112,7 +112,8 @@ export async function sha256Hex(input: string): Promise<string> {
  *
  * Algorithm (deterministic, AWS SigV4-inspired):
  *   1. Parse the query string (with or without leading "?") via URLSearchParams.
- *   2. Sort entries lexicographically by key (stable: equal keys keep insertion order).
+ *   2. Sort entries lexicographically by key, then by value, so the order of a
+ *      repeated key's values does not matter either.
  *   3. URL-encode each key and value with encodeURIComponent.
  *   4. Join as `${key}=${value}` pairs separated by `&`.
  *
@@ -146,7 +147,12 @@ export function canonicalQueryString(searchOrUrl: string | URL): string {
   const params = new URLSearchParams(trimmed);
   const entries: [string, string][] = [];
   for (const [k, v] of params) entries.push([k, v]);
-  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  // Key, then value. Cloudflare in front of api.worldmonitor.app sorts query
+  // values before the request reaches the gateway, so a key-only stable sort
+  // (which kept the caller's order of a repeated key) broke every signature
+  // whose repeated values were not already sorted (WORLDMONITOR-1CJ).
+  // Already-sorted queries canonicalise to the same bytes as before.
+  entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
   return entries
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&');

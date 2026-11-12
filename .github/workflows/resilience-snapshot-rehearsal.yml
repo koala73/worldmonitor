@@ -26,6 +26,7 @@ on:
       - 'scripts/generate-public-product-facts.mjs'
       - 'scripts/generate-inventory-facts.mjs'
       - 'scripts/generate-country-corpus-slugs.mjs'
+      - 'scripts/generate-docs-page-dates.mjs'
       - 'scripts/sync-resilience-coverage.mjs'
       - 'scripts/run-data-tests.mjs'
       - 'scripts/rehearse-resilience-snapshot-refresh.mjs'

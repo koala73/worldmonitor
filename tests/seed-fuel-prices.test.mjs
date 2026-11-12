@@ -4,6 +4,238 @@ import { readFileSync } from 'node:fs';
 import { zipSync, strToU8 } from 'fflate';
 import { parseCREStationPrices, validateFuel, withFuelRetry, fetchUS_EIA, regionalFuelEntries, FUEL_FX_CURRENCIES, latestComComFuelDataUrl, readXlsxFirstSheet, parseNzComComFuel } from '../scripts/seed-fuel-prices.mjs';
 import { SHARED_FX_FALLBACKS } from '../scripts/_seed-utils.mjs';
+import { buildEnvelope } from '../scripts/_seed-envelope-source.mjs';
+import { parseNorwayFuel, parseIcelandFuel, parseTaiwanFuel, fetchNorway, fetchIceland, fetchTaiwan, toUsdPerLiter, mergeFuelCountry } from '../scripts/seed-fuel-prices.mjs';
+
+const fuelFixture = name => JSON.parse(readFileSync(new URL(`./fixtures/fuel-prices/${name}.json`, import.meta.url), 'utf8'));
+const FUEL_NOW = Date.parse('2026-11-05T00:00:00Z');
+
+test('SSB fixture selects latest monthly petrol/diesel by product and preserves NOK and month', () => {
+  const data = fuelFixture('ssb-09654');
+  data.data.reverse();
+  const row = parseNorwayFuel(data, FUEL_NOW);
+  assert.equal(row.code, 'NO');
+  assert.equal(row.currency, 'NOK');
+  assert.equal(row.gasoline.localPrice, 26.18);
+  assert.equal(row.diesel.localPrice, 27.52);
+  assert.equal(row.gasoline.observedAt, '2026-09-01');
+  assert.match(row.gasoline.source, /SSB/);
+  assert.equal(toUsdPerLiter(row.gasoline.localPrice, row.currency, { NOK: 0.1 }), 2.618);
+});
+
+test('SSB rejects stale/future months, layout changes, suppressed or invalid prices', () => {
+  assert.equal(parseNorwayFuel(fuelFixture('ssb-09654'), Date.parse('2026-12-10')), null);
+  assert.equal(parseNorwayFuel(fuelFixture('ssb-09654'), Date.parse('2026-09-01')), null);
+  for (const value of ['', '..', null, '999', '-1']) {
+    const data = fuelFixture('ssb-09654');
+    for (const r of data.data) r.values = [value];
+    assert.equal(parseNorwayFuel(data, FUEL_NOW), null);
+  }
+  const changed = fuelFixture('ssb-09654');
+  changed.columns[2].code = 'Cents';
+  assert.equal(parseNorwayFuel(changed, FUEL_NOW), null);
+});
+
+test('Gasvaktin fixture averages ordinary station prices independently, with community credit', () => {
+  const data = fuelFixture('gasvaktin-stations');
+  data.stations.push({ bensin95: null, diesel: 300 }, { bensin95: 0, diesel: 9999 });
+  const row = parseIcelandFuel(data, '2026-11-04T13:00:26Z', FUEL_NOW);
+  assert.equal(row.currency, 'ISK');
+  assert.equal(row.gasoline.localPrice, 265.9667);
+  assert.equal(row.diesel.localPrice, 317.575);
+  assert.equal(row.gasoline.observedAt, '2026-11-04');
+  assert.match(row.gasoline.source, /Gasvaktin.*community/);
+  assert.equal(toUsdPerLiter(row.gasoline.localPrice, 'ISK', { ISK: 0.007 }), 1.8618);
+  assert.equal(toUsdPerLiter(row.gasoline.localPrice, 'ISK', {}), null);
+});
+
+test('Gasvaktin never relabels stale, missing, invalid or future revision dates as current', () => {
+  for (const date of [undefined, '', '2026-10-01', '2026-11-06', '2026-02-30']) {
+    assert.equal(parseIcelandFuel(fuelFixture('gasvaktin-stations'), date, FUEL_NOW), null);
+  }
+  assert.equal(parseIcelandFuel({ stations: [{ bensin95: null, diesel: 0 }] }, '2026-11-04', FUEL_NOW), null);
+});
+
+test('Taiwan fixture weights mainland/offshore/mountain surveys and retains the week end', () => {
+  const gas = parseTaiwanFuel(fuelFixture('taiwan-oil111-92'), '01', FUEL_NOW);
+  const diesel = parseTaiwanFuel(fuelFixture('taiwan-oil111-diesel'), '04', FUEL_NOW);
+  assert.equal(gas.localPrice, +((31.19 * 212 + 29.7 * 12 + 31.17 * 23) / 247).toFixed(4));
+  assert.equal(diesel.localPrice, +((29.85 * 198 + 28.93 * 30 + 29.88 * 24) / 252).toFixed(4));
+  assert.equal(gas.observedAt, '2026-10-31');
+  assert.match(gas.grade, /RON92/);
+  assert.match(gas.source, /MOEA/);
+  assert.equal(toUsdPerLiter(gas.localPrice, 'TWD', { TWD: 0.031 }), +(gas.localPrice * 0.031).toFixed(4));
+});
+
+test('Taiwan rejects stale, wrong-grade, failed, malformed and invalid survey responses', () => {
+  assert.equal(parseTaiwanFuel(fuelFixture('taiwan-oil111-92'), '01', Date.parse('2026-12-01')), null);
+  assert.equal(parseTaiwanFuel(fuelFixture('taiwan-oil111-diesel'), '01', FUEL_NOW), null);
+  for (const change of [
+    d => { d.res = '02'; }, d => { d.data.start = '2026/11/08 ~ 2026/11/14'; },
+    d => { d.data.start = '2026/02/30 ~ 2026/03/08'; }, d => { d.data.Aavg = null; },
+    d => { d.data.Anum = -1; }, d => { d.data.Aavg = 0; }, d => { d.data.Aavg = 1000; },
+  ]) {
+    const data = fuelFixture('taiwan-oil111-92'); change(data);
+    assert.equal(parseTaiwanFuel(data, '01', FUEL_NOW), null);
+  }
+  const data = fuelFixture('taiwan-oil111-92');
+  data.data.Bnum = 0; data.data.Bavg = null;
+  assert.ok(parseTaiwanFuel(data, '01', FUEL_NOW), 'a group with no reports may have null prices');
+});
+
+test('new fetchers use real source request contracts and fixtures without running a seed', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: FUEL_NOW });
+  const calls = [];
+  const revision = fuelFixture('gasvaktin-revision');
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push([url, options]);
+    assert.ok(options.headers['User-Agent']);
+    let data;
+    if (url.includes('data.ssb.no')) {
+      assert.equal(options.method, 'POST');
+      assert.deepEqual(JSON.parse(options.body).query[0].selection.values, ['031', '035']);
+      data = fuelFixture('ssb-09654');
+    } else if (url.includes('api.github.com')) data = revision;
+    else if (url.includes('raw.githubusercontent.com')) {
+      assert.ok(url.includes(revision[0].sha), 'content pinned to dated revision');
+      data = fuelFixture('gasvaktin-stations');
+    } else {
+      assert.equal(options.method, 'POST');
+      assert.ok(options.body instanceof FormData);
+      assert.equal(options.body.get('unit'), 'week');
+      assert.equal(options.body.get('start'), 'lastone');
+      data = fuelFixture(options.body.get('oil') === '01' ? 'taiwan-oil111-92' : 'taiwan-oil111-diesel');
+    }
+    return Response.json(data);
+  });
+  assert.equal((await fetchNorway())[0].code, 'NO');
+  assert.equal((await fetchIceland({ ISK: 0.007 }))[0].code, 'IS');
+  const taiwan = (await fetchTaiwan())[0];
+  assert.equal(taiwan.code, 'TW');
+  assert.equal(taiwan.currency, 'TWD');
+  assert.ok(taiwan.gasoline && taiwan.diesel);
+  assert.equal(calls.length, 5);
+  assert.deepEqual(await fetchIceland({}), []);
+  assert.equal(calls.length, 5, 'missing ISK FX omits the source without a useless request');
+  t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 503 }));
+  await assert.rejects(fetchNorway(), /503/);
+  await assert.rejects(fetchIceland({ ISK: 0.007 }), /503/);
+  assert.deepEqual(await fetchTaiwan({ baseDelayMs: 0 }), []);
+});
+
+for (const failedOil of ['01', '04']) {
+  test(`Taiwan preserves the other grade when ${failedOil} exhausts its request retries`, async t => {
+    t.mock.timers.enable({ apis: ['Date'], now: FUEL_NOW });
+    const calls = { '01': 0, '04': 0 };
+    t.mock.method(globalThis, 'fetch', async (_url, { body }) => {
+      const oil = body.get('oil');
+      calls[oil]++;
+      if (oil === failedOil) return new Response('', { status: 503 });
+      return Response.json(fuelFixture(oil === '01' ? 'taiwan-oil111-92' : 'taiwan-oil111-diesel'));
+    });
+    const rows = await fetchTaiwan({ baseDelayMs: 0 });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].code, 'TW');
+    const missing = failedOil === '01' ? 'gasoline' : 'diesel';
+    const present = failedOil === '01' ? 'diesel' : 'gasoline';
+    assert.equal(rows[0][missing], null);
+    assert.ok(rows[0][present].localPrice > 0);
+    assert.equal(rows[0][present].observedAt, '2026-10-31');
+    assert.deepEqual(calls, { [failedOil]: 3, [failedOil === '01' ? '04' : '01']: 1 });
+  });
+}
+
+test('Taiwan retries only the transiently failing grade and returns both prices after recovery', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: FUEL_NOW });
+  const calls = { '01': 0, '04': 0 };
+  t.mock.method(globalThis, 'fetch', async (_url, { body }) => {
+    const oil = body.get('oil');
+    calls[oil]++;
+    if (oil === '04' && calls[oil] === 1) throw new Error('network failure');
+    return Response.json(fuelFixture(oil === '01' ? 'taiwan-oil111-92' : 'taiwan-oil111-diesel'));
+  });
+  const [row] = await fetchTaiwan({ baseDelayMs: 0 });
+  assert.ok(row.gasoline && row.diesel);
+  assert.deepEqual(calls, { '01': 1, '04': 2 });
+});
+
+test('country merge rejects empty USD coverage after conversion instead of counting it toward publish', () => {
+  const countryMap = new Map();
+  const norway = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  for (const fuel of [norway.gasoline, norway.diesel]) fuel.localPrice = 60;
+  assert.equal(mergeFuelCountry(countryMap, norway, { NOK: 0.1 }), false);
+  assert.equal(countryMap.size, 0, 'locally plausible prices outside USD bounds add no country');
+  const iceland = parseIcelandFuel(fuelFixture('gasvaktin-stations'), '2026-11-04', FUEL_NOW);
+  assert.equal(mergeFuelCountry(countryMap, iceland, {}), false);
+  assert.equal(countryMap.size, 0, 'missing FX also adds no country');
+  const countries = [{ code: 'US' }, { code: 'GB' }, { code: 'MY' },
+    ...Array.from({ length: 26 }, (_, i) => ({ code: `EU${i}` })), ...countryMap.values()];
+  assert.equal(validateFuel({ countries, failedSources: [] }), false, 'an empty NO row must not be country 30');
+});
+
+test('country merge retains a valid grade and preserves existing source priority when filling gaps', () => {
+  const countryMap = new Map();
+  const norway = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  norway.diesel.localPrice = 60;
+  assert.equal(mergeFuelCountry(countryMap, norway, { NOK: 0.1 }), true);
+  assert.equal(countryMap.size, 1);
+  const row = countryMap.get('NO');
+  assert.equal(row.gasoline.usdPrice, 2.618);
+  assert.equal(row.diesel, null);
+  const firstGasoline = row.gasoline;
+  const backup = parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW);
+  backup.gasoline.localPrice = 20;
+  assert.equal(mergeFuelCountry(countryMap, backup, { NOK: 0.1 }), true);
+  assert.equal(countryMap.get('NO').gasoline, firstGasoline);
+  assert.equal(countryMap.get('NO').diesel.usdPrice, 2.752);
+  const before = structuredClone(row);
+  assert.equal(mergeFuelCountry(countryMap, { ...norway, gasoline: null }, { NOK: 0.2 }), false);
+  assert.deepEqual(row, before, 'an unusable source cannot mutate a valid existing row');
+});
+
+test('new optional sources preserve core publish gates and missing-FX currencies fit the recovery budget', () => {
+  assert.equal(validateFuel({ countries: HEALTHY_COUNTRIES,
+    failedSources: ['Norway-SSB', 'Iceland-Gasvaktin', 'Taiwan-MOEA'] }), true);
+  assert.equal(validateFuel({ countries: HEALTHY_COUNTRIES,
+    failedSources: ['Taiwan-MOEA', 'Mexico'] }), false);
+  for (const currency of ['NOK', 'ISK', 'TWD']) assert.ok(FUEL_FX_CURRENCIES.includes(currency));
+  assert.ok(FUEL_FX_CURRENCIES.slice(0, 5).includes('ISK'));
+});
+
+test('fuel RPC reads the new fixture rows through the seed envelope with prices, dates and attribution intact', async t => {
+  const { listFuelPrices } = await import('../server/worldmonitor/economic/v1/list-fuel-prices.ts');
+  const countries = [
+    parseNorwayFuel(fuelFixture('ssb-09654'), FUEL_NOW),
+    parseIcelandFuel(fuelFixture('gasvaktin-stations'), '2026-11-04', FUEL_NOW),
+    { code: 'TW', name: 'Taiwan', currency: 'TWD', flag: '🇹🇼',
+      gasoline: parseTaiwanFuel(fuelFixture('taiwan-oil111-92'), '01', FUEL_NOW),
+      diesel: parseTaiwanFuel(fuelFixture('taiwan-oil111-diesel'), '04', FUEL_NOW) },
+  ];
+  for (const c of countries) for (const fuel of [c.gasoline, c.diesel]) {
+    fuel.usdPrice = toUsdPerLiter(fuel.localPrice, c.currency, { NOK: 0.092, ISK: 0.007, TWD: 0.031 });
+  }
+  const snapshot = { countries, fetchedAt: '2026-11-05T00:00:00Z', sourceCount: 3, countryCount: 3 };
+  const env = { ...process.env };
+  t.after(() => {
+    for (const key of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'LOCAL_API_MODE']) {
+      if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
+    }
+  });
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture.invalid';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+  delete process.env.LOCAL_API_MODE;
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url, 'https://redis.fixture.invalid/get/economic%3Afuel-prices%3Av1');
+    return Response.json({ result: JSON.stringify(buildEnvelope({ fetchedAt: FUEL_NOW, recordCount: countries.length,
+      schemaVersion: 1, sourceVersion: 'multi-source-fuel-prices-v1', state: 'OK', data: snapshot })) });
+  });
+  const result = await listFuelPrices({ request: new Request('https://fixture.invalid') }, {});
+  assert.deepEqual(result, snapshot);
+  for (const row of result.countries) {
+    assert.ok(row.gasoline.usdPrice > 0 && row.diesel.usdPrice > 0);
+    assert.ok(row.gasoline.observedAt && row.gasoline.source);
+  }
+});
 
 test('withFuelRetry returns the first success without retrying', async () => {
   let calls = 0;

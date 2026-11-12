@@ -100,6 +100,10 @@ Running a candidate read path against real production traffic while continuing t
 
 Two rules make a shadow comparable rather than merely reassuring. The candidate must be measured entirely off the response path, so enabling it on live traffic cannot change what any client receives. And the incumbent must be measured on the *same* traffic over the *same* window, because a candidate's latency means nothing against a baseline drawn from different requests or a different hour. A shadow that clears its gate answers only "is the candidate faster here"; the serving path's own failure and slowness handling still has to be proven separately, since a shadow never exercises them. See also: The Lever Test, Bootstrap Tier.
 
+### Held-Out Judged Set
+
+A human-labelled sample of headlines, judged blind to any model output and after the prompt, model and criteria under test were fixed. It scores fixed labellers against a decision rule set in advance; it is never read to adjust a labeller or the rule. Each title carries a judged level and a borderline flag, which separates the clear-cut slice from titles the annotator placed between two levels. The set is single-use for tuning: once any prompt, threshold or criterion is chosen by reading its results, it becomes a tuning set and a fresh held-out sample is owed. A replacement decision on it is therefore pre-registered: the rule, the runs and the inputs are frozen before the candidate answers. See also: Shadow Measurement.
+
 ## Notifications & Alert Delivery
 
 ### Alert Rule
@@ -185,6 +189,10 @@ The project's rule for any panel that joins the grid asynchronously, in either t
 The interval between a Deferred Tier panel being constructed and its element entering the grid — routinely minutes on a phone, since the panel is built only as its shell nears the viewport while the boot data pass finished long before. Two things cross the window in opposite directions and both need somewhere to wait: data *pushed* to a panel that does not exist yet, and a render *emitted* by a panel whose element is not attached yet.
 
 The project's rule is that neither may be discarded. A push aimed at an absent panel is queued and replayed when the panel loads; a render emitted before attachment is deferred and flushed when the element joins the grid. Both failure modes read as defensive code and are silent — no error, no failed request, no telemetry — so they surface only as a panel that shows its initial placeholder for the whole session. The attachment check is the subtler of the two, because it is genuinely correct *after* attachment (a torn-down panel must not paint) and wrong *before* it; only checking ahead of the work distinguishes "never attached yet" from "detached again". The deferral here is at attachment; the sibling deferral at the write itself is the Content Commit. See also: Deferred Tier, Deferred-Shell Contract, Viewport Prime, Content Commit.
+
+### Click Claim
+
+The dashboard's hand-off for a map marker click that more than one surface could answer: the map dispatches a cancelable event naming the thing clicked, and a panel that will visibly show the result claims it by cancelling the event, which tells the map to skip its own fallback popup. A claim is a promise of a visible response, so a panel may claim only while the user can actually see it — attached, enabled, expanded, not filtered out of the mobile view, not covered by the fullscreen map. A panel that is merely attached is not visible: closing a panel hides it in place rather than removing it. Code that wants the panel opened on the clicked thing, rather than the map popup, sends an open request instead of the claimable event; the open request enables and reveals the panel and delivers the thing once the panel has mounted, however long the Late-Mount Window lasts. See also: Late-Mount Window, Deferred Tier.
 
 ### Viewport Prime
 

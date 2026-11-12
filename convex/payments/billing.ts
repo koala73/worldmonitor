@@ -3794,6 +3794,314 @@ export const internalGetCustomerPortalUrl = internalAction({
 });
 
 // ---------------------------------------------------------------------------
+// Pro → Pro Business in-place upgrade
+// ---------------------------------------------------------------------------
+
+/**
+ * Same-period targets for the one upgrade the customer portal cannot do. Pro
+ * and Pro Business are separate Dodo products (not an updatable collection),
+ * so the portal shows no plan change; the Dodo change-plan API moves the
+ * existing subscription to the other product with a prorated charge instead.
+ * The billing period is kept so the renewal cadence the customer chose holds.
+ */
+export const PRO_BUSINESS_UPGRADE_TARGETS: Readonly<Record<string, string>> = {
+  pro_monthly: "pro_business_monthly",
+  pro_annual: "pro_business_annual",
+};
+
+export type ProBusinessUpgradeRefusal =
+  | "NO_UPGRADEABLE_PRO"
+  | "ALREADY_PRO_BUSINESS"
+  | "PRO_CANCEL_SCHEDULED"
+  | "ACCOUNT_DELETION_IN_PROGRESS";
+
+export type ProBusinessUpgradeCandidate =
+  | {
+      ok: true;
+      dodoSubscriptionId: string;
+      fromPlanKey: string;
+      toPlanKey: string;
+      fromProductId: string;
+      toProductId: string;
+    }
+  | { ok: false; reason: ProBusinessUpgradeRefusal };
+
+/**
+ * Pure selection over the user's subscription rows, exported for tests.
+ * Only an ACTIVE, non-cancelling Pro qualifies: a cancelled Pro already has
+ * the checkout carve-out (isCancelledProBeforeProBusinessUpgrade), on_hold
+ * means the last charge failed, and a scheduled cancellation would end the
+ * upgraded plan at period end, which is not what an upgrade buyer expects.
+ */
+export function selectProBusinessUpgradeCandidate(
+  subs: ReadonlyArray<Pick<Doc<"subscriptions">, "planKey" | "status" | "currentPeriodEnd" | "dodoSubscriptionId" | "dodoProductId" | "rawPayload">>,
+  now: number,
+): ProBusinessUpgradeCandidate {
+  const covering = subs.filter((sub) => isCoveringAt(sub, now));
+  if (covering.some((sub) => PRODUCT_CATALOG[sub.planKey]?.tierGroup === "pro_business")) {
+    return { ok: false, reason: "ALREADY_PRO_BUSINESS" };
+  }
+  const activePro = covering.filter(
+    (sub) => sub.status === "active" && PRO_BUSINESS_UPGRADE_TARGETS[sub.planKey] !== undefined,
+  );
+  const upgradeable = activePro.find((sub) => !isCancellationScheduled(sub));
+  if (!upgradeable) {
+    return { ok: false, reason: activePro.length > 0 ? "PRO_CANCEL_SCHEDULED" : "NO_UPGRADEABLE_PRO" };
+  }
+  const toPlanKey = PRO_BUSINESS_UPGRADE_TARGETS[upgradeable.planKey]!;
+  const target = PRODUCT_CATALOG[toPlanKey];
+  if (!target || !target.currentForCheckout || !target.dodoProductId) {
+    return { ok: false, reason: "NO_UPGRADEABLE_PRO" };
+  }
+  return {
+    ok: true,
+    dodoSubscriptionId: upgradeable.dodoSubscriptionId,
+    fromPlanKey: upgradeable.planKey,
+    toPlanKey,
+    fromProductId: upgradeable.dodoProductId,
+    toProductId: target.dodoProductId,
+  };
+}
+
+export const getProBusinessUpgradeCandidate = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeCandidate> => {
+    if (await isAccountDeleting(ctx, args.userId)) {
+      return { ok: false, reason: "ACCOUNT_DELETION_IN_PROGRESS" };
+    }
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+    return selectProBusinessUpgradeCandidate(subs, Date.now());
+  },
+});
+
+export type ProBusinessUpgradeResult =
+  | {
+      kind: "preview";
+      fromPlanKey: string;
+      toPlanKey: string;
+      /** Amount charged now, lowest currency unit, tax included when Dodo reports it. */
+      chargeAmount: number;
+      currency: string;
+      /** Recurring price of the new plan before tax, lowest unit of renewalCurrency. */
+      renewalAmount: number | null;
+      /** Dodo bills the charge in the customer's currency but the plan in its own. */
+      renewalCurrency: string | null;
+      /** First renewal on the new plan, ISO 8601. The change restarts the billing period. */
+      renewalDate: string | null;
+      billingPeriod: "monthly" | "annual";
+    }
+  | { kind: "upgraded"; fromPlanKey: string; toPlanKey: string };
+
+/** Charged now; the change restarts the billing period on the upgrade day. A failed charge keeps the Pro plan. */
+const PRO_BUSINESS_CHANGE_PARAMS = {
+  quantity: 1,
+  proration_billing_mode: "prorated_immediately",
+  effective_at: "immediately",
+  on_payment_failure: "prevent_change",
+} as const;
+
+const PRO_BUSINESS_UPGRADE_TIMEOUT_MS = 15_000;
+/** Longer than retrieve + changePlan at their timeouts, so a live claim is never stolen. */
+export const PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS = 120_000;
+
+const PRO_BUSINESS_UPGRADE_ADMISSION_LIMIT = 10;
+const PRO_BUSINESS_UPGRADE_ADMISSION_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Per-account fixed window over previews and confirms, shared by the dashboard
+ * action and the /pro relay. Every admitted call reaches the Dodo API.
+ */
+export const admitProBusinessUpgrade = internalMutation({
+  args: { userId: v.string(), now: v.number() },
+  handler: async (ctx, { userId, now }): Promise<boolean> => {
+    // The candidate check runs in another transaction; deletion can start in
+    // between, and this row must not be recreated after its cleanup batch.
+    if (await isAccountDeleting(ctx, userId)) {
+      throw new ConvexError({ kind: "ACCOUNT_DELETION_IN_PROGRESS" });
+    }
+    const row = await ctx.db
+      .query("proBusinessUpgradeAdmissions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (row && now < row.windowStart + PRO_BUSINESS_UPGRADE_ADMISSION_WINDOW_MS) {
+      if (row.count >= PRO_BUSINESS_UPGRADE_ADMISSION_LIMIT) return false;
+      await ctx.db.patch(row._id, { count: row.count + 1 });
+    } else if (row) {
+      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
+    } else {
+      await ctx.db.insert("proBusinessUpgradeAdmissions", { userId, windowStart: now, count: 1 });
+    }
+    return true;
+  },
+});
+
+/** Serializes confirms per subscription. Returns false while another confirm holds a live claim. */
+export const claimProBusinessUpgrade = internalMutation({
+  args: { dodoSubscriptionId: v.string(), now: v.number() },
+  handler: async (ctx, args): Promise<boolean> => {
+    const existing = await ctx.db
+      .query("proBusinessUpgradeClaims")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", args.dodoSubscriptionId))
+      .first();
+    if (existing && args.now - existing.claimedAt < PRO_BUSINESS_UPGRADE_CLAIM_TTL_MS) {
+      return false;
+    }
+    if (existing) {
+      await ctx.db.patch(existing._id, { claimedAt: args.now });
+    } else {
+      await ctx.db.insert("proBusinessUpgradeClaims", {
+        dodoSubscriptionId: args.dodoSubscriptionId,
+        claimedAt: args.now,
+      });
+    }
+    return true;
+  },
+});
+
+/** Drops the claim after a failed change so the user can retry at once. */
+export const releaseProBusinessUpgrade = internalMutation({
+  args: { dodoSubscriptionId: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("proBusinessUpgradeClaims")
+      .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", args.dodoSubscriptionId))
+      .first();
+    if (existing) await ctx.db.delete(existing._id);
+  },
+});
+
+/**
+ * Preview (confirm=false) or apply (confirm=true) the upgrade. Entitlements
+ * follow from Dodo's `subscription.plan_changed` webhook, which patches the
+ * row's planKey and recomputes the entitlement (handleSubscriptionPlanChanged),
+ * so this action never writes billing state itself.
+ */
+export async function runProBusinessUpgrade(
+  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
+  userId: string,
+  confirm: boolean,
+): Promise<ProBusinessUpgradeResult> {
+  const candidate = await ctx.runQuery(
+    internal.payments.billing.getProBusinessUpgradeCandidate,
+    { userId },
+  );
+  if (!candidate.ok) {
+    throw new ConvexError({ kind: candidate.reason });
+  }
+  const admitted = await ctx.runMutation(internal.payments.billing.admitProBusinessUpgrade, {
+    userId,
+    now: Date.now(),
+  });
+  if (!admitted) {
+    throw new ConvexError({ kind: "UPGRADE_RATE_LIMITED" });
+  }
+
+  const client = getDodoClient({ timeout: PRO_BUSINESS_UPGRADE_TIMEOUT_MS, maxRetries: 0 });
+  const params = { product_id: candidate.toProductId, ...PRO_BUSINESS_CHANGE_PARAMS };
+
+  if (!confirm) {
+    try {
+      const preview = await client.subscriptions.previewChangePlan(candidate.dodoSubscriptionId, params);
+      const summary = preview.immediate_charge.summary;
+      return {
+        kind: "preview",
+        fromPlanKey: candidate.fromPlanKey,
+        toPlanKey: candidate.toPlanKey,
+        chargeAmount: summary.total_amount,
+        currency: String(summary.currency),
+        renewalAmount: typeof preview.new_plan?.recurring_pre_tax_amount === "number"
+          ? preview.new_plan.recurring_pre_tax_amount
+          : null,
+        renewalCurrency: preview.new_plan?.currency ? String(preview.new_plan.currency) : null,
+        renewalDate: typeof preview.new_plan?.next_billing_date === "string"
+          ? preview.new_plan.next_billing_date
+          : null,
+        billingPeriod: PRODUCT_CATALOG[candidate.toPlanKey]?.billingPeriod === "annual" ? "annual" : "monthly",
+      };
+    } catch (err) {
+      console.error(
+        `[billing] Dodo change-plan preview failed for subscription ${candidate.dodoSubscriptionId}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+      throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
+    }
+  }
+
+  const claimed = await ctx.runMutation(internal.payments.billing.claimProBusinessUpgrade, {
+    dodoSubscriptionId: candidate.dodoSubscriptionId,
+    now: Date.now(),
+  });
+  if (!claimed) {
+    // Another confirm for this subscription is between retrieve and changePlan.
+    throw new ConvexError({ kind: "UPGRADE_IN_PROGRESS" });
+  }
+
+  let changePlanSent = false;
+  try {
+    // A confirm that arrives after an earlier one finished, but before the
+    // webhook lands, sees the target product here and skips the change.
+    const remote = await client.subscriptions.retrieve(candidate.dodoSubscriptionId);
+    if (remote.product_id === candidate.toProductId) {
+      return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
+    }
+    // The quote was for the Pro product this row held; a provider-side change
+    // since then (portal, support) means the previewed charge no longer holds.
+    if (remote.product_id !== candidate.fromProductId) {
+      throw new Error(`subscription product changed since preview: ${remote.product_id}`);
+    }
+    changePlanSent = true;
+    await client.subscriptions.changePlan(candidate.dodoSubscriptionId, params);
+  } catch (err) {
+    // The claim stays on success so a repeat within the TTL cannot re-charge.
+    // It is released only when the change definitely did not happen: the call
+    // never went out, or Dodo refused it with a 4xx. A 5xx, a timeout or a
+    // dropped connection after sending may still be applying the change, so
+    // the claim holds until its TTL and a retry cannot send a second one.
+    const status = (err as { status?: unknown } | null)?.status;
+    const providerRefused = typeof status === "number" && status >= 400 && status < 500;
+    if (!changePlanSent || providerRefused) {
+      await ctx.runMutation(internal.payments.billing.releaseProBusinessUpgrade, {
+        dodoSubscriptionId: candidate.dodoSubscriptionId,
+      });
+    }
+    console.error(
+      `[billing] Dodo change-plan failed for subscription ${candidate.dodoSubscriptionId}:`,
+      err instanceof Error ? err.message : String(err),
+    );
+    throw new ConvexError({ kind: "DODO_PLAN_CHANGE_ERROR" });
+  }
+  console.log(JSON.stringify({
+    event: "pro_business_upgrade_applied",
+    fromPlanKey: candidate.fromPlanKey,
+    toPlanKey: candidate.toPlanKey,
+  }));
+  return { kind: "upgraded", fromPlanKey: candidate.fromPlanKey, toPlanKey: candidate.toPlanKey };
+}
+
+/** Dashboard entry point. Auth-gated via requireUserId(ctx). */
+export const upgradeToProBusiness = action({
+  args: { confirm: v.boolean() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    const userId = await requireUserId(ctx);
+    return runProBusinessUpgrade(ctx, userId, args.confirm);
+  },
+});
+
+/** /pro entry point, reached through the edge relay after Clerk verification. */
+export const internalUpgradeToProBusiness = internalAction({
+  args: { userId: v.string(), confirm: v.boolean() },
+  handler: async (ctx, args): Promise<ProBusinessUpgradeResult> => {
+    if (!args.userId) {
+      throw new ConvexError({ kind: "USER_ID_REQUIRED" });
+    }
+    return runProBusinessUpgrade(ctx, args.userId, args.confirm);
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Billing email repair
 // ---------------------------------------------------------------------------
 
@@ -4315,6 +4623,44 @@ export const grantComplimentaryEntitlement = internalMutation({
       planKey: effective!.planKey,
       validUntil: effective!.validUntil,
       compUntil,
+    };
+  },
+});
+
+/**
+ * Removes a user's complimentary grant now and recomputes from the remaining
+ * sources (subscriptions, Business grants, Enterprise contract membership).
+ * Used when a comp holder moves onto a contract account
+ * (docs/internal/enterprise-accounts.md). Also clears a legacy comp with no
+ * recorded plan, which otherwise freezes recompute.
+ *
+ *   npx convex run 'payments/billing:revokeComplimentaryEntitlement' \
+ *     '{"userId":"user_XXX","reason":"moved to contract account"}'
+ */
+export const revokeComplimentaryEntitlement = internalMutation({
+  args: { userId: v.string(), reason: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    await assertAccountWritable(ctx, args.userId);
+    const existing = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (!existing || (existing.compUntil === undefined && existing.compPlanKey === undefined)) {
+      return { userId: args.userId, revoked: false as const };
+    }
+    const now = Date.now();
+    await ctx.db.patch(existing._id, { compUntil: undefined, compPlanKey: undefined, updatedAt: now });
+    await recomputeEntitlementFromAllSubs(ctx, args.userId, now);
+    const effective = await ctx.db.query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId)).first();
+    console.log(
+      `[billing] revokeComplimentaryEntitlement userId=${args.userId} effectivePlanKey=${effective!.planKey} validUntil=${new Date(effective!.validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
+    );
+    return {
+      userId: args.userId,
+      revoked: true as const,
+      planKey: effective!.planKey,
+      validUntil: effective!.validUntil,
     };
   },
 });

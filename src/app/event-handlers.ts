@@ -1,3 +1,4 @@
+import { observeDashboardFirstInteraction } from '@/components/dashboard-interaction-analytics';
 import type {
   AppContext,
   AppModule,
@@ -62,6 +63,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
+  getMissionPreset,
   getMissionPresetsForVariant,
   applyMissionPresetToState,
   clearMissionPreset,
@@ -87,6 +89,7 @@ import {
   trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
+  replayPendingDashboardFirstInteraction,
   trackMapViewChange,
   trackMapLayerToggle,
   trackPanelToggled,
@@ -143,6 +146,7 @@ import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
 import {
   SPLIT_LAYOUT_MIN_WIDTH,
   LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH,
+  isSplitLayoutViewport,
   MAP_COL_DEFAULT_PERCENT,
   clampMapColWidthPercent,
   getVisualMapSide,
@@ -324,9 +328,21 @@ export interface EventHandlerCallbacks {
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
   isFreeTierFallbackActive?: () => boolean;
+  focusStorageFacility?: (facilityId: string) => void;
+  /**
+   * Dashboard focus (#10453). `canUseFocus`: this account may set a focus.
+   * `promptForFocus`: open the focus editor on the active tab (the presets
+   * that ask for countries). `showFocusGate`: say a focus needs a plan this
+   * account does not have. All three route to PanelLayoutManager, which owns
+   * the tabs.
+   */
+  canUseFocus?: () => boolean;
+  promptForFocus?: () => void;
+  showFocusGate?: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
+  private stopInteractionAnalytics: (() => void) | null = null;
   private ctx: AppContext;
   private callbacks: EventHandlerCallbacks;
 
@@ -336,6 +352,9 @@ export class EventHandlerManager implements AppModule {
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
+  private boundOpenStorageAtlas: ((ev: Event) => void) | null = null;
+  /** Leaves map fullscreen when it is active; set by setupMapFullscreen. */
+  private exitMapFullscreen: (() => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
   private boundDropdownClickHandler: ((e: MouseEvent) => void) | null = null;
@@ -402,6 +421,9 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    replayPendingDashboardFirstInteraction();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = observeDashboardFirstInteraction(this.ctx.container);
     this.setupSearchControls();
     this.setupEventListeners();
     this.mobilePrimaryNav.init();
@@ -527,6 +549,8 @@ export class EventHandlerManager implements AppModule {
 
   destroy(): void {
     this.closeEmbedDialog();
+    this.stopInteractionAnalytics?.();
+    this.stopInteractionAnalytics = null;
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
@@ -567,6 +591,11 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('storage', this.boundStorageHandler);
       this.boundStorageHandler = null;
     }
+    if (this.boundOpenStorageAtlas) {
+      window.removeEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
+      this.boundOpenStorageAtlas = null;
+    }
+    this.exitMapFullscreen = null;
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
@@ -754,6 +783,16 @@ export class EventHandlerManager implements AppModule {
       }
     };
     window.addEventListener('storage', this.boundStorageHandler);
+
+    this.boundOpenStorageAtlas = (ev: Event) => {
+      const facilityId = (ev as CustomEvent<{ facilityId?: string }>).detail?.facilityId;
+      if (!facilityId) return;
+      if (!this.enablePanelById('storage-facility-map')) return;
+      // The fullscreen map covers the panel grid; leave it so the atlas can show.
+      this.exitMapFullscreen?.();
+      this.callbacks.focusStorageFacility?.(facilityId);
+    };
+    window.addEventListener('wm:open-storage-atlas', this.boundOpenStorageAtlas);
 
     // Handle panel close (X) button clicks
     this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
@@ -1329,7 +1368,16 @@ export class EventHandlerManager implements AppModule {
     return enforceFreePanelLimit(panelSettings, false);
   }
 
-  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
+  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): boolean {
+    const focusPreset = getMissionPreset(presetId);
+    const canFocus = this.callbacks.canUseFocus?.() === true;
+    if (focusPreset?.requiresFocus && !canFocus) {
+      // Refused before anything changes: the layout, the stored preset and the
+      // picker stay as they were, and the gate says which plans include it.
+      this.closeMissionPresetPopover();
+      this.callbacks.showFocusGate?.();
+      return false;
+    }
     let applied: ReturnType<typeof applyMissionPresetToState>;
     try {
       applied = applyMissionPresetToState(
@@ -1340,7 +1388,7 @@ export class EventHandlerManager implements AppModule {
       );
     } catch {
       showToast('This mission is not available on this dashboard.');
-      return;
+      return false;
     }
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
@@ -1377,6 +1425,13 @@ export class EventHandlerManager implements AppModule {
     showToast(`Mission preset applied: ${applied.preset.label}`);
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
+    // A mission about countries asks which ones. Never from an agent (it must
+    // not open a dialog the user did not ask for), and never for a plan that
+    // cannot set a focus: Country Watcher still applies for those.
+    if (source === 'user' && applied.preset.asksForCountries && canFocus) {
+      this.callbacks.promptForFocus?.();
+    }
+    return true;
   }
 
   /**
@@ -1406,7 +1461,10 @@ export class EventHandlerManager implements AppModule {
 
     const snapshot = this.snapshotMissionDashboardState();
     try {
-      this.applyMissionPreset(presetId, 'agent');
+      if (!this.applyMissionPreset(presetId, 'agent')) {
+        // Refused (the focus gate, or a variant that lacks it): not a no-op success.
+        throw new Error('Mission preset was not applied.');
+      }
       const nextPresetId = loadStoredMissionPreset()?.id ?? null;
       const mapState = this.ctx.map?.getState();
       const changed = snapshot.presetId !== nextPresetId
@@ -2366,6 +2424,7 @@ export class EventHandlerManager implements AppModule {
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
         removeStorageValue('map-height');
+        removeStorageValue('map-height-mode');
         removeStorageValue('map-split-height');
         removeStorageValue('map-col-width');
         removeStorageValue('map-side');
@@ -2587,10 +2646,15 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle || !mapContainer) return;
 
-    const isSplit = () => window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+    const isSplit = () => isSplitLayoutViewport(window);
     // Split mode sizes #mapContainer, stacked mode sizes #mapSection — two
     // different elements, so each mode keeps its own storage key (#6417).
     const getHeightKey = () => (isSplit() ? 'map-split-height' : 'map-height');
+    const saveHeight = (key: string, value: string) => {
+      // New stacked edits must never be mistaken for pre-split-key preferences.
+      if (key === 'map-height') writeStorageValue('map-height-mode', 'stacked');
+      writeStorageValue(key, value);
+    };
     const readSavedHeight = (): { value: string | null; sourceKey: string } => {
       const key = getHeightKey();
       const value = readStorageValue(key);
@@ -2599,7 +2663,8 @@ export class EventHandlerManager implements AppModule {
       // restore below completes the migration by writing the split key.
       const canUseLegacySplitHeight = this.ctx.isDesktopApp
         || window.innerWidth >= LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH;
-      if (value === null && isSplit() && canUseLegacySplitHeight) {
+      if (value === null && isSplit() && canUseLegacySplitHeight
+        && readStorageValue('map-height-mode') !== 'stacked') {
         return { value: readStorageValue('map-height'), sourceKey: 'map-height' };
       }
       return { value, sourceKey: key };
@@ -2659,7 +2724,7 @@ export class EventHandlerManager implements AppModule {
         // legacy shared key — writing the mode key completes the migration
         // so stacked-mode edits stop steering split restores.
         if (clamped !== numeric || sourceKey !== getHeightKey()) {
-          writeStorageValue(getHeightKey(), `${clamped}px`);
+          saveHeight(getHeightKey(), `${clamped}px`);
         }
       } else {
         removeStorageValue(sourceKey);
@@ -2671,7 +2736,7 @@ export class EventHandlerManager implements AppModule {
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
-    // Captured at mousedown so a viewport crossing 900px mid-drag cannot
+    // Captured at mousedown so a viewport crossing the breakpoint mid-drag cannot
     // switch the resized element or the storage key under the drag.
     let dragTarget: HTMLElement | null = null;
     let dragKey = 'map-height';
@@ -2683,7 +2748,7 @@ export class EventHandlerManager implements AppModule {
       this.ctx.map?.resize();
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
-      writeStorageValue(dragKey, (dragTarget ?? getTarget()).style.height);
+      saveHeight(dragKey, (dragTarget ?? getTarget()).style.height);
       dragTarget = null;
       syncHeightSeparatorAria();
     };
@@ -2740,7 +2805,7 @@ export class EventHandlerManager implements AppModule {
 
         target.classList.remove('map-section-smooth');
         target.removeEventListener('transitionend', onEnd);
-        writeStorageValue(heightKey, `${finalHeight}px`);
+        saveHeight(heightKey, `${finalHeight}px`);
         this.ctx.map?.setIsResizing(false);
         this.ctx.map?.resize();
         syncHeightSeparatorAria();
@@ -2762,7 +2827,7 @@ export class EventHandlerManager implements AppModule {
       if (isSplit()) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
       this.ctx.map?.resize();
-      writeStorageValue(getHeightKey(), `${newHeight}px`);
+      saveHeight(getHeightKey(), `${newHeight}px`);
       syncHeightSeparatorAria();
     });
 
@@ -3061,6 +3126,9 @@ export class EventHandlerManager implements AppModule {
     };
 
     btn.addEventListener('click', toggle);
+    this.exitMapFullscreen = () => {
+      if (isFullscreen) toggle();
+    };
     this.boundMapFullscreenEscHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isFullscreen) toggle();
     };

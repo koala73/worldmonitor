@@ -14,6 +14,7 @@ import {
   type ApiPlanLimitCtaKind,
   type ApiPlanLimitNoticeState,
 } from "./apiPlanLimitNotices";
+import { liveEnterpriseMemberUserIds } from "./lib/enterpriseAccounts";
 
 type ActiveEntitlement = {
   userId: string;
@@ -21,6 +22,12 @@ type ActiveEntitlement = {
   tier: number;
   apiAccess: boolean;
   mcpAccess: boolean;
+  /**
+   * Active member of a live Enterprise contract account. Contract customers
+   * get no self-serve plan-limit notices, emails, or upgrade prompts: the scan
+   * skips them before any usage read or notice.
+   */
+  enterpriseMember?: true;
 };
 
 type ScannerUsageRow = {
@@ -466,6 +473,7 @@ export const listActivePaidEntitlements = internalQuery({
       .query("entitlements")
       .withIndex("by_validUntil", (q) => q.gte("validUntil", args.now))
       .collect();
+    const enterpriseMembers = await liveEnterpriseMemberUserIds(ctx, args.now);
     return rows
       .filter((row) => row.features.tier > 0)
       .map((row) => ({
@@ -474,6 +482,7 @@ export const listActivePaidEntitlements = internalQuery({
         tier: row.features.tier,
         apiAccess: row.features.apiAccess,
         mcpAccess: row.features.mcpAccess === true,
+        ...(enterpriseMembers.has(row.userId) ? { enterpriseMember: true as const } : {}),
       }));
   },
 });
@@ -589,6 +598,7 @@ async function buildProductionRows(
   };
   const reads: DailyRead[] = [];
   for (const ent of active) {
+    if (ent.enterpriseMember) continue;
     // An entitlement can outlive its catalog entry: `planKey` is a bare
     // v.string() in the schema, so a plan renamed or retired leaves live rows
     // pointing at a key `getEntitlementFeatures` throws on by design. Nothing
@@ -710,6 +720,12 @@ async function scanHandler(ctx: any, args: {
     const ent = byUser.get(row.userId);
     if (!ent) {
       summary.skipped.push({ userId: row.userId, dimension: row.dimension, reason: "unknown_or_inactive_entitlement" });
+      continue;
+    }
+    // Contract accounts are billed on their contract, never upsold. Left out of
+    // `evaluated`, so the sweep below clears any notice minted before joining.
+    if (ent.enterpriseMember) {
+      summary.skipped.push({ userId: row.userId, dimension: row.dimension, reason: "enterprise_account_member" });
       continue;
     }
     // An api_* dimension only applies to accounts that actually hold API access.

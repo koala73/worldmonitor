@@ -1,9 +1,12 @@
+import './bootstrap/abort-signal-fallbacks';
+import './bootstrap/dom-fallbacks';
+import { createRequestTimeoutSignal } from '@/services/timeout-signal';
 /**
  * Apex `/mcp-grant` page bootstrap.
  *
  * Clerk-protected consent screen for the cross-subdomain Pro MCP flow.
  * The user lands here from the api-subdomain consent page (U4 will add
- * a "Sign in with WorldMonitor Pro" CTA on `api/oauth/authorize.js`).
+ * a "Sign in to World Monitor" CTA on `api/oauth/authorize.js`).
  *
  * Flow on this page:
  *   1. Boot Clerk; if signed-out, show the sign-in view and open the modal.
@@ -235,7 +238,7 @@ async function authedFetch(path: string, init: RequestInit = {}): Promise<Respon
   const token = await getClerkSessionToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(`${API_BASE}${path}`, { ...init, headers });
+  return fetch(`${API_BASE}${path}`, { ...init, signal: createRequestTimeoutSignal(`${API_BASE}${path}`, init, path.startsWith('/api/internal/mcp-grant-context') ? 35_000 : 120_000), headers });
 }
 
 /**

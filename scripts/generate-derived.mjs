@@ -17,7 +17,8 @@
 // scripts/internal-links.mjs (needs TYPESAFE_API_KEY), and the sitemap and
 // docs page dates, which follow main's commit dates and are refreshed on
 // schedule and at build time rather than per branch.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { availableParallelism } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +26,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NODE = process.execPath;
 const TSX = [NODE, '--import', 'tsx'];
 const MAX_PASSES = 3;
+// The --check commands only read, so they run side by side. Four workers took
+// the pre-push check from 6.5-7.1 s to about 2 s on an 18-core Mac; eight was
+// no faster. Writes stay sequential because generators read each other's output.
+const CHECK_CONCURRENCY = Math.max(1, Math.min(4, availableParallelism()));
 
 // [name, command, write flag]. Every command also accepts --check. Order
 // follows the data flow: the product config feeds the facts, which feed AI
@@ -40,12 +45,14 @@ export const STEPS = [
   ['resilience coverage', [...TSX, 'scripts/sync-resilience-coverage.mjs']],
   ['agent skills index', [NODE, 'scripts/build-agent-skills-index.mjs']],
   ['source attribution', [NODE, 'scripts/source-attribution.mjs'], '--write'],
+  ['MCP source providers', [NODE, 'scripts/generate-mcp-source-providers.mjs']],
   ['locale keys', [NODE, 'scripts/sync-locale-keys.mjs']],
   ['zh-TW locales', ['python3', 'scripts/convert-zh-tw.py']],
   ['bootstrap tier keys', [NODE, 'scripts/sync-bootstrap-tier-keys.mjs']],
   ['live video channels', [...TSX, 'scripts/sync-live-video-refresh-channels.mjs']],
   ['TUI catalog', [...TSX, 'scripts/sync-tui-catalog.mjs']],
   ['sandbox fixtures', [NODE, 'scripts/generate-sandbox-fixtures.mjs']],
+  ['population density boundaries', [...TSX, 'scripts/generate-population-density-boundaries.mjs']],
   ['scorecard edge mirrors', [NODE, 'scripts/generate-scorecard-edge-mirrors.mjs']],
   ['Sentry Convex probe filters', [NODE, 'scripts/sync-sentry-convex-probe-filters.mjs'], '--write'],
   ['legal digests', [NODE, 'scripts/legal-digests.mjs']],
@@ -59,7 +66,40 @@ function run([cmd, ...args], flag) {
   return { ok: result.status === 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}`.trim() };
 }
 
-function main() {
+function runAsync([cmd, ...args], flag) {
+  return new Promise((done) => {
+    let output = '';
+    const child = spawn(cmd, flag ? [...args, flag] : args, { cwd: ROOT });
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { output += chunk; });
+    child.stderr.on('data', (chunk) => { output += chunk; });
+    // A command that cannot start emits 'error' and may never emit 'close'.
+    let settled = false;
+    const settle = (ok) => { if (!settled) { settled = true; done({ ok, output: output.trim() }); } };
+    child.on('error', (error) => { output += error.message; settle(false); });
+    child.on('close', (status) => settle(status === 0));
+  });
+}
+
+// Runs each step's --check with at most `concurrency` at once. Returns the stale
+// steps, with their output, in the order STEPS declares them.
+export async function checkSteps(steps, { concurrency = CHECK_CONCURRENCY, runner = (command) => runAsync(command, '--check') } = {}) {
+  const results = new Array(steps.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < steps.length) {
+      const index = next++;
+      results[index] = await runner(steps[index][1]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, steps.length) }, worker));
+  return steps.flatMap(([name, command, writeFlag], index) => (
+    results[index].ok ? [] : [[name, command, writeFlag, results[index].output]]
+  ));
+}
+
+async function main() {
   const checkOnly = process.argv.includes('--check');
   // The product config has no --check; it is cheap and deterministic, so the
   // write mode always runs it (the pre-push pro-test gate checks it).
@@ -83,11 +123,7 @@ function main() {
       console.error(`generate: inventory facts failed:\n${inventory.output}`);
       return 1;
     }
-    const stale = [];
-    for (const [name, command, writeFlag] of steps) {
-      const { ok, output } = run(command, '--check');
-      if (!ok) stale.push([name, command, writeFlag, output]);
-    }
+    const stale = await checkSteps(steps);
     if (stale.length === 0) {
       console.log(regenerated.size ? `generate: regenerated ${[...regenerated].join(', ')}` : 'generate: all derived files are current');
       return 0;
@@ -112,4 +148,4 @@ function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) process.exitCode = main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) process.exitCode = await main();

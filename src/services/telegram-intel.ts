@@ -262,7 +262,7 @@ export async function fetchTelegramFeed(limit = 50): Promise<TelegramFeedRespons
 
   let res: Response;
   try {
-    res = await fetch(telegramFeedUrl(limit));
+    res = await fetch(telegramFeedUrl(limit), { signal: createTimeoutSignal(15_000) });
   } catch (error) {
     const stale = staleFallback();
     if (stale) return stale;

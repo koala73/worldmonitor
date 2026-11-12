@@ -24,6 +24,12 @@ missing source cannot silently become a zero or a site-wide vanity score.
   referral snapshots from `scripts/seo-bing-collect.mjs` and
   `scripts/seo-umami-collect.mjs`, written by the same weekly run when their
   credentials are configured.
+- `answerrank/<date>.json` and `answerrank/<date>.md` — weekly AI-answer
+  snapshots from `scripts/seo-answerrank-collect.mjs`: how often model API
+  answers to 13 fixed buyer questions name or cite World Monitor, and whether
+  that changed significantly since the last comparable week. They are a proxy,
+  not observations of the AI products, so they never fill `aiSurfaces`. See
+  `answerrank/README.md`.
 - `scripts/seo-weekly-baseline.mjs` — turns one date's snapshots into
   `baselines/<date>.json` and `scorecards/<date>.md`. See
   [Weekly regeneration](#weekly-regeneration).
@@ -187,7 +193,8 @@ For both the trailing 28-day and 90-day windows:
 1. Export search performance grouped by query and page, retaining clicks,
    impressions, CTR, and average position.
 2. Export or record the supported Page Indexing summary for indexed pages.
-3. Join reviewed query rows to `query-set.json` by the exact query text.
+3. Look up each reviewed query in `query-set.json` with an exact-match filter
+   on the query dimension, and record the set's id and digest with the results.
 4. Group target pages into the `targetPage.family` values the query set
    declares for its schema version. `scripts/lib/seo-url-taxonomy.mjs` performs
    that mapping for any site URL and refuses an unmapped one.
@@ -203,6 +210,8 @@ If the export or indexing view is unavailable, keep every metric `null`, set
 `reason`. An unavailable provider has empty `queryRows` and `pageFamilyRows`.
 A partial provider may retain supported finite values while unavailable metrics
 remain `null`. A zero is valid only when the provider explicitly reported zero.
+A query row with no metrics must carry a `reason`, and the query-intent slice
+shows how many of its queries were reported instead of a partial sum.
 Every provider window must end on or before the baseline's `observedAt` date.
 
 ### 2. Bing Webmaster
@@ -321,7 +330,7 @@ only where its meaning matches the contract field:
 | Search Console window clicks, impressions, CTR, position | `performance.windows[].siteTotals.all` (by property) | No by-property totals for that window. The page-row sum is never used: it counts one search once per URL shown. |
 | Search Console window `indexedPages` | `indexation.htmlPages.indexed`, the same count in both windows | The inspection sample did not cover every declared URL. |
 | Search Console page-family rows | `performance.windows[].byFamily` (page-grouped); `indexedPages` from `htmlPages.indexedByFamily` | A family's URLs were not all inspected. A family with no page row in a truncated window gets no row. |
-| Search Console query rows | `topQueries` whose text exactly equals a reviewed query | A reviewed query outside the top 20 has no row, which is not a zero. |
+| Search Console query rows | `reviewedQueries.windows[].lookups`, one per reviewed query and window | Google returned no row (`not-reported`: below its privacy threshold or no impressions) or the lookup failed (`unavailable`). Each row keeps null metrics and its `reason`; neither is a zero. There are no rows when the snapshot predates the lookups or they were made for a different query set (`querySetId` and `querySetDigest` differ); the source `reason` says which. |
 | Bing window clicks, impressions, CTR | `traffic.windows` (daily site rows) | Bing reported fewer days than the window has. |
 | Bing window and page-family position | none | Always: the daily rows carry no position. |
 | Bing `indexedPages` | `crawl.latest.inIndex` | Crawl stats unavailable. Page-family rows never carry one. |

@@ -109,7 +109,7 @@ export function secondsUntilNextMinute(now) {
 }
 
 /**
- * @typedef {{ ok: true, dailyCount: number, minuteCount: number, rollback: () => Promise<void> }} DesktopBudgetAdmitted
+ * @typedef {{ ok: true, dailyCount: number, minuteCount: number, rollback: () => Promise<void>, releaseDaily: () => Promise<void> }} DesktopBudgetAdmitted
  * @typedef {{ ok: false, limitType: 'daily' | 'per_minute', limit: number, retryAfterSec: number, resetMs: number }} DesktopBudgetRejected
  * @typedef {{ ok: null, reason: 'unavailable' }} DesktopBudgetUnavailable
  */
@@ -177,6 +177,19 @@ export async function reserveDesktopKeyBudget(opts) {
       // direction, exactly as the #3199 meter accepts.
     }
   };
+  // Gives back the daily charge only, for a request that was admitted but
+  // not served. The burst slot stays spent, so repeated failing requests
+  // cannot get past the per-minute limit. Shares the once-only flag with
+  // rollback.
+  const releaseDaily = async () => {
+    if (rolledBack) return;
+    rolledBack = true;
+    try {
+      await pipeline([['DECR', dayKey]]);
+    } catch {
+      // Best-effort, as above.
+    }
+  };
 
   if (dailyCount > dailyLimit) {
     await rollback();
@@ -188,7 +201,7 @@ export async function reserveDesktopKeyBudget(opts) {
     const retryAfterSec = secondsUntilNextMinute(now);
     return { ok: false, limitType: 'per_minute', limit: burstPerMinute, retryAfterSec, resetMs: now.getTime() + retryAfterSec * 1000 };
   }
-  return { ok: true, dailyCount, minuteCount, rollback };
+  return { ok: true, dailyCount, minuteCount, rollback, releaseDaily };
 }
 
 /** @param {unknown} raw */

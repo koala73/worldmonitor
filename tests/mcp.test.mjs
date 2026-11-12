@@ -1485,6 +1485,60 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
   });
 
+  it('get_market_data: Friday crude closes stay fresh on Saturday and undated quotes stay stale', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-11-07T15:00:00Z'));
+    const priceAt = Date.parse('2026-11-06T21:59:00Z');
+    const brent = { symbol: 'BZ=F', price: 91.60, priceBasis: 'futures', priceSource: 'Yahoo Finance', priceAt };
+    const wti = { symbol: 'CL=F', price: 85 };
+    mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [brent, wti] } });
+    const out = await callTool('get_market_data', { asset_class: ['commodity'] });
+    assert.deepEqual(out.data['commodities-bootstrap'].quotes, [
+      { ...brent, stale: false },
+      { ...wti, stale: true },
+    ]);
+  });
+
+  it('get_market_data: passes the captured clock to oilTapeMaxAgeMs when Date.now advances', (t) => {
+    const captured = Date.parse('2026-12-26T12:00:00Z');
+    const ambient = Date.parse('2026-12-29T16:00:00Z');
+    let clock = captured;
+    t.mock.method(Date, 'now', () => clock);
+    const quote = {
+      symbol: 'CL=F', priceAt: Date.parse('2026-12-24T18:44Z'),
+      // Advance only once the quote is read, after the filter captures its clock.
+      get priceBasis() { clock = ambient; return 'futures'; },
+    };
+    const tool = TOOL_REGISTRY.find(t => t.name === 'get_market_data');
+    const out = tool._postFilter({ 'commodities-bootstrap': { quotes: [quote] } }, {});
+    assert.deepEqual(out['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+    assert.equal(Date.now(), ambient, 'ambient clock differs from the captured clock');
+  });
+
+  it('get_market_data: Christmas closing quotes stay fresh until the holiday weekend ends', async (t) => {
+    t.mock.method(Date, 'now', () => Date.parse('2026-12-26T12:00:00Z'));
+    const quote = { symbol: 'CL=F', price: 85, priceBasis: 'futures', priceAt: Date.parse('2026-12-24T18:44Z') };
+    mockCacheKeys({ 'market:commodities-bootstrap:v1': { quotes: [quote] } });
+    const out = await callTool('get_market_data', { asset_class: ['commodity'] });
+    assert.deepEqual(out.data['commodities-bootstrap'].quotes, [{ ...quote, stale: false }]);
+  });
+
+  it('get_energy_intelligence: observation freshness follows the next EIA release', async (t) => {
+    for (const [date, now, stale] of [
+      ['2025-12-12', '2025-12-29T21:59Z', false],
+      ['2025-12-12', '2025-12-30T22:01Z', true],
+      ['2026-11-06', '2026-11-19T23:59Z', true],
+      ['2026-11-13', '2026-11-19T23:59Z', false],
+    ]) {
+      t.mock.method(Date, 'now', () => Date.parse(now));
+      mockCacheKeys({ 'energy:eia-petroleum:v1': { brent: { date, current: 85 } } }, {
+        'seed-meta:energy:eia-petroleum': { fetchedAt: Date.parse(now) - 60_000, recordCount: 1 },
+      });
+      const out = await callTool('get_energy_intelligence', { dataset: ['eia-petroleum'] });
+      assert.equal(out.data['eia-petroleum'].brent.stale, stale, now);
+      t.mock.restoreAll();
+    }
+  });
+
   it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
     // Live clock: this test asserts on the MCP projection, which re-derives
     // transport freshness against Date.now(). A pinned fixture time expires
@@ -3085,7 +3139,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    const eiaPayload = { weeklySeries: [{ week: '2026-W18', stocks: 832.1 }] };
+    const latestFriday = new Date();
+    latestFriday.setUTCDate(latestFriday.getUTCDate() - ((latestFriday.getUTCDay() + 2) % 7));
+    const eiaPayload = {
+      brent: { date: latestFriday.toISOString().slice(0, 10), current: 121.17 },
+      stocks: { current: 832.1 },
+    };
     const electricityPayload = { countries: [{ iso: 'DE', priceEurMwh: 88 }] };
     const emberPayload = { regions: [{ id: 'EU', cleanShare: 0.62 }] };
     const gasStoragePayload = { countries: [{ iso: 'DE', fillPct: 71 }] };
@@ -3166,7 +3225,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.stale, false, 'all 12 metas within their per-key budgets must yield stale=false');
     assert.equal(payload.cached_at, new Date(crisisPolicyFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (crisis-policies, 30d old, within ~400d budget)');
     // Label-walk slice names per NON_LABEL=/^(v\d+|\d+|stale|sebuf)$/:
-    assert.deepEqual(payload.data['eia-petroleum'], eiaPayload);
+    assert.deepEqual(payload.data['eia-petroleum'], {
+      ...eiaPayload,
+      brent: { ...eiaPayload.brent, priceBasis: 'spot', priceSource: 'EIA', frequency: 'weekly', stale: false },
+    });
     assert.deepEqual(payload.data['index'], electricityPayload, 'energy:electricity:v1:index → "index"');
     assert.deepEqual(payload.data['_all'], emberPayload, 'energy:ember:v1:_all → "_all"');
     assert.deepEqual(payload.data['_countries'], gasStoragePayload, 'energy:gas-storage:v1:_countries → "_countries"');
@@ -4683,6 +4745,41 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(a, 'a=1&b=2');
   });
 
+  it('canonicalQueryString orders repeated values, so an edge that sorts the query still verifies (WORLDMONITOR-1CJ)', async () => {
+    // Cloudflare in front of api.worldmonitor.app sorts query values before the
+    // request reaches Vercel: ?symbols=AAPL&symbols=NVDA&symbols=AMZN arrives as
+    // AAPL, AMZN, NVDA. A key-only sort kept the caller's value order and
+    // 401'd every multi-symbol tool call whose symbols were not already sorted.
+    const { canonicalQueryString, signInternalMcpRequest, buildInternalMcpHeaders, verifyInternalMcpRequestDetailed } =
+      await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    assert.equal(
+      canonicalQueryString('?symbols=AAPL&symbols=NVDA&symbols=AMZN&limit=4'),
+      canonicalQueryString('?limit=4&symbols=AAPL&symbols=AMZN&symbols=NVDA'),
+    );
+
+    const path = 'https://api.worldmonitor.app/api/market/v1/get-stock-analysis-history';
+    const signed = await signInternalMcpRequest({
+      method: 'GET',
+      url: `${path}?symbols=AAPL&symbols=NVDA&symbols=AMZN&symbols=MSFT&include_news=false&limit_per_symbol=4`,
+      body: null,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+    });
+    const delivered = new Request(
+      `${path}?include_news=false&limit_per_symbol=4&symbols=AAPL&symbols=AMZN&symbols=MSFT&symbols=NVDA&rpc=get-stock-analysis-history`,
+      { headers: buildInternalMcpHeaders(signed) },
+    );
+    const result = await verifyInternalMcpRequestDetailed(delivered, HMAC_SECRET);
+    assert.equal(result.ok, true, `edge-sorted delivery must verify, got ${result.failure}`);
+
+    // A different value set is still a different signature.
+    const tampered = new Request(
+      `${path}?include_news=false&limit_per_symbol=4&symbols=AAPL&symbols=AMZN&symbols=MSFT&symbols=TSLA`,
+      { headers: buildInternalMcpHeaders(signed) },
+    );
+    assert.equal((await verifyInternalMcpRequestDetailed(tampered, HMAC_SECRET)).failure, 'signature_mismatch');
+  });
+
   it('canonicalQueryString URL-encodes values', async () => {
     const { canonicalQueryString } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
     const c = canonicalQueryString('?q=hello world&special=a%2Fb');
@@ -4773,6 +4870,44 @@ describe('get_sanctions_data screening contract', () => {
     for (const key of ['seed-meta:sanctions:entities', 'seed-meta:sanctions:pressure']) {
       assert.ok(tool._freshnessChecks.some(check => check.key === key));
     }
+  });
+  it('separates legacy unattributed counts before applying country filters', () => {
+    const unattributed = { entryCount: 8, vesselCount: 3, aircraftCount: 1 };
+    const countries = [{ countryCode: 'RU', entryCount: 4 }];
+    const legacy = { entries: [], countries: [{ countryCode: 'XX', ...unattributed }, ...countries] };
+    const current = { entries: [], countries, unattributed };
+    for (const pressure of [legacy, current]) {
+      const result = tool._postFilter(structuredClone({ pressure }), { country: 'RU' });
+      assert.deepEqual(result.pressure, { ...current, regulationTargets: [] });
+    }
+  });
+  it('fills aircraft counts on flag registries from snapshots that predate them', () => {
+    const pressure = { entries: [], countries: [], flagRegistries: [{ countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1 }] };
+    const result = tool._postFilter(structuredClone({ pressure }), {});
+    assert.deepEqual(result.pressure.flagRegistries, [
+      { countryCode: 'PA', countryName: 'Panama', vesselCount: 3, newVesselCount: 1, aircraftCount: 0, newAircraftCount: 0 },
+    ]);
+  });
+  it('narrows registry rows with the country filter even when no direct country rows match', () => {
+    const flagRegistries = ['PA', 'IR', 'RU'].map(countryCode => ({ countryCode, vesselCount: 2, aircraftCount: 1 }));
+    for (const [country, expected] of [['PA', ['PA']], [['PA', 'IR'], ['PA', 'IR']], ['GB', []]]) {
+      const result = tool._postFilter({ pressure: { entries: [], countries: [], flagRegistries } }, { country });
+      assert.deepEqual(result.pressure.flagRegistries.map(row => row.countryCode), expected);
+      assert.deepEqual(result.pressure.countries, []);
+    }
+  });
+  it('exposes regulation targets separately without treating a country filter as target attribution', () => {
+    const regulationTargets = [{ countryCode: 'IR', countryName: 'Iran', entryCount: 500, newEntryCount: 0, vesselCount: 0, aircraftCount: 0 }];
+    const result = tool._postFilter({ pressure: { entries: [], countries: [], regulationTargets } }, { country: 'IR' });
+    assert.deepEqual(result.pressure.regulationTargets, regulationTargets);
+    assert.deepEqual(result.pressure.countries, []);
+    assert.ok(tool.outputSchema.properties.data.properties.pressure.properties.regulationTargets);
+  });
+  it('defaults regulation targets for older snapshots and preserves cache misses', () => {
+    for (const pressure of [{ entries: [], countries: [] }, {}]) {
+      assert.deepEqual(tool._postFilter({ pressure }, {}).pressure.regulationTargets, []);
+    }
+    assert.equal(tool._postFilter({ pressure: null }, {}).pressure, null);
   });
   it('screens aliases before limiting and composes country, type and primary-name filters', () => {
     const data = { entities: index, pressure: { entries: [], countries: [] } };

@@ -9,7 +9,7 @@
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is the sole credential-free, daily-quota-free data tool and has a separate fail-closed 10/min/IP anonymous limit; describe_tool and all other tool calls need subscription auth."
+      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is daily-quota-free and has a separate fail-closed 10/min/IP anonymous limit. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. describe_tool is quota-exempt and needs a signed-in account."
     },
     "rest": {
       "base": "https://api.worldmonitor.app",
@@ -85,7 +85,7 @@
     "mcp": "curl -X POST https://worldmonitor.app/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
   },
   "authentication": {
-    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is the sole credential-free, daily-quota-free data tool; describe_tool and all other tool calls are subscription-gated.",
+    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is daily-quota-free. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. describe_tool is quota-exempt and needs a signed-in account.",
     "freeDataTool": {
       "name": "get_sources",
       "dailyQuota": false,
@@ -106,7 +106,7 @@
   },
   "rateLimits": {
     "anonymous": "60 requests/min per IP on public MCP metadata methods, /a2a and /ask; get_sources uses a separate fail-closed 10 requests/min per IP ceiling",
-    "authenticated": "Per-minute burst is plan-resolved and shared per user across OAuth tokens and dashboard-issued wm_ keys: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1000 on Enterprise. Subscription data calls reserve a per-user daily quota on the same plan-resolved budget through either door: Pro 50/day and Pro Business 250/day at one unit per call, API Starter 1000/day and API Business 10000/day drawn from the same allowance as their REST requests and charged at a per-tool weight of 1, 2 or 3, Enterprise unlimited. get_sources and metadata calls are daily-quota-free — see https://www.worldmonitor.app/pricing.md"
+    "authenticated": "Per-minute burst is plan-resolved and shared per user across OAuth tokens and dashboard-issued wm_ keys: 60/minute on Pro, Pro Business and API Starter, 300 on API Business and Enterprise. Subscription data calls reserve a per-user daily quota on the same plan-resolved budget through either door: Pro 50/day and Pro Business 250/day at one unit per call, API Starter 1000/day, API Business 10000/day and Enterprise 10000/day by default drawn from the same allowance as their REST requests and charged at a per-tool weight of 1, 2, 3 or 5. Members of an Enterprise contract account share one account-wide daily allowance and one per-minute burst, both set by the contract and shared with their REST requests; calls past the allowance are billed as overage up to the account's daily safety limit. get_sources and metadata calls are daily-quota-free — see https://www.worldmonitor.app/pricing.md"
   },
   "documentation": "https://www.worldmonitor.app/docs/documentation",
   "capabilities": [

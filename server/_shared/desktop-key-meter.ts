@@ -6,7 +6,7 @@
 import * as core from '../../api/_desktop-key-meter.js';
 import type { RateLimitPipeline } from './api-key-rate-limit.js';
 
-export type DesktopBudgetAdmitted = { ok: true; dailyCount: number; minuteCount: number; rollback: () => Promise<void> };
+export type DesktopBudgetAdmitted = { ok: true; dailyCount: number; minuteCount: number; rollback: () => Promise<void>; releaseDaily: () => Promise<void> };
 
 export type DesktopBudgetDecision =
   | DesktopBudgetAdmitted
