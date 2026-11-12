@@ -88,6 +88,7 @@ Layers are organized into logical groups for efficient monitoring:
 |-------|-------------|
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
 | **Weather** | Official severe weather alerts (NWS, ECCC, WMO SWIC) |
+| **Water Levels** | One dot per reservoir or lake on the 50-entry Strategic Water Levels watchlist, coloured by status: red and amber for falling or low, blue for rising or high, grey for normal, and a hollow ring when there is no recent satellite pass or too little history to judge. Geopolitical and Energy variants. Off by default |
 
 **Overlays & Labels**
 | Layer | Description |
@@ -119,6 +120,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
 | **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
+| **Strategic Water Levels** | Water-surface level of 50 reservoirs and lakes that matter for hydropower, irrigation, shipping and transboundary water disputes, from NASA ICESat-2 lidar. Records and fast moves sort first. Each row shows the status, the level against the usual for that month (or the 12-month change), a level sparkline and the date of the last satellite pass, with All, Needs attention and Transboundary filters. Selecting a row opens it on the map. Level only, not storage volume; NASA publishes each pass 50 to 70 days after it is measured. On by default in the Energy variant, opt-in in the geopolitical variant. See [Strategic Water Levels](/data-sources#strategic-water-levels) |
 | **Displacement Tracking** | UNHCR refugee, asylum seeker, and IDP data by origin and host country, IDMC new internal displacement events, IOM DTM internal displacement by region, and source-dated cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama) |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
