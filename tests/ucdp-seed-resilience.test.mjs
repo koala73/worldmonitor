@@ -345,6 +345,12 @@ describe('a run that cannot complete its window keeps the last good one', () => 
       assert.equal(reads, 1);
     });
 
+    it('never publishes an unparseable frontier, even if labelled complete', async () => {
+      for (const endMs of [NaN, null, undefined]) {
+        assert.equal(await decide(null, { complete: true, endMs }), true);
+      }
+    });
+
     it('publishes complete runs at the same or a newer frontier', async () => {
       for (const endMs of [1_000, 1_001]) {
         assert.equal(await decide({ window: { complete: true, endMs: 1_000 } }, { complete: true, endMs }), false);

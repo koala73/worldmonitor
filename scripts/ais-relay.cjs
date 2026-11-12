@@ -3283,7 +3283,7 @@ async function seedUcdpEvents() {
       return cached;
     }, window);
     if (keepCached) {
-      console.warn(`[UCDP] Window incomplete and ending ${new Date(latestMs).toISOString().slice(0, 10)}, no later than the cached window (or the cache was unreadable), extending existing key TTL (preserving last good data)`);
+      console.warn(`[UCDP] Window refresh cannot replace the cached frontier, extending existing key TTL (preserving last good data)`);
       try { await upstashExpire(UCDP_REDIS_KEY, UCDP_TTL_SECONDS); } catch {}
       return;
     }

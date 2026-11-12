@@ -373,6 +373,7 @@ async function fetchCandidateWindow(fetchPage, newest, { fromMs, throughVersion 
  * run can regress when an ambiguous probe hides a published release.
  */
 async function keepLastGoodUcdpWindow(readExisting, runWindow) {
+  if (!Number.isFinite(runWindow.endMs)) return true;
   let existing;
   try {
     existing = await readExisting();
