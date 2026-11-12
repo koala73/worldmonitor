@@ -131,7 +131,8 @@ describe('FocusBar', () => {
   });
 
   it('keeps both years in the range fallback', () => {
-    vi.spyOn(Intl.DateTimeFormat.prototype, 'formatRange').mockImplementation(() => { throw new Error('unsupported'); });
+    const prototype = Intl.DateTimeFormat.prototype as Intl.DateTimeFormat & { formatRange(start: Date, end: Date): string };
+    vi.spyOn(prototype, 'formatRange').mockImplementation(() => { throw new Error('unsupported'); });
     expect(focusWindowText({ countries: ['TH'], neighbours: false, start: '2026-01-01', end: '2027-01-01' }, DURING)?.text)
       .toMatch(/2026.*2027/);
   });
