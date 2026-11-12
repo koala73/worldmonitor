@@ -2,13 +2,15 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from '@e965/xlsx';
-import { CHROME_UA, loadEnvFile, withRetry, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { CHROME_UA, getRedisCredentials, loadEnvFile, withRetry, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
+import { upstashCommand } from './_upstash-rest.mjs';
 
 export const PRIOR_YEAR = 2025;
 export const PRIOR_INDICATOR = 'GOV_WGI_PV.EST';
 export const PRIOR_KEY = 'intelligence:cii-structural-prior:v1';
 export const PRIOR_META_KEY = 'seed-meta:intelligence:cii-structural-prior';
+export const PRIOR_ACTIVATION_KEY = 'seed-activated:intelligence:cii-structural-prior';
 export const PRIOR_TTL_SECONDS = 400 * 86400;
 export const PRIOR_API_URL = `https://api.worldbank.org/v2/country/all/indicator/${PRIOR_INDICATOR}?format=json&per_page=20000&date=${PRIOR_YEAR}`;
 export const PRIOR_BULK_URL = 'https://datacatalogfiles.worldbank.org/ddh-published/0038026/DR0095947/WGI%202026%20Governance%20Estimates%20and%20Scores%20%281996-2025%29.xlsx';
@@ -56,7 +58,12 @@ export function buildStructuralPrior(apiResponse, bulkBuffer, nowMs = Date.now()
   return { indicator: PRIOR_INDICATOR, year: PRIOR_YEAR, license: 'CC BY 4.0', fetchedAt: nowMs, countries };
 }
 
-export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publish = writeExtraKeyWithMeta, dryRun = false, nowMs = Date.now() } = {}) {
+async function activatePrior() {
+  const { url, token } = getRedisCredentials();
+  await withRetry(() => upstashCommand({ restUrl: url, token }, ['SET', PRIOR_ACTIVATION_KEY, '1']), 2, 750);
+}
+
+export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publish = writeExtraKeyWithMeta, activate = activatePrior, dryRun = false, nowMs = Date.now() } = {}) {
   async function download(url, maxBytes) {
     return withRetry(async () => {
       const response = await fetchImpl(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20_000) });
@@ -74,6 +81,7 @@ export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publis
   if (!dryRun) {
     await publish(PRIOR_KEY, payload, PRIOR_TTL_SECONDS, Object.keys(payload.countries).length,
       PRIOR_META_KEY, PRIOR_TTL_SECONDS);
+    await activate();
   }
   return payload;
 }

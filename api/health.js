@@ -1216,6 +1216,8 @@ const SEED_META = {
   riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 2 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP) and news families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL. Per-input availability (seed-meta `inputs`) is graded by composeRiskScoresInputHealth.
   ciiStructuralPrior: {
     key: 'seed-meta:intelligence:cii-structural-prior', maxStaleMin: 50400,
+    activationKey: 'seed-activated:intelligence:cii-structural-prior',
+    cutover: { mode: 'activation-marker', fromKey: null, issue: 10577, activationKey: 'seed-activated:intelligence:cii-structural-prior' },
     year: 2025,
     requiredCountries: ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR', 'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE', 'CU', 'MX', 'BR', 'AE', 'KR', 'IQ', 'AF', 'LB', 'EG', 'JP', 'QA'],
   },
@@ -2963,6 +2965,7 @@ const ON_DEMAND_KEYS = new Set([
   // never covers a key that has data behind it (see classifyKey).
   'pizzintHistory',
   'riskScoresHistory', // first fresh leader build atomically activates daily history
+  'ciiStructuralPrior', // pending until the first complete prior publication
   'countryHistory',
   // #6070 retired six expired deployment-order bridges after live producer
   // verification. Future temporary softening needs an activation marker or an
@@ -3042,6 +3045,7 @@ const ACTIVATION_MARKERS = {
   // Written by the PizzINT archive's Lua (scripts/shared/pizzint-history.cjs).
   pizzintHistory: SEED_META.pizzintHistory.activationKey,
   riskScoresHistory: SEED_META.riskScoresHistory.activationKey,
+  ciiStructuralPrior: SEED_META.ciiStructuralPrior.activationKey,
   countryHistory: SEED_META.countryHistory.activationKey,
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
   shippingWebhookWorker: SEED_META.shippingWebhookWorker.activationKey,

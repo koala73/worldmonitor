@@ -5,7 +5,7 @@ import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { __testing__ as health } from '../api/health.js';
 import {
   buildStructuralPrior, seedStructuralPrior, PRIOR_YEAR, PRIOR_INDICATOR,
-  PRIOR_KEY, PRIOR_META_KEY, PRIOR_BULK_URL, PRIOR_SCORED_COUNTRIES,
+  PRIOR_KEY, PRIOR_META_KEY, PRIOR_ACTIVATION_KEY, PRIOR_BULK_URL, PRIOR_SCORED_COUNTRIES,
 } from '../scripts/seed-cii-structural-prior.mjs';
 
 const NOW = Date.UTC(2026, 10, 12);
@@ -30,6 +30,8 @@ test('prior seeder and health country sets match the scorer', () => {
   assert.equal(health.STANDALONE_KEYS.ciiStructuralPrior, PRIOR_KEY);
   assert.equal(health.SEED_META.ciiStructuralPrior.key, PRIOR_META_KEY);
   assert.notEqual(PRIOR_KEY, PRIOR_META_KEY);
+  assert.equal(health.ACTIVATION_MARKERS.ciiStructuralPrior, PRIOR_ACTIVATION_KEY);
+  assert.ok(health.ON_DEMAND_KEYS.has('ciiStructuralPrior'));
 });
 
 test('pinned API values and Taiwan bulk value produce the complete country map', () => {
@@ -64,18 +66,22 @@ test('incomplete pagination and conflicting values refuse the snapshot', () => {
 
 test('publication follows complete validation, with a distinct meta key and exact record count', async () => {
   const writes = [];
+  const activate = async () => {
+    assert.equal(writes.length, 1, 'activation follows both payload and metadata publication');
+  };
   const fetchImpl = async (url, options) => {
     assert.ok(options.headers['User-Agent']);
     return new Response(url === PRIOR_BULK_URL ? bulk() : JSON.stringify(api()));
   };
-  const payload = await seedStructuralPrior({ fetchImpl, nowMs: NOW, publish: async (...args) => writes.push(args) });
+  const payload = await seedStructuralPrior({ fetchImpl, nowMs: NOW, publish: async (...args) => writes.push(args), activate });
   assert.equal(writes.length, 1);
   assert.equal(writes[0][0], PRIOR_KEY);
   assert.equal(writes[0][3], Object.keys(payload.countries).length);
   assert.equal(writes[0][4], PRIOR_META_KEY);
-  await seedStructuralPrior({ fetchImpl, dryRun: true, publish: async () => assert.fail('dry run wrote') });
+  await seedStructuralPrior({ fetchImpl, dryRun: true, publish: async () => assert.fail('dry run wrote'), activate: async () => assert.fail('dry run activated') });
   const missing = async (url) => new Response(url === PRIOR_BULK_URL ? bulk() : JSON.stringify(api(apiRows().filter((row) => row.country.id !== 'US'))));
   await assert.rejects(seedStructuralPrior({ fetchImpl: missing, publish: async () => assert.fail('invalid snapshot wrote') }), /Missing.*US/);
+  await assert.rejects(seedStructuralPrior({ fetchImpl, publish: async () => { throw new Error('publish failed'); }, activate: async () => assert.fail('failed publish activated') }), /publish failed/);
 });
 
 test('fresh metadata cannot hide a payload coverage shortfall or a mixed year', () => {

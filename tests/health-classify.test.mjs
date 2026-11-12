@@ -69,6 +69,16 @@ test('country archive health activates once and detects a stopped daily cron', (
   }
 });
 
+test('CII prior health is pending only before its first publication', () => {
+  const name = 'ciiStructuralPrior', key = STANDALONE_KEYS[name];
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: false } })).status, 'EMPTY_ON_DEMAND');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({ activationStates: { [name]: true } })).status, 'EMPTY');
+  assert.equal(classifyKey(name, key, { allowOnDemand: true }, makeCtx({
+    activationStates: { [name]: true }, strens: { [key]: 256 },
+    metaValues: { [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208 }) },
+  })).status, 'STALE_SEED');
+});
+
 test('daily CII health is pending only before its first confirmed publication', () => {
   const name = 'riskScoresHistory';
   const key = STANDALONE_KEYS[name];

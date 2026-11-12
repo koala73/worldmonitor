@@ -157,6 +157,9 @@ The seeder refreshes the annual data every 30 days, with a 400-day TTL; metadata
 older than 35 days is stale. Health reads the payload as well as metadata. A missing
 or invalid scored-country value reports `COVERAGE_PARTIAL` with `missingCountries`,
 even when metadata is fresh. A Redis read failure reports `REDIS_PARTIAL`.
+The durable `seed-activated:intelligence:cii-structural-prior` marker is written
+only after successful publication. Before any publication, an absent key is
+pending; after activation, missing data remains a fault even if the data TTL expires.
 
 The proposed runner is the live `seed-bundle-static-ref-heavy` service, verified
 on 2026-11-12 to run daily at 04:00 UTC from `scripts/`. Its existing cadence
