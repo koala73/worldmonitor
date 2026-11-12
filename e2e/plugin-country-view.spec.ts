@@ -43,6 +43,11 @@ type HostCall = { name: string; arguments: Record<string, unknown> };
 type HostRequestIdentity = { requestId: number; name: string; section?: string; countryCode: string };
 type RecoveryFixture = { coverage: 'empty' | 'unavailable'; shortages: 'populated' | 'empty' | 'empty-registry' | 'upstream-unavailable' | 'unavailable' | 'locked'; suppliers: boolean; };
 type FactorsTimingFixture = { unavailable?: boolean; missing?: boolean };
+// Extra hostContext fields the controlled host reports from ui/initialize (display-mode tests).
+let displayHostContext: Record<string, unknown> | undefined;
+// A view tool call the host sends the moment the view reports initialized, while translations still load.
+let callOnInitialized: { name: string; arguments: object } | undefined;
+
 async function installCountryHost(page: Page, fullExposure = false, initialOpenError?: string, atlasFixture = false, atlasOutages: { energy?: boolean; timeline?: boolean } = {}, cachedShell?: string, rawScenario?: 'military-first' | 'raw-first', geometryUnavailable = false, defenseClockFixture = false, factorsTiming?: FactorsTimingFixture, imfScenario?: ImfPeriodScenario, recovery?: RecoveryFixture) {
   const bootTrace: Array<{ event: string; url?: string; method?: string; error?: string }> = [];
   const calls: HostCall[] = [];
@@ -58,6 +63,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   const coverageDelayed = new Promise<void>(resolve => { releaseCoverage = resolve; });
   const contexts: Array<{ countryCode: string; topic: string; signals?: CountrySignalCounts; sections: Array<{ section: string; state: string; coverage?: string; renderedText: string }> }> = [];
   const links: string[] = [];
+  const hostEvents: Array<{ method: string; name?: string; at: number }> = [];
   let rawMode: 'observed' | 'transient' | 'denied' | 'zero' = 'observed';
   let rawAdvisoryLevel = 'normal';
   let admissionFailure: string | undefined;
@@ -118,13 +124,15 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   await page.route('**/country-host-test', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><meta charset="utf-8"><title>Country plugin acceptance — controlled fixtures</title><h1>Country plugin acceptance — controlled fixtures</h1><p>Tests the built iframe and host transport. Does not test live OAuth or source freshness.</p><iframe title="WorldMonitor country view" sandbox="allow-scripts allow-downloads" style="width:100%;height:950px;border:0"></iframe>' }));
   await page.exposeFunction('countryHost', async (method: string, params: HostCall & { content?: Array<{ text: string }>; url?: string; requestId?: number }, id?: number) => {
     if (imfScenario) bootTrace.push({ event: 'host', method });
+    hostEvents.push({ method, name: params?.name, at: Date.now() });
     if (method === 'notifications/cancelled') {
       const identity = requestIdentities.get(params.requestId!);
       cancelled.push(identity?.name ?? 'unknown');
       if (identity) cancelledRequests.push(identity);
       return {};
     }
-    if (method === 'ui/initialize') return { hostCapabilities: { serverTools: {}, openLinks: {}, updateModelContext: {} }, hostContext: { theme: 'dark' } };
+    if (method === 'ui/initialize') return { hostCapabilities: { serverTools: {}, openLinks: {}, updateModelContext: {} }, hostContext: { theme: 'dark', ...displayHostContext } };
+    if (method.startsWith('ui/notifications/')) return {};
     if (method === 'ui/update-model-context') { contexts.push(JSON.parse(params.content![0]!.text)); return {}; }
     if (method === 'ui/open-link') { links.push(params.url!); return {}; }
     if (method !== 'tools/call') return {};
@@ -258,10 +266,21 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
   });
   await page.goto('/country-host-test');
   const html = cachedShell ?? await readFile(join(root, 'dist/plugin/country.html'), 'utf8');
-  await page.evaluate(({ html, initialCountry }) => {
+  await page.evaluate(({ html, initialCountry, earlyCall }) => {
     const frame = document.querySelector('iframe')!;
     window.addEventListener('message', async event => {
       if (event.source !== frame.contentWindow || event.data?.jsonrpc !== '2.0') return;
+      if (earlyCall && event.data.id === 'early-call' && !event.data.method) {
+        (window as unknown as { earlyCallResult: unknown }).earlyCallResult = event.data.result;
+        return;
+      }
+      if (earlyCall && event.data.method === 'ui/notifications/initialized') {
+        frame.contentWindow!.postMessage({ jsonrpc: '2.0', id: 'early-call', method: 'tools/call', params: earlyCall }, '*');
+      }
+      if (typeof event.data.method === 'string' && event.data.method.startsWith('ui/notifications/')) {
+        void (window as unknown as { countryHost: (method: string, params: object) => Promise<object> }).countryHost(event.data.method, event.data.params ?? {});
+        return;
+      }
       if (!event.data.method || (!event.data.id && event.data.method !== 'notifications/cancelled')) return;
       try {
         const result = await (window as unknown as { countryHost: (method: string, params: object, id?: number) => Promise<object> }).countryHost(event.data.method, event.data.params, event.data.id);
@@ -277,7 +296,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
       }
     });
     frame.srcdoc = html.replace('<head>', `<head><base href="${location.origin}/">`);
-  }, { html, initialCountry: factorsTiming ? 'NO' : 'US' });
+  }, { html, initialCountry: factorsTiming ? 'NO' : 'US', earlyCall: callOnInitialized });
   const action = (name: string, args: object) => page.evaluate(({ name, args }) => new Promise<Record<string, unknown>>(resolve => {
     const id = -Math.random();
     const frame = document.querySelector('iframe')!;
@@ -288,7 +307,7 @@ async function installCountryHost(page: Page, fullExposure = false, initialOpenE
     window.addEventListener('message', receive);
     frame.contentWindow!.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*');
   }), { name, args });
-  return { bootTrace, factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
+  return { hostEvents, bootTrace, factorTrace, cancelledRequests, delayRaw: () => { delayRaw = true; }, releaseRaw, get rawCompleted() { return rawCompleted; }, admissionFail: (reason: string) => { admissionFailure = reason; }, rawInfo: () => { rawAdvisoryLevel = 'info'; }, calls, contexts, links, unmanaged, cancelled, action, releaseOrder, rawFail: () => { rawMode = 'transient'; rawRetrievedAt = '2026-10-05T12:30:00.000Z'; }, rawDeny: () => { rawMode = 'denied'; rawRetrievedAt = '2026-10-05T12:40:00.000Z'; }, rawZero: () => { rawMode = 'zero'; rawRetrievedAt = '2026-10-05T12:35:00.000Z'; }, rawRecover: () => { rawMode = 'observed'; rawRetrievedAt = '2026-10-05T12:45:00.000Z'; }, releaseDisruptions, failAtlas: () => { atlasUnavailable = true; }, recoverAtlas: () => { atlasUnavailable = false; }, delayAtlasDetail: () => { delayAtlasDetail = true; }, releaseAtlasDetail, failDisruptions: () => { disruptionsFailed = true; }, failEnergy: () => { energyFailed = true; }, partialAtlas: () => { atlasPartial = true; }, denyAtlas: () => { atlasDenied = true; }, activityOutage: () => { failActivity = true; }, activityRecover: () => { failActivity = false; }, denyActivity: () => { denyActivity = true; }, partial: () => { partialBootstrap = true; }, complete: () => { partialBootstrap = false; }, quota: () => { quotaExceeded = true; }, get admissions() { return admissions; }, delayAdmission: () => { delayAdmission = true; }, releaseAdmission, delayCoverage: () => { delayCoverage = true; }, releaseCoverage, fail: () => { failFacts = true; }, denyFacts: () => { factsDenied = true; }, recover: () => { failFacts = false; factsDenied = false; }, delay: () => { delayUS = true; }, release: releaseUS };
 }
 
 test('native queued Norway factors render retained pillars after the website deadline', async ({ page }, info) => {
@@ -1298,4 +1317,89 @@ test('controlled shortages distinguish empty, unavailable, retained, denial and 
     await expect.poll(() => frame.locator('body').evaluate(body => body.scrollWidth <= innerWidth + 1)).toBe(true);
   }
   expect(host.unmanaged).toEqual([]);
+});
+
+test.describe('country view display modes', () => {
+  test.afterEach(() => { displayHostContext = undefined; callOnInitialized = undefined; });
+
+  test('a view tool call sent as soon as the view reports initialized waits for startup and opens the country', async ({ page }) => {
+    callOnInitialized = { name: 'select_country_view', arguments: { country_code: 'FR', topic: 'overview' } };
+    await installCountryHost(page);
+    const frame = page.frameLocator('iframe');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { earlyCallResult?: unknown }).earlyCallResult), { timeout: 20_000 }).toBeTruthy();
+    const result = await page.evaluate(() => (window as unknown as { earlyCallResult: { isError?: boolean; structuredContent?: Record<string, unknown> } }).earlyCallResult);
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent?.state).not.toBe('connecting');
+    await expect(frame.locator('.cdp-country-name')).toHaveText(/France/);
+  });
+
+  const setHostContext = (page: Page, context: Record<string, unknown>, frameSize?: { width: number; height: number }) => page.evaluate(({ context, frameSize }) => {
+    const frame = document.querySelector('iframe')!;
+    if (frameSize) { frame.style.width = `${frameSize.width}px`; frame.style.height = `${frameSize.height}px`; }
+    frame.contentWindow!.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/host-context-changed', params: context }, '*');
+  }, { context, frameSize });
+
+  test('a host without fullscreen gets no expand button and content-height sizing', async ({ page }) => {
+    displayHostContext = { displayMode: 'inline', availableDisplayModes: ['inline'] };
+    const host = await installCountryHost(page);
+    const frame = page.frameLocator('iframe');
+    await expect(frame.locator('.cdp-country-name')).toHaveText(/United States/);
+    await expect(frame.getByRole('button', { name: 'Expand' })).toBeHidden();
+    await expect.poll(() => host.hostEvents.filter(event => event.method === 'ui/notifications/size-changed').length).toBeGreaterThan(0);
+  });
+
+  test('the handshake finishes before the first country data request', async ({ page }) => {
+    const host = await installCountryHost(page);
+    const frame = page.frameLocator('iframe');
+    await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
+    const initialized = host.hostEvents.findIndex(event => event.method === 'ui/notifications/initialized');
+    const firstViewRead = host.hostEvents.findIndex(event => event.method === 'tools/call' && event.name !== 'open_country_brief');
+    expect(initialized).toBeGreaterThanOrEqual(0);
+    expect(firstViewRead).toBeGreaterThan(initialized);
+  });
+
+  for (const size of [{ width: 380, height: 700 }, { width: 1200, height: 800 }]) {
+    test(`fullscreen at ${size.width} by ${size.height} fills the container and scrolls inside it`, async ({ page }, info) => {
+      displayHostContext = { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'] };
+      await installCountryHost(page);
+      const frame = page.frameLocator('iframe');
+      await expect(frame.locator('[data-brief-section=facts]')).toContainText('Washington, D.C.');
+      await expect(frame.getByRole('button', { name: 'Expand' })).toBeVisible();
+      await page.setViewportSize({ width: Math.max(size.width + 40, 420), height: size.height + 200 });
+      await setHostContext(page, { displayMode: 'fullscreen', containerDimensions: size }, size);
+      const body = frame.locator('body');
+      await expect(body).toHaveAttribute('data-wm-fill', '');
+      await expect(frame.getByRole('button', { name: 'Expand' })).toBeHidden();
+      await expect.poll(() => body.evaluate(element => element.getBoundingClientRect().height)).toBe(size.height);
+      expect(await body.evaluate(element => element.scrollHeight <= element.clientHeight + 1 && element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+      expect(await frame.locator('#country-deep-dive-panel').evaluate(panel => [...panel.querySelectorAll('*')].some(element => /(auto|scroll)/.test(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight + 1))).toBe(true);
+      const panel = await frame.locator('#country-deep-dive-panel').evaluate(element => { const box = element.getBoundingClientRect(); return { width: box.width, bottom: box.bottom, left: box.left, right: window.innerWidth - box.right }; });
+      expect(panel.width).toBeLessThanOrEqual(960);
+      expect(panel.bottom).toBeLessThanOrEqual(size.height + 1);
+      if (size.width > 960) expect(Math.abs(panel.left - panel.right)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: info.outputPath(`country-fullscreen-${size.width}.png`) });
+    });
+  }
+
+  test('in-view tools carry titles with unchanged names, descriptions and schemas', async ({ page }) => {
+    await installCountryHost(page);
+    const frame = page.frameLocator('iframe');
+    await expect(frame.locator('.cdp-country-name')).toHaveText(/United States/);
+    const tools = await page.evaluate(() => new Promise<Array<{ name: string; title?: string; description: string; inputSchema: Record<string, unknown> }>>(resolve => {
+      const view = document.querySelector('iframe')!.contentWindow!;
+      const listener = (event: MessageEvent) => {
+        if (event.source !== view || event.data?.id !== 'list-1') return;
+        window.removeEventListener('message', listener);
+        resolve(event.data.result.tools);
+      };
+      window.addEventListener('message', listener);
+      view.postMessage({ jsonrpc: '2.0', id: 'list-1', method: 'tools/list', params: {} }, '*');
+    }));
+    expect(tools.map(tool => [tool.name, tool.title])).toEqual([['select_country_view', 'Change the country or topic'], ['open_country_atlas_asset', 'Open a country energy asset']]);
+    expect(tools[0]!.description).toBe('Change the country or topic in this rendered country brief. Returns the applied country, topic and section states.');
+    expect(tools[1]!.description).toBe('Open a loaded pipeline, storage facility or active fuel shortage detail in the current country view. Returns the displayed details and sources.');
+    expect(tools[0]!.inputSchema.required).toEqual(['country_code']);
+    expect(tools[1]!.inputSchema).toEqual({ type: 'object', additionalProperties: false, properties: { type: { type: 'string', enum: ['pipeline', 'storage', 'shortage'] }, id: { type: 'string' } }, required: ['type', 'id'] });
+    for (const tool of tools) expect(tool.description.split('\n')[0]!.length).toBeLessThanOrEqual(200);
+  });
 });

@@ -107,3 +107,43 @@ test.describe('settings tabs on a desktop', () => {
     expect(new Set(tabs.map((t) => t.top)).size, 'all tabs share one row').toBe(1);
   });
 });
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 600 }, { width: 844, height: 390 }]) {
+  test.describe(`compact Settings at ${viewport.width}×${viewport.height}`, () => {
+    test.use({ viewport, isMobile: true, hasTouch: true });
+
+    test('keeps the first control clear of the pinned links and navigation', async ({ page }) => {
+      await seed(page);
+      await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 60_000 });
+      if (viewport.width <= 768) {
+        await page.locator('[data-mobile-tab="more"]').tap();
+        await page.locator('#mobileMenuSettings').tap();
+      } else {
+        await page.locator('#unifiedSettingsBtn').tap();
+      }
+      const modal = page.locator('.unified-settings-modal');
+      await expect(modal).toBeVisible();
+      const theme = modal.locator('#us-tab-panel-settings select').first();
+      const controlBox = await theme.boundingBox();
+      const links = modal.locator('.dashboard-chrome-links');
+      const linksBox = await links.boundingBox();
+      expect(controlBox).not.toBeNull();
+      expect(linksBox).not.toBeNull();
+      expect(controlBox!.y + controlBox!.height, 'Theme control is above the pinned links').toBeLessThanOrEqual(linksBox!.y);
+      if (viewport.width <= 768) {
+        const nav = await page.locator('#mobileTabBar').boundingBox();
+        const box = await modal.boundingBox();
+        expect(box!.y + box!.height, 'Settings clears the phone navigation').toBeLessThanOrEqual(nav!.y);
+      }
+      expect(hidden(await readTabs(page)), 'all Settings tabs remain visible').toEqual([]);
+      await theme.selectOption('light');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+      expect(await page.evaluate(() => localStorage.getItem('worldmonitor-theme'))).toBe('light');
+      await modal.evaluate(el => { el.scrollTop = el.scrollHeight; });
+      await expect(links.locator('a').last()).toBeInViewport();
+      await page.keyboard.press('Escape');
+      await expect(modal).toBeHidden();
+    });
+  });
+}

@@ -4460,6 +4460,7 @@
   "auth": {
     "signIn": "साइन इन करें",
     "createAccount": "खाता बनाएं",
+    "freeReason": "मुफ़्त: लेआउट सहेजें, देशों को फ़ॉलो करें, अलर्ट",
     "settings": "सेटिंग्स",
     "passkeyOffer": {}
   },

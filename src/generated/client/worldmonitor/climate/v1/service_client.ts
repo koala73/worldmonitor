@@ -130,6 +130,66 @@ export interface AirQualityStation {
   source: string;
 }
 
+export interface ListReservoirLevelsRequest {
+}
+
+export interface ListReservoirLevelsResponse {
+  reservoirs: ReservoirLevel[];
+  fetchedAt: number;
+  dataAvailable: boolean;
+  source?: ReservoirLevelsSource;
+  methodology: string;
+}
+
+export interface ReservoirLevel {
+  id: string;
+  name: string;
+  country: string;
+  riparians: string[];
+  river: string;
+  lat: number;
+  lon: number;
+  tags: string[];
+  why: string;
+  latest?: ReservoirLatestPass;
+  prevDate: string;
+  changePrevM?: number;
+  change30dM?: number;
+  change90dM?: number;
+  change365dM?: number;
+  seasonalAnomalyM?: number;
+  seasonalZ?: number;
+  recordMinM?: number;
+  recordMaxM?: number;
+  recordStart: string;
+  percentOfRange?: number;
+  recordLow: boolean;
+  recordHigh: boolean;
+  status: string;
+  series: ReservoirLevelPoint[];
+  okPassCount: number;
+}
+
+export interface ReservoirLatestPass {
+  date: string;
+  levelM: number;
+  madM: number;
+  segmentCount: number;
+  ageDays: number;
+}
+
+export interface ReservoirLevelPoint {
+  date: string;
+  levelM: number;
+}
+
+export interface ReservoirLevelsSource {
+  name: string;
+  product: string;
+  url: string;
+  processing: string;
+}
+
 export interface ListClimateNewsRequest {
 }
 
@@ -320,6 +380,29 @@ export class ClimateServiceClient {
     }
 
     return await resp.json() as ListAirQualityDataResponse;
+  }
+
+  async listReservoirLevels(_req: ListReservoirLevelsRequest, options?: ClimateServiceCallOptions): Promise<ListReservoirLevelsResponse> {
+    let path = "/api/climate/v1/list-reservoir-levels";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListReservoirLevelsResponse;
   }
 
   async listClimateNews(_req: ListClimateNewsRequest, options?: ClimateServiceCallOptions): Promise<ListClimateNewsResponse> {

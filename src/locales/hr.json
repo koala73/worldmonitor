@@ -4493,6 +4493,7 @@
   "auth": {
     "signIn": "Prijava",
     "createAccount": "Kreiraj račun",
+    "freeReason": "Besplatno: spremi raspored, prati zemlje, upozorenja",
     "settings": "Postavke",
     "passkeyOffer": {}
   },

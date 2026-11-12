@@ -613,6 +613,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
 - Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
 - IMD sea-area and coastal marine bulletins, including storm warnings, port signals, and storm-surge or tidal warnings (`weather:imd-cyclone-marine:v1`, on-demand), parsed from the public `mausam.imd.gov.in` bulletin pages. IMD cyclone track, wind radii, and cone are API-only and disabled; GDACS covers North Indian Ocean cyclones. A disabled product is not an all-clear.
+- Water-surface level change of strategic reservoirs and lakes from NASA ICESat-2 lidar (`climate:reservoir-levels:v1`, served by `/api/climate/v1/list-reservoir-levels`), 50 to 70 days behind real time
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**
@@ -626,6 +627,8 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
 | Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+| NASA ICESat-2 ATL13 (NSIDC), processed via SlideRule Earth | Inland water-surface height along each laser overpass, subset to a fixed open-water box per reservoir | [nsidc.org/data/atl13](https://nsidc.org/data/atl13) |
+| NASA ICESat-2 ATL06 (NSIDC), processed via SlideRule Earth | Surface height along each laser overpass, for reservoirs that ATL13 covers poorly | [nsidc.org/data/atl06](https://nsidc.org/data/atl06) |
 | Copernicus Sentinel-5P TROPOMI | Tropospheric NO2 column aggregated daily over 167 countries and 32 industrial clusters as a year-over-year activity direction (Sentinel Hub Statistical API). Contains modified Copernicus Sentinel data. | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | US National Weather Service | Official US weather alerts (polygon tier) | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | Environment and Climate Change Canada | Official Canadian weather alerts (polygon tier) | [api.weather.gc.ca](https://api.weather.gc.ca) |
@@ -659,6 +662,20 @@ The merged output feeds into the signal aggregator for geographic convergence de
 | **Normal**   | Within expected range | Within expected range     |
 
 Anomalies feed into the signal aggregator, where they amplify CII scores for affected countries (climate stress is a recognized conflict accelerant). The Climate Anomaly panel surfaces these deviations in a severity-sorted list.
+
+### Strategic Water Levels
+
+A watchlist of reservoirs and lakes that matter for hydropower, irrigation, shipping and transboundary water disputes is measured by NASA's ICESat-2 laser altimeter (product ATL13, inland water surface height, and ATL06 for a few reservoirs ATL13 covers poorly). Each value is a water-surface **level** in metres above the EGM2008 geoid. It is not a storage volume, and the dataset does not estimate one.
+
+- **Measurement.** For every satellite overpass, the level is the median height of the ATL13 water segments that fall inside a fixed open-water box on the main body of the reservoir, away from inflow arms and shorelines, and inside that reservoir's ATL13 water body.
+- **Quality rules.** An overpass is dropped when it has fewer than 5 segments, a median absolute deviation above 0.25 m, or beams that disagree by more than 0.3 m. An overpass that sits outside the range of its two neighbours by more than 1 m plus 0.05 m per day of gap is dropped as a mislocated pass.
+- **Latency and revisit.** NASA publishes ATL13 50 to 70 days after the overpass. Revisit depends on the reservoir's size and latitude, from a few days on large lakes to about a month on narrow gorge reservoirs. Health tracks only the seeder's own run age; an old latest observation is a property of the data. Before the first successful publication, health reports `ROLLOUT_PENDING` for at most one day; the seeder then writes `seed-activated:climate:reservoir-levels` and an absent key reads `EMPTY`.
+- **Change metrics.** Change since the previous overpass and over 30, 90 and 365 days (interpolated between overpasses, never extrapolated), the anomaly against prior years at the same time of year, and the position within the recorded range since late 2018. A status such as `record_low`, `falling_fast` or `no_recent_data` summarises them. `falling_fast` and `rising_fast` require the 90-day move to exceed the usual seasonal swing as well as the absolute limit, so a normal monsoon or snowmelt fill reads `normal`. `low` and `high` follow the seasonal anomaly where one exists and the position within the recorded range otherwise. The newest overpass has a single neighbour, so it is dropped only when it jumps and comes from a ground track whose earlier overpasses were mostly dropped as mislocated.
+- **Validation.** Against the US Bureau of Reclamation daily gauge at Lake Mead, the 156 matched overpasses (2018 to 2026, a gauge range of 17.8 m) agree with an RMSE of 0.052 m after removing a 0.046 m datum offset, a maximum error of 0.149 m, and a correlation of 0.99994.
+
+Where ATL13 records too few overpasses, the level is read from ATL06 (land and ice surface height), which has no water mask. Each overpass keeps the segments with a good quality flag and an along-track slope of at most 0.01, splits their sorted heights wherever two consecutive heights differ by more than 0.5 m, and reads the level from the lowest group holding at least 5 segments and 10% of the kept ones: the water is the lowest flat surface in the box. A height window per reservoir drops segments outside the range the water surface can take, which removes most overpasses that cross only land; flat land inside that range can still form a group, and the quality rules below may reject such an overpass but are not guaranteed to. No rejection rate has been measured for Darbandikhan or Gibe III. The same quality rules then apply, except that Gibe III, whose level can move faster than 0.05 m a day, allows 0.3 m per day of gap in the mislocated-pass check. Over the Lake Mead, Tharthar and Atatürk boxes for the whole mission, ATL06 matched ATL13 overpass for overpass with an RMSE of 0.021, 0.018 and 0.021 m after the datum offset (maximum error 0.068, 0.062 and 0.102 m), and matched the Lake Mead gauge over 174 overpasses with an RMSE of 0.045 m and a maximum error of 0.139 m. Darbandikhan and Gibe III use ATL06.
+
+Granules are listed through NASA CMR and subset on the public SlideRule Earth service. A one-time backfill from October 2018 is committed with the seeder; each daily run adds the granules published since.
 
 ---
 

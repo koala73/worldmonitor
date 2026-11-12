@@ -4482,6 +4482,7 @@
   "auth": {
     "signIn": "Se connecter",
     "createAccount": "Créer un compte",
+    "freeReason": "Gratuit : enregistrer la mise en page, suivre des pays, alertes",
     "settings": "Paramètres",
     "passkeyOffer": {}
   },
