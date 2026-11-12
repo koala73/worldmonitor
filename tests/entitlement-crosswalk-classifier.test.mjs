@@ -100,6 +100,8 @@ describe('entitlement crosswalk classifier', () => {
       'requiresPremium', 'other',
       // Plan 2026-10-25-001 (U1 added the kind to the generator; U4 classified its sites).
       'desktopKeyAccess',
+      // #10453 dashboard focus.
+      'tabFocus',
       // #10451: the travel risk assessment MCP tool's named flag.
       'travelRiskAssessment',
     ]);

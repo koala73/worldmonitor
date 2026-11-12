@@ -12,6 +12,7 @@ import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, Polygo
 import * as maplibregl from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { StyleSpecification } from 'maplibre-gl';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
 import { getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
@@ -286,6 +287,34 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
 };
 
 const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+
+// Dashboard focus outline (#10453). The colour is the focus bar's accent
+// (--green in main.css) for the basemap's brightness.
+const FOCUS_CHOSEN_FILL_LAYER = 'country-focus-chosen-fill';
+const FOCUS_CHOSEN_BORDER_LAYER = 'country-focus-chosen-border';
+const FOCUS_NEIGHBOUR_BORDER_LAYER = 'country-focus-neighbour-border';
+const FOCUS_OUTLINE_COLOR = { dark: '#44ff88', light: '#16a34a' } as const;
+const FOCUS_OUTLINE_STYLE = {
+  chosen: { width: 2, opacity: 0.95, fillOpacity: 0.06 },
+  neighbour: { width: 1, opacity: 0.45 },
+} as const;
+function focusCodeFilter(codes: readonly string[]): maplibregl.FilterSpecification {
+  return ['in', ['get', 'ISO3166-1-Alpha-2'], ['literal', [...codes]]] as maplibregl.FilterSpecification;
+}
+
+function focusFitPadding(container: HTMLElement): number {
+  const size = Math.min(container.clientWidth || 0, container.clientHeight || 0);
+  // Keep a frame on a phone-sized map without leaving MapLibre too little
+  // room to fit at all.
+  return size > 0 && size < 400 ? 20 : 40;
+}
+
+function lngLatOf(center: maplibregl.LngLatLike): { lng: number; lat: number } | null {
+  if (Array.isArray(center)) return { lng: center[0], lat: center[1] };
+  const c = center as { lng?: number; lon?: number; lat: number };
+  const lng = c.lng ?? c.lon;
+  return typeof lng === 'number' && Number.isFinite(lng) && Number.isFinite(c.lat) ? { lng, lat: c.lat } : null;
+}
 const DECK_IDLE_FRAME_INTERVAL_MS = 250;
 const DECK_ACTIVE_FRAME_WINDOW_MS = 300;
 // 'render' covers every map frame, including repaints deck itself requests.
@@ -767,6 +796,8 @@ export class DeckGLMap {
   private countryGeoJsonLoaded = false;
   private countryHoverSetup = false;
   private highlightedCountryCode: string | null = null;
+  /** Dashboard focus (#10453): chosen countries outlined solid, neighbours lighter. */
+  private focusOutline: { chosen: string[]; neighbours: string[] } | null = null;
   private hoveredCountryIso2: string | null = null;
   private hoveredCountryName: string | null = null;
 
@@ -8780,11 +8811,14 @@ export class DeckGLMap {
           filter: ['==', ['get', 'ISO3166-1-Alpha-2'], ''],
         });
 
+        this.addFocusOutlineLayers();
+
         if (!this.countryHoverSetup) this.setupCountryHover();
         const paintProvider = getMapProvider();
         const paintMapTheme = getMapTheme(paintProvider);
         this.updateCountryLayerPaint(isLightMapTheme(paintMapTheme) ? 'light' : 'dark');
         if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
+        this.applyFocusOutline();
         this.render();
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
@@ -8924,6 +8958,99 @@ export class DeckGLMap {
     this.countryPulseRaf = requestAnimationFrame(step);
   }
 
+  // --- Dashboard focus outline and fit (#10453) ---
+
+  /**
+   * Outline the focus: chosen countries with a solid border (and a faint
+   * fill), neighbours with a thinner, fainter one. Separate layers from the
+   * country-brief highlight, so opening or closing a brief never clears the
+   * focus outline. Null removes it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    this.focusOutline = outline
+      ? { chosen: [...outline.chosen], neighbours: [...outline.neighbours] }
+      : null;
+    this.applyFocusOutline();
+  }
+
+  private addFocusOutlineLayers(): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const color = FOCUS_OUTLINE_COLOR[isLightMapTheme(getMapTheme(getMapProvider())) ? 'light' : 'dark'];
+    const none = focusCodeFilter([]);
+    map.addLayer({
+      id: FOCUS_CHOSEN_FILL_LAYER,
+      type: 'fill',
+      source: 'country-boundaries',
+      paint: { 'fill-color': color, 'fill-opacity': FOCUS_OUTLINE_STYLE.chosen.fillOpacity },
+      filter: none,
+    });
+    // Neighbours first, so the chosen border draws over a shared border.
+    map.addLayer({
+      id: FOCUS_NEIGHBOUR_BORDER_LAYER,
+      type: 'line',
+      source: 'country-boundaries',
+      paint: {
+        'line-color': color,
+        'line-width': FOCUS_OUTLINE_STYLE.neighbour.width,
+        'line-opacity': FOCUS_OUTLINE_STYLE.neighbour.opacity,
+      },
+      filter: none,
+    });
+    map.addLayer({
+      id: FOCUS_CHOSEN_BORDER_LAYER,
+      type: 'line',
+      source: 'country-boundaries',
+      paint: {
+        'line-color': color,
+        'line-width': FOCUS_OUTLINE_STYLE.chosen.width,
+        'line-opacity': FOCUS_OUTLINE_STYLE.chosen.opacity,
+      },
+      filter: none,
+    });
+  }
+
+  private applyFocusOutline(): void {
+    const map = this.maplibreMap;
+    if (!map || !this.countryGeoJsonLoaded) return;
+    try {
+      // Boundaries still loading: the load callback applies the outline.
+      if (!map.getLayer(FOCUS_CHOSEN_BORDER_LAYER)) return;
+      const chosen = focusCodeFilter(this.focusOutline?.chosen ?? []);
+      map.setFilter(FOCUS_CHOSEN_FILL_LAYER, chosen);
+      map.setFilter(FOCUS_CHOSEN_BORDER_LAYER, chosen);
+      map.setFilter(FOCUS_NEIGHBOUR_BORDER_LAYER, focusCodeFilter(this.focusOutline?.neighbours ?? []));
+    } catch { /* style swapped mid-call; the next boundaries load re-applies */ }
+  }
+
+  /**
+   * Frame the focus's chosen countries. `fit.east` is unwrapped past 180
+   * when the union crosses the dateline, which MapLibre fits across the
+   * Pacific. `maxZoom` is FOCUS_FIT_MAX_ZOOM from that module, passed in so
+   * this chunk does not import it statically.
+   */
+  public fitFocusBounds(fit: FocusFitBounds, maxZoom: number): void {
+    const map = this.maplibreMap;
+    if (!map) return;
+    const camera = map.cameraForBounds(
+      [[fit.west, fit.south], [fit.east, fit.north]],
+      { padding: focusFitPadding(this.container), maxZoom },
+    );
+    const center = camera?.center ? lngLatOf(camera.center) : null;
+    if (!center) return;
+    const lon = ((center.lng + 180) % 360 + 360) % 360 - 180;
+    const zoom = camera?.zoom ?? map.getZoom();
+    this.pendingCenter = { lat: center.lat, lon };
+    this.state.zoom = zoom;
+    const viewportMovementGeneration = this.markViewportMoving({ lat: center.lat, lon, zoom }, 1_100);
+    map.flyTo({
+      center: [lon, center.lat],
+      zoom,
+      duration: 800,
+    }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
+    this.onStateChange?.(this.getState());
+  }
+
   private async switchBasemap(): Promise<void> {
     const map = this.maplibreMap;
     if (!map) return;
@@ -9024,6 +9151,12 @@ export class DeckGLMap {
   private updateCountryLayerPaint(theme: 'dark' | 'light'): void {
     if (!this.maplibreMap || !this.countryGeoJsonLoaded) return;
     if (!this.maplibreMap.style || !this.maplibreMap.getLayer('country-hover-fill')) return;
+    if (this.maplibreMap.getLayer(FOCUS_CHOSEN_BORDER_LAYER)) {
+      const color = FOCUS_OUTLINE_COLOR[theme];
+      this.maplibreMap.setPaintProperty(FOCUS_CHOSEN_FILL_LAYER, 'fill-color', color);
+      this.maplibreMap.setPaintProperty(FOCUS_NEIGHBOUR_BORDER_LAYER, 'line-color', color);
+      this.maplibreMap.setPaintProperty(FOCUS_CHOSEN_BORDER_LAYER, 'line-color', color);
+    }
     const hoverFillOpacity   = theme === 'light' ? 0.08 : 0.05;
     const hoverBorderOpacity = theme === 'light' ? 0.35 : 0.22;
     const highlightOpacity   = theme === 'light' ? 0.18 : 0.12;

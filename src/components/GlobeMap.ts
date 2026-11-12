@@ -46,6 +46,7 @@ import { GAMMA_IRRADIATORS } from '@/config/irradiators';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { getCountryBbox, getCountriesGeoJson, getCountryAtCoordinates, getCountryNameByCode } from '@/services/country-geometry';
 import { escapeHtml } from '@/utils/sanitize';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import { corroborationLabelHtml } from '@/utils/corroboration-flag';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { isMobileDevice } from '@/utils';
@@ -475,7 +476,7 @@ interface GlobePath {
 interface GlobePolygon {
   coords: number[][][];
   name: string;
-  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario';
+  _kind: 'cii' | 'conflict' | 'imageryFootprint' | 'forecastCone' | 'scenario' | 'focusChosen' | 'focusNeighbour';
   level?: string;
   score?: number;
 
@@ -637,6 +638,8 @@ export class GlobeMap {
   private ciiScoresMap: Map<string, { score: number; level: string }> = new Map();
   private countriesGeoData: FeatureCollection<Geometry> | null = null;
   private scenarioPolygons: GlobePolygon[] = [];
+  /** Dashboard focus outline (#10453); polygons are built in flushPolygons once countries load. */
+  private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
 
   // Current layers state
   private layers: MapLayers;
@@ -996,6 +999,7 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.2)';
         if (d._kind === 'scenario') return 'rgba(220,60,40,0.3)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return 'rgba(0,0,0,0)';
         return 'rgba(255,60,60,0.15)';
       })
       .polygonSideColor((d: GlobePolygon) => {
@@ -1004,6 +1008,7 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return 'rgba(0,0,0,0)';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.1)';
         if (d._kind === 'scenario') return 'rgba(0,0,0,0)';
+        if (d._kind === 'focusChosen' || d._kind === 'focusNeighbour') return 'rgba(0,0,0,0)';
         return 'rgba(255,60,60,0.08)';
       })
       .polygonStrokeColor((d: GlobePolygon) => {
@@ -1012,11 +1017,16 @@ export class GlobeMap {
         if (d._kind === 'imageryFootprint') return '#00b4ff';
         if (d._kind === 'forecastCone') return 'rgba(255,140,60,0.5)';
         if (d._kind === 'scenario') return 'transparent';
+        if (d._kind === 'focusChosen') return GlobeMap.FOCUS_CHOSEN_STROKE;
+        if (d._kind === 'focusNeighbour') return GlobeMap.FOCUS_NEIGHBOUR_STROKE;
         return '#ff4444';
       })
       .polygonAltitude((d: GlobePolygon) => {
         if (d._kind === 'cii') return 0.002;
         if (d._kind === 'conflict') return GlobeMap.CONFLICT_ALT[d.intensity!] ?? GlobeMap.CONFLICT_ALT.low;
+        // Just above the CII choropleth, chosen above neighbours.
+        if (d._kind === 'focusChosen') return 0.0035;
+        if (d._kind === 'focusNeighbour') return 0.003;
         return 0.005;
       })
       .polygonLabel((d: GlobePolygon) => {
@@ -2425,6 +2435,11 @@ export class GlobeMap {
   private static readonly CONFLICT_SIDE: Record<string, string> = { high: 'rgba(255,40,40,0.12)', medium: 'rgba(255,120,0,0.08)', low: 'rgba(255,200,0,0.06)' };
   private static readonly CONFLICT_STROKE: Record<string, string> = { high: '#ff3030', medium: '#ff8800', low: '#ffcc00' };
   private static readonly CONFLICT_ALT: Record<string, number> = { high: 0.006, medium: 0.004, low: 0.003 };
+  // Focus outline (#10453): the focus bar's accent. globe.gl draws polygon
+  // strokes one pixel wide, so the two styles differ by opacity. Caps stay
+  // transparent: an outline only, over whatever choropleth is on.
+  private static readonly FOCUS_CHOSEN_STROKE = 'rgba(68,255,136,0.95)';
+  private static readonly FOCUS_NEIGHBOUR_STROKE = 'rgba(68,255,136,0.4)';
 
   private getReversedRing(zoneId: string, countryIso: string, ringIdx: number, ring: number[][][]): number[][][] {
     const key = `${zoneId}:${countryIso}:${ringIdx}`;
@@ -2496,10 +2511,55 @@ export class GlobeMap {
       polys.push(...this.scenarioPolygons);
     }
 
+    polys.push(...this.buildFocusPolygons());
+
     (this.globe as any).polygonsData(polys);
   }
 
   // ─── Public data setters ──────────────────────────────────────────────────
+
+  /**
+   * Outline the dashboard focus (#10453): chosen countries solid, neighbours
+   * lighter. Null removes it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    this.focusOutline = outline
+      ? { chosen: new Set(outline.chosen), neighbours: new Set(outline.neighbours) }
+      : null;
+    this.flushPolygons();
+  }
+
+  private buildFocusPolygons(): GlobePolygon[] {
+    const focus = this.focusOutline;
+    if (!focus || !this.countriesGeoData) return [];
+    const chosen: GlobePolygon[] = [];
+    const neighbours: GlobePolygon[] = [];
+    for (const feat of this.countriesGeoData.features) {
+      const code = feat.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+      if (!code) continue;
+      const kind = focus.chosen.has(code) ? 'focusChosen' : focus.neighbours.has(code) ? 'focusNeighbour' : null;
+      if (!kind) continue;
+      const geom = feat.geometry;
+      if (!geom) continue;
+      const rings = geom.type === 'Polygon' ? [geom.coordinates] : geom.type === 'MultiPolygon' ? geom.coordinates : [];
+      const name = (feat.properties?.name as string) ?? code;
+      // Reversed like the conflict-zone rings, the winding globe.gl expects.
+      for (let ri = 0; ri < rings.length; ri++) {
+        (kind === 'focusChosen' ? chosen : neighbours).push({
+          coords: this.getReversedRing('focus', code, ri, rings[ri] as number[][][]),
+          name,
+          _kind: kind,
+        });
+      }
+    }
+    return [...neighbours, ...chosen];
+  }
+
+  /** Frame the focus's chosen countries, from the globe's point of view. */
+  public fitFocusBounds(fit: FocusFitBounds, altitude: number): void {
+    if (!this.globe) return;
+    this.moveViewport({ lat: fit.center.lat, lng: fit.center.lon, altitude }, 1200);
+  }
 
   public setScenarioState(state: ScenarioVisualState | null): void {
     this.scenarioPolygons = [];

@@ -10,6 +10,7 @@ import { PanelGateReason } from '@/services/panel-gating';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
+import type { ResolvedScope } from '@/services/tab-focus';
 import {
   clearPanelColSpan,
   clearPanelSpan,
@@ -143,6 +144,7 @@ export class Panel {
   private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
   private currentSeverity: PanelSeverity = 'none';
+  private scopeChipEl: HTMLElement | null = null;
   protected panelId: string;
   private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
@@ -1504,6 +1506,16 @@ export class Panel {
     }
   }
 
+  /**
+   * True while the panel shows a load failure (set by showError/showRetrying,
+   * cleared by the next successful content write). A focus change must not
+   * redraw over it: that would erase the failure and make a stale panel look
+   * healthy.
+   */
+  protected get showingLoadFailure(): boolean {
+    return this.header.classList.contains('panel-header-error');
+  }
+
   public setErrorState(hasError: boolean, tooltip?: string): void {
     this.header.classList.toggle('panel-header-error', hasError);
     if (tooltip) {
@@ -1677,6 +1689,52 @@ export class Panel {
   public toggle(visible: boolean): void {
     if (visible) this.show();
     else this.hide();
+  }
+
+  /**
+   * Dashboard focus (#10453). The layout calls this with the active tab's
+   * resolved scope (null when the tab is unfocused) on every focus change and
+   * when the panel mounts. The default does nothing: a panel that filters by
+   * country overrides it and narrows in memory, without refetching. A panel
+   * that does not override it is labelled "Not filtered" while a focus is
+   * active (see `setScopeNotice`), so it never silently ignores the focus.
+   */
+  public applyScope(_scope: ResolvedScope | null): void {}
+
+  /**
+   * True when this panel's class overrides `applyScope`. Asked here rather
+   * than by comparing against `Panel.prototype` from outside, so the layout
+   * (in the App chunk) needs only a type import of Panel and the class stays
+   * in its lazily loaded chunk.
+   */
+  public filtersByScope(): boolean {
+    return this.applyScope !== Panel.prototype.applyScope;
+  }
+
+  /**
+   * Show or hide the header chip that says this panel is not following the
+   * tab's focus. 'global': the data has no country to filter by (markets,
+   * prices). 'unsupported': it could, but does not yet. null: no chip, either
+   * because there is no focus or because the panel filters.
+   */
+  public setScopeNotice(notice: 'global' | 'unsupported' | null): void {
+    if (!notice) {
+      this.scopeChipEl?.remove();
+      this.scopeChipEl = null;
+      return;
+    }
+    if (!this.scopeChipEl) {
+      this.scopeChipEl = document.createElement('span');
+      this.scopeChipEl.className = 'panel-scope-chip';
+      this.scopeChipEl.textContent = t('focus.notFiltered');
+      this.header.querySelector('.panel-header-left')?.appendChild(this.scopeChipEl);
+    }
+    const why = t(notice === 'global' ? 'focus.notFilteredGlobal' : 'focus.notFilteredYet');
+    this.scopeChipEl.dataset.scopeNotice = notice;
+    this.scopeChipEl.title = why;
+    // The chip text alone ("Not filtered") does not say why; screen readers get both.
+    this.scopeChipEl.setAttribute('aria-label', `${t('focus.notFiltered')}: ${why}`);
+    this.scopeChipEl.setAttribute('role', 'note');
   }
 
   /**

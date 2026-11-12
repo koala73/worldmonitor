@@ -97,6 +97,13 @@ export interface CachedEntitlements {
     /** Most active desktop keys one account may hold (R5); `0` without access. */
     maxDesktopKeys?: number;
     /**
+     * Dashboard focus (#10453). Mirrors the catalog field the Convex read-time
+     * merge puts on the wire. Nothing at the edge gates on it — the shared
+     * focus is enforced in `convex/teamDashboards.ts` — so it adds no cache
+     * shape check. `undefined` is fail-CLOSED, as in `shared/tab-focus-access.ts`.
+     */
+    tabFocus?: boolean;
+    /**
      * Travel risk assessment drafts (#10451), read by the MCP pre-check for
      * `prepare_travel_risk_assessment`. `undefined` is **fail-CLOSED** at every
      * tier. The cache-shape gate below checks it only for a read that opts in

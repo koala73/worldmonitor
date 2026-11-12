@@ -149,6 +149,15 @@ describe('mobile P0 navigation shell (#5201)', () => {
     assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
   });
 
+  it('stacks the focus editor dialog above the fixed tab bar (#10453)', () => {
+    // It inherits .modal-overlay's 9999; on a short phone screen the tab bar
+    // (10003) then covered the editor's Save and Cancel and took their taps.
+    const rule = css.match(/\n\.focus-editor-overlay \{([^}]*)\}/);
+    assert.ok(rule, '.focus-editor-overlay rule');
+    const zIndex = Number(rule[1].match(/z-index:\s*(\d+)/)?.[1]);
+    assert.ok(zIndex > 10003, `z-index ${zIndex} is above the tab bar`);
+  });
+
   it('shows first-time mobile visitors the map, and keeps it collapsed only for viewers who collapsed it', () => {
     // The map is the product's first impression; a first visit landed on a
     // paused player and a black webcam box instead. Tapping Today or the

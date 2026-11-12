@@ -15,6 +15,7 @@ import {
 } from './convex-client';
 import { getCurrentClerkUser } from './clerk';
 import { hasAccountEmbedAccess } from '../../shared/embed-access';
+import { hasTabFocus } from '../../shared/tab-focus-access';
 
 export interface EntitlementState {
   planKey: string;
@@ -71,6 +72,14 @@ export interface EntitlementState {
      */
     desktopKeyAccess?: boolean;
     maxDesktopKeys?: number;
+    /**
+     * Dashboard focus (#10453): Pro Business, API Business and Enterprise.
+     * Read it through `hasTabFocusForAccount`, which is fail-closed on
+     * `undefined`. A teammate on an API Business seat holds a Pro snapshot;
+     * whether they may share a focused team dashboard comes from the server
+     * (`team.focus` on the team dashboard list), not from this field.
+     */
+    tabFocus?: boolean;
   };
   validUntil: number;
 }
@@ -321,6 +330,15 @@ export function hasFeature(flag: keyof EntitlementState['features']): boolean {
  */
 export function hasEmbedAccessForAccount(role: 'free' | 'pro' | undefined): boolean {
   return hasAccountEmbedAccess(role, currentState, Date.now());
+}
+
+/**
+ * Whether the signed-in account may focus its own dashboard tabs (#10453).
+ * A personal tab's focus filters data the plan already receives, so this is a
+ * presentation gate; the shared-dashboard gate is enforced in Convex.
+ */
+export function hasTabFocusForAccount(): boolean {
+  return hasTabFocus(currentState, Date.now());
 }
 
 /**

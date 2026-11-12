@@ -16,10 +16,20 @@ import {
   renderPrimarySourceProvenance,
 } from './news/source-provenance';
 import { describePublisherRoster, renderPublisherRosterHtml } from './news/publisher-roster';
+import { PanelScopeFilter, focusedEmptyHtml, scopeTagHtml, type ScopeRow } from './panel-scope-filter';
+import { getPanelScopeBehaviour } from '@/config/panel-scope';
+import { headlineCountries, withoutOwnSourceSuffix } from '@/services/scope-attribution';
+import type { ResolvedScope } from '@/services/tab-focus';
+import { effectivePubDateMs } from '@/services/feed-date';
 
 
 type SortMode = 'relevance' | 'newest';
 type NewsIdentity = Pick<NewsItem, 'link' | 'title' | 'source'>;
+
+/** Identity of a headline across the clustering worker, which hands back copies. */
+function newsScopeKey(item: NewsIdentity): string {
+  return `${item.link}\u0000${item.title}\u0000${item.source}`;
+}
 
 function matchesNewsItem(item: NewsIdentity, link: string, identity?: NewsIdentity): boolean {
   return item.link === link && (!identity || (identity.link === link && item.title === identity.title && item.source === identity.source));
@@ -74,6 +84,13 @@ export class NewsPanel extends Panel {
   private refreshDegraded = false;
   private renderedBadgeState: 'none' | 'live' | 'cached' | 'unavailable' = 'none';
 
+  // Dashboard focus (#10453). `scopeSourceItems` is the last full list handed
+  // to renderNews, kept so a focus change or a strip toggle re-renders in
+  // memory instead of refetching. `scopeRows` marks what is rendered now.
+  private readonly scopeFilter: PanelScopeFilter;
+  private scopeSourceItems: NewsItem[] | null = null;
+  private scopeRows = new Map<string, ScopeRow<NewsItem>>();
+
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
@@ -96,6 +113,7 @@ export class NewsPanel extends Panel {
     services: Partial<NewsPanelServices> = {},
   ) {
     super({ id, title, showCount: true, trackActivity: true, infoTooltip });
+    this.scopeFilter = new PanelScopeFilter({ content: this.content, onChange: () => this.renderScopedNews() });
     this.newsServices = {
       clusterNews: items => analysisWorker.clusterNews(items),
       generateSummary,
@@ -445,6 +463,10 @@ export class NewsPanel extends Panel {
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
     this.lastRawClusters = null;
     this.lastRawItems = null;
+    // A failure is not "nothing for these countries": no counts, and a later
+    // focus change must not paint old headlines over the error.
+    this.scopeSourceItems = null;
+    this.scopeFilter.hideStrip();
     this.renderedBadgeState = 'unavailable';
     super.showError(message, onRetry, autoRetrySeconds);
   }
@@ -466,7 +488,75 @@ export class NewsPanel extends Panel {
     this.setDataBadge(state);
   }
 
+  /**
+   * Dashboard focus (#10453). Only news panels the registry declares as
+   * filtering follow the focus; the rest (startups, GitHub, …) stay global
+   * and carry the "Not filtered" chip.
+   */
+  public override applyScope(scope: ResolvedScope | null): void {
+    const effective = getPanelScopeBehaviour(this.panelId) === 'filters' ? scope : null;
+    if (!this.scopeFilter.setScope(effective)) return;
+    if (this.showingLoadFailure) return;
+    this.renderScopedNews();
+  }
+
   public renderNews(items: NewsItem[]): void {
+    this.scopeSourceItems = items;
+    this.renderScopedNews();
+  }
+
+  /** Render the retained list through the focus: no fetch, no re-clustering of hidden items. */
+  private renderScopedNews(): void {
+    const items = this.scopeSourceItems;
+    if (!items) return;
+    const resolved = this.scopeFilter.scope;
+    const candidates = resolved ? [...resolved.chosen, ...resolved.neighbours] : [];
+    const view = this.scopeFilter.view(items, (item) => headlineCountries(
+      `${withoutOwnSourceSuffix(item.title, item.source)} ${item.locationName ?? ''}`,
+      candidates,
+      item.lang,
+    ));
+    this.scopeRows = new Map(view.partition ? view.rows.map((row) => [newsScopeKey(row.item), row]) : []);
+    this.scopeFilter.renderStrip(resolved && items.length > 0 ? view : null);
+    if (view.emptyByFocus) {
+      this.renderFocusedEmpty();
+      return;
+    }
+    this.renderNewsItems(view.rows.map((row) => row.item));
+  }
+
+  /** The focus, not the feed, left nothing: a settled state, distinct from an error. */
+  private renderFocusedEmpty(): void {
+    this.clearSearchReveal();
+    this.renderRequestId += 1;
+    this.lastRawClusters = null;
+    this.lastRawItems = null;
+    this.renderCurrentDataBadge();
+    this.setCount(0);
+    this.relatedAssetContext.clear();
+    this.currentHeadlines = [];
+    this.currentBodies = [];
+    this.updateHeadlineSignature();
+    this.setSafeContent(unsafeRawHtml(focusedEmptyHtml(t('focus.filter.emptyNews')), 'focus empty state: escaped by focusedEmptyHtml'));
+  }
+
+  /** 0 chosen country (or unfocused), 1 neighbour, 2 no country. */
+  private scopeRank(item: NewsIdentity): number {
+    if (this.scopeRows.size === 0) return 0;
+    return this.scopeRows.get(newsScopeKey(item))?.rank ?? 2;
+  }
+
+  private clusterScopeRow(cluster: ClusteredEvent): ScopeRow<NewsItem> | null {
+    if (this.scopeRows.size === 0) return null;
+    let best: ScopeRow<NewsItem> | null = null;
+    for (const item of cluster.allItems) {
+      const row = this.scopeRows.get(newsScopeKey(item));
+      if (row && (!best || row.rank < best.rank)) best = row;
+    }
+    return best;
+  }
+
+  private renderNewsItems(items: NewsItem[]): void {
     this.clearSearchReveal();
     this.renderRequestId += 1;
     if (items.length === 0) {
@@ -488,6 +578,10 @@ export class NewsPanel extends Panel {
   }
 
   public renderFilteredEmpty(message: string): void {
+    // The time range, not the focus, emptied the list: no focus counts.
+    this.scopeSourceItems = null;
+    this.scopeRows.clear();
+    this.scopeFilter.hideStrip();
     this.clearSearchReveal();
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
     this.lastRawClusters = null;
@@ -523,14 +617,18 @@ export class NewsPanel extends Panel {
 
     let sorted: NewsItem[];
     if (this.sortMode === 'newest') {
-      sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+      sorted = [...items].sort((a, b) => (this.scopeRank(a) - this.scopeRank(b))
+        || effectivePubDateMs(b) - effectivePubDateMs(a));
     } else {
-      // Relevance: sort by importanceScore desc when available, fall back to pubDate
+      // Relevance: sort by importanceScore desc when available, fall back to pubDate.
+      // Under a focus, chosen countries first, then neighbours, then no country.
       sorted = [...items].sort((a, b) => {
+        const rank = this.scopeRank(a) - this.scopeRank(b);
+        if (rank !== 0) return rank;
         const sa = a.importanceScore ?? 0;
         const sb = b.importanceScore ?? 0;
         if (sb !== sa) return sb - sa;
-        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+        return effectivePubDateMs(b) - effectivePubDateMs(a);
       });
     }
 
@@ -562,6 +660,7 @@ export class NewsPanel extends Panel {
           ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
           ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
+          ${scopeTagHtml(this.scopeRows.get(newsScopeKey(item)))}
         </div>
         ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>` : `<span class="item-title">${escapeHtml(item.title)}</span>`}
         ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
@@ -581,8 +680,12 @@ export class NewsPanel extends Panel {
     this.lastRawClusters = clusters;
     this.lastRawItems = null;
 
-    // Sort based on user preference (#107)
+    // Sort based on user preference (#107). Under a focus, chosen countries
+    // first, then neighbours, then no country (#10453).
+    const clusterRank = new Map(clusters.map((c) => [c, this.clusterScopeRow(c)?.rank ?? (this.scopeRows.size ? 2 : 0)]));
     const sorted = [...clusters].sort((a, b) => {
+      const rank = (clusterRank.get(a) ?? 0) - (clusterRank.get(b) ?? 0);
+      if (rank !== 0) return rank;
       if (this.sortMode === 'newest') {
         // Pure chronological, newest first
         return b.lastUpdated.getTime() - a.lastUpdated.getTime();
@@ -820,6 +923,7 @@ export class NewsPanel extends Panel {
           ${cluster.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
           ${categoryBadge}
           ${riskBadge}
+          ${scopeTagHtml(this.clusterScopeRow(cluster))}
         </div>
         ${titleLink ? `<a class="item-title" href="${titleLink}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>` : `<span class="item-title">${escapeHtml(cluster.primaryTitle)}</span>`}
         <div class="cluster-meta">

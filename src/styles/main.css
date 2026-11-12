@@ -6471,6 +6471,23 @@ body.playback-mode .status-dot {
   }
 }
 
+/* Dashboard focus outline on the SVG map (#10453). The DeckGL and globe maps
+   draw the same two styles with their own layers. CSS beats the paths'
+   presentation attributes; the fill is left alone so sanctions shading stays.
+   The map wrapper is CSS-scaled by the zoom, so the width is divided by it
+   (--marker-scale is 1 / zoom) to stay 2px and 1px on screen. */
+.map-base .country.country-focus-neighbour {
+  stroke: var(--green);
+  stroke-opacity: 0.5;
+  stroke-width: calc(1px * var(--marker-scale, 1));
+}
+
+.map-base .country.country-focus-chosen {
+  stroke: var(--green);
+  stroke-opacity: 1;
+  stroke-width: calc(2px * var(--marker-scale, 1));
+}
+
 /* Cable paths */
 .cable-path {
   fill: none;
@@ -29246,7 +29263,8 @@ body.map-width-resizing {
 
 .dashboard-tab-add,
 .dashboard-tab-options,
-.dashboard-tab-team {
+.dashboard-tab-team,
+.dashboard-tab-focus {
   background: transparent;
   border: 1px dashed var(--border);
   border-radius: 5px;
@@ -29264,7 +29282,9 @@ body.map-width-resizing {
 .dashboard-tab-options:hover,
 .dashboard-tab-options[aria-expanded="true"],
 .dashboard-tab-team:hover,
-.dashboard-tab-team[aria-expanded="true"] {
+.dashboard-tab-team[aria-expanded="true"],
+.dashboard-tab-focus:hover,
+.dashboard-tab-focus.active {
   color: var(--green-text, var(--green));
   border-color: var(--green);
 }
@@ -29274,7 +29294,8 @@ body.map-width-resizing {
 }
 
 /* A word, not a glyph: smaller type so it sits level with "+" and "▾". */
-.dashboard-tab-team {
+.dashboard-tab-team,
+.dashboard-tab-focus {
   margin-left: 2px;
   padding: 5px 9px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
@@ -29404,6 +29425,574 @@ body.map-width-resizing {
 .team-dashboards-stop:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* ── Dashboard focus (#10453) ──
+   The bar sits above the map and grid on a focused tab. It is always visible
+   there: a filtered dashboard must never pass for the whole world. Green ties
+   it to the active tab; an ended window turns the accent amber. */
+.dashboard-tab-focus.active {
+  border-style: solid;
+}
+
+.focus-bar {
+  --focus-accent: var(--green-text, var(--green));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--green);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.focus-bar[hidden] {
+  display: none;
+}
+
+.focus-bar.ended {
+  --focus-accent: var(--yellow-text, var(--yellow));
+  border-left-color: var(--yellow);
+}
+
+.focus-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.focus-bar-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.focus-bar-icon {
+  color: var(--focus-accent);
+}
+
+.focus-bar-summary {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.focus-bar-neighbours-toggle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--text-dim);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.focus-bar-neighbours-toggle:hover,
+.focus-bar-neighbours-toggle:focus-visible,
+.focus-bar-neighbours-toggle[aria-expanded="true"] {
+  color: var(--focus-accent);
+}
+
+.focus-bar-neighbours-off {
+  color: var(--text-dim);
+}
+
+.focus-bar-window {
+  color: var(--text-dim);
+}
+
+.focus-bar-window::before {
+  content: '·';
+  margin-right: 8px;
+  color: var(--text-dim);
+}
+
+.focus-bar-window.ended {
+  color: var(--focus-accent);
+  font-weight: 600;
+}
+
+.focus-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.focus-bar-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.focus-bar-btn:hover,
+.focus-bar-btn:focus-visible {
+  color: var(--focus-accent);
+  border-color: var(--focus-accent);
+}
+
+.focus-bar-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 2px 20px;
+  /* 12 chosen countries plus their neighbours outgrow a short phone, and the
+     bar sits outside the page's scroll area: scroll the list itself. */
+  max-height: min(45vh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.focus-bar-details[hidden] {
+  display: none;
+}
+
+.focus-bar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.focus-bar-group-label {
+  min-width: 80px;
+  color: var(--text-dim);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.focus-bar-countries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focus-bar-country {
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-bar-country.chosen {
+  border: 1px solid var(--green);
+  color: var(--green-text, var(--green));
+}
+
+/* Neighbours are lighter: dashed and dim, so "in the country" and "next
+   door" read apart at a glance. */
+.focus-bar-country.neighbour {
+  border: 1px dashed var(--border-strong);
+  color: var(--text-dim);
+}
+
+.focus-bar-gate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 20px;
+}
+
+.focus-bar-gate-desc {
+  color: var(--text-dim);
+  flex: 1 1 200px;
+}
+
+/* Panel header chip: the panel does not follow the tab's focus. */
+.panel-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  white-space: nowrap;
+  line-height: 1.3;
+  cursor: help;
+}
+
+/* Strip above a filtered panel's list: what the focus shows, what it hides,
+   and the per-panel "Show all". Green edge ties it to the focus bar; it wraps
+   instead of scrolling so nothing is cut at phone width. */
+.panel-scope-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 2px solid var(--green);
+  background: var(--surface);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.4;
+  color: var(--text-dim);
+  min-width: 0;
+}
+
+.panel-scope-strip[hidden] {
+  display: none;
+}
+
+.panel-scope-strip[data-state="all"] {
+  border-left-color: var(--yellow);
+}
+
+/* The label takes its own line so the counts below never start with a
+   stray separator when they wrap. */
+.panel-scope-strip-label {
+  flex: 1 0 100%;
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.panel-scope-strip-count,
+.panel-scope-strip-note {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.panel-scope-strip-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--green-text, var(--green));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panel-scope-strip-btn:hover {
+  color: var(--text);
+}
+
+.panel-scope-strip-btn:focus-visible {
+  outline: 1px solid var(--green);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Row markers. Chosen-country rows carry none; a neighbour is dashed like the
+   focus bar's neighbour chips; "No country" is dotted. */
+.panel-scope-tag {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 4px;
+  padding: 0 5px;
+  border: 1px dotted var(--border-strong);
+  border-radius: 3px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-dim);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.panel-scope-tag-neighbour {
+  border-style: dashed;
+}
+
+/* Empty because of the focus. Neutral on purpose: a load failure is the red
+   radar error state and stale data is the header's "cached" badge. */
+.panel-scope-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 12px;
+  padding: 16px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  text-align: center;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  color: var(--text);
+}
+
+.panel-scope-empty-hint {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+/* Focus editor dialog. */
+.focus-editor-overlay {
+  background: var(--darken-heavy);
+  /* Above .mobile-tab-bar (10003), like .embed-modal-overlay: on a short
+     phone screen the bar otherwise covers Save and Cancel and takes their taps. */
+  z-index: 10020;
+}
+
+.focus-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  box-sizing: border-box;
+  border-radius: 8px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-editor .modal-header {
+  margin-bottom: 0;
+}
+
+.focus-editor .modal-title {
+  margin: 0;
+}
+
+.focus-editor-intro,
+.focus-editor-hint {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.focus-editor-hint {
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.focus-editor-field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 4px;
+}
+
+.focus-editor-label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.focus-editor-count {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-editor-count.full {
+  color: var(--yellow-text, var(--yellow));
+  font-weight: 600;
+}
+
+.focus-editor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.focus-editor-chips[hidden] {
+  display: none;
+}
+
+.focus-editor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--green);
+  border-radius: 12px;
+  color: var(--green-text, var(--green));
+}
+
+.focus-editor-chip-remove {
+  min-width: 24px;
+  min-height: 24px;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
+  cursor: pointer;
+}
+
+.focus-editor-chip-remove:hover,
+.focus-editor-chip-remove:focus-visible {
+  background: var(--overlay-medium);
+}
+
+.focus-editor-search,
+.focus-editor-date input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+}
+
+.focus-editor-search:focus-visible,
+.focus-editor-date input:focus-visible {
+  outline: none;
+  border-color: var(--green);
+}
+
+.focus-editor-search:disabled {
+  opacity: 0.5;
+}
+
+.focus-editor-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.focus-editor-results[hidden] {
+  display: none;
+}
+
+.focus-editor-result-item + .focus-editor-result-item {
+  border-top: 1px solid var(--border);
+}
+
+.focus-editor-result {
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-editor-result:hover,
+.focus-editor-result:focus-visible {
+  color: var(--green-text, var(--green));
+  background: var(--surface-hover);
+}
+
+.focus-editor-limit {
+  margin: 0;
+  color: var(--yellow-text, var(--yellow));
+}
+
+.focus-editor-limit[hidden] {
+  display: none;
+}
+
+.focus-editor-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-editor-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
+}
+
+.focus-editor-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.focus-editor-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.focus-editor-error {
+  margin: 0;
+  color: var(--red-text, var(--red));
+  font-weight: 600;
+}
+
+.focus-editor-error[hidden] {
+  display: none;
+}
+
+.focus-editor-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.focus-editor-clear {
+  margin-right: auto;
+}
+
+.focus-editor-btn {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-editor-btn:hover,
+.focus-editor-btn:focus-visible {
+  border-color: var(--green);
+  color: var(--green-text, var(--green));
+}
+
+.focus-editor-btn.primary {
+  background: var(--green);
+  border-color: var(--green);
+  color: #062010;
+}
+
+.focus-editor-btn.primary:hover,
+.focus-editor-btn.primary:focus-visible {
+  filter: brightness(1.1);
+  color: #062010;
+}
+
+.focus-editor-clear:hover,
+.focus-editor-clear:focus-visible {
+  border-color: var(--red);
+  color: var(--red-text, var(--red));
 }
 
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──

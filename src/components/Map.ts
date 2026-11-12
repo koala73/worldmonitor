@@ -2,6 +2,8 @@ import { bindMapControlDisclosure } from './map-control-disclosure';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
+import { iso2ToUnCode } from '../../shared/country-numeric-codes';
+import type { FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
@@ -154,6 +156,12 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
   (dc) => (dc.chipCount || 0) >= MIN_AI_DATA_CENTER_GPU_COUNT,
 );
 
+/**
+ * Highest SVG zoom (a linear scale factor) a dashboard focus fit may reach,
+ * the counterpart of FOCUS_FIT_MAX_ZOOM for the MapLibre map.
+ */
+const SVG_FOCUS_MAX_ZOOM = 6;
+
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
@@ -196,6 +204,13 @@ export class MapComponent {
   private layerExplanationOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
   private worldData: WorldTopology | null = null;
   private countryFeatures: Feature<Geometry>[] | null = null;
+  /**
+   * Dashboard focus outline (#10453), as UN M49 codes: the world topology
+   * keys its country features by M49, not ISO2.
+   */
+  private focusOutline: { chosen: Set<string>; neighbours: Set<string> } | null = null;
+  /** A focus fit requested while the map had no size (a collapsed mobile map). */
+  private pendingFocusFit: FocusFitBounds | null = null;
   private isResizing = false;
   private baseLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private dynamicLayerGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
@@ -494,8 +509,10 @@ export class MapComponent {
   }
 
   public resize(): void {
+    const pendingFocusFit = this.pendingFocusFit;
     const pendingCenter = this.pendingCenter;
-    if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
+    if (pendingFocusFit) this.fitFocusBounds(pendingFocusFit);
+    else if (pendingCenter) this.setCenter(pendingCenter.lat, pendingCenter.lon);
     this.scheduleRender();
   }
 
@@ -1484,6 +1501,7 @@ export class MapComponent {
 
       // Countries
       this.renderCountries(this.baseLayerGroup, basePath);
+      this.applyFocusOutline();
       this.baseRendered = true;
     }
 
@@ -4495,6 +4513,7 @@ export class MapComponent {
 
   public setView(view: MapView, zoom?: number): void {
     this.pendingCenter = null;
+    this.pendingFocusFit = null;
     this.state.view = view;
 
     // Region-specific zoom and pan settings
@@ -5075,6 +5094,64 @@ export class MapComponent {
     this.onCountryClick = cb;
   }
 
+  /**
+   * Outline the dashboard focus (#10453): chosen countries with a solid
+   * border, neighbours with a lighter one (styles in main.css). Null removes
+   * it. Markers are untouched.
+   */
+  public setFocusOutline(outline: { chosen: readonly string[]; neighbours: readonly string[] } | null): void {
+    const toUn = (codes: readonly string[]) => new Set(
+      codes.map((code) => iso2ToUnCode(code)).filter((code): code is string => !!code),
+    );
+    this.focusOutline = outline
+      ? { chosen: toUn(outline.chosen), neighbours: toUn(outline.neighbours) }
+      : null;
+    if (!outline) this.pendingFocusFit = null;
+    this.applyFocusOutline();
+  }
+
+  private applyFocusOutline(): void {
+    const group = this.baseLayerGroup;
+    if (!group) return;
+    const focus = this.focusOutline;
+    const countries = group.selectAll<SVGPathElement, Feature<Geometry>>('.country');
+    countries.each(function (datum) {
+      const id = datum?.id != null ? String(datum.id) : '';
+      const chosen = !!focus && focus.chosen.has(id);
+      this.classList.toggle('country-focus-chosen', chosen);
+      this.classList.toggle('country-focus-neighbour', !chosen && !!focus && focus.neighbours.has(id));
+    });
+    // Later paths paint over earlier ones along a shared border: neighbours
+    // above the rest, chosen countries above their neighbours.
+    countries.filter('.country-focus-neighbour').raise();
+    countries.filter('.country-focus-chosen').raise();
+  }
+
+  /**
+   * Frame the focus's chosen countries. `fit.east` may be unwrapped past 180;
+   * this flat map has one world copy, so a dateline-crossing union centres on
+   * the arc's midpoint and shows the part of it on this side of the edge.
+   */
+  public fitFocusBounds(fit: FocusFitBounds): void {
+    const { width, height } = this.readContainerSize();
+    if (width <= 0 || height <= 0) {
+      // Collapsed (the mobile "Show map" toggle) or not laid out: fit when
+      // resize() reports a size, unless another view command comes first.
+      this.pendingFocusFit = fit;
+      return;
+    }
+    this.pendingFocusFit = null;
+    const projection = this.getProjection(width, height);
+    // Equirectangular: pixels per degree are the same on both axes.
+    const pxPerDegree = projection.scale() * Math.PI / 180;
+    const padFactor = 0.8;
+    const zoomX = fit.lonSpan > 0 ? (width * padFactor) / (fit.lonSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
+    const zoomY = fit.latSpan > 0 ? (height * padFactor) / (fit.latSpan * pxPerDegree) : SVG_FOCUS_MAX_ZOOM;
+    this.state.zoom = Math.max(1, Math.min(SVG_FOCUS_MAX_ZOOM, zoomX, zoomY));
+    this.setCenter(fit.center.lat, fit.center.lon);
+    this.resumeMobileLabelVisibility();
+  }
+
   public fitCountry(code: string): void {
     const bbox = getCountryBbox(code);
     if (!bbox) return;
@@ -5124,6 +5201,7 @@ export class MapComponent {
   }
 
   public setZoom(zoom: number): void {
+    this.pendingFocusFit = null;
     this.state.zoom = Math.max(1, Math.min(10, zoom));
     this.applyTransform();
     // Ensure base layer is intact after zoom change
@@ -5156,6 +5234,9 @@ export class MapComponent {
 
   public setCenter(lat: number, lon: number): void {
     console.log('[Map] setCenter called:', { lat, lon });
+    // Any centre command, including the one a focus fit ends with, ends a
+    // fit still waiting for the map to have a size.
+    this.pendingFocusFit = null;
     const { width, height } = this.readContainerSize();
     if (width === 0 || height === 0) {
       this.pendingCenter = { lat, lon };

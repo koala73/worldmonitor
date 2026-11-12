@@ -30,7 +30,7 @@ const add = (source, id, detail) => rules.push({ rule: `${source}:${id}`, source
 // 1. productCatalog — every (plan × gating field) pair
 {
   const s = R('convex/config/productCatalog.ts');
-  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','desktopKeyAccess','maxDesktopKeys','desktopKeyRequestsPerDay','desktopKeyBurstPerMinute','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays','travelRiskAssessment'];
+  const FIELDS = ['tier','maxDashboards','apiRateLimit','prioritySupport','mcpAccess','dataExport','apiAccess','embedAccess','tabFocus','desktopKeyAccess','maxDesktopKeys','desktopKeyRequestsPerDay','desktopKeyBurstPerMinute','apiRequestsPerDay','apiBurstRequestsPerMinute','mcpCallsPerDay','mcpBurstRequestsPerMinute','apiDailyAllowance','exportFormats','historyDays','travelRiskAssessment'];
   for (const m of s.matchAll(/const (FREE|PRO|PRO_BUSINESS|API_STARTER|API_BUSINESS|ENTERPRISE)_FEATURES[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     const [, plan, body] = m;
     for (const f of FIELDS) {
@@ -72,7 +72,7 @@ for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gate
 
 
 // ------------------------------------------------------- code-site gates
-const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|features\\.travelRiskAssessment|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
+const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|features\\.travelRiskAssessment|requiresPremium|isCallerPremium\\(|has(Account)?EmbedAccess\\(|hasTabFocus\\(|hasDesktopKeyAccess\\(|admitsDesktopKeyPrincipal\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
 const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src api convex server 2>/dev/null || true`, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const sites = [];
 for (const ln of out.split('\n')) {
@@ -92,6 +92,7 @@ for (const ln of out.split('\n')) {
     : /features\.dataExport/.test(t) ? 'dataExport'
     : /features\.travelRiskAssessment/.test(t) ? 'travelRiskAssessment'
     : /has(?:Account)?EmbedAccess\(/.test(t) ? 'embedAccess'
+    : /hasTabFocus\(/.test(t) ? 'tabFocus'
     : /hasDesktopKeyAccess\(|admitsDesktopKeyPrincipal\(/.test(t) ? 'desktopKeyAccess'
     : /requiresPremium/.test(t)      ? 'requiresPremium'
     : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
@@ -113,6 +114,7 @@ const MAP = [
   [/^catalog:\w+\.dataExport$/,              { cap: 'export.data' }],
   [/^catalog:\w+\.apiAccess$/,               { cap: 'api.keys' }],
   [/^catalog:\w+\.embedAccess$/,             { cap: 'embed.panels', note: 'wme_ key issuance' }],
+  [/^catalog:\w+\.tabFocus$/,                { cap: 'dashboards.focus', note: 'country/date focus on tabs and shared team dashboards (#10453)' }],
   [/^catalog:\w+\.desktopKeyAccess$/,        { cap: 'desktop.keys', note: 'desktop wm_ key issuance and use' }],
   [/^catalog:\w+\.maxDesktopKeys$/,          { cap: 'desktop.keys', note: 'active desktop keys per account' }],
   [/^catalog:\w+\.desktopKeyRequestsPerDay$/,{ cap: 'desktop.keys', note: 'per-account daily ceiling' }],
@@ -252,6 +254,8 @@ const SITE_MAP = [
   [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' , preds: ['apiAccess'] }],
   [/convex\/embedKeys\.ts/,                   { cap: 'embed.panels', note: 'wme_ key issuance — tier>=1 + embedAccess, deliberately not apiAccess' , preds: ['embedAccess'] }],
   [/src\/services\/entitlements\.ts/,        { cap: 'embed.panels', note: 'browser account-level embed access predicate' , preds: ['embedAccess'] }],
+  [/convex\/teamDashboards\.ts/,             { cap: 'dashboards.focus', note: 'publish refuses a focused team dashboard without tabFocus; a seat holder is judged by the team plan' , preds: ['tabFocus'] }],
+  [/src\/services\/entitlements\.ts/,        { cap: 'dashboards.focus', note: 'browser predicate for focusing a personal tab — presentation only, the data is already in the plan' , preds: ['tabFocus'] }],
   [/api\/mcp\/auth\.ts/,                    { cap: 'intel.travel_risk', note: 'MCP pre-check reads the named flag for prepare_travel_risk_assessment; dispatch refuses the tool without it, on every credential door' , preds: ['travelRiskAssessment'] }],
   [/pro-mcp-gate\.ts|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' , preds: ['isCallerPremium','resolvePremiumCallerIdentity','mcpAccess','tier'] }],
   [/gates\/export/,                           { cap: 'export.data' , preds: ['dataExport'] }],
@@ -352,6 +356,7 @@ const SITE_BASELINE = {
   "convex/mcpProTokens.ts::tier": 1,
   "convex/notificationChannels.ts::tier": 1,
   "convex/payments/billing.ts::tier": 1,
+  "convex/teamDashboards.ts::tabFocus": 2,
   "server/_shared/country-history-access.ts::tier": 1,
   "server/_shared/desktop-key-principal.ts::apiAccess": 2,
   "server/_shared/desktop-key-principal.ts::desktopKeyAccess": 1,
@@ -399,6 +404,7 @@ const SITE_BASELINE = {
   "src/services/correlation-engine/engine.ts::hasPremiumAccess": 1,
   "src/services/economic/index.ts::hasPremiumAccess": 1,
   "src/services/entitlements.ts::embedAccess": 1,
+  "src/services/entitlements.ts::tabFocus": 1,
   "src/services/entitlements.ts::tier": 1,
   "src/services/gates/export-resolver.ts::dataExport": 4,
   "src/services/gates/export.ts::dataExport": 1,
