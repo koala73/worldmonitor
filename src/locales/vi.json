@@ -2712,7 +2712,7 @@
     },
     "sanctionsPressure": {
       "title": "Trừng phạt & Chỉ định",
-      "infoTooltip": "Danh sách OFAC SDN và danh sách hợp nhất cùng các chỉ định SEMA/JVCFOA của Canada. Các hàng quốc gia dùng liên hệ trực tiếp. Cờ tàu và đăng ký máy bay được đếm riêng trong mục đăng ký; số tài sản bằng không của một quốc gia không có nghĩa là không có tài sản bị trừng phạt. Quốc gia của tổ chức mẹ được tách khỏi bằng chứng địa chỉ và không tính vào điểm rủi ro.",
+      "infoTooltip": "Danh sách OFAC SDN và danh sách hợp nhất cùng các chỉ định SEMA/JVCFOA của Canada. Các hàng quốc gia dùng liên hệ trực tiếp. Cờ tàu và đăng ký máy bay được đếm riêng trong mục đăng ký; số tài sản bằng không của một quốc gia không có nghĩa là không có tài sản bị trừng phạt.",
       "loading": "Đang tải dữ liệu trừng phạt...",
       "unavailable": "Dữ liệu trừng phạt không khả dụng.",
       "summary": {

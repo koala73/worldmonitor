@@ -605,6 +605,41 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(await jsonResponse(value, 200).json(), value);
   });
 
+  it('describes mineral production records and portfolios returned by the handler', async () => {
+    const { projectMineralProduction } = await import('../server/worldmonitor/supply-chain/v1/get-mineral-production.ts');
+    const schema = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_mineral_production').outputSchema;
+    const check = new Ajv2020({ strict: false }).compile(schema);
+    const stage = { year: 2025, unit: 'metric tons', hhi: 2500, withheldCount: 1, countries: [
+      { iso2: 'CL', country: 'Chile', output: 10, share: 50, estimated: true },
+      { iso2: 'US', country: 'United States', withheld: true },
+    ] };
+    const seed = { fetchedAt: '2026-02-06T00:00:00Z', dataYear: 2025, commodities: {
+      copper: { id: 'copper', label: 'Copper', sources: ['usgs-mcs'], stages: { mine: stage, refinery: stage } },
+    } };
+    for (const iso2 of ['', 'CL', 'US', 'AU']) {
+      for (const filter of ['', 'mine', 'refinery']) {
+        const result = projectMineralProduction(seed, { commodity: '', iso2, stage: filter });
+        assert.equal(check(result), true, JSON.stringify(check.errors));
+      }
+    }
+    assert.equal(check(projectMineralProduction(null, { commodity: '', iso2: '', stage: '' })), true);
+    // These paths used to be prose-only arrays: prove their nested fields are advertised.
+    const record = schema.properties.commodities.items.properties;
+    const holding = schema.properties.countries.items.properties.holdings.items.properties;
+    for (const stageName of ['mine', 'refinery']) {
+      const snapshot = record[stageName].properties;
+      assert.equal(snapshot.worldTotal.type, 'number');
+      assert.equal(snapshot.countries.items.properties.output.type, 'number');
+      const result = projectMineralProduction(seed, { commodity: '', iso2: '', stage: stageName });
+      result.commodities[0][stageName].countries[0].share = '50';
+      assert.equal(check(result), false, 'country share must be numeric');
+    }
+    assert.equal(holding.output.type, 'number');
+    const portfolio = projectMineralProduction(seed, { commodity: '', iso2: 'CL', stage: '' });
+    portfolio.countries[0].holdings[0].output = '10';
+    assert.equal(check(portfolio), false, 'portfolio output must be numeric');
+  });
+
   // --------------------------------------------------------------------
   // Test 4 — buildPublicTool returns a deep-clone, NOT a reference into the
   // module-level outputSchema literal. Mutating the returned object must not
