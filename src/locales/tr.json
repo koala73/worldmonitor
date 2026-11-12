@@ -5061,7 +5061,7 @@
     "draftAssessment": "Taslak değerlendirme",
     "draftAssessmentAria": "Seyahat değerlendirmesini açın, bu odak noktasıyla önceden doldurulmuş",
     "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
-    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar.",
+    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar. Dışarıda bırakılan ülkeler: {{omitted}}.",
     "draftCopyFailed": "İstem kopyalanamadı."
   },
   "tripAssessment": {

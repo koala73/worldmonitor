@@ -5173,7 +5173,7 @@
     "draftAssessment": "صياغة تقييم",
     "draftAssessmentAria": "فتح تقييم الرحلة، معبأ مسبقاً بهذا التركيز",
     "draftCopied": "تم نسخ الطلب. الصقه في مساعدك الذكي.",
-    "draftCopiedPartial": "تم نسخ الطلب لأول {{count}} دول. يغطي التقييم {{max}} دول كحد أقصى.",
+    "draftCopiedPartial": "تم نسخ الطلب لأول {{count}} دول. يغطي التقييم {{max}} دول كحد أقصى. الدول المستبعدة: {{omitted}}.",
     "draftCopyFailed": "تعذّر نسخ الطلب."
   },
   "tripAssessment": {

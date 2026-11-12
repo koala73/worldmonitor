@@ -5061,7 +5061,7 @@
     "draftAssessment": "Rasimu ya tathmini",
     "draftAssessmentAria": "Fungua tathmini ya safari, iliyojazwa na hii focus",
     "draftCopied": "Ombi limenakiliwa. Libandike kwenye msaidizi wako wa AI.",
-    "draftCopiedPartial": "Ombi limenakiliwa kwa nchi {{count}} za kwanza. Tathmini moja inajumuisha nchi {{max}} kwa kiwango cha juu.",
+    "draftCopiedPartial": "Ombi limenakiliwa kwa nchi {{count}} za kwanza. Tathmini moja inajumuisha nchi {{max}} kwa kiwango cha juu. Nchi zilizoachwa: {{omitted}}.",
     "draftCopyFailed": "Imeshindikana kunakili ombi."
   },
   "tripAssessment": {

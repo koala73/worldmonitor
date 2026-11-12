@@ -30032,6 +30032,11 @@ body.map-width-resizing {
   overflow-y: auto;
 }
 
+/* Copy feedback is body-level; keep it above this dialog's overlay (10020). */
+.focus-editor-overlay:has(> .trip-assessment) ~ .toast-notification {
+  z-index: 10021;
+}
+
 /* The messages and the actions stay in view while a long trip scrolls. The
    negative margins let the bar span the modal's padding. */
 .trip-assessment-foot {
