@@ -2,7 +2,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from '@e965/xlsx';
-import { CHROME_UA, getRedisCredentials, loadEnvFile, withRetry, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { CHROME_UA, getRedisCredentials, loadEnvFile, withRetry, writeExtraKeyWithMetaAtomically } from './_seed-utils.mjs';
 import { readBoundedResponseBytes } from './_china-exchange-transport.mjs';
 import { upstashCommand } from './_upstash-rest.mjs';
 
@@ -63,7 +63,7 @@ async function activatePrior() {
   await withRetry(() => upstashCommand({ restUrl: url, token }, ['SET', PRIOR_ACTIVATION_KEY, '1']), 2, 750);
 }
 
-export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publish = writeExtraKeyWithMeta, activate = activatePrior, dryRun = false, nowMs = Date.now() } = {}) {
+export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publish = writeExtraKeyWithMetaAtomically, activate = activatePrior, dryRun = false, nowMs = Date.now() } = {}) {
   async function download(url, maxBytes) {
     return withRetry(async () => {
       const response = await fetchImpl(url, { headers: { 'User-Agent': CHROME_UA }, signal: AbortSignal.timeout(20_000) });
@@ -79,8 +79,10 @@ export async function seedStructuralPrior({ fetchImpl = globalThis.fetch, publis
   // missing country leaves both last-good data and its original age intact.
   const payload = buildStructuralPrior(JSON.parse(new TextDecoder().decode(apiBytes)), bulkBytes, nowMs);
   if (!dryRun) {
-    await publish(PRIOR_KEY, payload, PRIOR_TTL_SECONDS, Object.keys(payload.countries).length,
-      PRIOR_META_KEY, PRIOR_TTL_SECONDS);
+    const published = await publish({ key: PRIOR_KEY, data: payload, ttlSeconds: PRIOR_TTL_SECONDS,
+      recordCount: Object.keys(payload.countries).length, metaKey: PRIOR_META_KEY,
+      metaTtlSeconds: PRIOR_TTL_SECONDS, fetchedAt: nowMs });
+    if (published !== true) throw new Error('Structural prior publish failed');
     await activate();
   }
   return payload;

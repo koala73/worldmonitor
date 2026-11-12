@@ -2467,6 +2467,24 @@ test('containment has no source-specific denylist', () => {
   }
 });
 
+test('invalid prior coverage removes stale containment before overall health is computed', () => {
+  const name = 'ciiStructuralPrior';
+  const { entry, evidence } = classifyContainment(name, {
+    fetchedAt: NOW - 50401 * ONE_MIN_MS, recordCount: 208,
+  });
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(isContainedHealthWarning(entry, evidence, NOW), true);
+  const proofs = new Map([[name, evidence]]);
+  const checked = __testing__.composeCiiStructuralPriorHealth(entry, JSON.stringify({
+    indicator: 'GOV_WGI_PV.EST', year: SEED_META[name].year,
+    countries: Object.fromEntries(SEED_META[name].requiredCountries.filter((c) => c !== 'US')
+      .map((c) => [c, { pv: 0, year: SEED_META[name].year, source: 'https://api.worldbank.org/' }])),
+  }), false, proofs);
+  const containedWarn = Number(isContainedHealthWarning(checked, proofs.get(name), NOW));
+  assert.equal(computeOverallStatus({ warn: 1, onDemandWarn: 0, containedWarn, crit: 0 }, 417).overall, 'WARNING');
+  assert.deepEqual(checked.missingCountries, ['US']);
+});
+
 test('containment rejects missing proof even when an earlier diagnostic wins', () => {
   const cases = [
     ['earthquakes', { fetchedAt: undefined }, 'STALE_SEED'],

@@ -5138,9 +5138,12 @@ function composeChokepointTransitsCoverage(entry, rawMeta) {
   return { ...entry, status: 'COVERAGE_PARTIAL', missingMeasurable };
 }
 
-function composeCiiStructuralPriorHealth(entry, raw, readError = false) {
+function composeCiiStructuralPriorHealth(entry, raw, readError = false, containmentEvidenceByName) {
   if (!entry) return entry;
-  if (readError) return { ...entry, status: 'REDIS_PARTIAL' };
+  if (readError) {
+    containmentEvidenceByName?.delete('ciiStructuralPrior');
+    return { ...entry, status: 'REDIS_PARTIAL' };
+  }
   const payload = unwrapEnvelope(parseRedisValue(raw)).data;
   const cfg = SEED_META.ciiStructuralPrior;
   const valid = payload?.indicator === 'GOV_WGI_PV.EST' && payload?.year === cfg.year;
@@ -5148,6 +5151,7 @@ function composeCiiStructuralPriorHealth(entry, raw, readError = false) {
     const row = payload?.countries?.[code];
     return !valid || !Number.isFinite(row?.pv) || row.year !== cfg.year || typeof row.source !== 'string' || !row.source.startsWith('https://');
   });
+  if (missingCountries.length) containmentEvidenceByName?.delete('ciiStructuralPrior');
   return {
     ...entry,
     ...(entry.status === 'OK' && missingCountries.length ? { status: 'COVERAGE_PARTIAL' } : {}),
@@ -6673,6 +6677,7 @@ export async function handleHealth(req, ctx, options = {}) {
   const priorResult = results.at(-1);
   checks.ciiStructuralPrior = composeCiiStructuralPriorHealth(
     checks.ciiStructuralPrior, priorResult?.result, Boolean(priorResult?.error),
+    containmentEvidenceByName,
   );
 
   // Now that every key has a status, claim (or read back) the one durable

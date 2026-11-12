@@ -73,15 +73,17 @@ test('publication follows complete validation, with a distinct meta key and exac
     assert.ok(options.headers['User-Agent']);
     return new Response(url === PRIOR_BULK_URL ? bulk() : JSON.stringify(api()));
   };
-  const payload = await seedStructuralPrior({ fetchImpl, nowMs: NOW, publish: async (...args) => writes.push(args), activate });
+  const payload = await seedStructuralPrior({ fetchImpl, nowMs: NOW, publish: async (args) => { writes.push(args); return true; }, activate });
   assert.equal(writes.length, 1);
-  assert.equal(writes[0][0], PRIOR_KEY);
-  assert.equal(writes[0][3], Object.keys(payload.countries).length);
-  assert.equal(writes[0][4], PRIOR_META_KEY);
+  assert.equal(writes[0].key, PRIOR_KEY);
+  assert.equal(writes[0].recordCount, Object.keys(payload.countries).length);
+  assert.equal(writes[0].metaKey, PRIOR_META_KEY);
   await seedStructuralPrior({ fetchImpl, dryRun: true, publish: async () => assert.fail('dry run wrote'), activate: async () => assert.fail('dry run activated') });
   const missing = async (url) => new Response(url === PRIOR_BULK_URL ? bulk() : JSON.stringify(api(apiRows().filter((row) => row.country.id !== 'US'))));
   await assert.rejects(seedStructuralPrior({ fetchImpl: missing, publish: async () => assert.fail('invalid snapshot wrote') }), /Missing.*US/);
   await assert.rejects(seedStructuralPrior({ fetchImpl, publish: async () => { throw new Error('publish failed'); }, activate: async () => assert.fail('failed publish activated') }), /publish failed/);
+  await assert.rejects(seedStructuralPrior({ fetchImpl, publish: async () => false,
+    activate: async () => assert.fail('failed metadata publication activated') }), /publish failed/);
 });
 
 test('fresh metadata cannot hide a payload coverage shortfall or a mixed year', () => {
@@ -95,5 +97,21 @@ test('fresh metadata cannot hide a payload coverage shortfall or a mixed year', 
   assert.equal(health.composeCiiStructuralPriorHealth(entry, JSON.stringify(payload)).status, 'COVERAGE_PARTIAL');
   assert.equal(health.composeCiiStructuralPriorHealth(entry, null, true).status, 'REDIS_PARTIAL');
   assert.equal(health.composeCiiStructuralPriorHealth({ status: 'STALE_SEED' }, null).status, 'STALE_SEED');
+});
+
+test('the default publisher uses one transaction and refuses activation on a metadata error', async (t) => {
+  const originalEnv = process.env;
+  process.env = { ...originalEnv, UPSTASH_REDIS_REST_URL: 'https://prior-redis.test', UPSTASH_REDIS_REST_TOKEN: 'test-token' };
+  t.after(() => { process.env = originalEnv; });
+  const fetchImpl = async (url) => new Response(url === PRIOR_BULK_URL ? bulk() : JSON.stringify(api()));
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(String(url), 'https://prior-redis.test/multi-exec');
+    const commands = JSON.parse(options.body);
+    assert.deepEqual(commands.map((c) => c.slice(0, 2)), [['SET', PRIOR_KEY], ['SET', PRIOR_META_KEY]]);
+    assert.equal(JSON.parse(commands[1][2]).recordCount, 37);
+    return Response.json([{ result: 'OK' }, { error: 'metadata rejected' }]);
+  });
+  await assert.rejects(seedStructuralPrior({ fetchImpl, nowMs: NOW,
+    activate: async () => assert.fail('failed transaction activated') }), /Atomic extra-key publish failed/);
 });
 
