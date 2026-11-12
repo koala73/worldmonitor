@@ -667,7 +667,8 @@ export function createPassAccumulator({ heightField = 'ht_ortho', refid = null, 
       const rgt = Number(row.rgt);
       const key = `${date}|${rgt}`;
       let g = groups.get(key);
-      if (!g) groups.set(key, (g = { date, rgt, sourceRgt: row.sourceRgt, h: [], byBeam: new Map(), tMin: ms, tMax: ms }));
+      if (!g) groups.set(key, (g = { date, rgt, sourceRgts: new Set(), h: [], byBeam: new Map(), tMin: ms, tMax: ms }));
+      if (row.sourceRgt != null) g.sourceRgts.add(row.sourceRgt);
       g.h.push(h);
       const beam = String(row.gt ?? '');
       let bh = g.byBeam.get(beam);
@@ -739,7 +740,7 @@ function passStats(g) {
     time: tMid,
     date: g.date,
     rgt: g.rgt,
-    ...(g.sourceRgt != null ? { sourceRgt: g.sourceRgt } : {}),
+    ...(g.sourceRgts?.size ? { sourceRgts: [...g.sourceRgts] } : {}),
     levelM: round(m),
     madM: round(d),
     n: kept.length,

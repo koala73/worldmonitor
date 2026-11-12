@@ -283,14 +283,14 @@ function outage(message) {
 }
 
 /**
- * Tag each new pass with the release revision of the granule it came from (same RGT,
- * acquisition date within a day), so a reprocessed granule replaces the older values.
+ * Tag each new pass with the newest release revision of its contributing granules
+ * (same source RGT, acquisition date within a day), so reprocessing replaces older values.
  */
 export function withRevisions(passes, granules) {
   return passes.map((p) => {
     let revision = 1;
     for (const g of granules) {
-      if (granuleRgt(g) !== (p.sourceRgt ?? p.rgt)) continue;
+      if (!(p.sourceRgts ?? [p.rgt]).includes(granuleRgt(g))) continue;
       const gd = granuleDate(g);
       if (gd && Math.abs(Date.parse(gd) - Date.parse(p.date)) <= DAY_MS) revision = Math.max(revision, granuleRevision(g) ?? 1);
     }

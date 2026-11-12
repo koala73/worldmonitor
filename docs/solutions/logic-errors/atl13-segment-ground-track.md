@@ -93,7 +93,11 @@ scratch is rejected with an explicit reset instruction. Redis bookkeeping schema
 normal bounded discovery catches up from each preserved historical cursor.
 Already published last-good data remains under the existing retention rules if
 an upstream request fails. Filename RGT is retained only transiently as
-`sourceRgt` for revision attribution; persisted pass keys use segment RGT.
+`sourceRgt` on rows and the complete `sourceRgts` set on a reduced pass for
+revision attribution; persisted pass keys use segment RGT. When multiple source
+granules contribute to the same flown pass, the newest revision from any of them
+must replace older statistics even if it contains fewer retained segments. The
+seeder regression covers this case with two source RGTs and one flown pass.
 
 Deploy the code and baseline together. A rollback must restore both; schema-2
 bookkeeping is incompatible with the old seeder and will be rebuilt by its

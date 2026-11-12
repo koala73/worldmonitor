@@ -56,7 +56,7 @@ const BASELINE = {
  * Fake CMR + SlideRule. cmr: { id -> [granule names] } keyed by core bbox; slide(granules)
  * returns { rows, failGranules, status }.
  */
-function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {}, trackOffset = 0 } = {}) {
+function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = false, failGranules = [], level = {}, trackOffset = 0, flownRgt } = {}) {
   const calls = { cmr: 0, slide: [] };
   const byBbox = new Map(WATCHLIST.map((e) => [e.core.join(','), e.id]));
   const fetchImpl = async (url, init = {}) => {
@@ -81,7 +81,7 @@ function fakeUpstream({ cmr = {}, cmrDown = false, cmrDownFor = [], slideDown = 
         if (failGranules.includes(g)) continue;
         const date = `${g.slice(6, 10)}-${g.slice(10, 12)}-${g.slice(12, 14)}`;
         const rgt = Number(g.slice(21, 25));
-        for (let i = 0; i < 20; i++) rows.push({ t: `${date}T12:00:00Z`, rgt, segmentRgt: rgt + trackOffset, gt: [10, 30, 50][i % 3], h: (level[id] ?? 300) + (i % 3) * 0.01, refid: id === 'alpha' ? 11 : 99 });
+        for (let i = 0; i < 20; i++) rows.push({ t: `${date}T12:00:00Z`, rgt, segmentRgt: flownRgt ?? rgt + trackOffset, gt: [10, 30, 50][i % 3], h: (level[id] ?? 300) + (i % 3) * 0.01, refid: id === 'alpha' ? 11 : 99 });
       }
       const recs = [...atl13FileRecords(rows), eventRecord('generated rows', 1)];
       for (const g of parms.resources.filter((x) => failGranules.includes(x))) recs.push(exceptRecord(`H5Coro::Future read failure on ${g}/gt1l/ht_ortho`));
@@ -220,6 +220,22 @@ describe('reservoir seeder run', () => {
   it('propagates a Redis read failure instead of treating it as a cold start', async () => {
     const { fetchImpl } = fakeUpstream();
     await assert.rejects(run({ fetchImpl, readState: async () => { throw new Error('Redis GET failed: HTTP 500'); } }), /HTTP 500/);
+  });
+
+  it('applies the newer revision from every source granule contributing to one flown pass', async () => {
+    const baseline = structuredClone(BASELINE);
+    const older = tuple('2026-09-02', 300, 23);
+    older[4] = 100;
+    baseline.reservoirs.alpha.passes.push(older);
+    baseline.reservoirs.alpha.processedThrough = '2026-09-02';
+    const granules = [gran('2026-09-02', 21, '01'), gran('2026-09-02', 22, '02')];
+    const { fetchImpl } = fakeUpstream({ cmr: { alpha: granules }, flownRgt: 23, level: { alpha: 301.5 } });
+    const data = await run({ baseline, fetchImpl });
+    const passes = data._state.byId.alpha.passes.filter(t => t[0].startsWith('2026-09-02') && t[1] === 23);
+    assert.equal(passes.length, 1);
+    assert.equal(passes[0][6], 2);
+    assert.equal(passes[0][4], 40);
+    assert.ok(Math.abs(passes[0][2] - 301.51) < 0.02);
   });
 });
 
