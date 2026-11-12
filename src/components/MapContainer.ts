@@ -8,6 +8,8 @@ import { isMobileDevice } from '@/utils';
 import type { UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import type { ListUkmtoIncidentsResponse } from '@/generated/client/worldmonitor/maritime/v1/service_client';
 import './ukmto-incidents.css';
+import '../styles/reservoir-levels.css';
+import type { ReservoirLevel } from '@/services/climate';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import {
   isLayerToggleAllowed,
@@ -210,6 +212,7 @@ export class MapContainer {
   private pendingCenter: PendingCenter | null = null;
   private pendingViewportActions: PendingViewportAction[] = [];
   private pendingChokepointOpen: string | null = null;
+  private pendingReservoirOpen: ReservoirLevel | null = null;
   private hiddenLayerToggles = new Set<keyof MapLayers>();
   private layerLoadingState = new Map<keyof MapLayers, boolean>();
   private layerReadyState = new Map<keyof MapLayers, boolean>();
@@ -270,6 +273,7 @@ export class MapContainer {
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
   private cachedNo2Activity: No2ActivitySnapshot | null = null;
+  private cachedReservoirLevels: ReservoirLevel[] | null = null;
   private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
@@ -459,6 +463,7 @@ export class MapContainer {
     // observe settlement attach to the transition that was actually started.
     this.replayPendingViewportActions();
     this.replayPendingChokepointOpen();
+    this.replayPendingReservoirOpen();
     const waiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();
     for (const waiter of waiters) waiter.resolve();
@@ -469,6 +474,13 @@ export class MapContainer {
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
     this.openChokepoint(pendingChokepointOpen);
+  }
+
+  private replayPendingReservoirOpen(): void {
+    if (this.pendingReservoirOpen === null) return;
+    const pendingReservoirOpen = this.pendingReservoirOpen;
+    this.pendingReservoirOpen = null;
+    this.openReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -877,6 +889,7 @@ export class MapContainer {
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
     if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedNo2Activity) this.setNo2Activity(this.cachedNo2Activity);
+    if (this.cachedReservoirLevels) this.setReservoirLevels(this.cachedReservoirLevels);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -1017,6 +1030,7 @@ export class MapContainer {
       : { ...this.initialState, view, zoom };
     if (!this.isViewportRendererReady()) {
       this.pendingViewportActions.push({ type: 'view', view, zoom, actionToken: viewportActionToken });
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return viewportActionToken;
     }
     this.applyView(view, zoom);
@@ -1047,6 +1061,7 @@ export class MapContainer {
     const viewportActionToken = ++this.viewportActionToken;
     if (!this.isViewportRendererReady()) {
       this.pendingCenter = { lat, lon, zoom, actionToken: viewportActionToken };
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       if (zoom != null) this.initialState = { ...this.initialState, zoom };
       return viewportActionToken;
     }
@@ -1489,6 +1504,27 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.cachedReservoirLevels = reservoirs;
+    if (this.useGlobe) this.globeMap?.setReservoirLevels(reservoirs);
+    else if (this.useDeckGL) this.deckGLMap?.setReservoirLevels(reservoirs);
+    else this.svgMap?.setReservoirLevels(reservoirs);
+  }
+
+  /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    // A renderer switch clears the renderer before its async init finishes; keep the
+    // latest selection and replay it on readiness, as openChokepoint does.
+    if (!this.isChokepointRendererReady()) {
+      this.pendingReservoirOpen = reservoir;
+      return;
+    }
+    this.pendingReservoirOpen = null;
+    if (this.useGlobe) this.globeMap?.openReservoir(reservoir);
+    else if (this.useDeckGL) this.deckGLMap?.openReservoir(reservoir);
+    else this.svgMap?.openReservoir(reservoir);
+  }
+
   public setNo2Activity(snapshot: No2ActivitySnapshot | null): void {
     this.cachedNo2Activity = snapshot;
     if (this.useDeckGL) this.deckGLMap?.setNo2Activity(snapshot);
@@ -1762,6 +1798,7 @@ export class MapContainer {
   public openChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
+      this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it
       return;
     }
     this.pendingChokepointOpen = null;
@@ -1954,6 +1991,7 @@ export class MapContainer {
     this.cachedAisDisruptions = null;
     this.cachedUkmtoIncidents = null;
     this.cachedUkmtoSnapshot = null;
+    this.cachedReservoirLevels = null;
     this.cachedAisDensity = null;
     this.cachedCableAdvisories = null;
     this.cachedRepairShips = null;
@@ -1995,6 +2033,7 @@ export class MapContainer {
     this.pendingCenter = null;
     this.pendingViewportActions = [];
     this.pendingChokepointOpen = null;
+    this.pendingReservoirOpen = null;
     this.hiddenLayerToggles.clear();
     this.layerLoadingState.clear();
     this.layerReadyState.clear();

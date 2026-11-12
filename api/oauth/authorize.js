@@ -215,7 +215,7 @@ ${clientHostLine}${localhostWarn}
 <hr>
 <p class="scope-label">Read-only access to</p>
 <ul class="scope-list">
-<li>Intelligence data from 852 attributed providers</li>
+<li>Intelligence data from 854 attributed providers</li>
 <li>Real-time news &amp; events</li>
 <li>Live flight tracking &amp; AIS vessel positions</li>
 <li>Weather alerts, earthquakes &amp; natural disasters</li>

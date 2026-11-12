@@ -490,7 +490,8 @@
     "marketBreadth": "Độ rộng Thị trường",
     "climateNews": "Tin tức về Khí hậu",
     "fx": "Tỷ giá ngoại hối",
-    "ukmtoIncidents": "Sự cố UKMTO"
+    "ukmtoIncidents": "Sự cố UKMTO",
+    "reservoirLevels": "Mực nước chiến lược"
   },
   "commands": {
     "prefixes": {
@@ -1307,7 +1308,8 @@
         "canadaRoads": "Đường bộ Canada",
         "canadaAlerts": "Cảnh báo Canada",
         "notamAirspace": "Hạn chế không phận NOTAM",
-        "no2Activity": "Hoạt động công nghiệp"
+        "no2Activity": "Hoạt động công nghiệp",
+        "reservoirLevels": "Mực nước"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1424,7 +1426,8 @@
           "canadaRoads": "Sự cố giao thông chính thức, cảnh báo, tình trạng đường, đóng đường, thi công và mối nguy tại các khu vực tài phán Canada được hỗ trợ",
           "canadaAlerts": "Cảnh báo an toàn công cộng cấp tỉnh từ Alberta Emergency Alert, B.C. Evacuation Orders and Alerts và SaskAlert",
           "notamAirspace": "Hạn chế bay tạm thời và không phận bị hạn chế, nguy hiểm và bị cấm từ NOTAM của FAA, có hiệu lực ngay bây giờ hoặc bắt đầu trong vòng 24 giờ",
-          "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi."
+          "no2Activity": "Hướng hoạt động NO2 từ Sentinel-5P cho 167 quốc gia và 32 cụm công nghiệp: cửa sổ 56 ngày gần nhất so với cùng các ngày trong những năm trước, sau dải chết 10%. Chứa dữ liệu Copernicus Sentinel đã sửa đổi.",
+          "reservoirLevels": "Mực mặt nước của các hồ chứa và hồ chiến lược từ lidar vệ tinh ICESat-2 của NASA, so với mực nước thường lệ của tháng. NASA công bố mỗi lượt quét khoảng hai tháng sau khi đo."
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -3119,6 +3122,47 @@
       "body": "Một sao trên GitHub giúp những người khác tìm thấy nó.",
       "star": "Sao trên GitHub",
       "dismiss": "Bỏ qua và không hỏi lại"
+    },
+    "reservoirLevels": {
+      "note": "Mực mặt nước từ lidar vệ tinh ICESat-2 của NASA. NASA công bố mỗi lượt quét khoảng hai tháng sau khi đo, vì vậy dữ liệu này theo dõi thay đổi theo tuần và theo mùa, không theo ngày. Chỉ là mực nước, không phải thể tích.",
+      "source": "Nguồn:",
+      "processedWith": "xử lý bằng",
+      "empty": "Chưa có số đo",
+      "filterEmpty": "Không có vùng nước nào khớp bộ lọc này",
+      "unavailable": "Hiện không có dữ liệu mực nước",
+      "filterLabel": "Lọc vùng nước",
+      "filter": {
+        "all": "Tất cả",
+        "attention": "Cần chú ý",
+        "transboundary": "Xuyên biên giới"
+      },
+      "status": {
+        "record_low": "Thấp kỷ lục",
+        "record_high": "Cao kỷ lục",
+        "falling_fast": "Giảm nhanh",
+        "rising_fast": "Tăng nhanh",
+        "low": "Thấp so với mùa",
+        "high": "Cao so với mùa",
+        "normal": "Bình thường",
+        "insufficient_history": "Chưa đủ lịch sử",
+        "no_recent_data": "Không có lượt quét gần đây"
+      },
+      "vsUsual": "{{value}} so với thường lệ {{month}}",
+      "in12Months": "{{value}} trong 12 tháng",
+      "noComparison": "Chưa có so sánh",
+      "measured": "đo ngày {{date}} ({{age}})",
+      "noPass": "Chưa có lượt quét dùng được",
+      "popup": {
+        "level": "Mực nước",
+        "levelValue": "{{value}} trên mực nước biển (EGM2008)",
+        "anomaly": "So với thường lệ {{month}}",
+        "anomalyPlain": "So với thường lệ của tháng",
+        "changePrev": "Từ lượt quét trước",
+        "change90": "Trong 90 ngày",
+        "change365": "Trong 12 tháng",
+        "measured": "Ngày đo",
+        "sparkline": "Mực nước trong 36 tháng"
+      }
     }
   },
   "popups": {
@@ -4586,6 +4630,21 @@
         "related": {
           "0": "Dự báo tức thời hoạt động Trung Quốc",
           "1": "Tóm tắt quốc gia"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Khí hậu",
+        "purpose": "Đánh dấu các hồ chứa và hồ chiến lược theo mức chênh của mực nước so với mức thường lệ cùng thời điểm trong năm và tốc độ thay đổi.",
+        "source": "Độ cao mặt nước nội địa từ NASA ICESat-2 ATL13 qua NSIDC, được xử lý bằng SlideRule Earth và tổng hợp theo từng lượt quét vệ tinh bởi dịch vụ seed-reservoir-levels.",
+        "freshness": "Cập nhật hằng ngày. NASA công bố mỗi lượt quét 50 đến 70 ngày sau khi đo, và mỗi hồ chứa được đo lại sau vài ngày đến khoảng một tháng.",
+        "confidence": "Một lượt quét chỉ được tính khi ít nhất 5 đoạn mặt nước khớp nhau trong phạm vi 0,25 m. So sánh theo mùa cần lượt quét từ ít nhất 3 năm trước vào cùng thời điểm trong năm.",
+        "limitations": {
+          "0": "Chỉ là mực nước, không phải thể tích: cùng một mức giảm nghĩa là lượng trữ mất đi khác nhau ở mỗi hồ chứa.",
+          "1": "Vùng nước không có lượt quét trong 150 ngày được đánh dấu là không có lượt quét gần đây; số đo cuối cùng, các thay đổi và ngày đo vẫn được hiển thị."
+        },
+        "related": {
+          "0": "Bảng Mực nước chiến lược",
+          "1": "Dị thường khí hậu"
         }
       },
       "conflicts": {

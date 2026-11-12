@@ -98,6 +98,18 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  nsidc: Object.freeze({
+    provider: 'NSIDC',
+    memberHosts: Object.freeze(['noaadata.apps.nsidc.org', 'nsidc.org']),
+    reason: 'nsidc.org is the National Snow and Ice Data Center site that documents ICESat-2 ATL13; noaadata.apps.nsidc.org is its sea-ice data host.',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
+  }),
+  sliderule: Object.freeze({
+    provider: 'SlideRule Earth',
+    memberHosts: Object.freeze(['sliderule.slideruleearth.io', 'slideruleearth.io']),
+    reason: 'sliderule.slideruleearth.io is the processing API documented by the SlideRule Earth site at slideruleearth.io.',
+    reviewReference: 'Strategic Water Levels (ICESat-2 ATL13) provider identity, issue #10490',
+  }),
   nvd: Object.freeze({
     provider: 'NVD (NIST)',
     memberHosts: Object.freeze(['nvd.nist.gov', 'services.nvd.nist.gov']),
@@ -859,8 +871,32 @@ const PROVIDER_OVERRIDES = {
     attribution: 'ReliefWeb, United Nations Office for the Coordination of Humanitarian Affairs (OCHA).',
     status: 'terms-review',
   },
+  'nsidc.org': {
+    provider: 'NSIDC', identityGroup: 'nsidc',
+    license: 'U.S. government/public dataset terms; collection-specific license applies',
+    attribution: 'National Snow and Ice Data Center (NSIDC); link to the dataset.',
+    status: 'terms-review',
+  },
+  'cmr.earthdata.nasa.gov': {
+    provider: 'NASA Earthdata CMR',
+    license: 'U.S. government public metadata; NASA Earthdata terms apply',
+    attribution: 'NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).',
+    status: 'terms-review',
+  },
+  'sliderule.slideruleearth.io': {
+    provider: 'SlideRule Earth', identityGroup: 'sliderule',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
+    status: 'terms-review',
+  },
+  'slideruleearth.io': {
+    provider: 'SlideRule Earth', identityGroup: 'sliderule',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
+    status: 'terms-review',
+  },
   'noaadata.apps.nsidc.org': {
-    provider: 'NSIDC',
+    provider: 'NSIDC', identityGroup: 'nsidc',
     license: 'U.S. government/public dataset terms; collection-specific license applies',
     attribution: 'National Snow and Ice Data Center (NSIDC); link to the dataset.',
     status: 'terms-review',
@@ -1090,7 +1126,10 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'e9e1c1e84ccaad353d2e316eb3fd845a84bab4def9aa02387d171cc0a86a6fd3',
+  sha256: '8bbd8027eebe0f1f329f0c5e2e9d6a8d166f673ca627e6d6e3d5435f18d8105d',
+  // 2026-11-11: add the ICESat-2 ATL13 chain for Strategic Water Levels.
+  // NASA Earthdata CMR lists granules, SlideRule Earth subsets them, and
+  // NSIDC publishes the dataset; nsidc.org joins the existing NSIDC host.
   // 2026-11-05 (#10147, #10113): add Statistics Norway and Taiwan oil111
   // as distinct public fuel-price publishers; SSB is CC BY 4.0 and oil111
   // remains in terms review.
@@ -1103,12 +1142,12 @@ export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
   // stated terms of stat.uz (CC BY 4.0), SIMA Niger and Amman Central Market.
   // 2026-10-24: added Shanghai Financial Portal as a distinct official M2
   // republisher; PBOC source credit is preserved under /BQSM/index.html section 2.
-  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03).',
+  reason: 'Group the NVD documentation and API hosts as one NVD (NIST) provider with its attribution sentence (#9385). Preserve all reviewed provider identities, including Shanghai Financial Portal with PBOC source attribution (2026-10-24 review). Add the Uzbekistan Statistics Agency as one identity across stat.uz and api.siat.stat.uz, with its CC BY 4.0 terms, and record the citation and reserved-rights terms that SIMA Niger and Greater Amman Municipality state on their sites (#9892). Add the Algerian Ministry of Agriculture (madr.gov.dz) and the National Statistics Office of Mongolia data host (data.1212.mn) as food-price publishers in terms review (#10050). Add the Philippine Department of Energy as one identity across doe.gov.ph and its CloudFront media host, and SONABHY as one identity across www.sonabhy.bf and the Strapi CMS its tariff page reads (#10051). Move Ember electricity data to files.ember-energy.org, where Ember now publishes its monthly release; storage.googleapis.com now serves only GDELT bulk files and joins api.gdeltproject.org as one GDELT identity (2026-11-03). Add NASA Earthdata CMR, SlideRule Earth (API and site hosts as one identity) and nsidc.org under the existing NSIDC identity for the ICESat-2 ATL13 reservoir levels (2026-11-11).',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups.',
+  reviewReference: 'PR #9385 NVD identity review; Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, the 2026-09-01 FAOSTAT transport identity review, the 2026-09-04 FIRMS partial-coverage incident, and the 2026-09-05 Barchart WAF outage that moved S&P 500 breadth to the TradingView screener scan; plus Issue #7838, which added the read-only Sentry resolve-pin audit; plus PR #8394 JODI publication catalog lineage; plus the 2026-10-17 /verify audit that added the Al Jazeera claim-pool depth search; plus Issue #9352 part C, the US Consolidated Screening List export-control lists; plus Issue #10051 fuel-price batch 3, the DOE media host and SONABHY CMS groups; plus the Strategic Water Levels ICESat-2 ATL13 provider identity review.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

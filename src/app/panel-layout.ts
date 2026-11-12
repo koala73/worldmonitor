@@ -64,7 +64,7 @@ import { loadStoredMissionPreset } from '@/services/mission-presets';
 import { peekPendingMissionAttribution } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser, isProTierResolved, subscribeWidgetAccess } from '@/services/widget-store';
-import { LAYER_REGISTRY, sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
+import { LAYER_REGISTRY, getAllowedLayerKeys, sanitizeLockedLayers, shouldSanitizeLockedLayers, type MapVariant } from '@/config/map-layer-definitions';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import {
   panelGateStateChanged,
@@ -3326,6 +3326,22 @@ export class PanelLayoutManager implements AppModule {
       panel.setLocationClickHandler((lat: number, lon: number) => {
         if (this.ctx.isMobile) this.revealMobileMap();
         this.ctx.map?.setCenter(lat, lon, 6);
+      });
+      return panel;
+    });
+
+    this.lazyImportedPanel('reservoir-levels', () => import('@/components/ReservoirLevelsPanel'), 'ReservoirLevelsPanel', (ReservoirLevelsPanel) => {
+      const panel = new ReservoirLevelsPanel();
+      panel.setSelectHandler((reservoir) => {
+        const map = this.ctx.map;
+        if (!map) return;
+        if (this.ctx.isMobile) this.revealMobileMap();
+        if (!this.ctx.mapLayers.reservoirLevels && getAllowedLayerKeys(SITE_VARIANT as MapVariant).has('reservoirLevels')) {
+          map.enableLayer('reservoirLevels');
+          this.ctx.mapLayers.reservoirLevels = true;
+          saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        }
+        map.openReservoir(reservoir);
       });
       return panel;
     });

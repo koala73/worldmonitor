@@ -230,6 +230,7 @@ message IceTrendPoint {
 | `seed-health-air-quality.mjs` | Every 1h (shared) | `climate:air-quality:v1` | 1h |
 | `seed-climate-ocean-ice.mjs` | Daily 08:00 UTC | `climate:ocean-ice:v1` | 24h |
 | `seed-climate-news.mjs` | Every 30min (or relay loop) | `climate:news-intelligence:v1` | 1h |
+| `seed-reservoir-levels.mjs` | Daily (climate bundle) | `climate:reservoir-levels:v1` | 7d |
 
 ---
 

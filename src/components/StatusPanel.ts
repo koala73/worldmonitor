@@ -175,6 +175,9 @@ export class StatusPanel extends Panel {
     }
     this.ensureCoverageRowMounted();
     this.digestCoverageRow.textContent = text;
+    // The compact footer (#10461) ellipsizes this row on one line; keep the
+    // full text (missing categories, stale cause) readable as a tooltip.
+    this.digestCoverageRow.title = text;
   }
 
   /**

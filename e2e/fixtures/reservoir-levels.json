@@ -1,0 +1,7246 @@
+{
+  "reservoirs": [
+    {
+      "id": "gerd",
+      "name": "Grand Ethiopian Renaissance Dam reservoir",
+      "country": "ET",
+      "riparians": [
+        "ET",
+        "SD",
+        "EG"
+      ],
+      "river": "Blue Nile",
+      "lat": 11,
+      "lon": 35.15,
+      "tags": [
+        "hydropower",
+        "transboundary",
+        "new-impoundment",
+        "conflict"
+      ],
+      "why": "Ethiopia's fill of Africa's largest hydropower dam sets how much Blue Nile water reaches Sudan and Egypt.",
+      "latest": {
+        "date": "2026-08-04",
+        "levelM": 623.543,
+        "madM": 0.105,
+        "segmentCount": 109,
+        "ageDays": 98
+      },
+      "prevDate": "2026-04-06",
+      "recordStart": "2018-11-18",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "high",
+      "series": [
+        {
+          "date": "2023-11-09",
+          "levelM": 622.483
+        },
+        {
+          "date": "2023-12-12",
+          "levelM": 619.884
+        },
+        {
+          "date": "2024-02-08",
+          "levelM": 615.132
+        },
+        {
+          "date": "2024-02-12",
+          "levelM": 614.983
+        },
+        {
+          "date": "2024-05-09",
+          "levelM": 613.719
+        },
+        {
+          "date": "2024-08-07",
+          "levelM": 627.042
+        },
+        {
+          "date": "2024-11-06",
+          "levelM": 637.624
+        },
+        {
+          "date": "2024-11-11",
+          "levelM": 637.265
+        },
+        {
+          "date": "2025-02-05",
+          "levelM": 635.1
+        },
+        {
+          "date": "2025-05-07",
+          "levelM": 630.742
+        },
+        {
+          "date": "2025-06-09",
+          "levelM": 628.953
+        },
+        {
+          "date": "2025-09-08",
+          "levelM": 639.937
+        },
+        {
+          "date": "2025-11-04",
+          "levelM": 639.08
+        },
+        {
+          "date": "2025-12-08",
+          "levelM": 637.851
+        },
+        {
+          "date": "2026-02-03",
+          "levelM": 633.921
+        },
+        {
+          "date": "2026-04-06",
+          "levelM": 628.794
+        },
+        {
+          "date": "2026-08-04",
+          "levelM": 623.543
+        }
+      ],
+      "okPassCount": 36,
+      "changePrevM": -5.251,
+      "change90dM": -3.946,
+      "change365dM": -12.142,
+      "recordMinM": 489.969,
+      "recordMaxM": 639.937,
+      "percentOfRange": 89.1
+    },
+    {
+      "id": "nasser",
+      "name": "Lake Nasser (Aswan High Dam)",
+      "country": "EG",
+      "riparians": [
+        "EG",
+        "SD"
+      ],
+      "river": "Nile",
+      "lat": 23,
+      "lon": 32.8,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Egypt's main water store; its level is the buffer against upstream filling and drought on the Nile.",
+      "latest": {
+        "date": "2026-07-14",
+        "levelM": 178.479,
+        "madM": 0.093,
+        "segmentCount": 516,
+        "ageDays": 119
+      },
+      "prevDate": "2026-06-23",
+      "recordStart": "2018-10-29",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-30",
+          "levelM": 178.728
+        },
+        {
+          "date": "2023-09-20",
+          "levelM": 178.516
+        },
+        {
+          "date": "2023-10-19",
+          "levelM": 178.249
+        },
+        {
+          "date": "2023-11-29",
+          "levelM": 179.188
+        },
+        {
+          "date": "2023-12-20",
+          "levelM": 179.526
+        },
+        {
+          "date": "2023-12-28",
+          "levelM": 179.327
+        },
+        {
+          "date": "2024-04-18",
+          "levelM": 179.432
+        },
+        {
+          "date": "2024-07-18",
+          "levelM": 177.454
+        },
+        {
+          "date": "2024-08-27",
+          "levelM": 177.687
+        },
+        {
+          "date": "2024-09-18",
+          "levelM": 178.812
+        },
+        {
+          "date": "2024-09-25",
+          "levelM": 179.122
+        },
+        {
+          "date": "2024-10-17",
+          "levelM": 179.593
+        },
+        {
+          "date": "2025-02-25",
+          "levelM": 179.398
+        },
+        {
+          "date": "2025-03-26",
+          "levelM": 178.636
+        },
+        {
+          "date": "2025-05-27",
+          "levelM": 178.77
+        },
+        {
+          "date": "2025-06-17",
+          "levelM": 178.566
+        },
+        {
+          "date": "2025-07-16",
+          "levelM": 177.774
+        },
+        {
+          "date": "2025-08-26",
+          "levelM": 177.94
+        },
+        {
+          "date": "2025-10-15",
+          "levelM": 180.213
+        },
+        {
+          "date": "2025-12-16",
+          "levelM": 180.218
+        },
+        {
+          "date": "2025-12-23",
+          "levelM": 179.665
+        },
+        {
+          "date": "2026-02-23",
+          "levelM": 179.841
+        },
+        {
+          "date": "2026-04-15",
+          "levelM": 179.464
+        },
+        {
+          "date": "2026-05-25",
+          "levelM": 179.007
+        },
+        {
+          "date": "2026-06-15",
+          "levelM": 178.827
+        },
+        {
+          "date": "2026-06-23",
+          "levelM": 178.878
+        },
+        {
+          "date": "2026-07-14",
+          "levelM": 178.479
+        }
+      ],
+      "okPassCount": 77,
+      "changePrevM": -0.399,
+      "change30dM": -0.357,
+      "change90dM": -0.976,
+      "change365dM": 0.658,
+      "seasonalAnomalyM": 0.153,
+      "seasonalZ": 0.15,
+      "recordMinM": 176.881,
+      "recordMaxM": 180.692,
+      "percentOfRange": 41.9
+    },
+    {
+      "id": "merowe",
+      "name": "Merowe reservoir",
+      "country": "SD",
+      "riparians": [
+        "SD"
+      ],
+      "river": "Nile",
+      "lat": 18.75,
+      "lon": 32.1,
+      "tags": [
+        "hydropower",
+        "conflict"
+      ],
+      "why": "Sudan's largest power source, on the Nile downstream of the GERD and inside an active war zone.",
+      "latest": {
+        "date": "2026-09-18",
+        "levelM": 297.851,
+        "madM": 0.022,
+        "segmentCount": 922,
+        "ageDays": 53
+      },
+      "prevDate": "2026-08-20",
+      "recordStart": "2019-01-03",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-24",
+          "levelM": 297.928
+        },
+        {
+          "date": "2023-09-28",
+          "levelM": 298.389
+        },
+        {
+          "date": "2023-10-23",
+          "levelM": 298.949
+        },
+        {
+          "date": "2023-11-29",
+          "levelM": 298.795
+        },
+        {
+          "date": "2023-12-28",
+          "levelM": 299
+        },
+        {
+          "date": "2024-01-22",
+          "levelM": 299.15
+        },
+        {
+          "date": "2024-02-28",
+          "levelM": 298.574
+        },
+        {
+          "date": "2024-03-24",
+          "levelM": 297.791
+        },
+        {
+          "date": "2024-04-22",
+          "levelM": 297.414
+        },
+        {
+          "date": "2024-06-23",
+          "levelM": 294.158
+        },
+        {
+          "date": "2024-06-26",
+          "levelM": 293.826
+        },
+        {
+          "date": "2024-07-22",
+          "levelM": 294.031
+        },
+        {
+          "date": "2024-08-27",
+          "levelM": 295.389
+        },
+        {
+          "date": "2024-09-25",
+          "levelM": 295.245
+        },
+        {
+          "date": "2024-11-26",
+          "levelM": 299.309
+        },
+        {
+          "date": "2024-12-22",
+          "levelM": 299.111
+        },
+        {
+          "date": "2025-01-20",
+          "levelM": 298.412
+        },
+        {
+          "date": "2025-02-25",
+          "levelM": 298.293
+        },
+        {
+          "date": "2025-03-26",
+          "levelM": 298.418
+        },
+        {
+          "date": "2025-05-27",
+          "levelM": 295.728
+        },
+        {
+          "date": "2025-06-21",
+          "levelM": 295.165
+        },
+        {
+          "date": "2025-06-25",
+          "levelM": 295.111
+        },
+        {
+          "date": "2025-07-20",
+          "levelM": 294.129
+        },
+        {
+          "date": "2025-08-26",
+          "levelM": 295.108
+        },
+        {
+          "date": "2025-09-20",
+          "levelM": 295.624
+        },
+        {
+          "date": "2025-10-19",
+          "levelM": 297.23
+        },
+        {
+          "date": "2025-11-24",
+          "levelM": 297.886
+        },
+        {
+          "date": "2025-12-20",
+          "levelM": 297.771
+        },
+        {
+          "date": "2025-12-23",
+          "levelM": 297.741
+        },
+        {
+          "date": "2026-02-23",
+          "levelM": 296.93
+        },
+        {
+          "date": "2026-05-25",
+          "levelM": 294.757
+        },
+        {
+          "date": "2026-06-19",
+          "levelM": 293.976
+        },
+        {
+          "date": "2026-08-20",
+          "levelM": 296.604
+        },
+        {
+          "date": "2026-09-18",
+          "levelM": 297.851
+        }
+      ],
+      "okPassCount": 86,
+      "changePrevM": 1.247,
+      "change30dM": 1.292,
+      "change90dM": 3.84,
+      "change365dM": 2.262,
+      "seasonalAnomalyM": -0.182,
+      "seasonalZ": -0.1,
+      "recordMinM": 290.251,
+      "recordMaxM": 299.867,
+      "percentOfRange": 79
+    },
+    {
+      "id": "roseires",
+      "name": "Roseires reservoir",
+      "country": "SD",
+      "riparians": [
+        "SD",
+        "ET"
+      ],
+      "river": "Blue Nile",
+      "lat": 11.6,
+      "lon": 34.4,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "The first Sudanese dam below the GERD; its operation depends directly on Ethiopian releases.",
+      "latest": {
+        "date": "2026-08-08",
+        "levelM": 485.759,
+        "madM": 0.053,
+        "segmentCount": 237,
+        "ageDays": 94
+      },
+      "prevDate": "2026-06-11",
+      "recordStart": "2018-11-22",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-14",
+          "levelM": 483.489
+        },
+        {
+          "date": "2023-11-13",
+          "levelM": 491.586
+        },
+        {
+          "date": "2023-12-16",
+          "levelM": 492.578
+        },
+        {
+          "date": "2024-02-12",
+          "levelM": 491.763
+        },
+        {
+          "date": "2024-02-16",
+          "levelM": 491.323
+        },
+        {
+          "date": "2024-08-11",
+          "levelM": 484.835
+        },
+        {
+          "date": "2024-11-10",
+          "levelM": 491.156
+        },
+        {
+          "date": "2024-11-15",
+          "levelM": 491.098
+        },
+        {
+          "date": "2025-01-11",
+          "levelM": 490.884
+        },
+        {
+          "date": "2025-03-14",
+          "levelM": 491.136
+        },
+        {
+          "date": "2025-09-12",
+          "levelM": 488.016
+        },
+        {
+          "date": "2025-12-12",
+          "levelM": 490.861
+        },
+        {
+          "date": "2026-02-07",
+          "levelM": 488.123
+        },
+        {
+          "date": "2026-03-13",
+          "levelM": 488.017
+        },
+        {
+          "date": "2026-04-10",
+          "levelM": 486.878
+        },
+        {
+          "date": "2026-06-11",
+          "levelM": 485.293
+        },
+        {
+          "date": "2026-08-08",
+          "levelM": 485.759
+        }
+      ],
+      "okPassCount": 45,
+      "changePrevM": 0.466,
+      "change90dM": -0.363,
+      "change365dM": -2.861,
+      "seasonalAnomalyM": 2.27,
+      "seasonalZ": 1.49,
+      "recordMinM": 478.456,
+      "recordMaxM": 493.247,
+      "percentOfRange": 49.4
+    },
+    {
+      "id": "tana",
+      "name": "Lake Tana",
+      "country": "ET",
+      "riparians": [
+        "ET"
+      ],
+      "river": "Blue Nile",
+      "lat": 12,
+      "lon": 37.3,
+      "tags": [
+        "hydropower",
+        "irrigation"
+      ],
+      "why": "Source lake of the Blue Nile, regulated for hydropower and irrigation in northern Ethiopia.",
+      "latest": {
+        "date": "2026-08-25",
+        "levelM": 1786.921,
+        "madM": 0.045,
+        "segmentCount": 1374,
+        "ageDays": 77
+      },
+      "prevDate": "2026-07-27",
+      "recordStart": "2018-11-11",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "low",
+      "series": [
+        {
+          "date": "2023-08-31",
+          "levelM": 1787.731
+        },
+        {
+          "date": "2023-09-29",
+          "levelM": 1788.089
+        },
+        {
+          "date": "2023-10-03",
+          "levelM": 1788.069
+        },
+        {
+          "date": "2023-11-01",
+          "levelM": 1788.069
+        },
+        {
+          "date": "2023-11-30",
+          "levelM": 1787.914
+        },
+        {
+          "date": "2023-12-29",
+          "levelM": 1787.774
+        },
+        {
+          "date": "2024-01-02",
+          "levelM": 1787.766
+        },
+        {
+          "date": "2024-01-31",
+          "levelM": 1787.566
+        },
+        {
+          "date": "2024-02-29",
+          "levelM": 1787.385
+        },
+        {
+          "date": "2024-03-29",
+          "levelM": 1787.171
+        },
+        {
+          "date": "2024-05-01",
+          "levelM": 1786.747
+        },
+        {
+          "date": "2024-07-31",
+          "levelM": 1787.182
+        },
+        {
+          "date": "2024-08-28",
+          "levelM": 1788.248
+        },
+        {
+          "date": "2024-10-01",
+          "levelM": 1788.449
+        },
+        {
+          "date": "2024-10-30",
+          "levelM": 1788.293
+        },
+        {
+          "date": "2024-11-27",
+          "levelM": 1788.028
+        },
+        {
+          "date": "2024-12-31",
+          "levelM": 1787.721
+        },
+        {
+          "date": "2025-01-28",
+          "levelM": 1787.377
+        },
+        {
+          "date": "2025-02-26",
+          "levelM": 1787.035
+        },
+        {
+          "date": "2025-03-27",
+          "levelM": 1786.785
+        },
+        {
+          "date": "2025-03-31",
+          "levelM": 1786.672
+        },
+        {
+          "date": "2025-06-26",
+          "levelM": 1786.104
+        },
+        {
+          "date": "2025-07-29",
+          "levelM": 1786.496
+        },
+        {
+          "date": "2025-08-27",
+          "levelM": 1787.463
+        },
+        {
+          "date": "2025-09-24",
+          "levelM": 1788.004
+        },
+        {
+          "date": "2025-10-28",
+          "levelM": 1788.069
+        },
+        {
+          "date": "2025-11-25",
+          "levelM": 1787.857
+        },
+        {
+          "date": "2025-12-24",
+          "levelM": 1787.599
+        },
+        {
+          "date": "2025-12-29",
+          "levelM": 1787.6
+        },
+        {
+          "date": "2026-01-27",
+          "levelM": 1787.297
+        },
+        {
+          "date": "2026-04-27",
+          "levelM": 1786.56
+        },
+        {
+          "date": "2026-05-26",
+          "levelM": 1786.314
+        },
+        {
+          "date": "2026-05-27",
+          "levelM": 1786.352
+        },
+        {
+          "date": "2026-06-28",
+          "levelM": 1786.226
+        },
+        {
+          "date": "2026-07-27",
+          "levelM": 1786.436
+        },
+        {
+          "date": "2026-08-25",
+          "levelM": 1786.921
+        }
+      ],
+      "okPassCount": 100,
+      "changePrevM": 0.485,
+      "change30dM": 0.496,
+      "change90dM": 0.57,
+      "change365dM": -0.483,
+      "seasonalAnomalyM": -0.852,
+      "seasonalZ": -1.85,
+      "recordMinM": 1785.984,
+      "recordMaxM": 1788.684,
+      "percentOfRange": 34.7
+    },
+    {
+      "id": "victoria",
+      "name": "Lake Victoria",
+      "country": "UG",
+      "riparians": [
+        "UG",
+        "KE",
+        "TZ"
+      ],
+      "river": "White Nile",
+      "lat": -1,
+      "lon": 33,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Africa's largest lake feeds the White Nile through Ugandan dams whose releases follow an agreed curve.",
+      "latest": {
+        "date": "2026-08-08",
+        "levelM": 1135.42,
+        "madM": 0.068,
+        "segmentCount": 441,
+        "ageDays": 94
+      },
+      "prevDate": "2026-07-10",
+      "recordStart": "2018-11-10",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-14",
+          "levelM": 1135.454
+        },
+        {
+          "date": "2023-10-15",
+          "levelM": 1135.253
+        },
+        {
+          "date": "2023-10-31",
+          "levelM": 1135.216
+        },
+        {
+          "date": "2023-11-29",
+          "levelM": 1135.534
+        },
+        {
+          "date": "2024-01-30",
+          "levelM": 1135.872
+        },
+        {
+          "date": "2024-02-12",
+          "levelM": 1135.869
+        },
+        {
+          "date": "2024-04-30",
+          "levelM": 1136.144
+        },
+        {
+          "date": "2024-07-13",
+          "levelM": 1136.003
+        },
+        {
+          "date": "2024-08-28",
+          "levelM": 1135.845
+        },
+        {
+          "date": "2024-10-12",
+          "levelM": 1135.687
+        },
+        {
+          "date": "2024-10-29",
+          "levelM": 1135.668
+        },
+        {
+          "date": "2024-11-10",
+          "levelM": 1135.77
+        },
+        {
+          "date": "2025-01-11",
+          "levelM": 1135.857
+        },
+        {
+          "date": "2025-01-27",
+          "levelM": 1135.831
+        },
+        {
+          "date": "2025-02-25",
+          "levelM": 1135.722
+        },
+        {
+          "date": "2025-03-14",
+          "levelM": 1135.663
+        },
+        {
+          "date": "2025-04-12",
+          "levelM": 1135.788
+        },
+        {
+          "date": "2025-04-28",
+          "levelM": 1135.818
+        },
+        {
+          "date": "2025-05-27",
+          "levelM": 1135.957
+        },
+        {
+          "date": "2025-06-13",
+          "levelM": 1135.849
+        },
+        {
+          "date": "2025-07-28",
+          "levelM": 1135.719
+        },
+        {
+          "date": "2025-08-26",
+          "levelM": 1135.765
+        },
+        {
+          "date": "2025-10-27",
+          "levelM": 1135.497
+        },
+        {
+          "date": "2025-11-25",
+          "levelM": 1135.562
+        },
+        {
+          "date": "2026-01-09",
+          "levelM": 1135.497
+        },
+        {
+          "date": "2026-01-26",
+          "levelM": 1135.449
+        },
+        {
+          "date": "2026-02-07",
+          "levelM": 1135.468
+        },
+        {
+          "date": "2026-04-10",
+          "levelM": 1135.73
+        },
+        {
+          "date": "2026-05-26",
+          "levelM": 1135.845
+        },
+        {
+          "date": "2026-06-11",
+          "levelM": 1135.677
+        },
+        {
+          "date": "2026-07-10",
+          "levelM": 1135.562
+        },
+        {
+          "date": "2026-08-08",
+          "levelM": 1135.42
+        }
+      ],
+      "okPassCount": 82,
+      "changePrevM": -0.142,
+      "change30dM": -0.146,
+      "change90dM": -0.385,
+      "change365dM": -0.316,
+      "seasonalAnomalyM": -0.171,
+      "seasonalZ": -0.48,
+      "recordMinM": 1134.645,
+      "recordMaxM": 1136.144,
+      "percentOfRange": 51.7
+    },
+    {
+      "id": "ataturk",
+      "name": "Ataturk reservoir",
+      "country": "TR",
+      "riparians": [
+        "TR",
+        "SY",
+        "IQ"
+      ],
+      "river": "Euphrates",
+      "lat": 37.6,
+      "lon": 38.5,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Turkey's largest reservoir controls Euphrates flow into Syria and Iraq.",
+      "latest": {
+        "date": "2026-09-07",
+        "levelM": 535.156,
+        "madM": 0.031,
+        "segmentCount": 180,
+        "ageDays": 64
+      },
+      "prevDate": "2026-07-07",
+      "recordStart": "2018-10-17",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "high",
+      "series": [
+        {
+          "date": "2023-09-08",
+          "levelM": 531.503
+        },
+        {
+          "date": "2023-10-07",
+          "levelM": 531.406
+        },
+        {
+          "date": "2023-10-12",
+          "levelM": 531.535
+        },
+        {
+          "date": "2023-11-10",
+          "levelM": 531.789
+        },
+        {
+          "date": "2024-01-06",
+          "levelM": 533.65
+        },
+        {
+          "date": "2024-03-08",
+          "levelM": 535.031
+        },
+        {
+          "date": "2024-04-06",
+          "levelM": 535.927
+        },
+        {
+          "date": "2024-04-11",
+          "levelM": 536.078
+        },
+        {
+          "date": "2024-07-05",
+          "levelM": 535.101
+        },
+        {
+          "date": "2024-07-11",
+          "levelM": 534.887
+        },
+        {
+          "date": "2024-08-09",
+          "levelM": 533.955
+        },
+        {
+          "date": "2024-09-05",
+          "levelM": 532.959
+        },
+        {
+          "date": "2024-10-04",
+          "levelM": 532.562
+        },
+        {
+          "date": "2024-10-10",
+          "levelM": 532.834
+        },
+        {
+          "date": "2024-11-08",
+          "levelM": 532.972
+        },
+        {
+          "date": "2025-01-03",
+          "levelM": 533.563
+        },
+        {
+          "date": "2025-01-09",
+          "levelM": 533.807
+        },
+        {
+          "date": "2025-03-06",
+          "levelM": 534.627
+        },
+        {
+          "date": "2025-04-04",
+          "levelM": 534.866
+        },
+        {
+          "date": "2025-04-09",
+          "levelM": 535.105
+        },
+        {
+          "date": "2025-05-08",
+          "levelM": 534.192
+        },
+        {
+          "date": "2025-06-05",
+          "levelM": 533.206
+        },
+        {
+          "date": "2025-07-04",
+          "levelM": 532.149
+        },
+        {
+          "date": "2025-07-09",
+          "levelM": 531.894
+        },
+        {
+          "date": "2025-08-07",
+          "levelM": 531.712
+        },
+        {
+          "date": "2025-09-04",
+          "levelM": 531.387
+        },
+        {
+          "date": "2025-10-02",
+          "levelM": 530.098
+        },
+        {
+          "date": "2025-10-08",
+          "levelM": 530.15
+        },
+        {
+          "date": "2025-11-06",
+          "levelM": 529.94
+        },
+        {
+          "date": "2025-12-03",
+          "levelM": 530.439
+        },
+        {
+          "date": "2026-01-07",
+          "levelM": 530.705
+        },
+        {
+          "date": "2026-02-05",
+          "levelM": 531.734
+        },
+        {
+          "date": "2026-03-04",
+          "levelM": 533.395
+        },
+        {
+          "date": "2026-04-08",
+          "levelM": 534.836
+        },
+        {
+          "date": "2026-05-07",
+          "levelM": 535.798
+        },
+        {
+          "date": "2026-06-03",
+          "levelM": 536.917
+        },
+        {
+          "date": "2026-07-02",
+          "levelM": 537.868
+        },
+        {
+          "date": "2026-07-07",
+          "levelM": 537.769
+        },
+        {
+          "date": "2026-09-07",
+          "levelM": 535.156
+        }
+      ],
+      "okPassCount": 100,
+      "changePrevM": -2.613,
+      "change90dM": -1.968,
+      "change365dM": 3.936,
+      "seasonalAnomalyM": 3.265,
+      "seasonalZ": 3.57,
+      "recordMinM": 528.604,
+      "recordMaxM": 537.868,
+      "percentOfRange": 70.7
+    },
+    {
+      "id": "keban",
+      "name": "Keban reservoir",
+      "country": "TR",
+      "riparians": [
+        "TR",
+        "SY",
+        "IQ"
+      ],
+      "river": "Euphrates",
+      "lat": 38.8,
+      "lon": 39.2,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "The uppermost large Euphrates dam, storing water that later passes Ataturk into Syria.",
+      "latest": {
+        "date": "2026-09-03",
+        "levelM": 840.362,
+        "madM": 0.019,
+        "segmentCount": 1885,
+        "ageDays": 68
+      },
+      "prevDate": "2026-08-29",
+      "recordStart": "2018-10-18",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-09",
+          "levelM": 836.159
+        },
+        {
+          "date": "2023-10-07",
+          "levelM": 834.275
+        },
+        {
+          "date": "2023-10-08",
+          "levelM": 834.178
+        },
+        {
+          "date": "2023-11-05",
+          "levelM": 833.43
+        },
+        {
+          "date": "2023-12-09",
+          "levelM": 833.602
+        },
+        {
+          "date": "2024-01-06",
+          "levelM": 833.816
+        },
+        {
+          "date": "2024-02-04",
+          "levelM": 833.193
+        },
+        {
+          "date": "2024-04-06",
+          "levelM": 834.983
+        },
+        {
+          "date": "2024-07-05",
+          "levelM": 840.534
+        },
+        {
+          "date": "2024-07-07",
+          "levelM": 840.491
+        },
+        {
+          "date": "2024-08-03",
+          "levelM": 839.348
+        },
+        {
+          "date": "2024-09-07",
+          "levelM": 837.554
+        },
+        {
+          "date": "2024-10-06",
+          "levelM": 836.622
+        },
+        {
+          "date": "2024-11-02",
+          "levelM": 835.628
+        },
+        {
+          "date": "2024-12-07",
+          "levelM": 834.199
+        },
+        {
+          "date": "2025-01-03",
+          "levelM": 833.232
+        },
+        {
+          "date": "2025-02-01",
+          "levelM": 832.941
+        },
+        {
+          "date": "2025-03-07",
+          "levelM": 832.971
+        },
+        {
+          "date": "2025-04-04",
+          "levelM": 833.978
+        },
+        {
+          "date": "2025-04-05",
+          "levelM": 834.224
+        },
+        {
+          "date": "2025-05-03",
+          "levelM": 836.792
+        },
+        {
+          "date": "2025-06-06",
+          "levelM": 839.571
+        },
+        {
+          "date": "2025-07-04",
+          "levelM": 840.058
+        },
+        {
+          "date": "2025-07-05",
+          "levelM": 840.098
+        },
+        {
+          "date": "2025-08-02",
+          "levelM": 838.979
+        },
+        {
+          "date": "2025-09-05",
+          "levelM": 836.645
+        },
+        {
+          "date": "2025-10-02",
+          "levelM": 836.083
+        },
+        {
+          "date": "2025-10-04",
+          "levelM": 836.162
+        },
+        {
+          "date": "2025-10-31",
+          "levelM": 835.564
+        },
+        {
+          "date": "2026-03-06",
+          "levelM": 836.163
+        },
+        {
+          "date": "2026-04-04",
+          "levelM": 837.152
+        },
+        {
+          "date": "2026-06-04",
+          "levelM": 843.205
+        },
+        {
+          "date": "2026-07-03",
+          "levelM": 843.261
+        },
+        {
+          "date": "2026-07-31",
+          "levelM": 842.185
+        },
+        {
+          "date": "2026-08-29",
+          "levelM": 840.585
+        },
+        {
+          "date": "2026-09-03",
+          "levelM": 840.362
+        }
+      ],
+      "okPassCount": 91,
+      "changePrevM": -0.223,
+      "change30dM": -1.578,
+      "change90dM": -2.845,
+      "change365dM": 3.6,
+      "seasonalAnomalyM": 3.717,
+      "seasonalZ": 0.93,
+      "recordMinM": 822.922,
+      "recordMaxM": 843.353,
+      "percentOfRange": 85.4
+    },
+    {
+      "id": "ilisu",
+      "name": "Ilisu reservoir",
+      "country": "TR",
+      "riparians": [
+        "TR",
+        "SY",
+        "IQ"
+      ],
+      "river": "Tigris",
+      "lat": 37.6,
+      "lon": 41.4,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Turkey's Tigris dam, filled since 2019, reduces and times the flow reaching Iraq.",
+      "latest": {
+        "date": "2026-09-20",
+        "levelM": 515.93,
+        "madM": 0.026,
+        "segmentCount": 282,
+        "ageDays": 51
+      },
+      "prevDate": "2026-08-17",
+      "recordStart": "2019-06-07",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-26",
+          "levelM": 507.162
+        },
+        {
+          "date": "2023-11-22",
+          "levelM": 506.102
+        },
+        {
+          "date": "2023-11-27",
+          "levelM": 506.408
+        },
+        {
+          "date": "2023-12-26",
+          "levelM": 508.572
+        },
+        {
+          "date": "2024-01-23",
+          "levelM": 508.45
+        },
+        {
+          "date": "2024-02-21",
+          "levelM": 512.185
+        },
+        {
+          "date": "2024-02-26",
+          "levelM": 512.654
+        },
+        {
+          "date": "2024-04-23",
+          "levelM": 521.195
+        },
+        {
+          "date": "2024-06-25",
+          "levelM": 520.602
+        },
+        {
+          "date": "2024-07-22",
+          "levelM": 519.144
+        },
+        {
+          "date": "2024-08-20",
+          "levelM": 517.232
+        },
+        {
+          "date": "2024-08-26",
+          "levelM": 516.848
+        },
+        {
+          "date": "2024-09-24",
+          "levelM": 514.655
+        },
+        {
+          "date": "2024-10-21",
+          "levelM": 513.217
+        },
+        {
+          "date": "2024-11-19",
+          "levelM": 511.407
+        },
+        {
+          "date": "2025-01-20",
+          "levelM": 508.137
+        },
+        {
+          "date": "2025-02-18",
+          "levelM": 507.982
+        },
+        {
+          "date": "2025-02-23",
+          "levelM": 507.925
+        },
+        {
+          "date": "2025-04-21",
+          "levelM": 508.692
+        },
+        {
+          "date": "2025-05-20",
+          "levelM": 510.458
+        },
+        {
+          "date": "2025-05-25",
+          "levelM": 510.52
+        },
+        {
+          "date": "2025-06-23",
+          "levelM": 510.801
+        },
+        {
+          "date": "2025-07-21",
+          "levelM": 508.978
+        },
+        {
+          "date": "2025-08-19",
+          "levelM": 506.894
+        },
+        {
+          "date": "2025-08-24",
+          "levelM": 506.556
+        },
+        {
+          "date": "2025-09-22",
+          "levelM": 505.191
+        },
+        {
+          "date": "2025-10-19",
+          "levelM": 504.356
+        },
+        {
+          "date": "2025-11-23",
+          "levelM": 503.404
+        },
+        {
+          "date": "2025-12-22",
+          "levelM": 502.925
+        },
+        {
+          "date": "2026-02-16",
+          "levelM": 511.33
+        },
+        {
+          "date": "2026-02-22",
+          "levelM": 513.02
+        },
+        {
+          "date": "2026-06-21",
+          "levelM": 524.472
+        },
+        {
+          "date": "2026-08-17",
+          "levelM": 520.166
+        },
+        {
+          "date": "2026-09-20",
+          "levelM": 515.93
+        }
+      ],
+      "okPassCount": 77,
+      "changePrevM": -4.236,
+      "change30dM": -3.692,
+      "change90dM": -8.479,
+      "change365dM": 10.658,
+      "seasonalAnomalyM": 5.916,
+      "seasonalZ": 0.78,
+      "recordMinM": 466.207,
+      "recordMaxM": 524.564,
+      "percentOfRange": 85.2
+    },
+    {
+      "id": "assad-tabqa",
+      "name": "Lake Assad (Tabqa Dam)",
+      "country": "SY",
+      "riparians": [
+        "SY",
+        "TR",
+        "IQ"
+      ],
+      "river": "Euphrates",
+      "lat": 36,
+      "lon": 38.2,
+      "tags": [
+        "hydropower",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "Syria's largest reservoir and power source, held by changing armed forces since 2013.",
+      "latest": {
+        "date": "2026-09-02",
+        "levelM": 303.456,
+        "madM": 0.065,
+        "segmentCount": 4736,
+        "ageDays": 69
+      },
+      "prevDate": "2026-08-09",
+      "recordStart": "2018-10-17",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-08",
+          "levelM": 298.107
+        },
+        {
+          "date": "2023-09-13",
+          "levelM": 298.052
+        },
+        {
+          "date": "2023-10-07",
+          "levelM": 297.877
+        },
+        {
+          "date": "2023-11-14",
+          "levelM": 298.264
+        },
+        {
+          "date": "2023-12-08",
+          "levelM": 298.502
+        },
+        {
+          "date": "2023-12-13",
+          "levelM": 298.702
+        },
+        {
+          "date": "2024-01-06",
+          "levelM": 299.675
+        },
+        {
+          "date": "2024-03-08",
+          "levelM": 303.963
+        },
+        {
+          "date": "2024-03-13",
+          "levelM": 303.905
+        },
+        {
+          "date": "2024-04-06",
+          "levelM": 303.608
+        },
+        {
+          "date": "2024-07-05",
+          "levelM": 302.329
+        },
+        {
+          "date": "2024-08-13",
+          "levelM": 302.131
+        },
+        {
+          "date": "2024-09-05",
+          "levelM": 301.745
+        },
+        {
+          "date": "2024-09-11",
+          "levelM": 301.522
+        },
+        {
+          "date": "2024-10-04",
+          "levelM": 301.116
+        },
+        {
+          "date": "2024-11-12",
+          "levelM": 300.974
+        },
+        {
+          "date": "2024-12-05",
+          "levelM": 302.238
+        },
+        {
+          "date": "2024-12-11",
+          "levelM": 302.29
+        },
+        {
+          "date": "2025-03-06",
+          "levelM": 300.474
+        },
+        {
+          "date": "2025-03-11",
+          "levelM": 300.3
+        },
+        {
+          "date": "2025-04-04",
+          "levelM": 299.577
+        },
+        {
+          "date": "2025-05-12",
+          "levelM": 298.233
+        },
+        {
+          "date": "2025-06-05",
+          "levelM": 297.881
+        },
+        {
+          "date": "2025-06-10",
+          "levelM": 297.841
+        },
+        {
+          "date": "2025-07-04",
+          "levelM": 297.305
+        },
+        {
+          "date": "2025-09-09",
+          "levelM": 296.727
+        },
+        {
+          "date": "2025-10-02",
+          "levelM": 296.334
+        },
+        {
+          "date": "2025-11-04",
+          "levelM": 296.755
+        },
+        {
+          "date": "2025-11-10",
+          "levelM": 296.51
+        },
+        {
+          "date": "2025-12-03",
+          "levelM": 296.819
+        },
+        {
+          "date": "2026-01-01",
+          "levelM": 297.262
+        },
+        {
+          "date": "2026-02-09",
+          "levelM": 297.342
+        },
+        {
+          "date": "2026-03-04",
+          "levelM": 298.704
+        },
+        {
+          "date": "2026-03-10",
+          "levelM": 299.166
+        },
+        {
+          "date": "2026-06-03",
+          "levelM": 303.922
+        },
+        {
+          "date": "2026-06-08",
+          "levelM": 303.726
+        },
+        {
+          "date": "2026-07-02",
+          "levelM": 303.273
+        },
+        {
+          "date": "2026-08-09",
+          "levelM": 303.103
+        },
+        {
+          "date": "2026-09-02",
+          "levelM": 303.456
+        }
+      ],
+      "okPassCount": 101,
+      "changePrevM": 0.353,
+      "change30dM": 0.324,
+      "change90dM": -0.437,
+      "change365dM": 6.667,
+      "seasonalAnomalyM": 2.865,
+      "seasonalZ": 0.79,
+      "recordMinM": 296.334,
+      "recordMaxM": 304.187,
+      "percentOfRange": 90.7
+    },
+    {
+      "id": "tishrin",
+      "name": "Tishrin reservoir",
+      "country": "SY",
+      "riparians": [
+        "SY",
+        "TR",
+        "IQ"
+      ],
+      "river": "Euphrates",
+      "lat": 36.5,
+      "lon": 38.2,
+      "tags": [
+        "hydropower",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "Front-line Euphrates dam in northern Syria whose level tracks upstream Turkish releases and fighting.",
+      "latest": {
+        "date": "2026-09-02",
+        "levelM": 324.307,
+        "madM": 0.046,
+        "segmentCount": 724,
+        "ageDays": 69
+      },
+      "prevDate": "2026-08-09",
+      "recordStart": "2018-11-18",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-08",
+          "levelM": 322.094
+        },
+        {
+          "date": "2023-11-14",
+          "levelM": 322.244
+        },
+        {
+          "date": "2024-02-08",
+          "levelM": 323.632
+        },
+        {
+          "date": "2024-02-13",
+          "levelM": 323.668
+        },
+        {
+          "date": "2024-03-08",
+          "levelM": 324.805
+        },
+        {
+          "date": "2024-03-13",
+          "levelM": 324.63
+        },
+        {
+          "date": "2024-05-09",
+          "levelM": 324.101
+        },
+        {
+          "date": "2024-08-07",
+          "levelM": 324.594
+        },
+        {
+          "date": "2024-08-13",
+          "levelM": 324.456
+        },
+        {
+          "date": "2024-09-05",
+          "levelM": 324.076
+        },
+        {
+          "date": "2024-09-11",
+          "levelM": 324.112
+        },
+        {
+          "date": "2024-11-12",
+          "levelM": 324.765
+        },
+        {
+          "date": "2024-12-05",
+          "levelM": 323.99
+        },
+        {
+          "date": "2025-03-06",
+          "levelM": 322.809
+        },
+        {
+          "date": "2025-03-11",
+          "levelM": 322.766
+        },
+        {
+          "date": "2025-05-07",
+          "levelM": 323.359
+        },
+        {
+          "date": "2025-06-05",
+          "levelM": 323.412
+        },
+        {
+          "date": "2025-06-10",
+          "levelM": 323.308
+        },
+        {
+          "date": "2025-08-06",
+          "levelM": 323.246
+        },
+        {
+          "date": "2025-08-11",
+          "levelM": 323.428
+        },
+        {
+          "date": "2025-09-04",
+          "levelM": 323.352
+        },
+        {
+          "date": "2025-09-09",
+          "levelM": 323.228
+        },
+        {
+          "date": "2025-11-04",
+          "levelM": 323.547
+        },
+        {
+          "date": "2026-02-03",
+          "levelM": 323.423
+        },
+        {
+          "date": "2026-02-09",
+          "levelM": 323.31
+        },
+        {
+          "date": "2026-03-04",
+          "levelM": 322.48
+        },
+        {
+          "date": "2026-03-10",
+          "levelM": 322.609
+        },
+        {
+          "date": "2026-06-08",
+          "levelM": 323.773
+        },
+        {
+          "date": "2026-08-09",
+          "levelM": 324.136
+        },
+        {
+          "date": "2026-09-02",
+          "levelM": 324.307
+        }
+      ],
+      "okPassCount": 82,
+      "changePrevM": 0.171,
+      "change30dM": 0.209,
+      "change90dM": 0.594,
+      "change365dM": 0.949,
+      "seasonalAnomalyM": 0.917,
+      "seasonalZ": 0.69,
+      "recordMinM": 320.914,
+      "recordMaxM": 325.216,
+      "percentOfRange": 78.9
+    },
+    {
+      "id": "mosul",
+      "name": "Mosul Dam reservoir",
+      "country": "IQ",
+      "riparians": [
+        "IQ",
+        "TR"
+      ],
+      "river": "Tigris",
+      "lat": 36.75,
+      "lon": 42.7,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "Iraq's largest dam, structurally fragile, storing the Tigris below Turkey.",
+      "latest": {
+        "date": "2026-08-09",
+        "levelM": 320.794,
+        "madM": 0.036,
+        "segmentCount": 2527,
+        "ageDays": 93
+      },
+      "prevDate": "2026-07-16",
+      "recordStart": "2018-10-31",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-15",
+          "levelM": 300.382
+        },
+        {
+          "date": "2023-10-16",
+          "levelM": 295.345
+        },
+        {
+          "date": "2023-10-21",
+          "levelM": 294.532
+        },
+        {
+          "date": "2024-01-20",
+          "levelM": 300.975
+        },
+        {
+          "date": "2024-07-14",
+          "levelM": 324.668
+        },
+        {
+          "date": "2024-07-20",
+          "levelM": 324.427
+        },
+        {
+          "date": "2024-08-18",
+          "levelM": 322.316
+        },
+        {
+          "date": "2024-10-13",
+          "levelM": 318.324
+        },
+        {
+          "date": "2024-10-19",
+          "levelM": 317.647
+        },
+        {
+          "date": "2025-01-12",
+          "levelM": 309.718
+        },
+        {
+          "date": "2025-01-17",
+          "levelM": 309.436
+        },
+        {
+          "date": "2025-04-18",
+          "levelM": 302.032
+        },
+        {
+          "date": "2025-07-13",
+          "levelM": 296.452
+        },
+        {
+          "date": "2025-07-18",
+          "levelM": 295.932
+        },
+        {
+          "date": "2025-10-11",
+          "levelM": 286.075
+        },
+        {
+          "date": "2026-01-10",
+          "levelM": 285.228
+        },
+        {
+          "date": "2026-04-11",
+          "levelM": 317.718
+        },
+        {
+          "date": "2026-06-12",
+          "levelM": 321.33
+        },
+        {
+          "date": "2026-07-11",
+          "levelM": 321.428
+        },
+        {
+          "date": "2026-07-16",
+          "levelM": 321.344
+        },
+        {
+          "date": "2026-08-09",
+          "levelM": 320.794
+        }
+      ],
+      "okPassCount": 64,
+      "changePrevM": -0.55,
+      "change30dM": -0.63,
+      "change90dM": 1.339,
+      "change365dM": 27.373,
+      "seasonalAnomalyM": 1.568,
+      "seasonalZ": 0.2,
+      "recordMinM": 285.228,
+      "recordMaxM": 325.309,
+      "percentOfRange": 88.7
+    },
+    {
+      "id": "haditha",
+      "name": "Lake Qadisiyah (Haditha Dam)",
+      "country": "IQ",
+      "riparians": [
+        "IQ",
+        "SY",
+        "TR"
+      ],
+      "river": "Euphrates",
+      "lat": 34.3,
+      "lon": 42.2,
+      "tags": [
+        "hydropower",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "Iraq's main Euphrates store, a direct read of how much water crosses from Syria.",
+      "latest": {
+        "date": "2026-07-11",
+        "levelM": 137.625,
+        "madM": 0.026,
+        "segmentCount": 1173,
+        "ageDays": 122
+      },
+      "prevDate": "2026-06-12",
+      "recordStart": "2018-12-26",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "rising_fast",
+      "series": [
+        {
+          "date": "2023-07-27",
+          "levelM": 120.464
+        },
+        {
+          "date": "2023-10-25",
+          "levelM": 119.435
+        },
+        {
+          "date": "2024-01-24",
+          "levelM": 119.229
+        },
+        {
+          "date": "2024-04-15",
+          "levelM": 125.957
+        },
+        {
+          "date": "2024-04-24",
+          "levelM": 126.426
+        },
+        {
+          "date": "2024-07-14",
+          "levelM": 126.116
+        },
+        {
+          "date": "2024-07-24",
+          "levelM": 125.303
+        },
+        {
+          "date": "2024-08-22",
+          "levelM": 123.82
+        },
+        {
+          "date": "2024-09-14",
+          "levelM": 123.137
+        },
+        {
+          "date": "2024-10-13",
+          "levelM": 123.363
+        },
+        {
+          "date": "2024-10-23",
+          "levelM": 123.609
+        },
+        {
+          "date": "2025-01-12",
+          "levelM": 126.388
+        },
+        {
+          "date": "2025-03-15",
+          "levelM": 130.69
+        },
+        {
+          "date": "2025-04-13",
+          "levelM": 131.441
+        },
+        {
+          "date": "2025-04-22",
+          "levelM": 131.562
+        },
+        {
+          "date": "2025-05-21",
+          "levelM": 132.14
+        },
+        {
+          "date": "2025-06-14",
+          "levelM": 131.704
+        },
+        {
+          "date": "2025-07-22",
+          "levelM": 129.189
+        },
+        {
+          "date": "2025-09-13",
+          "levelM": 124.863
+        },
+        {
+          "date": "2026-01-20",
+          "levelM": 118.962
+        },
+        {
+          "date": "2026-05-20",
+          "levelM": 129.438
+        },
+        {
+          "date": "2026-06-12",
+          "levelM": 135.093
+        },
+        {
+          "date": "2026-07-11",
+          "levelM": 137.625
+        }
+      ],
+      "okPassCount": 66,
+      "changePrevM": 2.532,
+      "change30dM": 2.787,
+      "change90dM": 11.476,
+      "change365dM": 7.703,
+      "seasonalAnomalyM": 5.921,
+      "seasonalZ": 0.41,
+      "recordMinM": 118.962,
+      "recordMaxM": 146.004,
+      "percentOfRange": 69
+    },
+    {
+      "id": "tharthar",
+      "name": "Lake Tharthar",
+      "country": "IQ",
+      "riparians": [
+        "IQ"
+      ],
+      "river": "Tigris (off-stream)",
+      "lat": 33.9,
+      "lon": 43.3,
+      "tags": [
+        "irrigation",
+        "terminal-lake"
+      ],
+      "why": "Iraq's off-stream flood and drought reserve between the Tigris and the Euphrates.",
+      "latest": {
+        "date": "2026-08-05",
+        "levelM": 47.398,
+        "madM": 0.067,
+        "segmentCount": 2892,
+        "ageDays": 97
+      },
+      "prevDate": "2026-07-16",
+      "recordStart": "2018-10-22",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-11",
+          "levelM": 42.014
+        },
+        {
+          "date": "2023-08-20",
+          "levelM": 41.906
+        },
+        {
+          "date": "2023-08-21",
+          "levelM": 41.915
+        },
+        {
+          "date": "2023-10-12",
+          "levelM": 41.318
+        },
+        {
+          "date": "2023-11-10",
+          "levelM": 41.034
+        },
+        {
+          "date": "2023-11-19",
+          "levelM": 40.967
+        },
+        {
+          "date": "2024-01-11",
+          "levelM": 40.639
+        },
+        {
+          "date": "2024-01-20",
+          "levelM": 40.651
+        },
+        {
+          "date": "2024-02-09",
+          "levelM": 40.621
+        },
+        {
+          "date": "2024-02-18",
+          "levelM": 40.599
+        },
+        {
+          "date": "2024-05-09",
+          "levelM": 42.593
+        },
+        {
+          "date": "2024-07-10",
+          "levelM": 43.551
+        },
+        {
+          "date": "2024-08-08",
+          "levelM": 43.349
+        },
+        {
+          "date": "2024-08-18",
+          "levelM": 43.21
+        },
+        {
+          "date": "2024-10-09",
+          "levelM": 42.76
+        },
+        {
+          "date": "2024-10-19",
+          "levelM": 42.721
+        },
+        {
+          "date": "2024-11-07",
+          "levelM": 42.519
+        },
+        {
+          "date": "2024-11-17",
+          "levelM": 42.51
+        },
+        {
+          "date": "2025-01-08",
+          "levelM": 41.81
+        },
+        {
+          "date": "2025-02-06",
+          "levelM": 41.661
+        },
+        {
+          "date": "2025-02-15",
+          "levelM": 41.653
+        },
+        {
+          "date": "2025-04-09",
+          "levelM": 41.205
+        },
+        {
+          "date": "2025-05-08",
+          "levelM": 40.997
+        },
+        {
+          "date": "2025-05-17",
+          "levelM": 40.994
+        },
+        {
+          "date": "2025-07-09",
+          "levelM": 40.343
+        },
+        {
+          "date": "2025-08-07",
+          "levelM": 40.045
+        },
+        {
+          "date": "2025-10-07",
+          "levelM": 39.27
+        },
+        {
+          "date": "2025-11-05",
+          "levelM": 39.005
+        },
+        {
+          "date": "2025-11-15",
+          "levelM": 38.911
+        },
+        {
+          "date": "2025-12-14",
+          "levelM": 38.824
+        },
+        {
+          "date": "2026-01-06",
+          "levelM": 38.641
+        },
+        {
+          "date": "2026-01-16",
+          "levelM": 38.584
+        },
+        {
+          "date": "2026-02-04",
+          "levelM": 38.547
+        },
+        {
+          "date": "2026-02-14",
+          "levelM": 38.739
+        },
+        {
+          "date": "2026-04-07",
+          "levelM": 41.012
+        },
+        {
+          "date": "2026-05-16",
+          "levelM": 45.865
+        },
+        {
+          "date": "2026-06-08",
+          "levelM": 47.374
+        },
+        {
+          "date": "2026-07-07",
+          "levelM": 47.816
+        },
+        {
+          "date": "2026-07-16",
+          "levelM": 47.734
+        },
+        {
+          "date": "2026-08-05",
+          "levelM": 47.398
+        }
+      ],
+      "okPassCount": 111,
+      "changePrevM": -0.336,
+      "change30dM": -0.402,
+      "change90dM": 2.626,
+      "change365dM": 7.335,
+      "seasonalAnomalyM": 0.88,
+      "seasonalZ": 0.13,
+      "recordMinM": 38.547,
+      "recordMaxM": 58.338,
+      "percentOfRange": 44.7
+    },
+    {
+      "id": "dukan",
+      "name": "Dukan reservoir",
+      "country": "IQ",
+      "riparians": [
+        "IQ",
+        "IR"
+      ],
+      "river": "Little Zab",
+      "lat": 36.1,
+      "lon": 44.9,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Kurdistan Region's main reservoir on a Tigris tributary that rises in Iran.",
+      "latest": {
+        "date": "2026-05-31",
+        "levelM": 509.82,
+        "madM": 0.038,
+        "segmentCount": 145,
+        "ageDays": 163
+      },
+      "prevDate": "2026-03-07",
+      "recordStart": "2018-10-14",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "no_recent_data",
+      "series": [
+        {
+          "date": "2023-06-12",
+          "levelM": 494.609
+        },
+        {
+          "date": "2023-07-05",
+          "levelM": 493.447
+        },
+        {
+          "date": "2023-09-10",
+          "levelM": 489.24
+        },
+        {
+          "date": "2024-01-03",
+          "levelM": 483.243
+        },
+        {
+          "date": "2024-03-10",
+          "levelM": 492.273
+        },
+        {
+          "date": "2024-04-03",
+          "levelM": 495.338
+        },
+        {
+          "date": "2024-07-02",
+          "levelM": 499.115
+        },
+        {
+          "date": "2024-09-08",
+          "levelM": 495.638
+        },
+        {
+          "date": "2024-10-01",
+          "levelM": 494.018
+        },
+        {
+          "date": "2024-12-08",
+          "levelM": 490.505
+        },
+        {
+          "date": "2024-12-31",
+          "levelM": 488.966
+        },
+        {
+          "date": "2025-03-08",
+          "levelM": 487.165
+        },
+        {
+          "date": "2025-04-01",
+          "levelM": 486.4
+        },
+        {
+          "date": "2025-06-07",
+          "levelM": 484.877
+        },
+        {
+          "date": "2025-07-01",
+          "levelM": 483.971
+        },
+        {
+          "date": "2025-09-29",
+          "levelM": 479.668
+        },
+        {
+          "date": "2025-12-29",
+          "levelM": 479.919
+        },
+        {
+          "date": "2026-03-07",
+          "levelM": 492.358
+        },
+        {
+          "date": "2026-05-31",
+          "levelM": 509.82
+        }
+      ],
+      "okPassCount": 44,
+      "changePrevM": 17.462,
+      "change90dM": 18.323,
+      "change365dM": 24.78,
+      "seasonalAnomalyM": 15.211,
+      "seasonalZ": 1.13,
+      "recordMinM": 479.668,
+      "recordMaxM": 511.038,
+      "percentOfRange": 96.1
+    },
+    {
+      "id": "karkheh",
+      "name": "Karkheh reservoir",
+      "country": "IR",
+      "riparians": [
+        "IR",
+        "IQ"
+      ],
+      "river": "Karkheh",
+      "lat": 32.5,
+      "lon": 48.1,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Iran's largest reservoir by storage, upstream of the Hawizeh marshes shared with Iraq.",
+      "latest": {
+        "date": "2026-08-10",
+        "levelM": 200.373,
+        "madM": 0.031,
+        "segmentCount": 147,
+        "ageDays": 92
+      },
+      "prevDate": "2026-04-22",
+      "recordStart": "2018-11-05",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-16",
+          "levelM": 194.065
+        },
+        {
+          "date": "2023-10-17",
+          "levelM": 189.371
+        },
+        {
+          "date": "2023-10-26",
+          "levelM": 188.567
+        },
+        {
+          "date": "2024-01-16",
+          "levelM": 185.361
+        },
+        {
+          "date": "2024-01-25",
+          "levelM": 184.092
+        },
+        {
+          "date": "2024-04-25",
+          "levelM": 196.359
+        },
+        {
+          "date": "2024-07-15",
+          "levelM": 203.113
+        },
+        {
+          "date": "2024-07-25",
+          "levelM": 203.141
+        },
+        {
+          "date": "2024-09-25",
+          "levelM": 200.146
+        },
+        {
+          "date": "2024-11-12",
+          "levelM": 196.447
+        },
+        {
+          "date": "2025-01-13",
+          "levelM": 191.96
+        },
+        {
+          "date": "2025-04-14",
+          "levelM": 186.733
+        },
+        {
+          "date": "2025-04-23",
+          "levelM": 186.853
+        },
+        {
+          "date": "2025-07-14",
+          "levelM": 184.247
+        },
+        {
+          "date": "2025-10-12",
+          "levelM": 183.986
+        },
+        {
+          "date": "2025-10-22",
+          "levelM": 183.629
+        },
+        {
+          "date": "2026-01-11",
+          "levelM": 178.378
+        },
+        {
+          "date": "2026-01-21",
+          "levelM": 177.563
+        },
+        {
+          "date": "2026-04-12",
+          "levelM": 193.166
+        },
+        {
+          "date": "2026-04-22",
+          "levelM": 194.953
+        },
+        {
+          "date": "2026-08-10",
+          "levelM": 200.373
+        }
+      ],
+      "okPassCount": 61,
+      "changePrevM": 5.42,
+      "change90dM": 4.423,
+      "change365dM": 16.204,
+      "seasonalAnomalyM": 1.014,
+      "seasonalZ": 0.08,
+      "recordMinM": 172.768,
+      "recordMaxM": 222.65,
+      "percentOfRange": 55.3
+    },
+    {
+      "id": "urmia",
+      "name": "Lake Urmia",
+      "country": "IR",
+      "riparians": [
+        "IR"
+      ],
+      "river": "endorheic",
+      "lat": 37.6,
+      "lon": 45.4,
+      "tags": [
+        "terminal-lake"
+      ],
+      "why": "A shrinking salt lake whose collapse is a test case for Iranian water policy and dust risk.",
+      "latest": {
+        "date": "2026-08-26",
+        "levelM": 1270.464,
+        "madM": 0.051,
+        "segmentCount": 7105,
+        "ageDays": 76
+      },
+      "prevDate": "2026-06-25",
+      "recordStart": "2018-11-11",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-01",
+          "levelM": 1270.36
+        },
+        {
+          "date": "2023-12-01",
+          "levelM": 1270.24
+        },
+        {
+          "date": "2024-01-04",
+          "levelM": 1270.487
+        },
+        {
+          "date": "2024-03-01",
+          "levelM": 1270.319
+        },
+        {
+          "date": "2024-03-06",
+          "levelM": 1270.08
+        },
+        {
+          "date": "2024-04-04",
+          "levelM": 1270.39
+        },
+        {
+          "date": "2024-07-04",
+          "levelM": 1270.313
+        },
+        {
+          "date": "2024-07-31",
+          "levelM": 1270.217
+        },
+        {
+          "date": "2024-08-29",
+          "levelM": 1270.503
+        },
+        {
+          "date": "2024-09-04",
+          "levelM": 1269.918
+        },
+        {
+          "date": "2025-01-01",
+          "levelM": 1270.497
+        },
+        {
+          "date": "2025-02-27",
+          "levelM": 1270.247
+        },
+        {
+          "date": "2025-03-04",
+          "levelM": 1270.114
+        },
+        {
+          "date": "2025-04-30",
+          "levelM": 1269.977
+        },
+        {
+          "date": "2025-05-29",
+          "levelM": 1270.263
+        },
+        {
+          "date": "2025-06-03",
+          "levelM": 1270.01
+        },
+        {
+          "date": "2025-07-02",
+          "levelM": 1270.536
+        },
+        {
+          "date": "2025-10-01",
+          "levelM": 1270.444
+        },
+        {
+          "date": "2025-11-26",
+          "levelM": 1270.339
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 1270.368
+        },
+        {
+          "date": "2026-02-25",
+          "levelM": 1270.282
+        },
+        {
+          "date": "2026-04-01",
+          "levelM": 1270.531
+        },
+        {
+          "date": "2026-06-25",
+          "levelM": 1271.149
+        },
+        {
+          "date": "2026-08-26",
+          "levelM": 1270.464
+        }
+      ],
+      "okPassCount": 71,
+      "changePrevM": -0.685,
+      "change90dM": -0.481,
+      "change365dM": -0.017,
+      "seasonalAnomalyM": 0.108,
+      "seasonalZ": 0.27,
+      "recordMinM": 1269.553,
+      "recordMaxM": 1271.599,
+      "percentOfRange": 44.5
+    },
+    {
+      "id": "toktogul",
+      "name": "Toktogul reservoir",
+      "country": "KG",
+      "riparians": [
+        "KG",
+        "UZ",
+        "KZ",
+        "TJ"
+      ],
+      "river": "Naryn (Syr Darya)",
+      "lat": 41.8,
+      "lon": 72.9,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Central Asia's largest reservoir trades Kyrgyz winter power against Uzbek and Kazakh summer irrigation.",
+      "latest": {
+        "date": "2026-09-08",
+        "levelM": 867.677,
+        "madM": 0.047,
+        "segmentCount": 1119,
+        "ageDays": 63
+      },
+      "prevDate": "2026-05-11",
+      "recordStart": "2018-10-24",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-14",
+          "levelM": 868.971
+        },
+        {
+          "date": "2023-10-14",
+          "levelM": 870.253
+        },
+        {
+          "date": "2023-11-15",
+          "levelM": 869.53
+        },
+        {
+          "date": "2023-12-14",
+          "levelM": 866.751
+        },
+        {
+          "date": "2024-08-13",
+          "levelM": 871.779
+        },
+        {
+          "date": "2024-11-12",
+          "levelM": 875.761
+        },
+        {
+          "date": "2024-12-11",
+          "levelM": 872.102
+        },
+        {
+          "date": "2025-01-10",
+          "levelM": 865.733
+        },
+        {
+          "date": "2025-02-11",
+          "levelM": 858.784
+        },
+        {
+          "date": "2025-05-13",
+          "levelM": 859.139
+        },
+        {
+          "date": "2025-07-11",
+          "levelM": 866.257
+        },
+        {
+          "date": "2025-08-11",
+          "levelM": 866.556
+        },
+        {
+          "date": "2025-10-10",
+          "levelM": 868.138
+        },
+        {
+          "date": "2025-11-08",
+          "levelM": 866.788
+        },
+        {
+          "date": "2025-11-10",
+          "levelM": 866.35
+        },
+        {
+          "date": "2026-01-09",
+          "levelM": 858.147
+        },
+        {
+          "date": "2026-02-09",
+          "levelM": 850.599
+        },
+        {
+          "date": "2026-04-09",
+          "levelM": 846.775
+        },
+        {
+          "date": "2026-05-11",
+          "levelM": 850.017
+        },
+        {
+          "date": "2026-09-08",
+          "levelM": 867.677
+        }
+      ],
+      "okPassCount": 53,
+      "changePrevM": 17.66,
+      "change90dM": 13.271,
+      "change365dM": 0.396,
+      "seasonalAnomalyM": -8.099,
+      "seasonalZ": -0.67,
+      "recordMinM": 846.775,
+      "recordMaxM": 898.353,
+      "percentOfRange": 40.5
+    },
+    {
+      "id": "nurek",
+      "name": "Nurek reservoir",
+      "country": "TJ",
+      "riparians": [
+        "TJ",
+        "UZ",
+        "TM"
+      ],
+      "river": "Vakhsh (Amu Darya)",
+      "lat": 38.35,
+      "lon": 69.4,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Tajikistan's main power source on an Amu Darya tributary shared with downstream Uzbekistan and Turkmenistan.",
+      "latest": {
+        "date": "2026-08-26",
+        "levelM": 910.11,
+        "madM": 0.023,
+        "segmentCount": 314,
+        "ageDays": 76
+      },
+      "prevDate": "2026-06-30",
+      "recordStart": "2018-12-10",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-11-03",
+          "levelM": 908.98
+        },
+        {
+          "date": "2023-12-01",
+          "levelM": 904.686
+        },
+        {
+          "date": "2024-01-04",
+          "levelM": 893.737
+        },
+        {
+          "date": "2024-08-02",
+          "levelM": 906.404
+        },
+        {
+          "date": "2024-08-29",
+          "levelM": 910.908
+        },
+        {
+          "date": "2024-10-03",
+          "levelM": 910.905
+        },
+        {
+          "date": "2024-11-28",
+          "levelM": 908.809
+        },
+        {
+          "date": "2025-02-27",
+          "levelM": 872.043
+        },
+        {
+          "date": "2025-05-29",
+          "levelM": 873.764
+        },
+        {
+          "date": "2025-07-02",
+          "levelM": 888.063
+        },
+        {
+          "date": "2025-07-31",
+          "levelM": 905.118
+        },
+        {
+          "date": "2025-08-27",
+          "levelM": 910.595
+        },
+        {
+          "date": "2025-10-30",
+          "levelM": 910.122
+        },
+        {
+          "date": "2025-11-26",
+          "levelM": 905.4
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 897.827
+        },
+        {
+          "date": "2026-01-29",
+          "levelM": 887.162
+        },
+        {
+          "date": "2026-02-25",
+          "levelM": 877.852
+        },
+        {
+          "date": "2026-06-25",
+          "levelM": 875.605
+        },
+        {
+          "date": "2026-06-30",
+          "levelM": 879.447
+        },
+        {
+          "date": "2026-08-26",
+          "levelM": 910.11
+        }
+      ],
+      "okPassCount": 46,
+      "changePrevM": 30.663,
+      "change90dM": 33.977,
+      "change365dM": -0.141,
+      "seasonalAnomalyM": 0.144,
+      "seasonalZ": 0.11,
+      "recordMinM": 864.219,
+      "recordMaxM": 910.952,
+      "percentOfRange": 98.2
+    },
+    {
+      "id": "tarbela",
+      "name": "Tarbela reservoir",
+      "country": "PK",
+      "riparians": [
+        "PK",
+        "IN",
+        "CN"
+      ],
+      "river": "Indus",
+      "lat": 34.15,
+      "lon": 72.8,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Pakistan's largest Indus store; its fill and draw-down set irrigation supply for Punjab and Sindh.",
+      "latest": {
+        "date": "2026-09-13",
+        "levelM": 470.821,
+        "madM": 0.043,
+        "segmentCount": 786,
+        "ageDays": 58
+      },
+      "prevDate": "2026-06-14",
+      "recordStart": "2019-09-18",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-19",
+          "levelM": 472.12
+        },
+        {
+          "date": "2023-11-11",
+          "levelM": 461.59
+        },
+        {
+          "date": "2023-12-19",
+          "levelM": 449.971
+        },
+        {
+          "date": "2024-02-10",
+          "levelM": 445.48
+        },
+        {
+          "date": "2024-09-17",
+          "levelM": 470.971
+        },
+        {
+          "date": "2024-11-18",
+          "levelM": 460.005
+        },
+        {
+          "date": "2024-12-07",
+          "levelM": 452.785
+        },
+        {
+          "date": "2024-12-16",
+          "levelM": 449.76
+        },
+        {
+          "date": "2025-02-07",
+          "levelM": 444.776
+        },
+        {
+          "date": "2025-08-07",
+          "levelM": 471.161
+        },
+        {
+          "date": "2025-09-15",
+          "levelM": 472.656
+        },
+        {
+          "date": "2025-11-06",
+          "levelM": 469.549
+        },
+        {
+          "date": "2025-12-15",
+          "levelM": 453.941
+        },
+        {
+          "date": "2026-02-05",
+          "levelM": 454.37
+        },
+        {
+          "date": "2026-03-16",
+          "levelM": 443.014
+        },
+        {
+          "date": "2026-05-07",
+          "levelM": 445.07
+        },
+        {
+          "date": "2026-06-14",
+          "levelM": 442.006
+        },
+        {
+          "date": "2026-09-13",
+          "levelM": 470.821
+        }
+      ],
+      "okPassCount": 44,
+      "changePrevM": 28.815,
+      "change90dM": 28.555,
+      "change365dM": -1.768,
+      "seasonalAnomalyM": -0.929,
+      "seasonalZ": -0.76,
+      "recordMinM": 431.049,
+      "recordMaxM": 472.656,
+      "percentOfRange": 95.6
+    },
+    {
+      "id": "mangla",
+      "name": "Mangla reservoir",
+      "country": "PK",
+      "riparians": [
+        "PK",
+        "IN"
+      ],
+      "river": "Jhelum",
+      "lat": 33.2,
+      "lon": 73.7,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "Stores the Jhelum below Indian-administered Kashmir; flows are covered by the Indus Waters Treaty.",
+      "latest": {
+        "date": "2026-08-31",
+        "levelM": 371.911,
+        "madM": 0.031,
+        "segmentCount": 51,
+        "ageDays": 71
+      },
+      "prevDate": "2026-05-03",
+      "recordStart": "2018-11-26",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-06",
+          "levelM": 378.602
+        },
+        {
+          "date": "2023-12-06",
+          "levelM": 356.807
+        },
+        {
+          "date": "2024-03-06",
+          "levelM": 339.35
+        },
+        {
+          "date": "2024-03-15",
+          "levelM": 333.442
+        },
+        {
+          "date": "2024-09-03",
+          "levelM": 373.274
+        },
+        {
+          "date": "2024-09-13",
+          "levelM": 374.524
+        },
+        {
+          "date": "2024-12-03",
+          "levelM": 351.709
+        },
+        {
+          "date": "2024-12-12",
+          "levelM": 348.668
+        },
+        {
+          "date": "2025-03-04",
+          "levelM": 331.842
+        },
+        {
+          "date": "2025-03-13",
+          "levelM": 329.234
+        },
+        {
+          "date": "2025-06-03",
+          "levelM": 354.761
+        },
+        {
+          "date": "2025-06-12",
+          "levelM": 355.238
+        },
+        {
+          "date": "2025-09-01",
+          "levelM": 373.981
+        },
+        {
+          "date": "2025-09-11",
+          "levelM": 376.461
+        },
+        {
+          "date": "2025-11-02",
+          "levelM": 376.078
+        },
+        {
+          "date": "2025-12-01",
+          "levelM": 371.069
+        },
+        {
+          "date": "2025-12-11",
+          "levelM": 368.795
+        },
+        {
+          "date": "2026-03-02",
+          "levelM": 355.063
+        },
+        {
+          "date": "2026-05-03",
+          "levelM": 354.272
+        },
+        {
+          "date": "2026-08-31",
+          "levelM": 371.911
+        }
+      ],
+      "okPassCount": 49,
+      "changePrevM": 17.639,
+      "change90dM": 13.256,
+      "change365dM": -1.673,
+      "seasonalAnomalyM": -2.07,
+      "seasonalZ": -0.37,
+      "recordMinM": 329.234,
+      "recordMaxM": 378.787,
+      "percentOfRange": 86.1
+    },
+    {
+      "id": "bhakra",
+      "name": "Gobind Sagar (Bhakra Dam)",
+      "country": "IN",
+      "riparians": [
+        "IN",
+        "PK"
+      ],
+      "river": "Sutlej",
+      "lat": 31.4,
+      "lon": 76.5,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "North India's main irrigation and power store on an Indus-basin river allocated by treaty.",
+      "latest": {
+        "date": "2026-08-28",
+        "levelM": 496.776,
+        "madM": 0.035,
+        "segmentCount": 114,
+        "ageDays": 74
+      },
+      "prevDate": "2026-08-15",
+      "recordStart": "2018-10-31",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-10-02",
+          "levelM": 507.996
+        },
+        {
+          "date": "2023-10-22",
+          "levelM": 505.494
+        },
+        {
+          "date": "2023-11-20",
+          "levelM": 501.837
+        },
+        {
+          "date": "2024-01-21",
+          "levelM": 491.886
+        },
+        {
+          "date": "2024-02-19",
+          "levelM": 486.117
+        },
+        {
+          "date": "2024-07-20",
+          "levelM": 485.475
+        },
+        {
+          "date": "2024-08-18",
+          "levelM": 495.441
+        },
+        {
+          "date": "2024-11-17",
+          "levelM": 496.362
+        },
+        {
+          "date": "2024-11-30",
+          "levelM": 495.308
+        },
+        {
+          "date": "2024-12-29",
+          "levelM": 489.171
+        },
+        {
+          "date": "2025-02-16",
+          "levelM": 481.807
+        },
+        {
+          "date": "2025-03-30",
+          "levelM": 471.651
+        },
+        {
+          "date": "2025-04-19",
+          "levelM": 472.717
+        },
+        {
+          "date": "2025-05-18",
+          "levelM": 473.719
+        },
+        {
+          "date": "2025-07-19",
+          "levelM": 485.237
+        },
+        {
+          "date": "2025-09-28",
+          "levelM": 508.623
+        },
+        {
+          "date": "2025-10-17",
+          "levelM": 507.775
+        },
+        {
+          "date": "2025-12-28",
+          "levelM": 501.447
+        },
+        {
+          "date": "2026-02-14",
+          "levelM": 494.613
+        },
+        {
+          "date": "2026-08-15",
+          "levelM": 492.51
+        },
+        {
+          "date": "2026-08-28",
+          "levelM": 496.776
+        }
+      ],
+      "okPassCount": 61,
+      "changePrevM": 4.266,
+      "change30dM": 4.075,
+      "change365dM": -1.796,
+      "seasonalAnomalyM": -2.603,
+      "seasonalZ": -0.32,
+      "recordMinM": 463.673,
+      "recordMaxM": 509.086,
+      "percentOfRange": 72.9
+    },
+    {
+      "id": "caspian",
+      "name": "Caspian Sea (central basin)",
+      "country": "KZ",
+      "riparians": [
+        "RU",
+        "KZ",
+        "TM",
+        "IR",
+        "AZ"
+      ],
+      "river": "Volga and others (endorheic)",
+      "lat": 42,
+      "lon": 50.5,
+      "tags": [
+        "terminal-lake",
+        "transboundary"
+      ],
+      "why": "A falling Caspian level threatens ports, shipping lanes and oil infrastructure of five states.",
+      "latest": {
+        "date": "2026-08-03",
+        "levelM": -28.615,
+        "madM": 0.03,
+        "segmentCount": 981,
+        "ageDays": 99
+      },
+      "prevDate": "2026-08-02",
+      "recordStart": "2018-10-19",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-08",
+          "levelM": -28.439
+        },
+        {
+          "date": "2023-09-07",
+          "levelM": -28.513
+        },
+        {
+          "date": "2023-10-06",
+          "levelM": -28.616
+        },
+        {
+          "date": "2023-10-09",
+          "levelM": -28.687
+        },
+        {
+          "date": "2023-11-07",
+          "levelM": -28.74
+        },
+        {
+          "date": "2024-02-06",
+          "levelM": -28.76
+        },
+        {
+          "date": "2024-03-07",
+          "levelM": -28.858
+        },
+        {
+          "date": "2024-04-08",
+          "levelM": -28.807
+        },
+        {
+          "date": "2024-07-05",
+          "levelM": -28.527
+        },
+        {
+          "date": "2024-07-07",
+          "levelM": -28.457
+        },
+        {
+          "date": "2024-08-05",
+          "levelM": -28.483
+        },
+        {
+          "date": "2024-09-05",
+          "levelM": -28.646
+        },
+        {
+          "date": "2024-10-06",
+          "levelM": -28.757
+        },
+        {
+          "date": "2025-01-02",
+          "levelM": -28.936
+        },
+        {
+          "date": "2025-02-03",
+          "levelM": -28.982
+        },
+        {
+          "date": "2025-03-05",
+          "levelM": -28.923
+        },
+        {
+          "date": "2025-04-06",
+          "levelM": -28.911
+        },
+        {
+          "date": "2025-06-04",
+          "levelM": -28.679
+        },
+        {
+          "date": "2025-07-03",
+          "levelM": -28.652
+        },
+        {
+          "date": "2025-07-06",
+          "levelM": -28.734
+        },
+        {
+          "date": "2025-09-03",
+          "levelM": -28.851
+        },
+        {
+          "date": "2025-10-02",
+          "levelM": -28.944
+        },
+        {
+          "date": "2025-10-04",
+          "levelM": -29.022
+        },
+        {
+          "date": "2026-03-04",
+          "levelM": -29.111
+        },
+        {
+          "date": "2026-06-02",
+          "levelM": -28.627
+        },
+        {
+          "date": "2026-06-05",
+          "levelM": -28.751
+        },
+        {
+          "date": "2026-07-04",
+          "levelM": -28.63
+        },
+        {
+          "date": "2026-08-02",
+          "levelM": -28.72
+        },
+        {
+          "date": "2026-08-03",
+          "levelM": -28.615
+        }
+      ],
+      "okPassCount": 78,
+      "changePrevM": 0.105,
+      "change30dM": 0.016,
+      "change90dM": 0.162,
+      "change365dM": 0.176,
+      "seasonalAnomalyM": -0.476,
+      "seasonalZ": -1.04,
+      "recordMinM": -29.111,
+      "recordMaxM": -27.552,
+      "percentOfRange": 31.8
+    },
+    {
+      "id": "three-gorges",
+      "name": "Three Gorges reservoir",
+      "country": "CN",
+      "riparians": [
+        "CN"
+      ],
+      "river": "Yangtze",
+      "lat": 30.85,
+      "lon": 110.8,
+      "tags": [
+        "hydropower"
+      ],
+      "why": "The world's largest power station; its level reflects drought and flood management on the Yangtze.",
+      "latest": {
+        "date": "2026-08-21",
+        "levelM": 155.871,
+        "madM": 0.038,
+        "segmentCount": 130,
+        "ageDays": 81
+      },
+      "prevDate": "2026-07-23",
+      "recordStart": "2019-01-17",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2024-02-24",
+          "levelM": 162.375
+        },
+        {
+          "date": "2024-03-09",
+          "levelM": 162.273
+        },
+        {
+          "date": "2024-07-07",
+          "levelM": 157.826
+        },
+        {
+          "date": "2024-07-26",
+          "levelM": 158.998
+        },
+        {
+          "date": "2024-08-24",
+          "levelM": 152.357
+        },
+        {
+          "date": "2024-09-07",
+          "levelM": 151.721
+        },
+        {
+          "date": "2024-10-25",
+          "levelM": 165.743
+        },
+        {
+          "date": "2025-04-25",
+          "levelM": 155.902
+        },
+        {
+          "date": "2025-06-06",
+          "levelM": 152.425
+        },
+        {
+          "date": "2025-07-05",
+          "levelM": 151.877
+        },
+        {
+          "date": "2025-07-24",
+          "levelM": 157.3
+        },
+        {
+          "date": "2025-08-22",
+          "levelM": 158.012
+        },
+        {
+          "date": "2025-09-05",
+          "levelM": 162.408
+        },
+        {
+          "date": "2025-10-04",
+          "levelM": 169.364
+        },
+        {
+          "date": "2025-12-05",
+          "levelM": 171.27
+        },
+        {
+          "date": "2026-02-20",
+          "levelM": 165.864
+        },
+        {
+          "date": "2026-04-03",
+          "levelM": 163.561
+        },
+        {
+          "date": "2026-04-23",
+          "levelM": 163.822
+        },
+        {
+          "date": "2026-06-04",
+          "levelM": 148.86
+        },
+        {
+          "date": "2026-07-23",
+          "levelM": 151.644
+        },
+        {
+          "date": "2026-08-21",
+          "levelM": 155.871
+        }
+      ],
+      "okPassCount": 51,
+      "changePrevM": 4.227,
+      "change30dM": 4.288,
+      "change90dM": 2.549,
+      "change365dM": -2.099,
+      "seasonalAnomalyM": -1.429,
+      "seasonalZ": -0.41,
+      "recordMinM": 144.592,
+      "recordMaxM": 172.665,
+      "percentOfRange": 40.2
+    },
+    {
+      "id": "xiaowan",
+      "name": "Xiaowan reservoir",
+      "country": "CN",
+      "riparians": [
+        "CN",
+        "MM",
+        "LA",
+        "TH",
+        "KH",
+        "VN"
+      ],
+      "river": "Lancang (Mekong)",
+      "lat": 24.9,
+      "lon": 100,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "China's largest Mekong store; its filling cuts dry-season flow into Southeast Asia.",
+      "latest": {
+        "date": "2026-09-13",
+        "levelM": 1222.485,
+        "madM": 0.07,
+        "segmentCount": 124,
+        "ageDays": 58
+      },
+      "prevDate": "2026-09-01",
+      "recordStart": "2018-10-16",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "low",
+      "series": [
+        {
+          "date": "2023-10-18",
+          "levelM": 1232.493
+        },
+        {
+          "date": "2024-01-05",
+          "levelM": 1231.666
+        },
+        {
+          "date": "2024-01-17",
+          "levelM": 1228.318
+        },
+        {
+          "date": "2024-03-07",
+          "levelM": 1218.949
+        },
+        {
+          "date": "2024-04-05",
+          "levelM": 1212.512
+        },
+        {
+          "date": "2024-04-16",
+          "levelM": 1209.917
+        },
+        {
+          "date": "2024-07-16",
+          "levelM": 1207.633
+        },
+        {
+          "date": "2024-10-15",
+          "levelM": 1239.125
+        },
+        {
+          "date": "2024-12-04",
+          "levelM": 1233.654
+        },
+        {
+          "date": "2024-12-16",
+          "levelM": 1231.542
+        },
+        {
+          "date": "2025-01-02",
+          "levelM": 1227.057
+        },
+        {
+          "date": "2025-01-14",
+          "levelM": 1222.838
+        },
+        {
+          "date": "2025-07-03",
+          "levelM": 1211.071
+        },
+        {
+          "date": "2025-07-14",
+          "levelM": 1220.076
+        },
+        {
+          "date": "2025-09-03",
+          "levelM": 1237.072
+        },
+        {
+          "date": "2025-10-13",
+          "levelM": 1238.956
+        },
+        {
+          "date": "2026-01-12",
+          "levelM": 1226.514
+        },
+        {
+          "date": "2026-03-04",
+          "levelM": 1209.336
+        },
+        {
+          "date": "2026-03-15",
+          "levelM": 1202.14
+        },
+        {
+          "date": "2026-04-01",
+          "levelM": 1190.924
+        },
+        {
+          "date": "2026-04-13",
+          "levelM": 1186.726
+        },
+        {
+          "date": "2026-07-13",
+          "levelM": 1188.469
+        },
+        {
+          "date": "2026-08-11",
+          "levelM": 1203.03
+        },
+        {
+          "date": "2026-09-01",
+          "levelM": 1216.356
+        },
+        {
+          "date": "2026-09-13",
+          "levelM": 1222.485
+        }
+      ],
+      "okPassCount": 59,
+      "changePrevM": 6.129,
+      "change30dM": 17.631,
+      "change90dM": 34.556,
+      "change365dM": -15.042,
+      "seasonalAnomalyM": -15.529,
+      "seasonalZ": -8,
+      "recordMinM": 1182.351,
+      "recordMaxM": 1240.42,
+      "percentOfRange": 69.1
+    },
+    {
+      "id": "nuozhadu",
+      "name": "Nuozhadu reservoir",
+      "country": "CN",
+      "riparians": [
+        "CN",
+        "MM",
+        "LA",
+        "TH",
+        "KH",
+        "VN"
+      ],
+      "river": "Lancang (Mekong)",
+      "lat": 22.8,
+      "lon": 100.4,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "The largest storage on the Mekong mainstem, last major Chinese dam before Laos and Myanmar.",
+      "latest": {
+        "date": "2026-01-08",
+        "levelM": 808.63,
+        "madM": 0.028,
+        "segmentCount": 173,
+        "ageDays": 306
+      },
+      "prevDate": "2025-12-10",
+      "recordStart": "2018-10-16",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "no_recent_data",
+      "series": [
+        {
+          "date": "2023-04-08",
+          "levelM": 790.879
+        },
+        {
+          "date": "2023-04-15",
+          "levelM": 789.881
+        },
+        {
+          "date": "2023-05-07",
+          "levelM": 786.754
+        },
+        {
+          "date": "2023-06-16",
+          "levelM": 786.665
+        },
+        {
+          "date": "2023-09-15",
+          "levelM": 786.071
+        },
+        {
+          "date": "2023-10-14",
+          "levelM": 787.427
+        },
+        {
+          "date": "2023-11-04",
+          "levelM": 788.616
+        },
+        {
+          "date": "2024-01-05",
+          "levelM": 785.391
+        },
+        {
+          "date": "2024-03-14",
+          "levelM": 784.122
+        },
+        {
+          "date": "2024-04-05",
+          "levelM": 784.754
+        },
+        {
+          "date": "2024-04-12",
+          "levelM": 784.584
+        },
+        {
+          "date": "2024-05-04",
+          "levelM": 785.12
+        },
+        {
+          "date": "2024-10-11",
+          "levelM": 807.561
+        },
+        {
+          "date": "2024-12-12",
+          "levelM": 811.051
+        },
+        {
+          "date": "2025-01-02",
+          "levelM": 810.314
+        },
+        {
+          "date": "2025-01-10",
+          "levelM": 810.349
+        },
+        {
+          "date": "2025-01-31",
+          "levelM": 811.641
+        },
+        {
+          "date": "2025-03-13",
+          "levelM": 805.993
+        },
+        {
+          "date": "2025-04-03",
+          "levelM": 800.108
+        },
+        {
+          "date": "2025-04-11",
+          "levelM": 798.684
+        },
+        {
+          "date": "2025-07-10",
+          "levelM": 802.766
+        },
+        {
+          "date": "2025-08-01",
+          "levelM": 804.009
+        },
+        {
+          "date": "2025-09-10",
+          "levelM": 805.192
+        },
+        {
+          "date": "2025-10-02",
+          "levelM": 810.196
+        },
+        {
+          "date": "2025-10-09",
+          "levelM": 811.222
+        },
+        {
+          "date": "2025-12-10",
+          "levelM": 810.707
+        },
+        {
+          "date": "2026-01-08",
+          "levelM": 808.63
+        }
+      ],
+      "okPassCount": 60,
+      "changePrevM": -2.077,
+      "change30dM": -2.086,
+      "change90dM": -2.585,
+      "change365dM": -1.711,
+      "seasonalAnomalyM": -0.319,
+      "seasonalZ": -0.08,
+      "recordMinM": 771.321,
+      "recordMaxM": 812.149,
+      "percentOfRange": 91.4
+    },
+    {
+      "id": "tonle-sap",
+      "name": "Tonle Sap",
+      "country": "KH",
+      "riparians": [
+        "KH",
+        "VN",
+        "LA",
+        "TH",
+        "CN"
+      ],
+      "river": "Mekong",
+      "lat": 12.9,
+      "lon": 104.1,
+      "tags": [
+        "transboundary",
+        "terminal-lake"
+      ],
+      "why": "Cambodia's flood-pulse lake and fishery depends on the Mekong flood that upstream dams alter.",
+      "latest": {
+        "date": "2026-07-18",
+        "levelM": 2.957,
+        "madM": 0.076,
+        "segmentCount": 86,
+        "ageDays": 115
+      },
+      "prevDate": "2026-06-15",
+      "recordStart": "2018-11-02",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-22",
+          "levelM": 5.588
+        },
+        {
+          "date": "2023-09-20",
+          "levelM": 7.011
+        },
+        {
+          "date": "2023-11-21",
+          "levelM": 7.768
+        },
+        {
+          "date": "2023-12-20",
+          "levelM": 6.209
+        },
+        {
+          "date": "2024-01-22",
+          "levelM": 4.157
+        },
+        {
+          "date": "2024-02-19",
+          "levelM": 3.037
+        },
+        {
+          "date": "2024-02-20",
+          "levelM": 3.274
+        },
+        {
+          "date": "2024-03-19",
+          "levelM": 2.685
+        },
+        {
+          "date": "2024-04-22",
+          "levelM": 2.24
+        },
+        {
+          "date": "2024-07-22",
+          "levelM": 3.118
+        },
+        {
+          "date": "2024-08-20",
+          "levelM": 6.236
+        },
+        {
+          "date": "2024-09-17",
+          "levelM": 7.372
+        },
+        {
+          "date": "2024-11-18",
+          "levelM": 7.503
+        },
+        {
+          "date": "2024-12-17",
+          "levelM": 5.984
+        },
+        {
+          "date": "2025-01-19",
+          "levelM": 3.768
+        },
+        {
+          "date": "2025-02-17",
+          "levelM": 2.943
+        },
+        {
+          "date": "2025-03-18",
+          "levelM": 2.648
+        },
+        {
+          "date": "2025-04-20",
+          "levelM": 2.143
+        },
+        {
+          "date": "2025-05-19",
+          "levelM": 2.334
+        },
+        {
+          "date": "2025-06-17",
+          "levelM": 3.041
+        },
+        {
+          "date": "2025-07-20",
+          "levelM": 4.976
+        },
+        {
+          "date": "2025-10-19",
+          "levelM": 9.511
+        },
+        {
+          "date": "2025-11-16",
+          "levelM": 8.84
+        },
+        {
+          "date": "2025-11-17",
+          "levelM": 8.921
+        },
+        {
+          "date": "2025-12-15",
+          "levelM": 7.385
+        },
+        {
+          "date": "2026-01-18",
+          "levelM": 5.078
+        },
+        {
+          "date": "2026-02-15",
+          "levelM": 3.637
+        },
+        {
+          "date": "2026-02-16",
+          "levelM": 3.838
+        },
+        {
+          "date": "2026-03-16",
+          "levelM": 2.953
+        },
+        {
+          "date": "2026-05-17",
+          "levelM": 2.468
+        },
+        {
+          "date": "2026-06-15",
+          "levelM": 2.519
+        },
+        {
+          "date": "2026-07-18",
+          "levelM": 2.957
+        }
+      ],
+      "okPassCount": 89,
+      "changePrevM": 0.438,
+      "change30dM": 0.393,
+      "change90dM": 0.272,
+      "change365dM": -1.919,
+      "seasonalAnomalyM": -0.061,
+      "seasonalZ": -0.05,
+      "recordMinM": 1.966,
+      "recordMaxM": 9.511,
+      "percentOfRange": 13.1
+    },
+    {
+      "id": "nam-ngum",
+      "name": "Nam Ngum reservoir",
+      "country": "LA",
+      "riparians": [
+        "LA",
+        "TH"
+      ],
+      "river": "Nam Ngum (Mekong)",
+      "lat": 18.6,
+      "lon": 102.6,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Laos' first large dam, exporting power to Thailand.",
+      "latest": {
+        "date": "2026-07-26",
+        "levelM": 202.464,
+        "madM": 0.032,
+        "segmentCount": 8853,
+        "ageDays": 107
+      },
+      "prevDate": "2026-07-22",
+      "recordStart": "2019-01-10",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "falling_fast",
+      "series": [
+        {
+          "date": "2023-08-01",
+          "levelM": 203.604
+        },
+        {
+          "date": "2023-10-27",
+          "levelM": 212.744
+        },
+        {
+          "date": "2023-10-31",
+          "levelM": 212.623
+        },
+        {
+          "date": "2024-01-30",
+          "levelM": 206.99
+        },
+        {
+          "date": "2024-03-31",
+          "levelM": 205.023
+        },
+        {
+          "date": "2024-04-26",
+          "levelM": 203.527
+        },
+        {
+          "date": "2024-04-29",
+          "levelM": 203.384
+        },
+        {
+          "date": "2024-08-24",
+          "levelM": 209.159
+        },
+        {
+          "date": "2024-10-24",
+          "levelM": 213.086
+        },
+        {
+          "date": "2024-12-29",
+          "levelM": 211.568
+        },
+        {
+          "date": "2025-01-27",
+          "levelM": 210.344
+        },
+        {
+          "date": "2025-03-30",
+          "levelM": 206.885
+        },
+        {
+          "date": "2025-04-24",
+          "levelM": 204.291
+        },
+        {
+          "date": "2025-04-28",
+          "levelM": 203.943
+        },
+        {
+          "date": "2025-09-27",
+          "levelM": 212.777
+        },
+        {
+          "date": "2025-10-23",
+          "levelM": 212.908
+        },
+        {
+          "date": "2025-10-26",
+          "levelM": 213.042
+        },
+        {
+          "date": "2025-11-21",
+          "levelM": 212.797
+        },
+        {
+          "date": "2026-01-22",
+          "levelM": 210.57
+        },
+        {
+          "date": "2026-01-25",
+          "levelM": 210.402
+        },
+        {
+          "date": "2026-03-28",
+          "levelM": 206.565
+        },
+        {
+          "date": "2026-07-22",
+          "levelM": 202.237
+        },
+        {
+          "date": "2026-07-26",
+          "levelM": 202.464
+        }
+      ],
+      "okPassCount": 57,
+      "changePrevM": 0.227,
+      "change90dM": -2.993,
+      "seasonalAnomalyM": -1.907,
+      "seasonalZ": -2.4,
+      "recordMinM": 200.316,
+      "recordMaxM": 213.086,
+      "percentOfRange": 16.8
+    },
+    {
+      "id": "kariba",
+      "name": "Lake Kariba",
+      "country": "ZM",
+      "riparians": [
+        "ZM",
+        "ZW"
+      ],
+      "river": "Zambezi",
+      "lat": -17,
+      "lon": 28,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Shared Zambia-Zimbabwe reservoir whose drought low in 2024 cut power to both countries.",
+      "latest": {
+        "date": "2026-06-30",
+        "levelM": 481.675,
+        "madM": 0.046,
+        "segmentCount": 4401,
+        "ageDays": 133
+      },
+      "prevDate": "2026-06-27",
+      "recordStart": "2018-10-15",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-07-03",
+          "levelM": 479.334
+        },
+        {
+          "date": "2023-07-07",
+          "levelM": 479.316
+        },
+        {
+          "date": "2023-08-05",
+          "levelM": 479.043
+        },
+        {
+          "date": "2023-09-03",
+          "levelM": 478.594
+        },
+        {
+          "date": "2023-10-02",
+          "levelM": 478.05
+        },
+        {
+          "date": "2023-10-05",
+          "levelM": 477.967
+        },
+        {
+          "date": "2023-11-03",
+          "levelM": 477.427
+        },
+        {
+          "date": "2023-12-03",
+          "levelM": 476.832
+        },
+        {
+          "date": "2024-01-01",
+          "levelM": 476.722
+        },
+        {
+          "date": "2024-01-04",
+          "levelM": 476.798
+        },
+        {
+          "date": "2024-02-02",
+          "levelM": 477.315
+        },
+        {
+          "date": "2024-03-03",
+          "levelM": 477.077
+        },
+        {
+          "date": "2024-04-01",
+          "levelM": 476.923
+        },
+        {
+          "date": "2024-04-04",
+          "levelM": 476.932
+        },
+        {
+          "date": "2024-06-30",
+          "levelM": 476.728
+        },
+        {
+          "date": "2024-07-04",
+          "levelM": 476.617
+        },
+        {
+          "date": "2024-08-02",
+          "levelM": 476.402
+        },
+        {
+          "date": "2024-08-31",
+          "levelM": 476.149
+        },
+        {
+          "date": "2024-09-29",
+          "levelM": 475.944
+        },
+        {
+          "date": "2024-10-03",
+          "levelM": 475.9
+        },
+        {
+          "date": "2024-11-01",
+          "levelM": 475.53
+        },
+        {
+          "date": "2024-11-30",
+          "levelM": 475.448
+        },
+        {
+          "date": "2024-12-29",
+          "levelM": 475.154
+        },
+        {
+          "date": "2025-01-30",
+          "levelM": 475.813
+        },
+        {
+          "date": "2025-03-01",
+          "levelM": 476.283
+        },
+        {
+          "date": "2025-03-30",
+          "levelM": 476.259
+        },
+        {
+          "date": "2025-04-02",
+          "levelM": 476.287
+        },
+        {
+          "date": "2025-05-01",
+          "levelM": 476.951
+        },
+        {
+          "date": "2025-05-31",
+          "levelM": 477.762
+        },
+        {
+          "date": "2025-06-29",
+          "levelM": 478.334
+        },
+        {
+          "date": "2025-07-02",
+          "levelM": 478.318
+        },
+        {
+          "date": "2025-08-30",
+          "levelM": 477.771
+        },
+        {
+          "date": "2025-09-28",
+          "levelM": 477.143
+        },
+        {
+          "date": "2025-10-01",
+          "levelM": 477.073
+        },
+        {
+          "date": "2025-10-30",
+          "levelM": 476.296
+        },
+        {
+          "date": "2025-11-28",
+          "levelM": 475.863
+        },
+        {
+          "date": "2025-12-27",
+          "levelM": 475.661
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 475.714
+        },
+        {
+          "date": "2026-01-29",
+          "levelM": 476.505
+        },
+        {
+          "date": "2026-02-27",
+          "levelM": 476.842
+        },
+        {
+          "date": "2026-04-01",
+          "levelM": 478.651
+        },
+        {
+          "date": "2026-06-27",
+          "levelM": 481.68
+        },
+        {
+          "date": "2026-06-30",
+          "levelM": 481.675
+        }
+      ],
+      "okPassCount": 104,
+      "changePrevM": -0.005,
+      "change90dM": 2.996,
+      "change365dM": 3.349,
+      "seasonalAnomalyM": 2.35,
+      "seasonalZ": 1.42,
+      "recordMinM": 475.154,
+      "recordMaxM": 484.336,
+      "percentOfRange": 71
+    },
+    {
+      "id": "cahora-bassa",
+      "name": "Cahora Bassa reservoir",
+      "country": "MZ",
+      "riparians": [
+        "MZ",
+        "ZM",
+        "ZW"
+      ],
+      "river": "Zambezi",
+      "lat": -15.7,
+      "lon": 31.8,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Mozambique's main power source, exporting to South Africa, below Kariba on the Zambezi.",
+      "latest": {
+        "date": "2026-09-09",
+        "levelM": 314.594,
+        "madM": 0.042,
+        "segmentCount": 283,
+        "ageDays": 62
+      },
+      "prevDate": "2026-08-08",
+      "recordStart": "2018-10-24",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "low",
+      "series": [
+        {
+          "date": "2023-09-12",
+          "levelM": 322.873
+        },
+        {
+          "date": "2023-10-14",
+          "levelM": 322.665
+        },
+        {
+          "date": "2023-11-12",
+          "levelM": 321.94
+        },
+        {
+          "date": "2023-11-13",
+          "levelM": 322.146
+        },
+        {
+          "date": "2023-12-12",
+          "levelM": 320.909
+        },
+        {
+          "date": "2024-02-12",
+          "levelM": 320.686
+        },
+        {
+          "date": "2024-03-12",
+          "levelM": 320.344
+        },
+        {
+          "date": "2024-07-13",
+          "levelM": 315.674
+        },
+        {
+          "date": "2024-08-11",
+          "levelM": 314.065
+        },
+        {
+          "date": "2024-11-10",
+          "levelM": 308.885
+        },
+        {
+          "date": "2024-12-09",
+          "levelM": 306.417
+        },
+        {
+          "date": "2025-03-10",
+          "levelM": 305.836
+        },
+        {
+          "date": "2025-05-10",
+          "levelM": 305.559
+        },
+        {
+          "date": "2025-05-11",
+          "levelM": 305.884
+        },
+        {
+          "date": "2025-06-09",
+          "levelM": 305.289
+        },
+        {
+          "date": "2025-07-11",
+          "levelM": 305.438
+        },
+        {
+          "date": "2025-08-09",
+          "levelM": 305.063
+        },
+        {
+          "date": "2025-08-10",
+          "levelM": 305.288
+        },
+        {
+          "date": "2025-09-08",
+          "levelM": 305.279
+        },
+        {
+          "date": "2025-10-10",
+          "levelM": 306.154
+        },
+        {
+          "date": "2025-11-08",
+          "levelM": 306.57
+        },
+        {
+          "date": "2026-02-07",
+          "levelM": 310.879
+        },
+        {
+          "date": "2026-05-09",
+          "levelM": 315.422
+        },
+        {
+          "date": "2026-07-09",
+          "levelM": 315.235
+        },
+        {
+          "date": "2026-08-08",
+          "levelM": 314.809
+        },
+        {
+          "date": "2026-09-09",
+          "levelM": 314.594
+        }
+      ],
+      "okPassCount": 87,
+      "changePrevM": -0.215,
+      "change30dM": -0.199,
+      "change90dM": -0.783,
+      "change365dM": 9.267,
+      "seasonalAnomalyM": -8.343,
+      "seasonalZ": -6.44,
+      "recordMinM": 305.063,
+      "recordMaxM": 325.059,
+      "percentOfRange": 47.7
+    },
+    {
+      "id": "volta",
+      "name": "Lake Volta",
+      "country": "GH",
+      "riparians": [
+        "GH",
+        "BF",
+        "TG"
+      ],
+      "river": "Volta",
+      "lat": 7.3,
+      "lon": 0,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Ghana's Akosombo power depends on it, and its level follows rainfall in Burkina Faso.",
+      "latest": {
+        "date": "2026-09-08",
+        "levelM": 79.071,
+        "madM": 0.064,
+        "segmentCount": 40,
+        "ageDays": 63
+      },
+      "prevDate": "2026-08-31",
+      "recordStart": "2018-11-17",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-11-07",
+          "levelM": 84.021
+        },
+        {
+          "date": "2023-12-06",
+          "levelM": 83.75
+        },
+        {
+          "date": "2023-12-14",
+          "levelM": 83.678
+        },
+        {
+          "date": "2024-02-06",
+          "levelM": 82.852
+        },
+        {
+          "date": "2024-02-14",
+          "levelM": 82.714
+        },
+        {
+          "date": "2024-04-12",
+          "levelM": 81.823
+        },
+        {
+          "date": "2024-05-07",
+          "levelM": 81.312
+        },
+        {
+          "date": "2024-08-05",
+          "levelM": 80.401
+        },
+        {
+          "date": "2024-11-04",
+          "levelM": 82.281
+        },
+        {
+          "date": "2024-11-13",
+          "levelM": 82.194
+        },
+        {
+          "date": "2024-12-03",
+          "levelM": 82.119
+        },
+        {
+          "date": "2024-12-12",
+          "levelM": 81.951
+        },
+        {
+          "date": "2025-01-05",
+          "levelM": 81.427
+        },
+        {
+          "date": "2025-01-10",
+          "levelM": 81.571
+        },
+        {
+          "date": "2025-03-12",
+          "levelM": 80.608
+        },
+        {
+          "date": "2025-05-05",
+          "levelM": 79.741
+        },
+        {
+          "date": "2025-09-02",
+          "levelM": 79.134
+        },
+        {
+          "date": "2025-09-10",
+          "levelM": 79.148
+        },
+        {
+          "date": "2025-10-05",
+          "levelM": 79.921
+        },
+        {
+          "date": "2025-10-09",
+          "levelM": 80.216
+        },
+        {
+          "date": "2025-11-03",
+          "levelM": 80.827
+        },
+        {
+          "date": "2025-12-10",
+          "levelM": 80.223
+        },
+        {
+          "date": "2026-02-01",
+          "levelM": 79.251
+        },
+        {
+          "date": "2026-03-02",
+          "levelM": 78.76
+        },
+        {
+          "date": "2026-03-11",
+          "levelM": 78.61
+        },
+        {
+          "date": "2026-05-03",
+          "levelM": 77.818
+        },
+        {
+          "date": "2026-06-10",
+          "levelM": 77.522
+        },
+        {
+          "date": "2026-08-31",
+          "levelM": 78.658
+        },
+        {
+          "date": "2026-09-08",
+          "levelM": 79.071
+        }
+      ],
+      "okPassCount": 71,
+      "changePrevM": 0.413,
+      "change90dM": 1.538,
+      "change365dM": -0.074,
+      "seasonalAnomalyM": -0.143,
+      "seasonalZ": -0.15,
+      "recordMinM": 77.522,
+      "recordMaxM": 84.021,
+      "percentOfRange": 23.8
+    },
+    {
+      "id": "kainji",
+      "name": "Kainji reservoir",
+      "country": "NG",
+      "riparians": [
+        "NG",
+        "NE",
+        "ML",
+        "BJ",
+        "GN"
+      ],
+      "river": "Niger",
+      "lat": 10.3,
+      "lon": 4.6,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Nigeria's main Niger River hydropower store, fed through Mali and Niger.",
+      "latest": {
+        "date": "2026-05-12",
+        "levelM": 133.665,
+        "madM": 0.062,
+        "segmentCount": 83,
+        "ageDays": 182
+      },
+      "prevDate": "2026-03-11",
+      "recordStart": "2018-12-24",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "no_recent_data",
+      "series": [
+        {
+          "date": "2023-09-15",
+          "levelM": 135.395
+        },
+        {
+          "date": "2023-09-20",
+          "levelM": 136.309
+        },
+        {
+          "date": "2023-12-19",
+          "levelM": 139.016
+        },
+        {
+          "date": "2024-03-15",
+          "levelM": 138.167
+        },
+        {
+          "date": "2024-09-12",
+          "levelM": 137.093
+        },
+        {
+          "date": "2024-11-18",
+          "levelM": 138.99
+        },
+        {
+          "date": "2025-02-12",
+          "levelM": 138.993
+        },
+        {
+          "date": "2025-03-13",
+          "levelM": 139.606
+        },
+        {
+          "date": "2025-03-17",
+          "levelM": 139.877
+        },
+        {
+          "date": "2025-09-11",
+          "levelM": 135.936
+        },
+        {
+          "date": "2025-11-11",
+          "levelM": 139.128
+        },
+        {
+          "date": "2025-12-10",
+          "levelM": 139.348
+        },
+        {
+          "date": "2025-12-15",
+          "levelM": 138.889
+        },
+        {
+          "date": "2026-03-11",
+          "levelM": 138.539
+        },
+        {
+          "date": "2026-05-12",
+          "levelM": 133.665
+        }
+      ],
+      "okPassCount": 40,
+      "changePrevM": -4.874,
+      "change90dM": -4.988,
+      "recordMinM": 130.695,
+      "recordMaxM": 139.877,
+      "percentOfRange": 32.3
+    },
+    {
+      "id": "chad",
+      "name": "Lake Chad (southern pool)",
+      "country": "TD",
+      "riparians": [
+        "TD",
+        "NG",
+        "NE",
+        "CM"
+      ],
+      "river": "Chari (endorheic)",
+      "lat": 13.1,
+      "lon": 14.5,
+      "tags": [
+        "terminal-lake",
+        "transboundary",
+        "conflict"
+      ],
+      "why": "A shrinking shared lake at the centre of the Boko Haram insurgency and regional food insecurity.",
+      "latest": {
+        "date": "2026-08-21",
+        "levelM": 280.549,
+        "madM": 0.07,
+        "segmentCount": 3111,
+        "ageDays": 81
+      },
+      "prevDate": "2026-04-24",
+      "recordStart": "2018-11-07",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-27",
+          "levelM": 281.022
+        },
+        {
+          "date": "2023-10-28",
+          "levelM": 280.704
+        },
+        {
+          "date": "2023-11-26",
+          "levelM": 281.437
+        },
+        {
+          "date": "2024-02-25",
+          "levelM": 280.9
+        },
+        {
+          "date": "2024-04-27",
+          "levelM": 280.268
+        },
+        {
+          "date": "2024-09-27",
+          "levelM": 280.865
+        },
+        {
+          "date": "2024-10-26",
+          "levelM": 281.584
+        },
+        {
+          "date": "2024-11-23",
+          "levelM": 281.816
+        },
+        {
+          "date": "2025-01-25",
+          "levelM": 281.229
+        },
+        {
+          "date": "2025-02-22",
+          "levelM": 280.883
+        },
+        {
+          "date": "2025-04-25",
+          "levelM": 280.472
+        },
+        {
+          "date": "2025-05-24",
+          "levelM": 280.282
+        },
+        {
+          "date": "2025-07-25",
+          "levelM": 280.193
+        },
+        {
+          "date": "2025-08-23",
+          "levelM": 280.965
+        },
+        {
+          "date": "2025-10-24",
+          "levelM": 281.102
+        },
+        {
+          "date": "2025-11-21",
+          "levelM": 281.906
+        },
+        {
+          "date": "2025-12-25",
+          "levelM": 281.015
+        },
+        {
+          "date": "2026-01-23",
+          "levelM": 281.102
+        },
+        {
+          "date": "2026-04-24",
+          "levelM": 280.432
+        },
+        {
+          "date": "2026-08-21",
+          "levelM": 280.549
+        }
+      ],
+      "okPassCount": 65,
+      "changePrevM": 0.117,
+      "change90dM": 0.088,
+      "change365dM": -0.382,
+      "seasonalAnomalyM": -0.183,
+      "seasonalZ": -0.51,
+      "recordMinM": 279.987,
+      "recordMaxM": 281.906,
+      "percentOfRange": 29.3
+    },
+    {
+      "id": "turkana",
+      "name": "Lake Turkana",
+      "country": "KE",
+      "riparians": [
+        "KE",
+        "ET"
+      ],
+      "river": "Omo (endorheic)",
+      "lat": 3.5,
+      "lon": 36.1,
+      "tags": [
+        "terminal-lake",
+        "transboundary"
+      ],
+      "why": "A desert lake fed by the Ethiopian Omo; upstream dams and irrigation threaten its level and fishery.",
+      "latest": {
+        "date": "2026-09-06",
+        "levelM": 369.204,
+        "madM": 0.079,
+        "segmentCount": 779,
+        "ageDays": 65
+      },
+      "prevDate": "2026-07-27",
+      "recordStart": "2018-11-10",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "high",
+      "series": [
+        {
+          "date": "2023-09-12",
+          "levelM": 366.679
+        },
+        {
+          "date": "2023-11-01",
+          "levelM": 366.915
+        },
+        {
+          "date": "2023-12-12",
+          "levelM": 367.23
+        },
+        {
+          "date": "2024-01-31",
+          "levelM": 367.477
+        },
+        {
+          "date": "2024-02-12",
+          "levelM": 367.436
+        },
+        {
+          "date": "2024-03-12",
+          "levelM": 367.25
+        },
+        {
+          "date": "2024-04-02",
+          "levelM": 367.459
+        },
+        {
+          "date": "2024-05-01",
+          "levelM": 367.876
+        },
+        {
+          "date": "2024-07-01",
+          "levelM": 368.197
+        },
+        {
+          "date": "2024-07-30",
+          "levelM": 368.233
+        },
+        {
+          "date": "2024-09-10",
+          "levelM": 368.306
+        },
+        {
+          "date": "2024-10-29",
+          "levelM": 368.585
+        },
+        {
+          "date": "2024-12-10",
+          "levelM": 368.66
+        },
+        {
+          "date": "2024-12-30",
+          "levelM": 368.879
+        },
+        {
+          "date": "2025-01-28",
+          "levelM": 368.431
+        },
+        {
+          "date": "2025-02-09",
+          "levelM": 369.043
+        },
+        {
+          "date": "2025-03-10",
+          "levelM": 368.317
+        },
+        {
+          "date": "2025-03-31",
+          "levelM": 368.778
+        },
+        {
+          "date": "2025-04-29",
+          "levelM": 368.73
+        },
+        {
+          "date": "2025-05-11",
+          "levelM": 369.104
+        },
+        {
+          "date": "2025-06-09",
+          "levelM": 368.775
+        },
+        {
+          "date": "2025-07-29",
+          "levelM": 368.976
+        },
+        {
+          "date": "2025-08-10",
+          "levelM": 369.167
+        },
+        {
+          "date": "2025-09-08",
+          "levelM": 369.074
+        },
+        {
+          "date": "2025-09-28",
+          "levelM": 369.444
+        },
+        {
+          "date": "2025-12-08",
+          "levelM": 369.381
+        },
+        {
+          "date": "2025-12-28",
+          "levelM": 369.485
+        },
+        {
+          "date": "2026-01-26",
+          "levelM": 369.42
+        },
+        {
+          "date": "2026-02-08",
+          "levelM": 369.381
+        },
+        {
+          "date": "2026-03-09",
+          "levelM": 369.422
+        },
+        {
+          "date": "2026-03-29",
+          "levelM": 369.507
+        },
+        {
+          "date": "2026-04-07",
+          "levelM": 369.505
+        },
+        {
+          "date": "2026-04-27",
+          "levelM": 369.37
+        },
+        {
+          "date": "2026-06-07",
+          "levelM": 369.749
+        },
+        {
+          "date": "2026-07-27",
+          "levelM": 369.56
+        },
+        {
+          "date": "2026-09-06",
+          "levelM": 369.204
+        }
+      ],
+      "okPassCount": 104,
+      "changePrevM": -0.356,
+      "change30dM": -0.258,
+      "change90dM": -0.542,
+      "change365dM": 0.124,
+      "seasonalAnomalyM": 2.577,
+      "seasonalZ": 1.95,
+      "recordMinM": 363.718,
+      "recordMaxM": 369.749,
+      "percentOfRange": 91
+    },
+    {
+      "id": "gatun",
+      "name": "Gatun Lake",
+      "country": "PA",
+      "riparians": [
+        "PA"
+      ],
+      "river": "Chagres",
+      "lat": 9.2,
+      "lon": -79.9,
+      "tags": [
+        "canal"
+      ],
+      "why": "Supplies the Panama Canal locks; its level sets ship draft limits and daily transit caps.",
+      "latest": {
+        "date": "2026-04-19",
+        "levelM": 26.679,
+        "madM": 0.062,
+        "segmentCount": 714,
+        "ageDays": 205
+      },
+      "prevDate": "2026-02-17",
+      "recordStart": "2018-11-03",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "no_recent_data",
+      "series": [
+        {
+          "date": "2023-04-26",
+          "levelM": 25.526
+        },
+        {
+          "date": "2023-05-25",
+          "levelM": 24.878
+        },
+        {
+          "date": "2023-09-30",
+          "levelM": 24.811
+        },
+        {
+          "date": "2024-02-21",
+          "levelM": 25.014
+        },
+        {
+          "date": "2024-03-29",
+          "levelM": 24.959
+        },
+        {
+          "date": "2024-04-23",
+          "levelM": 24.853
+        },
+        {
+          "date": "2024-04-27",
+          "levelM": 24.969
+        },
+        {
+          "date": "2024-07-23",
+          "levelM": 25.993
+        },
+        {
+          "date": "2024-09-27",
+          "levelM": 26.762
+        },
+        {
+          "date": "2025-01-20",
+          "levelM": 27.323
+        },
+        {
+          "date": "2025-01-25",
+          "levelM": 27.442
+        },
+        {
+          "date": "2025-03-28",
+          "levelM": 26.912
+        },
+        {
+          "date": "2025-04-26",
+          "levelM": 26.439
+        },
+        {
+          "date": "2025-05-20",
+          "levelM": 26.731
+        },
+        {
+          "date": "2025-07-21",
+          "levelM": 26.764
+        },
+        {
+          "date": "2025-08-19",
+          "levelM": 26.775
+        },
+        {
+          "date": "2025-10-20",
+          "levelM": 26.96
+        },
+        {
+          "date": "2025-12-25",
+          "levelM": 27.553
+        },
+        {
+          "date": "2026-01-19",
+          "levelM": 27.47
+        },
+        {
+          "date": "2026-01-23",
+          "levelM": 27.411
+        },
+        {
+          "date": "2026-02-17",
+          "levelM": 27.379
+        },
+        {
+          "date": "2026-04-19",
+          "levelM": 26.679
+        }
+      ],
+      "okPassCount": 51,
+      "changePrevM": -0.7,
+      "change90dM": -0.78,
+      "change365dM": 0.138,
+      "seasonalAnomalyM": 1.503,
+      "seasonalZ": 3.14,
+      "recordMinM": 24.811,
+      "recordMaxM": 27.553,
+      "percentOfRange": 68.1
+    },
+    {
+      "id": "mead",
+      "name": "Lake Mead",
+      "country": "US",
+      "riparians": [
+        "US",
+        "MX"
+      ],
+      "river": "Colorado",
+      "lat": 36.13,
+      "lon": -114.45,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Its level triggers shortage tiers for Arizona, Nevada and Mexico on the Colorado River.",
+      "latest": {
+        "date": "2026-09-06",
+        "levelM": 316.757,
+        "madM": 0.019,
+        "segmentCount": 739,
+        "ageDays": 65
+      },
+      "prevDate": "2026-08-27",
+      "recordStart": "2018-10-15",
+      "recordLow": true,
+      "recordHigh": false,
+      "status": "record_low",
+      "series": [
+        {
+          "date": "2023-09-12",
+          "levelM": 325.049
+        },
+        {
+          "date": "2023-10-05",
+          "levelM": 324.87
+        },
+        {
+          "date": "2023-10-11",
+          "levelM": 324.957
+        },
+        {
+          "date": "2023-11-03",
+          "levelM": 324.641
+        },
+        {
+          "date": "2023-11-09",
+          "levelM": 324.694
+        },
+        {
+          "date": "2023-12-02",
+          "levelM": 324.498
+        },
+        {
+          "date": "2023-12-12",
+          "levelM": 324.935
+        },
+        {
+          "date": "2024-01-04",
+          "levelM": 325.681
+        },
+        {
+          "date": "2024-01-10",
+          "levelM": 325.992
+        },
+        {
+          "date": "2024-02-08",
+          "levelM": 327.377
+        },
+        {
+          "date": "2024-03-02",
+          "levelM": 328.151
+        },
+        {
+          "date": "2024-03-12",
+          "levelM": 328.098
+        },
+        {
+          "date": "2024-04-04",
+          "levelM": 327.705
+        },
+        {
+          "date": "2024-04-09",
+          "levelM": 327.551
+        },
+        {
+          "date": "2024-05-08",
+          "levelM": 326.499
+        },
+        {
+          "date": "2024-07-04",
+          "levelM": 323.859
+        },
+        {
+          "date": "2024-07-09",
+          "levelM": 323.91
+        },
+        {
+          "date": "2024-08-02",
+          "levelM": 323.585
+        },
+        {
+          "date": "2024-08-07",
+          "levelM": 323.622
+        },
+        {
+          "date": "2024-09-09",
+          "levelM": 324.238
+        },
+        {
+          "date": "2024-10-03",
+          "levelM": 324.309
+        },
+        {
+          "date": "2024-10-08",
+          "levelM": 324.298
+        },
+        {
+          "date": "2024-11-01",
+          "levelM": 323.519
+        },
+        {
+          "date": "2024-11-06",
+          "levelM": 323.497
+        },
+        {
+          "date": "2024-11-30",
+          "levelM": 323.43
+        },
+        {
+          "date": "2024-12-09",
+          "levelM": 323.476
+        },
+        {
+          "date": "2025-01-01",
+          "levelM": 324.069
+        },
+        {
+          "date": "2025-01-07",
+          "levelM": 324.338
+        },
+        {
+          "date": "2025-01-30",
+          "levelM": 324.934
+        },
+        {
+          "date": "2025-02-05",
+          "levelM": 325.109
+        },
+        {
+          "date": "2025-02-28",
+          "levelM": 325.561
+        },
+        {
+          "date": "2025-03-10",
+          "levelM": 325.517
+        },
+        {
+          "date": "2025-04-02",
+          "levelM": 324.996
+        },
+        {
+          "date": "2025-04-08",
+          "levelM": 324.854
+        },
+        {
+          "date": "2025-06-09",
+          "levelM": 321.959
+        },
+        {
+          "date": "2025-07-08",
+          "levelM": 321.593
+        },
+        {
+          "date": "2025-07-31",
+          "levelM": 321.379
+        },
+        {
+          "date": "2025-08-06",
+          "levelM": 321.461
+        },
+        {
+          "date": "2025-09-07",
+          "levelM": 322.09
+        },
+        {
+          "date": "2025-10-01",
+          "levelM": 322.39
+        },
+        {
+          "date": "2025-10-06",
+          "levelM": 322.657
+        },
+        {
+          "date": "2025-10-30",
+          "levelM": 322.387
+        },
+        {
+          "date": "2025-11-04",
+          "levelM": 322.39
+        },
+        {
+          "date": "2025-12-02",
+          "levelM": 322.859
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 323.779
+        },
+        {
+          "date": "2026-01-05",
+          "levelM": 323.932
+        },
+        {
+          "date": "2026-01-29",
+          "levelM": 324.61
+        },
+        {
+          "date": "2026-02-03",
+          "levelM": 324.75
+        },
+        {
+          "date": "2026-02-27",
+          "levelM": 324.891
+        },
+        {
+          "date": "2026-03-08",
+          "levelM": 324.813
+        },
+        {
+          "date": "2026-04-06",
+          "levelM": 323.383
+        },
+        {
+          "date": "2026-04-29",
+          "levelM": 322.089
+        },
+        {
+          "date": "2026-05-05",
+          "levelM": 321.66
+        },
+        {
+          "date": "2026-06-07",
+          "levelM": 319.689
+        },
+        {
+          "date": "2026-06-30",
+          "levelM": 318.563
+        },
+        {
+          "date": "2026-07-06",
+          "levelM": 318.225
+        },
+        {
+          "date": "2026-07-29",
+          "levelM": 317.439
+        },
+        {
+          "date": "2026-08-04",
+          "levelM": 317.328
+        },
+        {
+          "date": "2026-08-27",
+          "levelM": 316.859
+        },
+        {
+          "date": "2026-09-06",
+          "levelM": 316.757
+        }
+      ],
+      "okPassCount": 156,
+      "changePrevM": -0.102,
+      "change30dM": -0.512,
+      "change90dM": -2.893,
+      "change365dM": -5.3,
+      "seasonalAnomalyM": -8.202,
+      "seasonalZ": -2.27,
+      "recordMinM": 316.757,
+      "recordMaxM": 334.532,
+      "percentOfRange": 0
+    },
+    {
+      "id": "powell",
+      "name": "Lake Powell",
+      "country": "US",
+      "riparians": [
+        "US",
+        "MX"
+      ],
+      "river": "Colorado",
+      "lat": 37.1,
+      "lon": -111.3,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Upper Colorado store whose level decides Glen Canyon power output and releases to Lake Mead.",
+      "latest": {
+        "date": "2026-09-19",
+        "levelM": 1072.232,
+        "madM": 0.043,
+        "segmentCount": 178,
+        "ageDays": 52
+      },
+      "prevDate": "2026-09-13",
+      "recordStart": "2018-11-02",
+      "recordLow": true,
+      "recordHigh": false,
+      "status": "record_low",
+      "series": [
+        {
+          "date": "2023-09-19",
+          "levelM": 1089.417
+        },
+        {
+          "date": "2023-09-25",
+          "levelM": 1089.394
+        },
+        {
+          "date": "2023-10-24",
+          "levelM": 1089.363
+        },
+        {
+          "date": "2023-12-19",
+          "levelM": 1088.266
+        },
+        {
+          "date": "2023-12-25",
+          "levelM": 1088.158
+        },
+        {
+          "date": "2024-01-23",
+          "levelM": 1087.196
+        },
+        {
+          "date": "2024-03-19",
+          "levelM": 1085.376
+        },
+        {
+          "date": "2024-03-24",
+          "levelM": 1085.132
+        },
+        {
+          "date": "2024-04-22",
+          "levelM": 1084.941
+        },
+        {
+          "date": "2024-06-23",
+          "levelM": 1092.305
+        },
+        {
+          "date": "2024-07-22",
+          "levelM": 1093.368
+        },
+        {
+          "date": "2024-09-17",
+          "levelM": 1091.155
+        },
+        {
+          "date": "2024-09-22",
+          "levelM": 1091.06
+        },
+        {
+          "date": "2024-10-16",
+          "levelM": 1090.644
+        },
+        {
+          "date": "2024-12-16",
+          "levelM": 1089.324
+        },
+        {
+          "date": "2024-12-22",
+          "levelM": 1089.149
+        },
+        {
+          "date": "2025-03-17",
+          "levelM": 1085.458
+        },
+        {
+          "date": "2025-03-23",
+          "levelM": 1085.294
+        },
+        {
+          "date": "2025-04-21",
+          "levelM": 1084.812
+        },
+        {
+          "date": "2025-06-16",
+          "levelM": 1085.751
+        },
+        {
+          "date": "2025-07-21",
+          "levelM": 1084.743
+        },
+        {
+          "date": "2025-09-15",
+          "levelM": 1081.298
+        },
+        {
+          "date": "2025-10-19",
+          "levelM": 1081.056
+        },
+        {
+          "date": "2025-12-15",
+          "levelM": 1079.766
+        },
+        {
+          "date": "2026-01-18",
+          "levelM": 1078.485
+        },
+        {
+          "date": "2026-03-16",
+          "levelM": 1076.104
+        },
+        {
+          "date": "2026-04-19",
+          "levelM": 1075.428
+        },
+        {
+          "date": "2026-06-14",
+          "levelM": 1075.486
+        },
+        {
+          "date": "2026-06-20",
+          "levelM": 1075.458
+        },
+        {
+          "date": "2026-07-13",
+          "levelM": 1074.618
+        },
+        {
+          "date": "2026-09-13",
+          "levelM": 1072.434
+        },
+        {
+          "date": "2026-09-19",
+          "levelM": 1072.232
+        }
+      ],
+      "okPassCount": 72,
+      "changePrevM": -0.202,
+      "change90dM": -3.197,
+      "change365dM": -9.04,
+      "seasonalAnomalyM": -17.185,
+      "seasonalZ": -1.43,
+      "recordMinM": 1072.232,
+      "recordMaxM": 1104.138,
+      "percentOfRange": 0
+    },
+    {
+      "id": "guri",
+      "name": "Guri reservoir",
+      "country": "VE",
+      "riparians": [
+        "VE"
+      ],
+      "river": "Caroni",
+      "lat": 7.5,
+      "lon": -62.9,
+      "tags": [
+        "hydropower"
+      ],
+      "why": "Produces most of Venezuela's electricity; low levels have caused national blackouts.",
+      "latest": {
+        "date": "2026-08-20",
+        "levelM": 269.873,
+        "madM": 0.049,
+        "segmentCount": 1328,
+        "ageDays": 82
+      },
+      "prevDate": "2026-05-21",
+      "recordStart": "2018-12-05",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-26",
+          "levelM": 270.445
+        },
+        {
+          "date": "2023-09-04",
+          "levelM": 270.458
+        },
+        {
+          "date": "2023-10-03",
+          "levelM": 269.849
+        },
+        {
+          "date": "2023-10-27",
+          "levelM": 269.062
+        },
+        {
+          "date": "2023-11-25",
+          "levelM": 268.679
+        },
+        {
+          "date": "2024-01-02",
+          "levelM": 267.281
+        },
+        {
+          "date": "2024-01-26",
+          "levelM": 265.531
+        },
+        {
+          "date": "2024-02-24",
+          "levelM": 262.979
+        },
+        {
+          "date": "2024-03-03",
+          "levelM": 262.234
+        },
+        {
+          "date": "2024-04-01",
+          "levelM": 258.657
+        },
+        {
+          "date": "2024-04-26",
+          "levelM": 255.639
+        },
+        {
+          "date": "2024-07-01",
+          "levelM": 259.914
+        },
+        {
+          "date": "2024-07-26",
+          "levelM": 262.924
+        },
+        {
+          "date": "2024-08-24",
+          "levelM": 267.062
+        },
+        {
+          "date": "2024-09-01",
+          "levelM": 267.799
+        },
+        {
+          "date": "2024-09-30",
+          "levelM": 269.161
+        },
+        {
+          "date": "2024-11-22",
+          "levelM": 267.634
+        },
+        {
+          "date": "2024-12-01",
+          "levelM": 267.299
+        },
+        {
+          "date": "2025-01-23",
+          "levelM": 264.194
+        },
+        {
+          "date": "2025-02-21",
+          "levelM": 261.709
+        },
+        {
+          "date": "2025-03-02",
+          "levelM": 261.249
+        },
+        {
+          "date": "2025-04-24",
+          "levelM": 257.661
+        },
+        {
+          "date": "2025-06-01",
+          "levelM": 259.07
+        },
+        {
+          "date": "2025-06-29",
+          "levelM": 263.814
+        },
+        {
+          "date": "2025-07-24",
+          "levelM": 267.92
+        },
+        {
+          "date": "2025-08-22",
+          "levelM": 270.3
+        },
+        {
+          "date": "2025-08-30",
+          "levelM": 270.601
+        },
+        {
+          "date": "2025-09-28",
+          "levelM": 271.124
+        },
+        {
+          "date": "2025-11-29",
+          "levelM": 270.955
+        },
+        {
+          "date": "2025-12-28",
+          "levelM": 270.522
+        },
+        {
+          "date": "2026-01-22",
+          "levelM": 269.505
+        },
+        {
+          "date": "2026-02-19",
+          "levelM": 267.916
+        },
+        {
+          "date": "2026-02-28",
+          "levelM": 267.289
+        },
+        {
+          "date": "2026-03-29",
+          "levelM": 264.732
+        },
+        {
+          "date": "2026-04-22",
+          "levelM": 263.811
+        },
+        {
+          "date": "2026-05-21",
+          "levelM": 263.33
+        },
+        {
+          "date": "2026-08-20",
+          "levelM": 269.873
+        }
+      ],
+      "okPassCount": 97,
+      "changePrevM": 6.543,
+      "change90dM": 6.484,
+      "change365dM": -0.285,
+      "seasonalAnomalyM": -0.426,
+      "seasonalZ": -1.01,
+      "recordMinM": 255.639,
+      "recordMaxM": 271.124,
+      "percentOfRange": 91.9
+    },
+    {
+      "id": "itaipu",
+      "name": "Itaipu reservoir",
+      "country": "BR",
+      "riparians": [
+        "BR",
+        "PY",
+        "AR"
+      ],
+      "river": "Parana",
+      "lat": -25,
+      "lon": -54.5,
+      "tags": [
+        "hydropower",
+        "transboundary"
+      ],
+      "why": "Binational Brazil-Paraguay dam supplying most of Paraguay's and a large share of Brazil's power.",
+      "latest": {
+        "date": "2026-09-03",
+        "levelM": 219.119,
+        "madM": 0.049,
+        "segmentCount": 1866,
+        "ageDays": 68
+      },
+      "prevDate": "2026-06-21",
+      "recordStart": "2018-12-07",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2024-02-26",
+          "levelM": 218.673
+        },
+        {
+          "date": "2024-03-08",
+          "levelM": 218.221
+        },
+        {
+          "date": "2024-04-06",
+          "levelM": 218.693
+        },
+        {
+          "date": "2024-08-26",
+          "levelM": 218.527
+        },
+        {
+          "date": "2024-09-06",
+          "levelM": 218.598
+        },
+        {
+          "date": "2024-09-23",
+          "levelM": 218.775
+        },
+        {
+          "date": "2024-11-24",
+          "levelM": 218.022
+        },
+        {
+          "date": "2024-12-06",
+          "levelM": 217.198
+        },
+        {
+          "date": "2025-02-23",
+          "levelM": 218.45
+        },
+        {
+          "date": "2025-05-25",
+          "levelM": 219.663
+        },
+        {
+          "date": "2025-06-05",
+          "levelM": 219.727
+        },
+        {
+          "date": "2025-10-03",
+          "levelM": 219.82
+        },
+        {
+          "date": "2025-11-23",
+          "levelM": 220.158
+        },
+        {
+          "date": "2026-02-21",
+          "levelM": 217.307
+        },
+        {
+          "date": "2026-03-05",
+          "levelM": 218.219
+        },
+        {
+          "date": "2026-05-23",
+          "levelM": 219.837
+        },
+        {
+          "date": "2026-06-21",
+          "levelM": 219.83
+        },
+        {
+          "date": "2026-09-03",
+          "levelM": 219.119
+        }
+      ],
+      "okPassCount": 51,
+      "changePrevM": -0.711,
+      "change90dM": -0.715,
+      "change365dM": -0.677,
+      "seasonalAnomalyM": 0.432,
+      "seasonalZ": 0.64,
+      "recordMinM": 216.63,
+      "recordMaxM": 220.365,
+      "percentOfRange": 66.6
+    },
+    {
+      "id": "furnas",
+      "name": "Furnas reservoir",
+      "country": "BR",
+      "riparians": [
+        "BR"
+      ],
+      "river": "Grande (Parana)",
+      "lat": -20.8,
+      "lon": -45.9,
+      "tags": [
+        "hydropower"
+      ],
+      "why": "A key store for Brazil's south-east grid; its draw-down tracks national power-rationing risk.",
+      "latest": {
+        "date": "2026-07-17",
+        "levelM": 764.076,
+        "madM": 0.091,
+        "segmentCount": 1737,
+        "ageDays": 116
+      },
+      "prevDate": "2026-07-09",
+      "recordStart": "2018-10-24",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-07-23",
+          "levelM": 768.196
+        },
+        {
+          "date": "2023-09-15",
+          "levelM": 766.976
+        },
+        {
+          "date": "2023-10-14",
+          "levelM": 765.996
+        },
+        {
+          "date": "2023-10-22",
+          "levelM": 765.804
+        },
+        {
+          "date": "2023-12-15",
+          "levelM": 765.03
+        },
+        {
+          "date": "2024-01-13",
+          "levelM": 764.437
+        },
+        {
+          "date": "2024-01-20",
+          "levelM": 764.514
+        },
+        {
+          "date": "2024-03-15",
+          "levelM": 764.891
+        },
+        {
+          "date": "2024-07-13",
+          "levelM": 763.766
+        },
+        {
+          "date": "2024-07-20",
+          "levelM": 763.572
+        },
+        {
+          "date": "2024-08-18",
+          "levelM": 762.161
+        },
+        {
+          "date": "2024-09-12",
+          "levelM": 760.423
+        },
+        {
+          "date": "2024-12-12",
+          "levelM": 757.825
+        },
+        {
+          "date": "2025-02-16",
+          "levelM": 763.652
+        },
+        {
+          "date": "2025-03-13",
+          "levelM": 763.928
+        },
+        {
+          "date": "2025-04-11",
+          "levelM": 764.133
+        },
+        {
+          "date": "2025-05-17",
+          "levelM": 764.146
+        },
+        {
+          "date": "2025-06-12",
+          "levelM": 763.753
+        },
+        {
+          "date": "2025-07-11",
+          "levelM": 763.542
+        },
+        {
+          "date": "2025-07-18",
+          "levelM": 763.512
+        },
+        {
+          "date": "2025-08-16",
+          "levelM": 762.658
+        },
+        {
+          "date": "2025-09-11",
+          "levelM": 761.434
+        },
+        {
+          "date": "2025-10-17",
+          "levelM": 759.124
+        },
+        {
+          "date": "2025-11-15",
+          "levelM": 758.154
+        },
+        {
+          "date": "2026-01-16",
+          "levelM": 758.149
+        },
+        {
+          "date": "2026-05-12",
+          "levelM": 763.296
+        },
+        {
+          "date": "2026-05-16",
+          "levelM": 763.366
+        },
+        {
+          "date": "2026-06-10",
+          "levelM": 763.69
+        },
+        {
+          "date": "2026-06-18",
+          "levelM": 763.879
+        },
+        {
+          "date": "2026-07-09",
+          "levelM": 763.993
+        },
+        {
+          "date": "2026-07-17",
+          "levelM": 764.076
+        }
+      ],
+      "okPassCount": 87,
+      "changePrevM": 0.083,
+      "change30dM": 0.224,
+      "change90dM": 1.87,
+      "change365dM": 0.557,
+      "seasonalAnomalyM": 0.549,
+      "seasonalZ": 0.29,
+      "recordMinM": 753.903,
+      "recordMaxM": 768.205,
+      "percentOfRange": 71.1
+    },
+    {
+      "id": "sobradinho",
+      "name": "Sobradinho reservoir",
+      "country": "BR",
+      "riparians": [
+        "BR"
+      ],
+      "river": "Sao Francisco",
+      "lat": -9.7,
+      "lon": -41.5,
+      "tags": [
+        "hydropower",
+        "irrigation"
+      ],
+      "why": "North-east Brazil's main reservoir, feeding hydropower and the Sao Francisco transfer canals.",
+      "latest": {
+        "date": "2026-09-18",
+        "levelM": 391.445,
+        "madM": 0.053,
+        "segmentCount": 1605,
+        "ageDays": 53
+      },
+      "prevDate": "2026-08-24",
+      "recordStart": "2018-11-10",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-24",
+          "levelM": 391.507
+        },
+        {
+          "date": "2023-10-31",
+          "levelM": 391.186
+        },
+        {
+          "date": "2023-11-25",
+          "levelM": 390.81
+        },
+        {
+          "date": "2023-11-29",
+          "levelM": 390.53
+        },
+        {
+          "date": "2024-02-23",
+          "levelM": 391.445
+        },
+        {
+          "date": "2024-02-28",
+          "levelM": 391.551
+        },
+        {
+          "date": "2024-03-23",
+          "levelM": 392.332
+        },
+        {
+          "date": "2024-04-30",
+          "levelM": 392.955
+        },
+        {
+          "date": "2024-06-22",
+          "levelM": 391.631
+        },
+        {
+          "date": "2024-07-30",
+          "levelM": 391.195
+        },
+        {
+          "date": "2024-08-23",
+          "levelM": 390.509
+        },
+        {
+          "date": "2024-08-27",
+          "levelM": 390.244
+        },
+        {
+          "date": "2024-11-22",
+          "levelM": 388.998
+        },
+        {
+          "date": "2024-11-26",
+          "levelM": 389.104
+        },
+        {
+          "date": "2024-12-21",
+          "levelM": 389.489
+        },
+        {
+          "date": "2025-02-21",
+          "levelM": 392.93
+        },
+        {
+          "date": "2025-02-25",
+          "levelM": 392.827
+        },
+        {
+          "date": "2025-03-22",
+          "levelM": 392.622
+        },
+        {
+          "date": "2025-04-28",
+          "levelM": 392.041
+        },
+        {
+          "date": "2025-05-22",
+          "levelM": 391.633
+        },
+        {
+          "date": "2025-05-27",
+          "levelM": 391.437
+        },
+        {
+          "date": "2025-06-20",
+          "levelM": 390.958
+        },
+        {
+          "date": "2025-07-28",
+          "levelM": 390.629
+        },
+        {
+          "date": "2025-08-21",
+          "levelM": 390.261
+        },
+        {
+          "date": "2025-08-26",
+          "levelM": 390.01
+        },
+        {
+          "date": "2025-09-19",
+          "levelM": 389.606
+        },
+        {
+          "date": "2025-10-27",
+          "levelM": 389.21
+        },
+        {
+          "date": "2025-11-20",
+          "levelM": 388.99
+        },
+        {
+          "date": "2025-11-25",
+          "levelM": 388.836
+        },
+        {
+          "date": "2025-12-19",
+          "levelM": 388.856
+        },
+        {
+          "date": "2026-01-25",
+          "levelM": 389.494
+        },
+        {
+          "date": "2026-04-26",
+          "levelM": 394.013
+        },
+        {
+          "date": "2026-05-21",
+          "levelM": 393.961
+        },
+        {
+          "date": "2026-05-25",
+          "levelM": 393.696
+        },
+        {
+          "date": "2026-06-23",
+          "levelM": 393.284
+        },
+        {
+          "date": "2026-07-22",
+          "levelM": 393.154
+        },
+        {
+          "date": "2026-08-20",
+          "levelM": 392.148
+        },
+        {
+          "date": "2026-08-24",
+          "levelM": 392.078
+        },
+        {
+          "date": "2026-09-18",
+          "levelM": 391.445
+        }
+      ],
+      "okPassCount": 102,
+      "changePrevM": -0.633,
+      "change30dM": -0.74,
+      "change90dM": -1.891,
+      "change365dM": 1.811,
+      "seasonalAnomalyM": 1.06,
+      "seasonalZ": 0.52,
+      "recordMinM": 386.542,
+      "recordMaxM": 394.236,
+      "percentOfRange": 63.7
+    },
+    {
+      "id": "kakhovka",
+      "name": "Kakhovka reservoir (destroyed)",
+      "country": "UA",
+      "riparians": [
+        "UA"
+      ],
+      "river": "Dnipro",
+      "lat": 47.4,
+      "lon": 34.2,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "conflict"
+      ],
+      "why": "Drained when its dam was destroyed in June 2023; it supplied southern Ukraine, Crimea canals and nuclear plant cooling.",
+      "latest": {
+        "date": "2026-07-30",
+        "levelM": 5.787,
+        "madM": 0.044,
+        "segmentCount": 210,
+        "ageDays": 103
+      },
+      "prevDate": "2026-07-01",
+      "recordStart": "2018-10-16",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "low",
+      "series": [
+        {
+          "date": "2023-08-28",
+          "levelM": 6.856
+        },
+        {
+          "date": "2024-04-05",
+          "levelM": 7.041
+        },
+        {
+          "date": "2024-10-26",
+          "levelM": 5.411
+        },
+        {
+          "date": "2025-01-02",
+          "levelM": 6.025
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 6.191
+        },
+        {
+          "date": "2026-04-01",
+          "levelM": 7.46
+        },
+        {
+          "date": "2026-07-01",
+          "levelM": 4.158
+        },
+        {
+          "date": "2026-07-30",
+          "levelM": 5.787
+        }
+      ],
+      "okPassCount": 32,
+      "changePrevM": 1.629,
+      "change30dM": 1.591,
+      "change90dM": -0.591,
+      "seasonalAnomalyM": -10.003,
+      "seasonalZ": -38.33,
+      "recordMinM": 4.158,
+      "recordMaxM": 17.211,
+      "percentOfRange": 12.5
+    },
+    {
+      "id": "kremenchuk",
+      "name": "Kremenchuk reservoir",
+      "country": "UA",
+      "riparians": [
+        "UA"
+      ],
+      "river": "Dnipro",
+      "lat": 49.3,
+      "lon": 32.7,
+      "tags": [
+        "hydropower",
+        "conflict"
+      ],
+      "why": "Ukraine's largest Dnipro store, part of a cascade under repeated attack.",
+      "latest": {
+        "date": "2026-09-09",
+        "levelM": 80.09,
+        "madM": 0.044,
+        "segmentCount": 9107,
+        "ageDays": 62
+      },
+      "prevDate": "2026-08-29",
+      "recordStart": "2019-03-15",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-12-04",
+          "levelM": 78.393
+        },
+        {
+          "date": "2024-03-04",
+          "levelM": 80.098
+        },
+        {
+          "date": "2024-08-14",
+          "levelM": 80.868
+        },
+        {
+          "date": "2024-09-02",
+          "levelM": 80.408
+        },
+        {
+          "date": "2024-09-12",
+          "levelM": 80.088
+        },
+        {
+          "date": "2024-12-12",
+          "levelM": 78.622
+        },
+        {
+          "date": "2025-02-12",
+          "levelM": 78.359
+        },
+        {
+          "date": "2025-05-14",
+          "levelM": 80.013
+        },
+        {
+          "date": "2025-06-01",
+          "levelM": 80.339
+        },
+        {
+          "date": "2025-08-13",
+          "levelM": 80.638
+        },
+        {
+          "date": "2025-08-31",
+          "levelM": 80.638
+        },
+        {
+          "date": "2025-09-11",
+          "levelM": 80.598
+        },
+        {
+          "date": "2025-09-29",
+          "levelM": 80.519
+        },
+        {
+          "date": "2026-02-10",
+          "levelM": 79.607
+        },
+        {
+          "date": "2026-03-01",
+          "levelM": 79.305
+        },
+        {
+          "date": "2026-03-11",
+          "levelM": 79.21
+        },
+        {
+          "date": "2026-05-12",
+          "levelM": 80.698
+        },
+        {
+          "date": "2026-05-31",
+          "levelM": 81.281
+        },
+        {
+          "date": "2026-07-31",
+          "levelM": 80.855
+        },
+        {
+          "date": "2026-08-11",
+          "levelM": 80.632
+        },
+        {
+          "date": "2026-08-29",
+          "levelM": 80.281
+        },
+        {
+          "date": "2026-09-09",
+          "levelM": 80.09
+        }
+      ],
+      "okPassCount": 56,
+      "changePrevM": -0.191,
+      "change30dM": -0.564,
+      "change90dM": -1.113,
+      "change365dM": -0.515,
+      "seasonalAnomalyM": -0.374,
+      "seasonalZ": -0.78,
+      "recordMinM": 78.359,
+      "recordMaxM": 81.587,
+      "percentOfRange": 53.6
+    },
+    {
+      "id": "dnipro",
+      "name": "Dnipro reservoir (DniproHES)",
+      "country": "UA",
+      "riparians": [
+        "UA"
+      ],
+      "river": "Dnipro",
+      "lat": 48.1,
+      "lon": 35.1,
+      "tags": [
+        "hydropower",
+        "conflict"
+      ],
+      "why": "Store behind the DniproHES dam, struck in 2024, near the front line.",
+      "latest": {
+        "date": "2026-07-26",
+        "levelM": 51.056,
+        "madM": 0.023,
+        "segmentCount": 128,
+        "ageDays": 107
+      },
+      "prevDate": "2026-03-28",
+      "recordStart": "2018-12-02",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-08-01",
+          "levelM": 51.498
+        },
+        {
+          "date": "2023-08-24",
+          "levelM": 51.383
+        },
+        {
+          "date": "2023-09-21",
+          "levelM": 51.357
+        },
+        {
+          "date": "2023-10-02",
+          "levelM": 51.316
+        },
+        {
+          "date": "2024-01-01",
+          "levelM": 51.455
+        },
+        {
+          "date": "2024-03-21",
+          "levelM": 51.311
+        },
+        {
+          "date": "2024-04-01",
+          "levelM": 51.45
+        },
+        {
+          "date": "2024-09-19",
+          "levelM": 51.341
+        },
+        {
+          "date": "2024-09-29",
+          "levelM": 51.153
+        },
+        {
+          "date": "2024-10-28",
+          "levelM": 51.314
+        },
+        {
+          "date": "2024-11-20",
+          "levelM": 51.255
+        },
+        {
+          "date": "2024-12-19",
+          "levelM": 51.439
+        },
+        {
+          "date": "2025-06-18",
+          "levelM": 51.212
+        },
+        {
+          "date": "2025-07-28",
+          "levelM": 51.125
+        },
+        {
+          "date": "2025-08-19",
+          "levelM": 51.211
+        },
+        {
+          "date": "2025-09-17",
+          "levelM": 51.199
+        },
+        {
+          "date": "2026-03-28",
+          "levelM": 51.077
+        },
+        {
+          "date": "2026-07-26",
+          "levelM": 51.056
+        }
+      ],
+      "okPassCount": 55,
+      "changePrevM": -0.021,
+      "change90dM": -0.016,
+      "change365dM": -0.073,
+      "seasonalAnomalyM": -0.327,
+      "seasonalZ": -1.31,
+      "recordMinM": 51.056,
+      "recordMaxM": 51.564
+    },
+    {
+      "id": "mingachevir",
+      "name": "Mingachevir reservoir",
+      "country": "AZ",
+      "riparians": [
+        "AZ",
+        "GE",
+        "AM"
+      ],
+      "river": "Kura",
+      "lat": 40.85,
+      "lon": 46.8,
+      "tags": [
+        "hydropower",
+        "irrigation",
+        "transboundary"
+      ],
+      "why": "Azerbaijan's largest reservoir on the Kura, the main river of the South Caucasus.",
+      "latest": {
+        "date": "2026-09-21",
+        "levelM": 79.278,
+        "madM": 0.029,
+        "segmentCount": 1027,
+        "ageDays": 50
+      },
+      "prevDate": "2026-08-23",
+      "recordStart": "2018-12-08",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-27",
+          "levelM": 76.036
+        },
+        {
+          "date": "2023-10-29",
+          "levelM": 76.097
+        },
+        {
+          "date": "2023-11-27",
+          "levelM": 75.792
+        },
+        {
+          "date": "2023-11-28",
+          "levelM": 75.779
+        },
+        {
+          "date": "2023-12-27",
+          "levelM": 76.05
+        },
+        {
+          "date": "2024-01-28",
+          "levelM": 76.545
+        },
+        {
+          "date": "2024-02-26",
+          "levelM": 77.156
+        },
+        {
+          "date": "2024-02-27",
+          "levelM": 77.108
+        },
+        {
+          "date": "2024-03-27",
+          "levelM": 77.373
+        },
+        {
+          "date": "2024-04-27",
+          "levelM": 78.616
+        },
+        {
+          "date": "2024-06-26",
+          "levelM": 81.426
+        },
+        {
+          "date": "2024-07-27",
+          "levelM": 80.941
+        },
+        {
+          "date": "2024-08-27",
+          "levelM": 80.81
+        },
+        {
+          "date": "2024-10-26",
+          "levelM": 80.086
+        },
+        {
+          "date": "2024-11-24",
+          "levelM": 79.872
+        },
+        {
+          "date": "2024-12-25",
+          "levelM": 79.391
+        },
+        {
+          "date": "2025-01-25",
+          "levelM": 78.503
+        },
+        {
+          "date": "2025-02-23",
+          "levelM": 77.978
+        },
+        {
+          "date": "2025-02-24",
+          "levelM": 77.904
+        },
+        {
+          "date": "2025-03-25",
+          "levelM": 77.866
+        },
+        {
+          "date": "2025-04-26",
+          "levelM": 79.072
+        },
+        {
+          "date": "2025-05-25",
+          "levelM": 80.346
+        },
+        {
+          "date": "2025-05-26",
+          "levelM": 80.3
+        },
+        {
+          "date": "2025-06-24",
+          "levelM": 79.945
+        },
+        {
+          "date": "2025-07-26",
+          "levelM": 79.171
+        },
+        {
+          "date": "2025-08-24",
+          "levelM": 77.894
+        },
+        {
+          "date": "2025-08-25",
+          "levelM": 77.741
+        },
+        {
+          "date": "2025-09-23",
+          "levelM": 77.16
+        },
+        {
+          "date": "2025-10-24",
+          "levelM": 77.416
+        },
+        {
+          "date": "2025-11-22",
+          "levelM": 77.42
+        },
+        {
+          "date": "2025-11-24",
+          "levelM": 77.342
+        },
+        {
+          "date": "2025-12-23",
+          "levelM": 77.311
+        },
+        {
+          "date": "2026-02-21",
+          "levelM": 77.656
+        },
+        {
+          "date": "2026-03-24",
+          "levelM": 78.068
+        },
+        {
+          "date": "2026-04-24",
+          "levelM": 79.269
+        },
+        {
+          "date": "2026-06-22",
+          "levelM": 81.169
+        },
+        {
+          "date": "2026-07-24",
+          "levelM": 81.146
+        },
+        {
+          "date": "2026-08-22",
+          "levelM": 79.97
+        },
+        {
+          "date": "2026-08-23",
+          "levelM": 80.012
+        },
+        {
+          "date": "2026-09-21",
+          "levelM": 79.278
+        }
+      ],
+      "okPassCount": 92,
+      "changePrevM": -0.734,
+      "change30dM": -0.704,
+      "change90dM": -1.89,
+      "change365dM": 2.083,
+      "seasonalAnomalyM": 5.153,
+      "seasonalZ": 0.94,
+      "recordMinM": 67.085,
+      "recordMaxM": 81.426,
+      "percentOfRange": 85
+    },
+    {
+      "id": "sevan",
+      "name": "Lake Sevan",
+      "country": "AM",
+      "riparians": [
+        "AM"
+      ],
+      "river": "Hrazdan",
+      "lat": 40.4,
+      "lon": 45.3,
+      "tags": [
+        "hydropower",
+        "irrigation"
+      ],
+      "why": "Armenia's strategic freshwater reserve, drawn on for irrigation and power.",
+      "latest": {
+        "date": "2026-08-31",
+        "levelM": 1901.043,
+        "madM": 0.012,
+        "segmentCount": 15,
+        "ageDays": 71
+      },
+      "prevDate": "2026-07-28",
+      "recordStart": "2018-10-14",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-12-05",
+          "levelM": 1900.229
+        },
+        {
+          "date": "2024-01-04",
+          "levelM": 1900.222
+        },
+        {
+          "date": "2024-02-02",
+          "levelM": 1900.274
+        },
+        {
+          "date": "2024-03-05",
+          "levelM": 1900.299
+        },
+        {
+          "date": "2024-04-03",
+          "levelM": 1900.265
+        },
+        {
+          "date": "2024-04-04",
+          "levelM": 1900.374
+        },
+        {
+          "date": "2024-07-02",
+          "levelM": 1900.758
+        },
+        {
+          "date": "2024-07-04",
+          "levelM": 1900.754
+        },
+        {
+          "date": "2024-08-02",
+          "levelM": 1900.781
+        },
+        {
+          "date": "2024-09-02",
+          "levelM": 1900.746
+        },
+        {
+          "date": "2024-10-01",
+          "levelM": 1900.654
+        },
+        {
+          "date": "2024-10-03",
+          "levelM": 1900.595
+        },
+        {
+          "date": "2024-10-30",
+          "levelM": 1900.638
+        },
+        {
+          "date": "2024-12-04",
+          "levelM": 1900.677
+        },
+        {
+          "date": "2025-01-01",
+          "levelM": 1900.594
+        },
+        {
+          "date": "2025-01-30",
+          "levelM": 1900.505
+        },
+        {
+          "date": "2025-03-03",
+          "levelM": 1900.44
+        },
+        {
+          "date": "2025-04-01",
+          "levelM": 1900.394
+        },
+        {
+          "date": "2025-04-02",
+          "levelM": 1900.626
+        },
+        {
+          "date": "2025-05-01",
+          "levelM": 1900.732
+        },
+        {
+          "date": "2025-06-02",
+          "levelM": 1900.855
+        },
+        {
+          "date": "2025-07-01",
+          "levelM": 1900.748
+        },
+        {
+          "date": "2025-07-02",
+          "levelM": 1900.735
+        },
+        {
+          "date": "2025-09-01",
+          "levelM": 1900.676
+        },
+        {
+          "date": "2025-09-29",
+          "levelM": 1900.434
+        },
+        {
+          "date": "2025-10-01",
+          "levelM": 1900.608
+        },
+        {
+          "date": "2025-10-30",
+          "levelM": 1900.434
+        },
+        {
+          "date": "2025-11-30",
+          "levelM": 1900.51
+        },
+        {
+          "date": "2025-12-31",
+          "levelM": 1900.377
+        },
+        {
+          "date": "2026-01-29",
+          "levelM": 1900.242
+        },
+        {
+          "date": "2026-03-01",
+          "levelM": 1900.366
+        },
+        {
+          "date": "2026-04-01",
+          "levelM": 1900.442
+        },
+        {
+          "date": "2026-04-30",
+          "levelM": 1900.478
+        },
+        {
+          "date": "2026-05-31",
+          "levelM": 1900.606
+        },
+        {
+          "date": "2026-06-29",
+          "levelM": 1900.987
+        },
+        {
+          "date": "2026-06-30",
+          "levelM": 1900.752
+        },
+        {
+          "date": "2026-07-28",
+          "levelM": 1900.842
+        },
+        {
+          "date": "2026-08-31",
+          "levelM": 1901.043
+        }
+      ],
+      "okPassCount": 89,
+      "changePrevM": 0.201,
+      "change30dM": 0.175,
+      "change90dM": 0.407,
+      "change365dM": 0.367,
+      "seasonalAnomalyM": 0.188,
+      "seasonalZ": 0.75,
+      "recordMinM": 1900.222,
+      "recordMaxM": 1901.118
+    },
+    {
+      "id": "galilee",
+      "name": "Sea of Galilee",
+      "country": "IL",
+      "riparians": [
+        "IL",
+        "JO",
+        "SY",
+        "LB"
+      ],
+      "river": "Jordan",
+      "lat": 32.8,
+      "lon": 35.6,
+      "tags": [
+        "transboundary",
+        "irrigation"
+      ],
+      "why": "Israel's natural freshwater reservoir, with red-line levels set by law, on the shared Jordan basin.",
+      "latest": {
+        "date": "2026-09-23",
+        "levelM": -214.306,
+        "madM": 0.024,
+        "segmentCount": 377,
+        "ageDays": 48
+      },
+      "prevDate": "2026-09-14",
+      "recordStart": "2018-12-29",
+      "recordLow": false,
+      "recordHigh": false,
+      "status": "normal",
+      "series": [
+        {
+          "date": "2023-09-29",
+          "levelM": -212.186
+        },
+        {
+          "date": "2023-12-29",
+          "levelM": -212.307
+        },
+        {
+          "date": "2024-03-20",
+          "levelM": -210.365
+        },
+        {
+          "date": "2024-03-29",
+          "levelM": -210.334
+        },
+        {
+          "date": "2024-06-28",
+          "levelM": -210.574
+        },
+        {
+          "date": "2024-12-17",
+          "levelM": -212.23
+        },
+        {
+          "date": "2025-03-18",
+          "levelM": -212.156
+        },
+        {
+          "date": "2025-06-17",
+          "levelM": -212.643
+        },
+        {
+          "date": "2025-06-26",
+          "levelM": -212.872
+        },
+        {
+          "date": "2025-09-16",
+          "levelM": -213.73
+        },
+        {
+          "date": "2025-09-25",
+          "levelM": -213.767
+        },
+        {
+          "date": "2025-12-25",
+          "levelM": -214.389
+        },
+        {
+          "date": "2026-03-16",
+          "levelM": -213.927
+        },
+        {
+          "date": "2026-07-14",
+          "levelM": -213.633
+        },
+        {
+          "date": "2026-08-25",
+          "levelM": -213.783
+        },
+        {
+          "date": "2026-09-14",
+          "levelM": -214.226
+        },
+        {
+          "date": "2026-09-23",
+          "levelM": -214.306
+        }
+      ],
+      "okPassCount": 42,
+      "changePrevM": -0.08,
+      "change30dM": -0.527,
+      "change90dM": -0.627,
+      "change365dM": -0.546,
+      "seasonalAnomalyM": -2.244,
+      "seasonalZ": -1.15,
+      "recordMinM": -215.203,
+      "recordMaxM": -209.923,
+      "percentOfRange": 17
+    },
+    {
+      "id": "dead-sea",
+      "name": "Dead Sea",
+      "country": "IL",
+      "riparians": [
+        "IL",
+        "JO",
+        "PS"
+      ],
+      "river": "Jordan (endorheic)",
+      "lat": 31.5,
+      "lon": 35.5,
+      "tags": [
+        "terminal-lake",
+        "transboundary"
+      ],
+      "why": "Falling by about a metre a year as Jordan River inflow is diverted upstream.",
+      "latest": {
+        "date": "2026-09-14",
+        "levelM": -442.37,
+        "madM": 0.118,
+        "segmentCount": 4475,
+        "ageDays": 57
+      },
+      "prevDate": "2026-08-25",
+      "recordStart": "2018-12-10",
+      "recordLow": true,
+      "recordHigh": false,
+      "status": "record_low",
+      "series": [
+        {
+          "date": "2023-10-19",
+          "levelM": -439.596
+        },
+        {
+          "date": "2023-11-30",
+          "levelM": -439.677
+        },
+        {
+          "date": "2024-01-18",
+          "levelM": -439.704
+        },
+        {
+          "date": "2024-02-29",
+          "levelM": -439.607
+        },
+        {
+          "date": "2024-03-20",
+          "levelM": -439.262
+        },
+        {
+          "date": "2024-08-29",
+          "levelM": -440.313
+        },
+        {
+          "date": "2024-10-16",
+          "levelM": -440.646
+        },
+        {
+          "date": "2025-02-26",
+          "levelM": -440.623
+        },
+        {
+          "date": "2025-03-18",
+          "levelM": -440.456
+        },
+        {
+          "date": "2025-05-28",
+          "levelM": -441.078
+        },
+        {
+          "date": "2025-08-27",
+          "levelM": -441.479
+        },
+        {
+          "date": "2025-11-26",
+          "levelM": -441.652
+        },
+        {
+          "date": "2026-02-25",
+          "levelM": -441.827
+        },
+        {
+          "date": "2026-05-27",
+          "levelM": -441.727
+        },
+        {
+          "date": "2026-07-14",
+          "levelM": -442.114
+        },
+        {
+          "date": "2026-08-25",
+          "levelM": -442.187
+        },
+        {
+          "date": "2026-09-14",
+          "levelM": -442.37
+        }
+      ],
+      "okPassCount": 42,
+      "changePrevM": -0.183,
+      "change30dM": -0.201,
+      "change90dM": -0.481,
+      "change365dM": -0.857,
+      "seasonalAnomalyM": -4.224,
+      "seasonalZ": -1.28,
+      "recordMinM": -442.37,
+      "recordMaxM": -434.074,
+      "percentOfRange": 0
+    }
+  ],
+  "fetchedAt": 1794355200000,
+  "dataAvailable": true,
+  "source": {
+    "name": "NASA ICESat-2 ATL13 (NSIDC), processed via SlideRule Earth",
+    "product": "ATL13 v007 inland water surface height",
+    "url": "https://nsidc.org/data/atl13",
+    "processing": "https://slideruleearth.io"
+  },
+  "methodology": "Water-surface height from ICESat-2 laser altimetry (ATL13), in metres above the EGM2008 geoid. Each value is the median of the segments one satellite overpass records inside a fixed open-water box on the reservoir. Passes with fewer than 5 segments, a median absolute deviation above 0.25 m, beams disagreeing by more than 0.3 m, or a jump from the line through their neighbours are dropped. This is a lake level, not a storage volume. Data reach NASA 50 to 70 days after the overpass and revisit ranges from a few days to about a month by reservoir. Validated against the USBR Lake Mead gauge."
+}

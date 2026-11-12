@@ -247,6 +247,28 @@ test.describe('digest the host did not deliver', () => {
     expect(host.viewCalls).toEqual([{ name: 'open_news_dashboard', arguments: { country: 'JP' } }]);
   });
 
+  test('later host results without a digest, such as echoes of in-view analysis calls, start no reload and keep the status', async ({ page }) => {
+    const host = await installHost(page);
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+    await expect(host.frame.locator('.panel-data-badge.live').first()).toBeVisible();
+    await host.frame.locator('#pluginStatus').evaluate(element => { element.textContent = 'Fixture coverage warning'; });
+    // The MCP Apps interactive phase lets a host echo a view-initiated call's input and result as notifications.
+    await page.evaluate(() => {
+      const frame = document.querySelector('iframe')!.contentWindow!;
+      const echo = (result: object) => {
+        frame.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: { headlines: ['Controlled earthquake report in Japan'], mode: 'brief' } } }, '*');
+        frame.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: result }, '*');
+      };
+      echo({ structuredContent: { summary: 'Fixture summary', model: 'fixture' }, content: [{ type: 'text', text: 'Fixture summary' }] });
+      echo({ isError: true, content: [{ type: 'text', text: 'News analysis was denied.' }] });
+    });
+    await page.waitForTimeout(500);
+    expect(host.viewCalls).toEqual([]);
+    await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
+    await expect(host.frame.locator('#pluginStatus')).toHaveText('Fixture coverage warning');
+    await expect(host.frame.locator('.panel-data-badge.cached')).toHaveCount(0);
+  });
+
   test('a refreshed open is reloaded with its request_id so the server reuses that request', async ({ page }) => {
     const host = await installHost(page, { initialResult: 'pointer', initialView: { country: 'JP', refresh: true, request_id: REFRESH_ID } });
     await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);

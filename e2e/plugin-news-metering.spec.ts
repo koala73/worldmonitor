@@ -5,6 +5,9 @@ import ts from 'typescript';
 import { COUNTRY_RISK_APP_HTML } from '../api/mcp/ui/country-risk-app';
 import { buildPluginShell } from '../api/mcp/ui/_plugin-loader';
 
+// The news view's entry chunk (plugin-<hash>.js), not shared chunks such as plugin-display-mode-<hash>.js.
+const PLUGIN_ENTRY_CHUNK = /^plugin-[\w-]{8}\.js$/;
+
 test.use({ serviceWorkers: 'block' });
 type HostCall = { name: string; arguments: Record<string, unknown> };
 type ViewReceipt = { applied?: boolean; view?: { renderer?: string; source?: string; map_layers?: string[] }; center: { lat: number; lon: number } | null; map: { zoom: number }; renderer?: { mode: string }; viewport?: { settled: boolean; interruptedBy?: string } };
@@ -38,7 +41,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
     const assetName = new URL(route.request().url()).pathname.split('/').at(-1)!;
     const path = join(process.cwd(), 'dist/plugin/assets', assetName);
     const headers = { 'Access-Control-Allow-Origin': '*' };
-    if (blankSearch && observeSearch && assetName.startsWith('plugin-') && assetName.endsWith('.js')) {
+    if (blankSearch && observeSearch && PLUGIN_ENTRY_CHUNK.test(assetName)) {
       const source = await readFile(path, 'utf8');
       const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
       const classes: Record<string, string> = {};
@@ -70,7 +73,7 @@ async function installNewsHost(page: Page, deniedInitially = false, serverTools 
         };`;
       return route.fulfill({ body: source + observation, contentType: 'text/javascript', headers });
     }
-    if (observeRenderer && assetName.startsWith('plugin-') && assetName.endsWith('.js')) {
+    if (observeRenderer && PLUGIN_ENTRY_CHUNK.test(assetName)) {
       const source = await readFile(path, 'utf8');
       const binding = /([$\w]+)\.onCountryClicked\(([$\w]+)=>/;
       expect(source.match(binding)).toBeTruthy();

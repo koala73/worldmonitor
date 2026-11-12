@@ -7,4 +7,5 @@ await runBundle('climate', [
   { label: 'Disasters', script: 'seed-climate-disasters.mjs', seedMetaKey: 'climate:disasters', canonicalKey: 'climate:disasters:v1', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
   { label: 'Ocean-Ice', script: 'seed-climate-ocean-ice.mjs', seedMetaKey: 'climate:ocean-ice', canonicalKey: 'climate:ocean-ice:v1', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'CO2-Monitoring', script: 'seed-co2-monitoring.mjs', seedMetaKey: 'climate:co2-monitoring', canonicalKey: 'climate:co2-monitoring:v1', intervalMs: 3 * DAY, timeoutMs: 180_000 },
+  { label: 'Reservoir-Levels', script: 'seed-reservoir-levels.mjs', seedMetaKey: 'climate:reservoir-levels', canonicalKey: 'climate:reservoir-levels:v1', completionMetaKey: 'seed-completion:climate:reservoir-levels', intervalMs: DAY, timeoutMs: 600_000 },
 ]);
