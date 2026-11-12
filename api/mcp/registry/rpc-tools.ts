@@ -2748,9 +2748,11 @@ export const RPC_TOOLS: ToolDef[] = [
     title: 'Cached macroeconomic series',
     _outputBudgetBytes: 131072,
     description:
-      'Cached allowlisted FRED macro series via get-fred-series-batch; no request-time external fetch. ' +
-      'Up to 20 series; observations are newest-last. Missing results mean an unlisted or unseeded id; compare fetched ' +
-      'with requested.',
+      'Read cached macroeconomic time series for indicators such as unemployment, inflation, and interest rates; ' +
+      'no request-time external fetch or cache refresh. Returns results keyed by uppercase series id, with metadata ' +
+      'and observations ordered oldest to newest. Fewer fetched than requested can mean missing cached series or ' +
+      'failed cache reads; the result does not distinguish them. Both counts zero can mean no supported ids were ' +
+      'selected or the batch reader caught an exception.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2759,29 +2761,30 @@ export const RPC_TOOLS: ToolDef[] = [
           minItems: 1,
           items: { type: 'string', pattern: '\\S' },
           description:
-            `FRED series ids to read, case-insensitive. Ids outside the seeded allowlist are dropped, and at most 20 distinct ids are read: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
+            `Identifiers of the macroeconomic indicators to retrieve, such as UNRATE for unemployment or CPIAUCSL for consumer prices. Matching ignores case and surrounding whitespace. Unlisted ids are ignored; distinct supported ids are sorted and the first 20 are read. Supported ids: ${filterParamContracts.economicFredSeriesIds.join(', ')}.`,
         },
         limit: {
           type: 'integer',
           minimum: 1,
           maximum: 1000,
-          description: 'Most recent observations to return per series; 24 when omitted. Keep it small: 20 series at full history is large.',
+          description: 'Size of the recent observation window for each series; 24 when omitted. Observations retain chronological order. Oversized results are withheld with _budget_exceeded; reduce limit, request fewer series, or use jmespath to select less data.',
         },
       },
       required: ['series_ids'],
     },
     outputSchema: {
       type: 'object',
+      description: 'Cached series and lookup counts. Fewer fetched than requested can mean missing cache entries or failed cache reads, even with requested positive. Both counts zero can mean no supported ids were selected or the batch reader caught an exception. These causes are not distinguished in the result.',
       properties: {
-        results: { type: 'object', description: 'Found series keyed by uppercase series id; a requested id with no seeded data is absent.', additionalProperties: { type: 'object', properties: {
-          seriesId: { type: 'string' }, title: { type: 'string', description: 'FRED series title.' },
+        results: { type: 'object', description: 'Found cached series keyed by uppercase series id. Unsupported ids, missing cache entries, and failed cache reads produce no series entry.', additionalProperties: { type: 'object', properties: {
+          seriesId: { type: 'string', description: 'Identifier of the returned macroeconomic series.' }, title: { type: 'string', description: 'FRED series title.' },
           units: { type: 'string', description: 'Unit of the values, as FRED labels it.' }, frequency: { type: 'string', description: 'Observation frequency, such as Monthly or Quarterly.' },
-          observations: { type: 'array', description: 'Oldest first, newest last.', items: { type: 'object', properties: {
+          observations: { type: 'array', description: 'Most recent observation window selected by limit, ordered oldest to newest.', items: { type: 'object', properties: {
             date: { type: 'string', description: 'Observation date, YYYY-MM-DD.' }, value: { type: 'number', description: 'Value in units.' },
           } } },
         } } },
-        fetched: { type: 'number', description: 'Series found in the cache.' },
-        requested: { type: 'number', description: 'Allowlisted ids actually looked up; below the ids sent when some were unlisted.' },
+        fetched: { type: 'number', description: 'Number of series returned in results.' },
+        requested: { type: 'number', description: 'Number of distinct supported ids selected after normalization, filtering, sorting, and the twenty-series cap. Reset to zero when the batch reader catches an exception; cache-read failures can leave it positive.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
