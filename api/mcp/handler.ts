@@ -703,7 +703,8 @@ async function handleAuthenticatedSseReplay(
 //
 // A plain GET to `/mcp` itself is NOT an MCP protocol handshake (that stays
 // POST); it is a human or a crawler opening the endpoint in a browser. They
-// get the human-readable server guide (`/mcp-server.md`) instead of the
+// get HTML setup instructions when explicitly accepting HTML, otherwise the
+// server guide (`/mcp-server.md`), instead of the
 // spec-correct 405 that Google Search Console reports as "cannot access".
 // SSE-flavored GETs and GETs with Last-Event-ID still fall through to the
 // normal 405 / replay paths so Streamable HTTP transport semantics are
@@ -749,9 +750,10 @@ const DISCOVERY_VARY = 'Accept, Last-Event-ID, Origin, MCP-Protocol-Version';
 const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
 const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
-// Module-scope caches: both documents are static assets, immutable per deployment.
+// Module-scope caches: discovery documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
 let mcpGuideCache: string | null = null;
+let mcpSetupCache: string | null = null;
 
 // Self-fetch a static asset off our own deployment. Redirects are followed:
 // `/mcp-server.md` is NOT in the Cloudflare apex→www exemption list
@@ -814,6 +816,36 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
 async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
+  // Require an explicit HTML media type: wildcard and machine discovery
+  // requests retain their Markdown representation. SSE/replay/auth probes
+  // are handled before reaching this helper.
+  const wantsHtml = (req.headers.get('accept') ?? '').split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/html') return false;
+    const quality = params.find((part) => part.startsWith('q='));
+    return !quality || (Number.isFinite(Number(quality.slice(2))) && Number(quality.slice(2)) > 0);
+  });
+  if (wantsHtml) {
+    if (mcpSetupCache === null) mcpSetupCache = await fetchStaticAsset(req, '/mcp-setup.html');
+    if (mcpSetupCache === null) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          Location: 'https://www.worldmonitor.app/docs/mcp-quickstart',
+          Vary: DISCOVERY_VARY,
+        },
+      });
+    }
+    return new Response(headOnly ? null : mcpSetupCache, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/html; charset=utf-8',
+        Vary: DISCOVERY_VARY,
+        Link: MCP_CANONICAL_LINK,
+      },
+    });
+  }
   if (mcpGuideCache === null) {
     const text = await fetchStaticAsset(req, '/mcp-server.md');
     if (text === null) {
@@ -953,7 +985,7 @@ async function mcpHandlerInner(
   // by the request's own path — never by a query parameter, which the caller
   // controls. `/mcp` and the well-known aliases are rewritten to `/api/mcp`,
   // and this function still observes the original path: the dual-role branches
-  // below serve markdown at `/mcp` and the JSON card at `/.well-known/mcp` by
+  // below serve the guide at `/mcp` and the JSON card at `/.well-known/mcp` by
   // reading that pathname. The aliases sit under neither transport path, so
   // they take the origin-wide document, which covers every path on the host.
 
@@ -1031,7 +1063,7 @@ async function mcpHandlerInner(
   // Discovery GETs. A GET with no `Last-Event-ID` and no `text/event-stream`
   // Accept is not a transport operation: on the well-known aliases it is a
   // manifest fetch (JSON server card), and on `/mcp` itself it is a human or
-  // crawler opening the endpoint (the markdown server guide). Both are
+  // crawler opening the endpoint (HTML setup or the Markdown server guide). Both are
   // answered BEFORE the transport GET branch, so the standalone-stream 405 and
   // the authenticated replay path below are untouched.
   if (
@@ -1056,8 +1088,8 @@ async function mcpHandlerInner(
 
   // GET has three roles on the MCP endpoint:
   //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
-  //      discovery read and has already been answered above — the markdown
-  //      server guide at `/mcp`, the JSON server card at the well-known
+  //      discovery read and has already been answered above — the HTML setup
+  //      or Markdown server guide at `/mcp`, the JSON server card at the well-known
   //      aliases. The MCP handshake itself remains POST-only.
   //   2. A GET asking for `text/event-stream` or carrying `Last-Event-ID` is
   //      either a client opening the OPTIONAL server->client SSE stream of the

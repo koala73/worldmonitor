@@ -2688,7 +2688,7 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Orodha za OFAC SDN na zilizounganishwa pamoja na vikwazo vya Kanada vya SEMA/JVCFOA. Safu za nchi hutumia mahusiano ya moja kwa moja. Bendera za meli na usajili wa ndege huhesabiwa kando katika sajili; idadi ya mali ya nchi ikiwa sifuri haimaanishi hakuna mali iliyowekewa vikwazo. Nchi za taasisi mama hutenganishwa na ushahidi wa anwani na hazijumuishwi katika alama za hatari.",
+      "infoTooltip": "Orodha za OFAC SDN na zilizounganishwa pamoja na vikwazo vya Kanada vya SEMA/JVCFOA. Safu za nchi hutumia mahusiano ya moja kwa moja. Bendera za meli na usajili wa ndege huhesabiwa kando katika sajili; idadi ya mali ya nchi ikiwa sifuri haimaanishi hakuna mali iliyowekewa vikwazo.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {

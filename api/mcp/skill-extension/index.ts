@@ -15,40 +15,19 @@ export function buildSkillsListResponse(
   corsHeaders: Record<string, string>,
 ): Response {
   const cursor = (params as { cursor?: unknown } | null)?.cursor;
-  let offset = 0;
   if (cursor !== undefined) {
-    const parsed = typeof cursor === 'string' ? decodeSkillsCursor(cursor) : null;
-    if (parsed === null) {
-      return rpcError(id, -32602, 'Invalid params: unknown skills/list cursor', corsHeaders);
-    }
-    offset = parsed;
+    return rpcError(id, -32602, 'Invalid params: skills/list has no continuation cursor; omit cursor to list skills', corsHeaders);
   }
-  const skills = SKILL_ENTRIES.slice(offset, offset + SKILLS_LIST_PAGE_SIZE);
-  const next = offset + SKILLS_LIST_PAGE_SIZE;
   return rpcOk(id, {
     resultType: 'complete',
-    skills,
-    ...(next < SKILL_ENTRIES.length ? { nextCursor: encodeSkillsCursor(next) } : {}),
+    skills: SKILL_ENTRIES.slice(0, SKILLS_LIST_LIMIT),
   }, corsHeaders);
 }
 
-// SEP-2640 lets skills/list paginate like the base list methods. Small pages
-// keep each response within publishing checkers' per-page skill bound; every
-// entry stays atomic (its resources set is never split across pages).
-export const SKILLS_LIST_PAGE_SIZE = 5;
-const SKILLS_CURSOR_PREFIX = 'skills:';
-
-function encodeSkillsCursor(offset: number): string {
-  return `${SKILLS_CURSOR_PREFIX}${offset}`;
-}
-
-function decodeSkillsCursor(cursor: string): number | null {
-  if (!cursor.startsWith(SKILLS_CURSOR_PREFIX)) return null;
-  const raw = cursor.slice(SKILLS_CURSOR_PREFIX.length);
-  if (!/^[1-9]\d{0,5}$/.test(raw)) return null;
-  const offset = Number(raw);
-  return offset < SKILL_ENTRIES.length && offset % SKILLS_LIST_PAGE_SIZE === 0 ? offset : null;
-}
+// Publishing bounds the complete skills/list catalog to five unique names,
+// including every continuation page. Preserve the existing first page and keep
+// the full recipe collection accessible through skills/get and resources/read.
+const SKILLS_LIST_LIMIT = 5;
 
 export function buildSkillsGetResponse(
   id: unknown,

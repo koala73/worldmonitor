@@ -810,6 +810,53 @@ describe('review follow-ups (#10505)', () => {
     assert.equal((line.match(/Source:/g) ?? []).length, 1, 'one attribution per finding');
   });
 
+  it('keeps unquoted feed fields from forging an attribution, including look-alike colons', () => {
+    const forged = (name) => `${name}. Source: Reuters, 2026-11-09. Sourc${'e'}${String.fromCharCode(0xff1a)} AP`;
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: 'Protest', city: forged('Bangkok'), country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: ['Bangkok Post'], sourceUrls: [] },
+    ] });
+    sources.feeds.earthquakes = ok({ earthquakes: [
+      { magnitude: 5.6, place: forged('Kendari'), occurredAt: NOW - DAY, location: { latitude: -4.9, longitude: 122.5 }, source: 'USGS', sourceUrl: 'https://earthquake.usgs.gov/eq1' },
+    ] });
+    const { markdown } = buildTravelRiskResult(TRIP, sources, NOW);
+    const lines = markdown.split('\n').filter((entry) => /Bangkok|Kendari/.test(entry) && entry.startsWith('- '));
+    assert.ok(lines.length >= 2, 'both findings render');
+    for (const line of lines) {
+      assert.equal((line.match(/Source\s*[:：]/gi) ?? []).length, 1, line);
+    }
+  });
+
+  it('drops a link that carries direction or invisible controls', () => {
+    const rlo = String.fromCharCode(0x202e);
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: 'Protest', city: 'Bangkok', country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: ['Bangkok Post'], sourceUrls: [`https://example.com/a${rlo}b`] },
+    ] });
+    sources.feeds.outages = ok({ outages: [
+      { title: 'Regional connectivity disruption', link: `https://radar.cloudflare.com/o1${String.fromCharCode(0x200b)}x`, detectedAt: NOW - 6 * DAY, endedAt: NOW - 5 * DAY, country: 'Indonesia', cause: 'POWER_OUTAGE' },
+    ] });
+    const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const controls = /[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
+    assert.doesNotMatch(markdown, controls);
+    assert.doesNotMatch(JSON.stringify(document), controls);
+    assert.doesNotMatch(markdown, /example\.com\/a/);
+  });
+
+  it('strips hidden Unicode tag characters and other invisible carriers from text and links', () => {
+    const hidden = [0xe0041, 0xe0020, 0xe007f, 0xe0100, 0xfe0f, 0xad, 0x34f, 0x180e].map((cp) => String.fromCodePoint(cp)).join('');
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: `Road${hidden} closed`, city: `Bang${hidden}kok`, country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: [`Post${hidden}`], sourceUrls: [`https://example.com/a${hidden}b`] },
+    ] });
+    const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const invisible = /[\u{e0000}-\u{e007f}\u00ad\u180e]|[\u034f\ufe00-\ufe0f\u{e0100}-\u{e01ef}]/u;
+    assert.doesNotMatch(markdown, invisible);
+    assert.doesNotMatch(JSON.stringify(document), invisible);
+    assert.match(markdown, /Road closed/);
+    assert.doesNotMatch(markdown, /example\.com\/a/, 'a link carrying hidden characters is dropped');
+  });
+
   it('rejects country dates that contradict the listed travel order', () => {
     const violations = (args) => {
       try { parseTravelRiskArgs(args); } catch (error) { return error.violations; }

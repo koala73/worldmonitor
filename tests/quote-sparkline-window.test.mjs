@@ -345,7 +345,7 @@ describe('stale-quote dips', () => {
     values[22 * 5 + 4] = 49.5;
     const out = buildQuoteSparkline(minuteChart(T0, values), null);
     assert.deepEqual(out.sparkline, Array(288).fill(50));
-    assert.equal(out.sparklineStartAt, (T0 + 21 * 300) * 1000, 'filter then cut backfills one earlier clean close');
+    assert.equal(out.sparklineStartAt, (T0 + 22 * 300) * 1000, 'the removed close is replaced, so the window still starts 288 buckets back');
   });
 
   it('drops the two-bar USDTRY dips that land on 5-minute closes (live tape, 2026-11-10)', () => {
@@ -353,7 +353,7 @@ describe('stale-quote dips', () => {
     // but the 50.113 bar closes its 5-minute bucket, 0.23% under the tape.
     const fixture = JSON.parse(readFileSync(new URL('./fixtures/usdtry-1m-2026-11-10.json', import.meta.url), 'utf8'));
     const { sparkline } = buildQuoteSparkline(chart(fixture.timestamp, fixture.close), null);
-    assert.equal(sparkline.length, 40, '42 five-minute closes, two of them dips');
+    assert.equal(sparkline.length, 42, '42 five-minute closes, two of them dips replaced in place');
     assert.ok(Math.min(...sparkline) > 50.2, `dips removed: ${Math.min(...sparkline)}`);
     assert.equal(sparkline.at(-1), fixture.close.at(-1), 'last point is the last print');
   });
@@ -596,5 +596,37 @@ describe('a failed history request backs off instead of retrying every cycle', (
     const recovered = await commoditySparkline('BZ=F', quote);
     assert.equal(calls.length, 2, 'after the back-off the request is made again');
     assert.equal(recovered.sparkline.length, SPARKLINE_WINDOW_SECONDS / SPARKLINE_INTERVAL_SECONDS);
+  });
+});
+
+describe('a removed close keeps its place on the time axis', () => {
+  const at = (i) => T0 + i * 300;
+
+  it('replaces a dropped dense close with the line between its neighbours', () => {
+    const values = wobble(60, 50, 0.001);
+    values[30] = 49.5;
+    const out = buildQuoteSparkline(chart(values.map((_, i) => at(i)), values, '5m'), null);
+    assert.equal(out.sparkline.length, 60, 'later points keep their slot');
+    assert.ok(Math.abs(out.sparkline[30] - (values[29] + values[31]) / 2) < 1e-9, 'midpoint of the retained closes');
+    assert.equal(out.sparkline[31], values[31], 'the next close is not shifted into the gap');
+    assert.equal(out.sparklineStartAt, at(0) * 1000);
+  });
+
+  it('interpolates at the removed print\'s own time, not its bucket start', () => {
+    // Every print lands 4 minutes into its bucket; the bucket at index 30 is lost whole.
+    const values = Array.from({ length: 60 }, (_, i) => +(50 + i * 0.001).toFixed(4));
+    values[30] = 49.5;
+    const times = values.map((_, i) => at(i) + 240);
+    const { sparkline } = buildQuoteSparkline(chart(times, values, '1m'), null);
+    assert.equal(sparkline.length, 60);
+    assert.ok(Math.abs(sparkline[30] - 50.03) < 1e-9, `midpoint, got ${sparkline[30]}`);
+  });
+
+  it('fills a lost bucket whose real gaps are exactly 15 minutes even when its bucket start is further away', () => {
+    const minutes = [0, 5, 10, 14, 29, 44, 49, 54];
+    const values = [50, 50, 50, 50, 49.5, 50, 50, 50];
+    const { sparkline } = buildQuoteSparkline(chart(minutes.map((m) => T0 + m * 60), values, '1m'), null);
+    // Buckets 0, 5, 10 (minute 14 closes it), 40, 45, 50, plus the refilled 25.
+    assert.equal(sparkline.length, 7);
   });
 });
