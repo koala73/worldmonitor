@@ -122,13 +122,20 @@ function dropSingleTickSpikes(bars) {
  * @param {Set<object>} keptSet The closes the filter retained, same objects.
  */
 function fillDroppedCloses(ordered, keptSet) {
+  // One backward pass finds each position's next retained close, so a long run
+  // of removals costs O(n), not O(n^2).
+  const nextKept = new Array(ordered.length);
+  let upcoming;
+  for (let i = ordered.length - 1; i >= 0; i -= 1) {
+    nextKept[i] = upcoming;
+    if (keptSet.has(ordered[i])) upcoming = ordered[i];
+  }
   const out = [];
+  let before;
   for (let i = 0; i < ordered.length; i += 1) {
     const bar = ordered[i];
-    if (keptSet.has(bar)) { out.push(bar); continue; }
-    const before = out.at(-1);
-    let after;
-    for (let j = i + 1; j < ordered.length && !after; j += 1) if (keptSet.has(ordered[j])) after = ordered[j];
+    if (keptSet.has(bar)) { out.push(bar); before = bar; continue; }
+    const after = nextKept[i];
     if (!before || !after) continue;
     // The filter only drops interior bars, so both neighbours exist; a gap on
     // either side of the removed run means it was not part of a dense tape.
