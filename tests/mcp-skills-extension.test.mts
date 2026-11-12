@@ -53,11 +53,14 @@ describe('Skills Over MCP extension', () => {
       pages += 1;
       assert.ok(pages < 100, 'skills/list pagination must terminate');
     } while (cursor !== undefined);
-    assert.ok(pages > 1, 'the catalog spans several pages');
+    assert.equal(pages, 1, 'the bounded catalog has no continuation');
+    assert.equal(new Set(skills.map((skill) => skill.frontmatter.name)).size, 5,
+      'the complete catalog must stay within the five-unique-skill-name publishing bound');
     assert.equal(new Set(skills.map((skill) => skill.uri)).size, skills.length, 'no skill repeats across pages');
     const { SKILL_ENTRIES } = await import('../api/mcp/skill-extension/generated.ts');
-    assert.equal(skills.length, SKILL_ENTRIES.length, 'paging walks the whole catalog');
-    for (const skill of skills) {
+    assert.deepEqual(skills, SKILL_ENTRIES.slice(0, 5), 'preserve the existing first page');
+    // Continue verifying every recipe, including those accessible by direct URI.
+    for (const skill of SKILL_ENTRIES) {
       assert.equal(skill.uri, `skill://${skill.frontmatter.name}/SKILL.md`);
       assert.ok(skill.resources.some((resource: any) => resource.uri === skill.uri));
       for (const resource of skill.resources) {
@@ -93,9 +96,11 @@ describe('Skills Over MCP extension', () => {
   });
 
   it('rejects unknown cursors and unknown skill URIs with Invalid params', async () => {
-    for (const bad of ['done', 'skills:0', 'skills:3', 'skills:99999', 42]) {
+    for (const bad of ['done', '', 'skills:0', 'skills:3', 'skills:5', 'skills:10', 'skills:99999', 42, null]) {
       const cursor = await handler(request('skills/list', { cursor: bad }));
-      assert.equal((await cursor.json() as any).error.code, -32602, `cursor ${String(bad)}`);
+      const body = await cursor.json() as any;
+      assert.equal(body.error.code, -32602, `cursor ${String(bad)}`);
+      assert.match(body.error.message, /omit cursor to list skills/);
     }
     const missing = await handler(request('skills/get', { uri: 'skill://missing/SKILL.md' }));
     assert.equal((await missing.json() as any).error.code, -32602);
@@ -113,5 +118,11 @@ describe('Skills Over MCP extension', () => {
     const bytes = Buffer.from([0xff, 0x00, 0x80, 0x41]);
     const resource = buildResourceContent(bytes, 'application/octet-stream');
     assert.deepEqual(resource, { mimeType: 'application/octet-stream', blob: bytes.toString('base64') });
+  });
+
+  it('preserves direct lookup of skills outside the bounded discovery catalog', async () => {
+    const got = await handler(request('skills/get', { uri: 'skill://fetch-news-digest/SKILL.md' }));
+    const body = await got.json() as any;
+    assert.equal(body.result.skill.frontmatter.name, 'fetch-news-digest');
   });
 });
