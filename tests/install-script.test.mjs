@@ -27,6 +27,8 @@ exit 0
 const STUB_DOCKER = `#!/bin/sh
 [ "$1 $2" = "compose version" ] && exit 0
 echo "compose $* WM_PORT=\${WM_PORT:-} REDIS_TOKEN=\${REDIS_TOKEN:-}" >> "$STUB_LOG"
+[ "$2" = pull ] && [ -n "\${STUB_PULL_FAIL:-}" ] && exit 1
+exit 0
 `;
 
 const OLD_NODE = `#!/bin/sh
@@ -76,8 +78,30 @@ describe('scripts/install.sh', () => {
       assert.match(env, new RegExp(`^${key}=[0-9a-f]{64}$`, 'm'), key);
     }
     assert.equal(statSync(join(root, 'worldmonitor', '.env')).mode & 0o777, 0o600);
-    assert.match(stubLog(), /compose up -d --build WM_PORT=3000 /);
+    assert.match(stubLog(), /compose pull [^\n]*\ncompose compose up -d WM_PORT=3000 /);
+    assert.doesNotMatch(stubLog(), /--build/);
     assert.match(r.out, /http:\/\/localhost:3000/);
+  });
+
+  it('builds from source with --build and does not pull', () => {
+    const r = run(['--no-seed', '--build']);
+    assert.equal(r.status, 0, r.out);
+    assert.match(stubLog(), /compose up -d --build WM_PORT=3000 /);
+    assert.doesNotMatch(stubLog(), /compose pull/);
+  });
+
+  it('falls back to building from source when the pull fails', () => {
+    const r = run(['--no-seed'], { env: { STUB_PULL_FAIL: '1' } });
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /building from source instead/);
+    assert.match(stubLog(), /compose pull [^\n]*\ncompose compose up -d --build WM_PORT=3000 /);
+  });
+
+  it('--no-build neither pulls nor builds', () => {
+    const r = run(['--no-seed', '--no-build']);
+    assert.equal(r.status, 0, r.out);
+    assert.doesNotMatch(stubLog(), /compose pull|--build/);
+    assert.match(stubLog(), /compose up -d WM_PORT=3000 /);
   });
 
   it('keeps secrets on a re-run and tightens a world-readable .env', () => {
