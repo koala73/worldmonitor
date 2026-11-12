@@ -139,7 +139,7 @@ export class ReservoirLevelsPanel extends Panel {
     const rows = visible.length
       ? safeHtml`<ul class="wl-list">${joinSafeHtml(visible.map((r) => this.row(r, ctx, rowFor.get(r))))}</ul>`
       : view.emptyByFocus
-        ? unsafeRawHtml(focusedEmptyHtml(t('focus.filter.emptyReservoirs')), 'focus empty state escaped by focusedEmptyHtml')
+        ? unsafeRawHtml(focusedEmptyHtml(t('components.reservoirLevels.filterEmpty')), 'focus empty state escaped by focusedEmptyHtml')
         : safeHtml`<div class="panel-empty wl-empty">${t('components.reservoirLevels.filterEmpty')}</div>`;
 
     // The swap replaces the filter buttons; a keyboard user who just activated one
