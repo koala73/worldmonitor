@@ -67,6 +67,9 @@ export const STATE_SCHEMA = 2;
 // skipped, so the wide window costs only CMR listing. Retention of processed names must
 // exceed the window, or a pruned granule would be fetched again.
 export const DISCOVERY_LOOKBACK_DAYS = 120;
+// Two days for companions plus two to establish that the group does not touch
+// the listing boundary. Only the original 120-day window queues new work.
+const DISCOVERY_COMPANION_DAYS = 4;
 export const PROCESSED_RETENTION_DAYS = 150;
 export const MAX_GRANULE_FAILURES = 3;
 // A reservoir whose CMR discovery fails this many consecutive runs is listed in the
@@ -233,9 +236,9 @@ export function granuleQueue(state, listed) {
 /** Refresh potentially overlapping acquisition dates atomically. Include processed
  * companions and only the newest release of each orbit. The two-day separation
  * covers both sides of the +/- one-day granule-to-pass attribution window. */
-export function granuleGroups(state, listed) {
+export function granuleGroups(state, listed, { pendingSince = null, completeSince = null } = {}) {
   const all = dedupeGranules([...listed, ...state.processed, ...state.gaveUp, ...Object.keys(state.failures || {})]);
-  const pending = new Set(granuleQueue(state, all));
+  const pending = new Set(granuleQueue(state, all).filter(g => !pendingSince || granuleDate(g) >= pendingSince));
   const abandoned = new Set(state.gaveUp);
   const groups = [];
   for (const g of all) {
@@ -244,7 +247,8 @@ export function granuleGroups(state, listed) {
     else groups.push([g]);
   }
   const retry = group => group.some(g => g in (state.failures || {}));
-  return groups.filter(group => group.some(g => pending.has(g)) && !group.some(g => abandoned.has(g)))
+  return groups.filter(group => (!completeSince || granuleDate(group[0]) >= completeSince)
+      && group.some(g => pending.has(g)) && !group.some(g => abandoned.has(g)))
     .sort((a, b) => Number(retry(b)) - Number(retry(a)));
 }
 
@@ -353,12 +357,16 @@ export async function fetchReservoirLevels({
   const discoveryFailed = new Set();
   const discover = async (e) => {
     const s = byId[e.id];
-    const since = s.cursor
+    const pendingSince = s.cursor
       ? new Date(Date.parse(s.cursor) - DISCOVERY_LOOKBACK_DAYS * DAY_MS).toISOString().slice(0, 10)
       : MISSION_START_ISO;
+    const since = s.cursor
+      ? new Date(Date.parse(pendingSince) - DISCOVERY_COMPANION_DAYS * DAY_MS).toISOString().slice(0, 10)
+      : MISSION_START_ISO;
+    const completeSince = s.cursor ? new Date(Date.parse(since) + 2 * DAY_MS).toISOString().slice(0, 10) : null;
     try {
       const listed = await listGranules(e.core, since, fetchImpl, { retries: 2, retryDelayMs: 1000, timeoutMs: CMR_RUN_TIMEOUT_MS, product: productOf(e).id });
-      queues.set(e.id, granuleGroups(s, listed));
+      queues.set(e.id, granuleGroups(s, listed, { pendingSince, completeSince }));
       return true;
     } catch (err) {
       cmrFailures++;

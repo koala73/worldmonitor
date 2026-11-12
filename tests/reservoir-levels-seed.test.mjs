@@ -280,6 +280,19 @@ describe('reservoir seeder run', () => {
     assert.equal(pass[6], 4);
   });
 
+  it('loads companions just before the discovery lookback boundary', async () => {
+    const baseline = structuredClone(BASELINE);
+    baseline.reservoirs.alpha.processedThrough = '2026-09-02';
+    const floor = new Date(Date.parse('2026-09-02') - 120 * DAY).toISOString().slice(0, 10);
+    const before = new Date(Date.parse(floor) - DAY).toISOString().slice(0, 10);
+    baseline.reservoirs.alpha.passes.push(tuple(floor, 300, 23));
+    const a = gran(before, 21);
+    const b = gran(floor, 22, '02');
+    const upstream = fakeUpstream({ cmr: { alpha: [a, b] }, flownRgt: 23 });
+    await run({ ...upstream, baseline });
+    assert.deepEqual(upstream.calls.slide.flat().filter(g => [a, b].includes(g)), [a, b]);
+  });
+
   it('does not commit a partially fetched date group when the run deadline expires', async () => {
     const a1 = gran('2026-09-02', 21);
     const a2 = gran('2026-09-02', 21, '02');
@@ -314,6 +327,7 @@ describe('planning and state', () => {
     const c = gran('2026-09-10', 30);
     const groups = granuleGroups({ processed: [a], gaveUp: [], failures: {} }, [a, b, c]);
     assert.deepEqual(groups, [[a, b], [c]]);
+    assert.deepEqual(granuleGroups({ processed: [a], gaveUp: [], failures: {} }, [a, b, c], { completeSince: '2026-09-03' }), [[c]], 'defers groups touching an incomplete listing boundary');
     assert.deepEqual([...planFetches(new Map([['a', groups]]), 1).values()], []);
     assert.deepEqual([...planFetches(new Map([['a', groups]]), 2).values()], [[a, b]]);
   });

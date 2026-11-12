@@ -107,8 +107,11 @@ even when the maximum individual revision stays unchanged. This makes the new
 complete reduction supersede old statistics regardless of segment count. The
 150-day processed-name retention exceeds the 120-day discovery lookback, so
 companions cannot be pruned while their group is still eligible for refresh.
+CMR listing includes four extra days for boundary companions; only the original
+120-day window queues new work. Groups touching the listing boundary are deferred
+because an earlier, unlisted companion could make their reduction incomplete.
 Regressions cover lower-than-maximum revision updates, late companions, failures,
-midnight boundaries, atomic budget selection, and deadline deferral. The largest
+midnight and discovery-window boundaries, atomic budget selection, and deadline deferral. The largest
 atomic group across all 50 saved mission backfills contains two granules, within
 both existing run budgets.
 
