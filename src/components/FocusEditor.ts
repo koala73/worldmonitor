@@ -78,6 +78,11 @@ function countryCatalog(): CatalogEntry[] {
   return catalog;
 }
 
+/** Name search over the focus country list, shared with the trip assessment dialog. */
+export function searchFocusCountries(query: string, exclude: ReadonlySet<string>): Array<{ code: string; name: string }> {
+  return search(query, exclude);
+}
+
 function search(query: string, exclude: ReadonlySet<string>): CatalogEntry[] {
   const q = fold(query.trim());
   if (!q) return [];

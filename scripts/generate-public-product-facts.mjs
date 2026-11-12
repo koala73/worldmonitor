@@ -610,7 +610,7 @@ function pricingSummary() {
     }
     return `${limit.toLocaleString('en-US')} dashboard-AI requests/day`;
   };
-  const TRAVEL_RISK_SUMMARY = 'travel risk assessment drafts over MCP';
+  const TRAVEL_RISK_SUMMARY = 'travel risk assessment drafts in the dashboard and over MCP';
   const withTravelRisk = (planKey, features) => (
     byKey[planKey]?.travelRiskAssessment === true ? [...features, TRAVEL_RISK_SUMMARY] : features
   );

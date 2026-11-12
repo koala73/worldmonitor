@@ -548,7 +548,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "MCP + SDK: 250 calls/day (vs 50)",
       "Desktop key for the desktop app (3 keys)",
       "Priority support",
-      "Travel risk assessment drafts over MCP",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     highlightFeatures: ["Commercial license included", "1 named user — not a shared login"],
     selfServe: true,
@@ -639,7 +639,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "5 Pro licenses — invite users at any corporate email domain",
       "Shared team dashboards",
       "Priority support",
-      "Travel risk assessment drafts over MCP",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     // API Business is the paid Embed/OEM tier, so its bundled seats may go to
     // corporate addresses at any domain. The server still rejects free or
@@ -697,7 +697,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "SAML SSO and SCIM (by contract)",
       "Custom security and privacy settings",
       "Fully white-labeled — with or without revenue sharing",
-      "Travel risk assessment drafts over MCP",
+      "Travel risk assessment drafts in the dashboard and over MCP",
     ],
     selfServe: false,
     highlighted: false,

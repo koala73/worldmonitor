@@ -218,7 +218,7 @@ describe('FocusBar', () => {
       const onDraft = vi.fn();
       barWith(() => true, onDraft).render(resolved(SEA));
       expect(draft()!.textContent).toBe('Draft assessment');
-      expect(draft()!.getAttribute('aria-label')).toMatch(/AI assistant/);
+      expect(draft()!.getAttribute('aria-label')).toBe('Open the trip assessment, prefilled with this focus');
       draft()!.click();
       expect(onDraft).toHaveBeenCalledTimes(1);
     });

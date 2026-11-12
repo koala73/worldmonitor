@@ -739,6 +739,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'agent-skills import proxy fetches one public host behind a fixed allowlist and is called by the settings importer - degradation is logged and stays availability-first',
     },
     {
+      path: 'api/travel-risk-assessment.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first here/,
+      reason: 'the travel risk export is plan-gated and spends no LLM budget, and its sources live in the same Redis, so a degraded limiter already means a 503 build - degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/user-prefs.ts',
       expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',

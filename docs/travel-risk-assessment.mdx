@@ -1,13 +1,13 @@
 ---
 title: "Travel Risk Assessment Drafts"
-description: "Draft a sourced travel risk assessment for a trip across up to 6 countries over MCP. Plan requirement, inputs, the 9-section outline and how trip details are handled."
+description: "Draft a sourced travel risk assessment for a trip across up to 6 countries, over MCP or from the dashboard as Markdown, Word-ready HTML or PDF. Plan requirement, inputs, the 9-section outline and how trip details are handled."
 ---
 
 The `prepare_travel_risk_assessment` MCP tool drafts a travel risk assessment for a single trip. You give it the countries in travel order, and optionally cities and dates. It returns the draft as Markdown and as structured blocks. Every finding names its source and the date that source gives, and a source that could not be read is marked unavailable with the reason.
 
 The draft is a starting point for an analyst. It reports what World Monitor's feeds hold for each country, leaves empty headings for the topics no feed covers, and gives no advice of its own.
 
-This is Phase 1, available over MCP only. Exporting a draft from the World Monitor app is planned for a later phase.
+You can build the same draft two ways: over MCP, or from the dashboard with [Draft assessment](#export-from-the-dashboard), which downloads it as Markdown or as a file Word opens, or prints it to PDF. A native `.docx` file and a custom logo are not available yet.
 
 ## Plan requirement
 
@@ -16,6 +16,20 @@ The tool is included in the **Pro Business**, **API Business** and **Enterprise*
 Pro, API Starter and free accounts can see the tool in `tools/list`, but a call returns JSON-RPC error `-32002` (HTTP 403) with `data.reason: "upgrade-required"` and `data.planFeature: "travelRiskAssessment"`. The server checks the plan for every caller, whether the client signed in with OAuth or sends an API key. The refusal comes before the arguments are read and before the call is counted against any allowance, so a refused call costs nothing. See the [MCP error catalog](/mcp-error-catalog) for the full refusal shape and the upgrade path it names.
 
 A call counts 1 against a plan with its own MCP allowance, such as Pro Business. On plans where MCP and the HTTP API share a single allowance, such as API Business, a call counts 2, as other multi-source tools do.
+
+## Export from the dashboard
+
+An account on a plan that includes the assessment can build the draft in the World Monitor dashboard, without an AI assistant.
+
+On a tab with a focus, press **Draft assessment** in the focus bar. The **Trip assessment** dialog opens with the focus countries (up to 6) and the focus dates already filled in. Put the countries in travel order with the arrows, then add cities, arrival and departure dates, a trip window and a task label as needed. The fields are the same as the tool's [inputs](#inputs). Then choose one of:
+
+- **Download Markdown** saves the draft as a `.md` file.
+- **Download for Word** saves an `.html` file that Word and Google Docs open and edit.
+- **Print or save as PDF** opens the browser print dialog. Choose Save as PDF there. Tables wrap their text instead of clipping, and a table's header row repeats on each page.
+
+All three give the 9 sections described below, from the same data as the MCP tool. Each download reads the sources again and carries its own capture time, so two downloads taken minutes apart can differ.
+
+The plan is checked on the server, for a signed-in browser session, before any source is read. A request from an account without the plan is refused with HTTP 403 and `UPGRADE_REQUIRED`, whatever the dashboard shows. The export does not accept API keys: API plans use the MCP tool. When the plan cannot be verified, for example during a billing-provider outage, the answer is HTTP 503 with a `Retry-After` header and never an upgrade message. An account can build 20 drafts a minute.
 
 ## Inputs
 
@@ -65,6 +79,8 @@ Trip plans are sensitive, so the tool uses what you send only to build the respo
 - Countries, cities, dates and the task label are not written to logs, usage telemetry, error reports or cache keys. Usage records name the tool and the outcome, never the arguments.
 - The server keeps no copy of the request or the draft. The draft is built from shared country-level data that the server reads the same way for every caller.
 - When an argument is invalid, the error names the field and the rule it broke, never the value you sent.
+
+The dashboard export follows the same rules. The dialog holds what you type only while it is open and saves nothing, so closing it discards the trip. The server keeps no copy of the request or the file, the response is never cached, and the file name carries only the date, never the task label, a country or a city.
 
 The draft repeats your itinerary. Store and share it as you would the trip plan itself.
 

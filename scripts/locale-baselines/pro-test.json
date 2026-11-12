@@ -196,12 +196,14 @@
   "pricing.tiers.apiBusiness.features[4]": "5 Pro licenses — invite users at any corporate email domain",
   "pricing.tiers.apiBusiness.features[5]": "Shared team dashboards",
   "pricing.tiers.apiBusiness.features[6]": "Priority support",
+  "pricing.tiers.apiBusiness.features[7]": "Travel risk assessment drafts in the dashboard and over MCP",
   "pricing.tiers.apiBusiness.highlightFeatures[0]": "Commercial use — in your customer-facing products",
   "pricing.tiers.enterprise.cta": "Contact Sales",
   "pricing.tiers.enterprise.description": "Custom solutions for organizations",
   "pricing.tiers.enterprise.features[0]": "Everything in Pro + API",
   "pricing.tiers.enterprise.features[10]": "Custom security and privacy settings",
   "pricing.tiers.enterprise.features[11]": "Fully white-labeled — with or without revenue sharing",
+  "pricing.tiers.enterprise.features[12]": "Travel risk assessment drafts in the dashboard and over MCP",
   "pricing.tiers.enterprise.features[1]": "Shared team dashboards",
   "pricing.tiers.enterprise.features[2]": "10,000 API requests a day, more by contract",
   "pricing.tiers.enterprise.features[3]": "Dedicated support",
@@ -238,6 +240,7 @@
   "pricing.tiers.proBusiness.features[4]": "MCP + SDK: 250 calls/day (vs 50)",
   "pricing.tiers.proBusiness.features[5]": "Desktop key for the desktop app (3 keys)",
   "pricing.tiers.proBusiness.features[6]": "Priority support",
+  "pricing.tiers.proBusiness.features[7]": "Travel risk assessment drafts in the dashboard and over MCP",
   "pricing.tiers.proBusiness.highlightFeatures[0]": "Commercial license included",
   "pricing.tiers.proBusiness.highlightFeatures[1]": "1 named user — not a shared login",
   "pricingTable.fIncluded": "Included",
@@ -557,8 +560,5 @@
   "whyUpgrade.noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
   "whyUpgrade.noiseTitle": "Know first",
   "whyUpgrade.title": "Hear about it before the headlines",
-  "wired.asFeaturedIn": "As featured in",
-  "pricing.tiers.proBusiness.features[7]": "Travel risk assessment drafts over MCP",
-  "pricing.tiers.apiBusiness.features[7]": "Travel risk assessment drafts over MCP",
-  "pricing.tiers.enterprise.features[12]": "Travel risk assessment drafts over MCP"
+  "wired.asFeaturedIn": "As featured in"
 }

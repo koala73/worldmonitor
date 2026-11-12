@@ -97,3 +97,30 @@ test('the travel risk predicate needs the named flag, a paid tier and an unexpir
   assert.equal(hasTravelRiskAssessment(null, 1_000), false);
   assert.equal(hasTravelRiskAssessment(undefined, 1_000), false);
 });
+
+test('the request carries the cities, per-country dates and task label typed in the dialog', () => {
+  const name = (code: string) => ({ TH: 'Thailand', VN: 'Vietnam', ID: 'Indonesia' } as Record<string, string>)[code]!;
+  const text = assessmentRequestText({
+    countries: ['TH', 'VN', 'ID'],
+    omitted: [],
+    dateFrom: '2026-12-01',
+    dateTo: '2026-12-12',
+    taskLabel: 'Regional site visits',
+    details: {
+      TH: { cities: ['Bangkok', 'Chiang Mai'], arrive: '2026-12-01', depart: '2026-12-05' },
+      VN: { cities: [], arrive: null, depart: null },
+      ID: { cities: ['Jakarta'], arrive: null, depart: '2026-12-12' },
+    },
+  }, name);
+  assert.deepEqual(text.split('\n').slice(2), [
+    'Date window: 2026-12-01 to 2026-12-12.',
+    'Task label: Regional site visits.',
+    'Thailand (TH): cities Bangkok, Chiang Mai; arrive 2026-12-01; depart 2026-12-05.',
+    'Indonesia (ID): cities Jakarta; depart 2026-12-12.',
+  ]);
+});
+
+test('a hand-off with no details reads exactly as before', () => {
+  const text = assessmentRequestText({ countries: ['TH'], omitted: [], dateFrom: null, dateTo: null }, () => 'Thailand');
+  assert.equal(text, 'Use the prepare_travel_risk_assessment tool to draft a travel risk assessment.\nCountries, in this order: Thailand (TH).');
+});
