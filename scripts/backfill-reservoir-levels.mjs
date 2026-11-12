@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // One-time / offline backfill for the strategic reservoir level series (not a Railway cron).
 //
-// For each watchlist entry: list every ATL13 granule over the entry's core box since the
-// start of the ICESat-2 mission (NASA CMR), subset them to the core polygon on the public
-// SlideRule Earth cluster, and reduce the segments to per-pass statistics as a stream.
+// For each watchlist entry: list every granule of the entry's product (ATL13 by default,
+// ATL06 when `product` is "atl06") over its core box since the start of the ICESat-2
+// mission (NASA CMR), subset them to the core polygon on the public SlideRule Earth
+// cluster, and reduce the segments to per-pass statistics as a stream.
 // Progress is saved per reservoir in a scratch directory after every batch, so an
 // interrupted run resumes where it stopped. When every entry is finished the per-entry
 // files are assembled into scripts/data/reservoir-levels-baseline.json, which the daily
@@ -13,25 +14,33 @@
 //   node scripts/backfill-reservoir-levels.mjs [--only id,id] [--scratch DIR] [--concurrency 3]
 //   node scripts/backfill-reservoir-levels.mjs --assemble        # write the baseline from scratch files
 //   node scripts/backfill-reservoir-levels.mjs --report [--from-scratch]
-//   node scripts/backfill-reservoir-levels.mjs --reset id,id     # forget scratch progress (after a core box change)
+//   node scripts/backfill-reservoir-levels.mjs --reset id,id     # forget scratch progress (after a core box, product or level window change)
+//   --watchlist FILE reads entries from another file of the same shape (candidate trials,
+//   cross-checks); --assemble refuses it so the baseline always matches the real watchlist.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync, lstatSync, chmodSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   MISSION_START_ISO,
+  DEFAULT_PRODUCT,
   bboxToPolygon,
   cadenceReport,
   classifyPasses,
   createPassAccumulator,
-  fetchAtl13Segments,
+  fetchSegments,
   granuleDate,
   listGranules,
   mergePasses,
   passToTuple,
+  productOf,
   tupleToPass,
 } from './_reservoir-levels.mjs';
 import { allSettledWithConcurrency } from './_seed-utils.mjs';
+
+// Same per-entry despike override as the seeder (kept local: importing the seeder would run
+// its env loading).
+const despikeOpts = (e) => (e.despikePerGapDayM != null ? { perGapDayM: e.despikePerGapDayM } : {});
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const WATCHLIST_PATH = join(__dirname, 'data', 'strategic-reservoirs.json');
@@ -52,6 +61,7 @@ function parseArgs(argv) {
     else if (k === '--from-scratch') a.fromScratch = true;
     else if (k === '--reset') a.reset = argv[++i].split(',');
     else if (k === '--until') a.until = argv[++i];
+    else if (k === '--watchlist') a.watchlist = argv[++i];
   }
   return a;
 }
@@ -88,11 +98,14 @@ export function ensurePrivateScratchDir(dir) {
 
 function loadScratch(dir, entry) {
   const f = scratchFile(dir, entry.id);
-  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, granules: null, processed: [], failures: {}, passes: [], done: false };
+  const product = productOf(entry).id;
+  const levelWindowM = entry.levelWindowM ?? null;
+  if (!existsSync(f)) return { id: entry.id, core: entry.core, refid: entry.refid ?? null, product, levelWindowM, granules: null, processed: [], failures: {}, passes: [], done: false };
   const s = JSON.parse(readFileSync(f, 'utf8'));
   if (s.id !== entry.id) throw new Error(`${entry.id}: scratch file is labelled ${JSON.stringify(s.id)}; run --reset ${entry.id}`);
-  if (JSON.stringify(s.core) !== JSON.stringify(entry.core) || (s.refid ?? null) !== (entry.refid ?? null)) {
-    throw new Error(`${entry.id}: scratch was built for a different core box or refid; run --reset ${entry.id}`);
+  if (JSON.stringify(s.core) !== JSON.stringify(entry.core) || (s.refid ?? null) !== (entry.refid ?? null)
+    || (s.product ?? DEFAULT_PRODUCT) !== product || JSON.stringify(s.levelWindowM ?? null) !== JSON.stringify(levelWindowM)) {
+    throw new Error(`${entry.id}: scratch was built for a different core box, refid, product or level window; run --reset ${entry.id}`);
   }
   return s;
 }
@@ -110,8 +123,9 @@ async function backfillOne(entry, dir, untilIso) {
   const s = loadScratch(dir, entry);
   if (s.done) { console.log(`${entry.id}: already done (${s.passes.length} passes)`); return; }
   const t0 = Date.now();
+  const prod = productOf(entry);
   if (!s.granules) {
-    s.granules = await listGranules(entry.core, MISSION_START_ISO, undefined, { untilIso: untilIso ? `${untilIso}T00:00:00Z` : null });
+    s.granules = await listGranules(entry.core, MISSION_START_ISO, undefined, { untilIso: untilIso ? `${untilIso}T00:00:00Z` : null, product: prod.id });
     saveScratch(dir, s);
   }
   const poly = bboxToPolygon(entry.core);
@@ -121,11 +135,13 @@ async function backfillOne(entry, dir, untilIso) {
   for (let round = 0; round < MAX_GRANULE_ATTEMPTS; round++) {
     const todo = s.granules.filter((g) => !processed.has(g) && (s.failures[g] || 0) < MAX_GRANULE_ATTEMPTS);
     if (!todo.length) break;
-    const batchSize = round === 0 ? 20 : 5;
+    // Retry rounds use quarter-size batches so one bad granule holds back fewer others.
+    const batchSize = round === 0 ? prod.batchSize : Math.max(1, Math.floor(prod.batchSize / 4));
     for (let i = 0; i < todo.length; i += batchSize) {
       const batch = todo.slice(i, i + batchSize);
-      const acc = createPassAccumulator({ refid: entry.refid ?? null });
-      const r = await fetchAtl13Segments(poly, batch, (row) => acc.add(row), undefined, {
+      const acc = createPassAccumulator({ refid: entry.refid ?? null, product: prod.id, levelWindow: entry.levelWindowM ?? null });
+      const r = await fetchSegments(poly, batch, (row) => acc.add(row), undefined, {
+        product: prod.id,
         batchSize,
         log: (m) => console.log(`${entry.id}:${m}`),
       });
@@ -141,7 +157,7 @@ async function backfillOne(entry, dir, untilIso) {
   s.done = true;
   s.processedThrough = s.processed.map(granuleDate).sort().at(-1) ?? null;
   saveScratch(dir, s);
-  const rep = cadenceReport(classifyPasses(s.passes.map(tupleToPass)));
+  const rep = cadenceReport(classifyPasses(s.passes.map(tupleToPass), despikeOpts(entry)));
   console.log(`${entry.id}: DONE ${rep.ok}/${rep.passes} ok passes, ${Object.keys(s.failures).length} granules ever failed, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }
 
@@ -150,8 +166,8 @@ export function assembleBaseline(watchlist, dir, nowIso = new Date().toISOString
   let through = null;
   for (const entry of watchlist) {
     if (!existsSync(scratchFile(dir, entry.id))) throw new Error(`${entry.id}: no scratch file`);
-    // loadScratch checks the scratch was built for this entry's core box and refid, so
-    // measurements from an older watchlist geometry cannot leak into the baseline.
+    // loadScratch checks the scratch was built for this entry's core box, refid, product
+    // and level window, so a trial or cross-check run cannot leak into the baseline.
     const s = loadScratch(dir, entry);
     if (!s.done) throw new Error(`${entry.id}: backfill not finished`);
     const processed = new Set(s.processed);
@@ -170,7 +186,7 @@ export function assembleBaseline(watchlist, dir, nowIso = new Date().toISOString
 export function reportRows(watchlist, baseline) {
   return watchlist.map((e) => {
     const r = baseline.reservoirs[e.id];
-    const rep = cadenceReport(classifyPasses((r?.passes || []).map(tupleToPass)));
+    const rep = cadenceReport(classifyPasses((r?.passes || []).map(tupleToPass), despikeOpts(e)));
     return { id: e.id, ...rep, failedGranules: Object.keys(r?.failedGranules || {}).length };
   });
 }
@@ -183,7 +199,7 @@ function printReport(rows) {
 
 async function main() {
   const a = parseArgs(process.argv.slice(2));
-  const watchlist = loadWatchlist();
+  const watchlist = loadWatchlist(a.watchlist ?? WATCHLIST_PATH);
   ensurePrivateScratchDir(a.scratch);
   if (a.reset) {
     const known = new Set(watchlist.map((e) => e.id));
@@ -206,6 +222,7 @@ async function main() {
     return;
   }
   if (a.assemble) {
+    if (a.watchlist) throw new Error('--assemble writes the committed baseline; it always uses the committed watchlist');
     const baseline = assembleBaseline(watchlist, a.scratch);
     writeFileSync(BASELINE_PATH, `${JSON.stringify(baseline)}\n`);
     console.log(`wrote ${BASELINE_PATH} (${Object.keys(baseline.reservoirs).length} reservoirs, through ${baseline.through})`);

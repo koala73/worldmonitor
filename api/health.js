@@ -949,7 +949,7 @@ const SEED_META = {
   // minRecordCount = watchlist size (scripts/data/strategic-reservoirs.json, pinned by
   // tests/reservoir-levels-health.test.mjs). recordCount drops a reservoir that lost its
   // level or whose CMR discovery failed DISCOVERY_ALERT_RUNS runs in a row.
-  reservoirLevels:  { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320, minRecordCount: 48, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:climate:reservoir-levels',
+  reservoirLevels:  { key: 'seed-meta:climate:reservoir-levels', maxStaleMin: 4320, minRecordCount: 50, firstPublicationMaxWaitMin: 1440, activationKey: 'seed-activated:climate:reservoir-levels',
     cutover: { mode: 'activation-marker', fromKey: null, issue: 10490, activationKey: 'seed-activated:climate:reservoir-levels' } },
   unrestEvents:     { key: 'seed-meta:unrest:events',           maxStaleMin: 120 }, // 45min cron; 120 = 2h grace (was 75 = 30min buffer, too tight)
   cyberThreats:     { key: 'seed-meta:cyber:threats',           maxStaleMin: 240 }, // 2h interval; 240min = 2x interval

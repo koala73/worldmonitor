@@ -880,19 +880,19 @@ const PROVIDER_OVERRIDES = {
   'cmr.earthdata.nasa.gov': {
     provider: 'NASA Earthdata CMR',
     license: 'U.S. government public metadata; NASA Earthdata terms apply',
-    attribution: 'NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13).',
+    attribution: 'NASA Earthdata Common Metadata Repository (CMR); credit the dataset (NSIDC ICESat-2 ATL13 and ATL06).',
     status: 'terms-review',
   },
   'sliderule.slideruleearth.io': {
     provider: 'SlideRule Earth', identityGroup: 'sliderule',
-    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13, NSIDC)',
-    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 (NSIDC).',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
     status: 'terms-review',
   },
   'slideruleearth.io': {
     provider: 'SlideRule Earth', identityGroup: 'sliderule',
-    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13, NSIDC)',
-    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 (NSIDC).',
+    license: 'Public NASA-funded processing service; output carries the source dataset terms (ICESat-2 ATL13 and ATL06, NSIDC)',
+    attribution: 'Processed with SlideRule Earth (slideruleearth.io); credit NASA ICESat-2 ATL13 and ATL06 (NSIDC).',
     status: 'terms-review',
   },
   'noaadata.apps.nsidc.org': {

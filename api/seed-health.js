@@ -69,7 +69,7 @@ const SEED_DOMAINS = {
   'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
   // Daily bundle member; health.js maxStaleMin:4320 (3x). The activation marker keeps the row
   // pending (not degraded) until the first publication; minRecordCount matches api/health.js.
-  'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 48, activationKey: 'seed-activated:climate:reservoir-levels' },
+  'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 50, activationKey: 'seed-activated:climate:reservoir-levels' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.

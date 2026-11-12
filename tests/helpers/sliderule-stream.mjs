@@ -90,3 +90,21 @@ export function csvFromRows(rows) {
   }
   return `${lines.join('\n')}\n`;
 }
+
+// Columns of a SlideRule atl06x CSV with atl06_fields ["dem/geoid_h"] (subset of the real
+// 26-column file, same names).
+export const ATL06_CSV_HEADER = 'time_ns,gt,longitude,atl06_quality_summary,rgt,dh_fit_dx,dem/geoid_h,cycle,h_li,latitude';
+
+/**
+ * Build atl06x CSV text from rows { t: isoString, rgt, gt, h (orthometric), geoid?, q?, dx? }.
+ * h_li is written as h + geoid, so h_li - geoid_h gives back h.
+ */
+export function csvFromAtl06Rows(rows) {
+  const lines = [ATL06_CSV_HEADER];
+  for (const r of rows) {
+    const ns = BigInt(Date.parse(r.t)) * 1000000n;
+    const geoid = r.geoid ?? -30;
+    lines.push([ns, r.gt ?? 10, r.lon ?? 0, r.q ?? 0, r.rgt, r.dx ?? 0, geoid, 1, r.h + geoid, r.lat ?? 0].join(','));
+  }
+  return `${lines.join('\n')}\n`;
+}
