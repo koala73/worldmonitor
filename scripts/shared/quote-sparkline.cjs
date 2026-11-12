@@ -158,9 +158,10 @@ function buildQuoteSparkline(chart, history) {
   // a 16-minute gap to 15 minutes must not change a sparse pair's treatment.
   for (const bar of bars) closes.set(bucketOf(bar), bar);
   // A bucket whose every print the filter removed still occupies a slot on the
-  // client's even time axis; fillDroppedCloses puts it back.
+  // client's even time axis; fillDroppedCloses puts it back. It keeps the last
+  // removed print's own time, like the retained closes, for distances and gaps.
   const lost = new Map();
-  for (const bar of raw) if (!closes.has(bucketOf(bar))) lost.set(bucketOf(bar), { t: bucketOf(bar), v: null });
+  for (const bar of raw) if (!closes.has(bucketOf(bar))) lost.set(bucketOf(bar), { t: bar.t, v: null });
   // A bad print that follows a smaller bad print passes the first pass, then
   // becomes its bucket's close: USDTRY read 50.207, 50.113, 50.207 on a 50.229
   // tape. The filter runs again on the closes, before the window is cut, so

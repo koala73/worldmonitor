@@ -8454,7 +8454,7 @@ body.playback-mode .status-dot {
 /* A quote with no chart keeps the chart and span rows' height, so its price
    lines up with the cards beside it. */
 .commodity-spark-empty {
-  min-height: calc(22px + 12px * var(--wm-panel-effective-scale, 1));
+  min-height: calc(23px + 9.6px * var(--wm-panel-effective-scale, 1));
 }
 
 .commodity-span {

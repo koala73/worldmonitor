@@ -611,4 +611,14 @@ describe('a removed close keeps its place on the time axis', () => {
     assert.equal(out.sparkline[31], values[31], 'the next close is not shifted into the gap');
     assert.equal(out.sparklineStartAt, at(0) * 1000);
   });
+
+  it('interpolates at the removed print\'s own time, not its bucket start', () => {
+    // Every print lands 4 minutes into its bucket; the bucket at index 30 is lost whole.
+    const values = Array.from({ length: 60 }, (_, i) => +(50 + i * 0.001).toFixed(4));
+    values[30] = 49.5;
+    const times = values.map((_, i) => at(i) + 240);
+    const { sparkline } = buildQuoteSparkline(chart(times, values, '1m'), null);
+    assert.equal(sparkline.length, 60);
+    assert.ok(Math.abs(sparkline[30] - 50.03) < 1e-9, `midpoint, got ${sparkline[30]}`);
+  });
 });
