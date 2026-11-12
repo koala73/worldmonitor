@@ -410,8 +410,8 @@ export const SERVER_INFO = {
   description: 'Real-time global intelligence for agents: markets, conflicts, country risk, sanctions, energy, shipping chokepoints, aviation, cyber, climate and forecasts, plus AI briefs and per-outlet source ratings.',
   websiteUrl: 'https://www.worldmonitor.app',
   icons: [
-    { src: 'https://worldmonitor.app/.well-known/mcp/icon-512.png', mimeType: 'image/png', sizes: ['512x512'] },
-    { src: 'https://worldmonitor.app/.well-known/mcp/icon-1024.png', mimeType: 'image/png', sizes: ['1024x1024'] },
+    { src: 'https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png', mimeType: 'image/png', sizes: ['512x512'] },
+    { src: 'https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-1024.png', mimeType: 'image/png', sizes: ['1024x1024'] },
   ],
 } as const;
 

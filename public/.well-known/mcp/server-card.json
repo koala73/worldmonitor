@@ -4,7 +4,7 @@
   "title": "WorldMonitor",
   "description": "Real-time global intelligence on conflict, markets, energy, trade, shipping and cyber.",
   "kind": "product",
-  "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+  "icon": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
   "version": "1.53.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
@@ -18,14 +18,14 @@
     "websiteUrl": "https://www.worldmonitor.app",
     "icons": [
       {
-        "src": "https://worldmonitor.app/.well-known/mcp/icon-512.png",
+        "src": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-512.png",
         "mimeType": "image/png",
         "sizes": [
           "512x512"
         ]
       },
       {
-        "src": "https://worldmonitor.app/.well-known/mcp/icon-1024.png",
+        "src": "https://worldmonitor.app/.well-known/mcp/hotlink-ok/icon-1024.png",
         "mimeType": "image/png",
         "sizes": [
           "1024x1024"
