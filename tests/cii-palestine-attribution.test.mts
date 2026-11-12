@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { describe, it } from 'node:test';
 
-import { CII_STRIKE_SEVERITY_WEIGHTS } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { CII_STRIKE_SEVERITY_WEIGHTS, CII_STRIKE_TALLY_VERSION } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import {
   type CiiCountryTerms,
   computeCIIScores,
@@ -141,13 +141,13 @@ describe('Palestinian territory scores PS, not IL', () => {
 
   it("the strike tally's PS days score no Tier-1 country; its IL days score Israel", () => {
     const days = confirmedStrikeDaysFromSeed({
-      version: 1,
+      version: CII_STRIKE_TALLY_VERSION,
       updatedAt: NOW,
       days: { [today]: { PS: [3, 2, 0, 0], IL: [0, 1, 0, 0] } },
     }, NOW)!;
     assert.equal(days.PS, undefined);
     assert.deepEqual(days.IL, { [today]: CII_STRIKE_SEVERITY_WEIGHTS.high });
-    const psOnly = confirmedStrikeDaysFromSeed({ version: 1, updatedAt: NOW, days: { [today]: { PS: [3, 2, 0, 0] } } }, NOW)!;
+    const psOnly = confirmedStrikeDaysFromSeed({ version: CII_STRIKE_TALLY_VERSION, updatedAt: NOW, days: { [today]: { PS: [3, 2, 0, 0] } } }, NOW)!;
     assert.deepEqual(psOnly, {});
     assert.deepEqual(ilTerms(aux({ confirmedStrikes: psOnly })), BASELINE_IL);
   });

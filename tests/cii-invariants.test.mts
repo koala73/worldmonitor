@@ -52,8 +52,6 @@ const KNOWN_GAPS: Record<string, ReadonlySet<string>> = {
     'P11a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
 };
-const CLAIM = readCiiVersionClaim();
-const SCORED = ciiScoredVersion(CLAIM);
 
 /**
  * v15 release blockers: properties that passed as real assertions in v14 and
@@ -851,50 +849,6 @@ describe('CII release gate', () => {
   }, () => {
     assert.deepEqual(V15_RELEASE_BLOCKERS.map((b) => `${b.id} (${b.measured})`), [],
       'cii-v15 cannot ship while a v15 release blocker is listed: Stage C must make each pass without a floor');
-  });
-
-  it('recognises the CI runs that target main', () => {
-    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'main', GITHUB_REF: 'refs/pull/1/merge' }), true);
-    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'cii-v15', GITHUB_REF: 'refs/pull/1/merge' }), false);
-    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/main' }), true);
-    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-1-abc' }), true);
-    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/cii-v15' }), false);
-    assert.equal(ciiTargetsMain({}), false);
-  });
-});
-
-// ------------------------------------------------------------------------
-// The release gate (docs/methodology/cii-change-brief.md section 3). An
-// integration branch scores `next` under the released CII_FORMULA_VERSION, so
-// its tables are checked under `next`. If that reached main unchanged,
-// production would serve next's scores labelled with the old version and every
-// fixture check would stay green. Main and PRs into main must therefore carry
-// no in-progress version, and a released tree must name its own version.
-// ------------------------------------------------------------------------
-
-const versionNumber = (v: string) => Number(v.slice(1));
-/** CI on main, a PR into main, or a merge-queue run for main. */
-function ciiTargetsMain(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.GITHUB_BASE_REF) return env.GITHUB_BASE_REF === 'main';
-  const ref = env.GITHUB_REF ?? '';
-  return ref === 'refs/heads/main' || ref.startsWith('refs/heads/gh-readonly-queue/main/');
-}
-
-describe('CII release gate', () => {
-  it('main carries no in-progress CII version', {
-    skip: ciiTargetsMain() ? false : 'runs in CI on main and on PRs into main (GITHUB_BASE_REF / GITHUB_REF); this run targets neither',
-  }, () => {
-    assert.notEqual(CLAIM.inProgress, true,
-      `cii-next.json marks ${CLAIM.next} in progress on ${CLAIM.branch}. Before it merges to main: bump CII_FORMULA_VERSION to ${CLAIM.next}, clear inProgress, move the claim on, and freeze the ${CLAIM.next} hash.`);
-  });
-
-  it('a released tree names its own version: CII_FORMULA_VERSION is next, or the claim has moved on to the version after, and it has a KNOWN_GAPS entry', {
-    skip: CLAIM.inProgress === true ? `${CLAIM.next} is in progress on ${CLAIM.branch}; checked once it is cleared` : false,
-  }, () => {
-    const gap = versionNumber(CLAIM.next) - versionNumber(CII_FORMULA_VERSION);
-    assert.ok(gap === 0 || gap === 1,
-      `cii-next.json names ${CLAIM.next} while CII_FORMULA_VERSION is ${CII_FORMULA_VERSION}: a shipped version must bump CII_FORMULA_VERSION and move the claim on by one`);
-    assert.ok(KNOWN_GAPS[CII_FORMULA_VERSION], `KNOWN_GAPS has no ${CII_FORMULA_VERSION} entry; a released version lists its gaps, or an empty set`);
   });
 
   it('recognises the CI runs that target main', () => {

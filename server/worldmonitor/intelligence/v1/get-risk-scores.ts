@@ -13,7 +13,7 @@ import iso3ToIso2Json from '../../../../shared/iso3-to-iso2.json';
 import { getCachedJson, readCachedJson, readCachedEnvelopeJson, setCachedJson, cachedFetchJsonWithMeta, runRedisPipeline } from '../../../_shared/redis';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { CII_DAY_MS, parseCiiDailyPoints } from '../../../../shared/cii-daily-history';
-import { ciiCountryAt, ciiCountryForIso2 } from '../../../../scripts/shared/cii-country-borders.mjs';
+import { ciiCountryAt, ciiCountryForIso2, ciiIsLand } from '../../../../scripts/shared/cii-country-borders.mjs';
 import { missingRegistersFromPayload } from '../../../../scripts/shared/advisory-registers.mjs';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';

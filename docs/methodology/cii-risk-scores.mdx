@@ -285,9 +285,8 @@ Component details that are easy to miss:
   events with country "Israel" and names the territory in its admin-1 field;
   the writers attribute those rows to Palestine, which is not one of the 31
   scored countries, so they feed no row and Israel's term counts events inside
-  Israel over Israel's own population. Other CII inputs still place Gaza and
-  the West Bank in the Israel row (coordinate attribution, the strike feed's
-  `PS` code, the news keyword `gaza`); aligning them is Stage C work.
+  Israel over Israel's own population. Stage B7 applies the same territorial rule
+  to coordinates, coded strike events and the news keyword fallback.
   The UCDP writers fetch the whole window: the annual GED release by date (the
   API's `StartDate`/`EndDate` filters) and every monthly GED Candidate release
   after the annual year, each of which holds one month. They publish
@@ -412,8 +411,9 @@ reaches no Tier-1 row: the 31-country CII surface has no Palestine score, so
 those events count for no country (before v15 they counted toward IL). A strike
 event whose coordinates are on land is placed by them, never by its text. The
 aliases still include actor names (`israeli`, `idf`, `netanyahu`), and headline
-country codes credit every country a title names, so a headline naming Israel
-as the attacker in Gaza still reaches IL through the news terms.
+country codes credit their coded countries. A PS-coded headline does not fall
+back to an Israeli actor in its title. Uncoded headlines can still reach IL
+through those actor aliases.
 
 The `dynamicScore` exposed on the wire is the signed score movement versus a
 valid CII snapshot from approximately 24 hours earlier. Positive values mean
