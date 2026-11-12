@@ -13072,6 +13072,12 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/registry/_travel-risk-document.ts"
+        },
+        {
+          "path": "scripts/build-seasonal-hazard-calendar.mjs"
+        },
+        {
           "path": "scripts/seed-natural-events.mjs"
         }
       ]
