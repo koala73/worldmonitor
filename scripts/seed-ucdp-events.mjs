@@ -350,7 +350,7 @@ async function main() {
 
   // Never replace a complete window with an incomplete one that reaches no further.
   if (await keepLastGoodUcdpWindow(() => readExistingPayload(redisUrl, redisToken), payload.window)) {
-    console.warn(`  Window incomplete and ending ${new Date(latestDatasetMs).toISOString().slice(0, 10)}, no later than the cached window (or the cache was unreadable) — extending existing key TTL (preserving last good data)`);
+    console.warn(`  Window refresh cannot replace the cached frontier — extending existing key TTL (preserving last good data)`);
     await extendExistingTtl(redisUrl, redisToken);
     process.exit(0);
   }

@@ -369,11 +369,11 @@ async function fetchCandidateWindow(fetchPage, newest, { fromMs, throughVersion 
  *
  * `readExisting` resolves the cached payload, unwrapped, or null, and rejects
  * when Redis could not answer: an unknown cache is kept, since one skipped
- * write costs a tick and a blind overwrite costs the window. Complete runs
- * never read the cache.
+ * write costs a tick and a blind overwrite costs the window. Even a complete
+ * run can regress when an ambiguous probe hides a published release.
  */
 async function keepLastGoodUcdpWindow(readExisting, runWindow) {
-  if (runWindow.complete === true) return false;
+  if (!Number.isFinite(runWindow.endMs)) return true;
   let existing;
   try {
     existing = await readExisting();
@@ -381,7 +381,8 @@ async function keepLastGoodUcdpWindow(readExisting, runWindow) {
     return true;
   }
   const cached = existing?.window;
-  return cached?.complete === true && Number.isFinite(cached.endMs) && cached.endMs >= runWindow.endMs;
+  return cached?.complete === true && Number.isFinite(cached.endMs)
+    && (cached.endMs > runWindow.endMs || (runWindow.complete !== true && cached.endMs === runWindow.endMs));
 }
 
 // An event scores the place it happens (owner ruling, 2026-10-23). UCDP GED
