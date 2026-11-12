@@ -69,7 +69,27 @@ export function connectInstruction(req: Request): string | null {
  * and refuses to render a view whose value does not match
  * (https://claude.com/docs/connectors/building/mcp-apps/troubleshooting.md).
  * The field is optional, so every host except ChatGPT gets the views without it.
+ *
+ * One more caller gets it: Manufact Cloud's compatibility check, which reads
+ * the field to judge ChatGPT submission readiness. It reaches the server
+ * through a proxy that forwards a browser or Bun user agent, so the only
+ * stable marker is the `clientInfo.name` that mcp-use puts in every request's
+ * `params._meta`. The name is client-asserted, which is safe here: the value is
+ * the public site origin, and a client that claims it only gets a field that
+ * Claude's renderer would reject for itself.
  */
+const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud']);
+const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
+
+function wantsViewDomain(req: Request, body: unknown): boolean {
+  if (isChatGptHost(req)) return true;
+  const params = body && typeof body === 'object' ? (body as { params?: unknown }).params : undefined;
+  const meta = params && typeof params === 'object' ? (params as { _meta?: unknown })._meta : undefined;
+  const info = meta && typeof meta === 'object' ? (meta as Record<string, unknown>)[CLIENT_INFO_META_KEY] : undefined;
+  const name = info && typeof info === 'object' ? (info as { name?: unknown }).name : undefined;
+  return typeof name === 'string' && VIEW_DOMAIN_CLIENT_NAMES.has(name);
+}
+
 const VIEW_DOMAIN_METHODS: ReadonlySet<string> = new Set(['resources/list', 'resources/templates/list', 'resources/read']);
 
 function dropViewDomain(meta: unknown): boolean {
@@ -95,9 +115,9 @@ function dropViewDomains(message: unknown): boolean {
   return changed;
 }
 
-/** Remove `_meta.ui.domain` from a view listing or read for every host except ChatGPT. */
-export async function applyViewDomainPolicy(req: Request, method: string, res: Response): Promise<Response> {
-  if (!VIEW_DOMAIN_METHODS.has(method) || isChatGptHost(req)) return res;
+/** Remove `_meta.ui.domain` from a view listing or read for every host except ChatGPT and Manufact Cloud. */
+export async function applyViewDomainPolicy(req: Request, method: string, res: Response, rpcRequest?: unknown): Promise<Response> {
+  if (!VIEW_DOMAIN_METHODS.has(method) || wantsViewDomain(req, rpcRequest)) return res;
   if (res.status !== 200 || res.body === null) return res;
   if (!/application\/json/i.test(res.headers.get('Content-Type') ?? '')) return res;
   const text = await res.clone().text();

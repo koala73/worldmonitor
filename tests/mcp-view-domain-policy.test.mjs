@@ -5,6 +5,11 @@
  * does not match, so with the site origin every World Monitor view failed in
  * Claude with "There was a problem displaying content". Only ChatGPT gets the
  * field; every other host gets views without it.
+ *
+ * Manufact Cloud's compatibility check is the one other recipient. It checks
+ * ChatGPT submission metadata but reaches the server through a proxy with a
+ * browser or Bun user agent, so the only stable marker is the clientInfo name
+ * every request carries in params._meta.
  */
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -71,6 +76,39 @@ describe('view domain per host', () => {
       });
     }
   }
+
+  describe('Manufact Cloud compatibility check', () => {
+    const meta = (name) => ({ _meta: { 'io.modelcontextprotocol/clientInfo': { name, version: '2' } } });
+    const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
+
+    for (const signedIn of [true, false]) {
+      const who = signedIn ? 'signed in' : 'anonymous';
+      for (const userAgent of [BROWSER_UA, 'Bun/1.4.4']) {
+        it(`gets the site origin on every view (${who}, ${userAgent.slice(0, 7)})`, async () => {
+          const list = await rpc('resources/list', meta('Manufact Cloud'), { userAgent, signedIn });
+          const domains = viewDomains(list.resources);
+          assert.ok(domains.length >= 12);
+          assert.deepEqual([...new Set(domains)], ['https://www.worldmonitor.app']);
+          const read = await rpc('resources/read', { uri: SHELL_VIEW.uri, ...meta('Manufact Cloud') }, { userAgent, signedIn });
+          assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
+        });
+      }
+    }
+
+    it('a browser with another client name still gets views without ui.domain', async () => {
+      const list = await rpc('resources/list', meta('Claude'), { userAgent: BROWSER_UA });
+      for (const view of list.resources.filter((r) => r.uri.startsWith('ui://'))) {
+        assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
+      }
+    });
+
+    it('a non-string client name is ignored', async () => {
+      const list = await rpc('resources/list', meta({ toString: () => 'Manufact Cloud' }), { userAgent: BROWSER_UA });
+      for (const view of list.resources.filter((r) => r.uri.startsWith('ui://'))) {
+        assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
+      }
+    });
+  });
 
   it('does not mutate the shared registry metadata', async () => {
     await rpc('resources/list', {}, { userAgent: CLAUDE_UA });
