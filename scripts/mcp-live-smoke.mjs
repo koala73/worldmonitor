@@ -600,57 +600,51 @@ async function walkHost(host) {
 // anonymous rate limiter (the discovery branch and the transport 405 both
 // return ahead of it), so they cost nothing against the shared 60/min bucket.
 async function probeDiscovery(host) {
-  // Plain GET /mcp — the "can Google read this?" shape.
-  checks += 1;
-  try {
-    const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'text/html,*/*' } }, { group: 'canonical' });
-    if (res.status !== 200) {
-      fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `expected the markdown guide, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else if (!text.includes('World Monitor MCP Server')) {
-      fail(host, 'GET /mcp (crawler)', 'body is not the mcp-server.md guide');
-    } else {
-      ok(host, 'GET /mcp (crawler)', '200 markdown guide');
-    }
-  } catch (err) {
-    throwIfRunBudgetExhausted(err);
-    fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
-  }
+  // Plain GET and HEAD /mcp. The URL negotiates on Accept (#10519): an explicit
+  // text/html gets the HTML setup page, everything else (`*/*`, a bare fetch,
+  // a machine crawler) keeps the markdown guide. Both representations must be
+  // 200, no-store and varied on Accept / Last-Event-ID so no shared cache can
+  // replay either to a transport client.
+  const representations = [
+    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<title>\s*Connect to World Monitor MCP\s*<\/title>/i },
+    { label: 'crawler', accept: '*/*', type: /text\/markdown/i, name: 'markdown guide', body: /World Monitor MCP Server/ },
+  ];
+  for (const rep of representations) {
+    const getCheck = `GET /mcp (${rep.label})`;
+    const headCheck = `HEAD /mcp (${rep.label})`;
+    const contract = (res) => {
+      if (res.status !== 200) return `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`;
+      if (!rep.type.test(res.headers.get('content-type') ?? '')) return `expected the ${rep.name}, got content-type ${res.headers.get('content-type')}`;
+      if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) return `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`;
+      if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) return `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`;
+      if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) return `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`;
+      return null;
+    };
 
-  // HEAD must expose the same discovery metadata without a response body.
-  // This is a separate deployed method path, so unit coverage cannot prove
-  // that the CDN and routing layers preserve it.
-  checks += 1;
-  try {
-    const { res } = await timedFetch(`${host}/mcp`, {
-      method: 'HEAD',
-      headers: { Accept: 'text/html,*/*' },
-    }, { group: 'canonical' });
-    if (res.status !== 200) {
-      fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
-    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `expected markdown metadata, got content-type ${res.headers.get('content-type')}`);
-    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
-    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
-    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
-    } else if (!CANONICAL_LINK_RE.test(res.headers.get('link') ?? '')) {
-      fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
-    } else {
-      ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
+    checks += 1;
+    try {
+      const { res, text } = await timedFetch(`${host}/mcp`, { headers: { Accept: rep.accept } }, { group: 'canonical' });
+      const problem = contract(res) ?? (rep.body.test(text) ? null : `body is not the ${rep.name}`);
+      if (problem) fail(host, getCheck, problem);
+      else ok(host, getCheck, `200 ${rep.name}`);
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, getCheck, `HANG/transport error: ${formatSafeError(err)}`);
     }
-  } catch (err) {
-    throwIfRunBudgetExhausted(err);
-    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${formatSafeError(err)}`);
+
+    // HEAD is a separate deployed method path, so unit coverage cannot prove
+    // that the CDN and routing layers preserve it.
+    checks += 1;
+    try {
+      const { res } = await timedFetch(`${host}/mcp`, { method: 'HEAD', headers: { Accept: rep.accept } }, { group: 'canonical' });
+      const problem = contract(res)
+        ?? (CANONICAL_LINK_RE.test(res.headers.get('link') ?? '') ? null : `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
+      if (problem) fail(host, headCheck, problem);
+      else ok(host, headCheck, `200 ${rep.name} metadata`);
+    } catch (err) {
+      throwIfRunBudgetExhausted(err);
+      fail(host, headCheck, `HANG/transport error: ${formatSafeError(err)}`);
+    }
   }
 
   // The canary: an SSE stream-open on the URL just warmed must still be 405.
