@@ -65,4 +65,9 @@ export const entitlementFeaturesValidator = v.object({
   // (fail-OPEN, permanently — see the PlanFeatures JSDoc). Catalog-sourced
   // writes always set it, so this validator MUST accept it.
   dataExport: v.optional(v.boolean()),
+  // Optional — travel risk assessment drafts (#10451). Legacy rows predate
+  // it; the read-time merge supplies the catalog value and consumers treat
+  // undefined as false (fail-closed). Catalog-sourced writes always set it,
+  // so this validator MUST accept it.
+  travelRiskAssessment: v.optional(v.boolean()),
 });

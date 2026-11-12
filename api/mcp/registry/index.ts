@@ -37,6 +37,7 @@ const TOOL_INVOCATION_LABELS: Record<string, { invoking: string; invoked: string
   open_country_brief: { invoking: 'Opening the country brief…', invoked: 'Opened the country brief' },
 };
 import { FEEDBACK_TOOLS } from './feedback-tools';
+import { TRAVEL_RISK_TOOLS } from './travel-risk-tool';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
@@ -44,11 +45,16 @@ import { FEEDBACK_TOOLS } from './feedback-tools';
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS];
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS, ...NEWS_DASHBOARD_TOOLS, ...MACRO_TOOLS, ...STOCK_TOOLS, ...COST_SHOCK_TOOLS, ...PUBLIC_DOMAIN_TOOLS, ...COUNTRY_VIEW_TOOLS, ...TARIFF_TOOLS, ...WEBCAM_TOOLS, ...FEEDBACK_TOOLS, ...TRAVEL_RISK_TOOLS];
 export const RETIRED_TOOLS: ToolDef[] = [...RETIRED_RPC_TOOLS];
 
 export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
   TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
+);
+
+/** Tools whose pre-check must read a current `travelRiskAssessment` flag (#10451). */
+export const TRAVEL_RISK_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOL_REGISTRY.filter((tool) => tool._planFeature === 'travelRiskAssessment').map((tool) => tool.name),
 );
 
 /**
@@ -197,6 +203,7 @@ export function buildPublicTool(
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
       ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
+      ...(tool.inputSchema.additionalProperties === false ? { additionalProperties: false as const } : {}),
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.

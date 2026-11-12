@@ -327,6 +327,7 @@
                   "webmcp",
                   "mcp-apps",
                   "gemini-antigravity",
+                  "travel-risk-assessment",
                   {
                     "group": "MCP Tools Reference",
                     "pages": [
@@ -907,6 +908,7 @@
                   "zh/webmcp",
                   "zh/mcp-apps",
                   "zh/gemini-antigravity",
+                  "zh/travel-risk-assessment",
                   {
                     "group": "MCP 工具参考",
                     "pages": [
