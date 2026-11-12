@@ -717,6 +717,8 @@ export interface MapLayers {
   sanctions: boolean;
   /** Sentinel-5P NO2 activity direction per country and industrial cluster. */
   no2Activity?: boolean;
+  /** ICESat-2 water-surface level status of strategic reservoirs and lakes. */
+  reservoirLevels?: boolean;
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;

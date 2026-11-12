@@ -134,12 +134,22 @@ export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {
   return response.data ? toDisplayOceanIceData(response.data) : null;
 }
 
-/** Strategic reservoir levels (ICESat-2 lidar). Null when the snapshot is unavailable. */
-export async function fetchReservoirLevels(): Promise<ReservoirLevelsSnapshot | null> {
+export interface ReservoirLevelsFetchResult {
+  /** False when the request failed and no cached snapshot could answer it. */
+  ok: boolean;
+  /** Null when the RPC answered but the dataset has no readings yet (dataAvailable=false). */
+  snapshot: ReservoirLevelsSnapshot | null;
+}
+
+/** Strategic reservoir levels (ICESat-2 lidar). Read on demand: the panel or the map layer asks for it. */
+export async function fetchReservoirLevels(): Promise<ReservoirLevelsFetchResult> {
   const response = await reservoirLevelsBreaker.execute(async () => {
     return client.listReservoirLevels({});
   }, emptyReservoirLevelsFallback, { shouldCache: (result) => result.dataAvailable === true && (result.reservoirs ?? []).length > 0 });
-  return toReservoirLevelsSnapshot(response);
+  return {
+    ok: reservoirLevelsBreaker.getDataState().mode !== 'unavailable',
+    snapshot: toReservoirLevelsSnapshot(response),
+  };
 }
 
 // Presentation helpers (used by ClimateAnomalyPanel)

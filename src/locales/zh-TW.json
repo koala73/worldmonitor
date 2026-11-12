@@ -490,7 +490,8 @@
     "marketBreadth": "市場廣度",
     "climateNews": "氣候新聞",
     "fx": "外匯匯率",
-    "ukmtoIncidents": "UKMTO事件"
+    "ukmtoIncidents": "UKMTO事件",
+    "reservoirLevels": "戰略水位"
   },
   "commands": {
     "prefixes": {
@@ -1307,7 +1308,8 @@
         "canadaRoads": "Canada 道路",
         "canadaAlerts": "加拿大警報",
         "notamAirspace": "NOTAM 空域限制",
-        "no2Activity": "工業活動"
+        "no2Activity": "工業活動",
+        "reservoirLevels": "水位"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1424,7 +1426,8 @@
           "canadaRoads": "加拿大（Canada）受支援轄區的官方道路事件、警報、路況、封閉、施工和危險資訊",
           "canadaAlerts": "來自 Alberta Emergency Alert、B.C. 疏散令與警報及 SaskAlert 的省級公共安全警報",
           "notamAirspace": "FAA NOTAM 中的臨時飛行限制和受限、危險及禁飛空域，當前生效或將在 24 小時內生效",
-          "no2Activity": "Sentinel-5P NO2 活動方向，覆蓋 167 個國家和 32 個工業叢集：最新 56 天視窗與往年同期日期對比，經 10% 死區處理。包含經修改的 Copernicus Sentinel 資料。"
+          "no2Activity": "Sentinel-5P NO2 活動方向，覆蓋 167 個國家和 32 個工業叢集：最新 56 天視窗與往年同期日期對比，經 10% 死區處理。包含經修改的 Copernicus Sentinel 資料。",
+          "reservoirLevels": "來自 NASA ICESat-2 衛星鐳射雷達的戰略水庫和湖泊水面水位，與該月的常年水位對比。NASA 在每次過境測量後約兩個月釋出資料。"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
@@ -3119,6 +3122,47 @@
       "body": "在 GitHub 上標星可以幫助其他人發現它。",
       "star": "在 GitHub 上標星",
       "dismiss": "關閉，不再提示"
+    },
+    "reservoirLevels": {
+      "note": "水面水位來自 NASA ICESat-2 衛星鐳射雷達。NASA 在每次過境測量後約兩個月釋出資料，因此這裡追蹤的是數週和季節尺度的變化，而不是逐日變化。僅為水位，不是庫容。",
+      "source": "來源：",
+      "processedWith": "處理工具：",
+      "empty": "暫無讀數",
+      "filterEmpty": "沒有符合此篩選條件的水體",
+      "unavailable": "水位資料當前不可用",
+      "filterLabel": "篩選水體",
+      "filter": {
+        "all": "全部",
+        "attention": "需要關注",
+        "transboundary": "跨境"
+      },
+      "status": {
+        "record_low": "創紀錄低位",
+        "record_high": "創紀錄高位",
+        "falling_fast": "快速下降",
+        "rising_fast": "快速上升",
+        "low": "低於同期",
+        "high": "高於同期",
+        "normal": "正常",
+        "insufficient_history": "歷史資料不足",
+        "no_recent_data": "近期無過境"
+      },
+      "vsUsual": "較{{month}}常年 {{value}}",
+      "in12Months": "12 個月 {{value}}",
+      "noComparison": "暫無對比",
+      "measured": "測量於 {{date}}（{{age}}）",
+      "noPass": "暫無可用過境",
+      "popup": {
+        "level": "水位",
+        "levelValue": "海拔 {{value}}（EGM2008）",
+        "anomaly": "較{{month}}常年",
+        "anomalyPlain": "較當月常年",
+        "changePrev": "較上次過境",
+        "change90": "90 天內",
+        "change365": "12 個月內",
+        "measured": "測量時間",
+        "sparkline": "36 個月水位"
+      }
     }
   },
   "popups": {
@@ -4586,6 +4630,21 @@
         "related": {
           "0": "中國活動即時預測",
           "1": "國家簡報"
+        }
+      },
+      "reservoirLevels": {
+        "category": "氣候",
+        "purpose": "按水面水位與一年中同期常年水位的對比以及變化速度，標示戰略水庫和湖泊。",
+        "source": "經由 NSIDC 獲取的 NASA ICESat-2 ATL13 內陸水面高度，使用 SlideRule Earth 處理，並由 seed-reservoir-levels 服務按每次衛星過境彙總。",
+        "freshness": "每日更新。NASA 在測量後 50 至 70 天釋出每次過境資料，每座水庫的重訪間隔從幾天到約一個月不等。",
+        "confidence": "只有當至少 5 個水面段在 0.25 米內一致時，該次過境才計入。季節對比需要至少 3 個往年同期的過境資料。",
+        "limitations": {
+          "0": "僅為水位，不是庫容：同樣的下降在不同水庫意味著不同的蓄水損失。",
+          "1": "150 天內沒有過境的水體會標記為近期無過境；其最後一次讀數、變化和日期仍會顯示。"
+        },
+        "related": {
+          "0": "戰略水位面板",
+          "1": "氣候異常"
         }
       },
       "conflicts": {

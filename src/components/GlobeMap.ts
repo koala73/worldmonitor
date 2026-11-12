@@ -24,7 +24,9 @@ import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/ge
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
-import { initI18n, t } from '@/services/i18n';
+import { getLocale, initI18n, t } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import { reservoirHeadline, reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import { SITE_VARIANT } from '@/config/variant';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
 import {
@@ -415,6 +417,11 @@ interface AisDisruptionMarker extends BaseMarker {
   severity: AisDisruptionEvent['severity'];
   description: string;
 }
+interface ReservoirMarker extends BaseMarker {
+  _kind: 'reservoirLevel';
+  id: string;
+  reservoir: ReservoirLevel;
+}
 interface UkmtoMarker extends BaseMarker {
   _kind: 'ukmtoIncident';
   id: string;
@@ -483,6 +490,7 @@ interface GlobePolygon {
 }
 type GlobeMarker =
   | UkmtoMarker
+  | ReservoirMarker
   | ConflictMarker | HotspotMarker | FlightMarker | VesselMarker | ClusterMarker
   | WeatherMarker | NaturalMarker | IranMarker | OutageMarker | TrafficAnomalyMarker | DdosHitMarker
   | CyberMarker | FireMarker | ProtestMarker
@@ -556,6 +564,9 @@ export class GlobeMap {
   private clusterMarkers: ClusterMarker[] = [];
   private clusterData: Map<string, MilitaryVesselCluster> = new Map();
   private popup: MapPopup | null = null;
+  // Bumped by every reservoir reveal, marker click and drag start, so a delayed reveal from a
+  // panel row cannot replace a popup the user opened after it.
+  private reservoirRevealSeq = 0;
   private weatherMarkers: WeatherMarker[] = [];
   private naturalMarkers: NaturalMarker[] = [];
   private iranMarkers: IranMarker[] = [];
@@ -591,6 +602,7 @@ export class GlobeMap {
   private repairShipMarkers: RepairShipMarker[] = [];
   private aisMarkers: AisDisruptionMarker[] = [];
   private ukmtoMarkers: UkmtoMarker[] = [];
+  private reservoirMarkers: ReservoirMarker[] = [];
   private satelliteMarkers: SatelliteMarker[] = [];
   private satelliteTrailPaths: GlobePath[] = [];
   private stormTrackPaths: GlobePath[] = [];
@@ -760,6 +772,7 @@ export class GlobeMap {
     controls.enableDamping = !desktop;
 
     this.controlsStartHandler = () => {
+      this.reservoirRevealSeq++;
       if (this.viewportTarget) this.settleViewportMovement(false);
     };
     controls.addEventListener('start', this.controlsStartHandler);
@@ -1339,6 +1352,15 @@ export class GlobeMap {
           <div style="position:absolute;inset:-5px;border-radius:50%;background:${tc}22;${this.pulseStyle('1.8s')}"></div>
         </div>`, "legacy direct innerHTML migration"));
       el.title = d.title;
+    } else if (d._kind === 'reservoirLevel') {
+      const hit = document.createElement('div');
+      hit.style.cssText = 'width:20px;height:20px;display:flex;align-items:center;justify-content:center';
+      const dot = document.createElement('div');
+      dot.className = `wl-globe-dot wl-tone-${reservoirTone(d.reservoir.status)}`;
+      hit.appendChild(dot);
+      el.appendChild(hit);
+      el.title = `${d.reservoir.name} · ${reservoirStatusLabel(d.reservoir.status, t)}`;
+      el.setAttribute('aria-label', el.title);
     } else if (d._kind === 'ukmtoIncident') {
       el.textContent = '⚓';
       el.title = ukmtoIncidentLabel(d.incident);
@@ -1387,6 +1409,7 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    this.reservoirRevealSeq++;
     if (d._kind === 'datacenter' && this.popup) {
       const dc = AI_DATA_CENTERS.find(center => center.id === d.id);
       if (dc) {
@@ -1397,6 +1420,14 @@ export class GlobeMap {
           x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
         return;
       }
+    }
+    if (d._kind === 'reservoirLevel' && this.popup) {
+      const rect = anchor.getBoundingClientRect();
+      const containerRect = this.container.getBoundingClientRect();
+      this.hideTooltip();
+      this.popup.show({ type: 'reservoirLevel', data: d.reservoir,
+        x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top });
+      return;
     }
     if (d._kind === 'crossBorder' && this.popup) {
       const rect = anchor.getBoundingClientRect();
@@ -1733,6 +1764,9 @@ export class GlobeMap {
       html = `<span style="color:${sc};font-weight:bold;">⛴ ${esc(typeLabel)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
+    } else if (d._kind === 'reservoirLevel') {
+      const headline = reservoirHeadline(d.reservoir, { t, locale: getLocale(), nowMs: Date.now() });
+      html = `<strong>${esc(d.reservoir.name)}</strong><br>${esc(reservoirStatusLabel(d.reservoir.status, t))} · ${esc(headline)}`;
     } else if (d._kind === 'ukmtoIncident') {
       html = `<strong>${esc(ukmtoIncidentLabel(d.incident))}</strong><br>${esc(d.incident.description)}`;
     } else if (d._kind === 'newsLocation') {
@@ -2284,6 +2318,7 @@ export class GlobeMap {
       const cutoff = Date.now() - hours * 3600000;
       add('ais', this.ukmtoMarkers.filter(marker => marker.incident.occurredAt >= cutoff));
     }
+    if (this.layers.reservoirLevels) add('reservoirLevels', this.reservoirMarkers);
     if (this.layers.iranAttacks) add('iranAttacks', this.iranMarkers);
     if (this.layers.outages) {
       add('outages', this.outageMarkers);
@@ -3557,6 +3592,35 @@ export class GlobeMap {
       }));
     this.flushMarkers();
   }
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirMarkers = reservoirs.map((reservoir) => ({
+      _kind: 'reservoirLevel' as const, _lat: reservoir.lat, _lng: reservoir.lon, id: reservoir.id, reservoir,
+    }));
+    this.flushMarkers();
+  }
+
+  /** Rotate to a reservoir, then open its popup once it has settled at the container centre. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    const seq = ++this.reservoirRevealSeq;
+    const current = () => seq === this.reservoirRevealSeq;
+    const reveal = () => {
+      if (this.destroyed || !this.globe || !current()) return;
+      // An open marker tooltip's dismissal timer would also hide the popup we open.
+      this.hideTooltip();
+      this.setCenter(reservoir.lat, reservoir.lon, 5);
+      const rect = this.container.getBoundingClientRect();
+      const x = rect.width / 2;
+      const y = rect.height / 2;
+      // Settles false when a drag or a later camera command interrupts the turn.
+      void this.whenViewportSettled().then((completed) => {
+        if (!completed || this.destroyed || !this.popup || !current()) return;
+        this.popup.show({ type: 'reservoirLevel', data: reservoir, x, y });
+      });
+    };
+    if (this.globe) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
+
   public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
     this.ukmtoMarkers = incidents.filter(item => item.location).map(item => ({
       _kind: 'ukmtoIncident', _lat: item.location!.latitude, _lng: item.location!.longitude,

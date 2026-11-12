@@ -18,7 +18,20 @@ import { TransitChart } from '@/utils/transit-chart';
 import { HS2RingChart } from '@/utils/hs2-ring-chart';
 import type { GetChokepointStatusResponse, TransitDayCount } from '@/services/supply-chain';
 import { fetchChokepointHistory } from '@/services/supply-chain';
-import { t, getCurrentLanguageTag } from '@/services/i18n';
+import { t, getCurrentLanguageTag, getLocale } from '@/services/i18n';
+import type { ReservoirLevel } from '@/services/climate';
+import {
+  RESERVOIR_PROCESSING_URL,
+  RESERVOIR_SOURCE_URL,
+  formatMetres,
+  formatMonth,
+  formatSignedMetres,
+  reservoirMeasured,
+  reservoirPlace,
+  reservoirSparkline,
+  reservoirTone,
+  statusLabel as reservoirStatusLabel,
+} from './reservoir-levels-view';
 import { fetchHotspotContext, formatArticleDate, extractDomain, type GdeltArticle } from '@/services/gdelt-intel';
 import { getWingbitsLiveFlight } from '@/services/wingbits';
 import { isFeatureAvailable } from '@/services/runtime-config';
@@ -113,7 +126,7 @@ function fmtDelayMin(min: number | undefined): string {
 /** A news marker's popup: its title and, when known, the cluster's corroboration (#9213). */
 type NewsPopupData = Pick<NewsLocationMarker, 'title' | 'corroboration'>;
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation' | 'news' | 'crossBorder' | 'displacement' | 'storageFacility' | 'reservoirLevel';
 
 interface TechEventPopupData {
   id: string;
@@ -252,7 +265,7 @@ interface StorageFacilityPopupData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation | NewsPopupData | DisplacementMarker | CrossBorderPoint | StorageFacilityPopupData | ReservoirLevel;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -929,6 +942,8 @@ export class MapPopup {
           + `<div class="popup-body">${renderCrossBorderDetails(data.data as CrossBorderPoint)}</div>`;
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
+      case 'reservoirLevel':
+        return this.renderReservoirLevelPopup(data.data as ReservoirLevel);
       default:
         return '';
     }
@@ -2271,6 +2286,43 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
     `;
   }
 
+
+  private renderReservoirLevelPopup(r: ReservoirLevel): string {
+    const locale = getLocale();
+    const ctx = { t, locale, nowMs: Date.now() };
+    const tone = reservoirTone(r.status);
+    const signed = (v: number | null) => (v == null ? '\u2014' : escapeHtml(formatSignedMetres(v, locale)));
+    const stat = (label: string, value: string, extraClass = '') =>
+      `<div class="popup-stat"><span class="stat-label">${escapeHtml(label)}</span><span class="stat-value${extraClass}">${value}</span></div>`;
+    const anomalyLabel = r.latest
+      ? t('components.reservoirLevels.popup.anomaly', { month: formatMonth(r.latest.observedAt, locale) })
+      : t('components.reservoirLevels.popup.anomalyPlain');
+    const spark = reservoirSparkline(r, 240, 40);
+    return `
+      <div class="wl-popup wl-tone-${tone}">
+        <div class="popup-header">
+          <span class="popup-title wl-popup-title">${escapeHtml(r.name)}<span class="wl-popup-place">${escapeHtml(reservoirPlace(r, locale))}</span></span>
+          <span class="wl-chip">${escapeHtml(reservoirStatusLabel(r.status, t))}</span>
+          <button class="popup-close" aria-label="${t('common.close')}">×</button>
+        </div>
+        <div class="popup-body">
+          ${r.why ? `<p class="wl-popup-why">${escapeHtml(r.why)}</p>` : ''}
+          <div class="popup-stats">
+            ${stat(t('components.reservoirLevels.popup.level'), r.latest
+              ? escapeHtml(t('components.reservoirLevels.popup.levelValue', { value: formatMetres(r.latest.levelM, locale) }))
+              : '\u2014')}
+            ${stat(anomalyLabel, signed(r.seasonalAnomalyM), r.seasonalAnomalyM == null ? '' : ' wl-popup-anomaly')}
+            ${stat(t('components.reservoirLevels.popup.changePrev'), signed(r.changePrevM))}
+            ${stat(t('components.reservoirLevels.popup.change90'), signed(r.change90dM))}
+            ${stat(t('components.reservoirLevels.popup.change365'), signed(r.change365dM))}
+            ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
+          </div>
+          ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
+          <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13 (NSIDC)</a> · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
+        </div>
+      </div>
+    `;
+  }
 
   private renderStorageFacilityPopup(facility: StorageFacilityPopupData): string {
     const typeLabel = escapeHtml(storageFacilityTypeLabel(facility.facilityType));

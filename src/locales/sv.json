@@ -108,7 +108,8 @@
     "marketBreadth": "Marknadsbredd",
     "climateNews": "Klimatnyheter",
     "fx": "Valutakurser",
-    "ukmtoIncidents": "UKMTO-incidenter"
+    "ukmtoIncidents": "UKMTO-incidenter",
+    "reservoirLevels": "Strategiska vattennivåer"
   },
   "commands": {
     "prefixes": {
@@ -592,7 +593,8 @@
         "canadaRoads": "Kanadensiska vägar",
         "canadaAlerts": "Kanadensiska varningar",
         "notamAirspace": "NOTAM-luftrumsbegränsningar",
-        "no2Activity": "Industriell aktivitet"
+        "no2Activity": "Industriell aktivitet",
+        "reservoirLevels": "Vattennivåer"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -716,7 +718,8 @@
           "canadaRoads": "Officiella vägincidenter, varningar, väglag, avstängningar, vägarbeten och faror i kanadensiska jurisdiktioner som stöds",
           "canadaAlerts": "Provinsiella varningar om allmän säkerhet från Alberta Emergency Alert, B.C. Evacuation Orders and Alerts och SaskAlert",
           "notamAirspace": "Tillfälliga flygbegränsningar och begränsat, farligt och förbjudet luftrum från FAA NOTAMs, gäller nu eller börjar inom 24 timmar",
-          "no2Activity": "Riktning för NO2-aktivitet från Sentinel-5P för 167 länder och 32 industrikluster: det senaste 56-dagarsfönstret mot samma datum tidigare år, efter ett dödband på 10 %. Innehåller modifierade Copernicus Sentinel-data."
+          "no2Activity": "Riktning för NO2-aktivitet från Sentinel-5P för 167 länder och 32 industrikluster: det senaste 56-dagarsfönstret mot samma datum tidigare år, efter ett dödband på 10 %. Innehåller modifierade Copernicus Sentinel-data.",
+          "reservoirLevels": "Vattenytans nivå i strategiska magasin och sjöar från NASA:s satellitlidar ICESat-2, jämfört med den vanliga nivån för månaden. NASA publicerar varje passage ungefär två månader efter mätningen."
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
@@ -2756,6 +2759,47 @@
       "body": "En stjärna på GitHub hjälper andra att hitta den.",
       "star": "Stjärnmärk på GitHub",
       "dismiss": "Dölj och fråga inte igen"
+    },
+    "reservoirLevels": {
+      "note": "Vattenytans nivå från NASA:s satellitlidar ICESat-2. NASA publicerar varje passage ungefär två månader efter mätningen, så detta följer förändringar över veckor och årstider, inte dagar. Endast nivå, inte volym.",
+      "source": "Källa:",
+      "processedWith": "bearbetad med",
+      "empty": "Inga mätvärden ännu",
+      "filterEmpty": "Inga vatten matchar det här filtret",
+      "unavailable": "Data om vattennivåer är inte tillgängliga just nu",
+      "filterLabel": "Filtrera vatten",
+      "filter": {
+        "all": "Alla",
+        "attention": "Kräver uppmärksamhet",
+        "transboundary": "Gränsöverskridande"
+      },
+      "status": {
+        "record_low": "Rekordlåg",
+        "record_high": "Rekordhög",
+        "falling_fast": "Sjunker snabbt",
+        "rising_fast": "Stiger snabbt",
+        "low": "Låg för årstiden",
+        "high": "Hög för årstiden",
+        "normal": "Som vanligt",
+        "insufficient_history": "För kort historik",
+        "no_recent_data": "Ingen ny passage"
+      },
+      "vsUsual": "{{value}} mot det vanliga i {{month}}",
+      "in12Months": "{{value}} på 12 månader",
+      "noComparison": "Ingen jämförelse ännu",
+      "measured": "mätt {{date}} ({{age}})",
+      "noPass": "Ingen användbar passage ännu",
+      "popup": {
+        "level": "Nivå",
+        "levelValue": "{{value}} över havet (EGM2008)",
+        "anomaly": "Mot det vanliga i {{month}}",
+        "anomalyPlain": "Mot det vanliga för månaden",
+        "changePrev": "Sedan förra passagen",
+        "change90": "På 90 dagar",
+        "change365": "På 12 månader",
+        "measured": "Mätt",
+        "sparkline": "Vattennivå över 36 månader"
+      }
     }
   },
   "popups": {
@@ -4608,6 +4652,21 @@
         "related": {
           "0": "Nowcast för Kinas aktivitet",
           "1": "Landsöversikt"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Klimat",
+        "purpose": "Markerar strategiska magasin och sjöar efter hur vattennivån står sig mot den vanliga nivån för årstiden och hur snabbt den ändras.",
+        "source": "Höjd på inlandsvattenytor från NASA ICESat-2 ATL13 via NSIDC, bearbetad med SlideRule Earth och sammanställd per satellitpassage av tjänsten seed-reservoir-levels.",
+        "freshness": "Uppdateras dagligen. NASA publicerar varje passage 50 till 70 dagar efter mätningen, och varje magasin mäts igen med några dagars till ungefär en månads mellanrum.",
+        "confidence": "En passage räknas bara när minst 5 vattensegment stämmer överens inom 0,25 m. En säsongsjämförelse kräver passager från minst 3 tidigare år vid samma tid på året.",
+        "limitations": {
+          "0": "Endast nivå, inte volym: samma sänkning innebär olika förlust av lagrat vatten i varje magasin.",
+          "1": "Ett vatten utan passage på 150 dagar markeras som utan ny passage; dess senaste värde, förändringar och datum visas fortfarande."
+        },
+        "related": {
+          "0": "Panelen Strategiska vattennivåer",
+          "1": "Klimatavvikelser"
         }
       },
       "conflicts": {

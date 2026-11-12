@@ -492,7 +492,8 @@
     "marketBreadth": "Pazar Genişliği",
     "climateNews": "İklim Haberleri",
     "fx": "Döviz kurları",
-    "ukmtoIncidents": "UKMTO olayları"
+    "ukmtoIncidents": "UKMTO olayları",
+    "reservoirLevels": "Stratejik Su Seviyeleri"
   },
   "commands": {
     "prefixes": {
@@ -1310,7 +1311,8 @@
         "canadaRoads": "Kanada Yolları",
         "canadaAlerts": "Kanada Uyarıları",
         "notamAirspace": "NOTAM Hava Sahasına İlişkin Kısıtlamalar",
-        "no2Activity": "Sanayi faaliyeti"
+        "no2Activity": "Sanayi faaliyeti",
+        "reservoirLevels": "Su Seviyeleri"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1427,7 +1429,8 @@
           "canadaRoads": "Desteklenen Kanada yetki bölgelerinde resmi yol olayları, uyarılar, yol durumu, kapanışlar, yapım çalışmaları ve tehlikeler",
           "canadaAlerts": "Alberta Emergency Alert, B.C. Evacuation Orders and Alerts ve SaskAlert kaynaklı il düzeyinde kamu güvenliği uyarıları",
           "notamAirspace": "FAA NOTAM'larından geçici uçuş kısıtlamaları ve sınırlı, tehlikeli ve yasaklı hava sahaları; şu anda yürürlükte olan veya 24 saat içinde başlayacak olanlar",
-          "no2Activity": "167 ülke ve 32 sanayi kümesi için Sentinel-5P NO2 faaliyet yönü: son 56 günlük pencerenin önceki yılların aynı tarihleriyle karşılaştırması, %10 ölü bant sonrası. Değiştirilmiş Copernicus Sentinel verileri içerir."
+          "no2Activity": "167 ülke ve 32 sanayi kümesi için Sentinel-5P NO2 faaliyet yönü: son 56 günlük pencerenin önceki yılların aynı tarihleriyle karşılaştırması, %10 ölü bant sonrası. Değiştirilmiş Copernicus Sentinel verileri içerir.",
+          "reservoirLevels": "Stratejik baraj gölleri ve göllerin su yüzeyi seviyesi, NASA ICESat-2 uydu lidarından, ayın olağan seviyesiyle karşılaştırmalı. NASA her geçişi ölçümden yaklaşık iki ay sonra yayımlar."
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -3140,6 +3143,47 @@
       "body": "GitHub'da bir yıldız, başkalarının onu bulmasına yardımcı olur.",
       "star": "GitHub'da Yıldız Ver",
       "dismiss": "Kapat ve bir daha sorma"
+    },
+    "reservoirLevels": {
+      "note": "NASA ICESat-2 uydu lidarından su yüzeyi seviyesi. NASA her geçişi ölçümden yaklaşık iki ay sonra yayımlar; bu nedenle bu veri günleri değil, haftalar ve mevsimler boyunca değişimi izler. Yalnızca seviye, hacim değil.",
+      "source": "Kaynak:",
+      "processedWith": "işleyen:",
+      "empty": "Henüz ölçüm yok",
+      "filterEmpty": "Bu filtreyle eşleşen su kütlesi yok",
+      "unavailable": "Su seviyesi verileri şu anda kullanılamıyor",
+      "filterLabel": "Su kütlelerini filtrele",
+      "filter": {
+        "all": "Tümü",
+        "attention": "Dikkat gerekiyor",
+        "transboundary": "Sınır aşan"
+      },
+      "status": {
+        "record_low": "Rekor düşük",
+        "record_high": "Rekor yüksek",
+        "falling_fast": "Hızla düşüyor",
+        "rising_fast": "Hızla yükseliyor",
+        "low": "Mevsime göre düşük",
+        "high": "Mevsime göre yüksek",
+        "normal": "Olağan",
+        "insufficient_history": "Yetersiz geçmiş",
+        "no_recent_data": "Yakın tarihli geçiş yok"
+      },
+      "vsUsual": "{{month}} olağanına göre {{value}}",
+      "in12Months": "12 ayda {{value}}",
+      "noComparison": "Henüz karşılaştırma yok",
+      "measured": "{{date}} tarihinde ölçüldü ({{age}})",
+      "noPass": "Henüz kullanılabilir geçiş yok",
+      "popup": {
+        "level": "Seviye",
+        "levelValue": "Deniz seviyesinden {{value}} yukarıda (EGM2008)",
+        "anomaly": "{{month}} olağanına göre",
+        "anomalyPlain": "Ayın olağanına göre",
+        "changePrev": "Önceki geçişten beri",
+        "change90": "90 günde",
+        "change365": "12 ayda",
+        "measured": "Ölçüm",
+        "sparkline": "36 aylık su seviyesi"
+      }
     }
   },
   "popups": {
@@ -4608,6 +4652,21 @@
         "related": {
           "0": "Çin faaliyet nowcast'ı",
           "1": "Ülke özeti"
+        }
+      },
+      "reservoirLevels": {
+        "category": "İklim",
+        "purpose": "Stratejik baraj gölleri ve gölleri, su seviyesinin yılın aynı dönemindeki olağan seviyeye göre durumuna ve ne kadar hızlı değiştiğine göre işaretler.",
+        "source": "NSIDC üzerinden NASA ICESat-2 ATL13 iç su yüzeyi yüksekliği; SlideRule Earth ile işlenir ve seed-reservoir-levels hizmeti tarafından her uydu geçişi için birleştirilir.",
+        "freshness": "Günlük güncellenir. NASA her geçişi ölçümden 50 ila 70 gün sonra yayımlar ve her baraj gölü birkaç günde bir ile yaklaşık ayda bir arasında yeniden ölçülür.",
+        "confidence": "Bir geçiş yalnızca en az 5 su segmenti 0,25 m içinde uyuştuğunda sayılır. Mevsimsel karşılaştırma, yılın aynı dönemine ait en az 3 önceki yıldan geçiş gerektirir.",
+        "limitations": {
+          "0": "Yalnızca seviye, hacim değil: aynı düşüş her baraj gölünde farklı bir depolama kaybı anlamına gelir.",
+          "1": "150 gündür geçişi olmayan bir su kütlesi yakın tarihli geçiş yok olarak işaretlenir; son ölçümü, değişimleri ve tarihi yine gösterilir."
+        },
+        "related": {
+          "0": "Stratejik Su Seviyeleri paneli",
+          "1": "İklim anomalileri"
         }
       },
       "conflicts": {

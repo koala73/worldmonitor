@@ -494,7 +494,8 @@
     "marketBreadth": "Amploarea pieței",
     "climateNews": "Știri despre climă",
     "fx": "Cursuri de schimb valutar",
-    "ukmtoIncidents": "Incidente UKMTO"
+    "ukmtoIncidents": "Incidente UKMTO",
+    "reservoirLevels": "Niveluri strategice ale apei"
   },
   "commands": {
     "prefixes": {
@@ -1313,7 +1314,8 @@
         "canadaRoads": "Drumuri Canada",
         "canadaAlerts": "Alerte Canada",
         "notamAirspace": "Restricții de spațiu aerian NOTAM",
-        "no2Activity": "Activitate industrială"
+        "no2Activity": "Activitate industrială",
+        "reservoirLevels": "Niveluri ale apei"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1430,7 +1432,8 @@
           "canadaRoads": "Incidente rutiere oficiale, avertismente, condiții, închideri, lucrări și pericole din jurisdicțiile canadiene acceptate.",
           "canadaAlerts": "Alerte provinciale de siguranță publică de la Alberta Emergency Alert, B.C. Evacuation Orders and Alerts și SaskAlert.",
           "notamAirspace": "Restricții temporare de zbor și spațiu aerian restricționat, de pericol și interzis din NOTAM-urile FAA, în vigoare acum sau începând în următoarele 24 de ore",
-          "no2Activity": "Direcția activității NO2 din Sentinel-5P pentru 167 de țări și 32 de clustere industriale: cea mai recentă fereastră de 56 de zile față de aceleași date din anii anteriori, după o bandă moartă de 10%. Conține date Copernicus Sentinel modificate."
+          "no2Activity": "Direcția activității NO2 din Sentinel-5P pentru 167 de țări și 32 de clustere industriale: cea mai recentă fereastră de 56 de zile față de aceleași date din anii anteriori, după o bandă moartă de 10%. Conține date Copernicus Sentinel modificate.",
+          "reservoirLevels": "Nivelul suprafeței apei în lacuri de acumulare și lacuri strategice, din lidarul satelitar NASA ICESat-2, față de nivelul obișnuit al lunii. NASA publică fiecare trecere la aproximativ două luni după măsurare."
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"
@@ -3161,6 +3164,47 @@
       "body": "O stea pe GitHub ajută alte persoane să o găsească.",
       "star": "Adaugă stea pe GitHub",
       "dismiss": "Închide și nu mai întreba"
+    },
+    "reservoirLevels": {
+      "note": "Nivelul suprafeței apei din lidarul satelitar NASA ICESat-2. NASA publică fiecare trecere la aproximativ două luni după măsurare, deci aici se urmăresc schimbări pe parcursul săptămânilor și anotimpurilor, nu al zilelor. Doar nivel, nu volum.",
+      "source": "Sursă:",
+      "processedWith": "procesat cu",
+      "empty": "Încă nu există citiri",
+      "filterEmpty": "Niciun corp de apă nu corespunde acestui filtru",
+      "unavailable": "Datele despre nivelul apei nu sunt disponibile acum",
+      "filterLabel": "Filtrează corpurile de apă",
+      "filter": {
+        "all": "Toate",
+        "attention": "Necesită atenție",
+        "transboundary": "Transfrontaliere"
+      },
+      "status": {
+        "record_low": "Minim record",
+        "record_high": "Maxim record",
+        "falling_fast": "Scădere rapidă",
+        "rising_fast": "Creștere rapidă",
+        "low": "Scăzut pentru sezon",
+        "high": "Ridicat pentru sezon",
+        "normal": "Obișnuit",
+        "insufficient_history": "Istoric insuficient",
+        "no_recent_data": "Nicio trecere recentă"
+      },
+      "vsUsual": "{{value}} față de obișnuit în {{month}}",
+      "in12Months": "{{value}} în 12 luni",
+      "noComparison": "Încă nicio comparație",
+      "measured": "măsurat pe {{date}} ({{age}})",
+      "noPass": "Încă nicio trecere utilizabilă",
+      "popup": {
+        "level": "Nivel",
+        "levelValue": "{{value}} deasupra nivelului mării (EGM2008)",
+        "anomaly": "Față de obișnuit în {{month}}",
+        "anomalyPlain": "Față de obișnuitul lunii",
+        "changePrev": "De la trecerea anterioară",
+        "change90": "În 90 de zile",
+        "change365": "În 12 luni",
+        "measured": "Măsurat",
+        "sparkline": "Nivelul apei în 36 de luni"
+      }
     }
   },
   "popups": {
@@ -4630,6 +4674,21 @@
         "related": {
           "0": "Nowcast al activității Chinei",
           "1": "Profil de țară"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Climă",
+        "purpose": "Marchează lacurile de acumulare și lacurile strategice după cum se compară nivelul apei cu cel obișnuit pentru perioada anului și cât de repede se schimbă.",
+        "source": "Înălțimea suprafeței apelor interioare din NASA ICESat-2 ATL13 prin NSIDC, procesată cu SlideRule Earth și agregată pe fiecare trecere a satelitului de serviciul seed-reservoir-levels.",
+        "freshness": "Actualizat zilnic. NASA publică fiecare trecere la 50–70 de zile după măsurare, iar fiecare lac de acumulare este remăsurat la câteva zile până la aproximativ o lună.",
+        "confidence": "O trecere contează doar dacă cel puțin 5 segmente de apă concordă în limita a 0,25 m. Comparația sezonieră cere treceri din cel puțin 3 ani anteriori în aceeași perioadă a anului.",
+        "limitations": {
+          "0": "Doar nivel, nu volum: aceeași scădere înseamnă o pierdere de rezervă diferită în fiecare lac de acumulare.",
+          "1": "Un corp de apă fără trecere de 150 de zile este marcat ca fără trecere recentă; ultima citire, variațiile și data sunt afișate în continuare."
+        },
+        "related": {
+          "0": "Panoul Niveluri strategice ale apei",
+          "1": "Anomalii climatice"
         }
       },
       "conflicts": {

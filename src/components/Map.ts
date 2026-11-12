@@ -2,6 +2,8 @@ import { bindMapControlDisclosure } from './map-control-disclosure';
 import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
+import type { ReservoirLevel } from '@/services/climate';
+import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
@@ -208,6 +210,7 @@ export class MapComponent {
   private outages: InternetOutage[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private ukmtoIncidents: UkmtoMapIncident[] = [];
+  private reservoirLevels: ReservoirLevel[] = [];
   private aisDensity: AisDensityZone[] = [];
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
@@ -644,7 +647,7 @@ export class MapComponent {
       // already restricted to renderers: ['deck'] in LAYER_REGISTRY, which keeps
       // them out of the globe picker too.
       'ais', 'flights', 'aircraftEmergencies', 'gpsJamming',
-      'natural', 'weather',                               // natural
+      'natural', 'weather', 'reservoirLevels',            // natural
       'economic',                                         // economic
       'waterways', 'displacement',
       'ciiChoropleth',                                    // Candidate only; SVG capability filter below omits it.
@@ -678,6 +681,7 @@ export class MapComponent {
       'outages',                              // power / energy system status
       'natural',                              // earthquakes near energy infrastructure
       'weather', 'fires',                     // operational risk
+      'reservoirLevels',                      // hydropower reservoirs
       'economic',                             // infrastructure context
     ];
     // Commodity variant — SVG/mobile fallback. Only include keys that actually
@@ -2034,6 +2038,7 @@ export class MapComponent {
       add('natural', slices.naturalEvents);
     }
     if (layers.economic) add('economic', ECONOMIC_CENTERS);
+    if (layers.reservoirLevels) add('reservoirLevels', this.reservoirLevels);
     if (layers.weather) add('weather', slices.weather);
     if (layers.radiationWatch) add('radiationWatch', slices.radiationObservations);
     if (layers.outages) add('outages', slices.outages);
@@ -2381,6 +2386,28 @@ export class MapComponent {
         marker.href = UKMTO_SOURCE_URL;
         marker.target = '_blank';
         marker.rel = 'noopener noreferrer';
+        this.appendOverlay(marker);
+      });
+    }
+
+    if (this.state.layers.reservoirLevels) {
+      this.reservoirLevels.forEach((reservoir) => {
+        if (this.isOverlayMarkerCut(reservoir)) return;
+        const pos = projection([reservoir.lon, reservoir.lat]);
+        if (!pos) return;
+        const marker = document.createElement('button');
+        marker.type = 'button';
+        marker.className = `wl-marker wl-tone-${reservoirTone(reservoir.status)}`;
+        marker.dataset.reservoirId = reservoir.id;
+        marker.style.left = `${pos[0]}px`;
+        marker.style.top = `${pos[1]}px`;
+        marker.title = `${reservoir.name} · ${reservoirStatusLabel(reservoir.status, t)}`;
+        marker.setAttribute('aria-label', marker.title);
+        marker.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const rect = this.container.getBoundingClientRect();
+          this.popup.show({ type: 'reservoirLevel', data: reservoir, x: e.clientX - rect.left, y: e.clientY - rect.top });
+        });
         this.appendOverlay(marker);
       });
     }
@@ -5190,6 +5217,20 @@ export class MapComponent {
     this.aisDisruptions = disruptions;
     this.aisDensity = density;
     this.render();
+  }
+
+  public setReservoirLevels(reservoirs: ReservoirLevel[]): void {
+    this.reservoirLevels = reservoirs;
+    this.render();
+  }
+
+  /** Pan to a reservoir and open its popup at the container centre. */
+  public openReservoir(reservoir: ReservoirLevel): void {
+    if (this.destroyed) return;
+    this.setCenter(reservoir.lat, reservoir.lon);
+    this.setZoom(5);
+    const { width, height } = this.readContainerSize();
+    this.popup.show({ type: 'reservoirLevel', data: reservoir, x: width / 2, y: height / 2 });
   }
 
   public setUkmtoIncidents(incidents: UkmtoMapIncident[]): void {
