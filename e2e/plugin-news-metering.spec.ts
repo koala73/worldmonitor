@@ -801,8 +801,10 @@ test('a failed map read is retried under the paid request', async ({ page }) => 
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#pluginMapStatus')).toContainText('earthquakes: 1 valid');
   host.failHazards();
-  await frame.getByRole('checkbox', { name: 'Fires', exact: true }).check();
+  // A denied request rolls the checkbox back before check() can verify it.
+  await frame.getByRole('checkbox', { name: 'Fires', exact: true }).click();
   await expect(frame.locator('#pluginMapStatus')).toContainText('Hazard access was denied');
+  await expect(frame.getByRole('checkbox', { name: 'Fires', exact: true })).not.toBeChecked();
   host.recoverHazards();
   await frame.getByRole('checkbox', { name: 'Fires', exact: true }).check();
   await expect(frame.locator('#pluginMapStatus')).toContainText('fires: 1 valid');
@@ -1345,16 +1347,14 @@ test(`physical Zoom supersedes a longer globe move through both tween durations 
     const probe = window as unknown as GlobeMovementWindow;
     probe.__movement = probe.__newsCamera.whenViewportSettled();
   });
-  await frame.locator('.zoom-in').click();
+  await clickObservedGlobeControl(page, '.zoom-in');
   const superseded = await frame.locator('body').evaluate(async () => {
     const probe = window as unknown as GlobeMovementWindow;
-    const camera = probe.__newsCamera;
-    const target = camera.viewportTarget && { ...camera.viewportTarget };
-    const newer = camera.whenViewportSettled();
     const oldCompleted = await probe.__movement;
-    const newCompleted = await newer;
-    return { oldCompleted, newCompleted, target, pov: camera.globe.pointOfView(),
-      flags: { autoRotate: camera.controls.autoRotate, enableDamping: camera.controls.enableDamping } };
+    // Capture the target and settled camera inside the click/settlement tasks,
+    // before a slow driver round trip can outlast Zoom or resume idle rotation.
+    const settled = await probe.__observedSettlement!;
+    return { oldCompleted, newCompleted: settled.completed, target: settled.target, pov: settled.pov, flags: settled.flags };
   });
   await pending;
   // Both original (1200 ms) and Zoom (500 ms) animations must have finished.
@@ -1434,30 +1434,34 @@ test('an active globe movement pauses without camera writes and resumes with its
   const frame = page.frameLocator('iframe');
   await expect(frame.locator('#panelsGrid')).toContainText('Controlled earthquake report in Japan');
   expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
-  await frame.locator('.zoom-in').click();
+  // Pause in moveViewport's observation hook, in the same task as the input.
+  // Waiting for another driver call can let the entire 500 ms Zoom finish.
+  await frame.locator('body').evaluate(() => {
+    (window as unknown as GlobeMovementWindow).__newsHoldCamera = true;
+  });
+  await clickObservedGlobeControl(page, '.zoom-in');
   const paused = await frame.locator('body').evaluate(() => {
     const probe = window as unknown as GlobeMovementWindow;
-    probe.__movement = probe.__newsCamera.whenViewportSettled();
-    probe.__movementTarget = { ...probe.__newsCamera.viewportTarget! };
-    probe.__newsCamera.setRenderPaused(true);
+    if (!probe.__observedTarget) throw new Error('Zoom must be active when paused');
     return probe.__newsCamera.globe.pointOfView();
   });
   await page.waitForTimeout(700);
   const during = await frame.locator('body').evaluate(() => (window as unknown as GlobeMovementWindow).__newsCamera.globe.pointOfView());
   const result = await frame.locator('body').evaluate(async () => {
     const probe = window as unknown as GlobeMovementWindow;
+    probe.__newsHoldCamera = false;
     probe.__newsCamera.setRenderPaused(false);
-    const completed = await probe.__movement;
-    return { completed, target: probe.__movementTarget!, pov: probe.__newsCamera.globe.pointOfView(), flags: { autoRotate: probe.__newsCamera.controls.autoRotate, enableDamping: probe.__newsCamera.controls.enableDamping } };
+    return await probe.__observedSettlement!;
   });
   await writeFile(info.outputPath('active-pause-before-assertion.json'), JSON.stringify({ paused, during, result, contexts: host.contexts }, null, 2));
   expect(during.lat).toBeCloseTo(paused.lat, 10);
   expect(during.lng).toBeCloseTo(paused.lng, 10);
   expect(during.altitude).toBeCloseTo(paused.altitude, 10);
   expect(result.completed).toBe(true);
-  expect(Math.abs(result.pov.lat - result.target.lat)).toBeLessThanOrEqual(0.0001);
-  expect(Math.abs((((result.pov.lng - result.target.lng) + 540) % 360) - 180)).toBeLessThanOrEqual(0.0001);
-  expect(Math.abs(result.pov.altitude - result.target.altitude)).toBeLessThanOrEqual(0.001);
+  expect(result.target).not.toBeNull();
+  expect(Math.abs(result.pov.lat - result.target!.lat)).toBeLessThanOrEqual(0.0001);
+  expect(Math.abs((((result.pov.lng - result.target!.lng) + 540) % 360) - 180)).toBeLessThanOrEqual(0.0001);
+  expect(Math.abs(result.pov.altitude - result.target!.altitude)).toBeLessThanOrEqual(0.001);
   expect(result.flags).toEqual({ autoRotate: true, enableDamping: true });
 });
 
@@ -1722,17 +1726,11 @@ test.describe('globe marker gestures', () => {
       expect(host.calls).toHaveLength(callsBefore);
       // A later stationary press must still select the marker and notify the host.
       expect((await newsAction(page, 'focus_news_article', { link: 'https://example.com/news' })).isError).not.toBe(true);
-      await marker.scrollIntoViewIfNeeded();
-      const clickBounds = await marker.boundingBox();
-      expect(clickBounds).not.toBeNull();
       const contextsBeforeClick = host.contexts.length;
-      if (gesture === 'touch') await page.touchscreen.tap(clickBounds!.x + clickBounds!.width / 2, clickBounds!.y + clickBounds!.height / 2);
-      else {
-        await page.mouse.move(clickBounds!.x + clickBounds!.width / 2, clickBounds!.y + clickBounds!.height / 2);
-        await page.mouse.down();
-        await page.mouse.move(clickBounds!.x + clickBounds!.width / 2 + 1, clickBounds!.y + clickBounds!.height / 2);
-        await page.mouse.up();
-      }
+      // Refocusing can replace the marker. Locator actions retry detachment
+      // and measure the current element instead of retaining stale coordinates.
+      if (gesture === 'touch') await marker.tap();
+      else await marker.click();
       await expect(frame.locator('#mapContainer button[aria-label="Close"]')).toBeVisible();
       await expect.poll(() => host.contexts.length).toBeGreaterThan(contextsBeforeClick);
       expect(host.contexts.at(-1)?.latestInteraction).toEqual(selected);

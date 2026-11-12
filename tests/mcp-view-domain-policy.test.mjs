@@ -7,9 +7,10 @@
  * field; every other host gets views without it.
  *
  * Manufact Cloud's compatibility check and the manufact.com leaderboard review
- * (`mcp-use-probe`) are the other recipients. They check ChatGPT submission
- * metadata but reach the server with a browser or Bun user agent, so the only
- * stable marker is the clientInfo name every request carries in params._meta.
+ * (`mcp-use-probe`, then `mcp-use` for the view reads) are the other
+ * recipients. They check ChatGPT submission metadata but reach the server with
+ * a browser, Bun or node user agent, so the only stable marker is the
+ * clientInfo name: in params._meta, or carried by a prefixed session id.
  */
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -142,6 +143,47 @@ describe('view domain per host', () => {
       it(`a session started by ${clientName ?? 'a nameless client'} gets views without ui.domain`, async () => {
         const sessionId = await initialize(clientName);
         const list = await sessionRpc('resources/list', {}, sessionId);
+        const views = list.resources.filter((r) => r.uri.startsWith('ui://'));
+        assert.ok(views.length >= 12);
+        for (const view of views) assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
+      });
+    }
+
+    // The review reads views with a second, session-free client: user agent
+    // `node`, protocol 2026-07-28, clientInfo only in each request's _meta
+    // (seen 2026-11-12 17:06 UTC: server/discover, tools/list, resources/list,
+    // 17 resources/read). That is mcp-use's own client under its default name.
+    async function modernRpc(method, params, clientName) {
+      const meta = {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientCapabilities': {},
+        'io.modelcontextprotocol/clientInfo': { name: clientName, version: '1' },
+      };
+      process.env.MCP_PROTOCOL_2026_07_28 = 'on';
+      const body = { jsonrpc: '2.0', id: 3, method, params: { ...params, _meta: meta } };
+      const headers = {
+        Accept: 'application/json, text/event-stream', 'User-Agent': 'node', 'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': method,
+        ...(params.uri ? { 'Mcp-Name': params.uri } : {}),
+      };
+      const response = await mcpHandler(proReq('POST', body, headers), makeProDeps().deps);
+      assert.equal(response.status, 200, `${method} status`);
+      return (await response.json()).result;
+    }
+
+    for (const clientName of ['mcp-use', 'mcp-use-probe', 'Manufact Cloud']) {
+      it(`${clientName} on the 2026-07-28 protocol gets the site origin on every view`, async () => {
+        const list = await modernRpc('resources/list', {}, clientName);
+        const domains = viewDomains(list.resources);
+        assert.ok(domains.length >= 12);
+        assert.deepEqual([...new Set(domains)], ['https://www.worldmonitor.app']);
+        const read = await modernRpc('resources/read', { uri: SHELL_VIEW.uri }, clientName);
+        assert.equal(read.contents[0]._meta.ui.domain, 'https://www.worldmonitor.app');
+      });
+    }
+
+    for (const clientName of ['claude-ai', 'Claude Code', 'claude-code']) {
+      it(`${clientName} on the 2026-07-28 protocol gets views without ui.domain`, async () => {
+        const list = await modernRpc('resources/list', {}, clientName);
         const views = list.resources.filter((r) => r.uri.startsWith('ui://'));
         assert.ok(views.length >= 12);
         for (const view of views) assert.equal('domain' in (view._meta?.ui ?? {}), false, view.uri);
