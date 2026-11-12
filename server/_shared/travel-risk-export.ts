@@ -69,8 +69,29 @@ function json(body: unknown, status: number, cors: Record<string, string>, extra
   });
 }
 
-function utf8Bytes(value: string): number {
-  return new TextEncoder().encode(value).length;
+/** The body as text, or null as soon as it passes `maxBytes`; the unread rest is cancelled. */
+async function readBodyWithin(request: Request, maxBytes: number): Promise<string | null> {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 export function createTravelRiskExportHandler(deps: TravelRiskExportDeps): (request: Request) => Promise<Response> {
@@ -128,8 +149,10 @@ export function createTravelRiskExportHandler(deps: TravelRiskExportDeps): (requ
     if (Number.isFinite(declared) && declared > TRAVEL_RISK_EXPORT_MAX_BODY_BYTES) {
       return json({ error: 'PAYLOAD_TOO_LARGE' }, 413, cors);
     }
-    const text = await request.text();
-    if (utf8Bytes(text) > TRAVEL_RISK_EXPORT_MAX_BODY_BYTES) return json({ error: 'PAYLOAD_TOO_LARGE' }, 413, cors);
+    // A chunked upload declares no length, so the cap has to hold while the body
+    // is read: stop at the cap and cancel the rest rather than drain it first.
+    const text = await readBodyWithin(request, TRAVEL_RISK_EXPORT_MAX_BODY_BYTES);
+    if (text === null) return json({ error: 'PAYLOAD_TOO_LARGE' }, 413, cors);
 
     let body: unknown;
     try {

@@ -228,6 +228,51 @@ describe('travel risk export route: request shape', () => {
     assert.equal(calls.build, 0);
   });
 
+  it('stops reading a body that declares no length once it passes the cap', async () => {
+    // Chunked transfer carries no Content-Length, so the declared-size check
+    // cannot see it. The cap has to hold while the body is read, not after.
+    const { deps, calls } = harness();
+    const chunk = new TextEncoder().encode('x'.repeat(1024));
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += chunk.length;
+        controller.enqueue(chunk);
+        if (pulled > 10 * 1024 * 1024) controller.close();
+      },
+      cancel() { cancelled = true; },
+    });
+    const request = new Request(URL_, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://www.worldmonitor.app', Authorization: 'Bearer good' },
+      body,
+      duplex: 'half',
+    } as RequestInit);
+    assert.equal(request.headers.get('Content-Length'), null);
+    const res = await createTravelRiskExportHandler(deps)(request);
+    assert.equal(res.status, 413);
+    assert.equal(calls.build, 0);
+    assert.equal(cancelled, true, 'the rest of the upload is cancelled, not drained');
+    // Streams read ahead a little; what matters is that it is nowhere near the 10 MiB offered.
+    assert.ok(pulled < TRAVEL_RISK_EXPORT_MAX_BODY_BYTES + 128 * 1024, `pulled ${pulled} bytes`);
+  });
+
+  it('still reads a normal body that arrives in several chunks', async () => {
+    const { deps, calls } = harness();
+    const text = JSON.stringify({ ...TRIP, format: 'markdown' });
+    const parts = [text.slice(0, 20), text.slice(20, 60), text.slice(60)].map((s) => new TextEncoder().encode(s));
+    const body = new ReadableStream<Uint8Array>({ start(controller) { for (const part of parts) controller.enqueue(part); controller.close(); } });
+    const res = await createTravelRiskExportHandler(deps)(new Request(URL_, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://www.worldmonitor.app', Authorization: 'Bearer good' },
+      body,
+      duplex: 'half',
+    } as RequestInit));
+    assert.equal(res.status, 200);
+    assert.equal(calls.build, 1);
+  });
+
   it('passes a rate-limit refusal through untouched', async () => {
     const { deps, calls } = harness({ rateLimit: async () => new Response('slow down', { status: 429 }) });
     const res = await createTravelRiskExportHandler(deps)(post({ ...TRIP, format: 'markdown' }));
