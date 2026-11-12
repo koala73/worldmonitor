@@ -1,3 +1,7 @@
+---
+noindex: true
+---
+
 # Dashboard focus: remaining panel coverage
 
 Audit for #10562 against main `d6d8408506b6f4dc1cebbdc439da7624fb2c2b45`, 12 November 2026.
