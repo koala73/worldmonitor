@@ -41,9 +41,6 @@ jobs:
 
   monitor:
     if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && github.repository == 'koala73/worldmonitor' && github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,23 +61,32 @@ jobs:
           path: test-results/status-page/
           if-no-files-found: warn
           retention-days: 7
+  report:
+    needs: monitor
+    if: always() && (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor') && needs.monitor.result != 'skipped' && github.event_name != 'pull_request' && github.repository == 'koala73/worldmonitor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      issues: write
+    steps:
       - name: Track monitor failures and recovery
-        if: always()
         env:
-          MONITOR_STATUS: ${{ job.status }}
+          MONITOR_STATUS: ${{ needs.monitor.result }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           title='Status page synthetic check failing'
-          number=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search '"Status page synthetic check failing" in:title' --json number,title --jq '.[] | select(.title == "Status page synthetic check failing") | .number' | head -1)
+          number=$(gh api --method GET search/issues \
+            -f q="repo:$GITHUB_REPOSITORY is:issue is:open in:title \"$title\" author:app/github-actions" \
+            | jq -r '[.items[] | select(.title == "Status page synthetic check failing" and .user.login == "github-actions[bot]")] | .[0].number // empty')
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ "$MONITOR_STATUS" = success ]; then
             if [ -n "$number" ]; then
               gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Recovered: all four rendered uptime windows passed. Evidence: $run_url"
             fi
-          elif [ "$MONITOR_STATUS" = failure ]; then
+          elif [ "$MONITOR_STATUS" = failure ] || [ "$MONITOR_STATUS" = cancelled ]; then
             if [ -z "$number" ]; then
-              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The browser synthetic or its infrastructure failed. Inspect the first failing step and rendered evidence: $run_url. Check https://status.worldmonitor.app/ for missing uptime figures or a data-fetch error. Related: #6591."
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "The browser synthetic or its infrastructure ended with status $MONITOR_STATUS (including timeout/cancellation). Inspect the first failing step and rendered evidence: $run_url. Check https://status.worldmonitor.app/ for missing uptime figures or a data-fetch error. Related: #6591."
             else
               echo "Open alert #$number persists; failure evidence: $run_url" >> "$GITHUB_STEP_SUMMARY"
             fi
