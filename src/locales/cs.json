@@ -5117,7 +5117,7 @@
     "draftAssessment": "Návrh posouzení",
     "draftAssessmentAria": "Otevřít posouzení cesty, předvyplněné touto zaměřením",
     "draftCopied": "Požadavek zkopírován. Vložte jej do vašeho AI asistenta.",
-    "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí.",
+    "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí. Vynecháno: {{omitted}}.",
     "draftCopyFailed": "Nepodařilo se zkopírovat požadavek."
   },
   "tripAssessment": {

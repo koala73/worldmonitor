@@ -456,6 +456,9 @@ describe('opening from a focus', () => {
     expect(text.split('\n').find((line) => line.startsWith('Not part of this request'))).toBe(
       'Not part of this request (an assessment covers at most 6 countries): Laos (LA).',
     );
+    expect(document.querySelector('.toast-notification')?.textContent).toBe(
+      'Request copied for the first 6 countries. An assessment covers at most 6 countries. Left out: Laos.',
+    );
   });
 
   it('opens one dialog however many times the action is pressed while it loads', async () => {

@@ -172,6 +172,15 @@ describe('locale completeness', () => {
   }
 
   for (const file of ['en.json', ...localeFiles]) {
+    it(`${file} names omitted countries in the partial assessment copy toast`, () => {
+      const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
+      for (const placeholder of ['{{count}}', '{{max}}', '{{omitted}}']) {
+        assert.ok(locale.focus.draftCopiedPartial.includes(placeholder), `${file} is missing ${placeholder}`);
+      }
+    });
+  }
+
+  for (const file of ['en.json', ...localeFiles]) {
     it(`${file} discloses NWS, ECCC, and WMO SWIC coverage in the weather layer help, not the short label`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const staleScope = STALE_WEATHER_SCOPE_BY_LOCALE[file];

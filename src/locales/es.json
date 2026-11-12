@@ -5089,7 +5089,7 @@
     "draftAssessment": "Evaluación preliminar",
     "draftAssessmentAria": "Abre la evaluación de viaje, rellenada previamente con este enfoque",
     "draftCopied": "Solicitud copiada. Pégala en tu asistente de IA.",
-    "draftCopiedPartial": "Solicitud copiada para los primeros {{count}} países. Una evaluación cubre como máximo {{max}} países.",
+    "draftCopiedPartial": "Solicitud copiada para los primeros {{count}} países. Una evaluación cubre como máximo {{max}} países. Países excluidos: {{omitted}}.",
     "draftCopyFailed": "No se pudo copiar la solicitud."
   },
   "tripAssessment": {

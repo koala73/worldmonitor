@@ -5061,7 +5061,7 @@
     "draftAssessment": "Utkast till bedömning",
     "draftAssessmentAria": "Öppna resebedömningen, förifylld med denna fokusering",
     "draftCopied": "Förfrågan kopierad. Klistra in den i din AI-assistent.",
-    "draftCopiedPartial": "Begäran kopierad för de första {{count}} länderna. En bedömning omfattar högst {{max}} länder.",
+    "draftCopiedPartial": "Begäran kopierad för de första {{count}} länderna. En bedömning omfattar högst {{max}} länder. Utelämnade: {{omitted}}.",
     "draftCopyFailed": "Kunde inte kopiera förfrågan."
   },
   "tripAssessment": {

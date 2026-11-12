@@ -208,15 +208,16 @@ export function toTeamDashboardTab(
 }
 
 /**
- * Whether the tab may be shared as it is. A focused tab needs `team.focus`
+ * Whether the tab may be shared as it is. A scope or panel choices need `team.focus`
  * (the server's answer for this caller), checked here so the user gets the
  * reason before a round trip; `publish` enforces the same rule.
  */
 export function canPublishTeamDashboardScope(
   team: TeamDashboards['team'],
   scope: TabScope | null | undefined,
+  panelFilters?: PanelFilters,
 ): boolean {
-  return !scope || team.focus === true;
+  return team.focus === true || (!scope && Object.keys(panelFilters ?? {}).length === 0);
 }
 
 /** The message for a failed share, by ConvexError kind. */

@@ -186,12 +186,12 @@ describe('toTeamDashboardTab', () => {
 });
 
 describe('panel filters (#10453, phase 2)', () => {
-  const FILTERS = { forecast: 'asia', 'live-webcams': 'europe' };
+  const FILTERS = { forecast: 'east-asia', 'live-webcams': 'europe' };
 
   it('captures the tab panel filters as sorted entries', () => {
-    const layout = captureTeamDashboardLayout({ ...captureInput(), panelFilters: { 'live-webcams': 'europe', forecast: 'asia' } });
+    const layout = captureTeamDashboardLayout({ ...captureInput(), panelFilters: { 'live-webcams': 'europe', forecast: 'east-asia' } });
     assert.deepEqual(layout.panelFilters, [
-      { key: 'forecast', value: 'asia' },
+      { key: 'forecast', value: 'east-asia' },
       { key: 'live-webcams', value: 'europe' },
     ]);
   });
@@ -210,6 +210,15 @@ describe('panel filters (#10453, phase 2)', () => {
   it('round-trips the filters into the teammate tab', () => {
     const tab = toTeamDashboardTab(captureTeamDashboardLayout({ ...captureInput(), panelFilters: FILTERS }), defaults());
     assert.deepEqual(tab.panelFilters, FILTERS);
+  });
+
+  it('requires the focus grant for any saved panel choice, including All Regions', () => {
+    for (const filters of [FILTERS, { forecast: '' }, { 'live-webcams': 'all' }]) {
+      assert.equal(canPublishTeamDashboardScope({ kind: 'business' }, null, filters), false);
+      assert.equal(canPublishTeamDashboardScope({ kind: 'business', focus: false }, undefined, filters), false);
+      assert.equal(canPublishTeamDashboardScope({ kind: 'enterprise', focus: true }, null, filters), true);
+    }
+    assert.equal(canPublishTeamDashboardScope({ kind: 'business', focus: false }, null, {}), true);
   });
 
   it('opens an old-shape row with no filters as a tab with none', () => {

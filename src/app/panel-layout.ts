@@ -1950,7 +1950,7 @@ export class PanelLayoutManager implements AppModule {
     const team = this.team.dashboards;
     if (!userId || !tab || !team || this.teamBusy) return;
     // Refused before the round trip; `publish` enforces the same rule.
-    if (!canPublishTeamDashboardScope(team.team, tab.scope)) {
+    if (!canPublishTeamDashboardScope(team.team, tab.scope, tab.panelFilters)) {
       showToast(t('teamDashboards.focusNotEntitled'));
       return;
     }
@@ -1959,7 +1959,7 @@ export class PanelLayoutManager implements AppModule {
     const layout = captureTeamDashboardLayout({
       ...this.captureCurrentTabState().snapshot,
       scope: tab.scope ?? null,
-      ...(team.team.focus === true && tab.panelFilters ? { panelFilters: tab.panelFilters } : {}),
+      panelFilters: tab.panelFilters,
       rowSpans: loadPanelSpans(),
       colSpans: loadPanelColSpans(),
       map: this.ctx.map && mapState

@@ -5089,7 +5089,7 @@
     "draftAssessment": "Brouillon d'évaluation",
     "draftAssessmentAria": "Ouvrir l'évaluation de voyage, préremplie avec ce focus",
     "draftCopied": "Demande copiée. Collez-la dans votre assistant IA.",
-    "draftCopiedPartial": "Demande copiée pour les {{count}} premiers pays. Une évaluation couvre au maximum {{max}} pays.",
+    "draftCopiedPartial": "Demande copiée pour les {{count}} premiers pays. Une évaluation couvre au maximum {{max}} pays. Pays exclus : {{omitted}}.",
     "draftCopyFailed": "Impossible de copier la demande."
   },
   "tripAssessment": {

@@ -5061,7 +5061,7 @@
     "draftAssessment": "Entwurf einer Bewertung",
     "draftAssessmentAria": "Reisebewertung öffnen, vorgefüllt mit diesem Focus",
     "draftCopied": "Anfrage kopiert. Füge sie in deinen KI-Assistenten ein.",
-    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder.",
+    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder. Ausgelassen: {{omitted}}.",
     "draftCopyFailed": "Die Anfrage konnte nicht kopiert werden."
   },
   "tripAssessment": {
