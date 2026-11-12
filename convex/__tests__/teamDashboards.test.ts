@@ -405,15 +405,42 @@ describe("focus (#10453)", () => {
     ]);
   });
 
-  test("a seat holder, whose own entitlement is Pro, may publish a focused dashboard on an API Business team", async () => {
+  test.each([
+    ["api_business", "active"],
+    ["api_business_annual", "active"],
+    ["api_business", "cancelled"],
+    ["api_business_annual", "cancelled"],
+  ] as const)("an accepted Pro seat inherits team Focus from a covering %s subscription (%s)", async (planKey, status) => {
     const t = convexTest(schema, modules);
-    await seedBusiness(t);
+    await seedBusiness(t, { planKey, status, periodEnd: NOW + DAY_MS });
     await seedEntitlement(t, SEAT, "pro_monthly");
 
     await publish(t, SEAT, { layout: FOCUSED });
 
     expect((await listWith(t, SEAT, FOCUS)).team).toEqual({ kind: "business", focus: true });
     expect((await listWith(t, OWNER, FOCUS)).dashboards[0]!.layout.scope).toEqual(SCOPE);
+  });
+
+  test.each(["api_business", "api_business_annual"])("a %s seat loses shared Focus access when its grant or parent coverage ends", async (planKey) => {
+    for (const loss of ["revoked", "expired", "paid-through", "downgraded"] as const) {
+      const t = convexTest(schema, modules);
+      await seedBusiness(t, { planKey });
+      await seedEntitlement(t, SEAT, "pro_monthly");
+      await publish(t, SEAT, { layout: FOCUSED });
+      expect((await listWith(t, SEAT, FOCUS)).team?.focus).toBe(true);
+
+      await t.run(async (ctx) => {
+        const grant = await ctx.db.query("businessProGrants").first();
+        const sub = await ctx.db.query("subscriptions").first();
+        if (loss === "revoked") await ctx.db.patch(grant!._id, { status: "revoked" });
+        if (loss === "expired") await ctx.db.patch(sub!._id, { status: "expired" });
+        if (loss === "paid-through") await ctx.db.patch(sub!._id, { status: "cancelled", currentPeriodEnd: NOW });
+        if (loss === "downgraded") await ctx.db.patch(sub!._id, { planKey: "api_starter" });
+      });
+
+      expect(await listWith(t, SEAT, FOCUS)).toEqual({ team: null, dashboards: [] });
+      expect(await errorKind(publish(t, SEAT, { layout: FOCUSED }))).toBe("NOT_ON_A_TEAM");
+    }
   });
 
   test("Enterprise members may publish a focused dashboard", async () => {
