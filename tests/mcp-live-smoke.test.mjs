@@ -139,7 +139,7 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
 // take over the keyless `tools/list` on /mcp, the check that broke on a
 // connection cut mid-body in production (run 39392466642). `skillFor` and
 // `onAuthMd` override the advertised agent_auth.skill and the /auth.md answer.
-function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
+function createHealthyFixtureServer({ setupHtml = '<!doctype html><title>Connect to World Monitor MCP</title>', onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
   return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';
@@ -162,7 +162,7 @@ function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `$
       if (req.headers.accept?.toLowerCase() === 'text/event-stream') {
         res.writeHead(405).end();
       } else if (/text\/html/i.test(req.headers.accept ?? '')) {
-        res.writeHead(200, guideHeadersFor(req.headers.accept)).end('<!doctype html><title>Connect World Monitor MCP</title>');
+        res.writeHead(200, guideHeadersFor(req.headers.accept)).end(setupHtml);
       } else {
         res.writeHead(200, commonGuideHeaders).end('World Monitor MCP Server');
       }
@@ -338,6 +338,15 @@ test('an HTTP status failure is never retried', async () => {
   assert.equal(exitCode, 1);
   assert.equal(transportListRequests(report).length, 1);
   assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
+});
+
+test('fails when the HTML representation of /mcp is not the setup page', async () => {
+  const server = createHealthyFixtureServer({ setupHtml: '<!doctype html><title>Welcome to nginx</title>' });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-html-body-');
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['GET /mcp (browser)']);
+  assert.match(report.failures[0].detail, /body is not the HTML setup page/);
 });
 
 test('fails when agent_auth.skill is not the canonical host /auth.md', async () => {

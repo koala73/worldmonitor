@@ -606,7 +606,7 @@ async function probeDiscovery(host) {
   // 200, no-store and varied on Accept / Last-Event-ID so no shared cache can
   // replay either to a transport client.
   const representations = [
-    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<\/?(?:html|title)\b/i },
+    { label: 'browser', accept: 'text/html,*/*', type: /text\/html/i, name: 'HTML setup page', body: /<title>\s*Connect to World Monitor MCP\s*<\/title>/i },
     { label: 'crawler', accept: '*/*', type: /text\/markdown/i, name: 'markdown guide', body: /World Monitor MCP Server/ },
   ];
   for (const rep of representations) {
