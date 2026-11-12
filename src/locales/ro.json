@@ -5086,7 +5086,7 @@
       "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
       "emptyCorrelation": "Niciun semnal pentru aceste țări"
     },
-    "draftAssessment": "Ciornă de evaluare",
+    "draftAssessment": "Evaluare călătorie",
     "draftAssessmentAria": "Deschideți evaluarea călătoriei, completată dinainte cu acest focus",
     "draftCopied": "Cerere copiată. Lipește-o în asistentul tău AI.",
     "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări. Țări omise: {{omitted}}.",

@@ -5058,7 +5058,7 @@
       "emptyDisplacement": "Hakuna data ya uhamiaji kwa nchi hizi",
       "emptyCorrelation": "Hakuna maadhimisho kwa nchi hizi"
     },
-    "draftAssessment": "Rasimu ya tathmini",
+    "draftAssessment": "Tathmini ya safari",
     "draftAssessmentAria": "Fungua tathmini ya safari, iliyojazwa na hii focus",
     "draftCopied": "Ombi limenakiliwa. Libandike kwenye msaidizi wako wa AI.",
     "draftCopiedPartial": "Ombi limenakiliwa kwa nchi {{count}} za kwanza. Tathmini moja inajumuisha nchi {{max}} kwa kiwango cha juu. Nchi zilizoachwa: {{omitted}}.",

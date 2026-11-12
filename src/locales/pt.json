@@ -5086,7 +5086,7 @@
       "emptyDisplacement": "Sem dados de deslocamento de população para estes países",
       "emptyCorrelation": "Sem sinais para estes países"
     },
-    "draftAssessment": "Rascunho de avaliação",
+    "draftAssessment": "Avaliação de viagem",
     "draftAssessmentAria": "Abrir a avaliação de viagem, preenchida com este foco",
     "draftCopied": "Solicitação copiada. Cole-a no seu assistente de IA.",
     "draftCopiedPartial": "Solicitação copiada para os primeiros {{count}} países. Uma avaliação abrange no máximo {{max}} países. Países excluídos: {{omitted}}.",
