@@ -70,15 +70,16 @@ export function connectInstruction(req: Request): string | null {
  * (https://claude.com/docs/connectors/building/mcp-apps/troubleshooting.md).
  * The field is optional, so every host except ChatGPT gets the views without it.
  *
- * One more caller gets it: Manufact Cloud's compatibility check, which reads
- * the field to judge ChatGPT submission readiness. It reaches the server
- * through a proxy that forwards a browser or Bun user agent, so the only
- * stable marker is the `clientInfo.name` that mcp-use puts in every request's
- * `params._meta`. The name is client-asserted, which is safe here: the value is
- * the public site origin, and a client that claims it only gets a field that
- * Claude's renderer would reject for itself.
+ * Two more callers get it: Manufact Cloud's compatibility check and the
+ * manufact.com leaderboard review (`mcp-use-probe`). Both read the field to
+ * judge ChatGPT submission readiness. They reach the server with a browser or
+ * Bun user agent, so the only stable marker is the `clientInfo.name` that
+ * 2026-07-28 clients put in every request's `params._meta`. The name is
+ * client-asserted, which is safe here: the value is the public site origin, and
+ * a client that claims it only gets a field that Claude's renderer would reject
+ * for itself.
  */
-const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud']);
+const VIEW_DOMAIN_CLIENT_NAMES: ReadonlySet<string> = new Set(['Manufact Cloud', 'mcp-use-probe']);
 const CLIENT_INFO_META_KEY = 'io.modelcontextprotocol/clientInfo';
 
 function wantsViewDomain(req: Request, body: unknown): boolean {
