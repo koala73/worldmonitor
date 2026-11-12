@@ -109,3 +109,16 @@ describe('every send goes through a shared helper', () => {
     }
   });
 });
+
+it('forwards a stable idempotency key alongside the send deadline', async () => {
+  const attempts = [];
+  const client = { emails: { send: async (_payload, options) => {
+    attempts.push(options);
+    return { data: { id: 'same-email' } };
+  } } };
+  const payload = { from: 'alerts@worldmonitor.app', to: 'fixture@example.com', subject: 'held', text: 'same batch' };
+  await sendResendEmail(client, payload, { idempotencyKey: 'quiet-held-fixture' });
+  await sendResendEmail(client, payload, { idempotencyKey: 'quiet-held-fixture' });
+  assert.deepEqual(attempts.map(options => options.idempotencyKey), ['quiet-held-fixture', 'quiet-held-fixture']);
+  assert.ok(attempts.every(options => options.signal instanceof AbortSignal));
+});

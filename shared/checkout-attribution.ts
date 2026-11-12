@@ -45,9 +45,7 @@ export interface CheckoutContext {
 
 export const CHECKOUT_MISSION_PARAM = 'wm_checkout_mission';
 export const CHECKOUT_PANEL_PARAM = 'wm_checkout_panel';
-export const CHECKOUT_HANDOFF_PARAM = 'wm_checkout_handoff';
 export const CHECKOUT_RETURN_SOURCE_PARAM = 'wm_src';
-export const DESKTOP_CHECKOUT_HANDOFF = 'desktop';
 export const CHECKOUT_ATTEMPT_STORAGE_KEY = 'wm-last-checkout-attempt';
 export const CHECKOUT_ATTEMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -146,7 +144,6 @@ export function withCheckoutEventSurface(
 export function buildAttributedProUrl(
   baseUrl: string,
   attribution?: CheckoutAttribution | null,
-  options?: { desktopHandoff?: boolean },
 ): string {
   const preview = parseMissionPreviewAttribution(
     attribution?.missionId,
@@ -157,14 +154,7 @@ export function buildAttributedProUrl(
     url.searchParams.set(CHECKOUT_MISSION_PARAM, preview.missionId);
     url.searchParams.set(CHECKOUT_PANEL_PARAM, preview.panelKey);
   }
-  if (options?.desktopHandoff) {
-    url.searchParams.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
-  }
   return url.toString();
-}
-
-export function isDesktopCheckoutHandoff(search: string): boolean {
-  return new URLSearchParams(search).get(CHECKOUT_HANDOFF_PARAM) === DESKTOP_CHECKOUT_HANDOFF;
 }
 
 export function parseCheckoutAttemptRecord(

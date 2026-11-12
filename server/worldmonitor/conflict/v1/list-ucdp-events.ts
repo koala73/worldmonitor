@@ -19,15 +19,15 @@ export async function listUcdpEvents(
   req: ListUcdpEventsRequest,
 ): Promise<ListUcdpEventsResponse> {
   try {
-    const raw = await getCachedJson(CACHE_KEY, true) as { events?: UcdpViolenceEvent[] } | null;
-    if (!raw?.events?.length) return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined });
+    const raw = await getCachedJson(CACHE_KEY, true) as { events?: UcdpViolenceEvent[]; candidateVersion?: string | null } | null;
+    if (!raw?.events?.length) return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined, candidateVersion: '' });
     let events = raw.events;
     if (req.country) {
       const country = resolveCountryCode(req.country);
       events = country ? events.filter((e) => resolveCountryCode(e.country) === country) : [];
     }
-    return { events, pagination: undefined };
+    return { events, pagination: undefined, candidateVersion: raw.candidateVersion ?? '' };
   } catch {
-    return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined });
+    return markNoStoreFallbackResponse(ctx.request, { events: [], pagination: undefined, candidateVersion: '' });
   }
 }

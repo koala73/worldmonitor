@@ -39,6 +39,10 @@ beforeEach(() => {
     if (url.pathname === '/pipeline') {
       commands.push(...body);
       if (failure === body[0][0]) return Response.json([{ error: 'fixture failure' }]);
+      if (body[0][0] === 'EXISTS') {
+        assert.deepEqual(body[0], ['EXISTS', `webcam:cameras:geo:${version}`, `webcam:cameras:meta:${version}`]);
+        return Response.json([{ result: failure === 'expired-seed' ? 0 : 2 }]);
+      }
       if (failure === 'partial' && body[0][0] === 'HMGET') return Response.json([{ result: [null] }]);
       if (body[0][0] === 'HMGET') {
         assert.equal(body[0][1], `webcam:cameras:meta:${version}`);
@@ -133,15 +137,16 @@ it('bounds every extreme-coordinate combination before forming geometry or cache
   for (const key of responseKeys) assert.doesNotMatch(key, /Infinity|NaN|e\+/);
 });
 
-for (const unavailable of ['pointer', 'GEOSEARCH', 'HMGET', 'partial']) {
+for (const unavailable of ['pointer', 'GEOSEARCH', 'HMGET', 'partial', 'expired-seed']) {
   it(`does not cache webcam data after ${unavailable} failure`, async () => {
-    cameras = [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
+    cameras = unavailable === 'expired-seed' ? [] : [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
     failure = unavailable;
     const response = await request();
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
     assert.equal(commands.some(command => command[0] === 'SET'), false);
     failure = '';
+    cameras = [{ webcamId: 'one', title: 'One', lat: 22, lng: 13, category: 'city', country: 'XX' }];
     const recovered = await request();
     assert.equal(recovered.status, 200);
     assert.equal((await recovered.json()).totalInView, 1);

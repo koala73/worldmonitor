@@ -1,5 +1,15 @@
 # News Translation Analysis
 
+## Dashboard focus translation review queue
+
+[#10561](https://github.com/koala73/worldmonitor/issues/10561): the non-English
+`focus` strings still need native-speaker review. Review Swahili (`sw`) first,
+then Dutch (`nl`), Simplified Chinese (`zh`), and Traditional Chinese (`zh-TW`).
+Reviewers have not yet been identified; do not treat machine translation or the
+earlier placeholder fixes as native approval. Keep further translation changes
+pending that review. The Chinese displacement empty-state correction in #10561
+is a separately scoped terminology fix, not completion of this review.
+
 ## Current Architecture
 
 The application fetches news via `src/services/rss.ts`.

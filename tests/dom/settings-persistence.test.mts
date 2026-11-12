@@ -148,6 +148,26 @@ describe('dashboard tabs in the settings backup (#9372)', () => {
     expect(data['worldmonitor-tabs-v2:full']).toBeUndefined();
   });
 
+  it('exports saved new-tab panels per variant and ignores impostors', async () => {
+    const saved = '[{"key":"live-news","on":false}]';
+    localStorage.setItem('worldmonitor-new-tab-panels-v1:tech', saved);
+    localStorage.setItem('worldmonitor-new-tab-panels-v1:evil', saved);
+    localStorage.setItem('worldmonitor-new-tab-panels-v2:tech', saved);
+    const { data } = await exportToObject();
+    expect(data['worldmonitor-new-tab-panels-v1:tech']).toBe(saved);
+    expect(data['worldmonitor-new-tab-panels-v1:evil']).toBeUndefined();
+    expect(data['worldmonitor-new-tab-panels-v2:tech']).toBeUndefined();
+  });
+
+  it('imports saved new-tab panels through their parser', async () => {
+    await expect(importSettings(file({
+      'worldmonitor-new-tab-panels-v1:tech': '[{"key":"live-news","on":false,"proGated":true},{"key":"live-news","on":true}]',
+      'worldmonitor-new-tab-panels-v1:evil': '[{"key":"live-news","on":false}]',
+    }))).resolves.toEqual({ success: true, keysImported: 1 });
+    expect(localStorage.getItem('worldmonitor-new-tab-panels-v1:tech')).toBe('[{"key":"live-news","on":false}]');
+    expect(localStorage.getItem('worldmonitor-new-tab-panels-v1:evil')).toBeNull();
+  });
+
   it('runs registered flush hooks before reading storage, until they unregister', async () => {
     localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify({ ...tabsState, activeTabId: 'tab-a-1' }));
     const flush = vi.fn(() => localStorage.setItem('worldmonitor-tabs-v1:full', JSON.stringify(tabsState)));

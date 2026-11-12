@@ -128,8 +128,10 @@ function buildEnvelope(err, ctx, runtimeCfg) {
   return `${header}\n${itemHeader}\n${itemPayload}\n`;
 }
 
+// Resolves true only when Sentry accepted the envelope, so a caller that must
+// not lose an event (health source incidents) can retry it. Never rejects.
 async function deliver(body, logPrefix) {
-  if (!_envelopeUrl || !_key) return;
+  if (!_envelopeUrl || !_key) return false;
   try {
     // `keepalive: true` is critical for Vercel edge runtime: when a
     // handler returns a Response, the V8 isolate can be torn down
@@ -158,11 +160,13 @@ async function deliver(body, logPrefix) {
             : ' — Sentry outage or transient error';
       console.warn(`${logPrefix} non-2xx response ${res.status}${hint}`);
     }
+    return res.ok;
   } catch (fetchErr) {
     console.warn(
       `${logPrefix} failed to deliver event:`,
       fetchErr instanceof Error ? fetchErr.message : fetchErr,
     );
+    return false;
   }
 }
 
@@ -190,7 +194,7 @@ async function deliver(body, logPrefix) {
 export function makeCaptureSilentError({ runtime, platform, logPrefix }) {
   const runtimeCfg = { runtime, platform };
   return function captureSilentError(err, opts) {
-    if (!_envelopeUrl || !_key) return Promise.resolve();
+    if (!_envelopeUrl || !_key) return Promise.resolve(false);
     const promise = deliver(buildEnvelope(err, opts, runtimeCfg), logPrefix);
     if (opts?.ctx && typeof opts.ctx.waitUntil === 'function') {
       opts.ctx.waitUntil(promise);

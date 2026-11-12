@@ -464,6 +464,12 @@ function validateSearchSource(source, label, queryIds, latestEndDate) {
       invariant(!rowKeys.has(rowKey), `${label}.${contract.field} has duplicate ${rowKey}`);
       rowKeys.add(rowKey);
       assertNullableMetrics(row.metrics, contract.metrics, rowLabel, source.status);
+      if (contract.field === 'queryRows') {
+        invariant(
+          contract.metrics.some((metric) => row.metrics[metric] !== null) || isNonEmptyString(row.reason),
+          `${rowLabel} has no metrics and must carry a reason`,
+        );
+      }
     }
   }
 }
@@ -871,6 +877,7 @@ const INTENT_SLICE = Object.freeze({
     source.queryRows.filter((row) => queryIds.has(row.queryId))
   ),
   includeIndexedPages: false,
+  countsQueries: true,
 });
 const pageFamilySlice = (schemaVersion) => Object.freeze({
   domain: pageFamilyDomainForSchemaVersion(schemaVersion),
@@ -880,6 +887,17 @@ const pageFamilySlice = (schemaVersion) => Object.freeze({
   ),
   includeIndexedPages: true,
 });
+
+function queryCoverage(rows, windowLabel, queries) {
+  const windowRows = rows.filter((row) => row.windowLabel === windowLabel);
+  return {
+    queries,
+    rows: windowRows.length,
+    reported: windowRows.filter(({ metrics }) => (
+      SEARCH_PERFORMANCE_METRICS.some((metric) => Number.isFinite(metrics[metric]))
+    )).length,
+  };
+}
 
 function buildSlices(
   querySet,
@@ -897,17 +915,23 @@ function buildSlices(
     const mentions = rows.filter((observation) => observation.brandMention).length;
     const citations = rows.filter((observation) => observation.directCitation).length;
     const providerSearch = Object.fromEntries(
-      Object.entries(search).map(([provider, source]) => [
-        provider,
-        aggregateWindowedRows(
+      Object.entries(search).map(([provider, source]) => {
+        const searchRows = descriptor.searchRows(source, group, queryIds);
+        const aggregate = aggregateWindowedRows(
           source,
-          descriptor.searchRows(source, group, queryIds),
-          (searchRows) => aggregateSearchMetrics(
-            searchRows,
+          searchRows,
+          (windowRows) => aggregateSearchMetrics(
+            windowRows,
             descriptor.includeIndexedPages,
           ),
-        ),
-      ]),
+        );
+        if (descriptor.countsQueries) {
+          for (const window of aggregate.windows) {
+            window.queryCoverage = queryCoverage(searchRows, window.label, queries.length);
+          }
+        }
+        return [provider, aggregate];
+      }),
     );
     const possibleObservations = queries.length * eligiblePlatformCount;
     return [group, {
@@ -983,6 +1007,7 @@ export function buildScorecard(querySet, baseline) {
     collectionContext: structuredClone(baseline.collectionContext),
     querySet: {
       total: querySet.queries.length,
+      queries: querySet.queries.map(({ id, query, intent }) => ({ id, query, intent })),
       byIntent: Object.fromEntries(
         Object.entries(byIntent).map(([intent, slice]) => [intent, slice.queries]),
       ),
@@ -1322,7 +1347,11 @@ function preferredWindow(source) {
 
 function formatSearchPerformance(source, includeIndexedPages = false) {
   const window = preferredWindow(source);
-  const { metrics } = window;
+  const { metrics, queryCoverage: coverage } = window;
+  // A sum over only the reported queries would read as the intent's total.
+  if (coverage && coverage.rows > 0 && coverage.reported < coverage.queries) {
+    return `${window.label}: ${coverage.reported} of ${coverage.queries} queries reported`;
+  }
   if (Object.values(metrics).every((value) => value === null)) {
     return source.status === 'available' ? 'No normalized rows' : 'Unavailable';
   }
@@ -1334,6 +1363,41 @@ function formatSearchPerformance(source, includeIndexedPages = false) {
     `pos ${metrics.averagePosition ?? '—'}`,
   ];
   return `${window.label}: ${fields.join(' / ')}`;
+}
+
+function formatQueryRowCell(source, queryId) {
+  if (source.status === 'unavailable') return 'Unavailable';
+  const { label } = preferredWindow(source);
+  const row = source.queryRows.find(
+    (entry) => entry.windowLabel === label && entry.queryId === queryId,
+  );
+  if (!row) return 'No row';
+  const { metrics } = row;
+  if (Object.values(metrics).every((value) => value === null)) return markdownCell(row.reason);
+  return [
+    `${metrics.impressions ?? '—'} imp`,
+    `${metrics.clicks ?? '—'} clicks`,
+    percent(metrics.ctr),
+    `pos ${metrics.averagePosition ?? '—'}`,
+  ].join(' / ');
+}
+
+/** No section without a row to show, so scorecards built before lookups still reproduce. */
+function formatReviewedQuerySection(scorecard) {
+  const { googleSearchConsole: gsc, bingWebmaster: bing } = scorecard.search;
+  if (![gsc, bing].some((source) => source.queryRows?.length > 0)) return [];
+  return [
+    '## Reviewed query performance',
+    '',
+    'A query the provider did not report is not a zero. No row means the snapshot has no measurement for that query.',
+    '',
+    `| ID | Query | Intent | GSC (${preferredWindow(gsc).label}) | Bing (${preferredWindow(bing).label}) |`,
+    '| --- | --- | --- | --- | --- |',
+    ...scorecard.querySet.queries.map(({ id, query, intent }) => (
+      `| ${id} | ${markdownCell(query)} | ${INTENT_LABELS[intent]} | ${formatQueryRowCell(gsc, id)} | ${formatQueryRowCell(bing, id)} |`
+    )),
+    '',
+  ];
 }
 
 function referralMetricCell(source, metric) {
@@ -1531,6 +1595,7 @@ export function formatScorecardMarkdown(scorecard) {
       `| ${PAGE_FAMILY_LABELS[family]} | ${slice.queries} | ${formatSearchPerformance(slice.search.googleSearchConsole, true)} | ${formatSearchPerformance(slice.search.bingWebmaster, true)} | ${slice.observations}/${slice.possibleObservations} | ${percent(slice.brandMentionRate)} | ${percent(slice.directCitationRate)} |`
     )),
     '',
+    ...formatReviewedQuerySection(scorecard),
     '## Referral and product outcomes',
     '',
     'Referral segments retain both the major referrer family and landing-page family.',

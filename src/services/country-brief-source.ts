@@ -23,10 +23,14 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
     fetch: fetcher,
     settleMandatoryReads: fetcher.settleMandatoryReads ?? (async () => {}),
     countrySignals: async (code: string, family: CountrySignalFamily, signal: AbortSignal) => {
-      const { countrySignalOutcomeSchema } = await import('../../shared/country-signal-observations');
       signal.throwIfAborted();
       const wire = COUNTRY_SIGNAL_WIRE_FAMILIES.find(value => value === `COUNTRY_SIGNAL_FAMILY_${family.toUpperCase()}`)!;
-      const result = await intelligence.getCountrySignalObservations({ countryCode: code, family: wire, windowIndex: 0, cursor: '' }, { signal });
+      // The schema chunk is only needed to parse the reply, so it loads while
+      // the request is in flight instead of in front of it.
+      const [{ countrySignalOutcomeSchema }, result] = await Promise.all([
+        import('../../shared/country-signal-observations'),
+        intelligence.getCountrySignalObservations({ countryCode: code, family: wire, windowIndex: 0, cursor: '' }, { signal }),
+      ]);
       signal.throwIfAborted();
       if (result.countryCode !== code || result.family !== wire) throw new Error('Country source identity mismatch');
       const outcome = countrySignalOutcomeSchema.parse(JSON.parse(result.outcomeJson));
@@ -43,9 +47,10 @@ function createCountryBriefSource(fetcher: typeof fetch & { clear?: () => void; 
       if (mode !== 'host') throw new Error('Raw Signals reader requires a country host connection.');
       const requestSignal = combineAbortSignals([signal, AbortSignal.timeout(30_000)]);
       requestSignal.throwIfAborted();
-      const { rawSignalsValueSchema } = await import('../../shared/country-raw-signals');
-      requestSignal.throwIfAborted();
-      const response = await fetcher(`${base}${RAW_SIGNAL_PATH}?country_code=${code}`, { signal: requestSignal });
+      const [{ rawSignalsValueSchema }, response] = await Promise.all([
+        import('../../shared/country-raw-signals'),
+        fetcher(`${base}${RAW_SIGNAL_PATH}?country_code=${code}`, { signal: requestSignal }),
+      ]);
       requestSignal.throwIfAborted();
       const value = rawSignalsValueSchema.parse(await response.json());
       requestSignal.throwIfAborted();

@@ -79,6 +79,7 @@ function contentFreshnessAt(now, overrides = {}) {
     oldestObservedCountry: 'US',
     oldestAgeMinutes: 60,
     criticalCountries: ['CN', 'HK'],
+    criticalSourceAbsentCountries: [],
     criticalFreshCount: 2,
     criticalStaleCountries: [],
     criticalMissingCountries: 0,

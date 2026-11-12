@@ -17,7 +17,9 @@ function errorResponse(message: string, status: number): Response {
 }
 
 export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return errorResponse('Start this connection from notification settings.', 405);
+  if (req.method !== 'POST') {
+    return new Response('<p>Start this connection from notification settings.</p>', { status: 405, headers: { ...HEADERS, Allow: 'POST' } });
+  }
   if (isDisallowedOrigin(req)) return errorResponse('Origin not allowed.', 403);
   // Unauthenticated by design (the binding token is the credential), so bound
   // the Redis reads a stranger can trigger per IP before any lookup runs.

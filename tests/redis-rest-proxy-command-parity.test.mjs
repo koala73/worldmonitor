@@ -35,9 +35,17 @@ import {
   STATUS_LUA,
 } from '../scripts/lib/x-post-budget.cjs';
 import { SOURCE_RETRY_CLAIM_SCRIPT } from '../scripts/_bundle-runner.mjs';
+import {
+  PUBLISH_ACTIVE_AND_META_SCRIPT,
+  ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+  ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+  BACKFILL_META_IF_ACTIVE_SCRIPT,
+} from '../scripts/seed-military-bases.mjs';
 import { CABLE_HEALTH_REPAIR_SCRIPT } from '../shared/cable-health-repair-script.mjs';
 import { COMPARE_AND_DELETE_SCRIPT } from '../shared/compare-and-delete-script.cjs';
+import { SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT } from '../scripts/_seed-utils.mjs';
 import { recordHistoryCost } from '../scripts/lib/intel-history-cost.mjs';
+import { createTenderReceipt, writeTenderReceipt } from '../scripts/_global-tender-receipts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -251,6 +259,28 @@ describe('redis-rest-proxy command gate', () => {
     assert.equal(accepts(gate, ['EVAL']), false, 'EVAL with no script must be rejected');
   });
 
+  it('admits the procurement writer exact script and rejects a modified copy', async (t) => {
+    const gate = buildGate();
+    const previousUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.fixture';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fixture';
+    t.after(() => {
+      if (previousUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousUrl;
+      if (previousToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousToken;
+    });
+    let emitted;
+    t.mock.method(globalThis, 'fetch', async (_url, options) => {
+      emitted = JSON.parse(options.body);
+      return Response.json({ result: 1 });
+    });
+    await writeTenderReceipt(createTenderReceipt());
+    assert.equal(accepts(gate, emitted), true, 'self-hosted proxy must accept the actual writer command');
+    assert.equal(accepts(gate, [emitted[0], `${emitted[1]} `, ...emitted.slice(2)]), false);
+  });
+
   it('pins the physical-premium history append by exact bytes', () => {
     const gate = buildGate();
     assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(APPEND_HISTORY_LUA), true);
@@ -302,6 +332,35 @@ describe('redis-rest-proxy command gate', () => {
       false,
       'a one-character script variant must stay blocked',
     );
+  });
+
+  it('pins every military-bases version-switch script by exact bytes', () => {
+    // A self-hosted military-bases seed sends these four through the proxy;
+    // unpinned, its publish, sweep, staging-TTL and meta-backfill all 403.
+    const gate = buildGate();
+    for (const [name, script] of Object.entries({
+      PUBLISH_ACTIVE_AND_META_SCRIPT,
+      ARM_LEAKED_KEY_IF_INACTIVE_SCRIPT,
+      ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+      BACKFILL_META_IF_ACTIVE_SCRIPT,
+    })) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true, `${name} must be pinned in the proxy`);
+      assert.equal(accepts(gate, ['EVAL', script, '2', 'a', 'b']), true, `${name} must pass the gate`);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '2', 'a', 'b']), false,
+        `a modified ${name} must be rejected`);
+    }
+  });
+
+  it('pins the runSeed lock renew and fenced-publish scripts by exact bytes', () => {
+    // Every runSeed publish sends these through a self-hosted proxy (SM-122);
+    // unpinned, the canonical and seed-meta writes of every seeder 403.
+    const gate = buildGate();
+    for (const [name, script] of Object.entries({ SEED_LOCK_RENEW_SCRIPT, SEED_LOCK_FENCED_SET_SCRIPT })) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true, `${name} must be pinned in the proxy`);
+      assert.equal(accepts(gate, ['EVAL', script, '2', 'seed-lock:a:b', 'a:b:v1']), true, `${name} must pass the gate`);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '2', 'seed-lock:a:b', 'a:b:v1']), false,
+        `a modified ${name} must be rejected`);
+    }
   });
 
   it('pins every X Post budget script by exact bytes', () => {

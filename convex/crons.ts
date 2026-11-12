@@ -92,6 +92,37 @@ crons.daily(
   {},
 );
 
+// Agent feedback retention (#8721, threat model Decision 10). Deletes rows
+// past their per-status bound, counted from receivedAt, in self-draining
+// batches. 04:40 sits between the intel-history (04:30) and plan-limit (04:45)
+// prunes so the delete-heavy jobs never overlap.
+crons.daily(
+  "agent-feedback-prune",
+  { hourUTC: 4, minuteUTC: 40 },
+  internal.agentFeedback.prune,
+  {},
+);
+
+// Decision 12: one daily email listing every security report the owner has
+// not been told about, whether held back by the 20-per-day cap or because the
+// first notice failed. Runs whether or not a new report arrives.
+crons.daily(
+  "agent-feedback-security-digest",
+  { hourUTC: 8, minuteUTC: 15 },
+  internal.agentFeedback.sendSecurityDigest,
+  {},
+);
+
+// Bug, missing-capability, and data-quality reports send no per-report email.
+// This daily digest tells the owner how many arrived, by kind and surface,
+// and sends nothing on a day with no new reports.
+crons.daily(
+  "agent-feedback-digest",
+  { hourUTC: 8, minuteUTC: 20 },
+  internal.agentFeedback.sendFeedbackDigest,
+  {},
+);
+
 crons.daily(
   "email-soft-bounce-prune",
   { hourUTC: 4, minuteUTC: 50 },

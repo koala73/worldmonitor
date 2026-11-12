@@ -74,9 +74,32 @@ read commit history, not old file contents. Running those 34 files in a
 blobless clone gave the same results as a full clone and lazily fetched one
 blob, from a clone a third of the size.
 
-`scripts/shared/data-test-durations.json` must stay current or placement drifts:
+Duration estimates must stay current or placement drifts:
 `natural-events-transport` (111 s in CI) had no entry and was costed at 1 s,
-which left one shard 45 s behind the others.
+which left one shard 45 s behind the others. CI now refreshes them itself. After
+its tests, each unit shard blends its own timings into the estimates it ran with
+(each of its files moves halfway to what it measured; a failed or killed shard
+saves nothing) and saves the result as a `data-test-durations-v1-*` cache entry,
+whether the run passed or not. A cache saved only by green runs stays stale for
+as long as main is red (sorrycc/Mayoi#102 lost its Go cache that way). The next
+run's `changes` job looks the newest entry up once and every shard restores that
+exact key. They cannot each restore by prefix: every shard computes the whole
+partition and keeps its part, so a shard that read a newer entry than its
+siblings would drop or repeat test files. Only one shard saves per run: the one
+after the shard that saved the restored entry (the key ends in its number). When
+every shard saved, the newest entry was whichever finished last, and the same
+shard could win every run while the others' files never refreshed. The turn is
+taken from the restored key rather than `github.run_number` because PR and main
+runs share the run counter but not the cache, so a counter could keep landing
+main on one shard. A saver whose tests failed saves the estimates unchanged, so
+it passes the turn on instead of holding it while it stays red. The lookup key is
+`data-test-durations-v1-lookup`, which no entry is saved under: actions/cache
+prefix-matches the primary key before the restore keys, so a key with the run id
+would make a re-run of an old run restore its own stale entry. This needs no extra job:
+`test.yml` may not hold advisory jobs (#5402), and a gated job after the shards
+would add its startup to the wall clock, which the shards set. The committed
+`scripts/shared/data-test-durations.json` is the fallback when no
+entry exists, and the manual refresh below still updates it.
 
 ## Local commands
 
@@ -91,7 +114,7 @@ non-convergence cases through the real CLI with a local fake Railway executable.
 When source-health behavior changes, add the expanded proof once before delivery:
 
 ```sh
-node --import tsx --test --test-concurrency=2 tests/seed-freshness-monitor.test.mjs tests/seed-health-status-publisher.test.mjs
+node --import tsx --test --test-concurrency=2 tests/health-verdict-snapshot.test.mjs tests/health-classify.test.mjs
 ```
 
 Keep `npm run test:data` as the complete-suite command. Reproduce one CI shard with:

@@ -129,7 +129,7 @@ export function sanitizeNotificationText(value: unknown, maxLength: number): str
  * or a bare host with a path. A bare host with no path ('reuters.com') is
  * left alone — it is ordinary publisher attribution, not a click target.
  */
-const URL_TOKEN_PATTERN =
+export const URL_TOKEN_PATTERN =
   /(?:[a-z][a-z0-9+.-]*:\/\/\S+|www\.\S+|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+\/\S*)/gi;
 
 /**

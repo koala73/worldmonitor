@@ -56,6 +56,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
   const Harness = new Function(...Object.keys(dependencies), `${javascript}; return Harness;`)(...Object.values(dependencies));
   const map = new Harness();
   Object.assign(map, {
+    controlDisclosureCleanups: [],
     container: { querySelector: () => null },
     state: { view: 'global', zoom: 5 },
     pendingCenter: null,
@@ -68,6 +69,7 @@ async function createHarness({ failReplacement = true, scheduleMicrotask = queue
     renderRafId: null,
     countryPulseRaf: null,
     activeFlightTrails: new Map(),
+    deckFrameProvider: { wake() {}, dispose() {} },
     layerCache: new Map(),
   });
   for (const name of ['settleViewportMovement', 'stopTradeAnimation', 'stopPulseAnimation',

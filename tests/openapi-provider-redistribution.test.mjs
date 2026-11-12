@@ -1,3 +1,8 @@
+// This pins public OpenAPI documents to redistributable provider values and
+// examples while retaining OpenSky in the internal proto (#8690, section 2).
+// The generated specs and proto are the contract documents; executing a
+// handler cannot verify what those documents advertise.
+//
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';

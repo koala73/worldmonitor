@@ -92,6 +92,7 @@ async function redisLrangeAll(url, token, key) {
   while (true) {
     const stop = start + PAGE - 1;
     const res = await fetch(`${url}/lrange/${encodeURIComponent(key)}/${start}/${stop}`, {
+      signal: AbortSignal.timeout(30_000),
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
@@ -111,6 +112,7 @@ async function redisMget(url, token, keys) {
   if (keys.length === 0) return [];
   const path = keys.map((k) => encodeURIComponent(k)).join('/');
   const res = await fetch(`${url}/mget/${path}`, {
+    signal: AbortSignal.timeout(30_000),
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {

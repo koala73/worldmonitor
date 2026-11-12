@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, 'data');
@@ -10,6 +10,8 @@ const RAW_PATH = join(DATA_DIR, 'osm-military-raw.json');
 const PROCESSED_PATH = join(DATA_DIR, 'osm-military-processed.json');
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+// Overpass answers 406 to Node's default `User-Agent: node`.
+const USER_AGENT = 'worldmonitor-osm-bases/1.0';
 const OVERPASS_QUERY = `
 [out:json][timeout:300];
 (
@@ -29,7 +31,7 @@ function ensureDataDir() {
   }
 }
 
-async function fetchOverpassData() {
+export async function fetchOverpassData() {
   console.log('Querying Overpass API for military features with names...');
   console.log(`Query:\n${OVERPASS_QUERY}\n`);
 
@@ -39,7 +41,10 @@ async function fetchOverpassData() {
   try {
     const res = await fetch(OVERPASS_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': USER_AGENT,
+      },
       body: `data=${encodeURIComponent(OVERPASS_QUERY)}`,
       signal: controller.signal,
     });
@@ -158,7 +163,14 @@ async function main() {
   console.log(`\nDone in ${elapsed}s`);
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err.message);
-  process.exit(1);
-});
+// realpath both sides: a packaged install may run this through a symlink,
+// and import.meta.url is always the resolved path.
+const isMain = process.argv[1]
+  && pathToFileURL(realpathSync(process.argv[1])).href
+    === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+if (isMain) {
+  main().catch((err) => {
+    console.error('Fatal error:', err.message);
+    process.exit(1);
+  });
+}

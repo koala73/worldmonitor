@@ -54,6 +54,7 @@ describe('World Brief closed paid admission', () => {
     assert.equal(first.topStories[0].sourceCount, -1.5); assert.equal(first.topStories[0].corroborationSourceCount, -2);
     const original = JSON.parse(cache(bundle)[0][1]).value;
     assert.equal(original.panelRequest, undefined); assert.equal(original.usage, undefined); assert.equal(original.provider, '');
+    assert.deepEqual(original.topStories[0].sourceProvenance.map(entry => entry.source), ['Reuters', 'AP']); assert.deepEqual(repeat.topStories, first.topStories);
   });
   it('refreshes once per normalized UUID and isolates signed tool, owner, expiry and selector scopes', async () => {
     const bundle = makeProDeps(), token = value(await invoke(bundle)).panelRequest.token;

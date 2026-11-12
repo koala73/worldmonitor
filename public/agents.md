@@ -33,13 +33,13 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 ## Authentication
 
 - **Anonymous** works for discovery endpoints, `tools/list`, and public data (world brief, product catalog, story pages). For MCP data tools, `get_sources` is the sole credential-free, daily-quota-free exception and has a separate fail-closed limit of 10 anonymous calls/minute/IP.
-- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for subscription-gated REST and MCP data calls — issue one at https://www.worldmonitor.app/pro. All MCP data tools other than `get_sources` require subscription access. Full agent walkthrough: https://www.worldmonitor.app/auth.md
+- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for REST API calls and paid MCP tools; API keys are a paid feature — issue one at https://www.worldmonitor.app/pro. `get_sources` needs no account. A free World Monitor account can call the cached-data tools (marked `free-account` in the server card) within a daily allowance; the remaining tools need a paid plan. Sign in with OAuth — no API key needed. Full agent walkthrough: https://www.worldmonitor.app/auth.md
 - **OAuth2** for MCP (`scope=mcp`), with dynamic client registration at `/oauth/register`. Details in auth.md.
 
 ## Crawl & content-usage policy
 
-- **robots.txt** (https://www.worldmonitor.app/robots.txt): AI search/assistant agents (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-User, Claude-SearchBot, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, DuckAssistBot, MistralAI-User) are explicitly allowed; bulk training-only scrapers (CCBot, Bytespider, anthropic-ai) are disallowed. `/api/` is off-limits to crawlers except the allowlisted story/OG/llms.txt/product-catalog routes.
-- **Content-Signal:** `ai-train=no, search=yes, ai-input=yes` — declared as a robots.txt group directive and as an origin-wide HTTP response header. Search indexing and assistant grounding/citation are welcome; bulk model training is opted out.
+- **robots.txt** (https://www.worldmonitor.app/robots.txt): AI search, training and assistant agents (OAI-SearchBot, GPTBot, ChatGPT-User, Claude-SearchBot, ClaudeBot, Claude-User, PerplexityBot, Perplexity-User, Google-Extended, Applebot-Extended, DuckAssistBot, MistralAI-User) are explicitly allowed; bulk scrapers with no citation path (CCBot, Bytespider) are disallowed. Other crawlers follow the `User-agent: *` rules. `/api/` is off-limits to crawlers except the allowlisted story/OG/llms.txt/product-catalog routes.
+- **Content-Signal:** `ai-train=yes, search=yes, ai-input=yes` — declared as a robots.txt group directive and as an origin-wide HTTP response header. Search indexing, assistant grounding/citation and model training are all welcome. Third-party data shown on World Monitor keeps its upstream licence; this preference covers World Monitor's own content.
 - **User-Agent:** always send a descriptive `User-Agent` (e.g. `mytool/1.0 (+https://yoursite.example)`). Default HTTP-library UAs (`curl/*`, `python-requests/*`, empty strings) may get a 403 from the edge firewall — a 403 does NOT mean the endpoint is missing; retry with a real UA.
 
 ## Rate limits & plans

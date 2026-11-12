@@ -1,0 +1,47 @@
+# Regional energy fixtures
+
+Captured from public provider responses on 2026-10-29. Source catalog URLs and
+licence caveats are in `scripts/shared/regional-energy-feeds.json` and
+`docs/regional-energy-feeds.md`.
+
+HTML and CSV fixtures retain only representative headers and rows. CAMMESA JSON
+retains representative national samples. Petrobangla and GSE JSON contain text,
+coordinates and widths extracted from the first page of their current English
+PDFs; blank cells retain their original positions.
+
+The Eskom fixtures include synthetic future zero placeholders and an observed
+night-time solar zero to test the exclusion rule. Scientific notation is tested
+inline using the format observed in the full renewable CSV. ANP price rows are
+constructed inline with the actual national workbook headers and units.
+
+Batch 2 fixtures (`evn-*`, `korem.json`, `coes.json`, `iccc-*`,
+`fccc-*`) were captured on 2026-10-31 with the WorldMonitor User-Agent, except
+`iccc-post-2026-11.json`, captured on 2026-11-07. The ICCC
+responses are unmodified. The EVN pages are trimmed to the bulletin list and
+bulletin body; each starts with a comment naming its source URL and capture
+time. `coes.json` wraps the unmodified response with its capture time and POST
+request. `korem.json` maps each requested
+portal URL to its response. `fccc-items-*.json` hold the text items extracted
+from every page of the FCCC release PDFs.
+
+`mem-daily.json` was captured on 2026-11-01 from MEM's
+`Precios-Promedio-Nacionales-Diarios-2026-3.xlsx` upload with the WorldMonitor
+User-Agent. It holds the worksheet's cell values: the title and header rows,
+the newest 40 dated rows and the source and note rows. Dates are stored as
+`{ "date": ISO }`; the tests rebuild a workbook from these rows.
+
+Batch 3 fixtures (#10051) were captured on 2026-11-02 with the WorldMonitor
+User-Agent. `qatarenergy-items.json`, `erb-items-2026-11.json`,
+`anptl-items-2026-10-20.json` and `doe-ncr-items-2026-10-27.json` hold the text
+items extracted from every page of the provider PDFs. `erb-posts.json`,
+`anptl-posts.json`, `anptl-post-12450.json`, `npa-media-*.json` and
+`sonabhy-tarifs.json` are unmodified REST responses. `npa-expump-2026-10-16.json`
+holds the newest sheet of the ex-pump workbook and
+`npa-indicators-2026-10-20.json` the indicator sheet, as cell values with dates
+stored as `{ "date": ISO }`; the tests rebuild workbooks from these rows.
+`sonabhy-page.html` keeps only the page's Nuxt state script tag and
+`sonabhy-state.js` is that state. `zera-home.html` is trimmed to the price
+widget, `creg-page.html` to the three newest price tables, `doe-ncr-page.html`
+to the payload fragments that link each weekly PDF, and the three `ursea-*.html`
+pages to their `<main>` element. Each HTML fixture starts with a comment naming
+its source URL.

@@ -1,0 +1,509 @@
+{
+ "capturedAt": "2026-10-24T14:48:00Z",
+ "source": "NMS-API staging, GEOJSON classification files, notamTranslation stripped",
+ "features": {
+  "cancel_notam": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "106"
+     },
+     "notam": {
+      "id": "NMS_ID_1792791011922806",
+      "number": "6/1966",
+      "year": "2026",
+      "type": "C",
+      "issued": "2026-10-23T21:29:00Z",
+      "location": "FDC",
+      "effectiveStart": "2026-10-23T21:29:00Z",
+      "effectiveEnd": "2026-10-26T21:29:00Z",
+      "text": "FDC 6/1966 NOTAMC 6/1966\nA) STJ",
+      "classification": "FDC",
+      "accountId": "FDC",
+      "lastUpdated": "2026-10-23T21:29:00Z",
+      "icaoLocation": "KFDC"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": []
+   }
+  },
+  "tfr_fdc": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "985"
+     },
+     "notam": {
+      "id": "NMS_ID_8367308420185492",
+      "number": "6/0269",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-09-02T18:16:00.000Z",
+      "affectedFir": "ZJX",
+      "selectionCode": "QXXXX",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "ZJX",
+      "effectiveStart": "2026-09-04T12:12:00.000Z",
+      "effectiveEnd": "2026-12-12T08:08:00.000Z",
+      "text": "FL..AIRSPACE ORLANDO, FL..TEMPORARY FLIGHT RESTRICTIONS. PURSUANT TO 14 CFR SECTION 91.143, SPACE OPS AREA, ACFT OPS ARE PROHIBITED WI AN AREA DEFINED AS 295338N0820252W TO 295338N0813549W TO 294356N0813549W TO 294356N0820252W TO POINT OF ORIGIN SFC-UNL EFFECTIVE 2609041212 UTC UNTIL 2612120808 UTC. THE BUILDING 2 NORTH /ZBW/ ARTCC, TEL 989-898-9898, IS THE CDN FAC.",
+      "classification": "FDC",
+      "accountId": "FDC",
+      "lastUpdated": "2026-09-02T18:16:00.000Z",
+      "icaoLocation": "KZJX",
+      "lowerLimit": "SFC",
+      "upperLimit": "UNL"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -79.686144,
+       32.37768
+      ]
+     }
+    ]
+   }
+  },
+  "route_closed": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "816"
+     },
+     "notam": {
+      "id": "NMS_ID_1787244206599592",
+      "number": "6/6831",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-08-20T16:43:00Z",
+      "selectionCode": "QARLC",
+      "purpose": "NBO",
+      "location": "ZAN",
+      "effectiveStart": "2026-08-20T16:42:00Z",
+      "effectiveEnd": "2028-08-20T16:42:00Z",
+      "estimated": "true",
+      "text": "ROUTE ZAN.\nJ120 MC GRATH (MCG) VORTAC, AK R-039 TO COP NA FROM 20 NM TO COP EXCEPT FOR ACFT EQUIPPED WITH SUITABLE RNAV SYSTEM WITH GPS.\nMCG VOR R-039 UNUSABLE BEYOND 20 NM. 2608201642-2808201642EST",
+      "classification": "FDC",
+      "accountId": "FDC",
+      "lastUpdated": "2026-08-20T16:45:00Z",
+      "icaoLocation": "PAZA"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -155.61138,
+       62.9510321944444
+      ]
+     }
+    ]
+   }
+  },
+  "runway_closed": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "82"
+     },
+     "notam": {
+      "id": "NMS_ID_1792680888921838",
+      "number": "10/046",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-10-22T14:54:00Z",
+      "affectedFir": "ZSE",
+      "selectionCode": "QMRLC",
+      "purpose": "NBO",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "YKM",
+      "effectiveStart": "2026-10-26T14:00:00Z",
+      "effectiveEnd": "2026-10-30T20:20:00Z",
+      "text": "RWY 09/27 CLSD TO ACFT WINGSPAN MORE THAN 79FT AND TAIL HGT MORE THAN 30FT MON-FRI 1400-2020",
+      "classification": "DOM",
+      "accountId": "YKM",
+      "lastUpdated": "2026-10-22T15:01:00Z",
+      "icaoLocation": "KYKM",
+      "schedule": "MON TUE WED THU FRI",
+      "radius": "5"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Polygon",
+      "coordinates": [
+       [
+        [
+         -120.55943647162002,
+         46.5727450365627
+        ],
+        [
+         -120.559640861106,
+         46.57235857449851
+        ],
+        [
+         -120.53123350412099,
+         46.5652317107956
+        ],
+        [
+         -120.531028939713,
+         46.5656181224876
+        ],
+        [
+         -120.55943647162002,
+         46.5727450365627
+        ]
+       ]
+      ]
+     }
+    ]
+   }
+  },
+  "airport_closed": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "25"
+     },
+     "notam": {
+      "id": "NMS_ID_1784579762349330",
+      "number": "07/201",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-07-20T20:35:00Z",
+      "affectedFir": "ZDV",
+      "selectionCode": "QFALC",
+      "purpose": "NBO",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "1V0",
+      "effectiveStart": "2026-07-20T20:35:00Z",
+      "effectiveEnd": "2026-10-30T23:59:00Z",
+      "text": "AD AP CLSD",
+      "classification": "DOM",
+      "accountId": "ABQ",
+      "lastUpdated": "2026-07-20T20:35:00Z",
+      "radius": "5"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -107.652638888889,
+       36.8082777777778
+      ]
+     }
+    ]
+   }
+  },
+  "danger_radius": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "982"
+     },
+     "notam": {
+      "id": "NMS_ID_1790250196727000",
+      "series": "J",
+      "number": "J3386/26",
+      "year": "2026",
+      "type": "R",
+      "issued": "2026-09-24T11:42:00.000Z",
+      "affectedFir": "EGTT",
+      "selectionCode": "QRDCS",
+      "traffic": "IV",
+      "purpose": "BO ",
+      "scope": "AW",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "EGNV",
+      "effectiveStart": "2026-09-24T11:17:00.000Z",
+      "effectiveEnd": "2026-11-01T00:59:00.000Z",
+      "text": "TEMPO DANGER AREA (TDA) EGD494B INSTALLED WI 1.61NM RADIUS OF\r\n543357N 0011839W (STOCKTON-ON-TEES). BEYOND VISUAL LINE OF SIGHT\r\n(BVLOS) UAS OPS CONTAINED WHOLLY WI THE TDA. MAX HGT 400FT AGL.\r\nEMERG SERVICES ACFT MAY ENTER THE AIRSPACE IN ACCORDANCE WITH\r\nLOCAL DECONFLICTION AGREEMENTS. OPEN AND SPECIFIC CAT VISUAL LINE OF\r\nSIGHT (VLOS) UAS OPS ARE PERMITTED WI THE TDA WITHOUT PRIOR APPROVAL \r\nOR DECONFLICTION. OTHER NON-STANDARD FLIGHT, FLIGHT RESTRICTION ZONE \r\nOR CONTROLLED AIRSPACE APPROVALS MUST BE OBTAINED. OPERATORS ARE \r\nREMINDED OF THEIR RESPONSIBILITY UNDER CAP722 5.2.2.3 REGARDING OPR \r\nIN CLOSE PROXIMITY TO AN EMERG RESPONSE EFFORT. FOR INFO \r\nAROPS(AT)CAA.CO.UK. AR-2026-187/11.",
+      "classification": "INTL",
+      "accountId": "EGGNYNYX",
+      "lastUpdated": "2026-09-24T11:43:00.000Z",
+      "icaoLocation": "EGNV",
+      "schedule": "SEP 24-OCT 24 0600-2359, OCT 25-31 0700-0059",
+      "lowerLimit": "SFC",
+      "upperLimit": "600FT AMSL",
+      "coordinates": "5434N00119W",
+      "radius": "2"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -1.429444,
+       54.509167
+      ]
+     }
+    ]
+   }
+  },
+  "huge_radius": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "982"
+     },
+     "notam": {
+      "id": "NMS_ID_1791524547851000",
+      "series": "D",
+      "number": "D5783/26",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-10-09T05:41:00.000Z",
+      "affectedFir": "GCCC",
+      "selectionCode": "QRTCA",
+      "traffic": "IV",
+      "purpose": "BO ",
+      "scope": "W ",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "GCCC",
+      "effectiveStart": "2026-10-12T23:00:00.000Z",
+      "effectiveEnd": "2026-10-26T05:00:00.000Z",
+      "text": "TEMPO SEGREGADA AREA ACTIVATED FOR UNMANNED ACFT \r\nFLYING AS FOLLOW:\r\n-SEGMENTO 0 (S0): \r\nLATERAL LIMITS:\r\n283433N 0134731W\r\n283433N 0134730W\r\n283433N 0134730W\r\n283358N 0134659W\r\n283307N 0134707W\r\n283149N 0134832W\r\n283204N 0135026W\r\n283126N 0135232W\r\n282840N 0135304W\r\n282804N 0135324W\r\n282743N 0135432W\r\n282816N 0135533W\r\n282915N 0135546W\r\n283254N 0135437W\r\n283327N 0135402W\r\n283447N 0134818W\r\n283433N 0134731W\r\nVERTICAL LIMITS: SFC/1500 FT AMSL\r\n\r\n-SEGMENTO 2 (S2): \r\nLATERAL LIMITS:\r\n283807N 0133808W\r\n283842N 0133747W\r\n283938N 0133739W\r\n284051N 0133815W\r\n284123N 0133946W\r\n284115N 0134058W\r\n283506N 0134954W\r\n283426N 0135023W\r\n283345N 0135031W\r\n283302N 0135026W\r\n283218N 0134956W\r\n283150N 0134912W\r\n283135N 0134813W\r\n283151N 0134709W\r\n283757N 0133816W\r\n283807N 0133808W\r\nVERTICAL LIMITS: SFC/5000 FT AMSL\r\n\r\n-HOLDING AREA 1 (HA1): \r\nCENTRE COORDINATES: 284048N 0133832W\r\nRADIUS: 2 NM \r\n\r\nVERTICAL LIMITS: SFC/5000FT AMSL\r\n\r\nFUERTEVENTURA, LAS PALMAS\r\n\r\nRMK:\r\n-UNAVOIDABLE USE OF THE AREA BY A USER SHOULD BE\r\nPERFORMED UNDER COORDINATION AND INFORMATION OF GCCC.\r\n-INFORMATION ON REAL ACTIVATION OF THE AREA MAY BE REQUESTED TO\r\nGCCC.\r\n-COORDINATION PHONE NUMBER (UAS OPERATOR): \r\nMAGLINE: +34 928 380 926\r\nMIRA: +971 585 968 932",
+      "classification": "INTL",
+      "accountId": "LEANYNYX",
+      "lastUpdated": "2026-10-09T05:42:00.000Z",
+      "icaoLocation": "GCCC",
+      "schedule": "12 2300-2359, 13-25 0000-0500 2300-2359, 26 0000-0500",
+      "lowerLimit": "SFC",
+      "upperLimit": "05000FT AMSL",
+      "coordinates": "2602N01746W",
+      "radius": "527"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -17.766666666666666,
+       26.033333333333335
+      ]
+     }
+    ]
+   }
+  },
+  "airport_future": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "982"
+     },
+     "notam": {
+      "id": "NMS_ID_1790839523060000",
+      "series": "A",
+      "number": "A0634/26",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-10-01T07:25:00.000Z",
+      "affectedFir": "LSAS",
+      "selectionCode": "QFALC",
+      "traffic": "IV",
+      "purpose": "NBO",
+      "scope": "A",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "LSZH",
+      "effectiveStart": "2026-10-26T22:00:00.000Z",
+      "effectiveEnd": "2026-10-27T05:00:00.000Z",
+      "text": "AD CLSD DUE TO WIP AFT LAST SKED FLT.\r\nACTUAL CLOSURE BCST ON ATIS.)",
+      "classification": "INTL",
+      "accountId": "LSSNYNYX",
+      "lastUpdated": "2026-10-01T07:25:00.000Z",
+      "icaoLocation": "LSZH",
+      "coordinates": "4727N00833E",
+      "radius": "5"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       8.548056,
+       47.458056
+      ]
+     }
+    ]
+   }
+  },
+  "airport_partial": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "6000"
+     },
+     "notam": {
+      "id": "NMS_ID_1779906702543394",
+      "series": "A",
+      "number": "A3108/26",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-05-27T18:30:00Z",
+      "affectedFir": "KZLA",
+      "selectionCode": "QFALC",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "LAX",
+      "effectiveStart": "2026-05-27T18:26:00Z",
+      "effectiveEnd": "2027-05-28T16:00:00Z",
+      "text": "AD AP CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR CTC ATLANTIC AVIATION 310-258-9884 OR SIGNATURE AVIATION 310-410-9605",
+      "classification": "INTL",
+      "accountId": "KLAX",
+      "lastUpdated": "2026-05-27T18:31:00Z",
+      "icaoLocation": "KLAX",
+      "coordinates": "3356N11824W",
+      "radius": "005"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -118.40804861,
+       33.94249638
+      ]
+     }
+    ]
+   }
+  },
+  "not_avbl_as_altn": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "6000"
+     },
+     "notam": {
+      "id": "NMS_ID_1792263016156101",
+      "series": "A",
+      "number": "A3651/26",
+      "year": "2026",
+      "type": "R",
+      "issued": "2026-10-17T18:49:00Z",
+      "affectedFir": "OEJD",
+      "selectionCode": "QFALT",
+      "traffic": "IV",
+      "purpose": "NBO",
+      "scope": "A",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "OERK",
+      "effectiveStart": "2026-10-17T18:47:00Z",
+      "effectiveEnd": "PERM",
+      "text": "AD NOT AVBL AS ALTN AD.",
+      "classification": "INTL",
+      "accountId": "OEJDYNYX",
+      "lastUpdated": "2026-10-17T18:49:00Z",
+      "icaoLocation": "OERK",
+      "coordinates": "2458N04642E",
+      "radius": "005"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       46.708056,
+       24.962778
+      ]
+     }
+    ]
+   }
+  },
+  "ad_hoc_slots": {
+   "type": "Feature",
+   "properties": {
+    "coreNOTAMData": {
+     "notamEvent": {
+      "scenario": "982"
+     },
+     "notam": {
+      "id": "NMS_ID_1792695514464000",
+      "series": "A",
+      "number": "A4211/26",
+      "year": "2026",
+      "type": "N",
+      "issued": "2026-10-22T18:58:00.000Z",
+      "affectedFir": "EGTT",
+      "selectionCode": "QFAXX",
+      "traffic": "IV",
+      "purpose": "NBO",
+      "scope": "A ",
+      "minimumFl": "000",
+      "maximumFl": "999",
+      "location": "EGLL",
+      "effectiveStart": "2026-10-22T20:00:00.000Z",
+      "effectiveEnd": "2026-10-25T23:59:00.000Z",
+      "text": "AD HOC SLOTS NOT PERMITTED DUE WEATHER RISKS",
+      "classification": "INTL",
+      "accountId": "EGGNYNYX",
+      "lastUpdated": "2026-10-22T18:58:00.000Z",
+      "icaoLocation": "EGLL",
+      "coordinates": "5129N00028W",
+      "radius": "5"
+     }
+    }
+   },
+   "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+     {
+      "type": "Point",
+      "coordinates": [
+       -0.461389,
+       51.4775
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

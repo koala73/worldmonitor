@@ -92,14 +92,18 @@ export const CLIMATE_ZONE_NORMALS_KEY = 'climate:zone-normals:v1';
 export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
+export const CLIMATE_RESERVOIR_LEVELS_KEY = 'climate:reservoir-levels:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
 export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;
 export const CHINA_RELEASE_CALENDAR_KEY = BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar;
 export const CHINA_CORRIDOR_CONTROL_TOWERS_KEY =
   'supply_chain:china-corridor-control-towers:v1';
+// v2: the atmosphere family (#9722) changed the contribution count the wire
+// validator pins, so a v1 response cached across the deploy would fail every
+// client parse for its 15-minute TTL.
 export const CHINA_ACTIVITY_NOWCAST_KEY =
-  'economic:china:activity-nowcast:v1';
+  'economic:china:activity-nowcast:v2';
 export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY =
   'economic:china:corridor-directional-history:v1';
 

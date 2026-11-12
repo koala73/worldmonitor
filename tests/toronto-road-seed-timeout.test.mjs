@@ -67,7 +67,11 @@ async function runScenario(t, mode) {
         console.log('TEST_PRESERVE ' + JSON.stringify(command));
         return new Response(JSON.stringify(command.map(() => ({ result: 1 }))));
       }
-      const [op, key, value] = command;
+      // runSeed's lock fence (SM-122): renewal finds the lock held, and a
+      // fenced write (two keys: lock, target) is the SET it performs.
+      const isFence = command[0] === 'EVAL' && String(command[1]).includes('PEXPIRE');
+      if (isFence && command[2] === 1) return response([1, '']);
+      const [op, key, value] = isFence ? ['SET', command[4], command[7]] : command;
       if (op === 'SET' && key.startsWith('seed-lock:')) {
         console.log('TEST_LOCK ' + JSON.stringify(command));
         return response('OK');
@@ -83,7 +87,7 @@ async function runScenario(t, mode) {
       if (op === 'SET') {
         values.set(key, value);
         console.log('TEST_SET ' + key);
-        return response('OK');
+        return response(isFence ? [1, ''] : 'OK');
       }
       if (op === 'EVAL') console.log('TEST_RELEASE');
       return response(1);

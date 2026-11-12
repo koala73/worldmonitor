@@ -8,7 +8,7 @@ message ComputeEnergyShockScenarioRequest {
   string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
   // Chokepoint identifier to model as disrupted.
   string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
-  // Percent of chokepoint flow disrupted, from 0 to 100.
+  // Percent of chokepoint flow disrupted, 10 to 100. Other values are clamped; an absent value models 10.
   int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
   // Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".
   string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}];
@@ -17,6 +17,8 @@ message ComputeEnergyShockScenarioRequest {
 message ProductImpact {
   string product         = 1;
   double output_loss_kbd = 2;
+  // JODI demand; with none in the window or latest month, national annual final
+  // consumption 0-3 years before the flow month (a "Product demand for" limitation).
   double demand_kbd      = 3;
   double deficit_pct     = 4;
 }
@@ -50,11 +52,22 @@ message GasStorageObservation {
   string scope = 5;
 }
 
+// Hormuz (Qatar, UAE) share of LNG imports over one window, from UN Comtrade HS 271111.
+message LngShareBaseline {
+  // "comtrade_monthly" or "comtrade_annual".
+  string basis = 1;
+  string from_month = 2;
+  string to_month = 3;
+  int32 months_covered = 4;
+  double hormuz_lng_share = 5;
+  double lng_disruption_tj = 6;
+}
+
 message GasSensitivity {
   // Fraction, not percent. Absent when the measurement is unavailable.
   optional double lng_share_of_imports = 1;
   double lng_imports_tj = 2;
-  // Assumed monthly LNG loss against the route baseline, independent of current shipping flow.
+  // Monthly LNG loss at the route share, independent of current shipping flow.
   double lng_disruption_tj = 3;
   double total_demand_tj = 4;
   // Loss as percent of recorded demand. May exceed 100; not a supply-shortage estimate.
@@ -66,26 +79,88 @@ message GasSensitivity {
   string data_source = 9;
   // JODI observation month (YYYY-MM), or empty when unknown. Availability does not imply freshness.
   string data_month = 10;
-  // "assumed_route_sensitivity". No country-specific supplier exposure is measured.
+  // "comtrade_lng_origin_share" (Hormuz), "observed_zero_lng_imports", or "assumed_route_sensitivity" (fixed route share).
   string model_basis = 11;
+  // Hormuz only; the headline loss uses it. Absent when unavailable.
+  LngShareBaseline pre_crisis_baseline = 12;
+  LngShareBaseline current_flows = 13;
+}
+
+// Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
+// from at least 9 monthly filings (Comtrade, or national statistics for an importer with no Comtrade partner filings),
+// else the annual share (basis comtrade_annual); drives the headline, products and cover.
+// currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
+// products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
+message CrudeShareBaseline {
+  // "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
+  // statistics in tonnes, a volume share; Turkey from EPDK, as Turkey files no crude partners to Comtrade); or
+  // "comtrade_annual" for the annual partner-share fallback.
+  string basis = 1;
+  string from_month = 2;
+  string to_month = 3;
+  int32 months_covered = 4;
+  // Gulf share of crude import value (tonnes if national_monthly) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
+  // 0.6 for Suez and 0.7 for Malacca, where it is below the measured Gulf import share.
+  double gulf_crude_share = 5;
+  // Loss at disruption_pct on the Gulf supplier share, with no bypass recovery. Comtrade records origin, not route, so for currentFlows it counts crude already loading at Yanbu or Fujairah (an upper bound). 0 when not modeled (see limitations).
+  double crude_loss_kbd = 6;
+  // preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.
+  optional double crude_loss_after_bypass_kbd = 7;
+}
+
+// Deprecated: hand-entered reserve estimates were replaced by ReportedStocks.
+message ReserveEstimate {
+  string scope = 1;
+  string as_of = 2;
+  // "high" or "low".
+  string credibility = 3;
+  double low_mb = 4;
+  double central_mb = 5;
+  double high_mb = 6;
+  // Cover at the low and high stock; absent when the loss is not modeled.
+  optional int32 cover_days_low = 7;
+  optional int32 cover_days_high = 8;
+}
+
+// Month-end oil stocks a country without an IEA record reports to JODI (not
+// IEA data). They set effective_cover_days only when stock_days is present;
+// a net exporter keeps -1. Whether government reserves count depends on the reporter.
+message ReportedStocks {
+  // "jodi".
+  string source = 1;
+  // YYYY-MM, the month the stocks closed.
+  string month = 2;
+  // Millions of barrels, as are products_mb and total_mb; each rounded separately.
+  double crude_mb = 3;
+  double products_mb = 4;
+  double total_mb = 5;
+  // total_mb in days of JODI crude imports; absent unless the stocks set the cover.
+  optional int32 stock_days = 6;
 }
 
 message ComputeEnergyShockScenarioResponse {
   string country_code         = 1;
   string chokepoint_id        = 2;
   int32  disruption_pct       = 3;
+  // Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value (tonnes if national_monthly) times the route factor; 0 when that baseline is absent or fuel_mode is gas.
   double gulf_crude_share     = 4;
+  // Headline: preCrisisBaseline.crudeLossAfterBypassKbd when present, else preCrisisBaseline.crudeLossKbd; 0 when the loss is not modeled or fuel_mode is gas.
   double crude_loss_kbd       = 5;
   repeated ProductImpact products = 6;
+  // -1 marks a net oil exporter: the IEA flag, or, without an IEA record, a JODI
+  // crude row with positive production, crude exports above imports (unreported
+  // imports count as zero; an invalid reported figure disqualifies the row), and
+  // production at least refinery intake when intake is reported. No
+  // import-cover duration applies. It does not mean domestic supply is unexposed.
   int32  effective_cover_days = 7;
   string assessment           = 8;
-  bool   data_available       = 9;  // oil mode: requires finite nonnegative observed crude imports; jodi_oil_coverage indicates row presence only. Gas mode: equals gas data available. Both mode: true if either fuel has usable inputs.
+  bool   data_available       = 9;  // oil mode: requires finite nonnegative observed crude imports, or a net oil exporter (effective_cover_days -1); jodi_oil_coverage indicates row presence only. Gas mode: equals gas data available. Both mode: true if either fuel has usable inputs.
 
   // field 10 reserved for future use
 
   // v2 fields
   bool   jodi_oil_coverage     = 11;  // JODI oil data present for this country
-  bool   comtrade_coverage     = 12;  // Comtrade crude flows data present
+  bool   comtrade_coverage     = 12;  // Crude origin share present: Comtrade, or national statistics (preCrisisBaseline.basis says which)
   bool   iea_stocks_coverage   = 13;  // IEA strategic stocks data present
   bool   portwatch_coverage    = 14;  // PortWatch live flow data present
   string coverage_level        = 15;  // "full" | "partial" | "unsupported"
@@ -96,4 +171,12 @@ message ComputeEnergyShockScenarioResponse {
   // Deprecated and no longer returned. Use gas_sensitivity for gas scenarios.
   GasImpact gas_impact        = 20 [deprecated = true];
   GasSensitivity gas_sensitivity = 21;
+  // Monthly filings for the 12 months before the Hormuz crisis (at least 9; see months_covered), else the annual share (basis comtrade_annual). Drives products and cover.
+  CrudeShareBaseline pre_crisis_baseline = 22;
+  // Latest 3 monthly filings since the crisis; absent when unavailable. Not used for the products array or cover; the "product balance, current flows" limitation uses its crude_loss_kbd.
+  CrudeShareBaseline current_flows = 23;
+  // Deprecated and no longer returned. Use reported_stocks.
+  ReserveEstimate reserve_estimate = 24 [deprecated = true];
+  // Present for importers outside the IEA that report crude and product stocks to JODI (India, Taiwan, Thailand, the Philippines...).
+  ReportedStocks reported_stocks = 25;
 }

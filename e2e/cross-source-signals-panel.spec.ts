@@ -25,7 +25,7 @@ for (const viewport of [{ width: 1280, height: 720 }, { width: 390, height: 844 
           null as never,
           false as never,
           ...[0, undefined, Number.NaN, Number.POSITIVE_INFINITY].map((detectedAt, index) => ({
-            ...signal, id: `unknown-time-${index}`, detectedAt,
+            ...signal, id: `unknown-time-${index}`, detectedAt: detectedAt as number,
           })),
           { ...signal, id: 'known-time', summary: 'Synthetic cached signal with a known detection time.', detectedAt: Date.now() - 5 * 60_000 },
         ],

@@ -61,6 +61,7 @@ describe("Dodo checkout production client seam", () => {
     expect(checkoutCreate).toHaveBeenCalledWith(payload);
     expect(result).toEqual({
       checkout_url: "https://checkout.dodopayments.com/cks_retry_owner",
+      session_id: "cks_retry_owner",
     });
   });
 });

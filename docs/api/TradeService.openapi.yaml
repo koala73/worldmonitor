@@ -13,7 +13,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeRestrictions
-            description: Get quantitative restrictions and export controls.
+            description: GetTradeRestrictions returns each WTO reporter's latest MFN applied tariff average from the WTO Timeseries API, highest first, up to 100 economies.
             operationId: GetTradeRestrictions
             parameters:
                 - name: countries
@@ -502,7 +502,7 @@ paths:
             tags:
                 - TradeService
             summary: GetUsImportDuty
-            description: Current US duty on one product from one country (USITC HTS). PRO-gated. Requires entitlement tier >= 1.
+            description: GetUsImportDuty returns the USITC HTS base rate and Section 301 and 232 duties on one HS code from one country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetUsImportDuty
             security:
                 - WorldMonitorKey: []
@@ -671,7 +671,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeFlows
-            description: Get bilateral merchandise trade flows.
+            description: GetTradeFlows returns a reporter's annual merchandise exports and imports with the World from seeded WTO data, up to 30 years, with a reason when uncovered.
             operationId: GetTradeFlows
             parameters:
                 - name: reporting_country
@@ -824,7 +824,7 @@ paths:
             tags:
                 - TradeService
             summary: GetTradeBarriers
-            description: Get SPS/TBT barrier notifications.
+            description: GetTradeBarriers returns each WTO reporter's agricultural versus non-agricultural tariff gap, largest first, up to 100 economies; a missing series counts as 0%.
             operationId: GetTradeBarriers
             parameters:
                 - name: countries
@@ -970,7 +970,7 @@ paths:
             tags:
                 - TradeService
             summary: GetCustomsRevenue
-            description: Get US customs duties revenue (Treasury MTS data, seeded by Railway).
+            description: GetCustomsRevenue returns monthly and fiscal-year-to-date US customs duty receipts in billions from the Monthly Treasury Statement, up to 50 recent months.
             operationId: GetCustomsRevenue
             parameters:
                 - name: jmespath
@@ -1085,7 +1085,7 @@ paths:
             tags:
                 - TradeService
             summary: ListComtradeFlows
-            description: List UN Comtrade strategic commodity flows with anomaly detection. PRO-gated. Requires entitlement tier >= 1.
+            description: ListComtradeFlows returns UN Comtrade strategic-commodity flows by reporter and HS code, flagging 30% yearly swings. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListComtradeFlows
             security:
                 - WorldMonitorKey: []
