@@ -3250,7 +3250,9 @@
         "high": "مرتفع لهذا الموسم",
         "normal": "طبيعي",
         "insufficient_history": "سجل غير كافٍ",
-        "no_recent_data": "لا مرور حديث"
+        "no_recent_data": "لا مرور حديث",
+        "lowInRange": "منخفض ضمن نطاقه",
+        "highInRange": "مرتفع ضمن نطاقه"
       },
       "vsUsual": "{{value}} عن المعتاد في {{month}}",
       "in12Months": "{{value}} خلال 12 شهرًا",

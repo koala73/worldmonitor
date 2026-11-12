@@ -3263,7 +3263,9 @@
         "high": "Visoko za sezonu",
         "normal": "Uobičajeno",
         "insufficient_history": "Prekratka povijest",
-        "no_recent_data": "Nema nedavnog preleta"
+        "no_recent_data": "Nema nedavnog preleta",
+        "lowInRange": "Nisko u svojem rasponu",
+        "highInRange": "Visoko u svojem rasponu"
       },
       "vsUsual": "{{value}} u odnosu na uobičajeno ({{month}})",
       "in12Months": "{{value}} u 12 mjeseci",

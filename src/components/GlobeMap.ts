@@ -1360,7 +1360,7 @@ export class GlobeMap {
       dot.className = `wl-globe-dot wl-tone-${reservoirTone(d.reservoir.status)}`;
       hit.appendChild(dot);
       el.appendChild(hit);
-      el.title = `${d.reservoir.name} · ${reservoirStatusLabel(d.reservoir.status, t)}`;
+      el.title = `${d.reservoir.name} · ${reservoirStatusLabel(d.reservoir, t)}`;
       el.setAttribute('aria-label', el.title);
     } else if (d._kind === 'ukmtoIncident') {
       el.textContent = '⚓';
@@ -1767,7 +1767,7 @@ export class GlobeMap {
              `<br><span style="opacity:.5;">${esc(d.severity)} · ${esc(d.description.slice(0, 60))}</span>`;
     } else if (d._kind === 'reservoirLevel') {
       const headline = reservoirHeadline(d.reservoir, { t, locale: getLocale(), nowMs: Date.now() });
-      html = `<strong>${esc(d.reservoir.name)}</strong><br>${esc(reservoirStatusLabel(d.reservoir.status, t))} · ${esc(headline)}`;
+      html = `<strong>${esc(d.reservoir.name)}</strong><br>${esc(reservoirStatusLabel(d.reservoir, t))} · ${esc(headline)}`;
     } else if (d._kind === 'ukmtoIncident') {
       html = `<strong>${esc(ukmtoIncidentLabel(d.incident))}</strong><br>${esc(d.incident.description)}`;
     } else if (d._kind === 'newsLocation') {

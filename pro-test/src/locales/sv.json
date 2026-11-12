@@ -336,7 +336,8 @@
           "Faktureringsviainköpsorder",
           "SAML SSO och SCIM (enligt avtal)",
           "Anpassade säkerhet- och sekretessinställningar",
-          "Helt vitmärkt — med eller utan intäktsdelning"
+          "Helt vitmärkt — med eller utan intäktsdelning",
+          "Utkast till reseriskbedömning via MCP"
         ],
         "cta": "Kontakta försäljning"
       },
@@ -349,7 +350,8 @@
           "10 000 förfrågningar/dag inkluderat (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
           "5 Pro-licenser — bjud in användare med valfri företagsdomän för e-post",
           "Delade teampaneler",
-          "Prioriterad support"
+          "Prioriterad support",
+          "Utkast till reseriskbedömning via MCP"
         ],
         "highlightFeatures": [
           "Kommersiell användning — i dina kundriktade produkter"
@@ -364,7 +366,8 @@
           "25 anpassade instrumentpaneler (mot 10)",
           "MCP + SDK: 250 samtal/dag (mot 50)",
           "Skrivbordsnyckel för skrivbordsappen (3 nycklar)",
-          "Prioriterad support"
+          "Prioriterad support",
+          "Utkast till reseriskbedömning via MCP"
         ],
         "highlightFeatures": [
           "Kommersiell licens inkluderad",
@@ -665,7 +668,7 @@
     "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
     "proTag": "PRO",
     "m1": "Medieperspektiv — hur medier från varje land bevakar vilket land som helst, för AI-agenter och API:t",
-    "m2": "/verify — ett beviskort för alla påståenden, med publicerade faktagranskningar",
+    "m2": "Strategiska vattennivåer — nivåer från satellitlidar för 50 vattenmagasin och sjöar, på kartan och för AI-agenter",
     "m3": "Antal bekräftande källor i aviseringar, sammanfattningar och kartans popup-fönster, plus en offentlig /trust-sida",
     "m4": "Automatisk spårning av attacker — ett lands risk stiger under angrepp och återhämtar sig när attackerna upphör",
     "m5": "Luftrumsstängningar från FAA:s NOTAM och ett kartlager med rapporterade nödlägen för flygplan",

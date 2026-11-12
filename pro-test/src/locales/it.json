@@ -336,7 +336,8 @@
           "Fatturazione tramite ordine d'acquisto",
           "SAML SSO e SCIM (su contratto)",
           "Impostazioni personalizzate di sicurezza e privacy",
-          "Completamente personalizzato con il tuo marchio — con o senza condivisione dei ricavi"
+          "Completamente personalizzato con il tuo marchio — con o senza condivisione dei ricavi",
+          "Bozze di valutazione del rischio di viaggio tramite MCP"
         ],
         "cta": "Contatta il Team Vendite"
       },
@@ -349,7 +350,8 @@
           "10.000 richieste/giorno incluse (REST + MCP combinati; una chiamata MCP live conta come 2-3)",
           "5 licenze Pro — invita utenti con qualsiasi dominio email aziendale",
           "Dashboard condivise del team",
-          "Supporto prioritario"
+          "Supporto prioritario",
+          "Bozze di valutazione del rischio di viaggio tramite MCP"
         ],
         "highlightFeatures": [
           "Uso commerciale — nei tuoi prodotti rivolti ai clienti"
@@ -364,7 +366,8 @@
           "25 dashboard personalizzati (vs 10)",
           "MCP + SDK: 250 chiamate/giorno (rispetto a 50)",
           "Chiave desktop per l'app desktop (3 chiavi)",
-          "Supporto prioritario"
+          "Supporto prioritario",
+          "Bozze di valutazione del rischio di viaggio tramite MCP"
         ],
         "highlightFeatures": [
           "Licenza commerciale inclusa",
@@ -665,7 +668,7 @@
     "subtitle": "Nuove funzionalità degli ultimi 30 giorni — fix e ottimizzazioni esclusi.",
     "proTag": "PRO",
     "m1": "Prospettiva mediatica — come i media di ogni paese raccontano qualsiasi paese, per agenti IA e API",
-    "m2": "/verify — una scheda di prove per qualsiasi affermazione, con i fact-check pubblicati",
+    "m2": "Livelli idrici strategici — livelli misurati con lidar satellitare per 50 bacini artificiali e laghi, sulla mappa e per agenti IA",
     "m3": "Numero di fonti concordanti su avvisi, riepiloghi e popup della mappa, più una pagina pubblica /trust",
     "m4": "Monitoraggio automatico degli attacchi — il rischio di un paese sale sotto attacco e rientra quando gli attacchi cessano",
     "m5": "Chiusure dello spazio aereo dai NOTAM della FAA e un livello mappa delle emergenze aeree segnalate",

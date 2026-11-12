@@ -3145,7 +3145,9 @@
         "high": "Cao so với mùa",
         "normal": "Bình thường",
         "insufficient_history": "Chưa đủ lịch sử",
-        "no_recent_data": "Không có lượt quét gần đây"
+        "no_recent_data": "Không có lượt quét gần đây",
+        "lowInRange": "Thấp trong phạm vi",
+        "highInRange": "Cao trong phạm vi"
       },
       "vsUsual": "{{value}} so với thường lệ {{month}}",
       "in12Months": "{{value}} trong 12 tháng",

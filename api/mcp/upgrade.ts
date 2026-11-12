@@ -181,6 +181,18 @@ function isPlanFeature(value: unknown): value is McpPlanFeature {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PLAN_FEATURE_COPY, value);
 }
 
+const PRO_BUSINESS_PLAN_HASH = '#plan-proBusiness';
+
+function planFeatureUpgradeUrl(denial: McpDenial & { planFeature: McpPlanFeature }): string {
+  const recommended = denial.upgradeFrom === undefined
+    ? undefined
+    : recommendedPlanForFeature(denial.upgradeFrom, denial.planFeature);
+  if (recommended === 'pro_business_monthly' || recommended === 'pro_business_annual') {
+    return `${MCP_UPGRADE_URL}${PRO_BUSINESS_PLAN_HASH}`;
+  }
+  return MCP_UPGRADE_URL;
+}
+
 /**
  * `nextStep` for the anonymous handshake refusal (`initialize` and the GET
  * discovery probe). A client refused there has no session, so it cannot call
@@ -297,7 +309,7 @@ export function buildMcpStructuredDenial(denial: McpDenial): {
       data: {
         reason: denial.reason,
         nextStep: copy.nextStep,
-        upgradeUrl: MCP_UPGRADE_URL,
+        upgradeUrl: planFeatureUpgradeUrl(denial),
         planFeature: denial.planFeature,
         ...checkoutHint(denial),
       },

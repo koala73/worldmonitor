@@ -5,6 +5,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { getEntitlementFeatures, PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import { mergeEntitlementFeatures } from '../convex/lib/entitlements.ts';
@@ -16,6 +19,8 @@ const ENTITLED = new Set([
   'api_business_annual',
   'enterprise',
 ]);
+
+const TRAVEL_RISK_FEATURE = 'Travel risk assessment drafts over MCP';
 
 describe('travelRiskAssessment catalog flag', () => {
   it('every catalog entry sets travelRiskAssessment explicitly', () => {
@@ -63,5 +68,56 @@ describe('travelRiskAssessment catalog flag', () => {
         `${planKey} legacy row inherits the catalog default without a migration`,
       );
     }
+  });
+
+  it('published feature lists name the assessment only on plans the flag includes', () => {
+    for (const [planKey, entry] of Object.entries(PRODUCT_CATALOG)) {
+      const listed = entry.marketingFeatures.includes(TRAVEL_RISK_FEATURE);
+      if (entry.marketingFeatures.length === 0) {
+        assert.equal(listed, false, `${planKey} publishes no feature list`);
+        continue;
+      }
+      assert.equal(listed, entry.features.travelRiskAssessment === true, planKey);
+    }
+  });
+
+  it('pricing prose and the machine-readable summary follow the same flag', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const phrase = /travel risk assessment drafts over MCP/i;
+    const pricingMd = readFileSync(resolve(root, 'public/pricing.md'), 'utf8');
+    const summary = JSON.parse(pricingMd.match(/```json\n([\s\S]*?)```/)?.[1] ?? '{}') as {
+      plans: Array<{ name: string; features: string[] }>;
+    };
+    const byName = Object.fromEntries(summary.plans.map((plan) => [plan.name, plan.features]));
+    for (const name of ['Pro Business', 'API Business', 'Enterprise']) {
+      assert.equal(byName[name].includes('travel risk assessment drafts over MCP'), true, name);
+    }
+    for (const name of ['Free', 'Pro', 'API']) {
+      assert.equal(byName[name].includes('travel risk assessment drafts over MCP'), false, name);
+    }
+
+    const section = (markdown: string, heading: string) => {
+      const match = markdown.match(new RegExp(`## ${heading}\\n([\\s\\S]*?)(?=\\n## |$)`));
+      assert.ok(match, heading);
+      return match[1];
+    };
+    assert.match(section(pricingMd, 'Pro Business'), phrase);
+    assert.match(section(pricingMd, 'API Business'), phrase);
+    assert.match(section(pricingMd, 'Enterprise'), phrase);
+    assert.doesNotMatch(section(pricingMd, 'Pro'), phrase);
+    assert.doesNotMatch(section(pricingMd, 'API Starter'), phrase);
+
+    const docs = readFileSync(resolve(root, 'docs/pricing.mdx'), 'utf8');
+    const bullet = (name: string) => {
+      const line = docs.split('\n').find((entry) => entry.startsWith(`- **${name}**`));
+      assert.ok(line, name);
+      return line;
+    };
+    assert.match(bullet('Pro Business'), phrase);
+    assert.match(bullet('API Business'), phrase);
+    assert.match(bullet('Enterprise'), phrase);
+    assert.doesNotMatch(bullet('Pro'), phrase);
+    assert.doesNotMatch(bullet('API Starter'), phrase);
+    assert.match(readFileSync(resolve(root, 'docs/zh/pricing.mdx'), 'utf8'), /通过 MCP 起草旅行风险评估/);
   });
 });

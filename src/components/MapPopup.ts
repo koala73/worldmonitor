@@ -22,6 +22,7 @@ import { t, getCurrentLanguageTag, getLocale } from '@/services/i18n';
 import type { ReservoirLevel } from '@/services/climate';
 import {
   RESERVOIR_PROCESSING_URL,
+  RESERVOIR_ATL06_SOURCE_URL,
   RESERVOIR_SOURCE_URL,
   formatMetres,
   formatMonth,
@@ -2302,7 +2303,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
       <div class="wl-popup wl-tone-${tone}">
         <div class="popup-header">
           <span class="popup-title wl-popup-title">${escapeHtml(r.name)}<span class="wl-popup-place">${escapeHtml(reservoirPlace(r, locale))}</span></span>
-          <span class="wl-chip">${escapeHtml(reservoirStatusLabel(r.status, t))}</span>
+          <span class="wl-chip">${escapeHtml(reservoirStatusLabel(r, t))}</span>
           <button class="popup-close" aria-label="${t('common.close')}">×</button>
         </div>
         <div class="popup-body">
@@ -2318,7 +2319,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? `<div class="wingbits-live-section"
             ${stat(t('components.reservoirLevels.popup.measured'), escapeHtml(reservoirMeasured(r, ctx, true)))}
           </div>
           ${spark ? `<div class="wl-popup-spark" role="img" aria-label="${escapeHtml(t('components.reservoirLevels.popup.sparkline'))}">${spark}</div>` : ''}
-          <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13 (NSIDC)</a> · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
+          <p class="wl-popup-source">${escapeHtml(t('components.reservoirLevels.source'))} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${escapeHtml(t('components.reservoirLevels.processedWith'))} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
         </div>
       </div>
     `;

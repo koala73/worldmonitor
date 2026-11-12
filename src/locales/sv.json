@@ -2782,7 +2782,9 @@
         "high": "Hög för årstiden",
         "normal": "Som vanligt",
         "insufficient_history": "För kort historik",
-        "no_recent_data": "Ingen ny passage"
+        "no_recent_data": "Ingen ny passage",
+        "lowInRange": "Låg inom sitt intervall",
+        "highInRange": "Hög inom sitt intervall"
       },
       "vsUsual": "{{value}} mot det vanliga i {{month}}",
       "in12Months": "{{value}} på 12 månader",

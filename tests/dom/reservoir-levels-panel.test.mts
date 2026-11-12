@@ -117,9 +117,9 @@ it('tells an empty dataset from a failed request and keeps rows through a later 
   expect(rowIds()).toEqual(['mead']);
 });
 
-it('credits NASA ICESat-2 and SlideRule Earth with links', () => {
+it('credits both NASA ICESat-2 products and SlideRule Earth with links', () => {
   const panel = new ReservoirLevelsPanel();
   panel.setResult(ok([reservoir('mead')]));
   const links = [...document.querySelectorAll<HTMLAnchorElement>('.wl-footer a')].map((link) => link.href);
-  expect(links).toEqual(['https://nsidc.org/data/atl13', 'https://slideruleearth.io/']);
+  expect(links).toEqual(['https://nsidc.org/data/atl13', 'https://nsidc.org/data/atl06', 'https://slideruleearth.io/']);
 });

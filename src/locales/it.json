@@ -3187,7 +3187,9 @@
         "high": "Alto per la stagione",
         "normal": "Nella norma",
         "insufficient_history": "Storico insufficiente",
-        "no_recent_data": "Nessun passaggio recente"
+        "no_recent_data": "Nessun passaggio recente",
+        "lowInRange": "Basso nel suo intervallo",
+        "highInRange": "Alto nel suo intervallo"
       },
       "vsUsual": "{{value}} rispetto al solito a {{month}}",
       "in12Months": "{{value}} in 12 mesi",

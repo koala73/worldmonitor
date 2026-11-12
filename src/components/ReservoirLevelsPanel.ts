@@ -5,6 +5,7 @@ import type { ReservoirLevel, ReservoirLevelsFetchResult } from '@/services/clim
 import {
   RESERVOIR_FILTERS,
   RESERVOIR_PROCESSING_URL,
+  RESERVOIR_ATL06_SOURCE_URL,
   RESERVOIR_SOURCE_URL,
   filterReservoirs,
   reservoirDetail,
@@ -128,7 +129,7 @@ export class ReservoirLevelsPanel extends Panel {
     const spark = reservoirSparkline(r);
     return safeHtml`<li><button type="button" class="wl-row wl-tone-${tone}" data-reservoir-id="${r.id}" data-status="${r.status}">
       <span class="wl-id"><span class="wl-name" title="${r.name}">${r.name}</span><span class="wl-place">${reservoirPlace(r, ctx.locale)}</span></span>
-      <span class="wl-chip">${statusLabel(r.status, t)}</span>
+      <span class="wl-chip">${statusLabel(r, t)}</span>
       <span class="wl-headline">${reservoirHeadline(r, ctx)}</span>
       <span class="wl-spark">${unsafeRawHtml(spark, 'miniSparkline builds the SVG from numbers only')}</span>
       <span class="wl-detail">${reservoirDetail(r, ctx)}</span>
@@ -138,7 +139,7 @@ export class ReservoirLevelsPanel extends Panel {
   private footer(): SafeHtml {
     return safeHtml`<footer class="wl-footer">
       <p>${t('components.reservoirLevels.note')}</p>
-      <p>${t('components.reservoirLevels.source')} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13 (NSIDC)</a> · ${t('components.reservoirLevels.processedWith')} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
+      <p>${t('components.reservoirLevels.source')} <a href="${RESERVOIR_SOURCE_URL}" target="_blank" rel="noopener noreferrer">NASA ICESat-2 ATL13</a> / <a href="${RESERVOIR_ATL06_SOURCE_URL}" target="_blank" rel="noopener noreferrer">ATL06</a> (NSIDC) · ${t('components.reservoirLevels.processedWith')} <a href="${RESERVOIR_PROCESSING_URL}" target="_blank" rel="noopener noreferrer">SlideRule Earth</a></p>
     </footer>`;
   }
 }

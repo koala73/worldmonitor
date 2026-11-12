@@ -3166,7 +3166,9 @@
         "high": "Υψηλή για την εποχή",
         "normal": "Κανονική",
         "insufficient_history": "Ανεπαρκές ιστορικό",
-        "no_recent_data": "Καμία πρόσφατη διέλευση"
+        "no_recent_data": "Καμία πρόσφατη διέλευση",
+        "lowInRange": "Χαμηλή στο εύρος της",
+        "highInRange": "Υψηλή στο εύρος της"
       },
       "vsUsual": "{{value}} σε σχέση με τη συνήθη ({{month}})",
       "in12Months": "{{value}} σε 12 μήνες",

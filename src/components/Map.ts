@@ -2401,7 +2401,7 @@ export class MapComponent {
         marker.dataset.reservoirId = reservoir.id;
         marker.style.left = `${pos[0]}px`;
         marker.style.top = `${pos[1]}px`;
-        marker.title = `${reservoir.name} · ${reservoirStatusLabel(reservoir.status, t)}`;
+        marker.title = `${reservoir.name} · ${reservoirStatusLabel(reservoir, t)}`;
         marker.setAttribute('aria-label', marker.title);
         marker.addEventListener('click', (e) => {
           e.stopPropagation();
