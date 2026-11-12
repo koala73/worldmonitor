@@ -404,6 +404,7 @@ export class ForecastPanel extends Panel {
         // filter in getVisibleForecasts().
         this.setCount(this.getVisibleForecasts().length);
         this.render();
+        this.reportFilterChoice(this.selectedRegion);
         return;
       }
 
@@ -591,6 +592,20 @@ export class ForecastPanel extends Panel {
     // when the simulation RPC resolves before the forecast RPC. updateForecasts will trigger
     // the combined render when it arrives.
     if (this.forecasts.length > 0) this.render();
+  }
+
+  // The region pill is a tab-level choice (#10453 phase 2): the analyst's
+  // region reaches a teammate who opens the shared dashboard.
+  public override getFilterChoice(): string | null {
+    return this.selectedRegion || null;
+  }
+
+  public override setFilterChoice(value: string | null): void {
+    const next = value ?? '';
+    if (next === this.selectedRegion || !FORECAST_REGIONS.some((r) => r.id === next)) return;
+    this.selectedRegion = next;
+    this.setCount(this.getVisibleForecasts().length);
+    this.render();
   }
 
   // Returns forecasts that pass the probability AND region filters. Domain

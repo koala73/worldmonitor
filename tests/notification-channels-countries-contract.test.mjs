@@ -86,9 +86,16 @@ describe('notification country-scope forwarding contract', () => {
   // forwards it. The set-alert-rules edge handler previously collapsed every
   // non-ok relay response into a generic 500 — mirror set-notification-config.
   it('edge set-alert-rules forwards relay 400/402 with body intact', () => {
+    // The passthrough lives in one helper shared by every alert-rule action
+    // (the per-account row cap 400 must reach the client from all of them).
     assert.match(
       edgeSrc,
-      /action === 'set-alert-rules'[\s\S]*?if \(!resp\.ok\) \{[\s\S]*?resp\.status === 400 \|\| resp\.status === 402[\s\S]*?return finish\(json\(payload, resp\.status/,
+      /async function relayValidationPassthrough\([\s\S]*?resp\.status !== 400 && resp\.status !== 402[\s\S]*?return json\(payload, resp\.status/,
+      'relayValidationPassthrough must forward 400/402 with the relay body',
+    );
+    assert.match(
+      edgeSrc,
+      /action === 'set-alert-rules'[\s\S]*?if \(!resp\.ok\) \{[\s\S]*?await relayValidationPassthrough\(resp, corsHeaders\)[\s\S]*?if \(passthrough\) return finish\(passthrough\)/,
       'edge set-alert-rules must pass through 400/402 instead of collapsing to 500',
     );
   });

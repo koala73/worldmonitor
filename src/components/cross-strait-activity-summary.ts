@@ -28,6 +28,7 @@ export interface CrossStraitActivityPanelModel {
   heading: string;
   disclaimer: string;
   coverageLabel: string;
+  japanCoverageLabel: string | null;
   mnd: {
     publisher: string;
     reportingLabel: string;
@@ -418,8 +419,12 @@ export function buildCrossStraitActivityPanelModel(
       })
     : [];
 
-  const japan = snapshot.observations
-    .filter((row) => row.sourceId === 'japan-mod')
+  const japanObservations = snapshot.observations.filter((row) => row.sourceId === 'japan-mod');
+  const japanSource = snapshot.sources.find((source) => source.id === 'japan-mod');
+  const japanCoverageLabel = japanSource?.transportPath === 'x_api'
+    ? `Japan X discovery: last success ${japanSource.lastSuccessAt ?? 'not recorded'}.${japanSource.transportStatus === 'fresh' ? '' : ' Latest check unavailable.'} ${japanObservations.length} reviewed report${japanObservations.length === 1 ? '' : 's'} in this snapshot. New posts require review before they update these counts.`
+    : null;
+  const japan = japanObservations
     .sort((a, b) => b.reportingDay.localeCompare(a.reportingDay))
     .slice(0, 3)
     .map((row) => {
@@ -479,6 +484,7 @@ export function buildCrossStraitActivityPanelModel(
         }
       : null,
     japan,
+    japanCoverageLabel,
     sourceHealth,
   };
 }

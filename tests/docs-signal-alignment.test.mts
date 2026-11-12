@@ -1,3 +1,7 @@
+// Docs-parity check by design (#8690, section 2): this suite pins selected
+// published signal counts, scoring formulas, weights, and limits to source.
+// Runtime scoring tests do not check the published wording and values.
+//
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

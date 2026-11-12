@@ -9,7 +9,11 @@
  *   1. Caller is the Clerk-authenticated apex page; sends Bearer JWT +
  *      JSON `{nonce}` (nonce minted by `api/oauth/authorize.js` and
  *      stored at `oauth:nonce:<n>`).
- *   2. Resolve userId via Clerk JWKS verify. 401 on miss.
+ *   2. Resolve userId via Clerk JWKS verify (local), apply the per-user
+ *      rate limit on that identity, then confirm the token's session is
+ *      still live at Clerk (the grant outlives the bearer, so a revoked
+ *      session must not be able to mint one; a limited caller must not
+ *      spend the shared Clerk quota). 401 on miss.
  *   3. Validate `oauth:nonce:<n>` exists (DO NOT consume — U5 consumes).
  *   4. Resolve the client: `oauth:client:<client_id>` for DCR, or the CIMD
  *      document for a URL client_id (#9244).
@@ -66,7 +70,10 @@
 
 export const config = { runtime: 'edge' };
 
-import { resolveSessionUserId } from '../../server/_shared/auth-session';
+import { verifyClerkSessionActive, type ClerkSessionCheck } from '../../server/auth-session';
+import { resolveVerifiedClerkSession, type ClerkSession } from '../../server/_shared/auth-session';
+// @ts-expect-error — JS module, no declaration file
+import { checkRateLimit } from '../_rate-limit.js';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
@@ -186,8 +193,15 @@ async function rawRedisSetNxEx(key: string, value: unknown, ttlSeconds: number):
 // ---------------------------------------------------------------------------
 
 export interface MintDeps {
-  /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
-  resolveUserId: (req: Request) => Promise<string | Response | null>;
+  /**
+   * The bearer's identity from the local JWKS check only (no outbound call).
+   * Null = unauth; a Response = the token could not be verified (retryable).
+   */
+  resolveSession: (req: Request) => Promise<ClerkSession | Response | null>;
+  /** Per-user limit on the locally verified identity, before any Clerk call. */
+  rateLimit: (req: Request, userId: string) => Promise<Response | null>;
+  /** Is that session still live at Clerk, for this user? Runs after the limit. */
+  verifySession: (sessionId: string, userId: string) => Promise<ClerkSessionCheck>;
   /** Reads a raw `oauth:*` or `mcp-grant:*` key from Redis. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
   /** Writes a raw `mcp-grant:*` key with TTL. Returns false on failure. */
@@ -221,9 +235,22 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
     });
   }
 
-  const userId = await deps.resolveUserId(req);
-  if (userId instanceof Response) return grantSessionVerificationUnavailableResponse();
-  if (!userId) {
+  const session = await deps.resolveSession(req);
+  if (session instanceof Response) return grantSessionVerificationUnavailableResponse();
+  // No `sid` means this is not a session token: nothing to keep live.
+  if (!session?.sessionId) {
+    return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
+  }
+  const userId = session.userId;
+
+  // The limiter keys on the network-free identity and runs before the Clerk
+  // call, so a limited caller cannot spend the instance-wide Clerk quota.
+  const limited = await deps.rateLimit(req, userId);
+  if (limited) return limited;
+
+  const liveness = await deps.verifySession(session.sessionId, userId);
+  if (liveness === 'unavailable') return grantSessionVerificationUnavailableResponse();
+  if (liveness !== 'active') {
     return jsonError('UNAUTHENTICATED', 'A valid Clerk session is required.', 401);
   }
 
@@ -393,9 +420,25 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 // Production handler — wires up the real deps.
 // ---------------------------------------------------------------------------
 
+/**
+ * The limiter guards the outbound Clerk session check, so it fails closed: an
+ * unavailable limiter must not let one caller spend the shared Clerk quota.
+ */
+export function mintRateLimitPolicy(userId: string) {
+  return {
+    scope: 'mcp-grant-mint',
+    identifier: `user:${userId}`,
+    limit: 20,
+    window: '10 m',
+    failClosed: true,
+  } as const;
+}
+
 export default async function handler(req: Request): Promise<Response> {
   return mintGrantHandler(req, {
-    resolveUserId: resolveSessionUserId,
+    resolveSession: resolveVerifiedClerkSession,
+    rateLimit: (request, userId) => checkRateLimit(request, NO_STORE_JSON, mintRateLimitPolicy(userId)),
+    verifySession: verifyClerkSessionActive,
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
     redisSetNxEx: rawRedisSetNxEx,

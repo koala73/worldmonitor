@@ -110,6 +110,7 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
       '/countries/',
       '/chokepoints/',
       '/crises/',
+      '/monitor-the-situation/',
       '/tools/',
       '/blog/',
       '/docs',

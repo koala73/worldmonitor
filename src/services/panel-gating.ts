@@ -20,6 +20,7 @@ import { getEntitlementState } from './entitlements';
 import { openExternalUrl } from './external-navigation';
 import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
+import { isSelfHostKeyUnlocked } from './self-host-key';
 import { isProUser } from './widget-store';
 
 export enum PanelGateReason {
@@ -57,7 +58,7 @@ export function hasPremiumAccess(authState?: AuthSession): boolean {
 }
 
 /** Which arm of `hasPremiumAccess` answered. `none` means no arm did. */
-export type PremiumAccessGrant = 'api_key' | 'pro_user' | 'auth_role' | 'none';
+export type PremiumAccessGrant = 'api_key' | 'self_host_key' | 'pro_user' | 'auth_role' | 'none';
 
 /**
  * The same union as `hasPremiumAccess`, reported rather than collapsed.
@@ -80,6 +81,10 @@ export type PremiumAccessGrant = 'api_key' | 'pro_user' | 'auth_role' | 'none';
  */
 export function readPremiumAccessGrant(authState?: AuthSession): PremiumAccessGrant {
   if (getSecretState('WORLDMONITOR_API_KEY').present) return 'api_key';
+  // isProUser() also answers true for this verdict (KTD9); this arm only
+  // reports it as its own source. Like api_key it says nothing about the
+  // signed-in account.
+  if (isSelfHostKeyUnlocked()) return 'self_host_key';
   if (isProUser()) return 'pro_user';
   if (authState?.user?.role === 'pro') return 'auth_role';
   return 'none';

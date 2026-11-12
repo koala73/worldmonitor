@@ -1,6 +1,9 @@
 ---
 import Base from '../../layouts/Base.astro';
 import { GLOSSARY_TERMS, PIZZINT_LEVELS } from '../../data/glossary';
+// One renderer with middleware.ts, which swaps in the current level at request
+// time. Its markup sits outside this component, so its styles are global below.
+import { renderPizzaIndexSection } from '../../../../scripts/live-pages/pentagon-pizza-index.mjs';
 
 export function getStaticPaths() {
   return GLOSSARY_TERMS.map((term) => ({
@@ -111,29 +114,7 @@ const faqLd = {
       <p class="glossary-lede">{term.short}</p>
     </header>
 
-    {term.liveReading === 'pizzint' && (
-      <section class="live-reading" data-live-pizzint data-state="loading" aria-labelledby="live-reading-heading">
-        <div class="live-reading-head">
-          <h2 id="live-reading-heading">Current level</h2>
-          <span class="live-reading-status" data-live-status>Loading the live level…</span>
-        </div>
-        <p class="live-reading-fallback" data-live-fallback>
-          The current level loads in your browser from World Monitor’s live feed, refreshed every 15 minutes.
-          It also appears next to the pizza icon in the <a href="/dashboard">dashboard header</a>.
-        </p>
-        <div class="live-reading-body" data-live-grid hidden aria-busy="true">
-          <p class="live-reading-level">
-            <strong data-pizzint-level>—</strong>
-            <span data-pizzint-label></span>
-          </p>
-          <ul class="live-reading-venues" data-pizzint-venues></ul>
-        </div>
-        <div class="live-reading-foot">
-          <time data-live-updated></time>
-          <button type="button" data-live-refresh>Refresh</button>
-        </div>
-      </section>
-    )}
+    {term.liveReading === 'pizzint' && <Fragment set:html={renderPizzaIndexSection(null)} />}
 
     <div class="prose">
       {term.body.map((para) => (
@@ -212,7 +193,7 @@ const faqLd = {
     <script type="module" is:inline nonce="wm-static-bootstrap" src="/tools/live-tools.js"></script>
   )}
 
-  <style>
+  <style is:global>
     .live-reading {
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px;
@@ -235,6 +216,10 @@ const faqLd = {
     .live-reading-status {
       font-size: 0.8rem;
       opacity: 0.75;
+    }
+    .live-reading-answer {
+      margin: 0.75rem 0 0;
+      font-size: 0.95rem;
     }
     .live-reading-fallback {
       margin: 0.75rem 0 0;
@@ -281,6 +266,9 @@ const faqLd = {
       opacity: 0.5;
       cursor: default;
     }
+  </style>
+
+  <style>
     .glossary-levels,
     .glossary-faq {
       margin-top: 2.5rem;

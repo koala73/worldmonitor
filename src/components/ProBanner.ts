@@ -1,4 +1,4 @@
-import { trackGateHit } from '@/services/analytics';
+import { trackGateHit, trackProBannerClick } from '@/services/analytics';
 import { onEntitlementChange, getEntitlementState, isEntitlementActive } from '@/services/entitlements';
 import { getSubscription, onSubscriptionChange } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
@@ -275,11 +275,18 @@ export function showProBanner(container: HTMLElement): void {
   setTrustedHtml(banner, trustedHtml(`
     <span class="pro-banner-badge">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
-      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : ` — ${t('components.proBanner.tagline')}`}
+      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : `<span class="pro-banner-tagline"> — ${t('components.proBanner.tagline')}</span>`}
     </span>
     <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `, "legacy direct innerHTML migration"));
+
+  // Tracked in-app rather than via data-umami-event: the Umami tracker holds a
+  // tagged link's navigation until its send settles, and misses clicks made
+  // before it loads.
+  banner.querySelector('.pro-banner-cta')!.addEventListener('click', () => {
+    trackProBannerClick(returning ? 'lapsed' : 'upgrade');
+  });
 
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {
     e.preventDefault();

@@ -528,7 +528,13 @@ export const DEEP_HEALTHY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // Both verdicts mean "the shallow window never identified the live source":
 // NO_BUILD_IN_WINDOW when no rejection is outstanding, REJECTED_PUSH_UNKNOWN_SOURCE
 // when one is. Deepening only the first would leave the second unresolved.
-const DEEP_CANDIDATE_VERDICTS = new Set(['NO_BUILD_IN_WINDOW', 'REJECTED_PUSH_UNKNOWN_SOURCE']);
+//
+// BEHIND claims "no build and no rejection recorded", but the fleet stream
+// stops at head's commit time, so a build that failed between the serving
+// image and head is never read. On 2026-11-09 seed-gdelt-intel read BEHIND
+// while its 07:30Z build had FAILED on a GitHub 504; the deep read turns that
+// into BUILD_FAILED with the redeploy command.
+const DEEP_CANDIDATE_VERDICTS = new Set(['NO_BUILD_IN_WINDOW', 'REJECTED_PUSH_UNKNOWN_SOURCE', 'BEHIND']);
 
 /**
  * Re-read the services whose shallow window never identified a live source
@@ -588,6 +594,15 @@ export async function deepenNoBuildWindows(results, {
       // in-flight evidence, not an old build). A refused upgrade keeps the
       // shallow verdict and counts as neither reclassified nor failed — the
       // "unchanged" remainder in the caller's summary line.
+      // A shallow read that named the serving source took it from Railway's
+      // active-deployment projection. The deep read has no such marker and can
+      // pick a newer REMOVED record, so it may add a problem about that same
+      // source but never replace the source or clear the alarm.
+      if (result.runningSha
+        && (!isProblemVerdict(next.verdict) || next.runningSha !== result.runningSha)) {
+        unchanged += 1;
+        return;
+      }
       if (!isProblemVerdict(next.verdict) && next.runningSha) {
         const runningAtMs = Date.parse(next.runningAt ?? '');
         if (!Number.isFinite(runningAtMs) || now - runningAtMs > DEEP_HEALTHY_MAX_AGE_MS) {
@@ -599,7 +614,7 @@ export async function deepenNoBuildWindows(results, {
       // the shallow fact we already established. Keep that original alarm in
       // place instead of replacing it with NO_DEPLOYMENTS, UNKNOWN_STATUS, or
       // another inconclusive label.
-      if (UNDETERMINABLE_VERDICTS.includes(next.verdict)) {
+      if (UNDETERMINABLE_VERDICTS.includes(next.verdict) || next.verdict === result.verdict) {
         unchanged += 1;
         return;
       }
@@ -1046,7 +1061,7 @@ async function main() {
     // apart: reclassified (the deep read answered), failed (the read never
     // landed — a tooling problem, not fleet state), unchanged (read landed but
     // stayed inconclusive or refused a stale healthy upgrade).
-    console.error(`Deepened ${deepPass.deepened} service history read(s) whose ${window}-record window left the source unidentified (deep window ${DEEP_DEPLOYMENT_WINDOW}): ${deepPass.reclassified} reclassified, ${deepPass.failed} failed, ${deepPass.unchanged} unchanged.`);
+    console.error(`Deepened ${deepPass.deepened} service history read(s) the ${window}-record window could not settle (deep window ${DEEP_DEPLOYMENT_WINDOW}): ${deepPass.reclassified} reclassified, ${deepPass.failed} failed, ${deepPass.unchanged} unchanged.`);
   }
   if (deepPass.capped > 0) {
     console.error(`Deep pass capped at ${DEEP_PASS_MAX_CANDIDATES} candidate(s); ${deepPass.capped} kept their shallow verdict this run and retry next tick.`);

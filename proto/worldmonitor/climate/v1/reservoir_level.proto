@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package worldmonitor.climate.v1;
+
+import "sebuf/http/annotations.proto";
+
+// ReservoirLevel is the ICESat-2 water-surface level of one reservoir or
+// lake, metres above the EGM2008 geoid. Not a storage volume.
+message ReservoirLevel {
+  string id = 1;
+  string name = 2;
+  string country = 3;
+  repeated string riparians = 4;
+  string river = 5;
+  double lat = 6;
+  double lon = 7;
+  repeated string tags = 8;
+  string why = 9;
+  ReservoirLatestPass latest = 10;
+  string prev_date = 11;
+  optional double change_prev_m = 12;
+  // Changes are interpolated between overpasses, never extrapolated.
+  optional double change_30d_m = 13;
+  optional double change_90d_m = 14;
+  optional double change_365d_m = 15;
+  // Against the same time of year in at least three prior years.
+  optional double seasonal_anomaly_m = 16;
+  optional double seasonal_z = 17;
+  optional double record_min_m = 18;
+  optional double record_max_m = 19;
+  string record_start = 20;
+  optional double percent_of_range = 21;
+  bool record_low = 22;
+  bool record_high = 23;
+  // no_recent_data, record_low, record_high, falling_fast, rising_fast,
+  // low, high, normal or insufficient_history.
+  string status = 24;
+  // Last 36 months, at most one point per day.
+  repeated ReservoirLevelPoint series = 25;
+  int32 ok_pass_count = 26;
+}
+
+message ReservoirLatestPass {
+  string date = 1;
+  double level_m = 2;
+  double mad_m = 3;
+  int32 segment_count = 4;
+  int32 age_days = 5;
+}
+
+message ReservoirLevelPoint {
+  string date = 1;
+  double level_m = 2;
+}
+
+message ReservoirLevelsSource {
+  string name = 1;
+  string product = 2;
+  string url = 3;
+  string processing = 4;
+}

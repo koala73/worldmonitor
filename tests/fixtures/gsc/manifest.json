@@ -34,6 +34,14 @@
       ],
       "siteNonBrand": [
         "sa-28d-site-nonbrand.json"
+      ],
+      "queryNonBrandDevice": [
+        "sa-28d-query-nonbrand-device-0.json",
+        "sa-28d-query-nonbrand-device-1.json"
+      ],
+      "queryNonBrandPage": [
+        "sa-28d-query-nonbrand-page-0.json",
+        "sa-28d-query-nonbrand-page-1.json"
       ]
     },
     "90d": {
@@ -61,7 +69,23 @@
       ],
       "dailyNonBrand": [
         "sa-90d-daily-nonbrand.json"
+      ],
+      "queryNonBrandPage": [
+        "sa-90d-query-nonbrand-page-0.json",
+        "sa-90d-query-nonbrand-page-1.json",
+        "sa-90d-query-nonbrand-page-2.json"
       ]
+    }
+  },
+  "reviewedQueries": {
+    "28d": {
+      "world monitor pricing": "sa-28d-reviewed-pricing.json",
+      "world monitor vs gdelt": "sa-reviewed-no-rows.json",
+      "mcp server for live geopolitical intelligence": "sa-reviewed-error.json"
+    },
+    "90d": {
+      "world monitor pricing": "sa-90d-reviewed-pricing.json",
+      "world monitor vs gdelt": "sa-reviewed-no-rows.json"
     }
   },
   "urlInspection": "url-inspection.json",

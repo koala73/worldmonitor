@@ -8,7 +8,7 @@ import "sebuf/http/annotations.proto";
 message ClimateDisaster {
   // Unique event identifier.
   string id = 1;
-  // Disaster type: flood, cyclone, drought, heatwave, wildfire.
+  // Disaster type: flood, cyclone, drought, heatwave, wildfire, volcano.
   string type = 2;
   // Human-readable event name.
   string name = 3;
@@ -28,7 +28,7 @@ message ClimateDisaster {
   string status = 10;
   // Affected population when available.
   int32 affected_population = 11;
-  // Source system: GDACS, ReliefWeb, NASA FIRMS.
+  // Source system: GDACS, ReliefWeb, NASA FIRMS, EONET.
   string source = 12;
   // Source URL for drill-down.
   string source_url = 13;

@@ -17,9 +17,9 @@ export interface TerminalChartOptions {
   ariaLabel?: string;
 }
 
-// Minimal attribute escape so an ariaLabel (which may carry a ticker's display
-// string) can't break out of the aria-label="" context. Kept local to keep this
-// util dependency-free, matching sparkline.ts.
+// Escape text and attributes. An ariaLabel can carry a ticker display string,
+// and a price floor such as "<$0.00000001" must stay inside <text> rather than
+// opening a tag. Kept local to keep this util dependency-free, matching sparkline.ts.
 function escAttr(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -134,7 +134,7 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const labels = labelSpecs
     .map(
       (label) =>
-        `<text x="${labelX}" y="${label.y.toFixed(1)}" text-anchor="end" fill="${label.fill}" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
+        `<text x="${labelX}" y="${label.y.toFixed(1)}" text-anchor="end" fill="${label.fill}" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))"${label.emphasis ? ' font-weight="600"' : ''}>${escAttr(label.text)}</text>`,
     )
     .join('');
 

@@ -114,7 +114,8 @@ test('unusable, incomplete and moved diff metadata runs every Test job', () => {
   ]) {
     const result = classify(files, options);
     assert.ok(Object.values(result).every((value) => value === 'true'), JSON.stringify({ files: files.slice(0, 2), options, result }));
-    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).length);
+    // durations_key is the unit shards' cache lookup, not a path selection.
+    assert.equal(Object.keys(result).length, Object.keys(workflow.jobs.changes.outputs).filter((key) => key !== 'durations_key').length);
   }
 });
 
@@ -157,7 +158,7 @@ test('required unit aggregate rejects failed, cancelled and unexpected skips', (
   assert.deepEqual(aggregate.needs, ['changes', 'unit-shards', 'unit-built-output']);
   assert.equal(aggregate.if, 'always()');
   const shards = workflow.jobs['unit-shards'];
-  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4]);
+  assert.deepEqual(shards.strategy.matrix.shard, [1, 2, 3, 4, 5]);
   assert.equal(shards.strategy['fail-fast'], false);
   // Both halves of the data inventory run under the same change selection;
   // a built-output job gated differently would skip its suites on a code PR.

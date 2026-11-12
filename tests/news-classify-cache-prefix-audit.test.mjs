@@ -1,3 +1,9 @@
+// This compares matching classify-cache literals in scanned .ts, .mjs, .cjs,
+// .js and .json files with the canonical prefix, excluding configured
+// directories and this test's matches (#8690, section 2). The cross-file
+// literals are the contract because testing one reader or writer alone cannot
+// detect a stale copy in the CommonJS relay.
+//
 // U4 prefix-bump audit (per cache-prefix-bump-propagation-scope learning).
 //
 // The classify cache prefix lives in three independent sites:

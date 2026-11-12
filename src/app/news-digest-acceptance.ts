@@ -128,7 +128,7 @@ function isCachedEntryLive(cached: CachedDigestSummary, cacheMaxAgeMs: number): 
  * Two independent verdicts, because a degraded digest has two shapes.
  *
  * **Zero categories** is not a digest at all: every preset category renders
- * empty behind it (`newsPerFeedFallback` is off on web), so it is rejected
+ * empty behind it (web has no outage fallback), so it is rejected
  * outright. The caller throws, which routes it into the same failure path as a
  * non-200 — the breaker counts it, `lastGoodDigest` keeps whatever real digest
  * it had, and the persisted entry is untouched.

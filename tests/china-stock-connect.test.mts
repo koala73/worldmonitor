@@ -950,6 +950,25 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
   });
 
   describe('request discipline', () => {
+    it('preserves SSE request counts when both transport routes fail', async () => {
+      let proxyCalls = 0;
+      const { snapshot, log } = await fetchWithFixtures({
+        overrides: [['queryMargin.do', () => { throw new Error('timeout'); }]],
+        sseProxyUrl: 'http://user:pw@exit.example:7001',
+        proxyRequestFn: async () => {
+          proxyCalls += 1;
+          throw new Error('timeout');
+        },
+      });
+      const directCalls = log.filter((entry) => entry.url.includes('queryMargin.do')).length;
+      assert.equal(directCalls, 1);
+      assert.equal(proxyCalls, 1);
+      const source = snapshot.sources.find((entry: { id: string }) => entry.id === 'sse-margin');
+      assert.equal(source.transportStatus, 'error');
+      assert.equal(source.requestCount, directCalls + proxyCalls);
+      assert.equal(source.lastFailure.requestCount, directCalls + proxyCalls);
+    });
+
     it('always pins a date on SZSE report requests', async () => {
       const { log } = await fetchWithFixtures();
       const reportCalls = log.filter((entry) => entry.url.includes('ShowReport'));
@@ -1426,5 +1445,35 @@ describe('China Stock Connect northbound + margin (#6155)', () => {
       assert.equal(byHost.get('query.sse.com.cn'), 'https://www.sse.com.cn/home/legal/');
       assert.equal(byHost.get('www.szse.cn'), 'https://www.szse.cn/application/laws/');
     });
+  });
+});
+
+describe('Stock Connect retained failure evidence', () => {
+  it('retains the failed route and original clocks through repeated source recovery', () => {
+    const lastGood = '2026-10-25T06:50:09.020Z';
+    const failedAt = '2026-10-25T07:40:30.775Z';
+    const failed = buildChinaStockConnectSnapshot({
+      generatedAt: failedAt,
+      previousSnapshot: { sources: [{ id: 'sse-margin', lastSuccessAt: lastGood }] },
+      outcomes: [{ sourceId: 'sse-margin', ok: false, errorCode: 'TIMEOUT',
+        requestCount: 2, transportPath: 'proxy', fallbackReason: 'ETIMEDOUT',
+        proxyFailureReason: 'TIMEOUT', body: 'secret' }],
+    });
+    const expected = { checkedAt: failedAt, lastSuccessAt: lastGood,
+      errorCode: 'TIMEOUT', requestCount: 2, transportPath: 'proxy',
+      fallbackReason: 'ETIMEDOUT', proxyFailureReason: 'TIMEOUT' };
+    let previousSnapshot = failed;
+    for (const generatedAt of ['2026-10-25T08:30:53.998Z', '2026-10-25T09:20:00.000Z']) {
+      previousSnapshot = buildChinaStockConnectSnapshot({
+        generatedAt, previousSnapshot,
+        outcomes: [{ sourceId: 'sse-margin', ok: true, requestCount: 1,
+          observations: [{ tradeDate: '2026-10-23' }] }],
+      });
+      const source = previousSnapshot.sources.find((entry) => entry.id === 'sse-margin');
+      assert.deepEqual(source.lastFailure, expected);
+      assert.equal(source.lastSuccessAt, generatedAt);
+      assert.equal(source.errorCode, null);
+      assert.equal(source.transportStatus, 'ok');
+    }
   });
 });

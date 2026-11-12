@@ -384,8 +384,8 @@ class SignalAggregator {
         lon: 0,
         severity,
         title: country.newEntryCount > 0
-          ? `${country.newEntryCount} designation ID${country.newEntryCount === 1 ? '' : 's'} added since the prior snapshot for ${country.countryName} (OFAC / Canada SEMA)`
-          : `${country.entryCount} sanctions designations tied to ${country.countryName} (OFAC / Canada SEMA)`,
+          ? `${country.newEntryCount} designation ID${country.newEntryCount === 1 ? '' : 's'} added since the prior snapshot for ${country.countryName} (OFAC)`
+          : `${country.entryCount} sanctions designations tied to ${country.countryName} (OFAC)`,
         timestamp: new Date(),
       });
     }

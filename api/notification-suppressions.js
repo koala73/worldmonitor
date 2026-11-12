@@ -168,7 +168,7 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: cors });
   }
   if (req.method !== 'GET') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return jsonResponse({ error: 'Method not allowed' }, 405, { ...cors, Allow: 'GET, OPTIONS' });
   }
   // The service worker never sends a query. Refusing one keeps the shared
   // cache keyed on the path alone, so a random `?bust=` cannot turn this

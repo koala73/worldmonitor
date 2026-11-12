@@ -73,7 +73,7 @@ For archival research, examine a provider's historical datasets and access terms
 
 ## What is free, and when should you use another tool?
 
-WorldMonitor's public dashboard is a free starting point for comparing aircraft observations with geographic and conflict context. Hosted analyst, integration, and other paid capabilities have separate requirements; check the [current plans](https://www.worldmonitor.app/pro#pricing). Open-source availability does not remove provider terms or credentials needed for self-hosting.
+WorldMonitor's public dashboard is a free starting point for comparing aircraft observations with geographic and conflict context. Hosted analyst, integration, and other paid capabilities have separate requirements; check the [current plans](https://www.worldmonitor.app/pro#pricing). Open-source availability does not remove provider terms or credentials needed for [self-hosting](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/).
 
 Choose WorldMonitor when you want to read aircraft activity alongside other signals. For detailed flight replay or a specialized aircraft-history query, check a dedicated provider's coverage, retention, and access terms. Neither type of tool can guarantee visibility of all military flights.
 

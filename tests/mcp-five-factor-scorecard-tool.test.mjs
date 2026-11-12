@@ -67,7 +67,10 @@ describe('get_five_factor_scorecard MCP tool', () => {
     assert.equal(tool.inputSchema.properties.members.minItems, 2);
     assert.equal(tool.inputSchema.properties.members.maxItems, 30);
     assert.equal(tool.inputSchema.properties.members.uniqueItems, true);
-    assert.equal(tool.inputSchema.properties.members.items.pattern, '^[A-Z]{2}$');
+    // Members resolve through the shared country resolver (#9722), so a
+    // schema pattern would make strict clients refuse names before the call.
+    assert.equal(tool.inputSchema.properties.members.items.pattern, undefined);
+    assert.equal(tool.inputSchema.properties.country_code.pattern, undefined);
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.id);
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.label);
     assert.ok(documentedOutputSchema(tool).properties.scorecard.properties.includedMembers);

@@ -2,7 +2,44 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { findNearestHazard, haversineKm } from '../scripts/seed-chokepoint-flows.mjs';
-import { adaptDisruptionFeature } from '../scripts/seed-portwatch-disruptions.mjs';
+import { adaptDisruptionFeature, fetchAll } from '../scripts/seed-portwatch-disruptions.mjs';
+
+describe('disruptions request failures', () => {
+  it('records the query, response headers and ArcGIS details while preserving rejection', async (t) => {
+    const warnings = [];
+    t.mock.method(console, 'warn', (line) => warnings.push(line));
+    const fetch = t.mock.method(globalThis, 'fetch', async () => Response.json({
+      error: { code: 400, message: 'Invalid URL', details: ['Invalid query parameters.'] },
+    }, { headers: { 'retry-after': '60', 'set-cookie': 'private=value' } }));
+
+    await assert.rejects(fetchAll(), { message: 'ArcGIS disruptions error: Invalid URL' });
+
+    const record = JSON.parse(warnings[0]);
+    assert.equal(record.event, 'portwatch_request_failure');
+    assert.equal(record.phase, 'arcgis');
+    assert.match(record.query.where, /^todate > timestamp '/);
+    assert.equal(record.status, 200);
+    assert.equal(record.headers['retry-after'], '60');
+    assert.equal(record.headers['set-cookie'], undefined);
+    assert.deepEqual(record.arcgisError.details, ['Invalid query parameters.']);
+    assert.equal(fetch.mock.callCount(), 1);
+  });
+
+  it('records nested transport causes and throws the original error', async (t) => {
+    const warnings = [];
+    t.mock.method(console, 'warn', (line) => warnings.push(line));
+    const error = new TypeError('fetch failed', { cause: Object.assign(new Error('connect timed out'), { code: 'ETIMEDOUT' }) });
+    const fetch = t.mock.method(globalThis, 'fetch', async () => { throw error; });
+
+    await assert.rejects(fetchAll(), (actual) => actual === error);
+
+    const record = JSON.parse(warnings[0]);
+    assert.equal(record.route, 'direct');
+    assert.equal(record.phase, 'fetch');
+    assert.equal(record.causes[1].code, 'ETIMEDOUT');
+    assert.equal(fetch.mock.callCount(), 1);
+  });
+});
 
 // The seeder-source and hazard-integration assertions that used to open this
 // file restated export declarations, Redis keys, and the ArcGIS query string.

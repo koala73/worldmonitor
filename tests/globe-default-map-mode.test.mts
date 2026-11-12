@@ -60,7 +60,7 @@ describe('default map mode', () => {
     );
     assert.match(
       mapContainer,
-      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await loadMapLibreCss\(\)[\s\S]*await import\('\.\/DeckGLMap'\)/,
+      /createDeckGLMap\(token: number\)[\s\S]*Initializing deck\.gl map \(desktop mode\)[\s\S]*await Promise\.all\(\[\s*loadMapLibreCss\(\),\s*import\('\.\/DeckGLMap'\),?\s*\]\)/,
       'DeckGL should be the primary non-globe desktop renderer and load its runtime on demand',
     );
     assert.match(

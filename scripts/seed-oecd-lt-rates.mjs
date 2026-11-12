@@ -6,10 +6,10 @@
 // fallback; non-EU markets are FRED-only. FRED requests are staggered per the
 // repo's FRED-pacing convention.
 
-import { CHROME_UA, sleep } from './_seed-utils.mjs';
+import { CHROME_UA, fredFetchJson, resolveProxyForConnect, sleep } from './_seed-utils.mjs';
 import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
-import { ECB_IRS_URL, OECD_LT_MARKETS, OECD_LT_MAX_CONTENT_AGE_MIN, parseEcbIrsCsv, parseFredCsv, buildOecdLtPayload, declareOecdRecords, oecdLatestContentMeta, oecdContentFreshness } from './lib/yield-curves/oecd-lt.mjs';
+import { ECB_IRS_URL, OECD_LT_MARKETS, OECD_LT_MAX_CONTENT_AGE_MIN, parseEcbIrsCsv, parseFredCsv, parseFredObservations, buildOecdLtPayload, declareOecdRecords, oecdLatestContentMeta, oecdContentFreshness } from './lib/yield-curves/oecd-lt.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -22,12 +22,13 @@ export const OECD_LT_LATEST_KEY = 'economic:yield-curve:oecd-lt:v1:latest';
 // source-aware, see OECD_LT_SOURCE_BUDGET_MIN.
 const TTL_SECONDS = 7 * 24 * 60 * 60;
 const MAX_STALE_MIN = 4320;
+const FRED_API_BASE = 'https://api.stlouisfed.org/fred/series/observations';
 const FRED_CSV_BASE = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id=';
 const STAGGER_MS = 150;
 
-async function fetchEcbIrsSeries() {
+async function fetchEcbIrsSeries(fetchFn) {
   try {
-    const response = await fetch(ECB_IRS_URL, {
+    const response = await fetchFn(ECB_IRS_URL, {
       headers: { Accept: 'text/csv, text/plain, */*', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(30_000),
     });
@@ -45,20 +46,38 @@ async function fetchEcbIrsSeries() {
   }
 }
 
-export async function fetchOecdLtRates() {
-  const ecb = await fetchEcbIrsSeries();
+// The keyed API is the primary route. The public fredgraph.csv export stopped
+// answering scripted clients for days at a time (every run from 2026-11-02 to
+// 2026-11-05 timed out on its first series) while the API answered in under a
+// second, so the export is only the keyless fallback for self-hosts.
+async function fetchFredMonthly(seriesId, { apiKey, fredJson, proxyAuth, fetchFn }) {
+  if (apiKey) {
+    const params = new URLSearchParams({ series_id: seriesId, api_key: apiKey, file_type: 'json' });
+    return parseFredObservations(await fredJson(`${FRED_API_BASE}?${params}`, proxyAuth));
+  }
+  const response = await fetchFn(`${FRED_CSV_BASE}${seriesId}`, {
+    headers: { Accept: 'text/csv, text/plain, */*', 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`FRED ${seriesId} HTTP ${response.status}`);
+  return parseFredCsv(await response.text());
+}
+
+export async function fetchOecdLtRates({
+  apiKey = process.env.FRED_API_KEY,
+  fredJson = fredFetchJson,
+  proxyAuth = apiKey ? resolveProxyForConnect() : null,
+  fetchFn = globalThis.fetch,
+  staggerMs = STAGGER_MS,
+} = {}) {
+  const ecb = await fetchEcbIrsSeries(fetchFn);
   const series = {};
   for (const [market, seriesId] of Object.entries(OECD_LT_MARKETS)) {
-    const response = await fetch(`${FRED_CSV_BASE}${seriesId}`, {
-      headers: { Accept: 'text/csv, text/plain, */*', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) throw new Error(`FRED ${seriesId} HTTP ${response.status}`);
-    const points = parseFredCsv(await response.text());
+    const points = await fetchFredMonthly(seriesId, { apiKey, fredJson, proxyAuth, fetchFn });
     if (points.length === 0) throw new Error(`FRED ${seriesId} parsed no observations`);
     series[market] = points;
     console.log(`  OECD ${market} (${seriesId}): ${points.length} months, latest ${points.at(-1).date}`);
-    await sleep(STAGGER_MS);
+    await sleep(staggerMs);
   }
   const payload = buildOecdLtPayload({ fred: series, ecb });
   const marketCount = Object.keys(payload.countries).length;

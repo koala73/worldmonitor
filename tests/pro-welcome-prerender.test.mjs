@@ -168,6 +168,43 @@ test('sections state a price or percentage the audit credits', { skip }, () => {
   const gps = passageAfter('GPS jamming zones');
   assert.match(gps, /at least 2% of aircraft/);
   assert.ok(gps.split(/\s+/).length >= 40, `GPS card is under 40 words: ${gps}`);
+  const depth = JSON.parse(readFileSync(new URL('../pro-test/src/generated/depth-stats.json', import.meta.url), 'utf8'));
+  const risk = passageAfter('Explain a country-risk move');
+  assert.ok(risk.includes(`ranked for ${depth.resilienceRanked} of ${copy.resilienceUniverse} countries, about ${copy.resilienceRankedPct}%,`), risk);
+  assert.equal(copy.resilienceRankedPct, Math.round((depth.resilienceRanked / copy.resilienceUniverse) * 100));
+  assert.ok(risk.split(/\s+/).length >= 40, `country-risk card is under 40 words: ${risk}`);
+});
+
+// The dates in the Voices subtitle are the publication dates in the cited URLs.
+test('Voices subtitle dates the press it names', { skip }, async () => {
+  const { THE_ATLANTIC_URL, EL_PAIS_URL } = await import('../shared/press.ts');
+  assert.match(THE_ATLANTIC_URL, /\/2026\/03\//);
+  assert.match(EL_PAIS_URL, /\/2026-03-16\//);
+  const { content } = welcomeRoot();
+  const at = content.indexOf('>What people say about World Monitor</h2>');
+  assert.ok(at >= 0, 'missing Voices heading');
+  const sub = tagsToText(content.slice(at).match(/<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '', '');
+  assert.match(sub, /The Atlantic wrote about it on 14 March 2026 and El País two days later/);
+  assert.ok(sub.split(/\s+/).length >= 40, `Voices subtitle is under 40 words: ${sub}`);
+});
+
+// geo.new's YMYL disclaimer check (EAT-18) reads only the main text, and only
+// about the first 2,500 words of the page (its word count stayed at ~2,506 while
+// the page grew to ~3,100). Under the FAQ the line sat near word 2,930 and was
+// never seen, so it lives under the pricing teaser, once, and not in the footer.
+test('the not-advice line sits early in <main>, under the pricing teaser, once', { skip }, () => {
+  const html = welcomeHtml();
+  const line = /World Monitor is for informational purposes only and is not financial, investment, legal, security or safety advice\./g;
+  assert.equal(tagsToText(html, ' ').replace(/\s+/g, ' ').match(line)?.length, 1);
+  const main = html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+  const pricing = main.slice(main.indexOf('id="pricing"'), main.indexOf('id="faq"'));
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), line);
+  assert.match(tagsToText(pricing, ' ').replace(/\s+/g, ' '), /consult a qualified professional/);
+  const body = html.slice(html.indexOf('<body')).replace(/<(script|style|noscript)[\s\S]*?<\/\1>/g, ' ');
+  const words = tagsToText(body, ' ').split(/\s+/).filter(Boolean);
+  const at = words.join(' ').indexOf('World Monitor is for informational purposes only');
+  const position = words.join(' ').slice(0, at).split(' ').length;
+  assert.ok(position < 2400, `the not-advice line starts at word ${position}, past the ~2,500 words geo.new reads`);
 });
 
 // The FAQ figures live inside <details> answers, which geo.new did not credit
@@ -245,7 +282,7 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(rootContent, /Launch the dashboard/);
   assert.match(rootContent, /Open source · AGPL-3\.0/);
   assert.match(rootContent, /href="\/blog\/posts\/worldmonitor-is-not-palantir\/"/);
-  assert.match(rootContent, /WorldMonitor is not an open-source Palantir/);
+  assert.match(rootContent, /World Monitor is not an open-source Palantir/);
   assert.match(rootContent, /Which World Monitor license do I need\?/);
   assert.match(rootContent, /API Business lets that organization embed World Monitor data/);
   assert.match(rootContent, /href="\/docs\/terms"[^>]*>worldmonitor\.app\/docs\/terms<\/a>/);
@@ -283,17 +320,35 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
 });
 
 // React skips the image preload for an <img> inside <picture>, so without the
-// prerender's head tag the LCP hero waits for the body parser to reach it.
+// prerender's head tags the LCP hero waits for the body parser to reach it.
+// Since #9921 the screenshot sits in the first screen on phones too, so it is
+// the LCP there as well: phones get their own source and preload.
 test('built welcome head preloads the hero AVIF srcset the <picture> serves', { skip }, () => {
   const html = welcomeHtml();
   const head = html.slice(0, html.indexOf('</head>'));
-  // Desktop only: on phones the <h1> is the LCP and the screenshot is far below the fold.
   const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(min-width: 640px\)" imagesrcset="([^"]+)" imagesizes="([^"]+)" fetchpriority="high">/);
-  assert.ok(preload, 'welcome <head> should preload the hero AVIF');
-  const source = welcomeRoot().content.match(/<picture><source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
-  assert.ok(source, 'hero <picture> should carry an AVIF <source>');
+  assert.ok(preload, 'welcome <head> should preload the desktop hero AVIF');
+  const source = welcomeRoot().content.match(/<source type="image\/avif" srcSet="([^"]+)" sizes="([^"]+)"\/>/);
+  assert.ok(source, 'hero <picture> should carry a desktop AVIF <source>');
   assert.equal(preload[1], source[1], 'preload imagesrcset must match the rendered <source>');
   assert.equal(preload[2], source[2], 'preload imagesizes must match the rendered <source>');
+});
+
+// On a phone the hero frame is under 640 CSS px wide, but sizes x DPR picked
+// the 960w or 1280w variant (35-54KB) and the LCP waited ~0.9s on its download.
+// The 640w AVIF is 18KB and still about 1.7x density at that width.
+test('phones get the 640w hero AVIF, preloaded', { skip }, () => {
+  const html = welcomeHtml();
+  const head = html.slice(0, html.indexOf('</head>'));
+  const picture = welcomeRoot().content.match(/<picture>([\s\S]*?)<\/picture>/);
+  assert.ok(picture, 'hero should render a <picture>');
+  const sources = [...picture[1].matchAll(/<source [^>]+\/>/g)].map(([tag]) => tag);
+  assert.match(sources[0], /^<source type="image\/avif" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.avif"\/>$/);
+  assert.match(sources[1], /^<source type="image\/webp" media="\(max-width: 639px\)" srcSet="\/pro\/assets\/worldmonitor-7-mar-2026-640-[^"]+\.webp"\/>$/);
+  const mobileAvif = sources[0].match(/srcSet="([^"]+)"/)[1];
+  const preload = head.match(/<link rel="preload" as="image" type="image\/avif" media="\(max-width: 639px\)" href="([^"]+)" fetchpriority="high">/);
+  assert.ok(preload, 'welcome <head> should preload the phone hero AVIF');
+  assert.equal(preload[1], mobileAvif, 'phone preload must match the rendered phone <source>');
 });
 
 // Mobile audits fail any rendered text under 12px (0.75rem at the 16px root).
@@ -336,7 +391,7 @@ test('welcome JSON-LD author is visibly credited in the rendered page', { skip }
   assert.equal(application.author?.['@id'], `${CANONICAL_ORIGIN}blog/authors/elie-habib/#person`);
   assert.match(
     welcomeRoot().content,
-    new RegExp(`<a href="${CANONICAL_ORIGIN}blog/authors/elie-habib/"[^>]*>${application.author.name}</a>`),
+    new RegExp(`<a href="/blog/authors/elie-habib/"[^>]*>${application.author.name}</a>`),
   );
 });
 
@@ -365,12 +420,27 @@ test('built welcome root hides no SSR content and links every primary reference 
     '/crises/',
     '/tools/',
     '/blog/',
-    'https://www.worldmonitor.app/docs/documentation',
+    '/docs/documentation',
     '/pro#pricing',
     'https://github.com/koala73/worldmonitor',
   ]) {
     assert.ok(anchorHrefs.has(href), `visible welcome content should contain an <a href="${href}">`);
   }
+  // One spelling per destination: the page only renders on www, and mixing
+  // `/blog/` with `https://www.worldmonitor.app/blog/` reads to audits as one
+  // link text pointing at two targets.
+  const absoluteSameSite = [...anchorHrefs].filter((href) => href.startsWith(CANONICAL_ORIGIN));
+  assert.deepEqual(absoluteSameSite, [], 'same-site welcome links should be root-relative');
+});
+
+test('built welcome page exposes a banner landmark and names every footer link', { skip }, () => {
+  const { content: rootContent } = welcomeRoot();
+  assert.match(rootContent, /<header><nav data-wm-nav="primary"/, 'the fixed nav should sit in a <header> banner landmark');
+  // The audience guides are reachable from the primary nav, not only from the task cards.
+  const nav = rootContent.slice(rootContent.indexOf('<nav data-wm-nav="primary"'), rootContent.indexOf('</nav>'));
+  assert.match(nav, /<a\b[^>]*href="\/use-cases\/"[^>]*>Use cases<\/a>/);
+  assert.match(rootContent, /href="https:\/\/x\.com\/worldmonitorai"[^>]*>X \(Twitter\)<\/a>/);
+  assert.doesNotMatch(rootContent, />X<\/a>/, 'a bare "X" link text is not descriptive');
 });
 
 test('built welcome page prerenders task routes and agent discovery links', { skip }, () => {
@@ -395,6 +465,39 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     );
   }
   assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?/);
+
+  // Each trail also links the monitoring workflow written for that job, so a
+  // reader who picked the question can reach its audience page from the homepage.
+  // Scoped per card: the workflow link must sit in the card of its own evidence route.
+  const taskSection = rootContent.slice(taskIndex, liveIndex);
+  const workflowLinks = [
+    ['crises', 'verify-breaking-news', 'welcome-task-verify-workflow'],
+    ['chokepoints', 'monitor-supply-chain-disruptions', 'welcome-task-chokepoint-workflow'],
+    ['countries', 'monitor-country-risk', 'welcome-task-country-risk-workflow'],
+  ];
+  const cardStarts = workflowLinks.map(([route]) => taskSection.indexOf(`href="/${route}/"`));
+  workflowLinks.forEach(([route, slug, target], index) => {
+    assert.ok(cardStarts[index] >= 0, `task card for /${route}/ should be prerendered`);
+    const card = taskSection.slice(cardStarts[index], cardStarts[index + 1] ?? taskSection.length);
+    const workflowTag = card.match(new RegExp(`<a\\b[^>]*href="/use-cases/${slug}/"[^>]*>`))?.[0];
+    assert.ok(workflowTag, `the /${route}/ card should link /use-cases/${slug}/`);
+    assert.match(workflowTag, /data-umami-event="welcome-cta"/);
+    assert.match(workflowTag, new RegExp(`data-umami-event-target="${target}"`));
+    // Three links share the visible label, so each accessible name must include its card title.
+    const labelledBy = /aria-labelledby="([^"]+)"/.exec(workflowTag)?.[1]?.split(/\s+/) ?? [];
+    assert.equal(labelledBy.length, 2, `/${slug}/ link should be named by its label and its card title`);
+    const [labelText, titleText] = labelledBy.map((id) => {
+      const text = new RegExp(`id="${id}"[^>]*>([^<]+)<`).exec(card)?.[1]?.trim();
+      assert.ok(text, `#${id} should exist with text inside the /${route}/ card`);
+      return text;
+    });
+    assert.equal(labelText, 'Step-by-step workflow');
+    assert.match(card, new RegExp(`<h3\\b[^>]*id="${labelledBy[1]}"[^>]*>${titleText}</h3>`));
+  });
+  // A card is not one big anchor any more; nested anchors are invalid HTML and
+  // the parser would split them, so the workflow link must sit outside the
+  // evidence link.
+  assert.doesNotMatch(taskSection, /<a\b(?:(?!<\/a>)[\s\S])*<a\b/);
 
   // #8603 replaced the utm_content tag on these with an Umami attribute. The
   // noise-key 308 is bot-gated (middleware.ts), so a human always kept the
@@ -431,7 +534,7 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
     // #8603: the bare api host root is a 308 to the www homepage, so the card
     // now links the API reference itself, and its displayed string tracks the
     // destination — see the display assertion below.
-    /href="https:\/\/www\.worldmonitor\.app\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
+    /href="\/docs\/api-reference"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
     /href="\/\?mode=agent"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-view"/,
   ];
   for (const linkPattern of agentLinks) {
@@ -443,14 +546,14 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   for (const [href, display] of [
     ['/llms.txt', '/llms.txt'],
     ['https://worldmonitor.app/mcp', 'worldmonitor.app/mcp'],
-    ['https://www.worldmonitor.app/docs/api-reference', 'worldmonitor.app/docs/api-reference'],
+    ['/docs/api-reference', '/docs/api-reference'],
     ['/?mode=agent', '/?mode=agent'],
   ]) {
     const escapeRe = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     // Two bounds, both load-bearing. `[^>]*>` forces the match past the end
     // of the opening tag, because an absolute href CONTAINS its own display
-    // string (https://www.worldmonitor.app/docs/api-reference contains
-    // worldmonitor.app/docs/api-reference) and without it this passed
+    // string (https://worldmonitor.app/mcp contains worldmonitor.app/mcp)
+    // and without it this passed
     // vacuously against the very attribute it exists to compare. Refusing to
     // cross the closing tag keeps it inside the one card, so it cannot pass on
     // a neighbouring card's display string either.
@@ -482,7 +585,7 @@ test('hero proof rail renders measured numerals with extractable labels', { skip
     [String(facts.heroProofStats.mapLayers), 'Map layer types'],
     [String(facts.heroProofStats.feeds), 'News &amp; OSINT feeds'],
     [String(facts.heroProofStats.providers), 'Attributed providers'],
-    [String(facts.heroProofStats.alertOrigins), 'Independent alert origins'],
+    [String(facts.depthProofStats.mcpTools), 'MCP tools'],
   ]) {
     assert.ok(content.includes(`>${value}</div>`), `hero rail must render the numeral ${value}`);
     assert.ok(content.includes(label), `hero rail must label the numeral ${label}`);
@@ -491,6 +594,7 @@ test('hero proof rail renders measured numerals with extractable labels', { skip
   assert.ok(railStart > 0, 'hero proof rail markup must be present');
   const rail = content.slice(railStart, content.indexOf('mt-8 flex', railStart));
   assert.doesNotMatch(rail, />(Shared|Curated|Attributed)</, 'hero numeral slots must not render adjectives');
+  assert.doesNotMatch(rail, /Independent alert origins/, 'a five-origin count beside 800+ providers reads as thin');
 });
 
 test('homepage answers "What is World Monitor?" and carries page date metadata', { skip }, () => {

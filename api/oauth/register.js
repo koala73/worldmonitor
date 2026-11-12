@@ -5,8 +5,8 @@ import { getClientRateLimitKey, RATE_LIMIT_DEGRADED_HEADERS, rateLimitErrorLevel
 import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+import { loadUpstashRatelimit } from '../_upstash-ratelimit.js';
+import { upstashRedisOptions } from '../_upstash-redis-options.js';
 import { isAllowedRedirectUri } from './_redirect-uri.js';
 
 export const config = { runtime: 'edge' };
@@ -68,13 +68,14 @@ function jsonResp(body, status = 200) {
 }
 
 let _rl = null;
-function getRatelimit() {
+async function getRatelimit() {
   if (_rl) return _rl;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
+  const { Ratelimit, Redis } = await loadUpstashRatelimit();
   _rl = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(5, '60 s'),
     prefix: 'rl:oauth-register',
     analytics: false,
@@ -108,13 +109,13 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
   if (req.method !== 'POST') {
-    return jsonResp({ error: 'method_not_allowed' }, 405);
+    return jsonResponse({ error: 'method_not_allowed' }, 405, { ...corsHeaders, Allow: 'POST, OPTIONS' });
   }
 
   let admission;
   let missingConfig = false;
   try {
-    const rl = getRatelimit();
+    const rl = await getRatelimit();
     missingConfig = !rl;
     if (rl) admission = await rl.limit(`ip:${getClientRateLimitKey(req)}`);
   } catch { /* Missing admission is unavailable, never permission to persist. */ }

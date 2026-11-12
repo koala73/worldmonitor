@@ -6,9 +6,9 @@ const VIEWPORT_HEIGHT = 800;
 const TEST_STATE_INITIALIZED_KEY = '__desktop_bottom_zone_test_initialized';
 
 /**
- * #6426/#6417: desktop and web now share one 900px split-layout threshold.
- * Saved bottom-set panels must enter #mapBottomGrid at 900px and return to
- * #panelsGrid at 899px on both runtimes. The earlier desktop-only class and
+ * #6426/#6417: desktop and web now share one 1440px split-layout threshold.
+ * Saved bottom-set panels must enter #mapBottomGrid at 1440px and return to
+ * #panelsGrid at 1439px on both runtimes. The earlier desktop-only class and
  * web-only 1600px seam no longer exist.
  *
  * The web bundle is booted in desktop mode through isDesktopRuntime()'s
@@ -64,8 +64,8 @@ test.describe('desktop bottom zone at the shared split threshold', () => {
     await clearDashboardState(page);
   });
 
-  test('saved bottom-set panel follows the 899px/900px seam', async ({ page }) => {
-    await prepareDashboard(page, 1200);
+  test('saved bottom-set panel follows the 1439px/1440px seam', async ({ page }) => {
+    await prepareDashboard(page, 1536);
 
     // Discover a real panel id in this variant, then persist it as the
     // bottom set the same way savePanelOrder() does. Both keys are needed:
@@ -80,23 +80,23 @@ test.describe('desktop bottom zone at the shared split threshold', () => {
     const seeded = page.locator(panelIn('mapBottomGrid', panelId));
     await expect(seeded).toBeVisible({ timeout: 60_000 });
 
-    // The desktop threshold is inclusive: 900px keeps the panel in the
-    // bottom zone, while 899px moves it back to the main grid.
-    await page.setViewportSize({ width: 900, height: VIEWPORT_HEIGHT });
+    // The desktop threshold is inclusive: 1440px keeps the panel in the
+    // bottom zone, while 1439px moves it back to the main grid.
+    await page.setViewportSize({ width: 1440, height: VIEWPORT_HEIGHT });
     await expect(seeded).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(panelIn('panelsGrid', panelId))).toHaveCount(0);
 
-    await page.setViewportSize({ width: 899, height: VIEWPORT_HEIGHT });
+    await page.setViewportSize({ width: 1439, height: VIEWPORT_HEIGHT });
     await expect(page.locator(panelIn('panelsGrid', panelId))).toBeVisible({ timeout: 30_000 });
     await expect(seeded).toHaveCount(0);
 
     // Returning to the shared threshold restores the remembered placement.
-    await page.setViewportSize({ width: 900, height: VIEWPORT_HEIGHT });
+    await page.setViewportSize({ width: 1440, height: VIEWPORT_HEIGHT });
     await expect(seeded).toBeVisible({ timeout: 30_000 });
   });
 
   test('empty bottom zone stays collapsed in the desktop band', async ({ page }) => {
-    await prepareDashboard(page, 1200);
+    await prepareDashboard(page, 1536);
 
     const metrics = await page.evaluate(() => {
       const grid = document.getElementById('mapBottomGrid');
@@ -114,19 +114,19 @@ test.describe('web bottom zone at the shared split threshold', () => {
     await clearDashboardState(page);
   });
 
-  test('moves saved panels between the main and bottom grids at 899px/900px', async ({ page }) => {
-    await prepareDashboard(page, 899);
+  test('moves saved panels between the main and bottom grids at 1439px/1440px', async ({ page }) => {
+    await prepareDashboard(page, 1439);
     const panelId = await seedBottomPanel(page);
     const seeded = page.locator(panelIn('mapBottomGrid', panelId));
 
     await expect(page.locator('#mapBottomGrid')).toBeHidden();
     await expect(page.locator(panelIn('panelsGrid', panelId))).toBeVisible({ timeout: 30_000 });
 
-    await page.setViewportSize({ width: 900, height: VIEWPORT_HEIGHT });
+    await page.setViewportSize({ width: 1440, height: VIEWPORT_HEIGHT });
     await expect(seeded).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(panelIn('panelsGrid', panelId))).toHaveCount(0);
 
-    await page.setViewportSize({ width: 899, height: VIEWPORT_HEIGHT });
+    await page.setViewportSize({ width: 1439, height: VIEWPORT_HEIGHT });
     await expect(page.locator('#mapBottomGrid')).toBeHidden();
     await expect(page.locator(panelIn('panelsGrid', panelId))).toBeVisible({ timeout: 30_000 });
   });

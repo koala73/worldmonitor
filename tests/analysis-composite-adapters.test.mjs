@@ -67,17 +67,19 @@ describe('exposure event adapters', () => {
     assert.match(events[0].name, /Sahel/);
   });
 
-  it('maps UCDP events to conflict exposure events, newest first', () => {
+  it('maps precise UCDP events to conflict exposure events, newest first', () => {
     const events = ucdpEventsToExposureEvents({
       events: [
-        { id: 7, country: 'Sudan', location: { latitude: 15.5, longitude: 32.5 }, dateStart: '2026-07-20' },
-        { id: 8, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-25' },
-        { id: 9, country: 'Nowhere' },
+        { id: 7, country: 'Sudan', location: { latitude: 15.5, longitude: 32.5 }, dateStart: '2026-07-20', hasPreciseLocation: true },
+        { id: 8, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-25', hasPreciseLocation: true },
+        { id: 10, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-26', hasPreciseLocation: false },
+        { id: 11, country: 'Mali', location: { latitude: 17.6, longitude: -4.0 }, dateStart: '2026-07-27' },
+        { id: 9, country: 'Nowhere', hasPreciseLocation: true },
       ],
     }, 5);
-    assert.equal(events.length, 2);
-    assert.equal(events[0].id, '8', 'newest first');
+    assert.deepEqual(events.map((e) => e.id), ['8', '7'], 'newest precise events only');
     assert.equal(events[0].type, 'conflict');
+    assert.equal(events[0].reportedCountry, 'Mali');
     assert.match(events[0].name, /Mali/);
   });
 
@@ -85,6 +87,68 @@ describe('exposure event adapters', () => {
     assert.deepEqual(earthquakesToExposureEvents(null), []);
     assert.deepEqual(firesToExposureEvents(undefined), []);
     assert.deepEqual(ucdpEventsToExposureEvents({}), []);
+  });
+
+  it('folds rounded UCDP locations before capping and counts older matches beyond the cap', () => {
+    const at = (id, latitude, dateStart) => ({
+      id, country: 'Ukraine', locationName: 'Kyiv city', dateStart,
+      location: { latitude, longitude: 30.52 }, hasPreciseLocation: true,
+    });
+    const payload = { events: [
+      at(643820, 50.45, '2026-07-28'),
+      at('other', 50.451, '2026-07-27'),
+      at(643824, 50.4500004, '2026-07-26'),
+    ] };
+    const events = ucdpEventsToExposureEvents(payload, 1);
+    assert.deepEqual(events.map(({ id, name, eventCount }) => ({ id, name, eventCount })), [
+      { id: '643820', name: 'Kyiv city, Ukraine', eventCount: 2 },
+    ]);
+    assert.equal(ucdpEventsToExposureEvents(payload, Infinity).length, 2);
+    assert.deepEqual(ucdpEventsToExposureEvents(payload, 0), []);
+  });
+
+  it('folds conflicts at three decimals but preserves distinct nearby locations', () => {
+    const events = [[50.4501, 30.5231], [50.4504, 30.5234], [50.452, 30.523]].map(([latitude, longitude], id) => ({
+      id, country: 'Ukraine', locationName: 'Kyiv', dateStart: '2026-07-28',
+      location: { latitude, longitude }, hasPreciseLocation: true,
+    }));
+    assert.deepEqual(ucdpEventsToExposureEvents({ events }).map(e => e.eventCount), [2, 1]);
+  });
+
+  it('names Gaza conflicts for their PSE density while retaining the reported country', () => {
+    const [event] = ucdpEventsToExposureEvents({ events: [{
+      id: 'gaza', country: 'Israel', locationName: 'Gaza town',
+      location: { latitude: 31.52, longitude: 34.45 }, hasPreciseLocation: true,
+    }] });
+    assert.equal(event.name, 'Gaza town, Palestine');
+    assert.equal(event.reportedCountry, 'Israel');
+  });
+
+  it('uses current UCDP country names and handles missing place or country names', () => {
+    const events = ucdpEventsToExposureEvents({ events: [
+      { country: 'Yemen (North Yemen)' },
+      { country: 'DR Congo (Zaire)', locationName: 'Goma' },
+      { country: ' ', locationName: 'Unnamed village' },
+      {},
+    ].map((event, i) => ({ ...event, location: { latitude: 50.45 + i / 100, longitude: 30.52 }, hasPreciseLocation: true })) });
+    assert.deepEqual(events.map(({ name, reportedCountry, eventCount }) => [name, reportedCountry, eventCount]), [
+      ['Conflict event — Yemen', 'Yemen', 1],
+      ['Goma, DR Congo', 'DR Congo', 1],
+      ['Unnamed village', undefined, 1],
+      ['Conflict event', undefined, 1],
+    ]);
+  });
+
+  it('checks estimate eligibility before grouping locations and applying the cap', () => {
+    const point = { location: { latitude: 50.45, longitude: 30.52 }, hasPreciseLocation: true };
+    const events = ucdpEventsToExposureEvents({ events: [
+      { ...point, id: 'unsupported', country: 'Chile', dateStart: '2026-07-30' },
+      { ...point, id: 'invalid-point', country: 'Ukraine', location: { latitude: 91, longitude: 30.52 }, dateStart: '2026-07-29' },
+      { ...point, id: 'supported', country: 'Ukraine', dateStart: '2026-07-28' },
+      { ...point, id: 'older-unsupported', country: 'Chile', dateStart: '2026-07-27' },
+      { ...point, id: 'older-supported', country: 'Ukraine', dateStart: '2026-07-26' },
+    ] }, 1);
+    assert.deepEqual(events.map(({ id, eventCount }) => [id, eventCount]), [['supported', 2]]);
   });
 
   it('preserves the finite default cap but allows callers to request the complete feed', () => {

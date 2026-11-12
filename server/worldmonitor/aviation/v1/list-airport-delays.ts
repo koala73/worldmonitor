@@ -15,6 +15,7 @@ import {
   toProtoRegion,
   toProtoSource,
   buildNotamAlert,
+  buildNotamOpenAlert,
   loadNotamClosures,
   mergeNotamWithExistingAlert,
   isValidAirportDelayAlert,
@@ -169,6 +170,7 @@ export async function listAirportDelays(
   //     active NOTAM) → emit an UNKNOWN row so consumers don't render the
   //     airport as "healthy" when we actually have no telemetry. See #3707.
   const alertedIatas = new Set(allAlerts.map(a => a.iata));
+  const notamCoveredIcaos = new Set(notamResult?.coveredIcaos ?? []);
   for (const airport of MONITORED_AIRPORTS) {
     if (alertedIatas.has(airport.iata)) continue;
 
@@ -196,6 +198,8 @@ export async function listAirportDelays(
         source: toProtoSource(isFaaCovered ? 'faa' : 'aviationstack'),
         updatedAt: Date.now(),
       });
+    } else if (notamCoveredIcaos.has(airport.icao)) {
+      allAlerts.push(buildNotamOpenAlert(airport));
     } else {
       allAlerts.push({
         id: `unknown-${airport.iata}`,

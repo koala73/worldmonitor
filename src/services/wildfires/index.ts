@@ -44,12 +44,25 @@ const breaker = createCircuitBreaker<ListFireDetectionsResponse>({ name: 'Wildfi
 
 const emptyFallback: ListFireDetectionsResponse = { fireDetections: [], fetchedAt: 0, dataAvailable: false };
 
+const MAX_FIRE_AGE_MS = 6 * 60 * 60 * 1000;
+
+function hasCurrentFireData(response: ListFireDetectionsResponse): boolean {
+  const now = Date.now();
+  return response.dataAvailable === true
+    && Array.isArray(response.fireDetections)
+    && response.fireDetections.length > 0
+    && Number.isFinite(response.fetchedAt)
+    && response.fetchedAt > 0
+    && response.fetchedAt <= now
+    && now - response.fetchedAt <= MAX_FIRE_AGE_MS;
+}
+
 // -- Public API --
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
   const hydrated = getHydratedData('wildfires') as ListFireDetectionsResponse | undefined;
   let response: ListFireDetectionsResponse;
-  if (hydrated?.fireDetections?.length) {
+  if (hydrated && hasCurrentFireData(hydrated)) {
     breaker.recordSuccess(hydrated);
     response = hydrated;
   } else {
@@ -58,14 +71,13 @@ export async function fetchAllFires(_days?: number): Promise<FetchResult> {
         { start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 },
         { signal: AbortSignal.timeout(20_000) },
       );
-    }, emptyFallback, { shouldCache: (r) => r.fireDetections.length > 0 });
+    }, emptyFallback, { shouldCache: hasCurrentFireData });
   }
+  if (!hasCurrentFireData(response)) {
+    return { regions: {}, totalCount: 0, skipped: true, reason: Array.isArray(response.fireDetections) && response.fireDetections.length > 0 ? 'stale_data' : 'no_data' };
+  }
+
   const detections = response.fireDetections;
-
-  if (detections.length === 0) {
-    return { regions: {}, totalCount: 0, skipped: true, reason: 'no_data' };
-  }
-
   const regions: Record<string, FireDetection[]> = {};
   for (const d of detections) {
     const r = d.region || 'Unknown';
