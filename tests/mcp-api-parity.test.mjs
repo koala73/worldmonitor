@@ -86,7 +86,6 @@ const HTTP_METHODS = new Set([
 const EXCLUDED_FROM_MCP_PARITY = new Map([
   ['GET /api/economic/v1/get-food-prices', 'deferred-to-future-tool: source-specific food prices and dated food-security context are served to the dashboard (#9841)'],
   ['GET /api/maritime/v1/list-ukmto-incidents', 'deferred-to-future-tool: UKMTO publisher reports await activation and source-aware MCP composition (#9831)'],
-  ['GET /api/climate/v1/list-reservoir-levels', 'deferred-to-future-tool: new ICESat-2 reservoir levels; joining get_climate_data before the first seed-meta exists would mark the whole climate bundle stale, and the 36-month series needs its own output budget'],
 
   // === mutating (20) ===
   ["GET /api/aviation/v1/list-airport-delays",

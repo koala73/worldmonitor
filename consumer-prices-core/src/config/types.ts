@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 export const AcquisitionConfigSchema = z.object({
   provider: z.enum(['playwright', 'exa', 'firecrawl', 'p0']),

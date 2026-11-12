@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { BRIEF_TOPICS } from './country-brief-sections';
 import { panelReceiptSchema } from './panel-admission';
 import { resolveCountryCode } from './country-code-resolve';
