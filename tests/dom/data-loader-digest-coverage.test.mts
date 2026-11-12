@@ -543,6 +543,29 @@ describe('digest coverage follows the selected browser response', () => {
       expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.fallback': 'none' });
     });
 
+    // CodeRabbit review: a recovered stall counted in analytics must not use up
+    // the Sentry slot for a later failure of the same kind that blanks the panels.
+    it('a counted degradation does not suppress a later empty-panel report of the same kind', async () => {
+      const { internal } = await makeLoader();
+      internal.digestCacheKey = () => 'digest:current';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValueOnce(new Response(JSON.stringify(digest('complete', 3))));
+      await internal.tryFetchDigest();
+      expect(mocks.track).toHaveBeenCalledWith('news-digest-degraded', expect.objectContaining({ outcome: 'recovered', failure: 'network' }));
+      expect(captured()).toHaveLength(0);
+
+      // The user switches to a language with no saved copy, and both requests fail.
+      internal.digestCacheKey = () => 'digest:other-language';
+      vi.mocked(globalThis.fetch)
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await internal.tryFetchDigest();
+
+      expect(captured()).toHaveLength(1);
+      expect(captured()[0]!.ctx.tags).toMatchObject({ 'digest.failure': 'network', 'digest.fallback': 'none', 'digest.retry': 'failed' });
+    });
+
     it('knows which hosts the analytics tracker runs on', async () => {
       const actual = await vi.importActual<typeof import('@/services/analytics')>('@/services/analytics');
       for (const host of ['worldmonitor.app', 'www.worldmonitor.app', 'happy.worldmonitor.app', 'finance.worldmonitor.app']) {
