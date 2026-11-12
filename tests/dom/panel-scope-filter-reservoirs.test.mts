@@ -16,7 +16,11 @@ const focus = (countries: string[], neighbours = false) => {
 const reservoirs = fixture.reservoirs.map(toDisplayReservoirLevel);
 const ids = () => [...panel.getElement().querySelectorAll<HTMLElement>('[data-reservoir-id]')].map(el => el.dataset.reservoirId);
 const strip = () => panel.getElement().querySelector<HTMLElement>('.panel-scope-strip');
-const action = (name: string) => strip()?.querySelector<HTMLButtonElement>(`[data-scope-action="${name}"]`)!.click();
+const action = (name: string) => {
+  const button = strip()?.querySelector<HTMLButtonElement>(`[data-scope-action="${name}"]`);
+  if (!button) throw new Error(`Missing scope action: ${name}`);
+  button.click();
+};
 const load = () => panel.setResult({ ok: true, snapshot: { reservoirs, fetchedAt: null, methodology: '', sourceName: '' } });
 beforeEach(() => { vi.useFakeTimers(); panel = new ReservoirLevelsPanel(); document.body.append(panel.getElement()); });
 afterEach(() => { panel.destroy(); document.body.replaceChildren(); vi.useRealTimers(); });
