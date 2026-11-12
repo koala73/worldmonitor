@@ -1,0 +1,255 @@
+name: Publish self-hosted Docker images
+
+# docker-publish.yml publishes ghcr.io/koala73/worldmonitor from
+# docker/Dockerfile — a frontend-only nginx image pointed at the hosted
+# api.worldmonitor.app backend. It is not the image docker-compose.yml's
+# self-hosting stack builds.
+#
+# This workflow publishes the three images that stack needs, built from the
+# same Dockerfiles docker-compose.yml builds locally:
+#   worldmonitor-selfhosted -> Dockerfile (nginx + the bundled Node API sidecar)
+#   worldmonitor-ais-relay  -> Dockerfile.relay
+#   worldmonitor-redis-rest -> docker/Dockerfile.redis-rest
+# so self-hosting with docker-compose.yml can pull instead of building.
+#
+# Two kinds of run, tagged differently on purpose:
+#   - A release tag (a person publishes it, or build-desktop.yml dispatches the
+#     one it publishes itself) cuts the version tags and, unless it is a
+#     pre-release, moves `latest`.
+#   - A push to main, the daily cron and a dispatch against main move `main`
+#     and publish `sha-<commit>`.
+#
+# `main` exists because the compose file and scripts/install.sh come from a
+# clone of main. docker-compose.yml defaults WM_IMAGE_TAG to `main`, so the
+# images a fresh clone pulls were built from the same tree as the compose file
+# that starts them. Pulling the last release under a newer compose file is the
+# version skew that file would otherwise invite (the compose environment and
+# the sidecar change together, e.g. #10006). Pin a release with WM_IMAGE_TAG.
+#
+# build-desktop.yml publishes the release with GITHUB_TOKEN, which raises no
+# `release` event for other workflows, so it dispatches this workflow on the
+# release tag instead (workflow_dispatch is exempt).
+#
+# /!\ GHCR creates a package private on its first push. After the first run
+# publishes each of the three packages, a maintainer must set it to public
+# (package settings > Change visibility) or an anonymous `docker compose pull`
+# gets 401 and the installer falls back to building from source. The workflow
+# cannot do this with GITHUB_TOKEN.
+#
+# /!\ Like every scheduled workflow, the cron runs on the default branch only,
+# and GitHub disables scheduled workflows in a public repository after 60 days
+# without activity. The push trigger is immune to that, and the failure issue
+# below reports a run that fails; a run that never happens raises no alarm.
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    # The root Dockerfile runs `COPY . .`, so application changes reach the
+    # images too, but a wide filter would rebuild three multi-arch images on
+    # almost every merge. These paths define the images themselves; the daily
+    # cron picks up everything else.
+    paths:
+      - 'Dockerfile'
+      - 'Dockerfile.relay'
+      - 'docker/**'
+      - '.dockerignore'
+      - 'docker-compose.yml'
+      - '.github/workflows/docker-publish-self-hosted.yml'
+  schedule:
+    # Daily at 02:41 UTC: off the hour, and clear of docker-publish.yml's
+    # 02:19 slot so the two multi-arch builds do not start together.
+    - cron: '41 2 * * *'
+  workflow_dispatch:
+
+# Same rule as docker-publish.yml: main's own triggers share one group so
+# several merges collapse to the run in progress plus the newest pending one;
+# every other ref gets a group of its own so a release or a tag-repair dispatch
+# is never evicted by the next merge. cancel-in-progress stays false because
+# cancelling after a push has started risks a half-pushed multi-platform image.
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && 'docker-publish-self-hosted' || format('docker-publish-self-hosted-{0}', github.ref) }}
+  cancel-in-progress: false
+
+jobs:
+  docker:
+    # Forks inherit the cron; push, release and manual runs in a fork are left
+    # alone (tests/ci-workflow-coverage.test.mts pins the guard on every job of
+    # a scheduled workflow).
+    if: (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    # A multi-platform build under QEMU can hang, and a hang would otherwise
+    # hold this concurrency slot for the six-hour default.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # One broken image must not stop the other two from publishing.
+      fail-fast: false
+      matrix:
+        include:
+          - image: worldmonitor-selfhosted
+            dockerfile: Dockerfile
+            context: .
+            smoke: true
+          - image: worldmonitor-ais-relay
+            dockerfile: Dockerfile.relay
+            context: .
+            smoke: false
+          - image: worldmonitor-redis-rest
+            dockerfile: docker/Dockerfile.redis-rest
+            context: docker
+            smoke: false
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        id: meta
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ghcr.io/koala73/${{ matrix.image }}
+          # `latest=auto` would append `latest` to any semver tag, a pre-release
+          # included; turning it off leaves the `latest` rule below as the one
+          # place it is decided.
+          flavor: latest=false
+          # `latest` follows a non-prerelease v* tag, whether it arrives as a
+          # release event or as the dispatch build-desktop.yml sends. `main`
+          # follows main and nothing else.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+
+      # The docker exporter does not support attestations, hence provenance and
+      # sbom off here; the published build below sets both.
+      - name: Build the amd64 image for the pre-push smoke test
+        if: matrix.smoke
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          provenance: false
+          sbom: false
+          platforms: linux/amd64
+          tags: worldmonitor-smoke:candidate
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      # The app image is the one a person can start alone: entrypoint.sh
+      # validates the session secret, renders the nginx config and starts nginx
+      # and the sidecar under supervisord. Run it and request the SPA entry and
+      # /pro/ before anything is pushed. The relay and the REST proxy need a
+      # live Redis to do anything, so their gate is the build itself.
+      - name: Smoke the app image before publishing it
+        if: matrix.smoke
+        run: |
+          set -euo pipefail
+          docker run -d --name wm-smoke -p 8080:8080 \
+            -e WM_SESSION_SECRET="$(openssl rand -hex 32)" \
+            worldmonitor-smoke:candidate
+
+          cleanup() {
+            echo "--- container logs ---"
+            docker logs wm-smoke 2>&1 | tail -50 || true
+            docker rm -f wm-smoke >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 45); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+              break
+            fi
+            sleep 1
+          done
+
+          failed=""
+          for path in / /pro/; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080${path}")"
+            if [ "$code" != "200" ]; then
+              echo "::error::GET ${path} returned ${code}, expected 200"
+              failed="yes"
+            elif [ -z "$(curl -fsS "http://127.0.0.1:8080${path}")" ]; then
+              echo "::error::GET ${path} returned 200 with an empty body"
+              failed="yes"
+            else
+              echo "GET ${path} -> 200"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::Image smoke test failed; nothing will be published."
+            exit 1
+          fi
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          provenance: mode=max
+          sbom: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          # Distinct cache scope per matrix leg: the three images share
+          # nothing, so a shared scope would thrash between them.
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  # A separate job so a timeout (the job ends `cancelled`, not `failed`) is
+  # visible too; see docker-publish.yml for the reasoning.
+  report-failure:
+    needs: docker
+    if: >-
+      always() &&
+      (needs.docker.result == 'failure' || needs.docker.result == 'cancelled') &&
+      (github.event_name == 'schedule' || github.event_name == 'push') &&
+      (github.event_name != 'schedule' || github.repository == 'koala73/worldmonitor')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Report a failed rebuild of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: 'Self-hosted Docker rebuild of main failed'
+        run: |
+          set -euo pipefail
+          body="The ${GITHUB_EVENT_NAME}-triggered rebuild of the self-hosted images (ghcr.io/koala73/worldmonitor-selfhosted, -ais-relay, -redis-rest) failed, so the \`main\` tag may lag the compose file on \`main\`.
+
+          Run: ${RUN_URL}
+          Commit: ${GITHUB_SHA}
+
+          Once the cause is fixed on \`main\`, dispatch this workflow from \`main\` to rebuild without waiting for the next Docker change or the daily cron."
+
+          existing="$(gh issue list --state open --search "\"${TITLE}\" in:title" --json number,title \
+            --jq "[.[] | select(.title == \"${TITLE}\")] | first | .number // empty")"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "Commented on existing issue #${existing}."
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi

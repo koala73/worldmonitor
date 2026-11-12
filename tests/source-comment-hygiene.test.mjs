@@ -1,3 +1,6 @@
+// These text checks prevent retired ESLint suppressions, claims, and manual totals
+// from returning to the named source comments (#8690, section 2).
+// Runtime tests cannot observe comments, so their text is the contract.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

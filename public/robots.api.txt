@@ -3,7 +3,7 @@
 # Longest-match Allow beats Disallow: / for the documented agent-discovery paths.
 
 User-agent: *
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
@@ -32,7 +32,7 @@ User-agent: Google-Extended
 User-agent: Applebot-Extended
 User-agent: DuckAssistBot
 User-agent: MistralAI-User
-Content-Signal: ai-train=no, search=yes, ai-input=yes
+Content-Signal: ai-train=yes, search=yes, ai-input=yes
 Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
@@ -51,5 +51,4 @@ Disallow: /
 
 User-agent: CCBot
 User-agent: Bytespider
-User-agent: anthropic-ai
 Disallow: /

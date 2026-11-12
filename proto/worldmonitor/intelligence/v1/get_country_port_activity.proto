@@ -25,4 +25,7 @@ message CountryPortActivityResponse {
   repeated PortActivityEntry ports   = 1;
   string fetched_at                  = 2;
   bool   available                   = 3;
+  // True when IMF PortWatch has not refreshed this country for seven days or
+  // more. The ports are its last data, served for up to 30 days.
+  bool   stale                       = 4;
 }

@@ -20,9 +20,9 @@ const STYLES = `
   .conv-no, .mkt-no { color: var(--severe); }
   .mkt-outcomes { display: flex; justify-content: space-between; font-size: 11px; margin-top: 5px; }
   .mkt .pbar { background: color-mix(in srgb, var(--severe) 30%, var(--border)); }
-  .mkt-count { color: var(--muted); font-size: 10px; margin-left: 8px; }
+  .mkt-count { color: var(--muted); font-size: 11px; margin-left: 8px; text-transform: none; letter-spacing: 0; }
+  .mkt-coverage { font-size: 12px; }
   .mkt-more { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--fg); cursor: pointer; }
-  #groups { max-height: 560px; overflow: auto; }
 `;
 
 const BODY = `
@@ -88,6 +88,10 @@ const RENDER = `
       if (bar) mkt.appendChild(bar);
       sec.appendChild(mkt);
     }
+    function plural(n, word) { return n.toLocaleString("en-US") + " " + word + (n === 1 ? "" : "s"); }
+    function listNames(names) {
+      return names.length < 2 ? names.join("") : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    }
     var unavailable = [];
     var unsampled = [];
     for (let g = 0; g < buckets.length; g++) {
@@ -98,18 +102,17 @@ const RENDER = `
       let reported = raw && !Array.isArray(raw) ? num(raw.count) : null;
       if (!state.available) unavailable.push(cfg.label);
       if (!list.length) {
-        if (reported != null && reported > 0) unsampled.push(cfg.label + " summary reports " + Math.floor(reported) + " contracts but supplied no display sample.");
+        if (reported != null && reported > 0) unsampled.push(cfg.label + ": " + plural(Math.floor(reported), "market") + " reported, but none were included to show.");
         continue;
       }
       let sec = el("div", "mgroup");
       let label = el("div", "sec-label", cfg.label);
       let total = reported == null ? list.length : Math.max(list.length, Math.floor(reported));
-      let count = el("span", "mkt-count", Math.min(6, list.length) + " of " + total + " markets");
-      label.appendChild(count);
+      label.appendChild(el("span", "mkt-count", plural(total, "market")));
       sec.appendChild(label);
       for (var i = 0; i < list.length && i < 6; i++) appendMarket(sec, list[i]);
       if (list.length > 6) {
-        let more = el("button", "mkt-more", "Show more markets");
+        let more = el("button", "mkt-more", "Show " + (list.length - 6) + " more");
         more.type = "button";
         more.onclick = function () {
           var firstNew = sec.querySelectorAll(".mkt").length;
@@ -117,26 +120,37 @@ const RENDER = `
           for (var j = 6; j < list.length; j++) appendMarket(sec, list[j]);
           var target = sec.querySelectorAll(".mkt")[firstNew];
           if (target) { target.tabIndex = -1; target.focus(); }
-          count.textContent = list.length + " of " + total + " markets";
           reportSize();
         };
         sec.appendChild(more);
       }
+      // A summary carries a sample; say so rather than imply the list is whole.
+      if (list.length < total) sec.appendChild(el("div", "empty mkt-coverage", "Showing " + list.length + " of " + total + "; the rest were not included in this response."));
       host.appendChild(sec);
     }
     if (!host.childNodes.length && !unsampled.length) host.appendChild(el("div", "empty",
       unavailable.length === buckets.length ? "Prediction data unavailable."
-        : unavailable.length ? "No contracts in the available returned categories."
-        : "No prediction contracts in this returned snapshot."));
-    if (unavailable.length) host.appendChild(el("div", "empty mkt-coverage", "Unavailable or omitted categories: " + unavailable.join(", ") + "."));
+        : unavailable.length ? "No markets in the categories that loaded."
+        : "No markets in this response."));
+    if (unavailable.length) host.appendChild(el("div", "empty mkt-coverage", listNames(unavailable) + " markets were not included or could not be loaded."));
     unsampled.forEach(function (notice) { host.appendChild(el("div", "empty mkt-coverage", notice)); });
 
-    var notices = [envelope.cached_at ? "Snapshot: " + collapseWs(envelope.cached_at) : "Snapshot time unavailable"];
-    if (envelope.stale) notices[0] += " (stale)";
-    if (envelope.freshnessUnknown) notices.push("Freshness could not be verified");
-    if (envelope.degraded || mb && mb.degraded) notices.push("Source degraded");
+    var updated = envelope.cached_at ? utcTime(envelope.cached_at) || collapseWs(envelope.cached_at) : "";
+    var notices = [updated ? "Updated " + updated : "Update time unknown"];
+    if (envelope.stale) notices[0] += " (out of date)";
+    if (envelope.freshnessUnknown) notices.push("Freshness could not be checked");
+    if (envelope.degraded || mb && mb.degraded) notices.push("Some market sources failed");
+    // Error codes such as "kalshi_fetch_failed" name the source in plain
+    // words; other error text is not shown to the reader.
     var sourceError = collapseWs(envelope.error || mb && mb.error);
-    if (sourceError) notices.push(sourceError.slice(0, 256));
+    if (sourceError) {
+      var failedSuffix = "_fetch_failed";
+      var failedName = sourceError.length > failedSuffix.length && sourceError.slice(-failedSuffix.length) === failedSuffix
+        ? sourceError.slice(0, -failedSuffix.length) : "";
+      var sourceNames = { kalshi: "Kalshi", polymarket: "Polymarket" };
+      notices.push(Object.prototype.hasOwnProperty.call(sourceNames, failedName)
+        ? sourceNames[failedName] + " could not be reached" : "A market source reported an error");
+    }
     q("foot").textContent = notices.join(" · ");
 `;
 

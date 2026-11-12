@@ -1,7 +1,7 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import { loadUpstashRatelimit } from './_upstash-ratelimit.js';
+import { upstashRedisOptions } from './_upstash-redis-options.js';
 import {
   durationToSeconds,
   limitWithFallback,
@@ -21,14 +21,6 @@ export {
   hasUnprovenCloudflareClientIp,
 } from './_client-ip.js';
 
-// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
-// before surfacing an unreachable-Redis error. Under the node test runner
-// (NODE_TEST_CONTEXT is set) skip retries so fail-open / fail-closed tests that
-// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately instead of
-// stalling. Production (env unset) keeps the resilient default. Mirrors
-// REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
-const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
-
 const DEFAULT_RATE_LIMIT_SCOPE = 'global';
 const DEFAULT_RATE_LIMIT = 600;
 const DEFAULT_RATE_LIMIT_WINDOW = '60 s';
@@ -43,7 +35,7 @@ function getRateLimitPolicy(opts = {}) {
   };
 }
 
-function getRatelimit(policy) {
+async function getRatelimit(policy) {
   const cacheKey = `${policy.scope}|${policy.limit}|${policy.window}`;
   const cached = ratelimits.get(cacheKey);
   if (cached) return cached;
@@ -52,8 +44,9 @@ function getRatelimit(policy) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
+  const { Ratelimit, Redis } = await loadUpstashRatelimit();
   const ratelimit = new Ratelimit({
-    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    redis: new Redis(upstashRedisOptions(url, token)),
     limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
     prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,
@@ -205,7 +198,7 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     return edgeProofRequiredResponse(corsHeaders);
   }
 
-  const rl = getRatelimit(policy);
+  const rl = await getRatelimit(policy);
   if (!rl) {
     if (opts.failClosed) {
       logRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'), opts.ctx);

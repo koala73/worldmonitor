@@ -1,0 +1,10 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1-worldmonitor.2",
+  "private": true,
+  "description": "deepmerge 4.3.1 with a prototype-safe property-write backport",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "repository": "https://github.com/TehShrike/deepmerge"
+}

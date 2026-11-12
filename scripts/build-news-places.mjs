@@ -60,7 +60,7 @@ function buildPlaces() {
   }
 
   const out = {};
-  for (const [name, iso2s] of [...countriesByName].sort(([a], [b]) => a.localeCompare(b))) {
+  for (const [name, iso2s] of [...countriesByName].sort(([a], [b]) => a.localeCompare(b, 'en-US'))) {
     if (iso2s.size !== 1 || name.length < 4) continue;
     if (countryNames.has(name) || EXCLUDED_NAMES.has(name)) continue;
     if (!name.includes(' ') && (commonWords.has(name) || givenNames.has(name))) continue;

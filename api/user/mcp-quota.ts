@@ -56,7 +56,14 @@ import {
   type CachedEntitlements,
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
-import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, resolveMcpBudget, type McpBudget } from '../mcp/quota';
+import {
+  budgetCounterKey,
+  budgetUsageView,
+  isSharedRestCounter,
+  resolveAccountMcpBudget,
+  resolveMcpBudget,
+  type McpBudget,
+} from '../mcp/quota';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
   freeAccountCallsKey,
@@ -146,7 +153,9 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   let onFreeAllowance = false;
   try {
     const ent = await deps.getEntitlements(userId);
-    budget = resolveMcpBudget(
+    // A contract member reads the account's pooled counter against the
+    // contract allowance — the same budget `checkMcpEntitlementGate` charges.
+    budget = resolveAccountMcpBudget(ent?.account) ?? resolveMcpBudget(
       ent?.features?.planLimits?.mcpCallsPerDay,
       ent?.features?.planLimits?.apiRequestsPerDay,
     );
@@ -166,9 +175,11 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   // The free ceiling is NOT a plan allowance — it comes from the constant the
   // reservation enforces, so the catalog's free `mcpCallsPerDay: 0` cannot make
   // this endpoint under-report.
+  // A contract account displays its contract allowance; `used` may run past it
+  // into overage (budgetUsageView), up to the account's safety limit.
   const limit = onFreeAllowance
     ? FREE_ACCOUNT_CALLS_PER_DAY
-    : resolveDailyLimit(budget?.limit);
+    : budgetUsageView(budget, 0).limit;
   const key = onFreeAllowance
     ? freeAccountCallsKey(userId, now.getTime())
     : budgetCounterKey(budget, userId, now);
@@ -201,7 +212,9 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
       // injection cannot show "73 / 50". Unlimited plans have nothing to clamp
       // to — the raw counter IS the display value there.
       const floored = Math.floor(n);
-      used = limit === null ? floored : Math.min(floored, limit);
+      used = onFreeAllowance
+        ? Math.min(floored, FREE_ACCOUNT_CALLS_PER_DAY)
+        : budgetUsageView(budget, floored).used;
     }
   }
 

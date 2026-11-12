@@ -47,7 +47,7 @@ function serviceStubs() {
         export async function deletePersistentCache(key) { globalThis.__clientPersistent?.delete(key); }
         export async function deletePersistentCacheByPrefix(prefix) { for (const key of globalThis.__clientPersistent?.keys() ?? []) if (key.startsWith(prefix)) globalThis.__clientPersistent.delete(key); }
       ` };
-      if (args.path === 'stub:freshness') return { loader: 'js', contents: `export const dataFreshness = { recordUpdate() {}, recordError(id, error) { globalThis.__clientFreshnessErrors?.push([id, error]); } };` };
+      if (args.path === 'stub:freshness') return { loader: 'js', contents: `export const dataFreshness = { recordUpdate() {}, setEnabled() {}, recordError(id, error) { globalThis.__clientFreshnessErrors?.push([id, error]); } };` };
       return { loader: 'js', contents: `export function isFeatureAvailable() { return globalThis.__clientFeatureAvailable ?? true; }` };
     });
   } };

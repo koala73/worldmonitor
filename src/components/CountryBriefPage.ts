@@ -27,6 +27,7 @@ import {
 import { primeExportGateActivation } from '@/services/gates/export-resolver';
 import { exportGateCopy } from '@/components/ExportGateControl';
 import { trackGateHit } from '@/services/analytics';
+import { displayedCiiComponents } from '@/utils/cii-components';
 
 
 type BriefAssetType = AssetType | 'port';
@@ -238,13 +239,14 @@ export class CountryBriefPage implements CountryBriefPanel {
   }
 
   private componentBars(components: CountryScore['components']): string {
-    const items = [
-      { label: t('modals.countryBrief.components.unrest'), value: components.unrest, icon: '📢' },
-      { label: t('modals.countryBrief.components.conflict'), value: components.conflict, icon: '⚔' },
-      { label: t('modals.countryBrief.components.security'), value: components.security, icon: '🛡️' },
-      { label: t('modals.countryBrief.components.information'), value: components.information, icon: '📡' },
-    ];
-    return items.map(({ label, value, icon }) => {
+    const display = {
+      unrest: { label: t('modals.countryBrief.components.unrest'), icon: '📢' },
+      conflict: { label: t('modals.countryBrief.components.conflict'), icon: '⚔' },
+      security: { label: t('modals.countryBrief.components.security'), icon: '🛡️' },
+      information: { label: t('modals.countryBrief.components.information'), icon: '📡' },
+    };
+    return displayedCiiComponents(components).map(({ key, value }) => {
+      const { label, icon } = display[key];
       const pct = Math.min(100, Math.max(0, value));
       const color = pct >= 70 ? getCSSColor('--semantic-critical') : pct >= 50 ? getCSSColor('--semantic-high') : pct >= 30 ? getCSSColor('--semantic-elevated') : getCSSColor('--semantic-normal');
       return `

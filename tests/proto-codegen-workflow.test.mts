@@ -895,16 +895,15 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(merge.result.stdout, /stale against the PR merge result/i);
   });
 
-  it('runs merge freshness after a deliberately skipped trusted-fork writer', () => {
+  it('runs merge freshness beside generation behind the same trust gate', () => {
     const merge = job('internal-merge-freshness');
-    assert.deepEqual(merge.needs, ['changes', 'internal-generate', 'internal-auto-generate']);
-    assert.match(merge.if ?? '', /always\(\)/);
-    assert.match(merge.if ?? '', /needs\.changes\.result == 'success'/);
-    assert.match(merge.if ?? '', /needs\.internal-generate\.result == 'success'/);
-    assert.match(merge.if ?? '', /needs\.changes\.outputs\.owner_trusted_head == 'true'/);
-    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'skipped'/);
-    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'success'/);
-    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.outputs\.pushed != 'true'/);
+    const generation = job('internal-generate');
+    // Parallel: nothing merge freshness reads comes from the generate or
+    // writer jobs, so waiting on them only lengthened the critical path.
+    assert.equal(merge.needs, 'changes');
+    assert.doesNotMatch(merge.if ?? '', /always\(\)/);
+    const normalize = (expr: string | undefined) => (expr ?? '').replace(/\s+/g, ' ').trim();
+    assert.equal(normalize(merge.if), normalize(generation.if));
   });
 
   it('uses a closed-world aggregate while preserving every published proto check', () => {
@@ -966,6 +965,15 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       ['failed generation', { ...base, GENERATE_RESULT: 'failure' }, 1],
       ['failed publication', { ...base, PUBLISH_RESULT: 'failure' }, 1],
       ['generated push', { ...base, GENERATED_PUSHED: 'true', MERGE_RESULT: 'skipped' }, 0],
+      // Merge freshness runs in parallel, so after a push its verdict is for
+      // the superseded head and must not decide the aggregate either way.
+      ['generated push, stale superseded merge', { ...base, GENERATED_PUSHED: 'true', MERGE_RESULT: 'failure' }, 0],
+      ['generated push, fresh superseded merge', { ...base, GENERATED_PUSHED: 'true', MERGE_RESULT: 'success' }, 0],
+      [
+        'generated push still requires publication',
+        { ...base, GENERATED_PUSHED: 'true', PUBLISH_RESULT: 'failure', MERGE_RESULT: 'failure' },
+        1,
+      ],
       ['failed merge freshness', { ...base, MERGE_RESULT: 'failure' }, 1],
       ['clean no-push success', base, 0],
       [

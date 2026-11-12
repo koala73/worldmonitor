@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import {
+  SHANGHAI_M2_MAX_REQUESTS_PER_RUN,
+  PUBLISHERS,
+} from './china-macro/source-contracts.mjs';
+import {
   loadEnvFile,
   runSeed,
   writeFreshnessMetadataSafely,
@@ -16,6 +20,7 @@ import {
   CHINA_MACRO_MAX_CONTENT_AGE_MIN,
   CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
   CHINA_MACRO_CACHE_KEY,
+  CHINA_MACRO_M2_REPUBLICATION,
   CHINA_MACRO_PUBLISHER_IDS,
   CHINA_MACRO_PROVENANCE_FAMILY,
   CHINA_MACRO_REQUIRED_SERIES,
@@ -23,6 +28,7 @@ import {
   CHINA_MACRO_SERIES_CONTRACT,
   CHINA_MACRO_SERIES_IDS,
   chinaMacroObservationDateMs,
+  chinaMacroSourceBinding,
 } from './_china-macro-contract.mjs';
 
 loadEnvFile(import.meta.url);
@@ -99,6 +105,10 @@ function hasValidTemporalOrder(observation, generatedAtMs = Number.POSITIVE_INFI
 function hasCompleteProvenance(observation) {
   const seriesContract = CHINA_MACRO_SERIES_CONTRACT[observation?.seriesId];
   if (!seriesContract) return false;
+  const binding = chinaMacroSourceBinding(observation?.seriesId, observation?.sourceUrl, observation?.value);
+  if (!binding) return false;
+  const publisherContract = Object.values(PUBLISHERS).find((publisher) => publisher.id === binding.publisherId);
+  if (!publisherContract) return false;
   const provenance = observation?.provenance;
   if (
     !hasExactKeys(provenance, ['contractVersion', 'signalId', 'familyId', 'claims'])
@@ -132,27 +142,21 @@ function hasCompleteProvenance(observation) {
   return hasValidTemporalOrder(observation)
     && knownClaim(claims.publisher)
     && hasExactKeys(publisher, ['id', 'name', 'type', 'registryReference'])
-    && publisher.id === seriesContract.publisherId
+    && publisher.id === binding.publisherId
     && typeof publisher.name === 'string'
     && publisher.name.length > 0
     && publisher.type === 'official_government'
     && hasExactKeys(registry, ['sourceName', 'sourceType', 'propagandaRisk'])
-    && (registry.sourceName === 'NBS (China)' || registry.sourceName === 'SAFE (China)')
+    && registry.sourceName === publisherContract.sourceName
     && registry.sourceType === 'gov'
     && registry.propagandaRisk === 'high'
-    && (
-      seriesContract.publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs
-        ? publisher.name === 'National Bureau of Statistics of China'
-          && registry.sourceName === 'NBS (China)'
-        : publisher.name === 'State Administration of Foreign Exchange'
-          && registry.sourceName === 'SAFE (China)'
-    )
+    && publisher.name === publisherContract.name
     && knownClaim(claims.source_url)
     && parsedSource.protocol === 'https:'
     && !parsedSource.username
     && !parsedSource.password
-    && parsedSource.hostname === seriesContract.sourceHost
-    && parsedSource.pathname.startsWith(seriesContract.sourcePathPrefix)
+    && parsedSource.hostname === binding.sourceHost
+    && parsedSource.pathname.startsWith(binding.sourcePathPrefix)
     && sourceUrl === observation.sourceUrl
     && knownClaim(claims.original_reference)
     && hasExactKeys(original, ['kind', 'id', 'contentHash'])
@@ -349,6 +353,10 @@ function hasValidSourceDecisions(sourceDecisions, generatedAtMs, now) {
     [CHINA_MACRO_PUBLISHER_IDS.pboc, 'People’s Bank of China', 'www.pbc.gov.cn', PBOC_MAX_REQUESTS_PER_RUN, false],
     [CHINA_MACRO_PUBLISHER_IDS.gacc, 'General Administration of Customs of China', 'english.customs.gov.cn', GACC_MAX_REQUESTS_PER_RUN, false],
   ];
+  if (Array.isArray(sourceDecisions) && sourceDecisions.some((decision) => decision?.publisherId === CHINA_MACRO_M2_REPUBLICATION.publisherId)) {
+    expected.push([CHINA_MACRO_M2_REPUBLICATION.publisherId, PUBLISHERS.shanghai.name,
+      CHINA_MACRO_M2_REPUBLICATION.sourceHost, SHANGHAI_M2_MAX_REQUESTS_PER_RUN, true]);
+  }
   if (!Array.isArray(sourceDecisions) || sourceDecisions.length !== expected.length) return false;
   return expected.every(([publisherId, source, host, requestBudget, mayAccept]) => {
     const matches = sourceDecisions.filter((decision) => decision?.publisherId === publisherId);
@@ -362,13 +370,15 @@ function hasValidSourceDecisions(sourceDecisions, generatedAtMs, now) {
     }
     const checkedAt = Date.parse(decision.checkedAt);
     const minimumRequests = decision.status === 'accepted'
-      ? (publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs ? 5 : 4)
+      ? (publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs ? 5 : publisherId === CHINA_MACRO_M2_REPUBLICATION.publisherId ? 3 : 4)
       : 1;
     const validPath = publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs
       ? sourceUrl.pathname.startsWith('/english/PressRelease/')
       : publisherId === CHINA_MACRO_PUBLISHER_IDS.safe
         ? sourceUrl.pathname.startsWith('/safe/')
-        : sourceUrl.pathname === '/';
+        : publisherId === CHINA_MACRO_M2_REPUBLICATION.publisherId
+          ? sourceUrl.pathname === '/SCGK194/index.html'
+          : sourceUrl.pathname === '/';
     const validPolicyReview = publisherId === CHINA_MACRO_PUBLISHER_IDS.nbs
       ? decision.termsStatus === 'reviewed_2026-07-25_attribution_required'
         && ['allows_candidate_paths', 'no_rules_published', 'unavailable'].includes(decision.robotsStatus)
@@ -381,7 +391,11 @@ function hasValidSourceDecisions(sourceDecisions, generatedAtMs, now) {
               ? 'not_evaluated_robots_blocked'
               : 'review_required'
           )
-          : decision.termsStatus === 'reviewed_all_rights_reserved_chinese_authoritative';
+          : publisherId === CHINA_MACRO_M2_REPUBLICATION.publisherId
+            ? decision.termsStatus === 'reviewed_2026-10-24_facts_only_source_credit_required'
+              && (decision.status === 'blocked'
+                || ['allows_candidate_paths', 'no_rules_published'].includes(decision.robotsStatus))
+            : decision.termsStatus === 'reviewed_all_rights_reserved_chinese_authoritative';
     return decision.source === source
       && decision.host === host
       && sourceUrl.protocol === 'https:'
@@ -426,7 +440,7 @@ export function validateChinaMacroTransportSnapshot(snapshot, now = Date.now()) 
       || observation?.pillar !== CHINA_MACRO_SERIES_CONTRACT[observation.seriesId]?.pillar
       || observation?.unit !== CHINA_MACRO_SERIES_CONTRACT[observation.seriesId]?.unit
       || observation?.periodKind !== CHINA_MACRO_SERIES_CONTRACT[observation.seriesId]?.periodKind
-      || observation?.source !== CHINA_MACRO_SERIES_CONTRACT[observation.seriesId]?.source
+      || observation?.source !== chinaMacroSourceBinding(observation.seriesId, observation.sourceUrl, observation.value)?.source
     ))
     || !isIsoInstant(snapshot?.generatedAt)
     || generatedAtMs > now + MAX_CLOCK_SKEW_MS
@@ -444,6 +458,10 @@ export function validateChinaMacroTransportSnapshot(snapshot, now = Date.now()) 
   const sourceCohorts = [
     [CHINA_MACRO_PUBLISHER_IDS.nbs, requiredObservations.filter((observation) => observation.seriesId.startsWith('nbs_'))],
     [CHINA_MACRO_PUBLISHER_IDS.safe, requiredObservations.filter((observation) => observation.seriesId.startsWith('safe_'))],
+    [CHINA_MACRO_M2_REPUBLICATION.publisherId, snapshot.observations.filter((observation) => (
+      observation.seriesId === 'pboc_m2_yoy' && Number.isFinite(observation.value)
+      && observation.source === CHINA_MACRO_M2_REPUBLICATION.source
+    ))],
   ];
   const hasDegradedObservation = snapshot.observations.some((observation) => (
     !Number.isFinite(observation?.value)
@@ -454,7 +472,7 @@ export function validateChinaMacroTransportSnapshot(snapshot, now = Date.now()) 
   ));
   const hasBlockedSource = snapshot.sourceDecisions.some((decision) => decision.status !== 'accepted');
   const allObservationsValid = snapshot.observations.every((observation) => {
-    const contract = CHINA_MACRO_SERIES_CONTRACT[observation.seriesId];
+    const contract = chinaMacroSourceBinding(observation.seriesId, observation.sourceUrl, observation.value);
     const decision = snapshot.sourceDecisions.find(
       (entry) => entry.publisherId === contract?.publisherId,
     );

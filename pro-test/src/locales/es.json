@@ -11,48 +11,17 @@
   "hero": {
     "noiseWord": "Ruido",
     "signalWord": "Señal",
-    "valueProps": "La capa de IA geopolítica — pregúntale, suscríbete, construye sobre ella.",
+    "valueProps": "Consulta a un analista de IA, establece reglas de alertas, obtén briefings y úsalo en Claude.",
     "launchingDate": "Disponible ahora",
     "tryFreeDashboard": "Prueba el panel gratis",
     "choosePlan": "Elige tu plan",
-    "signIn": "Iniciar sesión",
     "goToDashboard": "Ir al Panel"
   },
   "wired": {
     "asFeaturedIn": "Destacado en"
   },
-  "twoPath": {
-    "proTitle": "World Monitor Pro",
-    "proDesc": "Tu analista IA. Un escritorio de inteligencia personal. Una plataforma sobre la que puedes construir.",
-    "proF1": "Chat WM Analyst — consulta servicios activos conversacionalmente",
-    "proF2": "Resumen de IA — diario, dos veces al día o semanal — a Slack, Discord, Telegram, Email o webhook",
-    "proF3": "Constructor de widgets personalizados — HTML/CSS/JS con modificación asistida por IA",
-    "proF4": "Conectores MCP — conecta WorldMonitor a Claude, GPT o LLMs personalizados",
-    "proF5": "Análisis de acciones, investigación bursátil y backtesting",
-    "proF6": "Búsqueda y comparación de precios de vuelos",
-    "proF7": "Motor de reglas de alerta — activadores personalizados, horas de silencio, canales cifrados AES-256",
-    "proF8": "Watchlist de mercado, seguimiento macro y de bancos centrales",
-    "proF9": "Implicaciones de mercado e inteligencia regional con IA",
-    "choosePlan": "Elige tu plan",
-    "entTitle": "World Monitor Enterprise",
-    "entDesc": "Para equipos que necesitan monitoreo compartido, acceso API, opciones de despliegue, apps de TV y soporte directo.",
-    "entF1": "Todo lo de Pro, además:",
-    "entF2": "Imágenes satelitales en vivo y SAR",
-    "entF3": "Agentes IA con personas de inversor y MCP",
-    "entF4": "Activos de infraestructura mapeados",
-    "entF5": "Conectores de datos (Splunk, Snowflake, Sentinel...)",
-    "entF6": "API REST + webhooks + exportación masiva",
-    "entF7": "Espacios de equipo con SSO/MFA/RBAC",
-    "entF8": "White-label y paneles embebibles",
-    "entF9": "App para Android TV para salas SOC y salas de trading",
-    "entF10": "Despliegue en la nube, on-premises o air-gapped",
-    "entF11": "Onboarding y soporte dedicados",
-    "entCta": "Habla con ventas",
-    "freeF2": "Feeds curados, fuentes atribuidas y capas de mapa",
-    "proF10": "Memoria de inteligencia — búsqueda histórica, cronogramas y búsqueda de eventos similares"
-  },
   "whyUpgrade": {
-    "title": "¿Por qué actualizar a World Monitor Pro?",
+    "title": "Entérate antes que los titulares",
     "noiseTitle": "Entérate primero",
     "noiseDesc": "Anomalía AIS → subida del Brent → tu Slack en menos de un minuto. Señal, no titulares.",
     "fasterTitle": "Pregunta cualquier cosa",
@@ -88,10 +57,7 @@
     "uniqueVisitors": "Visitantes únicos",
     "peakDailyUsers": "Usuarios diarios pico",
     "countriesReached": "Países alcanzados",
-    "liveDataSources": "Fuentes de datos en vivo",
-    "quote": "Mercados, política monetaria, geopolítica, energía — ahora todo se mueve junto. Necesitaba algo que mostrara cómo se conectan estas fuerzas en tiempo real, no solo los titulares, sino los motores subyacentes.",
-    "ceo": "CEO de",
-    "asToldTo": "contado a"
+    "liveDataSources": "Fuentes de datos en vivo"
   },
   "audience": {
     "title": "¿Para quién está diseñado World Monitor?",
@@ -105,6 +71,10 @@
     "journalistsDesc": "Sigue acontecimientos rápidos en mercados y regiones sin unir fuentes manualmente.",
     "govTitle": "Gobierno e instituciones",
     "govDesc": "Seguimiento de política macro, monitoreo de bancos centrales y conciencia situacional en señales geopolíticas e infraestructura.",
+    "strategyTitle": "Equipos de estrategia e inteligencia de mercado",
+    "strategyDesc": "Convierte los cambios en tus países, mercados energéticos y corredores comerciales en un informe con fuentes para la dirección.",
+    "aiTeamsTitle": "Equipos internos de IA y datos",
+    "aiTeamsDesc": "Alimenta al asistente de tu empresa con contexto mundial en vivo vía MCP, con derechos de uso interno por escrito.",
     "teamsTitle": "Equipos y organizaciones",
     "teamsDesc": "Pasa del uso individual a flujos compartidos, acceso API, apps de TV y despliegues gestionados."
   },
@@ -146,7 +116,7 @@
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
-    "title": "¿Qué hace el analista de IA de World Monitor?",
+    "title": "Un analista de IA para acciones, macroeconomía y geopolítica",
     "subtitle": "El panel gratuito te muestra el mundo. Pro te da un analista al que preguntar, un resumen al que suscribirte y primitivas sobre las que construir. Acciones, macro, riesgo geopolítico — y las conexiones entre ellos.",
     "equityResearch": "Investigación bursátil",
     "equityResearchDesc": "Análisis global de acciones con visualización de estados financieros, objetivos de precio de analistas y métricas de valoración. Sigue lo que mueve los mercados.",
@@ -164,15 +134,6 @@
     "supplyChainLab": "Laboratorio de Estrés en la Cadena de Suministro",
     "supplyChainLabDesc": "Modela un shock de costos entre países y sectores. Clasifica la vulnerabilidad de materias primas por dependencia de cuellos de botella. Rastrea la concentración de mina a refinería y la divergencia del premio físico SGE–COMEX — la serie que se mueve antes de que salga en titulares.",
     "roadmapNote": "En la hoja de ruta: vigilancia orbital, historial más extenso, capas de mapa premium."
-  },
-  "slackMock": {
-    "morningBrief": "Resumen matutino",
-    "markets": "Mercados",
-    "marketsText": "Futuros del S&P 500 -1,2% pre-mercado. Comparecencia del presidente de la Fed a las 10:00 EST — sectores sensibles a tipos bajo presión. Consenso de analistas moviéndose sobre los resultados del Q2.",
-    "elevated": "Macro",
-    "elevatedText": "BCE mantiene tipos en 3,75%. PIB del área euro revisado al alza al 1,1%. Divergencia de bancos centrales ampliándose — USD/EUR en máximo de 3 meses.",
-    "watch": "Geopolítico",
-    "watchText": "Brent +2,3% por anomalía AIS en Ormuz. 4 buques oscuros en 6h. Riesgo de cadena de suministro de materias primas elevado — correlaciones del sector energético disparándose."
   },
   "apiSection": {
     "apiTier": "NIVEL API",
@@ -194,16 +155,16 @@
     "enterpriseTier": "NIVEL ENTERPRISE",
     "title": "¿Qué incluye World Monitor Enterprise?",
     "subtitle": "Para gobiernos, instituciones, mesas de trading y organizaciones que necesitan la plataforma completa con máxima seguridad, agentes IA, apps de TV y profundidad de datos.",
-    "security": "Seguridad de grado gubernamental",
-    "securityDesc": "Despliegue air-gapped, Docker on-premises, tenant cloud dedicado, ruta SOC 2 Type II, SSO/MFA y trazabilidad completa.",
+    "security": "Seguridad de nivel gubernamental, por contrato",
+    "securityDesc": "Por contrato: despliegue aislado de la red, Docker local, tenant dedicado en la nube, SSO/MFA, registro de auditoría completo y una ruta hacia SOC 2 Type II.",
     "aiAgents": "Agentes IA y MCP",
     "aiAgentsDesc": "Agentes de inteligencia autónomos con personas de inversor. Conecta World Monitor como herramienta a Claude, GPT o LLMs personalizados vía MCP.",
     "dataLayers": "Capas de datos expandidas",
-    "dataLayersDesc": "Decenas de miles de activos de infraestructura mapeados globalmente. Integración de imágenes satelitales con detección de cambios y SAR.",
+    "dataLayersDesc": "Decenas de miles de activos de infraestructura mapeados en todo el mundo. Imágenes satelitales con detección de cambios y SAR, por contrato.",
     "connectors": "Conectores de Datos",
-    "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams y más. Exporta a PDF, CSV, JSON.",
+    "connectorsDesc": "Alertas en Slack y Teams y exportación a PDF, CSV y JSON. Conectores para PostgreSQL, Snowflake, Splunk, Sentinel y Jira por contrato.",
     "whiteLabel": "White-label, TV e integrable",
-    "whiteLabelDesc": "Tu marca, tu dominio, tu app de escritorio. App Android TV para salas SOC y salas de trading. Paneles iframe integrables.",
+    "whiteLabelDesc": "Tu marca, tu dominio, tu app de escritorio. Paneles iframe integrables. Una app de Android TV para muros SOC y salas de trading, por contrato.",
     "financial": "Inteligencia financiera",
     "financialDesc": "Calendario de resultados, datos de red energética, seguimiento mejorado de materias primas con inferencia de carga, screening de sanciones con correlación AIS.",
     "commodity": "Trading de materias primas",
@@ -220,7 +181,7 @@
     "namePlaceholder": "Tu nombre",
     "emailPlaceholder": "Correo de trabajo",
     "orgPlaceholder": "Empresa *",
-    "phonePlaceholder": "Teléfono *",
+    "phonePlaceholder": "Teléfono (opcional)",
     "messagePlaceholder": "¿Qué buscas?",
     "workEmailRequired": "Usa tu correo de trabajo",
     "submitContact": "Enviar mensaje",
@@ -231,64 +192,30 @@
   "pricingTable": {
     "title": "¿Cómo se comparan los planes de World Monitor?",
     "feature": "Característica",
-    "freeHeader": "Free ($0)",
-    "proHeader": "Pro ($39.99)",
-    "apiHeader": "API ($99.99)",
-    "entHeader": "Enterprise (contacto)",
-    "dataRefresh": "Actualización de datos",
-    "dashboard": "Panel",
-    "ai": "IA",
-    "briefsAlerts": "Resúmenes y alertas",
-    "delivery": "Entrega",
-    "apiRow": "API",
-    "infraLayers": "Capas de infraestructura",
-    "satellite": "Vigilancia orbital",
-    "connectorsRow": "Conectores",
-    "deployment": "Despliegue",
-    "securityRow": "Seguridad",
-    "f5_15min": "5-15 minutos",
-    "fLt60s": "<60 segundos",
-    "fPerRequest": "Por solicitud",
-    "fLiveEdge": "Live-edge",
-    "f50panels": "Paneles",
-    "fWhiteLabel": "White-label",
-    "fBYOK": "BYOK",
+    "rowPrice": "Precio",
+    "rowLicense": "Licencia",
+    "rowUsers": "Usuarios nominales",
+    "rowDashboards": "Paneles personalizados",
+    "rowAi": "Solicitudes de IA del panel al día",
+    "rowMcp": "Llamadas MCP + SDK al día",
+    "rowApi": "Solicitudes REST API al día",
+    "rowExport": "Exportación de datos (CSV, JSON, PDF)",
+    "rowRedistribution": "Redistribución a tus clientes",
+    "rowSupport": "Soporte",
+    "licClient": "Trabajo para clientes y uso interno",
+    "licInternal": "Solo herramientas internas",
+    "licCustomer": "Productos para clientes",
+    "noAccount": "Sin cuenta",
+    "freeMcp": "5 llamadas en caché con una cuenta gratuita",
+    "sharedWithRest": "compartidas con la cuota REST",
+    "supportStandard": "Sin garantía",
+    "supportPriority": "Prioritario",
+    "supportDedicated": "Dedicado",
+    "notIncluded": "No incluido",
+    "scrollHint": "Desplázate en horizontal para comparar los seis planes",
     "fIncluded": "Incluido",
-    "fAgentsPersonas": "Agentes + personas",
-    "fDailyFlash": "Diario + flash",
-    "fTeamDist": "Distribución en equipo",
-    "fSlackTgWa": "Slack/Discord/TG/correo/Webhook",
-    "fWebhook": "Webhook",
-    "fSiemMcp": "+ SIEM/MCP",
-    "fRestWebhook": "REST + webhook",
-    "fMcpBulk": "+ MCP + masivo",
-    "fTensOfThousands": "+ decenas de miles",
-    "fLiveTracking": "Seguimiento en vivo",
-    "fPassAlerts": "Alertas de paso + análisis",
-    "fImagerySar": "Imágenes + SAR",
-    "f100plus": "Disponible",
-    "fCloud": "Nube",
-    "fCloudOnPrem": "Nube/on-prem/air-gap",
-    "fStandard": "Estándar",
-    "fKeyAuth": "Autenticación por clave",
-    "fSsoMfa": "SSO/MFA/RBAC/auditoría",
-    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional.",
-    "f50plus": "Disponible",
-    "sourcesRow": "Fuentes",
-    "followedRow": "Países monitoreados",
-    "tabsRow": "Pestañas del panel",
     "fUnlimited": "Ilimitado",
-    "f3": "3",
-    "f10": "10",
-    "f25": "25",
-    "fAllLayers": "Todas las capas",
-    "fLayersNoResilience": "Todas excepto Resilience",
-    "fStandardCadence": "Estándar",
-    "fQuotes30s": "Cotizaciones de mercado: 30s",
-    "panelsRow": "Paneles habilitados",
-    "f40": "40",
-    "f80": "80",
-    "fAll": "Todos"
+    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional."
   },
   "faq": {
     "title": "Preguntas frecuentes sobre World Monitor Pro",
@@ -299,7 +226,7 @@
     "q3": "¿Para quién es Enterprise?",
     "a3": "Enterprise es para equipos que necesitan uso compartido, APIs, integraciones, opciones de despliegue y soporte directo.",
     "q4": "¿Puedo empezar con Pro y subir después?",
-    "a4": "Sí. Pro es para uso personal. Pro Business ($49,99/mes) añade la licencia comercial, exportación de datos, 25 paneles y 250 llamadas MCP/día. Los planes de API cubren acceso programático, y Enterprise cubre implementaciones personalizadas. Las actualizaciones se realizan a través del portal de facturación — la aplicación te guía en cada paso.",
+    "a4": "Sí. Pro es para uso personal. Pro Business ($49,99/mes) añade la licencia comercial, exportación de datos, 25 paneles y 250 llamadas MCP/día. Los planes de API cubren acceso programático, y Enterprise cubre implementaciones personalizadas. Para pasar de Pro a Pro Business, elige Pro Business con la sesión iniciada: tu suscripción cambia, ves el cargo de hoy antes de confirmar y el periodo de facturación se reinicia ese día.",
     "q5": "¿Esto solo sirve para monitorear conflictos?",
     "a5": "No. World Monitor es principalmente una plataforma de inteligencia global que cubre mercados bursátiles, macroeconomía, análisis geopolítico, energía, infraestructura y más. El seguimiento de conflictos es una capacidad entre muchas — no el foco.",
     "q6": "¿Por qué mantener gratuita la plataforma principal?",
@@ -307,11 +234,11 @@
     "q7": "¿Puedo seguir usando mis propias claves API?",
     "a7": "Sí. Las claves propias siempre funcionan. Pro simplemente significa que no tienes que registrarte en servicios separados.",
     "q8": "¿Qué es MCP?",
-    "a8": "MCP permite que agentes IA — Claude, GPT, LLMs personalizados — usen WorldMonitor como herramienta, consultando servicios registrados. Incluido en Pro. Enterprise añade servidores MCP privados e implementaciones personalizadas.",
+    "a8": "MCP permite que agentes IA — Claude, GPT, LLMs personalizados — usen World Monitor como herramienta, consultando servicios registrados. Incluido en Pro. Enterprise añade servidores MCP privados e implementaciones personalizadas.",
     "q9": "¿Puedo construir mis propios paneles?",
     "a9": "Sí. Pro incluye el Constructor de widgets personalizados — construye paneles desde HTML, CSS y JavaScript, con modificación asistida por IA.",
-    "q10": "¿Puedo conectar Claude o GPT a WorldMonitor?",
-    "a10": "Sí. MCP está incluido en Pro — conecta WorldMonitor a Claude, GPT o cualquier LLM compatible con MCP como herramienta en vivo.",
+    "q10": "¿Puedo conectar Claude o GPT a World Monitor?",
+    "a10": "Sí. MCP está incluido en Pro — conecta World Monitor a Claude, GPT o cualquier LLM compatible con MCP como herramienta en vivo.",
     "q11": "¿Cómo de personalizado es el resumen?",
     "a11": "Elige tu cadencia — diaria, dos veces al día o semanal. Re-puntuamos cada noticia monitorizada contra tus reglas de alerta y lista de monitoreo, deduplicamos entre fuentes, y enviamos hasta 30 elementos clasificados con una Evaluación IA y Señales a monitorear escritas en tu contexto. También hay alertas en tiempo real disponibles para eventos críticos.",
     "q12": "¿Cuál es la tasa de actualización?",
@@ -372,7 +299,8 @@
           "Divergencia de metales físicos, concentración de minerales y datos de deuda soberana",
           "Resumen de IA programado + motor de reglas de alerta",
           "Acceso a MCP + SDK para Claude Desktop y otros clientes de IA (50 llamadas/día)",
-          "Widgets personalizados y 10 dashboards (vs 3)"
+          "Widgets personalizados y 10 dashboards (vs 3)",
+          "Clave de escritorio para la app de escritorio (2 claves)"
         ],
         "highlightFeatures": [
           "Licencia personal",
@@ -382,46 +310,51 @@
       "api": {
         "description": "Crea herramientas internas con datos de inteligencia en tiempo real",
         "features": [
-          "API REST + SDK oficiales (npm, PyPI, RubyGems, Go)",
-          "Clave de licencia / API incluida",
+          "Dashboard Pro completo incluido (1 usuario nombrado)",
+          "REST API + SDK oficiales (npm, PyPI, RubyGems, Go)",
+          "Licencia / clave API incluida",
           "Flujos de datos en tiempo real",
           "60 solicitudes/minuto",
-          "1.000 solicitudes/día incluidas (REST + MCP combinados; una llamada MCP en vivo cuenta como 2-3)",
+          "1000 solicitudes/día incluidas (REST + MCP combinados; una llamada MCP activa cuenta como 2-3)",
           "Notificaciones por webhook"
         ],
         "highlightFeatures": [
-          "Licencia comercial — para tu organización"
+          "Uso comercial — solo interno, no orientado al cliente"
         ]
       },
       "enterprise": {
         "description": "Soluciones personalizadas para organizaciones",
         "features": [
           "Todo en Pro + API",
-          "Solicitudes de API ilimitadas",
+          "Paneles compartidos del equipo",
+          "10 000 solicitudes de API al día, más por contrato",
           "Soporte dedicado",
           "Integraciones personalizadas",
-          "Garantía SLA",
+          "Garantía SLA (por contrato)",
           "Opción local",
           "Acuerdo de procesamiento de datos (DPA)",
           "Facturación por orden de compra",
-          "SAML SSO, SCIM",
+          "SAML SSO y SCIM (por contrato)",
           "Configuración personalizada de seguridad y privacidad",
-          "Totalmente white-labeled — con o sin participación en ingresos"
+          "Totalmente white-labeled — con o sin participación en ingresos",
+          "Borradores de evaluación de riesgo de viaje en el panel y por MCP"
         ],
         "cta": "Contactar Ventas"
       },
       "apiBusiness": {
-        "description": "Lanza tu propio producto con datos de WorldMonitor",
+        "description": "Lanza tu propio producto con datos de World Monitor",
         "features": [
           "Todo en API Starter",
           "Derechos de redistribución R1–R3 para productos orientados al cliente",
           "300 solicitudes/minuto",
           "10.000 solicitudes/día incluidas (REST + MCP combinados; una llamada MCP en vivo cuenta como 2-3)",
           "5 licencias Pro — invita a usuarios con cualquier dominio de correo corporativo",
-          "Soporte prioritario"
+          "Paneles compartidos del equipo",
+          "Soporte prioritario",
+          "Borradores de evaluación de riesgo de viaje en el panel y por MCP"
         ],
         "highlightFeatures": [
-          "Licencia comercial — para tus clientes"
+          "Uso comercial — en tus productos orientados al cliente"
         ]
       },
       "proBusiness": {
@@ -432,7 +365,9 @@
           "Exportación de datos — reportes CSV, JSON y PDF",
           "25 paneles personalizados (vs 10)",
           "MCP + SDK: 250 llamadas/día (vs 50)",
-          "Soporte prioritario"
+          "Clave de escritorio para la app de escritorio (3 claves)",
+          "Soporte prioritario",
+          "Borradores de evaluación de riesgo de viaje en el panel y por MCP"
         ],
         "highlightFeatures": [
           "Licencia comercial incluida",
@@ -447,7 +382,8 @@
     "axisPersonal": "Uso Personal",
     "axisPersonalNote": "uso individual",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "trabajo, clientes y productos"
+    "axisCommercialNote": "trabajo, clientes y productos",
+    "cancelAnytime": "Cancela en cualquier momento desde tu cuenta. Mantienes acceso hasta el final del período que pagaste."
   },
   "welcome": {
     "meta": {
@@ -457,7 +393,7 @@
       "ogDescription": "World Monitor: panel de inteligencia geopolítica en tiempo real. Mapa gratuito en vivo de conflictos, buques, vuelos, mercados y ciber, con API y servidor MCP."
     },
     "nav": {
-      "useCases": "Correlaciones",
+      "useCases": "Casos de uso",
       "firstFive": "Primeros 5 min",
       "depth": "Profundidad",
       "pricing": "Precios",
@@ -476,17 +412,17 @@
       "sub": "Cuando se convierte en noticia, ya lo sabías.",
       "ctaPrimary": "Abrir el panel",
       "ctaFree": "Gratuito · Sin registro · Se carga en segundos",
-      "ctaSecondary": "Ver cómo lo usan ↓",
       "trustUsers": "2M+ usuarios",
       "trustOpenSource": "Código abierto · AGPL-3.0",
       "screenshotAlt": "Panel de inteligencia en vivo de World Monitor — mapa global con capas de conflicto, envío y mercado",
       "plateNote": "Capturado del mapa en vivo — haz clic para abrirlo",
       "trustBuild": "Construye sobre él:",
-      "positioningLink": "WorldMonitor no es un Palantir de código abierto",
+      "positioningLink": "World Monitor no es un Palantir de código abierto",
       "asOf": "A partir del {{date}}",
       "whatIsTitle": "¿Qué es World Monitor?",
       "whatIsBody": "World Monitor es un panel de control gratuito ($0) y de código abierto (AGPL-3.0) utilizado por más de 2M de personas. Transmite {{feeds}} fuentes de noticias y OSINT de {{providers}} proveedores atribuidos en un único mapa mundial en directo con {{mapLayers}} tipos de capas de mapa, que abarcan geopolítica, mercados, transporte marítimo, aviación y ciberseguridad. Las correlaciona para que los eventos convergentes salgan a la luz antes de los titulares. Cada dato está documentado en su fuente y cada método está documentado.",
-      "whatIsBestFor": "Ideal para analistas, periodistas, traders y desarrolladores que necesitan señales geopolíticas en directo."
+      "whatIsBestFor": "Ideal para analistas, periodistas, traders y desarrolladores que necesitan señales geopolíticas en directo.",
+      "ctaPro": "Pro desde {{price}}/mes"
     },
     "live": {
       "eyebrow": "En vivo ahora mismo",
@@ -506,7 +442,8 @@
       "marketWeakest": "Más débil",
       "trendRising": "en alza",
       "trendFalling": "en caída",
-      "trendStable": "estable"
+      "trendStable": "estable",
+      "situationLink": "Monitorear la situación: crisis, titulares, puntos críticos e interrupciones en un panel"
     },
     "moments": {
       "eyebrow": "Motor de correlación",
@@ -650,13 +587,13 @@
       "title1": "Gratis es el observatorio.",
       "title2": "Pro es la sala de operaciones.",
       "sub": "El dashboard es gratuito a $0 — cada capa de mapa excepto Resilience, sin registro. Pro añade la capa de decisión.",
-      "freeTitle": "Gratis",
+      "freeTitle": "Plan Gratis",
       "freeDesc": "El nivel gratuito es un producto completo, no una prueba. Cada capa de mapa excepto Resilience, los seis monitores — sin registro, sin límite de tiempo.",
       "freeF1": "Todas las capas de mapa excepto Resilience y feeds curados",
       "freeF2": "Resúmenes de países, puntos de acceso, puntuaciones de inestabilidad",
       "freeF3": "Cuellos de botella, cables, análisis en cascada",
       "freeF4": "Pipeline de alertas BREAKING y listas de vigilancia",
-      "proTitle": "Pro",
+      "proTitle": "Plan Pro",
       "proDesc": "Actúa sobre ello. La capa de decisión utilizada en los momentos anteriores:",
       "proF1": "WM Analyst — chat en servicios activos, con citas",
       "proF2": "Motor de escenarios y Explorador de rutas — simula interrupciones antes de que ocurran",
@@ -664,7 +601,8 @@
       "proF4": "MCP, API REST y SDKs oficiales — herramientas activas bajo una clave",
       "proF5": "Constructor de widgets personalizados para tus propios paneles",
       "cta": "Ver planes y precios",
-      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente"
+      "note": "Desde $39.99/mes · 3 meses gratis al facturar anualmente",
+      "disclaimer": "World Monitor tiene fines exclusivamente informativos y no constituye asesoramiento financiero, de inversión, jurídico ni de seguridad. Verifique lo que ve y consulte a un profesional cualificado antes de tomar decisiones en las que un error pudiera causar pérdidas o daños."
     },
     "faq": {
       "eyebrow": "Sin trampa",
@@ -686,7 +624,7 @@
       "q8": "¿Necesito una cuenta?",
       "a8": "No. El panel funciona al instante sin registro. Una cuenta solo importa cuando mejoras a Pro o deseas que la configuración se sincronice entre dispositivos.",
       "q9": "¿Es de código abierto?",
-      "a9": "Sí — código abierto bajo AGPL-3.0 en GitHub: lee el código, hospédalo por ti mismo, o construye sobre él. También hay aplicaciones de escritorio nativas para Windows, macOS y Linux, más una aplicación Android TV para pantallas de pared.",
+      "a9": "Sí, es código abierto bajo AGPL-3.0 en GitHub: consulta el código, auto-alójalo o construye sobre él. Pro y Pro Business incluyen claves de escritorio, así tu compilación propia de escritorio puede cargar datos Pro en la nube; las instancias Docker se ejecutan con sus propios datos. También están disponibles aplicaciones de escritorio nativas para Windows, macOS y Linux, más una app de Android TV para pantallas de pared con un contrato Enterprise.",
       "q10": "¿Por qué World Monitor no es Palantir?",
       "a10": "Palantir hace que los datos propios de una institución sean operacionales dentro de esa institución. World Monitor comienza desde el otro extremo: reúne, normaliza, correlaciona y monitorea datos del mundo público, y luego publica esa capa de inteligencia a través de un panel gratuito y código de código abierto. Trabajo diferente, producto diferente.",
       "q11": "¿Qué licencia de World Monitor necesito?",
@@ -711,22 +649,34 @@
       "chokepointTitle": "Inspeccionar un punto crítico",
       "chokepointDesc": "Inspecciona el estado de las disrupciones, flujos de embarcaciones y riesgo a través de {{chokepoints}} pasos marítimos críticos.",
       "countryRiskTitle": "Explicar un movimiento de riesgo país",
-      "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país, con resiliencia clasificada para {{resilienceRanked}} países.",
-      "open": "Abrir evidencia"
+      "countryRiskDesc": "Rastrea las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país. La resiliencia se clasifica para {{resilienceRanked}} de {{resilienceUniverse}} países, aproximadamente el {{resilienceRankedPct}} %, lo que permite interpretar un movimiento en relación con la base estructural a largo plazo de ese país, en lugar de hacerlo solo a partir de los titulares de noticias de esta semana.",
+      "open": "Abrir evidencia",
+      "workflow": "Flujo de trabajo paso a paso"
+    },
+    "voices": {
+      "eyebrow": "En sus palabras",
+      "title": "Lo que dice la gente sobre World Monitor",
+      "sub": "{{users}} personas en {{countries}} países han usado World Monitor. The Atlantic escribió sobre él el 14 de marzo de 2026 y El País dos días después, y también lo han cubierto WIRED, The Economic Times, Arabian Business y L'Orient Today. Esto es lo que dijeron la prensa y algunos usuarios.",
+      "translatedJa": "Traducido del japonés",
+      "prev": "Citas anteriores",
+      "next": "Más citas"
     }
   },
   "whatsNew": {
     "eyebrow": "Registro de envíos",
-    "title": "Novedades en WorldMonitor",
+    "title": "Novedades en World Monitor",
     "subtitle": "Nuevas funciones de los últimos 30 días — correcciones e infraestructura no incluidas.",
     "proTag": "PRO",
-    "m1": "Índice de divergencia del premio físico — SGE vs COMEX, con historial",
-    "m2": "Clasificaciones de vulnerabilidad de suministro de materias primas — expansión de dependencia de cuellos de botella",
-    "m3": "Concentración de producción mineral y la base industrial de defensa",
-    "m4": "Tarjetas de resiliencia de cinco factores con puntuaciones a nivel de indicadores",
-    "m5": "Listas de vigilancia de canales de Telegram personalizados",
-    "m6": "Inicio de sesión con passkey",
-    "m7": "Los agentes de IA pueden dirigir el dashboard — paneles, pestañas, capas de mapa y misiones",
-    "m8": "Páginas de resiliencia de país más enriquecidas"
+    "m1": "Perspectiva mediática — cómo los medios de cada país cubren a cualquier país, para agentes de IA y la API",
+    "m2": "Niveles de agua estratégicos — niveles medidos por lidar satelital en 50 embalses y lagos, en el mapa y para agentes de IA",
+    "m3": "Recuento de fuentes que corroboran en alertas, resúmenes y ventanas del mapa, más una página pública /trust",
+    "m4": "Seguimiento automático de ataques — el riesgo de un país sube bajo ataque y se recupera cuando cesan",
+    "m5": "Cierres de espacio aéreo a partir de NOTAM de la FAA y una capa de mapa de emergencias aéreas reportadas",
+    "m6": "Mapa de actividad industrial con datos satelitales de NO2 de Sentinel-5P",
+    "m7": "Flujos de capital de 230 economías y de cualquier par de países, para agentes de IA y la API",
+    "m8": "Panel en la terminal y mapa CLI con zoom — brew install worldmonitor"
+  },
+  "sourceMarquee": {
+    "label": "Fuentes que monitoreamos"
   }
 }

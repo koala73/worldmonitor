@@ -35,13 +35,19 @@ const EMPTY: CountryPortActivityResponse = {
   available: false,
   ports: [],
   fetchedAt: '',
+  stale: false,
 };
 
-// Keep the consumer's hard-expiry boundary aligned with the PortWatch seeder.
-// The scheduler can retain an expired payload under its Redis key solely to
-// preserve the durable refresh cursor while the last-good canonical pointer is
-// held. That state must never become consumer-visible again.
+// The seeder's seven-day boundary (PORTWATCH_MAX_CACHE_AGE_MS): a payload
+// older than this is no longer current and the country counts as a coverage
+// gap in seed-meta, so /api/health keeps warning.
 export const PORTWATCH_PORT_ACTIVITY_MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// How long a country's last data stays servable, marked stale, after its
+// refresh stops succeeding. The seeder keeps that payload under its key while
+// the canonical list is held (2026-11-01: ArcGIS rejected refreshes for ten
+// countries and their panels went blank). Thirty days is one full
+// tankerCalls30d window; past it the figures describe a different month.
+export const PORTWATCH_PORT_ACTIVITY_MAX_SERVE_AGE_MS = 30 * 86_400_000;
 
 export function isCurrentPortActivityPayload(
   payload: unknown,
@@ -53,6 +59,15 @@ export function isCurrentPortActivityPayload(
   return typeof cacheWrittenAt === 'number'
     && Number.isFinite(cacheWrittenAt)
     && (now - cacheWrittenAt) < maxCacheAgeMs;
+}
+
+export function isServablePortActivityPayload(
+  payload: unknown,
+  now = Date.now(),
+): payload is SeederPayload {
+  if (!isCurrentPortActivityPayload(payload, now, PORTWATCH_PORT_ACTIVITY_MAX_SERVE_AGE_MS)) return false;
+  return (payload as SeederPayload).cacheWrittenAt! <= now
+    && Array.isArray((payload as SeederPayload).ports);
 }
 
 export async function getCountryPortActivity(
@@ -79,7 +94,9 @@ export async function getCountryPortActivity(
   if (!data) return EMPTY;
 
   const payload = data as SeederPayload;
-  if (!isCurrentPortActivityPayload(payload)) return EMPTY;
+  const now = Date.now();
+  if (!isServablePortActivityPayload(payload, now)) return EMPTY;
+  const stale = !isCurrentPortActivityPayload(payload, now);
   const rawPorts = Array.isArray(payload.ports) ? payload.ports : [];
   const topPorts = rawPorts.slice(0, 25);
 
@@ -105,5 +122,6 @@ export async function getCountryPortActivity(
     available: true,
     ports,
     fetchedAt: typeof payload.fetchedAt === 'string' ? payload.fetchedAt : '',
+    stale,
   };
 }

@@ -67,9 +67,27 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - **P3b, P3c.** A campaign of 5 units/day for 3 days, then nothing. The score is sampled every 3 hours for 8 days. No 3-hour drop may exceed 5. The campaign's contribution (score with it minus score without it) must halve in 4–6 days.
 - **P5c.** "Against the evidence" means against the blend: A blends above B but scores below it.
 - **P7a** nulls each input in turn. Every country whose terms change must report a coverage below 1 and below its coverage with the input present. **P7b** asks input health to call a reader that maps none of its records unusable; outages, which read `countryCode` from rows that carry only a name, are the live case.
-- **P8.** Each parsed input is replaced by its empty value. For advisories that is null, which brings in the fallback table, as a failed read does. No country may move by more than **K = 10**.
-- **P9** compares the span of the cached UCDP rows with the 2-year window the UCDP classes assume. It needs at least 90% of that window.
-- **P10.** Ten more delayed airports per country must not raise S.
+- **P8a.** Each parsed input is replaced by its empty value. For advisories that is null with no usable snapshot, the worst a failed read can do once the last good snapshot has expired. A failed advisory read is also measured with that snapshot, taken from the same fixture, standing in through the real read path (Stage B2 removed the fallback table). No country may move by more than **K = 10** in any of these cases.
+- **P8b.** An advisory provenance flip raises an input-health alarm when the read or a register was lost. A Tier-1 country delisted while every register still reports is a change at the source: it is disclosed as a warning and does not alarm. No flip may go unreported. Each case states which it must be, so every case asserts, and a fixture that cannot build the cases fails. The cases are:
+  - a live read, which must not alarm;
+  - a live read with both level sources, which must not alarm;
+  - a live read without the US source;
+  - a partial live map with a fresh snapshot and every register reporting, which must warn and not alarm;
+  - a partial live map with a fresh snapshot and a register missing;
+  - a failed read with a fresh snapshot;
+  - a failed read with an expired snapshot;
+  - a failed read with no snapshot;
+  - a failed read whose snapshot read also failed.
+- **P9** runs the scorer's read-time window check (`assessUcdpWindow`) on each fixture's UCDP rows, against the 365-day window the UCDP term assumes (`CII_UCDP_WINDOW_DAYS`, equal to the writers' trailing window). The rows must reach back to within 31 days of the window start, no calendar month between the oldest and newest rows may hold under a quarter of the median non-empty month's daily events, and the newest row may be at most 90 days old. The same check is reported as `inputs.ucdp.window` in input health, where a failure reads `short_window`. (Until v15, P9 measured the span against the 2 years the removed UCDP classes assumed.)
+- **P10a** densifies each instrument feed in the fixtures at the raw-input level and requires that S never rises:
+  - ten more delayed airports per country;
+  - every GPS-jamming hex seen six times;
+  - ten more foreign flights, foreign vessels and AIS disruptions;
+  - twenty more FIRMS detections;
+  - ten more recorded quakes.
+
+  None of these feeds is scored in v15, so P10a is the regression guard against a removed input coming back.
+- **P10b** doubles the media volume on the scored inputs (top stories and classified headline counts) and requires that S never rises. GDELT article volume belongs to P12b.
 - **P11a.** A critical headline naming country A and a non-Tier-1 target (an attack abroad) must not raise A. **P11b.** +50 own military flights and +20 own vessels must not raise A.
 - **P12a.** Every magnitude is scaled by a uniform factor in 0.9–1.1. That includes the scored numbers inside list records: UCDP deaths, quake magnitude, fire brightness and radiative power. Dates and locations stay fixed. Every list record is dropped or duplicated with probability 0.05 each. The run uses 40 seeded draws per fixture. **P12b.** GDELT counts and classified headline counts are scaled ×0.5, ×2 and ×4 with every share unchanged.
 - **P14.** |final − blend| must be at most 0.5. The blend is baseline × 0.4 + eventScore × 0.6 + every boost.
@@ -86,6 +104,13 @@ The suite injects evidence into parsed sources (`buildCiiAuxiliarySources` outpu
 - When a change makes a known gap pass, the ratchet test fails until the property leaves `KNOWN_GAPS`.
 - A new `CII_FORMULA_VERSION` starts with no entry: its PR lists the gaps it still has, with measured values.
 - Never loosen a threshold or grow the list to pass CI.
+
+**Release blockers.** `V15_RELEASE_BLOCKERS` in the same test lists the properties that passed as real assertions in v14 and fail after a Stage B change because of the floors that remain. Each entry records the measured value, the reason, and the owner, `stage-c`.
+
+- While a property is listed it runs as a `todo` with its measured value; it is not a known gap.
+- A ratchet test fails when a blocker passes, names an unmeasured property, or also appears in `KNOWN_GAPS`.
+- The release gate (section 3) fails while the list is non-empty and `inProgress` is unset, so the integration branch cannot ship v15 with a blocker.
+- P15d (chronic civil war ≥ 70) is the first entry. It passed only through the UCDP war floor, which B6 removed. In the v14 linear blend, Conflict carries at most 0.30 × 0.6 = 18 points: with Conflict forced to 100 the scenario blends to 54 (US, DE, GB, JP) to 72 (SY, UA, YE). Stage C must meet it without a floor.
 
 ## 3. Evidence standard
 
@@ -118,7 +143,20 @@ The PR that ships `next` to main bumps `CII_FORMULA_VERSION`, clears `inProgress
 
 - In CI on main, on a PR into main, or in a merge-queue run for main, `inProgress` must not be set. Those runs are detected from `GITHUB_BASE_REF` and `GITHUB_REF`. Elsewhere, including local runs, the test is skipped with a message.
 - Wherever `inProgress` is unset, the tree must name its own version. `CII_FORMULA_VERSION` must equal `next`, or the claim must have moved on to the version after it. `KNOWN_GAPS[CII_FORMULA_VERSION]` must exist.
-- The integration branch's release-blocker list must be empty. Its assertion joins this gate in the PR that adds the list.
+- The integration branch's release-blocker list (`V15_RELEASE_BLOCKERS`) must be empty: the test "no v15 release blocker remains once v15 is no longer in progress" runs wherever `inProgress` is unset and fails while any entry remains (shown red in the B6 PR by clearing `inProgress` locally, with P15d listed).
+- `V15_RELEASE_BLOCKERS` in `tests/cii-invariants.test.mts` must be empty.
+
+**Release blockers.** A Stage B PR can make a property fail that passed as a real assertion in v14, because the floors still exist and Stage C removes them. For example, removing an off-construct input lowers blends, so more countries collapse onto the same floor. Such a PR does not loosen the property and does not add it to `KNOWN_GAPS`. It lists the property in `V15_RELEASE_BLOCKERS` instead, with:
+
+- the measured value;
+- the reason;
+- the owner (`stage-c`).
+
+While the property is listed, it runs as a todo that carries its measured value. The ratchet fails once it passes. The failure names the property and tells you to remove it from the list, which restores the real assertion. The release gate keeps v15 off main until the list is empty. Never list a property to hide a defect that the listing PR itself owns.
+
+The owner must sign off on each entry. The PR that adds one marks it **pending owner sign-off** in its body until the owner approves it. Without that approval the entry is a proposal, not a decision.
+
+Owner approved P5b as a v15 release blocker on 2026-10-24.
 
 Capture a new fixture GET-only, with no Redis writes:
 
@@ -128,7 +166,7 @@ WM_SEED_ENV_FILE=/path/to/.env.local node --import tsx scripts/cii-capture-fixtu
 
 `--wait-for-rebuild` polls the stored table and reads the inputs the moment production rebuilds it. A table minutes old no longer matches inputs that have since moved.
 
-The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
+The capture also trims. It keeps only the fields the scorer reads and only rows that can reach a Tier-1 country. Strike-feed events keep severity, time and resolved country, with no text, source or channel; interceptions and ships at sea, which the scorer skips, are dropped. Headlines are replaced by a country name or dropped. The script then proves the trim leaves every term and every input-health state unchanged.
 
 ### Whole-table diff
 
@@ -151,6 +189,12 @@ For each new constant, report the range over which every property still holds. A
 ### Replay is a prediction
 
 Nothing counts as live until production matches. Capture a fixture with `--wait-for-rebuild` 4 hours and 24 hours after the deploy, and confirm that `tests/cii-fixtures.test.mts` reproduces the stored table 31/31. Watch provenance and per-input health on `seed-meta:intelligence:risk-scores`, not only the scores.
+
+**Located UCDP fixture before v15 ships (B6).** The committed fixtures hold the pre-v15 UCDP payload: about five weeks of event rows with no location. Replay therefore still counts Gaza and West Bank events toward Israel, and it cannot test the read-time window check (P9). After the UCDP writers (relay and the `seed-ucdp-events` cron) deploy and production's `conflict:ucdp-events:v1` carries `countryDays`, capture a fixture with the located payload, before `inProgress` is cleared. In that fixture:
+
+- `inputs.ucdp.window.honest` must be true;
+- P9 must pass;
+- Israel must match the located preview recorded in `docs/methodology/cii-changes/v15.json` (`b6-ucdp.knownDivergence`) instead of the fixture replay.
 
 ## 4. Process
 

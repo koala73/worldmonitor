@@ -62,7 +62,7 @@ describe('MacroTilesPanel China launch surface', () => {
     assert.deepEqual(normalized.indicators.map((indicator) => indicator.id), CHINA_MACRO_FIXTURE_SERIES_IDS);
     assert.equal(isChinaLaunchReady(normalized), true);
     assert.equal(normalized.indicators.filter((indicator) => !indicator.hasValue).length, 7);
-    assert.equal(normalized.sourceDecisions.length, 5);
+    assert.equal(normalized.sourceDecisions.length, 6);
 
     const industrial = normalized.indicators.find(
       (indicator) => indicator.id === 'nbs_industrial_value_added_yoy',

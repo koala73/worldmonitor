@@ -58,14 +58,12 @@ export function hashOAuthBindValue(value) {
 }
 
 /**
- * True when the request carries the cookie the nonce was bound to. Nonces
- * written before binding existed carry no `bind_hash` and expire within the
- * 10-minute nonce TTL, so they are accepted rather than failing in-flight
- * consents during a deploy.
+ * True when the request carries the cookie the nonce was bound to. A nonce
+ * without a `bind_hash` is refused: every writer binds, and the pre-binding
+ * nonces this once admitted expired with their 10-minute TTL.
  */
 export async function requestMatchesOAuthBinding(req, nonceData) {
   const expected = nonceData?.bind_hash;
-  if (expected === undefined) return true;
   if (typeof expected !== 'string' || expected.length !== 64) return false;
   const value = readOAuthBindCookie(req, nonceData.bind_cookie === undefined ? OAUTH_BIND_COOKIE : nonceData.bind_cookie);
   if (!value) return false;

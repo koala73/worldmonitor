@@ -13,6 +13,7 @@ import { strict as assert } from 'node:assert';
 import { __testing__, mcpHandler } from '../api/mcp.ts';
 import { HMAC_SECRET, callBody, makePipelineMock } from './helpers/mcp-pro-deps.mjs';
 import { getSourceProvenanceState, SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
+import { withOutletProfile } from '../server/_shared/outlet-profile.ts';
 
 const ENV_KEY = 'operator_test_key_country_brief_grounding';
 const MCP_URL = 'https://worldmonitor.app/mcp';
@@ -24,7 +25,7 @@ const originalWarn = console.warn;
 
 function compactProvenance(source) {
   const { summary, ...provenance } = getSourceProvenanceState(source);
-  return provenance;
+  return withOutletProfile(source, provenance);
 }
 
 function makeDeps() {

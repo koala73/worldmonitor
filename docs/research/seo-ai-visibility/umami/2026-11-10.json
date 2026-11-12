@@ -1,0 +1,407 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "umami-2026-11-10",
+  "observedAt": "2026-11-10T05:42:30.799Z",
+  "source": "umami-api",
+  "window": {
+    "label": "28d",
+    "startDate": "2026-10-13",
+    "endDate": "2026-11-09"
+  },
+  "totals": {
+    "endpoint": "stats",
+    "availability": "available",
+    "reason": null,
+    "basis": "sum-of-daily-values",
+    "daysReported": 28,
+    "pageviews": 6229743,
+    "visitorDays": 309137,
+    "visits": 478775,
+    "bounceRate": 0.3117,
+    "avgVisitSeconds": 451
+  },
+  "channels": {
+    "endpoint": "metrics?type=channel",
+    "availability": "available",
+    "reason": null,
+    "basis": "sum-of-daily-values",
+    "daysReported": 28,
+    "rows": [
+      {
+        "channel": "direct",
+        "visitorDays": 225922
+      },
+      {
+        "channel": "organicSearch",
+        "visitorDays": 72367
+      },
+      {
+        "channel": "referral",
+        "visitorDays": 19590
+      },
+      {
+        "channel": "organicSocial",
+        "visitorDays": 2003
+      },
+      {
+        "channel": "paidAds",
+        "visitorDays": 1219
+      },
+      {
+        "channel": "organicVideo",
+        "visitorDays": 281
+      },
+      {
+        "channel": "llm",
+        "visitorDays": 241
+      },
+      {
+        "channel": "email",
+        "visitorDays": 35
+      }
+    ]
+  },
+  "referrers": {
+    "endpoint": "metrics?type=referrer",
+    "availability": "available",
+    "reason": null,
+    "basis": "sum-of-daily-values",
+    "daysReported": 28,
+    "domains": 715,
+    "byFamily": {
+      "chatgpt": {
+        "visitorDays": 6,
+        "domains": 1,
+        "top": [
+          {
+            "domain": "chatgpt.com",
+            "visitorDays": 6
+          }
+        ]
+      },
+      "perplexity": {
+        "visitorDays": 71,
+        "domains": 1,
+        "top": [
+          {
+            "domain": "perplexity.ai",
+            "visitorDays": 71
+          }
+        ]
+      },
+      "claude": {
+        "visitorDays": 10,
+        "domains": 1,
+        "top": [
+          {
+            "domain": "claude.ai",
+            "visitorDays": 10
+          }
+        ]
+      },
+      "copilot_bing": {
+        "visitorDays": 1,
+        "domains": 1,
+        "top": [
+          {
+            "domain": "copilot.microsoft.com",
+            "visitorDays": 1
+          }
+        ]
+      },
+      "other_ai_search": {
+        "visitorDays": 159,
+        "domains": 3,
+        "top": [
+          {
+            "domain": "gemini.google.com",
+            "visitorDays": 131
+          },
+          {
+            "domain": "l.meta.ai",
+            "visitorDays": 26
+          },
+          {
+            "domain": "poe.com",
+            "visitorDays": 2
+          }
+        ]
+      },
+      "search": {
+        "visitorDays": 72938,
+        "domains": 104,
+        "top": [
+          {
+            "domain": "google.com",
+            "visitorDays": 61971
+          },
+          {
+            "domain": "bing.com",
+            "visitorDays": 4144
+          },
+          {
+            "domain": "search.brave.com",
+            "visitorDays": 2181
+          },
+          {
+            "domain": "duckduckgo.com",
+            "visitorDays": 1739
+          },
+          {
+            "domain": "com.google.android.googlequicksearchbox",
+            "visitorDays": 1437
+          }
+        ]
+      },
+      "social": {
+        "visitorDays": 3168,
+        "domains": 24,
+        "top": [
+          {
+            "domain": "t.co",
+            "visitorDays": 775
+          },
+          {
+            "domain": "l.facebook.com",
+            "visitorDays": 324
+          },
+          {
+            "domain": "lm.facebook.com",
+            "visitorDays": 324
+          },
+          {
+            "domain": "youtube.com",
+            "visitorDays": 271
+          },
+          {
+            "domain": "l.threads.com",
+            "visitorDays": 269
+          }
+        ]
+      },
+      "internal": {
+        "visitorDays": 19846,
+        "domains": 21,
+        "top": [
+          {
+            "domain": "worldmonitor.app",
+            "visitorDays": 7840
+          },
+          {
+            "domain": "tech.worldmonitor.app",
+            "visitorDays": 4986
+          },
+          {
+            "domain": "finance.worldmonitor.app",
+            "visitorDays": 2589
+          },
+          {
+            "domain": "happy.worldmonitor.app",
+            "visitorDays": 1554
+          },
+          {
+            "domain": "commodity.worldmonitor.app",
+            "visitorDays": 1420
+          }
+        ]
+      },
+      "other": {
+        "visitorDays": 8730,
+        "domains": 559,
+        "top": [
+          {
+            "domain": "github.com",
+            "visitorDays": 4756
+          },
+          {
+            "domain": "www-worldmonitor-app.translate.goog",
+            "visitorDays": 792
+          },
+          {
+            "domain": "teams.public.onecdn.static.microsoft",
+            "visitorDays": 471
+          },
+          {
+            "domain": "ntp.msn.com",
+            "visitorDays": 303
+          },
+          {
+            "domain": "wired.com",
+            "visitorDays": 72
+          }
+        ]
+      }
+    },
+    "referrerFamilies": {
+      "chatgpt": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 6
+      },
+      "perplexity": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 71
+      },
+      "claude": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 10
+      },
+      "copilot_bing": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 1
+      },
+      "other_ai_search": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 159
+      },
+      "google_search_ai": {
+        "availability": "unavailable",
+        "reason": "Google AI Overviews and AI Mode send the same google.com referrer as web search, so a referrer cannot separate them.",
+        "visitorDays": null
+      },
+      "unknown_direct": {
+        "availability": "available",
+        "reason": null,
+        "visitorDays": 225922,
+        "source": "channel direct"
+      }
+    },
+    "top": [
+      {
+        "domain": "google.com",
+        "family": "search",
+        "visitorDays": 61971
+      },
+      {
+        "domain": "worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 7840
+      },
+      {
+        "domain": "tech.worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 4986
+      },
+      {
+        "domain": "github.com",
+        "family": "other",
+        "visitorDays": 4756
+      },
+      {
+        "domain": "bing.com",
+        "family": "search",
+        "visitorDays": 4144
+      },
+      {
+        "domain": "finance.worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 2589
+      },
+      {
+        "domain": "search.brave.com",
+        "family": "search",
+        "visitorDays": 2181
+      },
+      {
+        "domain": "duckduckgo.com",
+        "family": "search",
+        "visitorDays": 1739
+      },
+      {
+        "domain": "happy.worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 1554
+      },
+      {
+        "domain": "com.google.android.googlequicksearchbox",
+        "family": "search",
+        "visitorDays": 1437
+      },
+      {
+        "domain": "commodity.worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 1420
+      },
+      {
+        "domain": "energy.worldmonitor.app",
+        "family": "internal",
+        "visitorDays": 1288
+      },
+      {
+        "domain": "www-worldmonitor-app.translate.goog",
+        "family": "other",
+        "visitorDays": 792
+      },
+      {
+        "domain": "t.co",
+        "family": "social",
+        "visitorDays": 775
+      },
+      {
+        "domain": "teams.public.onecdn.static.microsoft",
+        "family": "other",
+        "visitorDays": 471
+      },
+      {
+        "domain": "l.facebook.com",
+        "family": "social",
+        "visitorDays": 324
+      },
+      {
+        "domain": "lm.facebook.com",
+        "family": "social",
+        "visitorDays": 324
+      },
+      {
+        "domain": "ntp.msn.com",
+        "family": "other",
+        "visitorDays": 303
+      },
+      {
+        "domain": "youtube.com",
+        "family": "social",
+        "visitorDays": 271
+      },
+      {
+        "domain": "l.threads.com",
+        "family": "social",
+        "visitorDays": 269
+      },
+      {
+        "domain": "google.com.hk",
+        "family": "search",
+        "visitorDays": 221
+      },
+      {
+        "domain": "facebook.com",
+        "family": "social",
+        "visitorDays": 218
+      },
+      {
+        "domain": "l.instagram.com",
+        "family": "social",
+        "visitorDays": 216
+      },
+      {
+        "domain": "instagram.com",
+        "family": "social",
+        "visitorDays": 212
+      },
+      {
+        "domain": "gemini.google.com",
+        "family": "other_ai_search",
+        "visitorDays": 131
+      }
+    ]
+  },
+  "guardrails": [
+    "Every count is a sum of 28 daily values. Visitors are visitor-days: a returning visitor counts once per day, and channel and referrer rows overlap.",
+    "No previous window: Umami keeps 30 days of raw events, so week-over-week change comes from comparing weekly snapshots.",
+    "google_search_ai is unavailable, never zero: a referrer cannot separate AI Overviews and AI Mode from web search.",
+    "The credentials and session token stay in operator configuration and never reach this file."
+  ]
+}

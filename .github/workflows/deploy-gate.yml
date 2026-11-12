@@ -44,6 +44,9 @@ permissions:
 env:
   GH_TOKEN: ${{ github.token }}
   REPO: ${{ github.repository }}
+  # The workflow_run list above, for the evaluation's in-flight check.
+  # tests/ci-workflow-coverage.test.mts keeps the two identical.
+  GATED_WORKFLOWS: Test,Typecheck,Lint Code,Security Audit,Stacked Merge Guard,Proto Generation Check
 
 jobs:
   evaluate-direct:
@@ -58,16 +61,21 @@ jobs:
       queue: max
       cancel-in-progress: false
     steps:
+      # One commit and only the script. The base-drift phase fetches the
+      # history it needs; most evaluations stop before it (pending or failed
+      # checks), and the full-history checkout took a median 11s, p90 62s.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.workflow_sha }}
-          fetch-depth: 0
           filter: blob:none
+          sparse-checkout: .github/scripts
           persist-credentials: false
       - name: Check required PR gates passed for this SHA
         env:
           SHA: ${{ matrix.sha }}
           CHECK_ATTEMPTS: 2
+          # This event's own run never counts as still in flight.
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
         run: bash -e .github/scripts/deploy-gate.sh evaluate
 
   discover:
@@ -156,13 +164,13 @@ jobs:
       queue: max
       cancel-in-progress: false
     steps:
-      # The base-drift comparison needs real history: full commit graph for
-      # `merge-base`, trees for `diff --name-only`, and no blobs at all.
+      # Same shallow, script-only checkout as evaluate-direct. The base-drift
+      # phase unshallows when it needs the commit graph.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.workflow_sha }}
-          fetch-depth: 0
           filter: blob:none
+          sparse-checkout: .github/scripts
           persist-credentials: false
       - name: Check required PR gates passed for this SHA
         env:

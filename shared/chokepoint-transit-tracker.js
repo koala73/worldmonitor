@@ -7,7 +7,7 @@
 // table. Terrestrial AIS reaches most waterways in bursts, so a vessel is often
 // silent for longer than that table keeps it. A sighting survives for
 // maxTransitMs, which bounds the time between the two gates.
-export function createTransitTracker({ gates, maxTransitMs, cooldownMs, crossings }) {
+export function createTransitTracker({ gates, maxTransitMs, cooldownMs, crossings, onGateObservation }) {
   const compiled = Object.entries(gates).map(([name, sides]) => {
     const circles = [...sides.a.map((c) => ['a', c]), ...sides.b.map((c) => ['b', c])];
     let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
@@ -46,6 +46,10 @@ export function createTransitTracker({ gates, maxTransitMs, cooldownMs, crossing
     for (const gate of compiled) {
       const side = sideAt(gate, lat, lon);
       if (!side) continue;
+      if (onGateObservation) {
+        onGateObservation(mmsi, gate.name, side, type, now);
+        continue;
+      }
       let seen = sightings.get(mmsi);
       const previous = seen?.get(gate.name);
       if (previous && previous.side !== side && now - previous.ts <= maxTransitMs) {

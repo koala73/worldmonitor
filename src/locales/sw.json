@@ -281,29 +281,29 @@
       "palmOil": "Mafuta ya mawese"
     },
     "demographicsCapability": {
-      "title": "Demographics & Workforce",
+      "title": "Demografia na nguvu kazi",
       "help": "Muundo wa umri, njia ya elimu, na uwezo wa kazi ya viwanda kutoka kwa UN World Population Prospects, UNESCO Institute for Statistics na World Bank World Development Indicators, na ILOSTAT.",
-      "loading": "Loading demographics and workforce data…",
-      "unavailable": "Demographics and workforce data unavailable.",
-      "proLocked": "Upgrade to PRO for demographics and workforce data",
-      "notAvailable": "Not available",
-      "ageStructure": "Age structure",
-      "education": "Education pipeline",
-      "industrialWorkforce": "Industrial workforce",
-      "medianAge": "Median age",
-      "oldAgeDependency": "Old-age dependency",
-      "totalDependency": "Total dependency",
-      "workingAgePopulation": "Working-age population",
-      "workingAgeProjection": "Working-age population (+10 years)",
-      "tertiaryEnrollment": "Tertiary enrollment",
+      "loading": "Inapakia demografia na nguvu kazi…",
+      "unavailable": "Hakuna data ya demografia inayopatikana",
+      "proLocked": "Pandisha hadi PRO kwa demografia na nguvu kazi",
+      "notAvailable": "Hakuna data",
+      "ageStructure": "Muundo wa umri",
+      "education": "Njia ya elimu",
+      "industrialWorkforce": "Nguvu kazi ya viwanda",
+      "medianAge": "Umri wa wastani",
+      "oldAgeDependency": "Uwiano wa utegemezi wa wazee",
+      "totalDependency": "Jumla ya uwiano wa utegemezi",
+      "workingAgePopulation": "Watu wenye umri wa kufanya kazi",
+      "workingAgeProjection": "Watu wenye umri wa kufanya kazi (+miaka 10)",
+      "tertiaryEnrollment": "Usajili wa elimu ya juu",
       "stemGraduates": "Waliochaguliwa katika sayansi, teknolohiya, uhandisi na hesabu",
-      "researchers": "Researchers",
-      "craftTrades": "Craft and trades workers",
-      "plantOperators": "Plant and machine operators",
-      "trainedIndustrialWorkforce": "Combined industrial workforce",
-      "manufacturingShare": "Manufacturing employment",
-      "source": "Sources: {{sources}}.",
-      "retained": "{{stage}} data retained from the last successful refresh.",
+      "researchers": "Watafiti",
+      "craftTrades": "Mafundi na wafanyakazi wa ufundi",
+      "plantOperators": "Waendeshaji wa mitambo na mashine",
+      "trainedIndustrialWorkforce": "Jumla ya nguvu kazi ya viwanda",
+      "manufacturingShare": "Ajira katika viwanda",
+      "source": "Vyanzo: {{sources}}",
+      "retained": "{{stage}} imehifadhiwa kutoka usasishaji wa mwisho uliofaulu.",
       "statusNotSupplied": "Hali ya makadirio na ujazaji wa thamani zinazokosekana haijatolewa"
     },
     "fiveFactorScorecard": {
@@ -338,7 +338,7 @@
         "pillar-unavailable": "Sokoni haipatikani"
       },
       "inputs": {
-        "population": "Population",
+        "population": "Idadi ya watu",
         "food_productionBalance": "Mizani ya uzalishaji",
         "food_stocksToUse": "Visi vya kutumika",
         "food_waterSecurity": "Usalama wa maji",
@@ -374,8 +374,8 @@
   },
   "header": {
     "world": "ULIMWENGU",
-    "tech": "TECH",
-    "live": "LIVE",
+    "tech": "TEKNOLOJIA",
+    "live": "MUBASHARA",
     "cached": "ILIYO HAKI",
     "unavailable": "HAIPATIKANI",
     "search": "Tafuta",
@@ -457,15 +457,14 @@
     "markets": "Masoko",
     "marketImplications": "Athari za Soko la AI",
     "map": "Hali ya Ulimwengu",
-    "techMap": "Global Tech",
-    "techHubs": "Hot Tech Hubs",
+    "techHubs": "Vitovu vya teknolojia vinavyovuma",
     "status": "Hali ya Mfumo",
     "insights": "Maarifa ya AI",
     "strategicPosture": "Mkao wa kimkakati wa AI",
     "cii": "Kutokuwa na Uthabiti wa Nchi",
     "strategicRisk": "Muhtasari wa Hatari ya Kimkakati",
     "intel": "Mlisho wa Intel",
-    "gdeltIntel": "Live Intelligence",
+    "gdeltIntel": "Ujasusi wa moja kwa moja",
     "cascade": "Miundombinu Cascade",
     "politics": "Habari za Ulimwengu",
     "us": "Marekani",
@@ -478,7 +477,7 @@
     "energyComplex": "Nishati Complex",
     "oilInventories": "Malipo ya Mafuta",
     "energyCrisis": "Mfuatiliaji wa Mgogoro wa Nishati",
-    "goldIntelligence": "Gold Intelligence",
+    "goldIntelligence": "Ujasusi wa Dhahabu",
     "gov": "Serikali",
     "thinktanks": "Fikiria Mizinga",
     "science": "Sayansi",
@@ -489,7 +488,7 @@
     "supplyChain": "Mnyororo wa Ugavi",
     "finance": "Kifedha",
     "tech": "Teknolojia",
-    "crypto": "Crypto",
+    "crypto": "Kripto",
     "heatmap": "Ramani ya joto ya Sekta",
     "ai": "AI na kujifunza kwa mashine",
     "layoffs": "Tracker ya Kuachishwa kazi",
@@ -506,19 +505,19 @@
     "climate": "Matatizo ya Hali ya Hewa",
     "populationExposure": "Mfiduo wa Idadi ya Watu",
     "securityAdvisories": "Ushauri wa Usalama",
-    "orefSirens": "Israel Sirens",
+    "orefSirens": "King'ora za Israel",
     "telegramIntel": "Telegraph ya Intel",
-    "xIntel": "X News Accounts",
+    "xIntel": "Akaunti za habari za X",
     "startups": "Startups na mtaji wa kufadhili biashara changa",
     "vcblogs": "Maarifa na insha za mtaji wa kufadhili biashara changa",
     "regionalStartups": "Habari za Kuanzishwa Ulimwenguni",
-    "unicorns": "Unicorn Tracker",
+    "unicorns": "Kifuatiliaji cha Nyati",
     "accelerators": "Vichapishi & Siku za Maonyesho",
     "security": "Usalama wa mtandao",
     "policy": "Sera na Udhibiti wa AI",
     "regulation": "Dashibodi ya Udhibiti wa AI",
     "finRegulation": "Udhibiti wa Fedha",
-    "hardware": "Semiconductors & Hardware",
+    "hardware": "Semikondakta na maunzi",
     "cloud": "Wingu na Miundombinu",
     "dev": "Jumuiya ya Wasanidi Programu",
     "github": "GitHub Inavuma",
@@ -537,7 +536,7 @@
     "gccInvestments": "Uwekezaji wa Baraza la Ushirikiano la Ghuba",
     "geoHubs": "Hubs za Kijiografia",
     "liveWebcams": "Kamera za Wavuti za moja kwa moja",
-    "windyWebcams": "Windy Live Webcam",
+    "windyWebcams": "Kamera ya moja kwa moja ya Windy",
     "gulfEconomies": "Uchumi wa Ghuba",
     "groceryBasket": "Kielezo cha mboga",
     "groceryItem": "Kipengee",
@@ -545,7 +544,7 @@
     "bigmacDesc": "Bei kubwa za Mac katika nchi zote za Mashariki ya Kati (Big Mac Index)",
     "bigmacWow": "Wiki inayolingana na wiki",
     "bigmacCountry": "Nchi",
-    "faoFoodPriceIndex": "Fahirisi ya Bei ya Chakula ya FAO",
+    "faoFoodPriceIndex": "Bei za chakula",
     "fuelPrices": "Bei za Mafuta",
     "fuelPricesDesc": "Bei za rejareja za petroli na dizeli katika nchi 30+ duniani kote",
     "fuelPricesCountry": "Nchi",
@@ -561,7 +560,9 @@
     "fearGreed": "Hofu & Uchoyo",
     "marketBreadth": "Upana wa Soko",
     "climateNews": "Habari za Hali ya Hewa",
-    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni"
+    "fx": "Kiwango cha ubadilishaji wa fedha za kigeni",
+    "ukmtoIncidents": "Matukio ya UKMTO",
+    "reservoirLevels": "Viwango vya Kimkakati vya Maji"
   },
   "commands": {
     "prefixes": {
@@ -642,8 +643,8 @@
         "climate": "Geuza hitilafu za hali ya hewa",
         "outages": "Geuza kukatika kwa mtandao",
         "tradeRoutes": "Geuza njia za biashara",
-        "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
+        "canadaRoads": "Washa/zima safu ya barabara za Kanada",
+        "canadaAlerts": "Washa/zima safu ya tahadhari za dharura za majimbo ya Kanada"
       },
       "view": {
         "dark": "Badili hadi hali ya giza",
@@ -676,13 +677,13 @@
       "addPanel": "Ongeza",
       "seeAllCommands": "Tazama amri zote",
       "hideCommandList": "Nyuma",
-      "navigate": "navigate",
+      "navigate": "nenda",
       "select": "chagua",
       "close": "karibu",
       "types": {
         "country": "Nchi",
         "news": "Habari",
-        "hotspot": "Hotspot",
+        "hotspot": "Eneo moto",
         "market": "Soko",
         "prediction": "Utabiri",
         "conflict": "Migogoro",
@@ -693,17 +694,17 @@
         "earthquake": "Tetemeko la ardhi",
         "outage": "Kukatika",
         "nuclear": "Eneo la Nyuklia",
-        "irradiator": "Irradiator",
+        "irradiator": "Kifaa cha mionzi",
         "techcompany": "Kampuni ya Teknolojia",
         "ailab": "Maabara ya AI",
         "startup": "Kuanzisha",
         "techevent": "Tukio la Teknolojia",
-        "techhq": "Tech HQ",
+        "techhq": "Makao makuu ya teknolojia",
         "accelerator": "Kiongeza kasi",
         "flight": "Ndege"
       },
       "flightOnGround": "Juu ya ardhi",
-      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightAirborne": "FL{{fl}} · noti {{kts}}",
       "flightMilitary": "Wanajeshi · {{type}} · FL{{fl}}",
       "flightMilitaryOnGround": "Wanajeshi · {{type}} · ardhini",
       "flightSearchHint": "Bonyeza Enter au ubofye ili kutafuta nafasi ya moja kwa moja",
@@ -838,15 +839,17 @@
       "logCleared": "Kumbukumbu imefutwa.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Leseni / Kitufe cha API",
+          "title": "Ufunguo wa Desktop",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter na API Business waliojisajili huunda ufunguo huu kwenye dashibodi ya wavuti chini ya Settings → API Keys. Ufunguo kamili ukipotea, ubatilishe na uunde mbadala."
+          "description": "Kwa matolani bila kuingia. Pro: tengeneza mmoja katika Settings → API Keys kwenye wavuti; vifunguo vya mpango wa API pia vinafanya kazi. Kwa matumizi yako; uwekaji wa pamoja au wa umma unahitaji mpango wa API. Msaada: worldmonitor.app/docs/api-keys"
         },
         "dividerOr": "AU",
         "register": {
-          "title": "Je, unahitaji ufunguo wa API?",
-          "description": "Tazama worldmonitor.app/docs/api-keys kwa usaidizi wa hatua kwa hatua. Vifunguo vya mwongozo vinahitaji API Starter au API Business plan.",
-          "submitBtn": "Tazama mipango ya API"
+          "submitBtn": "Tazama mipango"
+        },
+        "signIn": {
+          "title": "Ingia kwa Pro",
+          "description": "Pro inafanya kazi hapa baada ya kuingia kutoka kwa dirisha kuu. Hamna ufunguo unaohitajika."
         }
       },
       "table": {
@@ -931,7 +934,7 @@
   "components": {
     "webcams": {
       "paused": "Kamera za wavuti zimesitishwa",
-      "play": "Cheza",
+      "play": "Tazama moja kwa moja",
       "previewStatus": "Tayari kucheza",
       "regions": {
         "all": "YOTE",
@@ -1019,11 +1022,16 @@
         "moderate": "Wastani",
         "permissive": "Ruhusa",
         "undefined": "Haijafafanuliwa"
-      }
+      },
+      "latestActions": "Vitendo vya Mwisho Vilivyorekodiwa",
+      "otherDeadlines": "Makataa Mengine ya Kuzingatia Sheria",
+      "daysAgo": "siku zilizopita",
+      "revokedCount": "Kanuni Zilizobatilishwa ({{count}})",
+      "lapsedCount": "Mapendekezo Yaliyokwisha Muda ({{count}})"
     },
     "economic": {
       "indicators": "Viashiria",
-      "gov": "Gov",
+      "gov": "Serikali",
       "centralBanks": "Benki Kuu",
       "laborMarket": "Soko la Ajira",
       "metroUnemployment": "Ukosefu wa Ajira wa Metro",
@@ -1055,12 +1063,20 @@
     },
     "energyComplex": {
       "noData": "Data ya nishati haipatikani kwa sasa - itajaribu tena",
-      "liveTape": "Live Tape",
+      "liveTape": "Mtiririko wa moja kwa moja",
       "liveTapeSource": "Nukuu za soko",
-      "infoTooltip": "<strong>Nishati Ngumu</strong> Kimwili na vienya vya nishati vya biashara katika mahali pamoja:<ul><li><strong>Hesabu za US Energy Information Administration</strong>: WTI, Brent, uzalishaji wa US, na hifadhi</li><li><strong>Tepe halisi</strong>: Biashara ya bei za nishati kama mafuta nchi kavu na gesi asilia</li><li><strong>Kusudi</strong>: Tenga matatizo ya nishati ya kimwili kutoka kwa makro na mitambo ya biashara pana</li></ul>"
+      "infoTooltip": "<strong>Nishati Ngumu</strong> Kimwili na vienya vya nishati vya biashara katika mahali pamoja:<ul><li><strong>Hesabu za US Energy Information Administration</strong>: WTI, Brent, uzalishaji wa US, na hifadhi</li><li><strong>Tepe halisi</strong>: Biashara ya bei za nishati kama mafuta nchi kavu na gesi asilia</li><li><strong>Kusudi</strong>: Tenga matatizo ya nishati ya kimwili kutoka kwa makro na mitambo ya biashara pana</li></ul>",
+      "marketTape": "Bei za soko",
+      "futures": "Mikataba ya bei za baadaye",
+      "dailySpot": "Bei ya papo hapo ya siku",
+      "eiaWeeklySpot": "Bei ya papo hapo ya EIA · wastani wa wiki",
+      "weekEnding": "Wiki inayoishia {{date}}",
+      "unknownPriceDate": "Muda wa uchunguzi haupatikani",
+      "unknownQuoteSource": "Chanzo cha bei hakipatikani",
+      "stalePrice": "Imepitwa na wakati"
     },
     "supplyChain": {
-      "chokepoints": "Chokepoints",
+      "chokepoints": "Vizuizi vya njia",
       "shipping": "Viwango vya Usafirishaji",
       "minerals": "Madini Muhimu",
       "noChokepoints": "Inapakia data ya Chokepoint...",
@@ -1089,12 +1105,15 @@
       "topProducers": "Wazalishaji wa Juu",
       "risk": "Hatari",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Ufuataji wa kimataifa wa logistiki na rasilimali:<ul><li><strong>Sehemu za kubaki</strong>: Hali ya usafiri wa bahari, alama za mgogoliko, na idadi ya meli</li><li><strong>Usambazaji wa bahari</strong>: Baltic Dry Index na mwenendo wa bei za uchukuzi</li><li><strong>Madini</strong>: Hatari ya mkusanyiko wa madini muhimu (fahirisi ya mkusanyiko wa wazalishaji) na wazalishaji wakuu</li></ul>Bofya kadi ya sehemu ya kubaki ili kupanua chati ya historia ya usafiri.",
-      "mineStage": "Mine",
-      "refineryStage": "Refine",
-      "stageUnavailable": "No published figures for this stage",
-      "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
-      "productionProLocked": "Panda kwa PRO kwa sehemu za nchi ya mgodi na rafinery na mkusanyiko (fahirisi ya mkusanyiko wa uzalishaji) kwa hatua."
+      "mineStage": "Uchimbaji",
+      "refineryStage": "Usafishaji",
+      "stageUnavailable": "Hakuna takwimu iliyochapishwa kwa hatua hii",
+      "withheldNote": "W haijawekwa wazi",
+      "productionCaption": "Sehemu ya kila nchi katika uzalishaji halisi. Safu ya mashapo kwenye ramani inaonyesha rasilimali ilipo; jedwali hili linaonyesha nani anaichimba au kuisafisha.",
+      "productionProLocked": "Panda kwa PRO kwa sehemu za nchi ya mgodi na rafinery na mkusanyiko (fahirisi ya mkusanyiko wa uzalishaji) kwa hatua.",
+      "partialTransitCoverage": "{{names}} data ya usafiri haipatikani",
+      "oilPipelinesUnavailable": "Data ya mabomba ya mafuta haipatikani",
+      "gasPipelinesUnavailable": "Data ya mabomba ya gesi haipatikani"
     },
     "tradePolicy": {
       "overview": "Muhtasari",
@@ -1138,8 +1157,8 @@
       "noComtradeData": "Hakuna data ya mtiririko wa kimkakati inayopatikana",
       "comtradeUnavailable": "Data ya UN Comtrade haipatikani kwa muda",
       "sourceComtrade": "UN Comtrade",
-      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
-      "anomalyBadge": "Anomaly",
+      "comtradeNationalScope": "Safu za UN Comtrade ni takwimu rasmi za kitaifa za nchi inayoripoti, si kumbukumbu za mauzo ya nje kwa jiji, njia, kituo, bandari au shehena.",
+      "anomalyBadge": "Hitilafu isiyo ya kawaida",
       "colReporter": "Nchi",
       "colCommodity": "Bidhaa",
       "colTradeValue": "Thamani ya Biashara",
@@ -1186,16 +1205,16 @@
       "vol": "Vol",
       "closes": "Hufunga",
       "leanYes": "Konda Ndiyo",
-      "leanNo": "Lean No",
+      "leanNo": "Inaelekea HAPANA",
       "tossUp": "Kutupa-juu"
     },
     "stablecoins": {
       "pegHealth": "Afya ya Peg",
       "supplyVolume": "Ugavi & Kiasi",
       "token": "Ishara",
-      "mcap": "MCap",
-      "vol24h": "24h Vol",
-      "chg24h": "24h Chg",
+      "mcap": "Thamani ya soko",
+      "vol24h": "Kiasi 24h",
+      "chg24h": "Mabadiliko 24h",
       "infoTooltip": "<strong>Stablecoins</strong> Afya ya kigingi, kiwango cha juu cha soko, na ujazo wa saa 24 kwa tokeni kuu za USD-pegged (USDT, USDC, DAI, BUSD). Kigingi kilichovunjika kinaashiria hatari ya kimfumo."
     },
     "marketImplications": {
@@ -1204,7 +1223,7 @@
       "directions": {
         "long": "NDEFU",
         "short": "FUPI",
-        "hedge": "HEDGE"
+        "hedge": "Kinga"
       },
       "rationale": "Mantiki:",
       "driver": "Dereva:",
@@ -1220,33 +1239,45 @@
     },
     "playback": {
       "toggleMode": "Geuza Hali ya Uchezaji",
-      "live": "LIVE",
+      "live": "MUBASHARA",
       "historicalPlayback": "Uchezaji wa Kihistoria",
       "close": "Funga",
       "skipToStart": "Ruka ili kuanza",
       "previous": "Iliyotangulia",
       "next": "Inayofuata",
-      "skipToEnd": "Ruka hadi mwisho"
+      "skipToEnd": "Ruka hadi mwisho",
+      "storageUnavailable": "Uchezaji upya haupatikani kwa sababu kivinjari hiki kinazuia hifadhi ya tovuti. Ruhusu data ya tovuti kwa tovuti hii ili kuanza kuhifadhi picha za hali."
     },
     "pizzint": {
-      "indexSource": "Faharasa: World Monitor · data za maeneo:",
+      "indexSource": "Faharasa: World Monitor",
+      "venueSource": "data za maeneo:",
       "statusNormal": "KAWAIDA",
       "statusNoData": "HAKUNA DATA",
       "statusNoBaseline": "HAKUNA MSINGI",
       "vsUsual": "dhidi ya kawaida",
-      "title": "Pentagon Pizza Index",
+      "title": "Kielelezo cha Pizza cha Pentagon",
       "defcon": "DEFCON {{level}}",
       "updated": "Ilisasishwa {{timeAgo}}",
       "tensionsTitle": "Mvutano wa Kijiografia",
       "tensionsSource": "Mivutano: World Monitor kwa kutumia matukio ya GDELT",
       "insufficientData": "Data haitoshi",
+      "evidenceStrikes": "Mashambulizi yaliyoripotiwa ndani ya siku 3 ({{countries}}): {{value}}",
+      "evidenceAirports": "Viwanja vya ndege vilivyoathirika: {{value}}",
+      "evidenceAirportClosed": "Uwanja wa ndege wa {{name}} umefungwa",
+      "evidenceAirportHalted": "{{name}}: safari nyingi za ndege zimefutwa",
+      "evidenceAirportRestricted": "{{name}}: safari za ndege zimezuiliwa",
+      "evidenceMilitaryAircraft": "Ndege za kijeshi ({{country}}) katika eneo: {{value}}",
+      "evidencePlaAircraft": "Ndege za kijeshi za China karibu na Taiwan: {{value}}",
+      "evidencePlaShips": "Meli za jeshi la wanamaji la China karibu na Taiwan: {{value}}",
+      "evidenceSanctions": "Vikwazo vipya vya Marekani wiki hii ({{country}}): {{value}}",
+      "evidenceUsual": "(kawaida {{value}})",
       "pizzaUnavailable": "Data ya shughuli za migahawa ya pizza haipatikani",
       "source": "Chanzo:",
       "statusClosed": "IMEFUNGWA",
-      "statusSpike": "SPIKE",
+      "statusSpike": "MRUKO",
       "statusHigh": "JUU",
       "statusElevated": "IMEINUA",
-      "statusNominal": "NOMINAL",
+      "statusNominal": "KAWAIDA",
       "statusQuiet": "TULIA",
       "justNow": "sasa hivi",
       "minutesAgo": "Dakika {{m}} zilizopita",
@@ -1268,14 +1299,14 @@
         "fighters": "Wapiganaji",
         "tankers": "Mizinga",
         "awacs": "Tahadhari ya mapema ya uhamiaji",
-        "recon": "Recon",
+        "recon": "Upelelezi",
         "transport": "Usafiri",
         "bombers": "Washambuliaji",
         "drones": "Ndege zisizo na rubani",
         "aircraft": "Ndege",
         "carriers": "Wabebaji",
         "destroyers": "Waharibifu",
-        "frigates": "Frigates",
+        "frigates": "Frigeti",
         "submarines": "Nyambizi",
         "patrol": "Doria",
         "auxiliary": "Msaidizi",
@@ -1298,8 +1329,8 @@
       "rateLimitedTip": "Kidokezo: Saa za kilele (UTC 12:00-20:00) mara nyingi huona vikomo vya juu zaidi.",
       "tryAgain": "Jaribu Tena",
       "badges": {
-        "critical": "CRIT",
-        "elevated": "ELEV",
+        "critical": "HATARI",
+        "elevated": "MWINUKO",
         "normal": "KAWAIDA"
       },
       "trendStable": "imara",
@@ -1326,6 +1357,7 @@
       }
     },
     "countryBrief": {
+      "moreActions": "Vitendo zaidi",
       "shareLink": "Shiriki kiungo",
       "shareStory": "Shiriki hadithi",
       "printPdf": "Chapisha / PDF",
@@ -1339,38 +1371,22 @@
       "nuclear": "Nyuklia"
     },
     "threatLabels": {
-      "critical": "CRIT",
+      "critical": "HATARI",
       "high": "JUU",
-      "medium": "MED",
+      "medium": "WASTANI",
       "low": "CHINI",
       "info": "HABARI"
     },
     "deckgl": {
       "zoomIn": "Kuza",
-      "zoomOut": "Zoom Out",
+      "zoomOut": "Kuza nje",
       "resetView": "Weka Mwonekano upya",
       "legend": {
-        "title": "LEGEND",
-        "startupHub": "Kitovu cha Kuanzisha",
-        "techHQ": "Tech HQ",
-        "accelerator": "Kiongeza kasi",
-        "cloudRegion": "Mkoa wa Cloud",
-        "datacenter": "Kituo cha data",
-        "stockExchange": "Soko la Hisa",
-        "financialCenter": "Kituo cha Fedha",
-        "centralBank": "Benki Kuu",
-        "commodityHub": "Kitovu cha Bidhaa",
-        "waterway": "Njia ya maji",
+        "title": "UFAFANUZI",
         "highAlert": "Tahadhari ya Juu",
         "elevated": "Imeinuliwa",
         "monitoring": "Ufuatiliaji",
-        "base": "Msingi",
-        "nuclear": "Nyuklia",
-        "aircraft": "Ndege",
-        "miningSite": "Tovuti ya Madini",
-        "commodityPort": "Bandari ya Bidhaa",
         "pipeline": "Bomba",
-        "processingPlant": "Kiwanda cha Usindikaji",
         "conflict": "Eneo la Migogoro",
         "diseaseAlert": "Tahadhari ya Ugonjwa",
         "diseaseWarning": "Onyo la Ugonjwa",
@@ -1406,11 +1422,11 @@
         "techEvents": "Matukio ya Teknolojia",
         "naturalEvents": "Matukio ya Asili",
         "fires": "Moto",
-        "intelHotspots": "Intel Hotspots",
+        "intelHotspots": "Maeneo moto ya ujasusi",
         "conflictZones": "Maeneo ya Migogoro",
         "militaryBases": "Vituo vya kijeshi",
         "nuclearSites": "Maeneo ya Nyuklia",
-        "gammaIrradiators": "Gamma Irradiators",
+        "gammaIrradiators": "Vifaa vya mionzi ya Gamma",
         "radiationSpike": "Mwiba wa mionzi",
         "radiationElevated": "Mionzi iliyoinuliwa",
         "spaceports": "Viwanja vya anga",
@@ -1423,8 +1439,8 @@
         "ucdpEvents": "Matukio ya Migogoro ya Silaha",
         "displacementFlows": "Mitiririko ya Uhamisho",
         "climateAnomalies": "Matatizo ya Hali ya Hewa",
-        "weatherAlerts": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
-        "strategicWaterways": "Chokepoints",
+        "weatherAlerts": "Tahadhari za hali ya hewa",
+        "strategicWaterways": "Vizuizi vya njia",
         "economicCenters": "Vituo vya Uchumi",
         "criticalMinerals": "Madini Muhimu",
         "stockExchanges": "Masoko ya Hisa",
@@ -1442,8 +1458,11 @@
         "happiness": "Furaha ya Dunia",
         "speciesRecovery": "Urejeshaji wa Aina",
         "renewableInstallations": "Nishati Safi",
-        "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
+        "canadaRoads": "Barabara za Kanada",
+        "canadaAlerts": "Tahadhari za Kanada",
+        "notamAirspace": "Vikwazo vya Anga la NOTAM",
+        "no2Activity": "Shughuli za viwanda",
+        "reservoirLevels": "Viwango vya Maji"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1557,12 +1576,29 @@
           "dayNight": "Kidhibiti cha wakati halisi cha jua kinachoonyesha maeneo ya mchana na usiku",
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
           "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi — rangizo nchi kwa alama (kijani=imara, nyekundu=muhimu)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
+          "canadaRoads": "Matukio rasmi ya barabarani, maonyo, hali, kufungwa, ujenzi na hatari kutoka maeneo ya Kanada yanayotumika.",
+          "canadaAlerts": "Tahadhari za usalama wa umma za majimbo kutoka Alberta Emergency Alert, B.C. Evacuation Orders and Alerts na SaskAlert.",
+          "notamAirspace": "Vikwazo vya kuruka kwa muda na anga yenye vikwazo, hatari na iliyokatazwa kutoka kwa NOTAMs za FAA, inayotumika sasa au kuanza ndani ya saa 24",
+          "no2Activity": "Mwelekeo wa shughuli za NO2 kutoka Sentinel-5P kwa nchi 167 na makundi 32 ya viwanda: dirisha la hivi karibuni la siku 56 ikilinganishwa na tarehe zile zile za miaka iliyopita, baada ya ukanda usiohesabiwa wa 10%. Ina data iliyorekebishwa ya Copernicus Sentinel.",
+          "reservoirLevels": "Kiwango cha uso wa maji katika mabwawa na maziwa ya kimkakati kutoka lidar ya setilaiti ya NASA ICESat-2, ikilinganishwa na kiwango cha kawaida cha mwezi. NASA huchapisha kila upitaji takriban miezi miwili baada ya kupimwa."
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
         }
+      },
+      "measure": {
+        "title": "Pima umbali",
+        "units": "Vitengo vya umbali",
+        "pointA": "Chagua nukta A. Bonyeza ramani au bonyeza Enter katikati ya ramani.",
+        "pointB": "Chagua nukta B. Songa ramani na bonyeza Enter ili kutumia kituo chake.",
+        "geodesic": "Umbali wa geodesic",
+        "note": "Kati ya kuratibu zilizobonyezwa; si njia wala mgawanyiko wa mali uliothibitishwa. Escape huondoka.",
+        "cancel": "Ghairi uteuzi",
+        "cancelShort": "Ghairi",
+        "resetShort": "Weka upya",
+        "exitShort": "Ondoka",
+        "reset": "Weka upya kipimo",
+        "exit": "Ondoka kwenye kipimo"
       }
     },
     "cii": {
@@ -1571,9 +1607,9 @@
       "sectionAll": "Wote",
       "sourceStates": {
         "degraded": "kushushwa hadhi",
-        "stale": "stale"
+        "stale": "imepitwa na wakati"
       },
-      "infoTooltip": "<strong>Mbinu ya Tathmini</strong><ul><li><strong>U</strong>sumbufu: machafuko ya kiraia na maandamano</li><li><strong>C</strong>mgogoro: ukubwa wa mgogoro wa silaha</li><li><strong>S</strong>alama: ndege/meli za kijeshi juu ya eneo</li><li><strong>I</strong>habari: kasi ya habari na uwiano wa vituo muhimu</li><li>Msukumo wa ukaribu wa vituo muhimu (maeneo ya kimkakati)</li></ul><em>Thamani za U:C:S:I zinaonyesha alama za vipengele.</em> Utambuzi wa Kituo Muhimu unaunganisha huluki za habari na ishara za ramani kwa alama sahihi.",
+      "infoTooltip": "<strong>Mbinu ya Tathmini</strong><ul><li><strong>U</strong>sumbufu: machafuko ya kiraia na maandamano</li><li><strong>C</strong>mgogoro: ukubwa wa mgogoro wa silaha</li><li><strong>I</strong>habari: kasi ya habari na uwiano wa vituo muhimu</li><li>Msukumo wa ukaribu wa vituo muhimu (maeneo ya kimkakati)</li></ul><em>Thamani za U:C:I zinaonyesha alama za vipengele.</em> Utambuzi wa Kituo Muhimu unaunganisha huluki za habari na ishara za ramani kwa alama sahihi.",
       "_methodologyLink_translatorNote": "MAMBO YA KUFANYA KUTAFSIRI (#3725): janibisha kiunga cha methodology. Thamani ya Kiingereza inasafirishwa kwa kila lugha kama mwanya wa kuacha ili kiungo cha mbinu kiwepo katika lugha zote. Salama kutafsiri bila kutumia infoTooltip - hizi mbili hutoa kama kidokezo kimoja kupitia uunganishaji katika CIIPanel.ts.",
       "methodologyLink": "Inajumuisha msingi wa kila nchi + kizidishi cha matukio - tazama /docs/methodology/cii-risk-scores kwa jedwali lililochapishwa"
     },
@@ -1596,7 +1632,7 @@
       },
       "mapFlashLabel": "Mapigo ya Tukio la Moja kwa Moja",
       "mapFlashDesc": "Mwangaza maeneo kwenye ramani wakati habari muhimu zinapofika",
-      "aiFlowCloudLabel": "Cloud AI (OpenRouter)",
+      "aiFlowCloudLabel": "AI ya wingu (OpenRouter)",
       "aiFlowCloudDesc": "Tuma vichwa vya habari kwa wingu kwa muhtasari wa AI (inapendekezwa)",
       "aiFlowBrowserLabel": "Muundo wa Karibu wa Kivinjari",
       "aiFlowBrowserDesc": "Endesha AI ndani ya kivinjari chako",
@@ -1623,8 +1659,8 @@
       "analysisFrameworksFromAgentskills": "Kutoka kwa agentskills.io",
       "analysisFrameworksPasteJson": "Bandika JSON",
       "analysisFrameworksSaveToLibrary": "Hifadhi kwenye Maktaba",
-      "streamAlwaysOnLabel": "Cheza mitiririko ya moja kwa moja kiotomatiki kwenye dashibodi",
-      "streamAlwaysOnDesc": "Huanzisha Habari za Moja kwa Moja na Kamera za Wavuti moja kwa moja zinapoonekana. Ondoka ili kupakia video tu baada ya kubofya Cheza.",
+      "streamAlwaysOnLabel": "Kucheza kamera moja kwa moja kiotomatiki",
+      "streamAlwaysOnDesc": "Huanza video za kamera moja kwa moja mara tu zinavyoonekana. Acha hii kuwa imezimwa ili kupakia hizo tu wakati unapozisimamisha mwenyewe.",
       "frameworkNote": "Inatumika kwa uchanganuzi unaozalishwa na mteja pekee",
       "loadingServerInsights": "Inapakia maarifa ya seva...",
       "usingCachedBrief": "Inatumia muhtasari ulioakibishwa...",
@@ -1657,7 +1693,9 @@
       "briefStoryDetails": "Maelezo ya habari ({{count}})",
       "streamIdleStopLabel": "Simamisha video moja kwa moja wakati umekaa bila kufanya kitu",
       "streamIdleStopDesc": "Husimamisha Habari za Moja kwa Moja na Kamera za Moja kwa Moja baada ya muda huu bila shughuli na kuonyesha onyo katika paneli.",
-      "streamIdleStopNever": "Kamwe"
+      "streamIdleStopNever": "Kamwe",
+      "liveNewsAutoplayLabel": "Taslimia kiotomatiki habari moja kwa moja",
+      "liveNewsAutoplayDesc": "Huanza video ya habari moja kwa moja, bila sauti, mara tu inapoonekana. Zima hii ili kupakia video tu wakati unapoisimamisha mwenyewe."
     },
     "settings": {
       "exportSettings": "Hamisha Mipangilio",
@@ -1673,7 +1711,7 @@
         "cables": "Kebo",
         "pipelines": "Mabomba",
         "ports": "Bandari",
-        "chokepoints": "Chokepoints"
+        "chokepoints": "Vizuizi vya njia"
       },
       "filterType": {
         "cable": "kebo",
@@ -1721,7 +1759,7 @@
       "cachedCiiStatus": "Fahirisi ya Kutokuwa na Uthabiti wa Nchi iliyohifadhiwa {{states}}",
       "sourceStates": {
         "degraded": "kushushwa hadhi",
-        "stale": "stale"
+        "stale": "imepitwa na wakati"
       },
       "enableCoreFeeds": "Washa Milisho ya Msingi",
       "waitingForData": "Inasubiri data...",
@@ -1762,6 +1800,10 @@
       "soon": "HIVI KARIBUNI"
     },
     "techReadiness": {
+      "ranked": "Zenye nafasi",
+      "unranked": "Bila nafasi",
+      "coverageRequirement": "Kiwango cha chini cha viashiria ili kupata nafasi",
+      "coverageLabel": "Viashiria vinavyopatikana",
       "internetUsers": "Watumiaji wa Mtandao",
       "mobileSubscriptions": "Usajili wa Simu",
       "rdSpending": "Matangazo ya utafiti na maendeleo",
@@ -1777,10 +1819,17 @@
       "infoTooltip": "<strong>Uandaaji wa teknolojia</strong> Alama ya jumla ya Bank Duniani, 0–100. Uzani ni utafiti na maendeleo 35%, mtandao 30%, mtandao wa broadband 20%, na simu 15%. Watumiaji wa mtandao ni asilimia ya idadi ya watu; uondoaji wa simu ni kwa watu 100; matumizi ya utafiti ni sehemu ya matokeo ya kiuchumi. Thamani zisizojulikana zinaonyesha mstari. Data inatoka 2019–2024."
     },
     "populationExposure": {
-      "totalAffected": "Jumla ya Walioathirika",
-      "affectedCount": "{{count}} walioathirika",
-      "radiusKm": "Radi ya kilomita {{km}}",
-      "infoTooltip": "<strong>Makadirio ya Mfichuo wa Idadi ya Watu</strong> Idadi ya watu inayokadiriwa ndani ya eneo la athari. Kulingana na data ya msongamano wa nchi za WorldPop.<ul><li>Migogoro: 50km radius</li><li>Tetemeko la ardhi: 100km radius</li><li>Mafuriko: 100km radius</li><li>Moto wa nyika: 30km radius</li></ul>"
+      "estimateWithin": "Takriban watu {{count}} ndani ya eneo la kilomita {{km}}",
+      "method": "Makadirio yanatumia wastani wa msongamano wa watu nchini.",
+      "empty": "Hakuna maeneo ya matukio yanayokidhi vigezo",
+      "infoTooltip": "Matukio yenye data ya msongamano wa watu wa nchi yanaonyeshwa. Maeneo ya matukio ya UCDP bila taarifa za usahihi yanawekwa alama ya kusubiri sasisho. Maeneo yanayokadiriwa yanaweza kuingiliana. Matukio ya machafuko yanahitaji eneo sahihi; matukio ya UCDP yaliyowekwa alama ya eneo lisilo sahihi hayajumuishwi. Eneo moja kutoka vyanzo viwili (machafuko na UCDP) huonekana katika safu mbili.",
+      "eventCount_one": "{{count}} tukio",
+      "eventCount_other": "{{count}} matukio",
+      "locationPending": "Usahihi wa eneo unasubiri sasisho",
+      "unrestCoverage": "Ufunikaji wa machafuko",
+      "ucdpPending": "Ufunikaji wa UCDP unasubiri sasisho",
+      "coverageShown": "Matukio yaliyoonyeshwa: {{shown}} kati ya {{total}}",
+      "coverageLeftOut": "Hayajaonyeshwa: {{imprecise}} bila mahali sahihi, {{noEstimate}} katika nchi zisizo na data ya msongamano, {{otherPlaces}} baada ya maeneo 10 ya kwanza kwa kila chanzo"
     },
     "securityAdvisories": {
       "loading": "Inaleta mashauri ya usafiri...",
@@ -1845,11 +1894,11 @@
       "activityIndex": "Kielezo cha Shughuli",
       "trend": "Mwenendo",
       "estDailyFlow": "Est. Mtiririko wa Kila Siku",
-      "cryptoDaily": "Crypto Daily",
+      "cryptoDaily": "Kripto kila siku",
       "tabs": {
         "platforms": "Majukwaa",
         "categories": "Kategoria",
-        "crypto": "Crypto",
+        "crypto": "Kripto",
         "institutional": "Taasisi"
       },
       "platform": "Jukwaa",
@@ -1868,30 +1917,30 @@
       "candidGrants": "Ruzuku Candid",
       "dataLag": "Kuchelewa kwa Data",
       "infoTooltip": "<strong>Viwango vya Utoaji wa Kimataifa</strong> Madai yaliyochapishwa ya majukwaa na taasisi pamoja na vipindi vya vyanzo na hali ya uthibitishaji. Takwimu za kila mwaka ni makadirio, si shughuli za moja kwa moja.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Vipimo vya Utoaji Duniani",
+      "benchmarkInfoTooltip": "<strong>Vipimo vya Utoaji Duniani</strong> Madai ya majukwaa na taasisi yaliyochapishwa pamoja na vipindi vya vyanzo na hali ya uthibitisho. Takwimu za mwaka ni makadirio, si shughuli za moja kwa moja.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Vipimo vilivyochapishwa vyenye vyanzo vilivyothibitishwa.",
+        "partial": "Vipimo vilivyochapishwa vyenye vyanzo vilivyothibitishwa kwa sehemu.",
+        "legacy": "Nakala ya zamani; maelezo ya chanzo hayapatikani.",
+        "cached": "Inaonyesha nakala iliyohifadhiwa; kuonyesha upya hakupatikani."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "partialEstimate": "Partially verified estimate",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Utoaji wa majukwaa yanayofuatiliwa — makadirio ya mwaka",
+      "annualizedDaily": "Makadirio ya kila siku kwa mwaka",
+      "atLeast": "Angalau",
+      "about": "Kuhusu",
+      "sourceNotVerified": "Chanzo hakijathibitishwa",
+      "partialEstimate": "Makadirio yaliyothibitishwa kwa sehemu",
+      "reportedCumulative": "Jumla iliyoripotiwa ya limbikizo",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context."
+      "benchmark": "Kipimo kilichochapishwa",
+      "sourcesMethodology": "Vyanzo na mbinu",
+      "methodologyIntro": "Madai ya majukwaa ya kila mwaka yaliyothibitishwa au yaliyokadiriwa kwa mwaka kwa msingi thabiti pekee ndiyo huingia kwenye kichwa. Takwimu za jumla na za taasisi hubaki kama muktadha tofauti."
     },
     "displacement": {
       "refugees": "Wakimbizi",
       "asylumSeekers": "Watafuta hifadhi",
-      "idps": "IDPs",
+      "idps": "Wakimbizi wa ndani",
       "total": "Jumla",
       "origins": "Asili",
       "hosts": "Wenyeji",
@@ -1952,8 +2001,6 @@
       "sortBy": "Panga kwa",
       "sortNewest": "Mpya zaidi",
       "sortRelevance": "Umuhimu",
-      "sourceCoverage": "{{covered}}/{{total}} sources",
-      "sourceCoverageHint": "Showing {{covered}} of {{total}} enabled sources — this panel rotates through its sources on each refresh",
       "translationUnavailable": "Tafsiri haipatikani. Kagua mipangilio ya mtoa huduma wako wa AI na ujaribu tena."
     },
     "mobileNav": {
@@ -1963,8 +2010,8 @@
       "critical": "MUHIMU",
       "high": "JUU",
       "dismiss": "Ondoa",
-      "alertsRegion": "Breaking news alerts",
-      "viewPanel": "View related panel"
+      "alertsRegion": "Tahadhari ya habari za dharura",
+      "viewPanel": "Tazama paneli husika"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Tahadhari za Kuvunja",
@@ -2030,25 +2077,25 @@
       "filterConflict": "Migogoro",
       "filterOsint": "ujumbe wa wazi",
       "filterMiddleeast": "Mashariki ya Kati",
-      "live": "LIVE",
+      "live": "MUBASHARA",
       "viewSource": "Tazama Chanzo",
       "filterGeopolitics": "Siasa za kijiografia",
-      "filterCyber": "Cyber"
+      "filterCyber": "Mtandao"
     },
     "xIntel": {
-      "infoTooltip": "Curated public news-account posts from X. Official API only.",
-      "loading": "Connecting to X news-account relay...",
-      "empty": "No posts available",
-      "disabled": "X news-account relay not active",
-      "filterAll": "All",
-      "filterBreaking": "Breaking",
-      "filterConflict": "Conflict",
+      "infoTooltip": "Machapisho yaliyochaguliwa kutoka akaunti za habari za umma kwenye X. API rasmi pekee.",
+      "loading": "Inaunganisha na kiunganishi cha akaunti za habari za X...",
+      "empty": "Hakuna machapisho",
+      "disabled": "Kiunganishi cha akaunti za habari za X hakifanyi kazi",
+      "filterAll": "Zote",
+      "filterBreaking": "Habari za dharura",
+      "filterConflict": "Mzozo",
       "filterOsint": "ujumbe wa wazi",
-      "filterMiddleeast": "Middle East",
-      "live": "LIVE",
-      "viewSource": "View Source",
-      "filterGeopolitics": "Geopolitics",
-      "filterCyber": "Cyber"
+      "filterMiddleeast": "Mashariki ya Kati",
+      "live": "MUBASHARA",
+      "viewSource": "Tazama chanzo",
+      "filterGeopolitics": "Siasa za kijiografia",
+      "filterCyber": "Mtandao"
     },
     "investments": {
       "infoTooltip": "Hifadhidata ya Saudi Arabia na uwekezaji wa kigeni wa moja kwa moja wa UAE katika miundombinu muhimu ya kimataifa. Bofya safu mlalo ili kuruka kwenye uwekezaji kwenye ramani.",
@@ -2090,6 +2137,8 @@
       "infoTooltip": "<strong>Masoko ya Utabiri</strong> Masoko ya utabiri wa pesa halisi:<ul><li>Bei zinaonyesha makadirio ya uwezekano wa umati</li><li>Kiasi cha juu = ishara ya kuaminika zaidi</li><li>Lengo la matukio ya jiografia na ya sasa</li></ul>Vyanzo: Polymarket, Kalshi"
     },
     "etfFlows": {
+      "previousColumns": "Safu wima zilizotangulia",
+      "moreColumns": "Safu wima zaidi",
       "unavailable": "Data ya mifuko inayouzwa kwenye soko la hisa haipatikani kwa sasa",
       "rateLimited": "Data ya mifuko inayouzwa kwenye soko la hisa haipatikani kwa sasa (kikomo cha maombi) — tutajaribu tena hivi karibuni",
       "netFlow": "Mtiririko wa Wavu",
@@ -2097,7 +2146,7 @@
       "totalVol": "Jumla ya Vol",
       "etfs": "Mifuko inayouzwa kwenye soko la hisa",
       "netInflow": "NET",
-      "netOutflow": "NET OUTFLOW",
+      "netOutflow": "MTIRIRIKO HALISI WA NJE",
       "netNeutral": "MTIRIRIKO SAWA",
       "table": {
         "ticker": "Ticker",
@@ -2212,19 +2261,19 @@
     "markets": {
       "infoTooltip": "<strong>Masoko</strong> Fahirisi za hisa zilizocheleweshwa au zilizopakiwa awali, hisa na bei za crypto. Geuza kukufaa orodha yako ya kutazama kwa kitufe cha Orodha ya Kufuatilia. Cheche zinaonyesha mwenendo wa bei ya hivi majuzi.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Chati ya bei ya {{symbol}}",
+        "close": "Funga chati"
       },
       "unavailable": {
         "symbols": "{{symbols}} — {{reason}}",
-        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
-        "notFound": "no quote available",
-        "providerError": "quote lookup failed, retrying shortly",
-        "rateLimited": "quote provider rate limited, retrying shortly",
-        "notConfigured": "quote provider not configured",
-        "requestLimit": "too many symbols requested",
-        "budget": "not loaded yet, retrying shortly",
-        "seed": "market data temporarily unavailable"
+        "symbolsMore": "{{symbols}} na nyingine {{count}} — {{reason}}",
+        "notFound": "Hakuna bei",
+        "providerError": "Imeshindwa kupata bei, itajaribu tena hivi karibuni",
+        "rateLimited": "Mtoa bei amepunguza maombi, itajaribu tena hivi karibuni",
+        "notConfigured": "Hakuna mtoa bei aliyesanidiwa",
+        "requestLimit": "Alama nyingi mno zimeombwa",
+        "budget": "Bado haijapakiwa, itajaribu tena hivi karibuni",
+        "seed": "Data ya soko haipatikani kwa muda"
       }
     },
     "heatmap": {
@@ -2232,15 +2281,15 @@
     },
     "commodities": {
       "infoTooltip": "<strong>Bidhaa</strong> Tepu ya bidhaa isiyo ya nishati inayoweza kuuzwa inayolenga metali na nyenzo. Bei za nishati zinaishi katika Nishati Complex; viashiria vya mkazo mkubwa huishi katika Stress ya Macro.",
-      "commodities": "Commodities",
-      "physicalPremiums": "Physical premium",
-      "physical": "Physical",
-      "paper": "Paper",
-      "premium": "Premium",
-      "asOf": "As of {{date}}",
+      "commodities": "Bidhaa",
+      "physicalPremiums": "Malipo ya ziada ya bidhaa halisi",
+      "physical": "Halisi",
+      "paper": "Karatasi",
+      "premium": "Malipo ya ziada",
+      "asOf": "kufikia {{date}}",
       "metals": {
-        "gold": "Gold",
-        "silver": "Silver"
+        "gold": "Dhahabu",
+        "silver": "Fedha"
       },
       "divergence": {
         "compositeValue": "Fahirisi ya mzigo halisi: {{value}} / 100",
@@ -2342,7 +2391,7 @@
         "all": "Wote",
         "cloud": "Wingu",
         "dev": "Zana za Dev",
-        "comm": "Comms",
+        "comm": "Mawasiliano",
         "ai": "AI",
         "saas": "SaaS"
       }
@@ -2373,6 +2422,7 @@
       }
     },
     "liveNews": {
+      "audioUnavailable": "Sauti haipatikani",
       "notLive": "{{name}} hapatikani kwa sasa",
       "signInToYouTube": "Ingia kwenye YouTube",
       "openOnYouTube": "Fungua kwenye YouTube",
@@ -2411,7 +2461,8 @@
       "channelUrlHint": "Bandika URL ya chaneli (youtube.com/channel/UC…) au URL ya video ya moja kwa moja",
       "youtubeChannel": "Chaneli ya YouTube",
       "insecureStream": "{{name}} inatumia mtiririko usioaminifu (http), ambao vivinjari huzuia. Ongeza tena kwa URL ya mtiririko salama (https)",
-      "httpsStreamHint": "Vivinjari huzuia mitiririko isiyo salama (http). Bandika URL ya mtiririko salama (https)"
+      "httpsStreamHint": "Vivinjari huzuia mitiririko isiyo salama (http). Bandika URL ya mtiririko salama (https)",
+      "tapToPlay": "Gusa ili kuanza"
     },
     "map": {
       "showMap": "Onyesha Ramani",
@@ -2445,7 +2496,7 @@
       "title": "24/7 Nafasi",
       "infoTooltip": "<strong>24/7 Positioning</strong> Mkazo wa kudumu wa nafasi ya mkataba kutoka kwa Hyperliquid. Hufanya biashara usiku na mchana, kuonyesha nini kinajengwa wakati masoko ya kitamaduni yamefungwa. Alama za mchanganyiko (0-100) kutoka kwa kiwango cha ufadhili, kiasi, riba ya wazi, na msingi wa doa. Kijani = ndefu iliyosongamana (bullish konda), nyekundu = kaptula iliyojaa (bearish konda).",
       "commodities": "BIDHAA",
-      "crypto": "CRYPTO",
+      "crypto": "KRIPTO",
       "fx": "Kubadilishana kwa fedha za nje",
       "warmup": "Kujenga msingi. Historia ya Kiasi na Ufikiaji Wazi inajazwa katika saa inayofuata.",
       "footer": "Dakika 5 · Perps zenye maji mengi · 24/7"
@@ -2496,10 +2547,10 @@
       "epsActual": "sehemu halisi ya faida {{value}}",
       "epsEstimate": "sehemu halisi ya faida iliyokadiriwa {{value}}",
       "revenueActual": "{{value}} mch",
-      "revenueEstimate": "{{value}} est",
+      "revenueEstimate": "makadirio {{value}}",
       "surprise": {
         "beat": "PIGA",
-        "miss": "MISS",
+        "miss": "CHINI YA MATARAJIO",
         "inLine": "KATIKA MSTARI"
       },
       "errors": {
@@ -2573,19 +2624,20 @@
       "proLocked": "Boreshaji hadi PRO kwa alama ya kufa kwa kilicho haraka cha bidhaa"
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Ufuatiliaji wa meli halisi kupitia Kifaranga cha Hormuz, hatua mbaya ya mafuta muhimu zaidi duniani. Inafuatilia hesabu za tanki, matukio ya kumwazimu, na mabadiliko ya mtiririko wa wiki. Takriban 20% ya ugavi wa mafuta wa jumla hupitia hapa kila siku.",
-      "title": "Hormuz Trade Tracker",
+      "infoTooltip": "<strong>Kifuatiliaji cha Biashara cha Hormuz</strong> Fahirisi za kila siku za usafirishaji kupitia Mlango-bahari wa Hormuz kutoka WTO DataLab: mafuta ghafi, LNG na mbolea zinazoondoka Ghuba, na bidhaa za kilimo zinazowasili. Kwa kiasi, wastani wa Januari–Machi 2025 = 100, meli zinazoonekana kupitia AIS pekee. Hali na tarehe zinatoka kwenye uchambuzi wa hivi karibuni wa WTO.",
+      "title": "Kifuatiliaji cha Biashara cha Hormuz",
       "noData": "Hakuna data",
       "notAvailable": "N/A",
       "chartUnavailable": "Data ya chati haipatikani",
       "sourcePrefix": "Chanzo:",
-      "units": {
-        "ktPerDay": "kt/siku",
-        "generic": "vitengo"
-      },
       "errors": {
         "unavailable": "Data ya Hormuz haipatikani",
         "failedToLoad": "Imeshindwa kupakia"
+      },
+      "analysisDate": "Uchambuzi wa WTO {{date}}",
+      "indexNote": "Fahirisi ya mizigo kwa kiasi, wastani wa Januari–Machi 2025 = 100",
+      "units": {
+        "index": "fahirisi"
       }
     },
     "liveWebcams": {
@@ -2617,9 +2669,9 @@
     },
     "proBanner": {
       "badge": "PRO",
-      "headline": "Pro imezinduliwa",
-      "tagline": "Mawimbi Zaidi, Kelele kidogo. Muhtasari zaidi wa AI. Mtafiti wa Kijiografia na Usawa kwa ajili yako.",
-      "cta": "Pata toleo jipya la Pro →",
+      "headline": "Muhtasari wa AI kila siku kwa barua pepe au Slack",
+      "tagline": "pamoja na WM Analyst, sheria za arifa na MCP kwa Claude",
+      "cta": "Jiunge na Pro →",
       "dismiss": "Ondoa"
     },
     "checkoutFailureBanner": {
@@ -2636,7 +2688,7 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Office of Foreign Assets Control Specially Designated Nationals na Consolidated Lists pamoja na Global Affairs Canada SEMA/JVCFOA designations. Inaonyesha nchi ipi inakabali mkazo wa juu wa designation, programu gani inayokamatisha, na nini kilichoongezwa mapya tangu sasisho la mwisho.",
+      "infoTooltip": "Orodha za OFAC SDN na zilizounganishwa pamoja na vikwazo vya Kanada vya SEMA/JVCFOA. Safu za nchi hutumia mahusiano ya moja kwa moja. Bendera za meli na usajili wa ndege huhesabiwa kando katika sajili; idadi ya mali ya nchi ikiwa sifuri haimaanishi hakuna mali iliyowekewa vikwazo.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {
@@ -2648,7 +2700,9 @@
       "sections": {
         "countries": "Nchi zilizoidhinishwa",
         "entries": "Majina ya hivi majuzi",
-        "programs": "Mipango"
+        "programs": "Mipango",
+        "flagRegistries": "Rejista za bendera za vyombo na za ndege",
+        "regulationTargets": "Nchi zinazolengwa na kanuni za SEMA"
       },
       "empty": {
         "countries": "Hakuna sifa ya nchi inayopatikana.",
@@ -2671,7 +2725,8 @@
         "unattributed": "Haijahusishwa",
         "program": "Mpango",
         "undated": "isiyo na tarehe"
-      }
+      },
+      "targetExplanation": "Nchi zinazolengwa na kanuni si ushahidi wa uraia au anwani. Hazijumuishwi katika alama za hatari za nchi na taarifa fupi."
     },
     "radiationWatch": {
       "title": "Saa ya Mionzi",
@@ -2697,7 +2752,7 @@
         "confirmed": "Imethibitishwa",
         "lowConfidence": "Kujiamini Chini",
         "conflicts": "Migogoro",
-        "spikes": "Spikes"
+        "spikes": "Miruko"
       },
       "footer": {
         "updated": "Ilisasishwa {{time}}"
@@ -2725,8 +2780,8 @@
         "all": "Wote"
       },
       "cpcLabels": {
-        "H04B": "Comms",
-        "H01L": "Semiconductors",
+        "H04B": "Mawasiliano",
+        "H01L": "Semikondakta",
         "F42B": "Risasi",
         "G06N": "AI",
         "C12N": "Bayoteknolojia"
@@ -2758,7 +2813,7 @@
       "summary": {
         "total": "Jumla",
         "elevated": "Imeinuliwa",
-        "spikes": "Spikes",
+        "spikes": "Miruko",
         "persist": "Endelea",
         "conflict": "Migogoro",
         "strategic": "Mkakati"
@@ -2771,8 +2826,8 @@
       },
       "observations_one": "Obs {{count}}",
       "observations_other": "Obs {{count}}",
-      "sources_one": "{{count}} src",
-      "sources_other": "{{count}} src",
+      "sources_one": "chanzo {{count}}",
+      "sources_other": "vyanzo {{count}}",
       "age": {
         "minutesAgo_one": "Dakika {{count}} zilizopita",
         "minutesAgo_other": "Dakika {{count}} zilizopita",
@@ -2793,10 +2848,10 @@
         "babElMandeb": "Bab el-Mandeb",
         "bosphorus": "Njia za Kituruki",
         "panama": "Panama",
-        "danishStraits": "Mlango wa Denmark"
+        "doverStrait": "Mlangobahari wa Dover"
       },
       "flow": {
-        "mbd": "{{value}} mb/d",
+        "mbd": "mapipa milioni {{value}}/siku",
         "pctOfBaseline": "{{pct}}% ya msingi"
       },
       "errors": {
@@ -2806,7 +2861,7 @@
       "attribution": {
         "method": "Uwezo wa kurudisha Portwatch + ufuatiliaji wa meli uliofunuliwa",
         "sampleLabel": "ishara za kumwazimu ufuatiliaji wa meli",
-        "creditName": "US Energy Information Administration World Oil Transit Chokepoints"
+        "creditName": "Taasisi ya Taarifa za Nishati ya Marekani — vizuizi vya usafirishaji wa mafuta duniani"
       }
     },
     "panelFreshness": {
@@ -2840,148 +2895,165 @@
         "hoursAgo": "Saa {{count}} zilizopita",
         "daysAgo": "Siku {{count}} zilizopita",
         "compactNow": "sasa",
-        "compactMinutes": "{{count}}m",
+        "compactMinutes": "dak {{count}}",
         "compactHours": "{{count}}saa",
-        "compactDays": "{{count}}d"
+        "compactDays": "siku {{count}}"
       }
     },
     "billingState": {
-      "onHoldDesc": "Payment failed. Update your payment method to restore premium access.",
-      "onHoldBannerMessage": "Payment failed. Update your payment method to keep your subscription active.",
-      "updatePayment": "Update Payment",
-      "renewalPendingDesc": "We're verifying your subscription renewal. Premium access will be restored automatically once confirmed.",
-      "refreshStatus": "Refresh Status",
-      "renewalFailedDesc": "We couldn't verify your subscription renewal. Manage billing or contact support if this persists.",
-      "manageBilling": "Manage Billing",
-      "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
-      "resubscribe": "Resubscribe"
+      "onHoldDesc": "Malipo yameshindwa. Sasisha njia yako ya malipo ili kurejesha ufikiaji wa premium.",
+      "onHoldBannerMessage": "Malipo yameshindwa. Sasisha njia yako ya malipo ili usajili wako uendelee.",
+      "updatePayment": "Sasisha malipo",
+      "renewalPendingDesc": "Tunathibitisha usasishaji wa usajili wako. Ufikiaji wa premium utarejeshwa kiotomatiki baada ya kuthibitishwa.",
+      "refreshStatus": "Onyesha upya hali",
+      "renewalFailedDesc": "Hatukuweza kuthibitisha usasishaji wa usajili wako. Dhibiti malipo au wasiliana na msaada tatizo likiendelea.",
+      "manageBilling": "Dhibiti malipo",
+      "lapsedDesc": "Usajili wako wa Pro umekwisha. Jisajili upya ili kurejesha ufikiaji wa premium.",
+      "resubscribe": "Jisajili upya",
+      "billingEmailBouncedMessage": "Barua pepe za malipo kwa {{email}} zinarudishwa. Sasisha barua pepe yako ya malipo ili upokee risiti na arifa za malipo.",
+      "fixBillingEmail": "Rekebisha barua pepe ya malipo",
+      "billingEmailLabel": "Barua pepe mpya ya malipo",
+      "save": "Hifadhi",
+      "billingEmailUpdated": "Barua pepe ya malipo imebadilishwa kuwa {{email}}. Kuanzia sasa risiti na arifa za malipo zitatumwa huko.",
+      "billingEmailInvalid": "Weka anwani halali ya barua pepe.",
+      "billingEmailSuppressed": "Hatuwezi kutuma kwa anwani hiyo pia. Jaribu anwani nyingine.",
+      "billingEmailUpdateFailed": "Hatukuweza kusasisha barua pepe yako ya malipo. Jaribu tena, au wasiliana na usaidizi ikiwa tatizo linaendelea."
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Ingia ili kuhamisha data ya dashibodi kama CSV, JSON au PDF.",
+      "upgradeDesc": "Uhamishaji wa data (CSV, JSON, PDF) umejumuishwa katika Pro Business.",
+      "upgradeCta": "Pandisha hadi Pro Business",
+      "lockedAriaLabel": "Kuhamisha data — imefungwa. {{reason}}",
+      "unlockedAnnouncement": "Uhamishaji wa data umefunguliwa.",
+      "preparingPdf": "Inaandaa PDF…",
+      "pdfFailed": "Ripoti ya PDF haikuweza kutengenezwa. Jaribu tena, au tumia uhamishaji wa JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Nafasi za kazi ambazo hujaingia zina kikomo cha vichupo {{cap}} vya dashibodi. Ingia ili kuongeza zaidi.",
+      "upgradeDesc": "Umefikia kikomo chako cha vichupo {{cap}} vya dashibodi.",
+      "upgradeCta": "Pandisha kwa zaidi",
+      "lockedAriaLabel": "Ongeza kichupo — imefungwa. {{reason}}",
+      "unlockedAnnouncement": "Kikomo cha vichupo vya dashibodi kimeondolewa."
     },
     "proActivation": {
       "badge": "PRO",
-      "progress": "Step {{current}} of {{total}}",
-      "closeLabel": "Skip setup",
-      "ariaLabel": "Pro activation setup",
-      "signedInAs": "Signed in as {{email}}",
+      "progress": "Hatua {{current}} kati ya {{total}}",
+      "closeLabel": "Ruka usanidi",
+      "ariaLabel": "Usanidi wa kuwezesha Pro",
+      "signedInAs": "Umeingia kama {{email}}",
       "steps": {
         "brief": {
-          "heading": "Your daily brief, every morning",
-          "body": "A curated intelligence briefing in your inbox each morning — the overnight signals that matter, distilled into a five-minute read.",
-          "confirmCta": "Turn on my morning brief",
-          "confirming": "Turning it on…",
-          "doneNote": "Your morning brief is already running.",
-          "scheduleNote": "We'll keep your current delivery time.",
-          "summaryLabel": "Morning brief",
-          "summaryVerified": "On — starts with your next morning brief.",
-          "deliverAt": "Deliver at",
-          "previewLoading": "Preparing a preview of your first brief…",
-          "previewLabel": "This morning's brief"
+          "heading": "Muhtasari wako wa kila siku, kila asubuhi",
+          "body": "Muhtasari wa kijasusi ulioteuliwa kwenye kikasha chako kila asubuhi — ishara muhimu za usiku, zimefupishwa kuwa usomaji wa dakika tano.",
+          "confirmCta": "Washa muhtasari wangu wa asubuhi",
+          "confirming": "Inawasha…",
+          "doneNote": "Muhtasari wako wa asubuhi tayari unaendelea.",
+          "scheduleNote": "Tutadumisha muda wako wa sasa wa kutuma.",
+          "summaryLabel": "Muhtasari wa asubuhi",
+          "summaryVerified": "Imewashwa — inaanza na muhtasari wako ujao wa asubuhi.",
+          "deliverAt": "Tuma saa",
+          "previewLoading": "Inaandaa onyesho la kwanza la muhtasari wako…",
+          "previewLabel": "Muhtasari wa asubuhi hii"
         },
         "alerts": {
-          "heading": "Critical alerts",
-          "body": "Get pinged in your browser when something big breaks — conflict escalations, market shocks, fresh sanctions. Tune the cadence anytime in Settings.",
-          "confirmCta": "Enable alerts",
-          "confirming": "Enabling…",
-          "doneNote": "Browser alerts are already on.",
-          "blockedNote": "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
-          "declinedNote": "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
-          "summaryLabel": "Critical alerts",
-          "summaryVerified": "On — critical signals will reach your browser."
+          "heading": "Tahadhari muhimu",
+          "body": "Pata arifa kwenye kivinjari chako jambo kubwa linapotokea — kuongezeka kwa mizozo, mishtuko ya soko, vikwazo vipya. Rekebisha marudio wakati wowote katika Mipangilio.",
+          "confirmCta": "Washa tahadhari",
+          "confirming": "Inawasha…",
+          "doneNote": "Tahadhari za kivinjari tayari zimewashwa.",
+          "blockedNote": "Arifa zimezuiwa kwenye kivinjari chako. Ziwashe katika mipangilio ya tovuti ya kivinjari ili kupata tahadhari.",
+          "declinedNote": "Hakuna shida — hatutatuma tahadhari za kivinjari. Unaweza kuziwasha baadaye katika mipangilio ya tovuti ya kivinjari chako.",
+          "summaryLabel": "Tahadhari muhimu",
+          "summaryVerified": "Imewashwa — ishara muhimu zitafika kwenye kivinjari chako."
         },
         "power": {
-          "heading": "Your Pro toolkit",
-          "body": "Custom widgets, MCP connections, and the AI researcher are unlocked. Build the board you actually want to watch.",
-          "confirmCta": "Explore Pro tools",
-          "confirming": "Opening…",
-          "doneNote": "You're already using your Pro tools.",
-          "summaryLabel": "Pro toolkit",
-          "summaryVerified": "Unlocked and ready when you are.",
-          "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
+          "heading": "Zana zako za Pro",
+          "body": "Wijeti maalum, miunganisho ya MCP na mtafiti wa AI vimefunguliwa. Jenga dashibodi unayotaka kweli kufuatilia.",
+          "confirmCta": "Gundua zana za Pro",
+          "confirming": "Inafungua…",
+          "doneNote": "Tayari unatumia zana zako za Pro.",
+          "summaryLabel": "Zana za Pro",
+          "summaryVerified": "Zimefunguliwa na ziko tayari ukiwa tayari.",
+          "channelsNote": "Unapendelea Telegram, Slack, Discord au webhook?",
           "pointers": {
-            "search": "Search the entire dashboard",
-            "widgets": "Build a custom widget",
-            "analyst": "Ask the AI analyst",
-            "mcpClients": "Set up MCP",
-            "channels": "Set those up in notification settings"
+            "search": "Tafuta dashibodi nzima",
+            "widgets": "Jenga wijeti maalum",
+            "analyst": "Muulize mchambuzi wa AI",
+            "mcpClients": "Sanidi MCP",
+            "channels": "Zisanidi katika mipangilio ya arifa"
           }
+        },
+        "about": {
+          "heading": "Kitu kimoja tu: utatumia World Monitor kwa nini?",
+          "body": "Majibu matatu ya haraka yatatusaidia kujenga zana sahihi kwako. Ruka yoyote unayotaka.",
+          "confirmCta": "Hifadhi majibu yangu",
+          "confirming": "Inakusubirisha…",
+          "doneNote": "Asante, tuna majibu yako.",
+          "summaryLabel": "Kuhusu wewe",
+          "summaryVerified": "Hifadhiwa. Asante."
         }
       },
       "status": {
-        "pending": "Not set up",
-        "inFlight": "Setting up…",
-        "verified": "Ready",
-        "failed": "Didn't work",
-        "blocked": "Blocked",
-        "unavailable": "Not available",
-        "blockedNote": "This isn't available right now — you can set it up later from settings.",
-        "unavailableNote": "This isn't available on your device — you can set it up later.",
-        "failedBody": "Something went wrong. You can try again, or set it up later from settings.",
-        "retry": "Try again"
+        "pending": "Haijasanidiwa",
+        "inFlight": "Inasanidi…",
+        "verified": "Tayari",
+        "failed": "Haikufanya kazi",
+        "blocked": "Imezuiwa",
+        "unavailable": "Haipatikani",
+        "blockedNote": "Hii haipatikani kwa sasa — unaweza kuisanidi baadaye kwenye mipangilio.",
+        "unavailableNote": "Hii haipatikani kwenye kifaa chako — unaweza kuisanidi baadaye.",
+        "failedBody": "Hitilafu imetokea. Unaweza kujaribu tena, au kuisanidi baadaye kwenye mipangilio.",
+        "retry": "Jaribu tena"
       },
       "actions": {
-        "skip": "Skip for now",
-        "continue": "Continue"
+        "skip": "Ruka kwa sasa",
+        "continue": "Endelea"
       },
       "summary": {
-        "heading": "You're all set",
-        "subVerified": "Here's what's running on your account.",
-        "subPending": "You can finish setup any time from settings.",
-        "linePending": "Not set up yet — finish any time in settings.",
-        "lineFailed": "We couldn't set this up — try again from settings.",
-        "finish": "Go to my dashboard"
+        "heading": "Uko tayari kabisa",
+        "subVerified": "Haya ndiyo yanayoendelea kwenye akaunti yako.",
+        "subPending": "Unaweza kumaliza usanidi wakati wowote kutoka kwenye mipangilio.",
+        "linePending": "Bado haijasanidiwa — maliza wakati wowote katika mipangilio.",
+        "lineFailed": "Hatukuweza kusanidi hili — jaribu tena kutoka kwenye mipangilio.",
+        "finish": "Nenda kwenye dashibodi yangu"
       },
       "chip": {
-        "message": "Finish setting up your Pro account.",
-        "action": "Finish setup",
-        "dismissLabel": "Dismiss"
+        "message": "Maliza kusanidi akaunti yako ya Pro.",
+        "action": "Maliza usanidi",
+        "dismissLabel": "Ondoa"
       }
     },
     "fx": {
       "infoTooltip": "<strong>Currency rates</strong> Mkazo ranki 45 fedha kwa kupungua kwao kubwa zaidi katika miezi 24, na mabadiliko ya miezi 12. Bei ya spot hutumia msingi tofauti wa dola ya Wamarekani na euro. Bei za ruble ya Kirusi ni rubles kwa kila kitengo. Vyanzo vinajumuisha Yahoo Finance, European Central Bank na Bank of Russia.",
       "tabs": {
         "stress": "Mkazo wa fedha",
-        "spot": "Spot",
+        "spot": "Bei ya papo hapo",
         "rub": "RUB"
       },
-      "currency": "Currency",
-      "pair": "Pair",
-      "rate": "Rate",
-      "yoy": "12m",
-      "drawdown": "24m Drawdown",
-      "peakToTrough": "Peak → Trough",
-      "change1d": "1d",
-      "perUsd": "Per 1 USD",
-      "usdPerUnit": "USD per unit",
-      "usdBase": "Against the US dollar",
+      "currency": "Sarafu",
+      "pair": "Jozi",
+      "rate": "Kiwango",
+      "yoy": "miezi 12",
+      "drawdown": "Kushuka kwa miezi 24",
+      "peakToTrough": "Kilele → Chini kabisa",
+      "change1d": "siku 1",
+      "perUsd": "Kwa USD 1",
+      "usdPerUnit": "USD kwa kipimo",
+      "usdBase": "Dhidi ya dola ya Marekani",
       "eurBase": "Bei za kumbukumbu za euro za European Central Bank",
-      "stressedCount": "{{stressed}} of {{total}} currencies past {{threshold}}",
-      "degraded": "Unavailable right now: {{sources}}. Retrying shortly.",
+      "stressedCount": "{{stressed}} kati ya sarafu {{total}} zimepita {{threshold}}",
+      "degraded": "Haipatikani kwa sasa: {{sources}}. Itajaribu tena hivi karibuni.",
       "source": {
         "stress": "Mkazo wa kubadilishana kwa fedha za nje",
-        "usd": "US dollar rates",
+        "usd": "Viwango vya dola ya Marekani",
         "eur": "Bei za euro za European Central Bank",
-        "rub": "Bank of Russia rates"
+        "rub": "Viwango vya Benki ya Urusi"
       },
-      "sourceYahoo": "Source: Yahoo Finance",
+      "sourceYahoo": "Chanzo: Yahoo Finance",
       "sourceEcb": "Chanzo: European Central Bank",
-      "rubBase": "Bank of Russia — RUB per 1 unit",
-      "rubPerUnit": "RUB per unit",
-      "sourceCbr": "Source: Bank of Russia"
+      "rubBase": "Benki ya Urusi — RUB kwa kipimo 1",
+      "rubPerUnit": "RUB kwa kipimo",
+      "sourceCbr": "Chanzo: Benki ya Urusi"
     },
     "passkeyOffer": {
       "title": "Hifadhi passkey?",
@@ -3045,6 +3117,144 @@
       "rosterSummaryTier1": "Imeripotiwa na {{publishers}}, wakiwemo {{tier1}} wa kiwango cha 1",
       "rosterPublishers_one": "mchapishaji {{count}}",
       "rosterPublishers_other": "wachapishaji {{count}}"
+    },
+    "foodPrices": {
+      "title": "Bei za chakula za eneo",
+      "method": "Mabadiliko ya wiki hulinganisha bidhaa, soko, asili na kipimo kilekile na bei ya siku saba zilizopita hasa. Nchi hutumia vikapu na sarafu tofauti.",
+      "loading": "Inapakia bei za chakula…",
+      "unavailable": "Haipatikani",
+      "retry": "Jaribu tena",
+      "country": "Nchi",
+      "market": "Soko",
+      "retail": "Rejareja",
+      "wholesale": "Jumla",
+      "farmgate": "Bei ya shambani",
+      "export": "Mauzo nje",
+      "prices": "Bei za chakula",
+      "product": "Bidhaa",
+      "price": "Bei / kipimo",
+      "weekly": "Mabadiliko ya wiki",
+      "origin": "Asili",
+      "versus": "ikilinganishwa na",
+      "noBaseline": "Wiki iliyopita haipatikani",
+      "context": "Usalama wa chakula na muktadha wa mwezi",
+      "contextNote": "Ripoti hizi hutoa muktadha wenye tarehe, si mabadiliko ya bei ya wiki. Ripoti za Tunisia zinaweza kuchelewa kwa miezi kadhaa.",
+      "briefCountry": "Muhtasari wa nchi",
+      "report": "Tarehe ya ripoti",
+      "checked": "Ilikaguliwa mwisho",
+      "current": "Ya sasa",
+      "partial": "Baadhi ya ripoti hazipatikani au ni za zamani",
+      "stale": "Data ya zamani",
+      "global": "Fahirisi ya mwezi ya FAO duniani"
+    },
+    "aboutYou": {
+      "title": "Tusaidie kujenga World Monitor kwa ajili yako",
+      "ariaLabel": "Kuhusu wewe",
+      "progress": "{{current}} ya {{total}}",
+      "skip": "Ruka",
+      "close": "Funga",
+      "done": "Imekamilika",
+      "saving": "Inakifanya…",
+      "saveFailed": "Haiwezi kufanya hivyo. Jaribu tena.",
+      "retry": "Jaribu tena",
+      "thanks": "Asante. Hii inasaidia sisi kuamua nini cha kujenga ijayo.",
+      "questions": {
+        "primaryUse": {
+          "label": "Kwa nini kwa kawaida unatumia World Monitor?",
+          "options": {
+            "news": "Habari na matukio ya dunia",
+            "markets": "Soko na biashara",
+            "commodities": "Bidhaa na mlolongo wa ugavi",
+            "travel": "Usafiri na ndege",
+            "security": "Usalama na OSINT",
+            "research": "Utafiti na ujumbe",
+            "api-agent": "Kujenga na API au wakili wa AI",
+            "other": "Kitu kingine"
+          }
+        },
+        "usageContext": {
+          "label": "Je, unatumia kwa ajili ya kazi au matumizi ya kibinafsi?",
+          "options": {
+            "personal": "Kibinafsi",
+            "work": "Kazi"
+          }
+        },
+        "payer": {
+          "label": "Nani analipa, au angepiga, kwa ajili yake?",
+          "options": {
+            "self": "Mimi",
+            "employer": "Mwajiriwa wangu au timu",
+            "not-paying": "Hakuna bado"
+          }
+        },
+        "role": {
+          "label": "Ipi inayoeleza vizuri jukumu lako?",
+          "options": {
+            "analyst": "Mchambuzi au mtafiti",
+            "trader": "Mfanyabiashara au mwekezaji",
+            "journalist": "Mwandishi wa habari",
+            "security": "Usalama au hatari",
+            "government": "Serikali au sera",
+            "supply-chain": "Mlolongo wa ugavi au uendeshaji",
+            "developer": "Msanidi programu",
+            "student": "Mwanafunzi",
+            "other": "Nyingine"
+          }
+        },
+        "alternative": {
+          "label": "Utakavyo tumia iwapo World Monitor haisogezwi?",
+          "placeholder": "Sehemu inayochagua"
+        }
+      }
+    },
+    "githubStarPrompt": {
+      "title": "Unafurahia World Monitor?",
+      "body": "Nyota kwenye GitHub inasaidia watu wengine kuipata.",
+      "star": "Weka nyota kwenye GitHub",
+      "dismiss": "Funga na usiulize tena"
+    },
+    "reservoirLevels": {
+      "note": "Kiwango cha uso wa maji kutoka lidar ya setilaiti ya NASA ICESat-2. NASA huchapisha kila upitaji takriban miezi miwili baada ya kupimwa, hivyo hii hufuatilia mabadiliko kwa wiki na misimu, si kwa siku. Kiwango tu, si ujazo.",
+      "source": "Chanzo:",
+      "processedWith": "imechakatwa kwa",
+      "empty": "Bado hakuna vipimo",
+      "filterEmpty": "Hakuna eneo la maji linalolingana na kichujio hiki",
+      "unavailable": "Data ya viwango vya maji haipatikani kwa sasa",
+      "filterLabel": "Chuja maeneo ya maji",
+      "filter": {
+        "all": "Yote",
+        "attention": "Yanahitaji uangalizi",
+        "transboundary": "Ya kuvuka mipaka"
+      },
+      "status": {
+        "record_low": "Chini kabisa kuwahi",
+        "record_high": "Juu kabisa kuwahi",
+        "falling_fast": "Inashuka haraka",
+        "rising_fast": "Inapanda haraka",
+        "low": "Chini kwa msimu",
+        "high": "Juu kwa msimu",
+        "normal": "Kawaida",
+        "insufficient_history": "Historia haitoshi",
+        "no_recent_data": "Hakuna upitaji wa karibuni",
+        "lowInRange": "Chini ndani ya masafa yake",
+        "highInRange": "Juu ndani ya masafa yake"
+      },
+      "vsUsual": "{{value}} ikilinganishwa na kawaida ya {{month}}",
+      "in12Months": "{{value}} katika miezi 12",
+      "noComparison": "Bado hakuna ulinganisho",
+      "measured": "ilipimwa {{date}} ({{age}})",
+      "noPass": "Bado hakuna upitaji unaofaa",
+      "popup": {
+        "level": "Kiwango",
+        "levelValue": "{{value}} juu ya usawa wa bahari (EGM2008)",
+        "anomaly": "Ikilinganishwa na kawaida ya {{month}}",
+        "anomalyPlain": "Ikilinganishwa na kawaida ya mwezi",
+        "changePrev": "Tangu upitaji uliopita",
+        "change90": "Katika siku 90",
+        "change365": "Katika miezi 12",
+        "measured": "Ilipimwa",
+        "sparkline": "Kiwango cha maji kwa miezi 36"
+      }
     }
   },
   "popups": {
@@ -3071,7 +3281,8 @@
         "major": "MKUU",
         "moderate": "WAKATI",
         "minor": "MDOGO"
-      }
+      },
+      "relativePlace": "km {{distance}} {{direction}} mwa {{place}}"
     },
     "base": {
       "types": {
@@ -3095,11 +3306,11 @@
       "navPerformance": "Ndege Imeathiriwa",
       "samples": "Hesabu iliyoathiriwa",
       "aircraft": "Ndege Imeonekana",
-      "h3Hex": "H3 Hex"
+      "h3Hex": "Pembesita H3"
     },
     "flight": {
       "scheduled": "Imepangwa",
-      "estimated": "Est",
+      "estimated": "Makadirio",
       "groundStop": "Ground STOP",
       "groundDelay": "PROGRAMU YA KUCHELEWA KWA ARDHI",
       "departureDelay": "KUCHELEWA KUONDOKA",
@@ -3122,7 +3333,9 @@
         "apac": "Asia-Pasifiki",
         "mena": "Mashariki ya Kati",
         "africa": "Afrika"
-      }
+      },
+      "normalOperations": "UENDESHAJI WA KAWAIDA",
+      "open": "WAZI"
     },
     "aircraft": {
       "altitude": "Mwinuko",
@@ -3133,7 +3346,44 @@
       "airborne": "Inayopeperuka hewani"
     },
     "cyberThreat": {
-      "title": "TISHIO LA MTANDAO"
+      "title": "TISHIO LA MTANDAO",
+      "evidence": "Ushahidi wa chanzo cha vitisho",
+      "firstSeen": "Ilionekana kwa mara ya kwanza",
+      "explanations": {
+        "c2_server": "Chanzo kinaripoti seva ya amri na udhibiti inayotumiwa kutuma maagizo kwa programu hasidi.",
+        "malware_host": "Chanzo kinaripoti anwani inayotumiwa kuhifadhi programu hasidi.",
+        "phishing": "Chanzo kinasema kuwa ni kiashiria kinachohusiana na phishing.",
+        "malicious_url": "Chanzo kinasema kuwa ni URL inayohusiana na shughuli za ubaya."
+      },
+      "downloadTag": "malware_download: chanzo kinasema ni mahali pa kupakua malware.",
+      "familyNote": "Lebo ya familia ya programu hasidi inatoka kwenye chanzo cha taarifa za vitisho. Haitambui mtu au shirika.",
+      "approximateLocation": "Mahali paliopangiliwa ni muktadha wa takriban wa IP, si mahali halisi wa kompyuta iliyothibitishwa.",
+      "network": {
+        "title": "Taarifa za mtandao",
+        "privacy": "Panua ili kuomba data ya mtandao passive kutoka kwa RIPEstat. Kiashiria cha IP kinashirikiwa na mtoaji huyo.",
+        "disclaimer": "Taarifa za usajili na uelekezaji wa mtandao hazitambui mshambuliaji wala kumfanya mtoa huduma awajibike kwa shughuli hizo.",
+        "loading": "Inapakia taarifa za mtandao…",
+        "unknown": "Haipatikani",
+        "disabled": "Utafutaji wa mtandao haujawezeshwa.",
+        "invalid": "Utafutaji wa mtandao unahitaji anwani ya IP ya umma.",
+        "unavailable": "Utafutaji wa mtandao umefeli. Funga na kufungua popup upya ili kujaribu tena baadaye.",
+        "rateLimited": "Utafutaji wa mtandao umepunguzwa kwa muda. Jaribu tena baadaye.",
+        "noData": "Mtoaji hariudii taarifa yoyote ya mtandao kwa IP hii.",
+        "partial": "Baadhi ya taarifa za mtandao haiwezi kupatikana.",
+        "ip": "IP",
+        "asn": "ASN ya Asili",
+        "operator": "Mmiliki wa ASN / mwendeshaji wa mtandao aliyetajwa",
+        "prefix": "Kiambishi cha uelekezaji kilichoripotiwa",
+        "hostname": "Jina la kompyuta la DNS-nyuma (rDNS)",
+        "lookupAt": "Wakati wa utafutaji wa mtandao",
+        "routingAt": "Wakati wa data ya uelekezaji",
+        "broaderPrefix": "Mtoa huduma amelinganisha anwani na kiambishi kipana zaidi cha uelekezaji. Hii si rekodi kamili ya ugawaji wa anwani ya IP.",
+        "rdnsNote": "rDNS ni lebo ya DNS, si uthibitisho wa umiliki. Utafutaji huu hautoi shirika lililosajiliwa au mahali halisi.",
+        "copy": "Nakili",
+        "copied": "Ilinakiliwa.",
+        "copyFailed": "Kunakili kumefeli. Chagua maandishi ili kuynakili."
+      },
+      "firstSeenNote": "Hii ni tarehe ya mapema zaidi inayopatikana ya kiashiria kutoka kwa milisho au uchunguzi wa World Monitor; inaweza kutofautiana na tarehe ya chanzo kilichoorodheshwa."
     },
     "nuclear": {
       "types": {
@@ -3171,6 +3421,14 @@
       },
       "description": "Miundombinu kuu ya bomba la {{type}}. {{status}}"
     },
+    "storageFacility": {
+      "openInAtlas": "Fungua katika atlasi ya hifadhi",
+      "types": {
+        "lngExport": "Usafirishaji wa LNG",
+        "lngImport": "Uagizaji wa LNG",
+        "crudeTankFarm": "Kituo cha mafuta ghafi"
+      }
+    },
     "pipelineStatusDesc": {
       "operating": "Kwa sasa rasilimali za uendeshaji na usafirishaji.",
       "construction": "Hivi sasa inajengwa."
@@ -3180,8 +3438,8 @@
       "degraded": "IMEDHALILISHWA",
       "active": "INAENDELEA",
       "major": "MKUU",
-      "cable": "CABLE",
-      "subtitle": "Undersea Fiber Optic Cable",
+      "cable": "KEBO",
+      "subtitle": "Kebo ya nyuzi macho ya chini ya bahari",
       "type": "NAMBA YA NYAWAZI",
       "advisory": "USHAURI WA MAKOSA",
       "repairDeployment": "KUREKEBISHA UTUMIZAJI",
@@ -3210,16 +3468,16 @@
     "threat": "TISHIO",
     "sponsor": "MDHAMINI",
     "country": "NCHI",
-    "malware": "MALWARE",
+    "malware": "PROGRAMU HASIDI",
     "lastSeen": "MWISHO KUONEKANA",
     "open": "FUNGUA",
     "tradingHours": "SAA ZA BIASHARA",
     "gamma": "GAMMA",
-    "city": "CITY",
-    "length": "LENGTH",
+    "city": "JIJI",
+    "length": "UREFU",
     "operator": "OPERATOR",
     "countries": "NCHI",
-    "waypoints": "WAYPOINTS",
+    "waypoints": "VITUO VYA NJIA",
     "repairEta": "Muda wa kukamatia takriban",
     "timeUnits": {
       "m": "m",
@@ -3231,7 +3489,7 @@
       "baseline": "Msingi",
       "components": {
         "news": "Habari",
-        "cii": "Country Instability Index",
+        "cii": "Kielelezo cha Ukosefu wa Utulivu wa Nchi",
         "geo": "Geo",
         "military": "Kijeshi"
       },
@@ -3250,7 +3508,7 @@
     "whyItMatters": "KWA NINI NI MUHIMU",
     "keyEntities": "VYOMBO MUHIMU",
     "relatedHeadlines": "VICHWA VYA HABARI VINAVYOHUSIANA",
-    "liveIntel": "Live Intelligence",
+    "liveIntel": "Ujasusi wa moja kwa moja",
     "loadingNews": "Inapakia habari za kimataifa...",
     "noCoverage": "Hakuna chanjo ya hivi majuzi ya kimataifa",
     "time": "Muda",
@@ -3285,8 +3543,8 @@
     },
     "outage": {
       "levels": {
-        "total": "KUFURU KABISA",
-        "major": "KUSHUKA KUBWA",
+        "total": "KUKATIKA KABISA",
+        "major": "KUKATIKA KUBWA",
         "partial": "KUVURUGWA SEHEMU",
         "disruption": "KUVURUGWA"
       },
@@ -3295,18 +3553,40 @@
       "readReport": "Soma ripoti kamili"
     },
     "datacenter": {
+      "details": {
+        "more": "Maelezo zaidi",
+        "owner": "Mmiliki / mtoa huduma wa klasta (mkusanyiko wa data)",
+        "power": "Kiwango cha nguvu katika mkusanyiko wa data",
+        "powerCaveat": "Uwezo wa nguvu unaweza kuwa umeripotiwa au kukadiriwa. Hiki si kipimo cha matumizi ya sasa ya umeme.",
+        "powerBasis": "Msingi wa kiwango cha nguvu",
+        "reported": "Umeripotiwa",
+        "estimated": "Umekadiriwa",
+        "notAvailable": "Haipatikani",
+        "location": "Usahihi wa eneo",
+        "locationUnknown": "Sehemu ya ramani haijathibitishwa; usitumie kama anwani sahihi ya kituo.",
+        "site": "Kituo (kimethibitishwa na chanzo)",
+        "city": "Jiji pekee",
+        "region": "Mkoa pekee",
+        "country": "Nchi pekee",
+        "dataset": "Mkusanyiko wa data wa klasta za GPU wa Epoch AI",
+        "evidence": "Chanzo cha ushahidi",
+        "sourceDate": "Tarehe ya kuchapishwa kwa chanzo",
+        "metadataReviewedAt": "Tarehe ya ukaguzi wa metadata",
+        "firstOperationalDate": "Tarehe ya kuanza kufanya kazi (mkusanyiko wa data)",
+        "freshness": "Nakala iliyohifadhiwa ya mkusanyiko wa data. Hali na vipimo vya sasa huenda vimebadilika."
+      },
       "status": {
         "existing": "UENDESHAJI",
         "planned": "IMEPANGA",
         "decommissioned": "IMEACHWA",
         "unknown": "USIOJULIKANA"
       },
-      "gpuChipCount": "GPU/CHIP COUNT",
+      "gpuChipCount": "IDADI YA GPU/CHIPU",
       "chipType": "AINA YA CHIP",
       "power": "NGUVU",
       "sector": "SEKTA",
       "attribution": "Data: Makundi ya Epoch AI GPU",
-      "chips": "chips",
+      "chips": "chipu",
       "cluster": {
         "title": "{{count}} Vituo vya Data",
         "totalChips": "CHIPS JUMLA",
@@ -3315,11 +3595,16 @@
         "planned": "IMEPANGA",
         "moreDataCenters": "+ {{count}} vituo zaidi vya data",
         "sampledSites": "Inaonyesha orodha ya sampuli ya tovuti {{count}}."
+      },
+      "sectors": {
+        "private": "Binafsi",
+        "public": "Umma",
+        "publicPrivate": "Umma/Binafsi"
       }
     },
     "startupHub": {
       "tiers": {
-        "mega": "MEGA HUB",
+        "mega": "KITOVU KIKUU",
         "major": "KITOVU KIKUU",
         "emerging": "INAYOJITOKEZA",
         "hub": "KITOVU"
@@ -3333,9 +3618,9 @@
     "techHQ": {
       "types": {
         "faang": "TEKNHAM KUBWA",
-        "unicorn": "UNICORN",
+        "unicorn": "NYATI",
         "public": "UMMA",
-        "tech": "TECH"
+        "tech": "TEKNOLOJIA"
       },
       "marketCap": "KIFUNGO CHA SOKO",
       "employees": "WAFANYAKAZI"
@@ -3343,7 +3628,7 @@
     "accelerator": {
       "types": {
         "accelerator": "KIKONGEZEKA",
-        "incubator": "INCUBATOR",
+        "incubator": "KITOTOLEO",
         "studio": "ANZA STUDIO"
       },
       "founded": "IMEANZISHWA",
@@ -3440,7 +3725,8 @@
       "vesselsCount": "{{count}} VYOMBO",
       "vessels": "VYOMBO",
       "trackedVessels": "VYOMBO VILIVYOFUATILIWA",
-      "showLess": "Onyesha kidogo"
+      "showLess": "Onyesha kidogo",
+      "backToGroup": "Rudi kwenye kikundi"
     },
     "naturalEvent": {
       "closed": "IMEFUNGWA",
@@ -3481,7 +3767,7 @@
         "development": "MAENDELEO",
         "exploration": "UCHUNGUZI"
       },
-      "projectSubtitle": "{{mineral}} PROJECT"
+      "projectSubtitle": "MRADI WA {{mineral}}"
     },
     "stockExchange": {
       "marketCap": "KIFUNGO CHA SOKO"
@@ -3506,7 +3792,7 @@
       "energy_space": "Nishati/Nafasi",
       "financial_hub": "Kitovu cha Fedha",
       "gchq_mi6": "GCHQ/MI6",
-      "greenland_intel": "Greenland Intel",
+      "greenland_intel": "Ujasusi wa Greenland",
       "haiti_crisis": "Mgogoro wa Haiti",
       "irgc_activity": "Shughuli ya IRGC",
       "insurgency_coups": "Uasi/Mapinduzi",
@@ -3516,17 +3802,435 @@
       "mossad_idf": "Mossad/IDF",
       "nato_hq": "Makao Makuu ya NATO",
       "pla_mss_activity": "Shughuli ya PLA/MSS",
-      "pentagon_pizza_index": "Pentagon Pizza Index",
+      "pentagon_pizza_index": "Kielelezo cha Pizza cha Pentagon",
       "piracy_conflict": "Uharamia/Migogoro",
       "qatar_al_udeid": "Qatar/Al Udeid",
       "saudi_gip_mbs": "Saudi GIP/MBS",
       "strait_watch": "Saa ya Mlango",
       "syria_crisis": "Mgogoro wa Syria",
-      "tech_ai_hub": "Tech/AI Hub",
+      "tech_ai_hub": "Kitovu cha Teknolojia/AI",
       "turkey_mit": "Uturuki/MIT",
       "uae_ecsr": "UAE/ECSR",
       "venezuela_crisis": "Mgogoro wa Venezuela",
       "yemen_houthis": "Yemen/Houthi"
+    },
+    "upcomingForecast": "Utabiri ujao",
+    "currentForecast": "Utabiri wa sasa",
+    "expiredForecast": "Utabiri uliopitwa na wakati",
+    "validFrom": "Halali kuanzia",
+    "validUntil": "Halali hadi",
+    "levels": {
+      "extreme": "Kali sana",
+      "severe": "Kali",
+      "moderate": "Wastani",
+      "minor": "Ndogo",
+      "unknown": "Haijulikani",
+      "critical": "Hatari kubwa",
+      "high": "Juu",
+      "medium": "Wastani",
+      "low": "Chini",
+      "elevated": "Imeongezeka",
+      "normal": "Kawaida",
+      "spike": "Ongezeko la ghafla",
+      "watch": "Uangalizi",
+      "stable": "Imara"
+    },
+    "statusValues": {
+      "active": "Inafanya kazi",
+      "inactive": "Haifanyi kazi",
+      "contested": "Inayozozaniwa",
+      "decommissioned": "Imefungwa",
+      "construction": "Inajengwa",
+      "operating": "Inaendeshwa",
+      "planned": "Imepangwa",
+      "producing": "Inazalisha",
+      "development": "Katika uendelezaji",
+      "exploration": "Utafutaji",
+      "unknown": "Haijulikani",
+      "deployed": "Imetumwa",
+      "underway": "Safarini",
+      "inPort": "Bandarini",
+      "oil": "Mafuta",
+      "gas": "Gesi",
+      "products": "Bidhaa",
+      "protest": "Maandamano",
+      "riot": "Ghasia",
+      "strike": "Mgomo",
+      "demonstration": "Maandamano ya hadhara",
+      "civilUnrest": "Machafuko ya kiraia",
+      "c2Server": "Seva ya C2",
+      "malwareHost": "Mwenyeji wa programu hasidi",
+      "phishing": "Hadaa",
+      "maliciousUrl": "URL hasidi",
+      "operational": "Inafanya kazi",
+      "reduced": "Imepunguzwa",
+      "offline": "Haifanyi kazi",
+      "disputed": "Inabishaniwa"
+    },
+    "aptTactics": {
+      "reconnaissance": "Upelelezi",
+      "resourceDevelopment": "Uandaaji wa rasilimali",
+      "initialAccess": "Ufikiaji wa awali",
+      "execution": "Utekelezaji",
+      "persistence": "Kudumu",
+      "privilegeEscalation": "Kuongeza mamlaka",
+      "defenseEvasion": "Kukwepa ulinzi",
+      "credentialAccess": "Ufikiaji wa vitambulisho",
+      "discovery": "Ugunduzi",
+      "lateralMovement": "Kusogea kando",
+      "collection": "Ukusanyaji",
+      "commandAndControl": "Amri na udhibiti",
+      "exfiltration": "Utoaji wa data",
+      "impact": "Athari"
+    },
+    "aptSectors": {
+      "government": "Serikali",
+      "finance": "Fedha",
+      "defense": "Ulinzi",
+      "healthcare": "Afya",
+      "military": "Jeshi",
+      "technology": "Teknolojia",
+      "manufacturing": "Viwanda",
+      "energy": "Nishati",
+      "telecommunications": "Mawasiliano ya simu",
+      "media": "Vyombo vya habari",
+      "ngo": "Mashirika yasiyo ya kiserikali",
+      "diplomatic": "Diplomasia",
+      "criticalInfrastructure": "Miundombinu muhimu",
+      "research": "Utafiti",
+      "banking": "Benki",
+      "aerospace": "Anga na anga za juu",
+      "civilSociety": "Asasi za kiraia",
+      "aviation": "Usafiri wa anga",
+      "hospitality": "Ukarimu",
+      "cryptocurrency": "Sarafu za kidijitali",
+      "retail": "Rejareja",
+      "thinkTanks": "Taasisi za fikra",
+      "education": "Elimu",
+      "telecoms": "Kampuni za simu",
+      "oilAndGas": "Mafuta na gesi",
+      "academia": "Taaluma",
+      "transportation": "Usafirishaji",
+      "humanRights": "Haki za binadamu",
+      "pharmaceutical": "Dawa",
+      "dissidents": "Wapinzani",
+      "journalists": "Waandishi wa habari",
+      "business": "Biashara",
+      "engineering": "Uhandisi",
+      "utilities": "Huduma za umma",
+      "gaming": "Michezo ya video",
+      "embassies": "Balozi",
+      "legal": "Sheria",
+      "construction": "Ujenzi",
+      "mining": "Uchimbaji madini",
+      "petroleum": "Petroli",
+      "insurance": "Bima",
+      "travel": "Usafiri",
+      "maritime": "Bahari",
+      "chemical": "Kemikali",
+      "financial": "Huduma za kifedha",
+      "lawEnforcement": "Vyombo vya sheria",
+      "electricUtilities": "Kampuni za umeme",
+      "managedServiceProviders": "Watoa huduma zinazosimamiwa",
+      "satellite": "Satelaiti",
+      "lawFirms": "Kampuni za mawakili",
+      "navalDefense": "Ulinzi wa majini",
+      "defenseContractors": "Wakandarasi wa ulinzi",
+      "water": "Maji",
+      "religious": "Makundi ya kidini",
+      "unBodies": "Vyombo vya Umoja wa Mataifa",
+      "supplyChain": "Mnyororo wa ugavi",
+      "itServices": "Huduma za TEHAMA",
+      "electronics": "Elektroniki",
+      "biotechnology": "Bioteknolojia",
+      "industrialChemistry": "Kemia ya viwandani",
+      "digitalCertificates": "Vyeti vya kidijitali",
+      "semiconductor": "Semikonda",
+      "airline": "Shirika la ndege",
+      "gambling": "Kamari",
+      "tradePolicy": "Sera ya biashara",
+      "foreignAffairs": "Mambo ya nje",
+      "automobile": "Magari",
+      "politicalOrganizations": "Mashirika ya kisiasa",
+      "cloud": "Wingu",
+      "general": "Jumla",
+      "minorityGroups": "Makundi ya wachache",
+      "nuclearResearch": "Utafiti wa nyuklia",
+      "defectors": "Waasi waliokimbia",
+      "financialInstitutions": "Taasisi za fedha",
+      "swiftNetwork": "Mtandao wa SWIFT",
+      "petrochemical": "Kemikali za petroli",
+      "airlines": "Mashirika ya ndege",
+      "politicalOpposition": "Upinzani wa kisiasa",
+      "activists": "Wanaharakati",
+      "police": "Polisi",
+      "intelligence": "Ujasusi",
+      "businessExecutives": "Watendaji wakuu wa biashara",
+      "automotive": "Sekta ya magari",
+      "restaurant": "Mikahawa",
+      "paymentSystems": "Mifumo ya malipo",
+      "cardProcessing": "Uchakataji wa kadi",
+      "remoteBanking": "Benki kwa mbali",
+      "naturalResources": "Maliasili",
+      "industrial": "Viwanda",
+      "cybersecurity": "Usalama wa mtandao",
+      "fintech": "Teknolojia ya fedha",
+      "investment": "Uwekezaji",
+      "containerInfrastructure": "Miundombinu ya makontena"
+    },
+    "compass": {
+      "n": "kaskazini",
+      "ne": "kaskazini mashariki",
+      "e": "mashariki",
+      "se": "kusini mashariki",
+      "s": "kusini",
+      "sw": "kusini magharibi",
+      "w": "magharibi",
+      "nw": "kaskazini magharibi",
+      "nne": "kaskazini-kaskazini mashariki",
+      "ene": "mashariki-kaskazini mashariki",
+      "ese": "mashariki-kusini mashariki",
+      "sse": "kusini-kusini mashariki",
+      "ssw": "kusini-kusini magharibi",
+      "wsw": "magharibi-kusini magharibi",
+      "wnw": "magharibi-kaskazini magharibi",
+      "nnw": "kaskazini-kaskazini magharibi"
+    },
+    "mapPopup": {
+      "noSectorData": "Hakuna data ya sekta",
+      "disruption": "Usumbufu",
+      "warRisk": "Hatari ya vita",
+      "warZone": "Eneo la vita",
+      "historicalProfile": "Wasifu wa kihistoria",
+      "noData": "Hakuna data",
+      "coverageUnavailable": "Hakuna huduma ya data",
+      "targets": "Walengwa",
+      "listSeparator": ", ",
+      "radiation": {
+        "confirmed": "Imethibitishwa",
+        "conflictingSources": "Vyanzo vinavyokinzana",
+        "cpmDerived": "Sehemu inayotokana na CPM",
+        "reading": "Kipimo",
+        "baseline": "Kiwango cha msingi",
+        "delta": "Tofauti",
+        "confidence": "Uhakika",
+        "sources": "Vyanzo",
+        "sourceCount": "Idadi ya vyanzo"
+      },
+      "history": {
+        "conflictSince": "Mzozo tangu",
+        "peaceAgreements": "Mikataba ya amani",
+        "recordedFatalities": "Vifo vilivyorekodiwa",
+        "totalFatalities": "Jumla ya vifo",
+        "operationalSince": "Inafanya kazi tangu",
+        "treaties": "Mikataba",
+        "iaeaStatus": "Hali ya IAEA",
+        "keyEvents": "Matukio muhimu"
+      },
+      "flight": {
+        "departure": "Kuondoka",
+        "arrival": "Kuwasili",
+        "bookRoute": "Weka nafasi ya njia hii",
+        "registration": "Usajili",
+        "model": "Muundo",
+        "operator": "Mwendeshaji",
+        "climb": "Kupanda",
+        "liveData": "Data ya moja kwa moja",
+        "loadingWingbits": "Inapakia data ya moja kwa moja ya Wingbits…"
+      },
+      "base": {
+        "airForce": "Jeshi la Anga",
+        "naval": "Jeshi la Wanamaji",
+        "nuclear": "Nyuklia",
+        "space": "Anga za juu",
+        "training": "Mafunzo",
+        "branch": "Tawi",
+        "categories": "Kategoria"
+      },
+      "waterway": {
+        "tradeSectorMix": "Mchanganyiko wa sekta za biashara",
+        "sectorExposure": "Mfiduo wa sekta",
+        "transitHistory": "Historia ya usafirishaji",
+        "sectorBreakdown": "Mgawanyo kwa sekta"
+      },
+      "natural": {
+        "minuteMean": "Wastani wa dakika {{count}}",
+        "windNotReported": "Upepo haujaripotiwa",
+        "windAverage": "Wastani wa upepo",
+        "canonicalMatch": "Ulinganifu rasmi",
+        "agencyIdentifier": "Kitambulisho cha wakala",
+        "agencyObservations": "Uchunguzi wa mawakala"
+      },
+      "placeReports_one": "{{place}} (ripoti {{count}})",
+      "placeReports_other": "{{place}} (ripoti {{count}})",
+      "issuedBy": "Imetolewa na"
+    },
+    "weatherEvents": {
+      "911TelephoneOutage": "Hitilafu ya namba ya dharura 911",
+      "administrativeMessage": "Ujumbe wa kiutawala",
+      "airQualityAlert": "Tahadhari ya ubora wa hewa",
+      "airStagnationAdvisory": "Ushauri kuhusu hewa iliyotuama",
+      "ashfallAdvisory": "Ushauri kuhusu kuanguka kwa majivu",
+      "ashfallWarning": "Onyo la kuanguka kwa majivu",
+      "avalancheAdvisory": "Ushauri kuhusu maporomoko ya theluji",
+      "avalancheWarning": "Onyo la maporomoko ya theluji",
+      "avalancheWatch": "Uangalizi wa maporomoko ya theluji",
+      "beachHazardsStatement": "Taarifa ya hatari za ufukweni",
+      "blizzardWarning": "Onyo la dhoruba ya theluji",
+      "blowingDustAdvisory": "Ushauri kuhusu vumbi linalopeperushwa",
+      "blowingDustWarning": "Onyo la vumbi linalopeperushwa",
+      "blueAlert": "Tahadhari ya Bluu (msako wa polisi)",
+      "briskWindAdvisory": "Ushauri kuhusu upepo mkali kiasi",
+      "childAbductionEmergency": "Dharura: utekaji nyara wa mtoto",
+      "civilDangerWarning": "Onyo la hatari ya kiraia",
+      "civilEmergencyMessage": "Ujumbe wa dharura ya kiraia",
+      "coastalFloodAdvisory": "Ushauri kuhusu mafuriko ya pwani",
+      "coastalFloodStatement": "Taarifa ya mafuriko ya pwani",
+      "coastalFloodWarning": "Onyo la mafuriko ya pwani",
+      "coastalFloodWatch": "Uangalizi wa mafuriko ya pwani",
+      "coldWeatherAdvisory": "Ushauri kuhusu hali ya baridi",
+      "denseFogAdvisory": "Ushauri kuhusu ukungu mzito",
+      "denseSmokeAdvisory": "Ushauri kuhusu moshi mzito",
+      "dustAdvisory": "Ushauri kuhusu vumbi",
+      "dustStormWarning": "Onyo la dhoruba ya vumbi",
+      "earthquakeWarning": "Onyo la tetemeko la ardhi",
+      "evacuationImmediate": "Uhamishaji wa haraka",
+      "extremeHeatWarning": "Onyo la joto kali sana",
+      "extremeHeatWatch": "Uangalizi wa joto kali sana",
+      "extremeColdWarning": "Onyo la baridi kali sana",
+      "extremeColdWatch": "Uangalizi wa baridi kali sana",
+      "extremeFireDanger": "Hatari kubwa sana ya moto",
+      "extremeWindWarning": "Onyo la upepo mkali sana",
+      "fireWarning": "Onyo la moto",
+      "fireWeatherWatch": "Uangalizi wa hali ya hewa ya moto",
+      "flashFloodStatement": "Taarifa ya mafuriko ya ghafla",
+      "flashFloodWarning": "Onyo la mafuriko ya ghafla",
+      "flashFloodWatch": "Uangalizi wa mafuriko ya ghafla",
+      "floodAdvisory": "Ushauri kuhusu mafuriko",
+      "floodStatement": "Taarifa ya mafuriko",
+      "floodWarning": "Onyo la mafuriko",
+      "floodWatch": "Uangalizi wa mafuriko",
+      "freezeWarning": "Onyo la kuganda",
+      "freezeWatch": "Uangalizi wa kuganda",
+      "freezingFogAdvisory": "Ushauri kuhusu ukungu unaoganda",
+      "freezingSprayAdvisory": "Ushauri kuhusu manyunyu ya bahari yanayoganda",
+      "frostAdvisory": "Ushauri kuhusu barafu ya umande",
+      "galeWarning": "Onyo la upepo wa dhoruba",
+      "galeWatch": "Uangalizi wa upepo wa dhoruba",
+      "hazardousMaterialsWarning": "Onyo la vifaa hatari",
+      "hazardousSeasWarning": "Onyo la bahari hatari",
+      "hazardousSeasWatch": "Uangalizi wa bahari hatari",
+      "hazardousWeatherOutlook": "Mtazamo wa hali ya hewa hatari",
+      "heatAdvisory": "Ushauri kuhusu joto",
+      "heavyFreezingSprayWarning": "Onyo la manyunyu makali ya bahari yanayoganda",
+      "heavyFreezingSprayWatch": "Uangalizi wa manyunyu makali ya bahari yanayoganda",
+      "highSurfAdvisory": "Ushauri kuhusu mawimbi makubwa",
+      "highSurfWarning": "Onyo la mawimbi makubwa",
+      "highWindWarning": "Onyo la upepo mkali",
+      "highWindWatch": "Uangalizi wa upepo mkali",
+      "hurricaneForceWindWarning": "Onyo la upepo wa nguvu ya kimbunga",
+      "hurricaneForceWindWatch": "Uangalizi wa upepo wa nguvu ya kimbunga",
+      "hurricaneWarning": "Onyo la kimbunga",
+      "hurricaneWatch": "Uangalizi wa kimbunga",
+      "hydrologicOutlook": "Mtazamo wa kihaidrolojia",
+      "iceStormWarning": "Onyo la dhoruba ya barafu",
+      "lakeEffectSnowWarning": "Onyo la theluji ya athari ya ziwa",
+      "lakeWindAdvisory": "Ushauri kuhusu upepo wa ziwani",
+      "lakeshoreFloodAdvisory": "Ushauri kuhusu mafuriko ya fukwe za ziwa",
+      "lakeshoreFloodStatement": "Taarifa ya mafuriko ya fukwe za ziwa",
+      "lakeshoreFloodWarning": "Onyo la mafuriko ya fukwe za ziwa",
+      "lakeshoreFloodWatch": "Uangalizi wa mafuriko ya fukwe za ziwa",
+      "lawEnforcementWarning": "Onyo la polisi",
+      "localAreaEmergency": "Dharura ya eneo",
+      "lowWaterAdvisory": "Ushauri kuhusu maji kupungua",
+      "marineWeatherStatement": "Taarifa ya hali ya hewa baharini",
+      "nuclearPowerPlantWarning": "Onyo la kituo cha nishati ya nyuklia",
+      "radiologicalHazardWarning": "Onyo la hatari ya mionzi",
+      "redFlagWarning": "Onyo la hatari kubwa ya moto",
+      "ripCurrentStatement": "Taarifa ya mikondo ya kurudi baharini",
+      "severeThunderstormWarning": "Onyo la dhoruba kali za radi",
+      "severeThunderstormWatch": "Uangalizi wa dhoruba kali za radi",
+      "severeWeatherStatement": "Taarifa ya hali mbaya ya hewa",
+      "shelterInPlaceWarning": "Onyo: jihifadhi ulipo",
+      "shortTermForecast": "Utabiri wa muda mfupi",
+      "smallCraftAdvisory": "Ushauri kwa vyombo vidogo",
+      "snowSquallWarning": "Onyo la upepo wa theluji",
+      "specialMarineWarning": "Onyo maalum la baharini",
+      "specialWeatherStatement": "Taarifa maalum ya hali ya hewa",
+      "stormSurgeWarning": "Onyo la mawimbi ya dhoruba",
+      "stormSurgeWatch": "Uangalizi wa mawimbi ya dhoruba",
+      "stormWarning": "Onyo la dhoruba",
+      "stormWatch": "Uangalizi wa dhoruba",
+      "test": "Jaribio",
+      "tornadoWarning": "Onyo la kimbunga cha tufani",
+      "tornadoWatch": "Uangalizi wa kimbunga cha tufani",
+      "tropicalCycloneLocalStatement": "Taarifa ya eneo kuhusu kimbunga cha tropiki",
+      "tropicalStormWarning": "Onyo la dhoruba ya tropiki",
+      "tropicalStormWatch": "Uangalizi wa dhoruba ya tropiki",
+      "tsunamiAdvisory": "Ushauri kuhusu tsunami",
+      "tsunamiWarning": "Onyo la tsunami",
+      "tsunamiWatch": "Uangalizi wa tsunami",
+      "typhoonWarning": "Onyo la tufani",
+      "typhoonWatch": "Uangalizi wa tufani",
+      "volcanoWarning": "Onyo la volkano",
+      "windAdvisory": "Ushauri kuhusu upepo",
+      "winterStormWarning": "Onyo la dhoruba ya majira ya baridi",
+      "winterStormWatch": "Uangalizi wa dhoruba ya majira ya baridi",
+      "winterWeatherAdvisory": "Ushauri kuhusu hali ya majira ya baridi",
+      "arcticOutflowWarning": "Onyo la mtiririko wa hewa ya Aktiki",
+      "blowingSnowAdvisory": "Ushauri kuhusu theluji inayopeperushwa",
+      "flashFreezeWarning": "Onyo la kuganda ghafla",
+      "fogAdvisory": "Ushauri kuhusu ukungu",
+      "freezingDrizzleAdvisory": "Ushauri kuhusu manyunyu yanayoganda",
+      "freezingRainWarning": "Onyo la mvua inayoganda",
+      "heatWarning": "Onyo la joto",
+      "airQualityWarning": "Onyo la ubora wa hewa",
+      "airQualityAdvisory": "Ushauri kuhusu ubora wa hewa",
+      "specialAirQualityStatement": "Taarifa maalum ya ubora wa hewa",
+      "rainfallWarning": "Onyo la mvua kubwa",
+      "snowfallWarning": "Onyo la theluji",
+      "snowSquallWatch": "Uangalizi wa upepo wa theluji",
+      "squallWarning": "Onyo la upepo wa ghafla",
+      "weatherAdvisory": "Ushauri wa hali ya hewa",
+      "weatherWarning": "Onyo la hali ya hewa",
+      "windWarning": "Onyo la upepo",
+      "imdCoastalBulletin": "Taarifa ya pwani ya IMD",
+      "imdSeaAreaBulletin": "Taarifa ya maeneo ya bahari ya IMD",
+      "forestFire": "Moto wa msitu",
+      "forestFireWarning": "Onyo la moto wa msitu",
+      "gale": "Upepo wa dhoruba",
+      "wind": "Upepo",
+      "fog": "Ukungu",
+      "denseFog": "Ukungu mzito",
+      "roadIceAndSnow": "Barafu na theluji barabarani",
+      "riverineFlood": "Mafuriko ya mto",
+      "thunderstorm": "Dhoruba ya radi",
+      "severeThunderstorms": "Dhoruba kali za radi",
+      "otherDangers": "Hatari nyingine",
+      "freezingRainIcing": "Mvua inayoganda, barafu",
+      "freezingRain": "Mvua inayoganda",
+      "landslideWarning": "Onyo la maporomoko ya ardhi",
+      "rain": "Mvua",
+      "lightRain": "Mvua nyepesi",
+      "heavyRain": "Mvua kubwa",
+      "moderateRainWarning": "Onyo la mvua ya wastani",
+      "severeRainWarning": "Onyo la mvua kali",
+      "moderateThunderstormWarning": "Onyo la dhoruba ya radi ya wastani",
+      "yellowWindWarning": "Onyo la njano la upepo",
+      "orangeWindWarning": "Onyo la machungwa la upepo",
+      "yellowThunderstormWarning": "Onyo la njano la dhoruba za radi",
+      "yellowRainWarning": "Onyo la njano la mvua",
+      "orangeRainWarning": "Onyo la machungwa la mvua",
+      "extremeHeat": "Joto kali sana",
+      "icyRoad": "Barabara yenye barafu",
+      "drought": "Ukame",
+      "snow": "Theluji",
+      "haze": "Ukungu wa vumbi",
+      "rainstorm": "Dhoruba ya mvua",
+      "severeWeatherWarning": "Onyo la hali mbaya ya hewa",
+      "yellowWarning": "Onyo la njano",
+      "orangeWarning": "Onyo la machungwa",
+      "redWarning": "Onyo jekundu"
     }
   },
   "signals": {
@@ -3698,7 +4402,7 @@
     "exportImage": "Hamisha Picha",
     "exportPdf": "Hamisha PDF",
     "new": "MPYA",
-    "live": "LIVE",
+    "live": "MUBASHARA",
     "cached": "ILIYO HAKI",
     "unavailable": "HAIPATIKANI",
     "close": "Funga",
@@ -3707,7 +4411,7 @@
     "retry": "Jaribu tena",
     "refresh": "Onyesha upya",
     "all": "Wote",
-    "dismiss": "Dismiss"
+    "dismiss": "Funga"
   },
   "connectivity": {
     "offlineCached": "Nje ya mtandao — inaonyesha data iliyohifadhiwa kutoka kwa {{freshness}}.",
@@ -3729,14 +4433,55 @@
     "mapProviderDesc": "Chagua mahali ambapo vigae vya ramani vinapakiwa kutoka. Kiotomatiki hutumia PMTiles inayojipangisha yenyewe na njia mbadala ya OpenFreeMap.",
     "mapTheme": "Mandhari ya Ramani",
     "mapThemeDesc": "Mtindo unaoonekana wa vigae vya ramani. Chaguo hutofautiana kulingana na mtoaji.",
-    "globePreset": "Visual Preset",
+    "globePreset": "Mtindo wa mwonekano",
     "globePresetDesc": "Badili kati ya taswira za kawaida na zilizoboreshwa za ulimwengu ili kulinganisha.",
     "fontFamily": "Familia ya Fonti",
     "fontFamilyDesc": "Nafasi moja kwa mwonekano wa kiufundi, chaguomsingi ya mfumo kwa usomaji rahisi.",
     "fontMono": "Nafasi moja",
     "fontSystem": "Chaguomsingi ya Mfumo",
     "panelFontScale": "Ukubwa wa maandishi",
-    "followGlobalFontScale": "Tumia kiwango cha ulimwengu"
+    "followGlobalFontScale": "Tumia kiwango cha ulimwengu",
+    "selfHostKey": {
+      "heading": "Funguo ya Kompyuta",
+      "description": "Fungua Pro kwenye dashboard hii kwa kutumia funguo yako ya kompyuta. Tengeneza funguo moja kwenye worldmonitor.app chini ya Settings → API Keys → Create desktop key.",
+      "relay": "Funguo inakwenda kwa seva ya uongozaji huu, ambayo inakamatia maombi yako ya Pro kwa World Monitor. Matumizi yanakokotwa kwa ujinga wa funguo ya kompyuta ya akaunti yako, sawa na programu ya kompyuta.",
+      "trust": "Ikiwa mtu mwingine anatumia uongozaji huu, tengeneza funguo tofauti ya kompyuta kwake. Unaweza kuikataa kwenye worldmonitor.app wakati wowote.",
+      "inputLabel": "Funguo ya Kompyuta",
+      "placeholder": "wm_…",
+      "save": "Hifadhi funguo",
+      "saving": "Inakagundua…",
+      "remove": "Ondoa funguo",
+      "removing": "Inaondoa…",
+      "empty": "Ingiza funguo ya kompyuta.",
+      "saveFailed": "Haiwezi kuhifadhi funguo. Jaribu tena.",
+      "removeFailed": "Haiwezi kuondoa funguo. Jaribu tena.",
+      "rateLimited": "Majaribio mengi sana. Jaribu tena kwa sekunde {{seconds}}.",
+      "rateLimitedSoon": "Majaribio mengi sana. Jaribu tena dakika moja.",
+      "insecure": "Ukurasa huu hautumii HTTPS, kwa hivyo funguo yako itakutembea mtandaoni bila simbuzishi.",
+      "insecureConfirm": "Ukurasa huu hautumii HTTPS, kwa hivyo funguo yako itakutembea mtandaoni bila simbuzishi. Itume tu kwenye mtandao unayoamini.",
+      "insecureConfirmButton": "Tuma funguo",
+      "staleNote": "Ukagundua uliotangulia hauwezi kufikia World Monitor.",
+      "disabled": "Mwendeshaji wa uongozaji huu amekamatia funguo za kompyuta.",
+      "state": {
+        "none": "Hakuna funguo",
+        "active": "Inafanya kazi",
+        "invalid": "Sio halali",
+        "not_desktop_key": "Sio funguo ya kompyuta",
+        "over_cap": "Zaidi ya kikomo cha funguo",
+        "lapsed": "Mpango si kamili",
+        "unavailable": "Haiwezi kuthibitisha",
+        "disabled": "Kamatia"
+      },
+      "detail": {
+        "none": "Hakuna funguo iliyohifadhiwa katika kivinjari hiki.",
+        "active": "Pro imefungulwa katika kivinjari hiki.",
+        "invalid": "Funguo hii sio halali au imefutwa.",
+        "not_desktop_key": "Hii ni funguo ya API. Tumia funguo ya kompyuta badala yake.",
+        "over_cap": "Akaunti ina funguo za kompyuta zaidi kuliko mpango wake unavyoruhusu. Kataa moja kwenye worldmonitor.app.",
+        "lapsed": "Mpango wa Pro wa akaunti sio kamili.",
+        "unavailable": "Haiwezi kufikia World Monitor ili kugundua funguo hii. Jaribu tena baadaye."
+      }
+    }
   },
   "premium": {
     "pro": "PRO",
@@ -3761,6 +4506,7 @@
   "auth": {
     "signIn": "Ingia",
     "createAccount": "Fungua akaunti",
+    "freeReason": "Bure: hifadhi mpangilio, fuata nchi, arifa",
     "settings": "Mipangilio",
     "passkeyOffer": {}
   },
@@ -3768,7 +4514,7 @@
     "connectPanel": "Unganisha MCP",
     "modalTitle": "Unganisha Seva ya MCP",
     "serverUrl": "URL ya seva",
-    "authHeader": "Auth Header",
+    "authHeader": "Kichwa cha uthibitishaji",
     "optional": "hiari",
     "apiKey": "Ufunguo wa API",
     "apiKeyPlaceholder": "Bandika ufunguo wako wa API",
@@ -3805,32 +4551,42 @@
     "renameHint": "{{name}} - bofya mara mbili ili kubadilisha jina",
     "deleteTab": "Futa kichupo",
     "deleteTabAria": "Futa kichupo cha {{name}}",
-    "tabNameAria": "Jina la kichupo"
+    "tabNameAria": "Jina la kichupo",
+    "addTabTitleSaved": "Kichupo kipya (kinaanza na paneli ulizohifadhi)",
+    "newTabOptions": "Chaguzi za kichupo kipya",
+    "newTabStartsDefault": "Vichupo vipya huanza na paneli chaguo-msingi.",
+    "newTabStartsSaved": "Vichupo vipya huanza na paneli ulizohifadhi.",
+    "newTabOptionsHint": "Vichupo ulivyonavyo tayari havibadiliki.",
+    "useThisTabPanels": "Tumia paneli za kichupo hiki",
+    "useDefaultPanels": "Tumia paneli chaguo-msingi",
+    "newTabPanelsNotSaved": "Haikuweza kuhifadhi. Kivinjari hiki kinazuia uhifadhi wa tovuti.",
+    "team": "Timu",
+    "teamDashboards": "Dashboards za timu"
   },
   "theaterPresets": {
-    "label": "Coverage presets",
-    "applied": "{{preset}} preset applied: {{count}} sources enabled",
-    "alreadyApplied": "{{preset}} preset already applied",
-    "unavailable": "{{preset}} preset is not available with your current panels",
+    "label": "Mipangilio ya ufuatiliaji",
+    "applied": "Mpangilio wa {{preset}} umetumika: vyanzo {{count}} vimewashwa",
+    "alreadyApplied": "Mpangilio wa {{preset}} tayari umetumika",
+    "unavailable": "Mpangilio wa {{preset}} haupatikani kwa paneli zako za sasa",
     "ukraineWar": {
-      "label": "Ukraine War",
-      "description": "Enable Ukrainian primary outlets, independent Russian press, and frontline assessment sources"
+      "label": "Vita vya Ukraine",
+      "description": "Washa vyombo vya msingi vya Ukraine, vyombo huru vya habari vya Urusi na vyanzo vya tathmini za mstari wa mbele"
     },
     "indoPacific": {
-      "label": "Indo-Pacific / Taiwan",
-      "description": "Enable Taiwan, Pakistan, and Southeast Asia security sources"
+      "label": "Indo-Pasifiki / Taiwan",
+      "description": "Washa vyanzo vya usalama vya Taiwan, Pakistan na Asia ya Kusini-Mashariki"
     },
     "sahelWestAfrica": {
-      "label": "Sahel & West Africa",
-      "description": "Enable Sahel, Nigeria, and West Africa local sources"
+      "label": "Sahel na Afrika Magharibi",
+      "description": "Washa vyanzo vya ndani vya Sahel, Nigeria na Afrika Magharibi"
     },
     "caucasusCentralAsia": {
-      "label": "Caucasus & Central Asia",
-      "description": "Enable South Caucasus and Central Asia regional sources"
+      "label": "Kaukasia na Asia ya Kati",
+      "description": "Washa vyanzo vya kikanda vya Kaukasia Kusini na Asia ya Kati"
     },
     "middleEastFlashpoints": {
-      "label": "Middle East Flashpoints",
-      "description": "Enable Iran, Israel, Gulf, and Kurdish-region sources"
+      "label": "Maeneo tete ya Mashariki ya Kati",
+      "description": "Washa vyanzo vya Iran, Israel, Ghuba na eneo la Wakurdi"
     }
   },
   "countryHistory": {
@@ -3854,5 +4610,505 @@
     "noEvents": "Hakuna vichwa vya habari vilivyochaguliwa vilivyorekodiwa kwa tarehe hii. Hii haithibitishi kwamba hakuna matukio yaliyotokea.",
     "unlock90": "Fungua siku 90 kwa Pro",
     "unlock365": "Fungua siku 365 kwa mpango wa API"
+  },
+  "layerExplanation": {
+    "labels": {
+      "source": "Chanzo",
+      "freshness": "Upya",
+      "confidence": "Uhakika",
+      "limitations": "Mapungufu",
+      "related": "Husika",
+      "groundedIn": "Msingi katika",
+      "curated": "Iliyochaguliwa v1",
+      "fallback": "Mbadala",
+      "layerGuide": "Mwongozo wa Tabaka"
+    },
+    "layers": {
+      "hotspots": {
+        "category": "Habari / maeneo moto ya ujasusi",
+        "purpose": "Inaangazia maeneo moto ya jiografia ya kisiasa yanayofuatiliwa na kuinua kiwango chake wakati habari husika na ishara za kuongezeka zinapokutana.",
+        "source": "Rejista ya maeneo moto ya WorldMonitor, ujasusi wa habari wa RSS na GDELT, upigaji alama wa kuongezeka kwa maeneo moto, shughuli za kijeshi, na muktadha wa kutokuwa na uthabiti wa nchi.",
+        "freshness": "Mahali pa maeneo moto pamechaguliwa na pamesimama. Upya wa milisho ya habari hufuatiliwa kivyake. Viwango vya maeneo moto huhesabiwa upya milisho ya habari ya dashibodi inaposasishwa, kwa muda wa karibu dakika 10, wakati ujasusi wa GDELT una bajeti ndefu za mbegu na akiba.",
+        "confidence": "Inafaa kama ishara ya uchambuzi wa kwanza, si dai linalofaa kunukuliwa bila kufungua habari za chini na muktadha wa nchi.",
+        "limitations": {
+          "0": "Kiasi cha habari na ulinganishaji wa maneno muhimu unaweza kuzidisha maeneo yenye habari nyingi.",
+          "1": "Matukio yasiyoonekana sana yanaweza kukosekana chanjo ya RSS au GDELT inapokuwa haba au kuchelewa."
+        },
+        "related": {
+          "0": "Paneli ya Habari za Moja kwa Moja",
+          "1": "Paneli ya Muhtasari wa Hatari ya Kimkakati",
+          "2": "Ujasusi kwa kifupi",
+          "3": "Madirisha ya Intel Hotspots"
+        }
+      },
+      "no2Activity": {
+        "category": "Uchumi",
+        "purpose": "Hupaka rangi nchi na makundi ya viwanda kulingana na mwelekeo wa NO2 ya troposphere kutoka Sentinel-5P, alama ya mwako, katika dirisha la hivi karibuni la siku 56 ikilinganishwa na tarehe zile zile za miaka iliyopita.",
+        "source": "NO2 ya Copernicus Sentinel-5P TROPOMI kupitia CDSE Sentinel Hub Statistical API, ikijumlishwa kila siku kwa kila eneo na huduma ya seed-no2-activity. Ina data iliyorekebishwa ya Copernicus Sentinel.",
+        "freshness": "Hupakiwa kila saa 24; dirisha huisha siku 3 kabla ya uendeshaji ili data iliyochelewa ifike, na bajeti ya usasa ya saa 72.",
+        "confidence": "Eneo hupata usomaji tu likiwa na angalau siku 14 halali na miaka 2 ya msingi; mawingu ndiyo kelele kuu, hivyo dirisha dhaifu hukataa usomaji badala ya kubahatisha.",
+        "limitations": {
+          "0": "\"Msingi unasubiri\" ni hali inayotarajiwa kwa wiki kadhaa baada ya eneo kuongezwa, wakati madirisha ya miaka iliyopita bado yanapatikana.",
+          "1": "NO2 hufuatilia mwako, hivyo uzalishaji safi zaidi au magari safi zaidi husomwa kama shughuli inayopungua."
+        },
+        "related": {
+          "0": "Nowcast ya shughuli za China",
+          "1": "Muhtasari wa nchi"
+        }
+      },
+      "reservoirLevels": {
+        "category": "Tabianchi",
+        "purpose": "Huonyesha mabwawa na maziwa ya kimkakati kulingana na jinsi kiwango cha maji kinavyolinganishwa na cha kawaida kwa wakati huo wa mwaka na kasi ya mabadiliko yake.",
+        "source": "Urefu wa uso wa maji ya bara kutoka NASA ICESat-2 ATL13 kupitia NSIDC, uliochakatwa kwa SlideRule Earth na kujumlishwa kwa kila upitaji wa setilaiti na huduma ya seed-reservoir-levels.",
+        "freshness": "Husasishwa kila siku. NASA huchapisha kila upitaji siku 50 hadi 70 baada ya kupimwa, na kila bwawa hupimwa tena kila baada ya siku chache hadi karibu mwezi mmoja.",
+        "confidence": "Upitaji huhesabiwa tu pale angalau sehemu 5 za maji zinapokubaliana ndani ya mita 0.25. Ulinganisho wa msimu unahitaji upitaji kutoka angalau miaka 3 iliyopita katika wakati uleule wa mwaka.",
+        "limitations": {
+          "0": "Kiwango tu, si ujazo: kushuka kwa kiasi kilekile kunamaanisha upotevu tofauti wa hifadhi katika kila bwawa.",
+          "1": "Eneo la maji lisilo na upitaji kwa siku 150 huwekewa alama kuwa halina upitaji wa karibuni; kipimo chake cha mwisho, mabadiliko na tarehe bado huonyeshwa."
+        },
+        "related": {
+          "0": "Paneli ya Viwango vya Kimkakati vya Maji",
+          "1": "Hitilafu za tabianchi"
+        }
+      },
+      "conflicts": {
+        "category": "Migogoro",
+        "purpose": "Inaonyesha maeneo ya migogoro yaliyochaguliwa na mipako ya mipaka ya jiografia ya kisiasa ili wachambuzi waelekeze ishara za moja kwa moja dhidi ya maeneo ya mapigano yanayojulikana.",
+        "source": "Rejista ya maeneo ya migogoro ya WorldMonitor, muktadha wa migogoro wa UCDP na ACLED, na maelezo yaliyoandikwa ya mipaka kama DMZ ya Korea.",
+        "freshness": "Maeneo ya msingi yamechaguliwa na yamesimama. Ingizo zinazobadilika za matukio ya migogoro hufuatiliwa kivyake kupitia milisho ya ACLED na UCDP na ishara za afya ya huduma.",
+        "confidence": "Inafaa kwa mwelekeo wa kijiografia. Peke yake si uthibitisho wa tukio kwa wakati halisi.",
+        "limitations": {
+          "0": "Maeneo tulivu yanaweza kubaki nyuma ya mabadiliko ya haraka ya mbinu.",
+          "1": "Baadhi ya ushahidi wa migogoro huonekana katika matukio ya migogoro, kutokuwa na uthabiti wa nchi, au paneli husika, si kama poligoni ya eneo la migogoro."
+        },
+        "related": {
+          "0": "Matukio ya UCDP ya Migogoro ya Silaha",
+          "1": "Paneli ya Kutokuwa na Uthabiti wa Nchi",
+          "2": "Muhtasari wa Hatari ya Kimkakati",
+          "3": "Ujasusi kwa kifupi"
+        }
+      },
+      "aircraftEmergencies": {
+        "category": "Usafiri wa anga",
+        "purpose": "Inaonyesha kodi za transponda zilizoripotiwa 7500, 7600 na 7700 bila kutegemea uainishaji wa kijeshi.",
+        "source": "Maswali sahihi ya squawk kutoka adsb.lol. Maelezo ya ndege yanatumia sehemu za mtoa huduma. Leseni ni ODbL.",
+        "freshness": "Hukagua kila dakika linapoonekana. Ujumbe wa mwisho lazima uwe na umri usiozidi sekunde 120. Nafasi za ramani lazima ziwe na umri usiozidi sekunde 90. Ripoti zisizojulikana huisha baada ya dakika 15.",
+        "confidence": "Ishara ya transponda iliyoripotiwa haithibitishi tukio, sababu, kutua, wala kumalizika kwa hali.",
+        "limitations": {
+          "0": "Chanjo ya vipokezi haijakamilika.",
+          "1": "Muda wa ujumbe wa mwisho si muda squawk ilipochaguliwa.",
+          "2": "Ndege zisizo na nafasi mpya huonekana tu katika orodha ya maelezo.",
+          "3": "Mgongano wa data na kupotea kwa mapokezi huwa haijulikani."
+        },
+        "related": {
+          "0": "Maelezo ya ndege"
+        }
+      },
+      "ais": {
+        "category": "Bahari",
+        "purpose": "Inaonyesha msongamano wa meli na ishara za usumbufu wa AIS karibu na maji ya kimkakati na vichochoro.",
+        "source": "Picha za papo hapo za rele ya AISStream, huduma ya bahari ya WorldMonitor, na viainishi vya usumbufu wa vichochoro.",
+        "freshness": "Picha za papo hapo za rele ya AIS hujengwa upya kila sekunde 5 kwa chaguo-msingi. Seva inaweza kuhifadhi picha ya msingi ya msongamano kwa dakika 5, na tabaka huzimwa au kuwa kuukuu wakati hati za rele hazipatikani au muunganisho haupatikani.",
+        "confidence": "Inafaa kuchuja mambo yasiyo ya kawaida ya bahari, lakini AIS hujiripoti na meli zinaweza kunyamaza.",
+        "limitations": {
+          "0": "Chanjo ya AIS ya nchi kavu si sawa, na uoni dhaifu katika Mashariki ya Kati, Asia, na bahari kuu umeandikwa.",
+          "1": "Usafirishaji wa giza hutolewa kutokana na mapengo na mifumo ya msongamano, si uthibitisho wa moja kwa moja wa nia."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Mstari wa vichochoro",
+          "2": "Meli za kijeshi",
+          "3": "Ishara za AIS katika Ujasusi kwa kifupi"
+        }
+      },
+      "tradeRoutes": {
+        "category": "Bahari",
+        "purpose": "Huchora njia kuu za kontena, nishati, na mizigo ya wingi kupitia vichochoro vya kimkakati ili kusoma njia ya usumbufu.",
+        "source": "Rejista ya njia za biashara ya WorldMonitor pamoja na hali ya vichochoro ya mnyororo wa ugavi na muhtasari wa kupita.",
+        "freshness": "Jiometri ya njia imesimama. Hali ya vichochoro huangaliwa kila dakika 6 ili data ibaki tayari, na muhtasari wa kupita husasishwa kila dakika 10 kupitia akiba ya mnyororo wa ugavi na njia za rele.",
+        "confidence": "Inafaa kwa muktadha wa athari katika kiwango cha njia. Si mlisho wa uelekezaji katika kiwango cha meli.",
+        "limitations": {
+          "0": "Njia ni korido zilizoundwa kwa modeli na huenda zisilingane na mpango wa safari maalumu.",
+          "1": "Mipako ya usumbufu hutegemea afya ya sasa ya vichochoro na AIS."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Kichunguzi cha njia",
+          "2": "Injini ya senario",
+          "3": "Tabaka la Chokepoints"
+        }
+      },
+      "flights": {
+        "category": "Usafiri wa anga",
+        "purpose": "Inaangazia usumbufu wa viwanja vya ndege na kufungwa kwa NOTAM, NOTAM za anga zinazotumika sasa au zinazoanza ndani ya saa 24 (vikwazo vya kuruka kwa muda, maeneo yenye vikwazo, hatari na yaliyokatazwa, maeneo ya operesheni za kijeshi, hifadhi za anga na kufungwa), na nafasi za ndege za moja kwa moja ufuatiliaji unapopatikana.",
+        "source": "FAA ASWS, AviationStack, Huduma ya Usimamizi ya NOTAM ya FAA (NMS-API) na NOTAM za ICAO, adsb.lol (ODbL), Wingbits, urejeshaji wa huduma ya zamani ya OpenSky, kujaza mapengo kwa hiari na bila biashara kupitia airplanes.live/adsb.fi, na huduma ya usafiri wa anga. NOTAM za anga huchorwa kama poligoni ambapo NMS huzitoa, duara ambapo NOTAM inatoa eneo la hadi 250 NM, na alama vinginevyo.",
+        "freshness": "Mbegu za usumbufu wa viwanja vya ndege huendeshwa kila dakika 30. NOTAM za anga hupandwa kila dakika 5 kutoka kwa maombi ya mabadiliko ya NMS, na usawazishaji kamili wa kila siku, dhidi ya bajeti ya upya ya dakika 20. Paneli ya usafiri wa anga pia husasisha mwonekano wa uendeshaji kwa mzunguko wa kuuliza wa dakika 5.",
+        "confidence": "Bora kwa uchambuzi wa kwanza wa usumbufu. Chanjo ya kila ndege ya moja kwa moja hutegemea upatikanaji wa ADS-B na watoa huduma waliosanidiwa. Maandishi ya NOTAM ndiyo yenye mamlaka kama FAA inavyoyasambaza.",
+        "limitations": {
+          "0": "Data ya maonyesho ya kuiga inayotegemea AviationStack inaweza kuonekana wakati ufunguo wa API haupo.",
+          "1": "Nafasi za ndege za moja kwa moja zinaweza kuchelewa au kukosekana ambapo chanjo ya ADS-B ni dhaifu au imezuiwa.",
+          "2": "Maeneo ya NOTAM ya anga huchorwa kwenye ramani ya deck.gl tu. Ramani za SVG na tufe zinaonyesha alama za viwanja vya ndege.",
+          "3": "TFR nyingi za Marekani zinaeleza umbo katika maandishi tu, kwa hiyo huonekana kama alama kwenye nafasi ya NOTAM, si umbo lililozuiliwa.",
+          "4": "Ratiba ndani ya dirisha la uhalali wa NOTAM (kwa mfano saa za kila siku) huonyeshwa kwenye kidokezo lakini hazitumiki kwa kuonekana."
+        },
+        "related": {
+          "0": "Paneli ya Ujasusi wa Ndege",
+          "1": "Upau wa amri ya usafiri wa anga",
+          "2": "Ishara za usafiri wa anga katika Ujasusi kwa kifupi",
+          "3": "Dharura za ndege",
+          "4": "Mgogoliko wa usambazaji"
+        }
+      },
+      "ucdpEvents": {
+        "category": "Migogoro",
+        "purpose": "Huweka rekodi za migogoro ya silaha katika kiwango cha tukio pamoja na nchi, wahusika, tarehe, na masafa ya vifo.",
+        "source": "GED API ya Mpango wa Data ya Uppsala kupitia huduma ya migogoro na mbegu ya matukio ya UCDP.",
+        "freshness": "Hupandwa kila saa 6 mbegu ya UCDP inapokuwa nzima.",
+        "confidence": "Ina uthabiti wa uhariri kuliko milisho ghafi ya habari za dharura, lakini imechelewa kwa makusudi na si mlisho wa moja kwa moja wa uwanja wa mapigano.",
+        "limitations": {
+          "0": "Kasi ya kutolewa ya kila mwaka na ya kiwango cha utafiti inaweza kukosa matukio ya hivi karibuni sana.",
+          "1": "Masafa ya vifo ni makadirio na yasomwe kama masafa, si hesabu kamili."
+        },
+        "related": {
+          "0": "Paneli ya Matukio ya UCDP ya Migogoro ya Silaha",
+          "1": "Sehemu ya migogoro katika Kielezo cha Kuyumba",
+          "2": "Ratiba ya nchi"
+        }
+      },
+      "weather": {
+        "category": "Hali ya hewa",
+        "purpose": "Inaonyesha tahadhari rasmi zinazoendelea za hali mbaya ya hewa kutoka huduma za kitaifa za hali ya hewa, zilizounganishwa katika mlisho mmoja weather:alerts:v1.",
+        "source": "Huduma ya Kitaifa ya Hali ya Hewa ya Marekani (NWS), Environment and Climate Change Canada (ECCC), na mkusanyiko wa CAP wa Kituo cha Taarifa za Hali Mbaya ya Hewa cha WMO (SWIC), unaopandwa kupitia rele ya WorldMonitor.",
+        "freshness": "Tahadhari za NWS, ECCC, na SWIC hupandwa kila dakika 15 na rele na hufuatiliwa dhidi ya bajeti ya upya ya dakika 45.",
+        "confidence": "Ina mamlaka kwa tahadhari zinazotolewa na huduma za kitaifa zinazochangia, kulingana na muda wa kuchapishwa kwa chanzo. NWS na ECCC huchorwa kama poligoni. Tahadhari za SWIC zilizo na mahali pa kijiografia huchorwa kwenye kitovu cha nchi cha huduma inayotoa, na alama wazi ya usahihi.",
+        "limitations": {
+          "0": "Wanachama wengi wa SWIC huchapisha mahali pa kijiografia, si poligoni. Tahadhari hizo huonekana kama nukta za kiwango cha nchi na maelezo ya eneo kama yalivyo, si mipako ya eneo lililoonywa.",
+          "1": "Chanjo ya SWIC hutegemea wanachama wa WMO wanaochapisha sasa kwa mkusanyiko. Msongamano hutofautiana kwa kanda.",
+          "2": "Safu za SWIC za Marekani na Kanada hurukwa kwa sababu NWS na ECCC tayari hutoa chanjo ya kiwango cha poligoni kwa nchi hizo."
+        },
+        "related": {
+          "0": "Tabaka la Matukio ya Asili",
+          "1": "Madirisha ya tahadhari za hali ya hewa",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "canadaRoads": {
+        "category": "Usafiri",
+        "purpose": "Inaonyesha matukio rasmi ya barabara, arifa, hali, kufungwa, ujenzi, na hatari katika mamlaka za Kanada zinazoungwa mkono.",
+        "source": "Milisho ya mikoa ya Ontario 511, Alberta 511, na Manitoba 511, Vikwazo vya Barabara vya Jiji la Toronto, na DriveBC Open511, vinavyopandwa kupitia WorldMonitor.",
+        "freshness": "Ontario, Alberta, na Manitoba 511 hupandwa kila dakika 15 na hufuatiliwa dhidi ya bajeti ya upya ya dakika 45. Vikwazo vya Toronto hupandwa kila saa 2. DriveBC Open511 kila dakika 30.",
+        "confidence": "Ina mamlaka kwa wachapishaji wa mikoa na manispaa wanaoungwa mkono, kulingana na muda wa kuchapishwa kwa chanzo na jiometri iliyochorwa.",
+        "limitations": {
+          "0": "roadconditions ya Alberta 511 haipokelewi (mwisho wa mtoa huduma unarudisha 404). Mchoro wa moja kwa moja wa Alberta ni matukio na arifa tu.",
+          "1": "Arifa za mikoa zisizo na kuratibu hazionekani kama nukta za ramani.",
+          "2": "Mistari ya hali ya barabara inaweza kurahisisha jiometri tata ya barabara kuu."
+        },
+        "related": {
+          "0": "Tahadhari za hali ya hewa",
+          "1": "Hali ya upya wa data"
+        }
+      },
+      "canadaAlerts": {
+        "category": "Arifa za dharura",
+        "purpose": "Inaonyesha maonyo yanayoendelea ya usalama wa umma ya Alberta, British Columbia, na Saskatchewan kama nukta za ramani kando ya hali ya hewa ya NWS ya Marekani.",
+        "source": "Atom ya Alberta Emergency Alert, tabaka la GeoJSON la OGL-BC Evacuation Orders and Alerts, na mlisho wa umma wa JSON wa SaskAlert pamoja na maelezo ya CAP 1.2 ya seva pangishi ile ile hurekebishwa kuwa muungano mmoja wa canadaAlerts. Poligoni za CAP na GeoRSS, poligoni za uhamishaji wa British Columbia, na poligoni za CAP za SaskAlert huwa vitovu. Rekodi zisizo na jiometri hutumia kitovu cha mkoa wa chanzo.",
+        "freshness": "Vyanzo vya mikoa hupandwa kila dakika 15 na muungano hufuatiliwa dhidi ya bajeti ya upya ya dakika 45. Mlisho tupu (hakuna arifa zinazoendelea) ni mafanikio halali bila rekodi.",
+        "confidence": "Ina mamlaka kwa arifa zinazochapishwa na Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, na SaskAlert, kulingana na muda wa kuchapishwa kwa chanzo na jiometri ya arifa iliyochorwa.",
+        "limitations": {
+          "0": "Chanjo imewekewa Alberta, British Columbia, na Saskatchewan. Ontario haina mlisho wa mashine unaostahiki unaoendeshwa na mkoa nje ya NAAD iliyotengwa.",
+          "1": "Haichukui nafasi ya arifa za hali ya hewa za NWS za Marekani wala tabaka za barabara za Ontario na Toronto.",
+          "2": "Ingizo zisizo na ukali unaoweza kuchorwa (maana ya CAP au rangi ya Alberta, hali ya uhamishaji ya British Columbia, au ukali wa CAP wa SaskAlert) huachwa badala ya kuvumbuliwa. Rangi au kiwango cha muhtasari wa SaskAlert hakihesabiwi kuwa ukali wa CAP."
+        },
+        "related": {
+          "0": "Tahadhari za hali ya hewa",
+          "1": "Tabaka la Matukio ya Asili",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "cyberThreats": {
+        "category": "Mtandao",
+        "purpose": "Huchora viashiria vya kuingiliwa vilivyoboreshwa kijiografia kama seva za C2, seva pangishi za programu hasidi, uhadaa wa kuiba taarifa, URL hasidi, na miundombinu ya utekaji kwa fidia.",
+        "source": "abuse.ch Feodo Tracker na URLhaus, C2IntelFeeds, AlienVault OTX, AbuseIPDB, mlisho wa RSS na habari wa ransomware.live, na uboreshaji wa eneo la kijiografia la IP.",
+        "freshness": "Mbegu za vitisho vya mtandao huendeshwa kila saa 2. IOC zinazoonyeshwa hutumia dirisha linalosonga la siku 14 na zina kikomo kwa utendaji wa ramani.",
+        "confidence": "Inafaa kuona miundombinu, lakini kuhusisha na eneo la kijiografia la IP kunaweza kuwa na kelele.",
+        "limitations": {
+          "0": "Eneo la kijiografia la IP linaweza kuelekeza kwenye miundombinu ya upangishaji badala ya mwendeshaji au mwathirika.",
+          "1": "Upatikanaji wa milisho, funguo za API, na ripoti za matumizi mabaya kwa kila mlisho zinaweza kupindisha chanjo."
+        },
+        "related": {
+          "0": "Madirisha ya ramani ya Vitisho vya Mtandao",
+          "1": "Mchango wa mtandao katika Kutokuwa na Uthabiti wa Nchi",
+          "2": "Hali ya upya wa data"
+        }
+      },
+      "natural": {
+        "category": "Maafa ya asili",
+        "purpose": "Inaonyesha matetemeko ya ardhi, tahadhari kali za maafa, na matukio amilifu ya uchunguzi wa Dunia kwa ufahamu wa hali.",
+        "source": "Matetemeko ya USGS, tahadhari za GDACS, na matukio ya NASA EONET yaliyounganishwa katika huduma ya matukio ya asili.",
+        "freshness": "Matukio ya asili hupandwa kila dakika 30. Matarajio ya matetemeko ya USGS yameandikwa kwa kasi ya chanzo ya karibu dakika 5.",
+        "confidence": "Imara kwa ishara za umma za maafa zilizogunduliwa. Uhakika hutofautiana kwa aina ya hatari na ucheleweshaji wa taarifa ya chanzo.",
+        "limitations": {
+          "0": "Tahadhari za GDACS za ukali mdogo huondolewa ili ramani ibaki inasomeka.",
+          "1": "Moto wa nyika wa EONET huchujwa kwa upya, kwa hiyo matukio ya zamani yaliyo wazi yanaweza yasitokee kama nukta amilifu za ramani."
+        },
+        "related": {
+          "0": "Madirisha ya Tabaka la Matukio ya Asili",
+          "1": "Tahadhari za hali ya hewa",
+          "2": "Ishara za matukio ya asili katika Ujasusi kwa kifupi"
+        }
+      },
+      "waterways": {
+        "category": "Bahari",
+        "purpose": "Huweka alama kwenye njia za maji za kimkakati na vichochoro ili ishara za usumbufu zisomwe dhidi ya jiografia thabiti ya bahari.",
+        "source": "Rejista ya njia za maji za kimkakati ya WorldMonitor na mipako ya hali ya vichochoro ya mnyororo wa ugavi kutoka AIS, maonyo ya NGA, na milisho inayotokana na PortWatch.",
+        "freshness": "Mahali pa njia za maji pamesimama. Hali ya moja kwa moja ya vichochoro huangaliwa kila dakika 6 ili data ibaki tayari, na muhtasari wa kupita husasishwa kila dakika 10 njia ya rele na PortWatch ikiwa nzima.",
+        "confidence": "Juu kwa jiografia thabiti. Uhakika wa usumbufu wa moja kwa moja hutegemea milisho saidizi ya AIS, NGA, na PortWatch.",
+        "limitations": {
+          "0": "Alama inayoonekana ya kichochoro haimaanishi kuna usumbufu unaoendelea.",
+          "1": "Uzio wa kijiografia na njia za modeli zinaweza kurahisisha mifumo tata ya trafiki."
+        },
+        "related": {
+          "0": "Paneli ya Mnyororo wa Ugavi",
+          "1": "Tabaka la Njia za Biashara",
+          "2": "Kichunguzi cha njia",
+          "3": "Injini ya senario"
+        }
+      },
+      "ciiChoropleth": {
+        "category": "Hatari ya nchi",
+        "purpose": "Hupaka nchi kwa alama ya sasa ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi kwa uchambuzi mpana wa hatari ya kimkakati.",
+        "source": "Huduma ya upigaji alama ya Fahirisi ya Kutokuwa na Uthabiti wa Nchi ya WorldMonitor ikitumia ishara za migogoro, machafuko, tahadhari, mtandao, ufuatiliaji wa meli, usafiri wa anga, matukio ya asili, na habari.",
+        "freshness": "Akiba ya alama za hatari huangaliwa kila dakika 8 ili data ibaki tayari. seed-meta na health.riskScores huonyesha hali hai, iliyopitwa, ya sehemu, au iliyoharibika dhidi ya bajeti ya upya ya dakika 30.",
+        "confidence": "Ishara ya modeli iliyounganishwa, si kiwango rasmi cha nchi wala utabiri wa uwezekano.",
+        "limitations": {
+          "0": "Familia za vyanzo zilizo haba au zilizoharibika zinaweza kupunguza uhakika hata nchi ikiwa bado ina alama.",
+          "1": "Rangi ya kiwango cha nchi inaweza kuficha tofauti ndani ya nchi na ilinganishwe na paneli kabla ya kunukuu."
+        },
+        "related": {
+          "0": "Paneli ya Kutokuwa na Uthabiti wa Nchi",
+          "1": "Paneli ya Muhtasari wa Hatari ya Kimkakati",
+          "2": "Hali ya upya wa data",
+          "3": "Ujasusi kwa kifupi"
+        }
+      }
+    },
+    "fallback": {
+      "category": "Tabaka",
+      "purpose": "Tabaka hili linaweza kuwashwa kwenye ramani, lakini kadi iliyochaguliwa ya chanzo na uhakika bado haijaongezwa.",
+      "source": "Halijachaguliwa katika seti ya v1 ya kueleza tabaka.",
+      "freshness": "Mkataba wa upya katika kiwango cha tabaka hautangazwi hapa. Angalia beji za paneli zinazoonekana, madirisha, au hali ya upya wa data inapopatikana.",
+      "confidence": "Haijulikani hadi maelezo mahususi ya chanzo yaongezwe.",
+      "limitations": {
+        "0": "Kukosekana kwa kadi iliyochaguliwa haimaanishi tabaka halisaidiwi.",
+        "1": "Tumia madirisha ya tabaka na paneli husika kwa muktadha mahususi wa chanzo."
+      },
+      "related": {
+        "0": "Mwongozo wa Tabaka"
+      }
+    }
+  },
+  "ukmto": {
+    "unavailable": "Data za UKMTO hazipatikani.",
+    "empty": "UKMTO haikurudisha matukio.",
+    "stale": "Data za chanzo zimepitwa na wakati. Ukaguzi wa mwisho",
+    "current": "Chanzo kimekaguliwa",
+    "reportedClaims": "Ripoti za mchapishaji. Madai yanaweza kuwa bado yanachunguzwa.",
+    "occurred": "Tukio",
+    "reported": "Imechapishwa"
+  },
+  "panelVariants": {
+    "finance": {
+      "map": "Ramani ya Soko la Kimataifa",
+      "liveNews": "Habari za Soko",
+      "insights": "Maarifa ya AI ya Soko"
+    },
+    "tech": {
+      "map": "Ramani ya Teknolojia ya Kimataifa",
+      "liveNews": "Habari za Teknolojia"
+    },
+    "commodity": {
+      "map": "Ramani ya Bidhaa",
+      "liveNews": "Habari za Bidhaa",
+      "insights": "Maarifa ya AI ya Bidhaa"
+    },
+    "energy": {
+      "map": "Ramani ya Nishati",
+      "liveNews": "Habari za Nishati",
+      "insights": "Maarifa ya AI ya Nishati"
+    },
+    "happy": {
+      "map": "Ramani ya Habari Nzuri"
+    }
+  },
+  "pwaInstall": {
+    "title": "Sakinisha programu",
+    "share": "Katika Safari, gusa Shiriki (mraba wenye mshale unaoelekea juu). Huenda ukahitaji kufungua menyu ya Zaidi kwanza.",
+    "add": "Chagua Ongeza kwenye Skrini ya Mwanzo.",
+    "confirm": "Gusa Ongeza, kisha ufungue World Monitor kutoka kwenye Skrini ya Mwanzo.",
+    "close": "Funga",
+    "alertsHint": "Sakinisha World Monitor kwenye Skrini ya Mwanzo ili kupata arifa kwenye iPhone au iPad hii.",
+    "how": "Jinsi ya kusakinisha"
+  },
+  "teamDashboards": {
+    "desc": "Dashboards ambazo timu yako inashiriki. Fungua moja ili kuiongeza kama kichupo kipya.",
+    "empty": "Timu yako haijashiriki dashboard hata moja. Shiriki kichupo hiki ili kuwapa kila mtu katika timu yako paneli zake, ukubwa na ramani.",
+    "open": "Fungua {{name}} kama kichupo kipya",
+    "stopSharing": "Acha kushiriki {{name}}",
+    "confirmStop": "Acha kushiriki {{name}} na timu yako? Micheza ambayo watu tayari waliyofungua kutoka hapo itabaki kama ilivyokuwa.",
+    "shareTab": "Shiriki kichupo hiki na timu yako",
+    "shareChanges": "Shiriki mabadiliko ya kichupo hiki na timu yako",
+    "behind": "Timu yako ilibadilisha dashboard hii baada ya kulifungua.",
+    "getLatest": "Pata toleo la hivi karibuni",
+    "opened": "Ilifungua {{name}} kutoka timu yako.",
+    "shared": "Ilishiriki {{name}} na timu yako.",
+    "updated": "Kichupo hiki sasa kina toleo la hivi karibuni la timu yako.",
+    "stopped": "Ikacha kushiriki {{name}}.",
+    "failed": "Haikuweza kufikia dashboards za timu yako. Jaribu tena.",
+    "limit": "Timu yako tayari inashiriki dashboards {{limit}} hapa. Acha kushiriki moja kwanza.",
+    "focusNotEntitled": "Mpango wako haujumuishi kushiriki dashboard iliyolengwa. Futa lengo la kichupo hiki ili kushiriki paneli zake.",
+    "focusUnreadable": "{{name}} ina kuzingatia ambayo toleo hili haliwezi kuonyesha. Pakua upya ili kubadilisha, kisha ifungue tena."
+  },
+  "focus": {
+    "barLabel": "Kuzingatia",
+    "summary": "Inalenga {{countries}}",
+    "neighboursOff": "Jirani hazijajumuishwa",
+    "chosenLabel": "Zilizochaguliwa",
+    "neighboursLabel": "Jirani",
+    "neighbourItem": "Jirani: {{name}}",
+    "range": "{{start}} hadi {{end}}",
+    "windowEnded": "Dirisha liliishia {{date}}",
+    "windowStarts": "Linaanza {{date}}",
+    "windowUntil": "Hadi {{date}}",
+    "windowFrom": "Tangu {{date}}",
+    "edit": "Hariri",
+    "clear": "Futa",
+    "clearAria": "Futa kuzingatia na onyesha ulimwengu mzima",
+    "clearFocus": "Futa kuzingatia",
+    "notFiltered": "Haijachujwa",
+    "notFilteredGlobal": "Data ya Dunia: haijachujwa kwa nchi",
+    "notFilteredYet": "Haijachujwa kwa nchi bado",
+    "gateSignedOutDesc": "Ingia ili kulenga kichupo cha dashboard kwenye nchi unazofuatilia.",
+    "gateUpgradeDesc": "Kulenga kichupo kwenye nchi zilizochaguliwa kunapatikana na Pro Business, API Business na Enterprise.",
+    "gateUpgradeCta": "Boresha",
+    "tabButton": "Kuzingatia",
+    "tabButtonTitle": "Lenga kichupo hiki kwenye nchi zilizochaguliwa",
+    "tabButtonTitleActive": "Hariri lengo la kichupo hiki",
+    "newTitle": "Lenga kichupo hiki",
+    "editTitle": "Hariri kuzingatia",
+    "intro": "Paneli zinazoweza kuchuja kwa nchi zinaonyesha nchi hizi tu. Zingine zinasema \"Haijachujwa\".",
+    "countriesLabel": "Nchi",
+    "count": "{{n}} ya {{max}}",
+    "searchPlaceholder": "Tafuta nchi",
+    "resultsLabel": "Nchi zinazolingana",
+    "limitReached": "Umechagua {{max}} nchi, ni kiwango cha juu ambacho kuzingatia kinaweza kushikilia.",
+    "removeCountry": "Ondoa {{name}}",
+    "includeNeighbours": "Jumuisha nchi jirani",
+    "neighboursHint": "Hatari huvuka mipaka. Jirani wanawekwa alama kama vile, na hawajalishi katika {{max}}.",
+    "startLabel": "Tangu (hiari)",
+    "endLabel": "Hadi (hiari)",
+    "datesHint": "Kwa safari au kazi. Wakati dirisha liliishia, kuzingatia linabaki na upinde unasema hivyo.",
+    "errorNoCountries": "Chagua angalau nchi moja.",
+    "errorTooMany": "Kuzingatia kinaweza kushikilia hadi {{max}} nchi.",
+    "errorDates": "Tarehe ya mwisho ni kabla ya tarehe ya kuanzia.",
+    "save": "Hifadhi",
+    "cancel": "Ghairi",
+    "saved": "Kichupo hiki kinalenga {{countries}}.",
+    "cleared": "Lengo limefutwa. Kichupo hiki kinaonyesha ulimwengu mzima.",
+    "notSaved": "Haiwezi kuhifadhi. Kivinjari chako kinazuia hifadhi ya tovuti.",
+    "plusNeighbours_one": "+ {{count}} jirani",
+    "plusNeighbours_other": "+ {{count}} jirani",
+    "filter": {
+      "showing": "Inaonyesha {{countries}}",
+      "showingNeighbours": "Inaonyesha {{countries}} + jirani",
+      "showAll": "Onyesha zote",
+      "focusOff": "Kuzingatia kumezimwa katika paneli hii: inaonyesha kila kitu",
+      "applyFocus": "Tumia kuzingatia",
+      "applyFocusAria": "Chuja paneli hii kwa kuzingatia tena",
+      "show": "Onyesha",
+      "hide": "Ficha",
+      "noCountryTag": "Hakuna nchi",
+      "emptyHint": "Kila kitu kingine kinacohesabiwa hapo juu.",
+      "emptyNews": "Hakuna kitu kwa nchi hizi katika kichwa cha habari cha sasa",
+      "emptyAdvisories": "Hakuna onyo za kusafiri kwa nchi hizi",
+      "emptyConflict": "Hakuna matukio ya mgogoro wa UCDP kwa nchi hizi",
+      "emptyConflictPartial": "Hakuna matukio ya mgogoro kwa nchi hizi kati ya matukio ya hivi karibuni. Orodha kamili haijakamatia.",
+      "loadingConflict": "Kupakia matukio yote ya mgogoro kwa nchi hizi…",
+      "emptyAirports": "Hakuna juu ya viwanja vyako vya angavu katika nchi hizi",
+      "emptyFlights": "Hakuna ndege za kwenda au zinazotumiwa kutoka nchi hizi kwenye bodi hii",
+      "emptyAviationNews": "Hakuna habari za uavyaji kwa nchi hizi katika saa 24 zilizopita",
+      "tabNotFiltered": "Kichupo hiki hakichujwi kwa nchi",
+      "hidden_one": "{{count}} kimefichwa na kuzingatia",
+      "hidden_other": "{{count}} vimefichwa na kuzingatia",
+      "showAllAria_one": "Onyesha kila kitu katika paneli hii, ikiwa ni pamoja na {{count}} kipengee nje ya kuzingatia",
+      "showAllAria_other": "Onyesha kila kitu katika paneli hii, ikiwa ni pamoja na {{count}} vipengee nje ya kuzingatia",
+      "unattributed_one": "{{count}} kipengee bila nchi",
+      "unattributed_other": "{{count}} vipengee bila nchi",
+      "showUnattributedAria_one": "Onyesha {{count}} kipengee bila nchi",
+      "showUnattributedAria_other": "Onyesha {{count}} vipengee bila nchi",
+      "hideUnattributedAria_one": "Ficha {{count}} kipengee bila nchi",
+      "hideUnattributedAria_other": "Ficha {{count}} vipengee bila nchi",
+      "partialConflict": "Inaonyesha matukio ya mgogoro kutoka 150 ya hivi karibuni tu. Orodha kamili haikupakiwa.",
+      "partialConflictLoading": "Inaonyesha matukio ya mgogoro kutoka kwa 150 ya hivi karibuni wakati orodha kamili inapakiwa.",
+      "emptyInstability": "Hakuna alama za kutokuwa na utulivu kwa nchi hizi",
+      "emptyOutbreaks": "Hakuna mlipuko wa magonjwa kwa nchi hizi",
+      "emptyOutages": "Hakuna usumbufu wa mtandao kwa nchi hizi",
+      "emptyRadiation": "Hakuna vipimo vya mionzi kwa nchi hizi",
+      "emptyFuelShortages": "Hakuna upungufu wa mafuta kwa nchi hizi",
+      "emptyEnergyDisruptions": "Hakuna usumbufu wa nishati kwa nchi hizi",
+      "emptyDisplacement": "Hakuna data ya uhamiaji kwa nchi hizi",
+      "emptyCorrelation": "Hakuna maadhimisho kwa nchi hizi",
+      "emptyExposure": "Hakuna maeneo ya watu walio hatarini kwa nchi hizi",
+      "emptyExposurePartial": "Hakuna maeneo ya watu walio hatarini kwa nchi hizi katika data inayopatikana. Ujumuishaji kamili wa UCDP unasubiriwa.",
+      "partialExposureLoading": "Inapakia maeneo yote ya UCDP kabla ya kuchuja walio hatarini. Hesabu za ujumuishaji zinajumuisha machafuko pekee.",
+      "partialExposure": "Imeshindwa kupakia maeneo yote ya UCDP. Data ya walio hatarini haijakamilika; hesabu za ujumuishaji zinajumuisha machafuko pekee."
+    },
+    "draftAssessment": "Tathmini ya safari",
+    "draftAssessmentAria": "Fungua tathmini ya safari, iliyojazwa na hii focus",
+    "draftCopied": "Ombi limenakiliwa. Libandike kwenye msaidizi wako wa AI.",
+    "draftCopiedPartial": "Ombi limenakiliwa kwa nchi {{count}} za kwanza. Tathmini moja inajumuisha nchi {{max}} kwa kiwango cha juu. Nchi zilizoachwa: {{omitted}}.",
+    "draftCopyFailed": "Imeshindikana kunakili ombi."
+  },
+  "tripAssessment": {
+    "heading": "Tathmini ya safari",
+    "intro": "Rasimu ya kwanza iliyotoka chanzo cha tathmini ya hatari ya safari, kwa mtahlili kukamilisha. Inaripoti kile ambacho data ina na haitoi ushauri wowote.",
+    "privacy": "Nchi, miji na tarehe tu. Usiingize majina ya wasafiri, hoteli au anwani za mitaa. Hakuna kitu unachoingia kinachohifadhiwa.",
+    "taskLabel": "Lebo ya kazi (ikhtiyari)",
+    "taskLabelPlaceholder": "Ziyara za tovuti za kikanda",
+    "windowStart": "Safari inaanza",
+    "windowEnd": "Safari inaishia",
+    "countriesLabel": "Nchi, katika mpangilio wa safari",
+    "count": "{{n}} ya {{max}}",
+    "searchPlaceholder": "Ongeza nchi",
+    "addCountry": "Ongeza nchi kwa safari",
+    "limit": "Safari inakamatia hadi {{max}} nchi.",
+    "omitted": "Kuachwa kwa sababu safari inakamatia hadi {{max}} nchi: {{names}}.",
+    "cities": "Miji, iliyotenganisha kwa koma (hadi {{max}})",
+    "arrive": "Fika",
+    "depart": "Ondoka",
+    "moveEarlier": "Hamisha {{name}} mapema kwenye safari",
+    "moveLater": "Hamisha {{name}} baadaye kwenye safari",
+    "remove": "Ondoa {{name}} kutoka safari",
+    "downloadMarkdown": "Pakua Markdown",
+    "downloadWord": "Pakua kwa Word",
+    "print": "Chapisha au hifadhi kama PDF",
+    "copyRequest": "Nakili ombi kwa msaidizi wa AI",
+    "close": "Funga",
+    "building": "Kujenga rasimu kutoka data ya hivi karibuni…",
+    "downloaded": "Kilichopakuwa {{file}}. Kila pakua kinajengwa upya na kumkamatia na wakati wake tofauti wa kukamatia.",
+    "printOpened": "Kidirisha cha chapisha kilifunguliwa. Chagua Hifadhi kama PDF kukamatia nakili.",
+    "errNoCountries": "Ongeza angalau nchi moja.",
+    "errTooMany": "Safari inakamatia hadi {{max}} nchi.",
+    "errWindow": "Safari lazima iishe siku ile ile au baada ya siku inayoanza.",
+    "errCities": "{{name}}: orodhesha hadi {{max}} miji.",
+    "errCountryDates": "{{name}}: kuondoka lazima kuwe siku ile ile au baada ya kuwasili.",
+    "errOutsideWindow": "{{name}}: tarehe lazima ziwe ndani ya dirisha la safari.",
+    "errInvalid": "Rasimu haikuweza kujenguliwa kutoka safari hii:",
+    "errAuth": "Ingia tena kujenga rasimu.",
+    "errUpgrade": "Tathmini ya safari inajumuishwa katika mipango ya Pro Business, API Business na Enterprise.",
+    "errBusy": "Maombi mengi sana. Jaribu tena baada ya dakika moja.",
+    "errUnavailable": "Data nyuma ya rasimu haipatikani sasa. Jaribu tena baada ya dakika moja.",
+    "errGeneric": "Rasimu haikuweza kujenguliwa. Jaribu tena.",
+    "errDownload": "Faili haikuweza kupakuliwa hapa. Tumia Chapisha au hifadhi kama PDF badala yake.",
+    "errLoad": "Tathmini ya safari haikuweza kufunguliwa. Pakia upya ukurasa kisha ujaribu tena."
   }
 }

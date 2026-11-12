@@ -111,6 +111,7 @@ describe('upstream moves through the real seed and pool builders', () => {
   it('keeps the selected Polymarket contract moves and leaves public country-index fields unchanged', async () => {
     const seed = readFileSync(new URL('../scripts/seed-prediction-markets.mjs', import.meta.url), 'utf8');
     const body = seed.slice(seed.indexOf('async function fetchAllPredictions()'), seed.indexOf('export function declareRecords'));
+    const pricedRecords = [];
     const deps = {
       ...predictionScoring, ...countryIndex, buildBootstrapPools,
       GEOPOLITICAL_TAGS: ['geopolitics'], TECH_TAGS: [], FINANCE_TAGS: [],
@@ -118,10 +119,12 @@ describe('upstream moves through the real seed and pool builders', () => {
       sleep: async () => {}, console: { log() {}, warn() {} },
       fetchKalshiMarkets: async () => ({ featured: [], countryCandidates: [], complete: true }),
       fetchKalshiCountryMarkets: async () => ({ countryCandidates: [], complete: true }),
+      KALSHI_BASE: 'https://kalshi.invalid', withRetry: (fn) => fn(),
+      attachKalshiLiquidity: async (records) => { pricedRecords.push(...records); return { tickers: 0, priced: 0 }; },
       fetchPolymarketEventsByTag: async () => [{
-        id: 'fixture', title: 'Will China GDP grow?', slug: 'china-gdp-move-fixture', volume: 100_000, tags: [{ slug: 'geopolitics' }],
+        id: 'fixture', title: 'Will China GDP grow?', slug: 'china-gdp-move-fixture', volume: 100_000, liquidity: 250_000, tags: [{ slug: 'geopolitics' }],
         markets: [
-          { question: 'Will China GDP grow above 5%?', volume: 50_000, outcomePrices: '["0.7","0.3"]', oneDayPriceChange: '-0.007', oneWeekPriceChange: 0 },
+          { question: 'Will China GDP grow above 5%?', volume: 50_000, liquidityNum: 40_000, outcomePrices: '["0.7","0.3"]', oneDayPriceChange: '-0.007', oneWeekPriceChange: 0 },
           { question: 'Will China GDP grow above 6%?', volume: 10_000, outcomePrices: '["0.6","0.4"]', oneDayPriceChange: 0.9, oneWeekPriceChange: 0.8 },
         ],
       }, {
@@ -140,6 +143,12 @@ describe('upstream moves through the real seed and pool builders', () => {
     assert.ok(result.countryMarkets.CN.length > 0);
     assert.equal('change24h' in result.countryMarkets.CN[0], false);
     assert.equal('change7d' in result.countryMarkets.CN[0], false);
+    assert.equal(selected.liquidity, 250_000);
+    assert.equal('liquidity' in unknown, false);
+    assert.equal(result.countryMarkets.CN.find(row => row.title === 'Will China GDP grow above 5%?')?.liquidity, 40_000);
+    const published = [...result.geopolitical, ...result.tech, ...result.finance, ...Object.values(result.countryMarkets).flat()];
+    assert.equal(pricedRecords.length, published.length);
+    assert.ok(published.every(row => pricedRecords.includes(row)), 'order-book pricing must see every published record');
   });
 
   it('retains optional moves across all three ranked pools', () => {

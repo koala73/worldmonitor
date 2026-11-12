@@ -49,6 +49,168 @@ const MOBILE_DEVICE_MATRIX = [
   { label: 'Galaxy S9+', use: devices['Galaxy S9+'] },
 ] as const;
 
+for (const width of [320, 1280]) {
+  test.describe(`Datacenter details (${width}px)`, () => {
+    test.use({ viewport: { width, height: 900 } });
+    for (const lang of ['en', 'de']) {
+      test(`opens and closes ${lang} details with the keyboard`, async ({ page }, testInfo) => {
+        await page.goto(`/tests/mobile-map-harness.html?datacenter=1&lang=${lang}`);
+        await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+        await page.locator('#mapOverlays .hotspot').click();
+        const popup = page.locator('.map-popup');
+        const details = popup.locator('.datacenter-details');
+        const summary = details.locator('summary');
+        await expect(summary).toHaveText(lang === 'de' ? 'Weitere Informationen' : 'More details');
+        await expect(details).not.toHaveAttribute('open');
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-compact-${lang}-${width}.png`) });
+        await summary.focus();
+        await page.keyboard.press('Enter');
+        await expect(details).toHaveAttribute('open');
+        await expect(details.locator('h3')).toHaveText('NexGen Cloud Hyperstack AQ Compute Supercomputer');
+        await expect(details).toContainText(lang === 'de' ? '16.384' : '16,384');
+        await expect(details).toContainText(lang === 'de' ? '23,4 MW' : '23.4 MW');
+        await expect(details).toContainText(lang === 'de' ? 'Geschätzt' : 'Estimated');
+        await expect(details.locator('a')).toHaveCount(2);
+        await expect(details.locator('img')).toHaveCount(0);
+        const geometry = await popup.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const title = element.querySelector('h3')!;
+          return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+            overflow: element.scrollWidth - element.clientWidth,
+            titleOverflow: title.scrollWidth - title.clientWidth };
+        });
+        expect(geometry.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.right).toBeLessThanOrEqual(width);
+        expect(geometry.top).toBeGreaterThanOrEqual(0);
+        expect(geometry.bottom).toBeLessThanOrEqual(900);
+        expect(geometry.overflow).toBeLessThanOrEqual(1);
+        expect(geometry.titleOverflow).toBeLessThanOrEqual(1);
+        await details.locator('h3').scrollIntoViewIfNeeded();
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-details-${lang}-${width}.png`) });
+        await details.locator('a').last().scrollIntoViewIfNeeded();
+        await expect(details.locator('a').first()).toBeVisible();
+        await expect(details.locator('a').last()).toBeVisible();
+        // Scrolled details must not show through the sticky header.
+        const headerAlpha = await popup.locator('.popup-header').evaluate(element => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d')!;
+          context.fillStyle = getComputedStyle(element).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          return context.getImageData(0, 0, 1, 1).data[3];
+        });
+        expect(headerAlpha).toBe(255);
+        await popup.screenshot({ path: testInfo.outputPath(`datacenter-sources-${lang}-${width}.png`) });
+        await summary.scrollIntoViewIfNeeded();
+        await summary.focus();
+        await page.keyboard.press('Space');
+        await expect(details).not.toHaveAttribute('open');
+        await popup.locator('.popup-close').click();
+        await expect(popup).toHaveCount(0);
+      });
+    }
+  });
+}
+
+for (const width of [320, 1280]) {
+  test.describe(`Hotspot breakdown labels (${width}px)`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    for (const language of ['de', 'en', 'ar']) {
+      test(`keeps ${language} text clear of bars and values at 1.5x scale`, async ({ page }, testInfo) => {
+        await page.goto(`/tests/mobile-map-harness.html?breakdown=1&lang=${language}`);
+        await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+        await expect(page.locator('html')).toHaveAttribute('lang', language);
+        await expect(page.locator('html')).toHaveCSS('direction', language === 'ar' ? 'rtl' : 'ltr');
+        await page.locator('#mapOverlays .hotspot').click();
+        const popup = page.locator('.map-popup');
+        await expect(popup).toBeVisible();
+        await popup.evaluate((element) => element.style.setProperty('--wm-panel-effective-scale', '1.5'));
+        const rows = popup.locator('.breakdown-row');
+        await expect(rows).toHaveCount(4);
+        if (language === 'de') await expect(rows).toContainText(['Nachrichten', 'Länderinstabilitätsindex']);
+        for (const row of await rows.all()) {
+          const geometry = await row.evaluate((element) => {
+            const label = element.querySelector<HTMLElement>('.component-label')!;
+            const bar = element.querySelector<HTMLElement>('.component-bar-bg')!;
+            const value = element.querySelector<HTMLElement>('.component-value')!;
+            const range = document.createRange();
+            range.selectNodeContents(label);
+            const rect = label.getBoundingClientRect();
+            const barRect = bar.getBoundingClientRect();
+            const valueRect = value.getBoundingClientRect();
+            const rtl = getComputedStyle(label).direction === 'rtl';
+            return {
+              overflow: label.scrollWidth - label.clientWidth,
+              clear: [...range.getClientRects()].every((text) => rtl
+                ? text.left >= barRect.right && text.left >= valueRect.right
+                : text.right <= barRect.left && text.right <= valueRect.left),
+              inside: rect.left >= 0 && valueRect.left >= 0 && valueRect.right <= innerWidth,
+            };
+          });
+          expect(geometry.overflow).toBeLessThanOrEqual(1);
+          expect(geometry.clear).toBe(true);
+          expect(geometry.inside).toBe(true);
+          await expect(row.locator('.component-value')).toBeVisible();
+          await expect(row.locator('.component-value')).toHaveText(/^\d+$/);
+        }
+        await popup.screenshot({ path: testInfo.outputPath(`breakdown-${language}-${width}.png`) });
+      });
+    }
+  });
+}
+
+for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+  test.describe(`Hotspot popup header (${viewport.width}px)`, () => {
+    test.use({ viewport, deviceScaleFactor: 1.25 });
+
+    test('keeps the header and close button inside after scrolling and reopening', async ({ page }, testInfo) => {
+      await page.goto('/tests/mobile-map-harness.html?long=1');
+      await page.waitForFunction(() => (window as HarnessWindow).__mobileMapHarness?.ready);
+      const marker = page.locator('#mapOverlays .hotspot');
+      const markerBefore = await marker.boundingBox();
+      expect(markerBefore).not.toBeNull();
+      expect(markerBefore!.x + markerBefore!.width / 2).toBeCloseTo(viewport.width / 2, 0);
+      expect(markerBefore!.y + markerBefore!.height / 2).toBeCloseTo(viewport.height / 2, 0);
+
+      const popup = page.locator('.map-popup');
+      const header = popup.locator('.popup-header');
+      const close = header.getByRole('button', { name: 'Close', exact: true });
+      const expectHeaderInside = async () => {
+        // Read all bounds in one frame while the mobile sheet animates.
+        await expect.poll(() => popup.evaluate((element) => {
+          const parent = element.getBoundingClientRect();
+          const child = element.querySelector('.popup-header')!.getBoundingClientRect();
+          const button = element.querySelector('.popup-close')!.getBoundingClientRect();
+          return child.left >= parent.left && child.right <= parent.right
+            && child.top >= parent.top && child.bottom <= parent.bottom
+            && button.left >= parent.left && button.right <= parent.right
+            && button.top >= parent.top && button.bottom <= parent.bottom;
+        }), { message: 'The header and close button must stay inside the popup', timeout: 3000 }).toBe(true);
+      };
+
+      for (let opening = 0; opening < 2; opening++) {
+        await marker.click();
+        await expect(popup).toBeVisible();
+        await expectHeaderInside();
+        await popup.evaluate((element) => { element.scrollTop = 120; });
+        await expect.poll(() => popup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await expectHeaderInside();
+        await expect.poll(() => popup.evaluate((element) =>
+          element.querySelector('.popup-header')!.getBoundingClientRect().top
+            - element.getBoundingClientRect().top,
+        )).toBeCloseTo(1, 0);
+        if (opening === 0) {
+          await page.screenshot({ path: testInfo.outputPath('hotspot-header-scrolled.png') });
+        }
+        await close.click();
+        await expect(popup).toHaveCount(0);
+      }
+
+      expect(await marker.boundingBox()).toEqual(markerBefore);
+    });
+  });
+}
+
 for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
   test.describe(`Mobile SVG popup QA (${deviceConfig.label})`, () => {
     const { defaultBrowserType: _defaultBrowserType, ...contextOptions } = deviceConfig.use;

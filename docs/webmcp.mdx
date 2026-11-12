@@ -53,7 +53,7 @@ For discovery and read-only dashboard tools, use Chrome 149 or newer:
 1. Open `chrome://flags/#enable-webmcp-testing`.
 2. Set **WebMCP for testing** to **Enabled**.
 3. Relaunch Chrome completely.
-4. Start WorldMonitor locally. Open `/dashboard` for the thirty-three-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+4. Start WorldMonitor locally. Open `/dashboard` for the thirty-three-tool dashboard, not `/embed`. To inspect the static four-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
 5. Confirm feature detection in DevTools:
 
 ```js
@@ -68,7 +68,7 @@ Follow OpenAI's [Site tools flow](https://learn.chatgpt.com/docs/webmcp), not th
 
 1. Update the ChatGPT desktop app, then select a model and workspace that currently support Site tools.
 2. Open `https://www.worldmonitor.app/` in the built-in browser. Use `/dashboard` to test the dashboard inventory.
-3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists thirty-three.
+3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists four imperative tools. The dashboard lists thirty-three.
 4. Ask ChatGPT Work or Codex to use a WorldMonitor tool while that page remains open.
 5. If no tools appear, reload the page in the built-in browser and inspect **Available site tools** again.
 
@@ -110,12 +110,14 @@ Tools are page- and state-specific. The runtime source of truth is `await docume
 
 ### Homepage tools
 
-The static `https://www.worldmonitor.app/` welcome page registers two imperative tools before the dashboard SPA loads:
+The static `https://www.worldmonitor.app/` welcome page registers four imperative tools before the dashboard SPA loads:
 
 | Tool | Input schema | Behavior |
 |---|---|---|
-| `launchWorldMonitor` | Object with optional string `monitor`; enum `world`, `tech`, `finance`, `commodity`, `energy`, `happy`; no additional properties. Defaults to `world`. | Navigates the current tab to the selected live dashboard. |
+| `openDashboard` | Object with optional string `monitor`; enum `world`, `tech`, `finance`, `commodity`, `energy`, `happy`; no additional properties. Defaults to `world`. | Navigates the current tab to the selected live dashboard. |
 | `getWorldMonitorMcpEndpoint` | Empty object; no additional properties. | Read-only connection details for `https://worldmonitor.app/mcp`, its server card, Streamable HTTP transport, and auth modes. |
+| `listCountryScorecards` | Object with optional `countryCodes` (up to 15 ISO 3166-1 alpha-2 codes), optional integer `offset` (minimum 0) and optional integer `limit` (1 to 15, default 15); no additional properties. | Read-only page of five-factor scorecards: each country's 1-5 score per pillar, `null` where data is insufficient, with `total` and `nextOffset` for paging. Reads the public `list-five-factor-scorecards` route; no account needed. |
+| `getCountryScorecard` | Object with required string `countryCode` (ISO 3166-1 alpha-2); no additional properties. | Read-only summary of one country's scorecard: per-pillar score, band, input coverage and a short list of its data sources, plus `evidenceUrl` for the full JSON. Reads the public `get-five-factor-scorecard` route; no account needed. |
 
 ### Dashboard imperative tools
 
@@ -354,7 +356,7 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 |---|---|---|
 | `document.modelContext` is absent | The browser does not implement WebMCP, the local testing flag is off, the trial is unavailable, or the route is intentionally not enrolled | Confirm the Chrome version and flag, then use an enrolled top-level homepage or dashboard route. Preview, docs, `/?mode=agent`, and embed routes are not WebMCP surfaces. |
 | `getTools()` hangs or an origin-trial page settles with no inventory | The page provider may have been touched before registration completed | Reload the page, wait for document load and WorldMonitor registration to settle, then perform one inventory read. Do not poll `document.modelContext`. |
-| Only the homepage inventory is visible | The agent is on the static homepage | Invoke `launchWorldMonitor` or navigate to `/dashboard` for the imperative dashboard inventory. |
+| Only the homepage inventory is visible | The agent is on the static homepage | Invoke `openDashboard` or navigate to `/dashboard` for the imperative dashboard inventory. |
 | The imperative dashboard inventory is visible but `search_procurement` is absent | The host does not support declarative tools, or the conditional form is not eligible | In ChatGPT's built-in browser, this is expected. In Chrome, open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
 | A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `apply_mission_preset`, `set_country_followed`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
 | A panel or layer is denied | The current page state failed a live variant, renderer, enabled-state, or entitlement check | Read `reason` and each target status. Change state through normal visible controls or ask the person; do not force a hidden path. |

@@ -3,7 +3,8 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:24-alpine@sha256:feb76650b7195319268c59cb2d419c732d6c499b13bf5296f16ab59eb1f0a4f3 AS builder
+# Only static assets reach nginx. Keep Node native to avoid QEMU crashes during npm ci.
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS builder
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
@@ -48,11 +49,19 @@ RUN npm run build:pro
 # and the prebuild openapi/agent-skills generators.
 RUN npx tsc && npx vite build
 RUN test -s dist/product-facts.json
+# The SPA entry point. vite.config.ts's dashboardHtmlOutputPlugin renames
+# index.html -> dashboard.html, and docker/nginx.conf.template both indexes it
+# and falls back to it from `location /` — so if the rename ever changes, every
+# route in the image serves a 404 while every other assertion here still passes.
+RUN test -s dist/dashboard.html
 # Assert the /pro pages survived the public/ -> dist/ copy. build:pro succeeding
 # proves public/pro/ exists; it does NOT prove Vite copied it, and nginx routes
 # `location ^~ /pro` regardless (#6898). Without this an outDir/publicDir change
 # ships a green image that 404s behind a live route.
 RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
+# nginx.conf.template's error_page points 5xx at /500.html; if the copy ever
+# breaks, nginx silently falls back to its stock error page.
+RUN test -s dist/500.html
 
 
 # Stage 2: Serve the built assets from nginx.

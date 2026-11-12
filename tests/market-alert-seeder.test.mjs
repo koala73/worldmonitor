@@ -125,7 +125,7 @@ function archiveRows(overrides = {}) {
   const rows = {
     ZRANGE: () => ({ result: ['h0', String(NOW - 8 * HOUR)] }),
     ZREVRANGEBYSCORE: () => ({ result: [OIL_STORY.hash, String(OIL_STORY_LAST_SEEN)] }),
-    HGETALL: () => ({ result: ['title', OIL_STORY.title, 'firstSeen', String(OIL_STORY.firstSeen)] }),
+    HMGET: () => ({ result: [OIL_STORY.title, String(OIL_STORY.firstSeen)] }),
     SMEMBERS: () => ({ result: ['OilPrice.com', 'Reuters'] }),
     ...overrides,
   };
@@ -557,7 +557,7 @@ describe('createRedisArchive', () => {
       ['ZRANGE', ACCUMULATOR_KEY, '0', '0', 'WITHSCORES'],
       ['ZREVRANGEBYSCORE', ACCUMULATOR_KEY, '+inf', String(ARCHIVE_SINCE), 'WITHSCORES', 'LIMIT', '0', String(MAX_ARCHIVE_HASHES + 1)],
     ]);
-    assert.deepEqual(pipeline.sent[1], [['HGETALL', `story:track:v1:${OIL_STORY.hash}`]]);
+    assert.deepEqual(pipeline.sent[1], [['HMGET', `story:track:v1:${OIL_STORY.hash}`, 'title', 'firstSeen']]);
     assert.deepEqual(result, { coveredFromMs: NOW - 8 * HOUR, truncated: false, stories: [OIL_STORY] });
   });
 
@@ -567,7 +567,7 @@ describe('createRedisArchive', () => {
   });
 
   it('skips an expired story:track row', async () => {
-    const pipeline = fakePipeline(archiveRows({ HGETALL: () => ({ result: [] }) }));
+    const pipeline = fakePipeline(archiveRows({ HMGET: () => ({ result: [null, null] }) }));
     assert.deepEqual(await createRedisArchive(pipeline).readStories(ARCHIVE_SINCE), { coveredFromMs: NOW - 8 * HOUR, truncated: false, stories: [] });
   });
 
@@ -577,8 +577,8 @@ describe('createRedisArchive', () => {
     assert.equal(value, null);
   });
 
-  it('returns null on an HGETALL row error', async () => {
-    const pipeline = fakePipeline(archiveRows({ HGETALL: () => ({ error: 'ERR' }) }));
+  it('returns null on an HMGET row error', async () => {
+    const pipeline = fakePipeline(archiveRows({ HMGET: () => ({ error: 'ERR' }) }));
     const { value } = await captureWarnings(() => createRedisArchive(pipeline).readStories(ARCHIVE_SINCE));
     assert.equal(value, null);
   });

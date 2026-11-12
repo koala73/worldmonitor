@@ -15,7 +15,7 @@ import {
 } from '../../../_shared/premium-check';
 import { getCachedJson } from '../../../_shared/redis';
 import { CHOKEPOINT_STATUS_KEY } from '../../../_shared/cache-keys';
-import { BYPASS_CORRIDORS_BY_CHOKEPOINT, type CargoType } from '../../../_shared/bypass-corridors';
+import { BYPASS_CORRIDORS_BY_CHOKEPOINT, corridorServesOrigin, type CargoType } from '../../../_shared/bypass-corridors';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import COUNTRY_PORT_CLUSTERS from '../../../../scripts/shared/country-port-clusters.json';
 
@@ -93,7 +93,7 @@ export async function routeIntelligence(
 
   const bypassOptions: BypassOption[] = primaryChokepoint
     ? (BYPASS_CORRIDORS_BY_CHOKEPOINT[primaryChokepoint.chokepointId] ?? [])
-        .filter(c => c.suitableCargoTypes.length === 0 || c.suitableCargoTypes.includes(cargoType))
+        .filter(c => (c.suitableCargoTypes.length === 0 || c.suitableCargoTypes.includes(cargoType)) && corridorServesOrigin(c, fromIso2))
         .slice(0, 5)
         .map(c => ({
           id: c.id,

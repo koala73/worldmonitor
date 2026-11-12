@@ -26,7 +26,9 @@ import { getEuGasStorageData } from '@/services/economic';
 import { fetchCommodityQuotes } from '@/services/market';
 
 import { buildOverviewState, type OverviewState } from './_energy-risk-overview-state';
+import { oilTapeObservationLabel } from './_oil-tape-observation';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { HORMUZ_CRISIS_START_DATE } from '../../shared/hormuz-crisis.js';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -35,10 +37,11 @@ const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient
 const BRENT_SYMBOL = 'BZ=F';
 const BRENT_META = [{ symbol: BRENT_SYMBOL, name: 'Brent Crude', display: 'BRENT' }];
 
-// Default pinned crisis-start date for the running Hormuz situation. Overridable
-// via VITE_HORMUZ_CRISIS_START_DATE so the date can be re-pinned without a
-// redeploy when the editorial framing shifts.
-const DEFAULT_CRISIS_START_DATE = '2026-02-23';
+// Default pinned crisis-start date for the running Hormuz situation, shared
+// with the shock model's pre-crisis window (shared/hormuz-crisis.js).
+// Overridable via VITE_HORMUZ_CRISIS_START_DATE so the date can be re-pinned
+// without a redeploy when the editorial framing shifts.
+const DEFAULT_CRISIS_START_DATE = HORMUZ_CRISIS_START_DATE;
 const CRISIS_START_DATE: string = (() => {
   try {
     return import.meta.env.VITE_HORMUZ_CRISIS_START_DATE || DEFAULT_CRISIS_START_DATE;
@@ -184,7 +187,7 @@ export class EnergyRiskOverviewPanel extends Panel {
     // Oil price up = bad for energy importers (the dominant Atlas reader).
     // Up = red. Down = green. Inverted from a usual market panel.
     const color = change >= 0 ? '#e74c3c' : '#27ae60';
-    return tileHtml('Brent', price, color, '', deltaText);
+    return tileHtml('Brent', price, color, '', deltaText, oilTapeObservationLabel(t.value));
   }
 
   private renderActiveDisruptionsTile(): string {
@@ -227,13 +230,14 @@ export class EnergyRiskOverviewPanel extends Panel {
   }
 }
 
-function tileHtml(label: string, value: string, color: string, attrs = '', sub = ''): string {
+function tileHtml(label: string, value: string, color: string, attrs = '', sub = '', observation = ''): string {
   const subHtml = sub ? `<div class="ero-tile__sub" style="color:${color}">${escapeHtml(sub)}</div>` : '';
   return `
     <div class="ero-tile" ${attrs}>
       <div class="ero-tile__label">${escapeHtml(label)}</div>
       <div class="ero-tile__value" style="color:${color}">${escapeHtml(value)}</div>
       ${subHtml}
+      ${observation ? `<div class="indicator-date">${escapeHtml(observation)}</div>` : ''}
     </div>
   `;
 }

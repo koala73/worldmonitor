@@ -5,12 +5,14 @@ import type { DecisionBriefCapture, DecisionBriefSelection } from '../src/types/
 import { computeGasDisruption } from '../server/worldmonitor/intelligence/v1/_shock-compute.ts';
 
 const selection: DecisionBriefSelection = { countryCode: 'DE', countryName: 'Germany', chokepointId: 'hormuz_strait', fuelMode: 'gas', baselinePct: 50, comparisonPct: 100 };
+// Captures from the assumed-route model (a fixed 30% share). The live handler
+// now measures the Hormuz share; measuredCaptures below covers those responses.
 function captures(code = 'DE', lng = 41318, demand = 467224): [DecisionBriefCapture, DecisionBriefCapture] {
   return [50, 100].map(disruptionPct => ({ retrievedAt: '2026-09-10T10:00:00Z', response: {
     countryCode: code, chokepointId: 'hormuz_strait', disruptionPct, gulfCrudeShare: 0, crudeLossKbd: 0, products: [], effectiveCoverDays: 0,
     assessment: '', dataAvailable: true, jodiOilCoverage: false, comtradeCoverage: false, ieaStocksCoverage: false, portwatchCoverage: false,
     coverageLevel: 'partial', limitations: [], degraded: true, chokepointConfidence: '',
-    gasSensitivity: { lngImportsTj: lng, totalDemandTj: demand, ...computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct)!, dataAvailable: true, assessment: '30% assumed route exposure.', dataSource: 'JODI', dataMonth: '2026-05', modelBasis: 'assumed_route_sensitivity' },
+    gasSensitivity: { lngImportsTj: lng, totalDemandTj: demand, ...computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.3)!, dataAvailable: true, assessment: '30% assumed route exposure.', dataSource: 'JODI', dataMonth: '2026-05', modelBasis: 'assumed_route_sensitivity' },
   } })) as [DecisionBriefCapture, DecisionBriefCapture];
 }
 
@@ -25,9 +27,100 @@ test('oil route evidence withholds a proxy and retains covered Comtrade values',
   const s = buildDecisionBrief({ ...selection, fuelMode: 'oil' }, data);
   assert.equal(s.evidence.find(e => e.id === 'baseline-route')!.value, null);
   assert.equal(s.evidence.find(e => e.id === 'comparison-route')!.value, 40);
-  assert.match(s.unknowns.join(' '), /baseline: Comtrade route exposure is unavailable.*fixed proxy/);
+  assert.match(s.unknowns.join(' '), /baseline: Comtrade route exposure is unavailable.*not modeled without a measured origin share/);
   assert.deepEqual(s.results.map(r => r.loss), [100, 100]);
   assert.equal(s.comparison.delta, null);
+});
+
+test('oil evidence labels the pre-crisis baseline and reports current flows beside it', () => {
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 1104 });
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 1104 };
+  }
+  data[0].response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.605, crudeLossKbd: 720.6 };
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'oil' }, data);
+  const route = s.evidence.find(e => e.id === 'baseline-route')!;
+  assert.match(route.label, /pre-crisis baseline \(monthly 2025-02\.\.2026-01\)/);
+  assert.equal(route.value, 92.7);
+  assert.equal(route.observedAt, '2026-01');
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /pre-crisis baseline/);
+  const current = s.evidence.find(e => e.id === 'baseline-route-current')!;
+  assert.match(current.label, /current flows/);
+  assert.equal(current.value, 60.5);
+  assert.equal(current.observedAt, '2026-08');
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss-current')!.value, 720.6);
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss-current')!.label, /without bypass recovery/, 'current flows are an upper bound, not comparable to an after-bypass headline');
+  // The comparison capture has no current-flows figure: null, and named as unknown.
+  assert.equal(s.evidence.find(e => e.id === 'comparison-route-current')!.value, null);
+  assert.match(s.unknowns.join(' '), /comparison: current-flows Gulf share is unavailable/);
+  assert.doesNotMatch(s.unknowns.join(' '), /fewer than 3 monthly Comtrade filings/, 'an absent figure is not proof the importer filed nothing');
+  assert.deepEqual(s.results.map(r => r.loss), [1104, 1104], 'the compared loss stays the pre-crisis headline');
+});
+
+test('in both mode, gas data does not make an unmodeled oil loss read as a 0 kbd loss', () => {
+  // A JODI row with invalid crude imports: dataAvailable is true from gas alone,
+  // and the handler reports the oil loss as 0 with a "not modeled" limitation.
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 0 });
+    response.limitations = ['JODI crude import observation unavailable for JP; oil loss, product deficits and effective cover are not modeled (reported as 0).'];
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 0 };
+    response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.605, crudeLossKbd: 0 };
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'both' }, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss-current')!.value, null);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-loss')!.value, null);
+  assert.deepEqual(s.results.map(r => r.loss), [null, null]);
+  // The shares are measured and keep their own guards.
+  assert.equal(s.evidence.find(e => e.id === 'baseline-route-current')!.value, 60.5);
+  assert.match(s.unknowns.join(' '), /baseline: the oil loss is not modeled/);
+});
+
+test('the annual fallback is named in the evidence label, and current flows show without a pre-crisis share', () => {
+  const data = captures('CN');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.378, crudeLossKbd: 3385 });
+    response.preCrisisBaseline = { basis: 'comtrade_annual', fromMonth: '2024-01', toMonth: '2024-12', monthsCovered: 12, gulfCrudeShare: 0.378, crudeLossKbd: 3385 };
+    response.limitations = ['Current flows unavailable for CN: fewer than 3 UN Comtrade monthly crude import filings since 2026-03.'];
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'CN', countryName: 'China', fuelMode: 'oil' }, data);
+  assert.match(s.evidence.find(e => e.id === 'baseline-route')!.label, /pre-crisis baseline \(annual 2024\)/);
+  assert.match(s.unknowns.join(' '), /baseline: current-flows Gulf share is unavailable: fewer than 3 UN Comtrade monthly crude import filings since 2026-03/);
+
+  // No measured pre-crisis share, three current filings: the current share is still evidence.
+  const onlyCurrent = captures('XX');
+  for (const { response } of onlyCurrent) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: false, dataAvailable: false });
+    response.currentFlows = { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, gulfCrudeShare: 0.2, crudeLossKbd: 0 };
+  }
+  const t = buildDecisionBrief({ ...selection, countryCode: 'XX', countryName: 'X', fuelMode: 'oil' }, onlyCurrent);
+  assert.equal(t.evidence.find(e => e.id === 'baseline-route-current')!.value, 20);
+});
+
+test('with neither Gulf share, the unknown does not claim the figures use a pre-crisis baseline', () => {
+  const data = captures('XX');
+  for (const { response } of data) Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: false, dataAvailable: false });
+  const s = buildDecisionBrief({ ...selection, countryCode: 'XX', countryName: 'X', fuelMode: 'oil' }, data);
+  const unknowns = s.unknowns.join(' ');
+  assert.match(unknowns, /baseline: current-flows Gulf share is unavailable; no pre-crisis share is available either/);
+  assert.doesNotMatch(unknowns, /figures use the pre-crisis baseline/);
+});
+
+test('oil evidence names the loss after Hormuz bypass and reports the before-bypass loss beside it', () => {
+  const data = captures('JP');
+  for (const { response } of data) {
+    Object.assign(response, { jodiOilCoverage: true, comtradeCoverage: true, gulfCrudeShare: 0.927, crudeLossKbd: 979.5 });
+    response.preCrisisBaseline = { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, gulfCrudeShare: 0.927, crudeLossKbd: 2209.5, crudeLossAfterBypassKbd: 979.5 };
+  }
+  const s = buildDecisionBrief({ ...selection, countryCode: 'JP', countryName: 'Japan', fuelMode: 'oil' }, data);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.match(loss.label, /after Hormuz bypass/);
+  assert.equal(loss.value, 979.5);
+  const before = s.evidence.find(e => e.id === 'baseline-loss-before-bypass')!;
+  assert.match(before.label, /before bypass/);
+  assert.equal(before.value, 2209.5);
+  assert.deepEqual(s.results.map(r => r.loss), [979.5, 979.5]);
 });
 
 test('Germany shared basis retains exact corrected gas results and evidence-specific action', () => {
@@ -83,6 +176,106 @@ for (const change of ['month', 'lng', 'demand', 'source', 'source-differs', 'sou
     assert.equal(buildDecisionBrief(selection, data).comparison.delta, null);
   });
 }
+
+// Captures from the measured Hormuz model: Japan, JODI 2026-07, UN Comtrade
+// pre-crisis 6.4% (2025-02 to 2026-01) and current flows 0.4% (2026-06 to 2026-08).
+function measuredCaptures(): [DecisionBriefCapture, DecisionBriefCapture] {
+  const lng = 274197; const demand = 299947;
+  return [50, 100].map(disruptionPct => {
+    const pre = computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.064)!;
+    const now = computeGasDisruption(lng, demand, 'hormuz_strait', disruptionPct, 0.0044)!;
+    return { retrievedAt: '2026-11-02T10:00:00Z', response: {
+      countryCode: 'JP', chokepointId: 'hormuz_strait', disruptionPct, gulfCrudeShare: 0, crudeLossKbd: 0, products: [], effectiveCoverDays: 0,
+      assessment: '', dataAvailable: true, jodiOilCoverage: false, comtradeCoverage: false, ieaStocksCoverage: false, portwatchCoverage: true,
+      coverageLevel: 'partial', limitations: [], degraded: false, chokepointConfidence: 'none',
+      gasSensitivity: {
+        lngImportsTj: lng, totalDemandTj: demand, ...pre, dataAvailable: true, dataSource: 'jodi_monthly', dataMonth: '2026-07',
+        assessment: 'JP LNG exposure to Strait of Hormuz: Qatar and the UAE supplied 6.4% of LNG imports before the crisis (2025-02 to 2026-01) and 0.4% in current flows (2026-06 to 2026-08).',
+        modelBasis: 'comtrade_lng_origin_share',
+        preCrisisBaseline: { basis: 'comtrade_monthly', fromMonth: '2025-02', toMonth: '2026-01', monthsCovered: 12, hormuzLngShare: 0.064, lngDisruptionTj: pre.lngDisruptionTj },
+        currentFlows: { basis: 'comtrade_monthly', fromMonth: '2026-06', toMonth: '2026-08', monthsCovered: 3, hormuzLngShare: 0.0044, lngDisruptionTj: now.lngDisruptionTj },
+      },
+    } };
+  }) as [DecisionBriefCapture, DecisionBriefCapture];
+}
+const japan: DecisionBriefSelection = { ...selection, countryCode: 'JP', countryName: 'Japan' };
+
+test('measured Hormuz LNG captures are usable and label both baselines', () => {
+  const s = buildDecisionBrief(japan, measuredCaptures());
+  assert.deepEqual(s.results.map(r => r.loss), [8774.3, 17548.6], 'the pre-crisis baseline drives the result');
+  assert.equal(s.comparison.delta, 8774.3);
+  const pre = s.evidence.find(e => e.id === 'baseline-hormuz-pre-crisis')!;
+  assert.deepEqual([pre.value, pre.unit, pre.source, pre.observedAt], [6.4, '%', 'UN Comtrade', '2026-01']);
+  assert.match(pre.label, /pre-crisis.*2025-02 to 2026-01/i);
+  const now = s.evidence.find(e => e.id === 'baseline-hormuz-current')!;
+  assert.deepEqual([now.value, now.observedAt], [0.44, '2026-08'], 'evidence keeps the share unrounded; display rounds');
+  assert.match(now.label, /current flows.*2026-06 to 2026-08/i);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.match(loss.label, /pre-crisis share/);
+  assert.match(loss.source, /UN Comtrade/);
+  const text = [...s.assumptions, s.impact, s.action.constraint].join(' ');
+  assert.match(text, /measured from UN Comtrade/);
+  assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
+  assert.doesNotMatch(s.action.constraint, /supplier and route exposure/);
+});
+
+test('a small measured share stays nonzero in the evidence', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) response.gasSensitivity!.currentFlows!.hormuzLngShare = 0.0004;
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-current')!.value, 0.04);
+});
+
+test('a current-flows-only capture labels the loss with the share that drives it', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    delete g.preCrisisBaseline;
+    g.lngDisruptionTj = g.currentFlows!.lngDisruptionTj;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-pre-crisis')!.value, null);
+  assert.match(s.evidence.find(e => e.id === 'baseline-loss')!.label, /current-flows share/);
+  assert.match(s.unknowns.join(' '), /pre-crisis Hormuz LNG share is unavailable/);
+});
+
+test('zero recorded LNG imports get neutral wording, not the assumed-route text', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) {
+    const g = response.gasSensitivity!;
+    Object.assign(g, { lngImportsTj: 0, lngDisruptionTj: 0, deficitPct: 0, modelBasis: 'observed_zero_lng_imports', assessment: 'JP recorded zero LNG imports in 2026-07.' });
+    delete g.preCrisisBaseline; delete g.currentFlows;
+  }
+  const s = buildDecisionBrief(japan, data);
+  assert.deepEqual(s.results.map(r => r.loss), [0, 0]);
+  const loss = s.evidence.find(e => e.id === 'baseline-loss')!;
+  assert.doesNotMatch(`${loss.label} ${loss.source}`, /assumed/i);
+  assert.equal(loss.source, 'JODI');
+  const text = [...s.assumptions, s.impact, s.action.constraint].join(' ');
+  assert.doesNotMatch(text, /assumed route|Assumed route|route fraction is fixed/);
+  assert.match(text, /zero recorded LNG imports/i);
+});
+
+test('a measured capture without current flows lists it as unknown, never zero', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) delete response.gasSensitivity!.currentFlows;
+  const s = buildDecisionBrief(japan, data);
+  assert.equal(s.evidence.find(e => e.id === 'baseline-hormuz-current')!.value, null);
+  assert.match(s.unknowns.join(' '), /current-flows Hormuz LNG share is unavailable/);
+  assert.deepEqual(s.results.map(r => r.loss), [8774.3, 17548.6]);
+});
+
+test('withholds delta when the measured pre-crisis share differs between captures', () => {
+  const data = measuredCaptures();
+  data[1].response.gasSensitivity!.preCrisisBaseline!.hormuzLngShare = 0.07;
+  assert.equal(buildDecisionBrief(japan, data).comparison.delta, null);
+});
+
+test('an unknown gas model basis is not usable', () => {
+  const data = measuredCaptures();
+  for (const { response } of data) response.gasSensitivity!.modelBasis = 'route_guess';
+  assert.deepEqual(buildDecisionBrief(japan, data).results.map(r => r.loss), [null, null]);
+});
 
 test('old storage retains its own date and is explicitly excluded from comparison', () => {
   const data = captures();

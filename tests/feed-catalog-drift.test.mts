@@ -24,6 +24,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { bundleFeedsModule } from './_lib/bundle-feeds-module.mts';
+import { servedLayout, uncoveredSources } from './_lib/news-catalog-coverage.mts';
+import { VALID_VARIANTS } from '../server/worldmonitor/news/v1/list-feed-digest';
+import { INTEL_EDITION } from '../shared/news-catalog-browser';
 import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 import { computeCapDisabledSources, selectSourcesUnderCap } from '../src/services/source-cap';
 import {
@@ -65,6 +68,7 @@ interface FeedsModule {
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string }>;
   FULL_FEEDS?: Record<string, FeedEntry[]>;
   FEEDS: Record<string, FeedEntry[]>;
+  CANONICAL_FEEDS: Record<string, FeedEntry[]>;
   getAllDefaultEnabledSources: () => Set<string>;
   getStrategicDefaultSources: () => Set<string>;
   getLocaleBoostedSources: (locale: string) => Set<string>;
@@ -347,6 +351,18 @@ after(() => {
 });
 
 describe('feed catalog drift', () => {
+  it('declares each feed (name + URL) in exactly one catalog record', () => {
+    const catalog = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../shared/news-catalog.json'), 'utf8'));
+    const seen = new Set<string>();
+    const split: string[] = [];
+    for (const feed of catalog.feeds as Array<{ name: string; url: unknown }>) {
+      const key = `${feed.name}|${JSON.stringify(feed.url)}`;
+      if (seen.has(key)) split.push(feed.name);
+      seen.add(key);
+    }
+    assert.deepEqual(split, [], 'merge split records; use a placement-level `type` for per-placement browser fields');
+  });
+
   it('does not add unreviewed cross-category aliases for one server feed URL', () => {
     // fetchAndParseRss caches parsed items by variant + URL, and each parsed
     // item carries the feed name. Reusing one URL under different names in
@@ -372,6 +388,11 @@ describe('feed catalog drift', () => {
       }
       for (const [url, labels] of byUrl) {
         if (labels.length < 2) continue;
+        // One URL under the SAME name in two categories cannot relabel
+        // anything: the cached items already carry that name. The energy
+        // dashboard places OilPrice.com in both its live and energy panels.
+        const names = new Set(labels.map((label) => label.slice(label.indexOf(':') + 1)));
+        if (names.size < 2) continue;
         const signature = `${variant}|${url}|${labels.sort().join('|')}`;
         if (!reviewedAliases.has(signature)) unreviewedAliases.push(signature);
       }
@@ -384,6 +405,28 @@ describe('feed catalog drift', () => {
         'Because the parsed RSS cache is keyed by variant + URL and retains source names, ' +
         'remove the duplicate alias or explicitly review and grandfather it.',
     );
+  });
+
+  it('every default-enabled source is fetched by a served digest', () => {
+    const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8'));
+    const served = servedLayout(catalog.layout.server, VALID_VARIANTS, INTEL_EDITION);
+    const gaps = uncoveredSources(feeds.getAllDefaultEnabledSources(), catalog.feeds, served);
+    assert.deepEqual(gaps, [], `default-enabled sources no digest fetches: ${gaps.join(', ')}`);
+  });
+
+  // The desktop outage fallback (KTD9) fetches the feeds panels resolve from
+  // these maps, so every one must be a catalog entry, URL included.
+  it('every feed a panel can resolve is a catalog feed, so the outage fallback fetches only catalog URLs', () => {
+    const catalog = JSON.parse(readFileSync(join(repoRoot, 'shared/news-catalog.json'), 'utf8')) as {
+      feeds: Array<{ name: string; url: unknown; browser?: { url?: unknown } | null }>;
+    };
+    const declared = new Set(catalog.feeds.map((feed) => `${feed.name}|${JSON.stringify(feed.browser?.url ?? feed.url)}`));
+    const resolvable = [...Object.values(feeds.CANONICAL_FEEDS).flat(), ...feeds.INTEL_SOURCES];
+    assert.ok(resolvable.length > 500, `expected the whole browser catalog, got ${resolvable.length} feeds`);
+    const undeclared = resolvable
+      .map((feed) => `${feed.name}|${JSON.stringify(feed.url)}`)
+      .filter((key) => !declared.has(key));
+    assert.deepEqual([...new Set(undeclared)], []);
   });
 
   it('every default-enabled source resolves to a configured feed', () => {

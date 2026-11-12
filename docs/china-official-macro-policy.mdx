@@ -31,7 +31,6 @@ instead of being silently omitted:
 
 - `pboc_aggregate_financing_flow`
 - `pboc_new_rmb_loans`
-- `pboc_m2_yoy`
 - `pboc_policy_liquidity_operation`
 - `gacc_exports`
 - `gacc_imports`
@@ -40,8 +39,47 @@ instead of being silently omitted:
 PBoC candidates remain blocked when `www.pbc.gov.cn` robots policy disallows
 the reviewed paths or terms review is incomplete. GACC candidates remain
 blocked when `english.customs.gov.cn` cannot pass the TLS/source preflight.
-Their pillars therefore remain `unavailable`; another publisher is not
-substituted.
+Their missing observations remain `unavailable`.
+
+### M2 through an official republication
+
+`pboc_m2_yoy` has one additional reviewed source binding at the
+[Shanghai Financial Portal](https://jrj.sh.gov.cn/SCGK194/index.html). The
+portal credits the People's Bank of China. The observation and its provenance
+identify Shanghai as the actual republisher and retain the PBOC credit.
+This binding does not open direct PBOC access or supply other PBOC series.
+
+The [August report](https://jrj.sh.gov.cn/SCGK194/20260915/8b8f76bb432e4c4b8aa290646d19231b.html)
+states August 2026 M2 growth of 7.5%, with a Shanghai publication date of
+15 September 2026. This is a day-precision republication date, not an original
+PBOC release timestamp or an NBS database publication date. The subsequent
+quarter report supplies September monthly M2 growth of 7.2% and is dated
+15 October 2026. The adapter discovers the newest national report on the
+reviewed listing, including half-year and quarter titles, and extracts only
+the M2 month-end observation. It does not confuse the balance, M1 or M0 with
+the M2 growth rate.
+
+The [HTTPS robots endpoint](https://jrj.sh.gov.cn/robots.txt) returned a normal
+404 on 24 October 2026. The existing runtime records this as
+`no_rules_published`. Each run checks robots before the listing and article,
+uses verified HTTPS with manual redirects, and has a six-request limit and a
+15-second total fetch deadline for this optional source.
+The [portal's copyright statement](https://jrj.sh.gov.cn/BQSM/index.html),
+section 2, requires users of republications to retain the credited source.
+Ingestion is limited to numeric facts and publication metadata with source
+credit and a link to the article. Article prose and third-party media are not
+redistributed.
+
+M2 uses a 50-day observation-age limit. The
+[July report](https://jrj.sh.gov.cn/SCGK194/20260817/2918b201c7c94119b337ab099c4363ae.html)
+was republished on 17 August, 48 days after the preceding June month-end.
+The limit includes the macro worker's next 36-hour interval. A newer retrieval
+does not make an old observation current. Source failures preserve the last successful publication
+and retrieval clocks and expose the failed attempt separately. M2 remains
+optional for the five-series launch gate. Existing stored v2 payloads with a
+null PBOC M2 row remain valid; the Shanghai binding requires its own matching
+publisher preflight. These code contracts do not establish deployment or
+production acceptance.
 
 ## Revisions and direction
 

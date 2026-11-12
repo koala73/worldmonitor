@@ -200,15 +200,12 @@ describe("Company Monitoring account lifecycle", () => {
       t.query(CM.companies.listCompaniesForOwner, { ownerUserId: OWNER_A }),
     ).rejects.toThrow(/COMPANY_MONITORING_ACCESS_DENIED/);
     await expect(
-      t.withIdentity({ subject: OWNER_A, tokenIdentifier: `clerk|${OWNER_A}` }).mutation(
-        api.apiKeys.createApiKey,
-        {
+      t.mutation(internal.apiKeys.createApiKeyForUser, { userId: OWNER_A,
           name: "after-expiry",
           keyPrefix: "wm_abcde",
           keyHash: "a".repeat(64),
           scopes: ["company_monitoring:read"],
-        },
-      ),
+        }),
     ).rejects.toThrow();
   });
 

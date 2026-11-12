@@ -13,6 +13,8 @@ import { parseStringArray } from './_shared';
 
 const PHYSICAL_PREMIUM_KEY = 'market:physical-premium:v1';
 const SUPPORTED_METALS = new Set(['gold', 'silver']);
+const MAX_ECHOED_METALS = 5;
+const MAX_ECHOED_LABEL_LENGTH = 32;
 const TROY_OUNCE_GRAMS = 31.1034768;
 const METAL_CONTRACTS = {
   gold: { unit: 'gram', contract: 'SHAU', paperSymbol: 'GC=F' },
@@ -145,24 +147,27 @@ function mapFx(raw: RawFx | undefined): FxSnapshot | null {
 }
 
 export function resolvePhysicalPremiumMetals(rawMetals: string[]): string[] {
-  const metals: string[] = [];
-  const unsupported: string[] = [];
+  const metals = new Set<string>();
+  const unsupported = new Set<string>();
   for (const raw of rawMetals) {
     const metal = raw.trim().toLowerCase();
     if (!metal || !SUPPORTED_METALS.has(metal)) {
-      const label = metal || '<blank>';
-      if (!unsupported.includes(label)) unsupported.push(label);
+      unsupported.add(metal || '<blank>');
       continue;
     }
-    if (!metals.includes(metal)) metals.push(metal);
+    metals.add(metal);
   }
-  if (unsupported.length > 0) {
+  if (unsupported.size > 0) {
+    const labels = [...unsupported];
+    const echoed = labels.slice(0, MAX_ECHOED_METALS)
+      .map((label) => label.length > MAX_ECHOED_LABEL_LENGTH ? `${label.slice(0, MAX_ECHOED_LABEL_LENGTH)}...` : label);
+    const more = labels.length - echoed.length;
     throw new ValidationError([{
       field: 'metals',
-      description: `Unsupported metal${unsupported.length === 1 ? '' : 's'}: ${unsupported.join(', ')}`,
+      description: `Unsupported metal${labels.length === 1 ? '' : 's'}: ${echoed.join(', ')}${more > 0 ? ` (and ${more} more)` : ''}`,
     }]);
   }
-  return metals;
+  return [...metals];
 }
 
 export async function getPhysicalPremiums(

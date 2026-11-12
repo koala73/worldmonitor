@@ -23,10 +23,11 @@ import { Panel } from './Panel';
 import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess, readClientEntitlementBelief } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { getEntitlementState } from '@/services/entitlements';
+import { getEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import {
   classifyDenialResponse,
   isTransientDenial,
+  reconcileSessionDenial,
   routeDenial,
   shouldSkipDoomedFetch,
   type PremiumDenialVerdict,
@@ -113,6 +114,7 @@ export class LatestBriefPanel extends Panel {
   private inflightAbort: AbortController | null = null;
   private composingPollId: ReturnType<typeof setTimeout> | null = null;
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
   private onVisibility: (() => void) | null = null;
   /** Last Clerk user-id seen. Used to detect sign-in / sign-out transitions. */
   private lastUserId: string | null = null;
@@ -122,6 +124,15 @@ export class LatestBriefPanel extends Panel {
    * per-session.
    */
   private transientDenials = 0;
+  /**
+   * The last refresh ended on a transient denial (retry armed, or budget
+   * spent). While set, the next auth-state or entitlement notification re-runs
+   * refresh() at once instead of waiting out the backoff — a Clerk session
+   * refresh or a fresh entitlement snapshot is exactly the event that resolves
+   * the denial (SM-138). One-shot per denial, and ignored while a refresh is in
+   * flight; see recheckOnAccessSignal. Cleared by any non-transient outcome.
+   */
+  private awaitingAccessSignal = false;
 
   constructor() {
     super({
@@ -150,8 +161,13 @@ export class LatestBriefPanel extends Panel {
     //                    must clear state ourselves)
     this.unsubscribeAuth = subscribeAuthState((state) => {
       const nextId = state.user?.id ?? null;
-      if (nextId === this.lastUserId) return;
+      if (nextId === this.lastUserId) {
+        // Same account, new session state (token refresh, wake from sleep).
+        if (nextId) this.recheckOnAccessSignal();
+        return;
+      }
       this.lastUserId = nextId;
+      this.awaitingAccessSignal = false;
       this.inflightAbort?.abort();
       this.inflightAbort = null;
       this.clearComposingPoll();
@@ -174,6 +190,12 @@ export class LatestBriefPanel extends Panel {
         // screen even when premium keys keep the panel unlocked.
         this.renderSignInRequired();
       }
+    });
+    // A fresh entitlement snapshot can resolve an outstanding transient
+    // denial (see awaitingAccessSignal); otherwise it is not our signal —
+    // panel-layout's gating owns lock/unlock on entitlement changes.
+    this.unsubscribeEntitlement = onEntitlementChange(() => {
+      this.recheckOnAccessSignal();
     });
     // visibilitychange drives a refresh when the user returns to
     // the tab. Addresses the "composing → stays composing forever"
@@ -261,6 +283,7 @@ export class LatestBriefPanel extends Panel {
       // retry budget so a later, unrelated desync gets its own full grace.
       this.clearErrorState();
       this.transientDenials = 0;
+      this.awaitingAccessSignal = false;
       if (data.status === 'ready') {
         this.renderReady(data);
       } else {
@@ -275,7 +298,9 @@ export class LatestBriefPanel extends Panel {
       // missing session or a genuinely free plan. Transient ones fall
       // through to showError(), which retries on the panel's backoff.
       if (err instanceof BriefAccessError) {
-        if (isTransientDenial(err.code)) this.transientDenials += 1;
+        const transient = isTransientDenial(err.code);
+        if (transient) this.transientDenials += 1;
+        this.awaitingAccessSignal = transient;
         // routeDenial owns the truth table (see premium-denial.ts) so the
         // transient-vs-upsell decision is unit-tested rather than asserted by
         // a source-level regex — this branch is exactly where #5608 lived.
@@ -297,7 +322,9 @@ export class LatestBriefPanel extends Panel {
             this.showError(
               err.code === 'entitlement_desync'
                 ? 'Verifying your Pro access — your brief will appear shortly.'
-                : 'Brief service unavailable — retrying shortly.',
+                : err.code === 'session_desync'
+                  ? 'Reconnecting to your account — your brief will appear shortly.'
+                  : 'Brief service unavailable — retrying shortly.',
               () => { void this.refresh(); },
             );
             return;
@@ -313,6 +340,22 @@ export class LatestBriefPanel extends Panel {
         void this.refresh();
       }
     }
+  }
+
+  /**
+   * Re-run refresh() for an outstanding transient denial when an auth or
+   * entitlement notification arrives.
+   *
+   * Ignored while a refresh is in flight: minting the bearer can itself make
+   * Clerk notify listeners, and queueing a follow-up from that notification
+   * would re-fire on every 401 with no backoff — a loop that outlives the retry
+   * budget. One-shot: the flag is consumed here and set again only by the next
+   * transient denial, so each denial earns at most one early re-check.
+   */
+  private recheckOnAccessSignal(): void {
+    if (!this.awaitingAccessSignal || this.refreshing) return;
+    this.awaitingAccessSignal = false;
+    void this.refresh();
   }
 
   /**
@@ -369,7 +412,14 @@ export class LatestBriefPanel extends Panel {
     // plan they already bought (#5608).
     // classifyDenialResponse reads the body ONLY on a denial status, so
     // res.json() below still has an unconsumed stream on the success path.
-    const verdict = await classifyDenialResponse(res, readClientEntitlementBelief(getAuthState()));
+    // A 401 while the client still holds a session is a token-refresh race,
+    // not a sign-out (SM-138): reconcileSessionDenial makes it transient. A
+    // signed-out user never reaches this fetch — refresh() renders the sign-in
+    // CTA before minting a token.
+    const classified = await classifyDenialResponse(res, readClientEntitlementBelief(getAuthState()));
+    const verdict = classified === null
+      ? null
+      : reconcileSessionDenial(classified, getAuthState().user !== null);
     if (verdict !== null) {
       // Reading the body is awaited, so a gate-lock or account-switch abort
       // can land mid-parse — where readDenialErrorCode swallows it. Without
@@ -377,6 +427,9 @@ export class LatestBriefPanel extends Panel {
       // no-op the abort was asking for.
       if (signal.aborted) throw new DOMException('aborted while reading denial body', 'AbortError');
       if (verdict === 'entitlement_desync') reportEntitlementDesync('latest-brief');
+      // The bearer we sent was refused. getClerkToken caches for up to 50s, so
+      // without this the retry would resend the same rejected token.
+      if (verdict === 'session_desync') clearClerkTokenCache();
       throw new BriefAccessError(verdict);
     }
     if (!res.ok) {
@@ -444,7 +497,8 @@ export class LatestBriefPanel extends Panel {
    * client's own entitlement state says otherwise. Deliberately NOT an upsell
    * — we have no evidence the user needs to buy anything, which is the whole
    * point of #5608 — and deliberately no armed retry, so the panel stops
-   * polling. Returning to the tab re-runs refresh() via visibilitychange.
+   * polling. Returning to the tab re-runs refresh() via visibilitychange, and
+   * the next auth-state or entitlement change re-runs it too.
    */
   private renderDesyncExhausted(): void {
     // setContentNodes below handles clearErrorState and the content replace.
@@ -615,6 +669,8 @@ export class LatestBriefPanel extends Panel {
     }
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
     super.destroy();
   }
 }

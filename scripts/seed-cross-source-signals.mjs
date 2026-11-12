@@ -56,7 +56,7 @@ const SOURCE_MAX_AGE_MIN = Object.freeze({
   'market:stocks-bootstrap:v1': 30,
   'market:commodities-bootstrap:v1': 30,
   'cyber:threats-bootstrap:v2': 240,
-  'supply_chain:shipping:v2': 420,
+  'supply_chain:shipping:v2': 1140,
   'sanctions:pressure:v1': 720,
   'seismology:earthquakes:v1': 30,
   'radiation:observations:v1': 30,

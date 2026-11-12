@@ -27,7 +27,7 @@ World Monitor maps these C2 servers geographically, showing:
 - Server hosting details
 - First seen and last seen timestamps
 
-When C2 servers cluster in a country whose CII (Country Instability Index) is rising, it may indicate state tolerance or state sponsorship of cybercrime during periods of geopolitical tension.
+When C2 servers cluster in a country whose CII (Country [Instability Index](/blog/posts/country-instability-index-methodology-explained/)) is rising, it may indicate state tolerance or state sponsorship of cybercrime during periods of geopolitical tension.
 
 ### URLhaus (abuse.ch)
 
@@ -57,7 +57,7 @@ Additional command-and-control intelligence feeds providing broader coverage of 
 
 ## Internet Outage Detection (Cloudflare Radar)
 
-World Monitor integrates **[Cloudflare Radar](https://radar.cloudflare.com/)** data to detect and map internet outages globally. This reveals:
+World Monitor integrates **[Cloudflare Radar](https://radar.cloudflare.com/)** data to detect and map [internet outages](https://www.worldmonitor.app/tools/internet-outages/) globally. This reveals:
 
 - **Government-ordered shutdowns** during protests or elections
 - **Infrastructure failures** from natural disasters or attacks

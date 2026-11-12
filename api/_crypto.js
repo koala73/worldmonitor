@@ -32,6 +32,12 @@ export async function verifyPkceS256(codeVerifier, codeChallenge) {
   return diff === 0; // true = match, false = wrong verifier; null = invalid_request
 }
 
+// Operator keys from WORLDMONITOR_VALID_KEYS. Entries are trimmed so "k1, k2"
+// means the same set here as in server/_shared/premium-check.ts.
+export function getOperatorKeys() {
+  return (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').map((k) => k.trim()).filter(Boolean);
+}
+
 export async function timingSafeIncludes(candidate, validKeys) {
   if (typeof candidate !== 'string' ||
       !candidate ||
@@ -41,11 +47,15 @@ export async function timingSafeIncludes(candidate, validKeys) {
     return false;
   }
   const enc = new TextEncoder();
-  const candidateHash = await crypto.subtle.digest('SHA-256', enc.encode(candidate));
+  // Every digest is independent fixed-cost work and all of them always run, so
+  // hash them together: an API-key check costs one digest latency, not one per
+  // configured key. The byte compare below still visits every key.
+  const [candidateHash, ...keyHashes] = await Promise.all(
+    [candidate, ...validKeys].map((value) => crypto.subtle.digest('SHA-256', enc.encode(value))),
+  );
   const candidateBytes = new Uint8Array(candidateHash);
   let found = false;
-  for (const k of validKeys) {
-    const kHash = await crypto.subtle.digest('SHA-256', enc.encode(k));
+  for (const kHash of keyHashes) {
     const kBytes = new Uint8Array(kHash);
     let diff = 0;
     for (let i = 0; i < kBytes.length; i++) diff |= candidateBytes[i] ^ kBytes[i];

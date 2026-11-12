@@ -281,6 +281,10 @@ describe('marketing Sentry request URL privacy', () => {
       'https://www.worldmonitor.app/#enterprise-contact',
     );
     assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/pro?utm_source=mcp#plan-proBusiness'),
+      'https://www.worldmonitor.app/pro#plan-proBusiness',
+    );
+    assert.equal(
       sanitizeMarketingRequestUrl('https://www.worldmonitor.app/dashboard?token=private'),
       undefined,
     );
@@ -753,6 +757,59 @@ describe('marketingBeforeSend — Safari-masked injected script (WORLDMONITOR-11
     const kept = event('Attempting to change value of a readonly property.', [
       'https://www.worldmonitor.app/',
     ]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});
+
+describe('marketingBeforeSend — injected screen capture blocked by permission policy (WORLDMONITOR-121)', () => {
+  // Verbatim production event: Chrome 124 / Windows on `/`, an unhandled
+  // rejection whose only frames are `<anonymous>:1` and an injected
+  // `window.__wpxTakeSnapshot` at `<anonymous>:183`. No first-party code calls
+  // getDisplayMedia, and the page's permission policy refuses display-capture.
+  const DISPLAY_CAPTURE_MESSAGE = 'Failed to execute \'getDisplayMedia\' on \'MediaDevices\': Access to the feature "display-capture" is disallowed by permission policy.';
+  const captureEvent = (value: string, frames: { filename?: string; function?: string }[]): PolicyEvent => ({
+    exception: { values: [{ type: 'NotAllowedError', value, stacktrace: { frames } }] },
+  });
+
+  it('drops the refusal raised from an injected snapshot script', () => {
+    const event = captureEvent(DISPLAY_CAPTURE_MESSAGE, [
+      { filename: '<anonymous>' },
+      { filename: '<anonymous>', function: 'window.__wpxTakeSnapshot' },
+    ]);
+    assert.equal(marketingBeforeSend(event), null);
+    // Some captures carry the DOMException name inside the value.
+    const prefixed = captureEvent(`NotAllowedError: ${DISPLAY_CAPTURE_MESSAGE}`, [{ filename: '<anonymous>' }]);
+    assert.equal(marketingBeforeSend(prefixed), null);
+  });
+
+  // Positive control: if this bundle ever asks for screen capture, a refusal
+  // breaks that feature and must page. It would ride a `/pro/assets/*.js` frame.
+  it('keeps the refusal when a marketing-bundle frame is on the stack', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: '/pro/assets/index-a1b2c3.js' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps the refusal when the caller is an inline script on the marketing document', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, { filename: 'https://www.worldmonitor.app/' }]);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps a frameless refusal', () => {
+    const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, []);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  // A frame with no filename could be the one that attributes the call to us,
+  // so an otherwise-anonymous stack containing one still reports.
+  it('keeps a refusal when a frame has no usable filename', () => {
+    for (const unnamed of [{}, { filename: '' }, { filename: '   ' }]) {
+      const kept = captureEvent(DISPLAY_CAPTURE_MESSAGE, [{ filename: '<anonymous>' }, unnamed]);
+      assert.equal(marketingBeforeSend(kept), kept, JSON.stringify(unnamed));
+    }
+  });
+
+  it('keeps an unrelated permission-policy refusal from an evaluated script', () => {
+    const kept = captureEvent('Failed to execute \'getUserMedia\' on \'MediaDevices\': Access to the feature "camera" is disallowed by permission policy.', [{ filename: '<anonymous>' }]);
     assert.equal(marketingBeforeSend(kept), kept);
   });
 });
@@ -1763,5 +1820,61 @@ describe('MARKETING_IGNORE_ERRORS — Android WebView autofill globals (WORLDMON
       .filter((f) => /\b(?:xbrowser|swbrowser)\b/.test(f.code))
       .map((f) => f.rel);
     assert.deepEqual(offenders, []);
+  });
+});
+
+describe('marketingBeforeSend — Firefox bare-primitive throw (WORLDMONITOR-1CH)', () => {
+  // The production shape: one synthesized frame on the document URL, line 0.
+  const docOnly = (value: string): PolicyEvent => ({
+    exception: {
+      values: [{
+        type: 'Error',
+        value,
+        stacktrace: { frames: [{ filename: 'https://www.worldmonitor.app/pro', lineno: 0 }] },
+      }],
+    },
+  });
+
+  it('drops "uncaught exception: undefined" with only the document frame', () => {
+    assert.equal(marketingBeforeSend(docOnly('uncaught exception: undefined')), null);
+  });
+
+  it('drops the null variant', () => {
+    assert.equal(marketingBeforeSend(docOnly('uncaught exception: null')), null);
+  });
+
+  it('keeps the same message when a first-party asset frame is on the stack', () => {
+    const ev = event('uncaught exception: undefined', [
+      'https://www.worldmonitor.app/pro',
+      'https://www.worldmonitor.app/pro/assets/index-abc123.js',
+    ]);
+    assert.notEqual(marketingBeforeSend(ev), null);
+  });
+
+  it('keeps a thrown object', () => {
+    assert.notEqual(marketingBeforeSend(docOnly('uncaught exception: [object Object]')), null);
+  });
+
+  // Parenthesised and `void(...)` spellings throw the same primitives.
+  const BARE_PRIMITIVE_THROW_SOURCE = /\bthrow[\s(]*(?:undefined|null|void[\s(]*0)(?![\w$])/;
+
+  it('the source scan catches every spelling of a bare-primitive throw', () => {
+    for (const src of ['throw undefined;', 'throw null', 'throw void 0;', 'throw (undefined);',
+      'throw(null)', 'throw void(0);', 'throw ( void 0 )']) {
+      assert.ok(BARE_PRIMITIVE_THROW_SOURCE.test(src), src);
+    }
+    for (const src of ['throw nullValue;', 'throw undefinedThing', 'throw new Error("null")', 'rethrow null']) {
+      assert.ok(!BARE_PRIMITIVE_THROW_SOURCE.test(src), src);
+    }
+  });
+
+  it('pins the marketing surface free of bare-primitive throws, which is what licenses the rule', () => {
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const offenders = marketingFirstPartySources()
+      .filter((f) => BARE_PRIMITIVE_THROW_SOURCE.test(stripComments(f.code)))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [], 'a first-party bare-primitive throw — re-derive the WORLDMONITOR-1CH rule');
   });
 });

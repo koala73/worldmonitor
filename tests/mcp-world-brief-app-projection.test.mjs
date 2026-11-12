@@ -46,7 +46,8 @@ function assertEvidence(doc) {
   assert.deepEqual([...doc.querySelectorAll('#sources a')].map(node => node.href), payload.sources.map(source => source.url));
   assert.equal(doc.getElementById('stale-note').style.display, 'block');
   assert.match(doc.getElementById('stale-note').textContent, /1h 30m old/);
-  assert.equal(doc.getElementById('foot').textContent, 'controlled-provider · controlled-model · Generated 2026-10-04T23:00:00Z');
+  assert.equal(doc.getElementById('foot').textContent, 'Generated 4 Oct 2026, 23:00 UTC', 'the model and provider stay out of the reader view');
+  assert.deepEqual([...doc.querySelectorAll('#sources .src-num')].map(node => node.textContent), ['1', '2'], 'source rows are numbered to match citations');
 }
 describe('World Brief exported HTML projections', () => {
   for (const query of ['@', summaryQuery]) {
@@ -84,10 +85,21 @@ describe('World Brief exported HTML projections', () => {
     assert.equal(doc.querySelector('#brief .para').textContent, hostile);
     assert.equal(doc.querySelector('img'), null);
     assert.equal(doc.querySelectorAll('#headlines li').length, 12);
-    assert.equal(doc.querySelectorAll('#sources .src-row').length, 8);
+    assert.equal(doc.querySelectorAll('#sources .src-row').length, 10, 'every source a citation can link is listed');
     assert.equal(doc.querySelector('#sources .src-title').tagName, 'SPAN');
-    assert.deepEqual([...doc.querySelectorAll('#sources a')].map(node => node.href), Array.from({ length: 7 }, (_, i) => `https://example.com/${i + 1}`));
+    assert.deepEqual([...doc.querySelectorAll('#sources a')].map(node => node.href), Array.from({ length: 9 }, (_, i) => `https://example.com/${i + 1}`));
     assert.doesNotMatch(doc.getElementById('stale-note').textContent, /0 minutes|0h/);
+  });
+  it('drops headlines that repeat a listed source title and keeps the rest', async () => {
+    const { doc } = await mount(wire({ ...payload, headlines: ['Article one', ' article TWO ', 'Distinct headline'] }));
+    assert.deepEqual([...doc.querySelectorAll('#headlines li')].map(node => node.textContent), ['Distinct headline']);
+    const repeated = await mount(wire({ ...payload, headlines: ['Article one', 'Article two'] }));
+    assert.equal(repeated.doc.getElementById('hl-sec').style.display, 'none');
+  });
+  it('formats source dates and omits unparseable ones', async () => {
+    const { doc } = await mount(wire({ ...payload, sources: [
+      { ...payload.sources[0], publishedAt: '2026-10-31T14:20:23.000Z' }, { ...payload.sources[1], publishedAt: 'not a date' }] }));
+    assert.deepEqual([...doc.querySelectorAll('#sources .src-date')].map(node => node.textContent), ['31 Oct 2026, 14:20 UTC']);
   });
   it('replaces stale provenance and links with the next projected original', async () => {
     const { doc, send } = await mount(wire(payload, true));

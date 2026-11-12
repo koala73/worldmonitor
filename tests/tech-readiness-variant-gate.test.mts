@@ -3,13 +3,17 @@
 //
 // Bug: `shouldLoad(id)` returns `forceAll || isPanelNearViewport(id)` and
 // `App.ts:1226` calls `loadAllData(true)` on boot — so a `shouldLoad`-only
-// gate is bypassed at startup on every variant, and tech-readiness was
-// still firing its 5s `/api/bootstrap?keys=techReadiness` fetch on
-// commodity/finance/energy/happy where the seed key isn't populated.
+// gate is bypassed at startup on every variant, and tech-readiness fired its
+// `/api/bootstrap?keys=techReadiness` fetch where nobody showed the panel.
 //
 // Fix: gate on `isPanelInVariantDefaults('tech-readiness')` in BOTH paths
 // that auto-refresh — `data-loader.ts` (periodic + boot fan-out) and
 // `panel-layout.ts` (lazyPanel factory's eager `p.refresh()` call).
+//
+// The key is one global seed, served on every edition (commodity and finance
+// return all 255 countries). A variant-only gate left a panel the user added
+// on those editions on "Loading…" for good, so both gates also admit a panel
+// the user enabled.
 //
 // This test fails loudly if either gate is removed or weakened, even
 // after innocent reformatting (line-walker, not strict regex).
@@ -58,6 +62,11 @@ describe('tech-readiness variant gate', () => {
       `data-loader.ts:${ifLineIdx + 1} must gate techReadiness on isPanelInVariantDefaults('tech-readiness'); ` +
       `\`shouldLoad\` alone is bypassed on boot because loadAllData(true) forces it true. Got: ${condition.trim()}`,
     );
+    assert.match(
+      condition,
+      /panelSettings\?\.\[\s*['"]tech-readiness['"]\s*\]\?\.enabled\s*===\s*true/,
+      `data-loader.ts:${ifLineIdx + 1} must also load a tech-readiness panel the user enabled off its variant defaults. Got: ${condition.trim()}`,
+    );
   });
 
   it("panel-layout.ts: tech-readiness lazy factory only calls p.refresh() under the variant gate", () => {
@@ -92,11 +101,11 @@ describe('tech-readiness variant gate', () => {
     const bodyText = body.map(b => b.text).join('\n');
     assert.match(
       bodyText,
-      /if\s*\(\s*isPanelInVariantDefaults\(\s*['"]tech-readiness['"]\s*\)\s*\)\s*\{[^}]*\bp\.refresh\(\s*\)/s,
+      /if\s*\(\s*isPanelInVariantDefaults\(\s*['"]tech-readiness['"]\s*\)\s*\|\|\s*this\.ctx\.panelSettings\??\.?\[\s*['"]tech-readiness['"]\s*\]\?\.enabled\s*===\s*true\s*\)\s*\{[^}]*\bp\.refresh\(\s*\)/s,
       "panel-layout.ts tech-readiness lazy factory must wrap p.refresh() in " +
-      "`if (isPanelInVariantDefaults('tech-readiness')) { ... }`. Without the gate, " +
-      'the factory fires the 5s /api/bootstrap?keys=techReadiness fetch on every variant ' +
-      "regardless of whether the seed key exists.",
+      "`if (isPanelInVariantDefaults('tech-readiness') || this.ctx.panelSettings['tech-readiness']?.enabled === true) { ... }`. " +
+      'Without the defaults check the factory fetches for a disabled panel on every variant; ' +
+      'without the enabled check a panel the user added off its variant stays on Loading.',
     );
   });
 

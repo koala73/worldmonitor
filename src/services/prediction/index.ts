@@ -119,6 +119,7 @@ export async function fetchPredictionCandidates(opts?: { region?: string }): Pro
       query: '',
       pageSize: 50,
       cursor: '',
+      minLiquidity: 0,
     });
     if (rpcResults.markets && rpcResults.markets.length > 0) {
       return rpcResults.markets
@@ -362,6 +363,7 @@ export async function fetchCountryMarkets(country: string, countryCode: string, 
       query: '',
       pageSize: 5,
       cursor: '',
+      minLiquidity: 0,
     }).catch(() => null);
     if (response?.markets?.length) {
       if (response.dataAvailable === true) onMetadata?.({ fetchedAt: response.fetchedAt });

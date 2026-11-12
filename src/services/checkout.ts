@@ -13,7 +13,7 @@
 
 import type { DodoProductId } from '@/config/products';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { openBillingPortal, prereserveBillingPortalTab } from './billing';
+import { openBillingPortal, prereserveBillingPortalTab, requestProBusinessUpgrade } from './billing';
 import { getCurrentClerkUser, getClerkToken, openSignIn } from './clerk';
 import { subscribeAuthState } from './auth-state';
 import { saveCheckoutAttempt, clearCheckoutAttempt } from './checkout-attempt';
@@ -61,6 +61,8 @@ import {
   resolveCheckoutContext,
 } from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
+import { showCheckoutConfirmDialog } from './checkout-dialog-factory';
+import { extractBillingErrorKind } from './_billing-error';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import {
@@ -457,6 +459,18 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
 }
 
 /**
+ * First-touch acquisition record for the checkout payload. Loaded on demand so
+ * the module stays out of the main chunk; any failure sends no attribution.
+ */
+async function loadAcquisitionForCheckout() {
+  try {
+    return (await import('../../shared/acquisition-source')).getFirstTouchAcquisitionForCheckout();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * High-level checkout entry point for UI code.
  *
  * Creates a checkout session via the /api/create-checkout edge endpoint
@@ -527,7 +541,6 @@ export async function startCheckout(
       navigate: (url) => navigateToWebSurface(buildAttributedProUrl(
         url,
         checkoutContext.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-        { desktopHandoff: desktopRuntime },
       )),
       persistIntent: () => savePendingCheckoutIntent(intent),
       persistAttempt: () => saveCheckoutAttempt({
@@ -567,6 +580,7 @@ export async function startCheckout(
   }
 
   _checkoutInFlight = true;
+  let redirecting = false;
   // Fall back to the stored referral when the caller doesn't pass one.
   // A dashboard-origin upgrade click has no ref in hand — it arrives
   // from a locked-panel CTA or the Manage Billing surface — but the
@@ -632,6 +646,7 @@ export async function startCheckout(
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
         attributionSource: options?.attributionSource,
+        acquisition: await loadAcquisitionForCheckout(),
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -680,11 +695,12 @@ export async function startCheckout(
         clearCheckoutAttempt('duplicate');
         const planKey = body?.subscription?.planKey;
         const planDisplayName = resolvePlanDisplayName(planKey);
-        showDuplicateSubscriptionDialog({
+        const isProBusinessUpgrade = await isProBusinessCheckoutTarget(productId);
+        const showGuidedDuplicateDialog = (): void => showDuplicateSubscriptionDialog({
           planDisplayName,
           // Picks the guided cancel-then-rebuy copy for the Pro → Pro Business
           // pairing; every other pairing keeps the portal line.
-          isProBusinessUpgrade: await isProBusinessCheckoutTarget(productId),
+          isProBusinessUpgrade,
           onConfirm: () => {
             // Pre-reserve the tab SYNCHRONOUSLY in the click handler
             // before the async work; popup blockers otherwise suppress
@@ -697,6 +713,39 @@ export async function startCheckout(
           },
           onDismiss: () => { /* user stays on the dashboard */ },
         });
+        // An active Pro moves to Pro Business in place (prorated Dodo plan
+        // change); the guided dialog stays the fallback when no preview comes back.
+        // The plan check lives in the lazy chunk to keep this one small.
+        if (isProBusinessUpgrade) {
+          // A failed chunk load (stale deploy, flaky network) still gets the guided dialog.
+          const upgradeModule = await import('./pro-business-upgrade-dialog').catch(() => null);
+          if (!upgradeModule) {
+            showGuidedDuplicateDialog();
+            return false;
+          }
+          await upgradeModule.runProBusinessUpgradeFlow({
+            planKey,
+            planDisplayName,
+            fallback: showGuidedDuplicateDialog,
+            requestUpgrade: requestProBusinessUpgrade,
+            currentUserId: () => getCurrentClerkUser()?.id,
+            openPortal: () => {
+              const reservedWin = prereserveBillingPortalTab();
+              void openBillingPortal(reservedWin);
+            },
+            showDialog: showCheckoutConfirmDialog,
+            errorKind: extractBillingErrorKind,
+            reportError: (action, err) => {
+              const kind = extractBillingErrorKind(err);
+              enqueueSentryCall((s) => s.captureException(err instanceof Error ? err : new Error(String(err)), {
+                tags: { component: 'dodo-billing', action, ...(kind ? { billing_error_kind: kind } : {}) },
+                level: 'warning',
+              }));
+            },
+          });
+        } else {
+          showGuidedDuplicateDialog();
+        }
         return false;
       }
       // 409 payment-in-progress (#4438) — a recent same-tier 3DS payment is
@@ -830,6 +879,7 @@ export async function startCheckout(
         return true;
       }
       window.location.assign(hostedCheckoutUrl);
+      redirecting = true;
       return true;
     }
     // 200 OK but no usable checkout_url — missing, or an untrusted/unparseable
@@ -867,8 +917,30 @@ export async function startCheckout(
     renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
     return false;
   } finally {
-    _checkoutInFlight = false;
+    if (redirecting) holdCheckoutUntilNavigation();
+    else _checkoutInFlight = false;
   }
+}
+
+// `location.assign` only starts navigation: the dashboard stays clickable
+// until Dodo's page loads, often 1-3 s later. Releasing the guard on return
+// let a second click create a second Dodo session. Hold it until the page is
+// gone; release when the buyer comes back through the back-forward cache, or
+// when the navigation never happened (stopped, blocked) so upgrade CTAs
+// cannot stay dead.
+const REDIRECT_HOLD_MS = 15_000;
+
+function holdCheckoutUntilNavigation(): void {
+  const release = () => {
+    clearTimeout(timer);
+    window.removeEventListener('pageshow', onPageShow);
+    _checkoutInFlight = false;
+  };
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) release();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  const timer = setTimeout(release, REDIRECT_HOLD_MS);
 }
 
 /**
@@ -965,7 +1037,6 @@ function renderCheckoutErrorSurface(
     const proUrl = buildAttributedProUrl(
       `${WEB_APP_ORIGIN}/pro`,
       checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
-      { desktopHandoff: isDesktopRuntime() },
     );
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead

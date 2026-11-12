@@ -14,11 +14,15 @@ const outfile = join(tempDir, 'PopulationExposurePanel.bundle.mjs');
 
 async function loadPopulationExposurePanel() {
   const stubModules = new Map<string, string>([
-    ['i18n-stub', `export function t(key, params) {
-      if (key === 'components.populationExposure.affectedCount') return params.count + ' affected';
-      if (key === 'components.populationExposure.radiusKm') return params.km + ' km radius';
+    ['i18n-stub', `export function getCurrentLanguageTag() { return 'en'; }\nexport function getLocale() { return 'en'; }\nexport function t(key, params) {
+      if (key === 'components.populationExposure.estimateWithin') return '~' + params.count + ' people within ' + params.km + ' km';
+      if (key === 'components.populationExposure.eventCount') return params.count + ' events';
+      if (key === 'components.populationExposure.coverageShown') return 'Shown: ' + params.shown + ' of ' + params.total;
+      if (key === 'components.populationExposure.coverageLeftOut') return 'Left out: ' + params.imprecise + '/' + params.noEstimate + '/' + params.otherPlaces;
       return key;
     }`],
+    ['scope-filter-stub', `export class PanelScopeFilter { scope = null; constructor() {} hideStrip() {} destroy() {} } export function scopeTagHtml() { return ''; } export function focusedEmptyHtml() { return ''; }`],
+    ['conflict-stub', `export async function fetchUcdpEvents() { return { success: false }; }`],
     ['runtime-stub', `export function isDesktopRuntime() { return false; }`],
     ['tauri-bridge-stub', `export function invokeTauri() { return Promise.reject(new Error('not wired in test')); }\nexport function hasTauriInvokeBridge() { return false; }`],
     ['analytics-stub', `export function trackLayoutCustomized() {}`],
@@ -105,6 +109,8 @@ async function loadPopulationExposurePanel() {
     ['../services/tauri-bridge', 'tauri-bridge-stub'],
     ['@/services/analytics', 'analytics-stub'],
     ['@/services/ai-flow-settings', 'ai-flow-settings-stub'],
+    ['./panel-scope-filter', 'scope-filter-stub'],
+    ['@/services/conflict', 'conflict-stub'],
     ['@/services/runtime-config', 'runtime-config-stub'],
     ['../utils/dom-utils', 'dom-utils-stub'],
     ['@/utils/dom-utils', 'dom-utils-stub'],
@@ -220,7 +226,7 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
   it('escapes event names when rendering safeHtml template content', async () => {
     const panel = new PopulationExposurePanel();
 
-    panel.setExposures([{
+    const event = {
       eventId: 'evt-1',
       eventName: 'R&D <alert>',
       eventType: 'conflict',
@@ -228,7 +234,9 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
       lon: 0,
       exposedPopulation: 125_000,
       exposureRadiusKm: 25,
-    }]);
+      eventCount: 1,
+    };
+    panel.setExposures([event, { ...event, eventId: 'evt-2', eventName: 'Nearby event', lat: 0.1, eventCount: 2 }]);
 
     await new Promise((resolve) => setTimeout(resolve, 180));
 
@@ -236,7 +244,50 @@ describe('PopulationExposurePanel safe HTML rendering', () => {
     assert.ok(content, 'panel content node should exist');
     assert.match(content.innerHTML, /R&amp;D &lt;alert&gt;/);
     assert.doesNotMatch(content.innerHTML, /R&D <alert>/);
+    assert.equal(content.innerHTML.match(/~125K people within 25 km/g)?.length, 2);
+    assert.doesNotMatch(content.innerHTML, /250K|affected/i);
+    assert.deepEqual([...content.innerHTML.matchAll(/\d+ events/g)].map(m => m[0]), ['2 events']);
 
+    assert.doesNotMatch(content.innerHTML, /Shown:/);
+
+    panel.destroy();
+  });
+
+  it('shows how many feed events the rows cover and why the rest are left out', async () => {
+    const panel = new PopulationExposurePanel();
+    const event = {
+      eventId: 'kyiv', eventName: 'Kyiv city, Ukraine', eventType: 'state-based', lat: 50.45, lon: 30.52,
+      exposedPopulation: 481_000, exposureRadiusKm: 50, eventCount: 2,
+    };
+    panel.setExposures([event], false, { totalEvents: 2428, withoutPreciseLocation: 1232, withoutEstimate: 662, atOtherPlaces: 504 });
+
+    await new Promise((resolve) => setTimeout(resolve, 180));
+
+    const content = panel.getElement().querySelector('.panel-content');
+    assert.ok(content, 'panel content node should exist');
+    assert.match(content.innerHTML, /class="popexp-coverage"[\s\S]*Shown: 30 of 2,428[\s\S]*Left out: 1,232\/662\/504/);
+
+    panel.destroy();
+  });
+
+  it('labels legacy locations and partial coverage as pending, including an empty unrest feed', async () => {
+    const panel = new PopulationExposurePanel();
+    const event = {
+      eventId: 'legacy', eventName: 'Taiz, Yemen', eventType: 'state-based', lat: 13.58, lon: 44.02,
+      exposedPopulation: 125_000, exposureRadiusKm: 50, eventCount: 1, locationPending: true,
+    };
+    for (const totalEvents of [0, 3]) {
+      panel.setExposures([event], false, {
+        totalEvents, withoutPreciseLocation: 0, withoutEstimate: 0, atOtherPlaces: 0, ucdpPending: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      const html = panel.getElement().querySelector('.panel-content')!.innerHTML;
+      assert.match(html, /Taiz, Yemen/);
+      assert.match(html, /components.populationExposure.locationPending/);
+      assert.match(html, /components.populationExposure.unrestCoverage/);
+      assert.match(html, /components.populationExposure.ucdpPending/);
+      assert.match(html, new RegExp('Shown: ' + totalEvents + ' of ' + totalEvents));
+    }
     panel.destroy();
   });
 });

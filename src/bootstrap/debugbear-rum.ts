@@ -1,9 +1,21 @@
-export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
+// Versioned collector pinned by subresource integrity. The unversioned
+// per-project URL (cdn.debugbear.com/lpMwA9KpC6pf.js) served attacker code on
+// 2026-10-29 after DebugBear's registrar account was hijacked; an SRI pin makes
+// the browser refuse any byte change. Bumping the version means taking the new
+// URL and hash from the DebugBear RUM embed snippet and updating both loaders.
+export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/rum-1.1.2.js';
+export const DEBUGBEAR_RUM_SCRIPT_INTEGRITY = 'sha384-8uZB5Im5AGW6nfv8sNNYXyMW8Cu+ENZElwP0SUZKqBBQay51uLwrG4cVeQfwHGD9';
+/** The collector reads this attribute off its own tag to fetch the project config. */
+export const DEBUGBEAR_RUM_SNIPPET_KEY = 'lpMwA9KpC6pf';
 // 10% sampling. 100% overran the DebugBear RUM monthly quota (~529k/500k, 2026-07).
 // Bootstrap transfer evidence and ongoing web-vitals RUM need only a fraction.
 // Keep in sync with pro-test/src/debugbear-rum.ts (asserted by the test).
 export const DEBUGBEAR_RUM_SAMPLE_RATE = 10;
-const DEBUGBEAR_RUM_SCRIPT_PATHNAME = new URL(DEBUGBEAR_RUM_SCRIPT_SRC).pathname;
+const DEBUGBEAR_RUM_SCRIPT_PATHNAMES = [
+  new URL(DEBUGBEAR_RUM_SCRIPT_SRC).pathname,
+  // Pre-SRI collector path; tabs opened on an older bundle still run it.
+  '/lpMwA9KpC6pf.js',
+];
 /** Every production host the RUM script loads on. Exported so
  * `tests/sentry-allow-urls.test.mts` can assert the Sentry ingest allowlist
  * covers the same population instead of restating it (#6545). */
@@ -19,12 +31,13 @@ export const DEBUGBEAR_RUM_HOSTS = new Set([
 
 import type { BootstrapTransferRumSample } from './bootstrap-transfer-rum';
 import { whenUrlFreeOfSensitiveParams } from '../../shared/sensitive-url-params';
+import { getDeviceTier } from '../utils/device-tier';
 
 type DebugBearRumEvent =
   | ['presampling', number]
   | ['error' | 'unhandledrejection', Event]
   | ['metric1' | 'metric2' | 'metric3', number]
-  | ['tag1' | 'tag2' | 'tag3', string];
+  | ['tag1' | 'tag2' | 'tag3' | 'tag4', string];
 
 declare global {
   interface Window {
@@ -42,7 +55,7 @@ export function shouldEnableDebugBearRum(hostname: string): boolean {
 
 /** Identifies a Sentry frame emitted by the configured DebugBear collector. */
 export function isDebugBearRumScriptFrame(filename: string): boolean {
-  return filename.endsWith(DEBUGBEAR_RUM_SCRIPT_PATHNAME) || /debugbear/i.test(filename);
+  return DEBUGBEAR_RUM_SCRIPT_PATHNAMES.some((path) => filename.endsWith(path)) || /debugbear/i.test(filename);
 }
 
 function loadDebugBearRumScript(): void {
@@ -51,6 +64,10 @@ function loadDebugBearRumScript(): void {
 
   const script = document.createElement('script');
   script.async = true;
+  // SRI on a cross-origin script requires a CORS fetch; the CDN answers ACAO: *.
+  script.crossOrigin = 'anonymous';
+  script.integrity = DEBUGBEAR_RUM_SCRIPT_INTEGRITY;
+  script.setAttribute('snippetKey', DEBUGBEAR_RUM_SNIPPET_KEY);
   script.src = DEBUGBEAR_RUM_SCRIPT_SRC;
   if ('fetchPriority' in script) {
     script.fetchPriority = 'low';
@@ -81,6 +98,9 @@ export function initDebugBearRum(): void {
   const queue = window.dbbRum ?? [];
   window.dbbRum = queue;
   queue.push(['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
+  // tag4 = device tier, so low-end-mode INP can be compared against the
+  // pre-change baseline (tags 1-3 belong to the bootstrap transfer sample).
+  queue.push(['tag4', getDeviceTier()]);
 
   const target = window;
   const onError = (event: Event) => {

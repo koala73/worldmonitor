@@ -7,19 +7,25 @@ import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-
 
 import {
   DEBUGBEAR_RUM_SAMPLE_RATE,
+  DEBUGBEAR_RUM_SCRIPT_INTEGRITY,
   DEBUGBEAR_RUM_SCRIPT_SRC,
+  DEBUGBEAR_RUM_SNIPPET_KEY,
   initDebugBearRum,
+  isDebugBearRumScriptFrame,
   reportBootstrapTransferRum,
   resetDebugBearRumForTesting,
   shouldEnableDebugBearRum,
 } from '../src/bootstrap/debugbear-rum.ts';
 import {
   DEBUGBEAR_RUM_SAMPLE_RATE as MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE,
+  DEBUGBEAR_RUM_SCRIPT_INTEGRITY as MARKETING_DEBUGBEAR_RUM_SCRIPT_INTEGRITY,
   DEBUGBEAR_RUM_SCRIPT_SRC as MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC,
+  DEBUGBEAR_RUM_SNIPPET_KEY as MARKETING_DEBUGBEAR_RUM_SNIPPET_KEY,
   initDebugBearRum as initMarketingDebugBearRum,
   resetDebugBearRumForTesting as resetMarketingDebugBearRumForTesting,
   shouldEnableDebugBearRum as shouldEnableMarketingDebugBearRum,
 } from '../pro-test/src/debugbear-rum.ts';
+import { resetDeviceTierForTesting } from '../src/utils/device-tier.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -56,6 +62,10 @@ interface FakeDebugBearScript {
   async: boolean;
   src: string;
   fetchPriority?: string;
+  crossOrigin?: string | null;
+  integrity?: string;
+  attributes?: Record<string, string>;
+  setAttribute?: (name: string, value: string) => void;
   onerror?: (() => void) | null;
 }
 
@@ -83,7 +93,16 @@ function installDebugBearHarness(
     querySelector: () => existingScript,
     createElement: (tag: string) => {
       assert.equal(tag, 'script');
-      return { async: false, src: '', fetchPriority: 'auto' } satisfies FakeDebugBearScript;
+      const attributes: Record<string, string> = {};
+      return {
+        async: false,
+        src: '',
+        fetchPriority: 'auto',
+        crossOrigin: null,
+        integrity: '',
+        attributes,
+        setAttribute: (name: string, value: string) => { attributes[name] = value; },
+      } satisfies FakeDebugBearScript;
     },
     head: {
       appendChild: (script: FakeDebugBearScript) => {
@@ -120,7 +139,26 @@ function installDebugBearHarness(
   };
 }
 
+function assertSriPinnedScript(script: FakeDebugBearScript, integrity: string, snippetKey: string): void {
+  assert.equal(script.crossOrigin, 'anonymous', 'SRI on a cross-origin script needs a CORS fetch');
+  assert.equal(script.integrity, integrity);
+  assert.equal(script.attributes?.snippetKey, snippetKey, 'collector reads snippetKey off its own tag');
+}
+
 describe('DebugBear RUM loader', () => {
+  it('pins a versioned collector by SRI instead of the hijackable per-project URL', () => {
+    // 2026-10-29: the unversioned cdn.debugbear.com/<key>.js served attacker code.
+    assert.match(DEBUGBEAR_RUM_SCRIPT_SRC, /^https:\/\/cdn\.debugbear\.com\/rum-\d+\.\d+\.\d+\.js$/);
+    assert.match(DEBUGBEAR_RUM_SCRIPT_INTEGRITY, /^sha384-[A-Za-z0-9+/]{64}$/);
+    assert.equal(DEBUGBEAR_RUM_SNIPPET_KEY, 'lpMwA9KpC6pf');
+  });
+
+  it('attributes Sentry frames from the pinned and the legacy collector paths', () => {
+    assert.equal(isDebugBearRumScriptFrame('/rum-1.1.2.js'), true);
+    assert.equal(isDebugBearRumScriptFrame('/lpMwA9KpC6pf.js'), true);
+    assert.equal(isDebugBearRumScriptFrame('/assets/main-abc123.js'), false);
+  });
+
   it('enables only first-party production dashboard hosts', () => {
     assert.equal(shouldEnableDebugBearRum('www.worldmonitor.app'), true);
     assert.equal(shouldEnableDebugBearRum('happy.worldmonitor.app'), true);
@@ -138,6 +176,7 @@ describe('DebugBear RUM loader', () => {
       assert.equal(h.appendedScripts[0]!.async, true);
       assert.equal(h.appendedScripts[0]!.src, DEBUGBEAR_RUM_SCRIPT_SRC);
       assert.equal(h.appendedScripts[0]!.fetchPriority, 'low');
+      assertSriPinnedScript(h.appendedScripts[0]!, DEBUGBEAR_RUM_SCRIPT_INTEGRITY, DEBUGBEAR_RUM_SNIPPET_KEY);
       assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
       assert.ok(h.listeners.has('error'), 'window error listener missing');
       assert.ok(h.listeners.has('unhandledrejection'), 'window unhandledrejection listener missing');
@@ -148,6 +187,7 @@ describe('DebugBear RUM loader', () => {
       h.listeners.get('unhandledrejection')!(rejectionEvent);
       assert.deepEqual(h.win.dbbRum, [
         ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
+        ['tag4', 'unknown'],
         ['error', errorEvent],
         ['unhandledrejection', rejectionEvent],
       ]);
@@ -161,7 +201,7 @@ describe('DebugBear RUM loader', () => {
     try {
       initDebugBearRum();
       for (let i = 0; i < 1000; i++) h.listeners.get('error')!(new Event('error'));
-      assert.equal(h.win.dbbRum?.length, 51);
+      assert.equal(h.win.dbbRum?.length, 52);
       assert.deepEqual(h.win.dbbRum?.[0], ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]);
       const buffered = h.win.dbbRum!;
       const delivered: unknown[] = [];
@@ -169,11 +209,11 @@ describe('DebugBear RUM loader', () => {
       const event = new Event('unhandledrejection');
       h.listeners.get('unhandledrejection')!(event);
       assert.deepEqual(delivered, [['unhandledrejection', event]]);
-      assert.equal(buffered.length, 51, 'loaded collector receives events instead of stale buffer');
+      assert.equal(buffered.length, 52, 'loaded collector receives events instead of stale buffer');
       h.win.dbbRum = buffered;
       h.appendedScripts[0]!.onerror!();
       assert.equal(h.listeners.size, 0);
-      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE]]);
+      assert.deepEqual(buffered, [['presampling', DEBUGBEAR_RUM_SAMPLE_RATE], ['tag4', 'unknown']]);
     } finally { h.restore(); }
   });
 
@@ -214,7 +254,7 @@ describe('DebugBear RUM loader', () => {
         outcome: 'complete',
       });
 
-      assert.deepEqual(h.win.dbbRum?.slice(1), [
+      assert.deepEqual(h.win.dbbRum?.slice(2), [
         ['metric1', 880],
         ['metric2', 1_937_018],
         ['metric3', 351_175],
@@ -226,6 +266,24 @@ describe('DebugBear RUM loader', () => {
       assert.equal(JSON.stringify(h.win.dbbRum).includes('user'), false);
     } finally {
       h.restore();
+    }
+  });
+
+  it('tags each sampled session with the device tier in tag4', () => {
+    const savedNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { deviceMemory: 2 } });
+      resetDeviceTierForTesting();
+      initDebugBearRum();
+      assert.deepEqual(h.win.dbbRum?.slice(0, 2), [
+        ['presampling', DEBUGBEAR_RUM_SAMPLE_RATE],
+        ['tag4', 'low'],
+      ]);
+    } finally {
+      h.restore();
+      if (savedNavigator) Object.defineProperty(globalThis, 'navigator', savedNavigator);
+      resetDeviceTierForTesting();
     }
   });
 
@@ -341,6 +399,8 @@ describe('DebugBear RUM sensitive-URL gate', () => {
 describe('DebugBear RUM marketing loader', () => {
   it('uses the same script endpoint and sample rate as the dashboard loader', () => {
     assert.equal(MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC, DEBUGBEAR_RUM_SCRIPT_SRC);
+    assert.equal(MARKETING_DEBUGBEAR_RUM_SCRIPT_INTEGRITY, DEBUGBEAR_RUM_SCRIPT_INTEGRITY);
+    assert.equal(MARKETING_DEBUGBEAR_RUM_SNIPPET_KEY, DEBUGBEAR_RUM_SNIPPET_KEY);
     assert.equal(MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE, DEBUGBEAR_RUM_SAMPLE_RATE);
     assert.equal(MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE, 10);
   });
@@ -375,6 +435,7 @@ describe('DebugBear RUM marketing loader', () => {
       assert.equal(h.appendedScripts[0]!.async, true);
       assert.equal(h.appendedScripts[0]!.src, MARKETING_DEBUGBEAR_RUM_SCRIPT_SRC);
       assert.equal(h.appendedScripts[0]!.fetchPriority, 'low');
+      assertSriPinnedScript(h.appendedScripts[0]!, MARKETING_DEBUGBEAR_RUM_SCRIPT_INTEGRITY, MARKETING_DEBUGBEAR_RUM_SNIPPET_KEY);
       assert.deepEqual(h.win.dbbRum?.[0], ['presampling', MARKETING_DEBUGBEAR_RUM_SAMPLE_RATE]);
       assert.ok(h.listeners.has('error'), 'window error listener missing');
       assert.ok(h.listeners.has('unhandledrejection'), 'window unhandledrejection listener missing');

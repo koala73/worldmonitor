@@ -77,7 +77,7 @@ World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、�
 
 抗议评分是体制感知的：民主国家使用对数缩放（常规抗议不会触发动荡），而威权国家使用线性评分（每次抗议都很重要）。死亡人数和并发互联网中断应用严重性加成。
 
-ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会发现最新的月度 **GED Candidate** 版本（`YY.0.M`，约一个月滞后发布）并将其合并到年度基线之上 — candidate 提供近期性，年度基线提供 2 年窗口所需的深度，发布负载为两者都保留槽位。这使近期冲突事件保持在 CII 2 年时效窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（只有新闻族仍覆盖，因此该指标读数为 2 之 1；网络族自 CII v14 起不再计入）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
+ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（OAuth，自动刷新）或一个静态 `ACLED_ACCESS_TOKEN`。当 ACLED 鉴权缺失时，获取会优雅降级为空结果 — 但 ACLED 也是国家不稳定指数的**实时冲突来源**，因此没有它，CII 冲突评分会回退到仅 UCDP。由于 UCDP GED 的年度版本滞后约 7 个月，UCDP 种子任务还会抓取年度之后的每一个月度 **GED Candidate** 版本（`YY.0.M`，每个版本只含一个月，约一个月滞后发布），并将其合并到按日期抓取的年度基线之上。两者共同覆盖 CII 的 365 天 UCDP 窗口，评分器在读取时检查该窗口。这使近期冲突事件保持在 CII 窗口内，但当 UCDP 本身静默或 candidate 合并降级时，`riskScores` 健康/缓存信号仍可能读到 `COVERAGE_PARTIAL`（只有新闻族仍覆盖，因此该指标读数为 2 之 1；网络族自 CII v14 起不再计入）。发生这种情况时，`get-risk-scores` RPC 会记录一条 `[CII] ACLED returned 0 events` 警告。当 candidate 合并停止工作时，`seed-meta:conflict:ucdp-events` 携带 `candidateVersion: null`，内容年龄三元组会将 `ucdpEvents` 健康条目驱动为 `STALE_CONTENT`。
 
 ### 流离失所跟踪
 
@@ -106,12 +106,12 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 
 **架构**：公告遵循黄金标准模式。一个 Railway 定时种子脚本（`seed-security-advisories.mjs`）每小时通过中继 RSS 代理获取全部 24 个源，按标题去重，构建 `byCountry` 风险等级映射，并写入 Redis。Vercel 的 `ListSecurityAdvisories` RPC 仅读取 Redis（无外部调用）。Bootstrap 水合在页面加载时即时提供公告数据。
 
-**CII 集成** — 服务端 CII 评分器在可用时读取已种子的公告 `byCountry` 等级，否则可能对部分国家使用内嵌的国务院兜底表。每条发出的 `CiiScore` 暴露 `advisoryLevel` 和 `advisoryProvenance`（`live`、`fallback` 或 `absent`），使下游使用者可分辨评分使用的是实时源、兜底表还是无公告输入。公告通过两种机制进入动荡评分：
+**CII 集成** — 服务端 CII 评分器读取已种子的公告 `byCountry` 等级。该读取缺失或超过 72 小时时，使用该源上一份有效快照（最多 72 小时），否则不使用任何等级。每条发出的 `CiiScore` 暴露 `advisoryLevel` 和 `advisoryProvenance`（`live`、`fallback` 或 `absent`），使下游使用者可分辨评分使用的是本次读取、上一份有效快照还是无公告输入。公告通过两种机制进入动荡评分：
 
-- **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5。服务端评分器在存在时使用实时 `byCountry` 等级；若部分 Tier-1 国家缺失实时数据，则回退到已发布的 CII 公告表，而非额外添加多源一致加成。
-- **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。这防止事件数据稀少但有活跃或经策展的公告风险的国家显示虚假的平静评分。
+- **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5，仅来自 `byCountry` 等级；不另加多源一致加成。
+- **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。
 
-**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示兜底表)。
+**公告数据缺失**：不存在内嵌兜底表；该表因与实时源不一致已删除。公告读取失败从第一次构建起就会标记 `riskScores` 健康检查。详见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示数据缺失)。
 
 安全公告面板显示公告及其彩色级别徽章和来源国国旗，可按严重性（严重、全部）和发布来源组（US、AU、UK、卫生）筛选。
 
@@ -199,7 +199,7 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 
 `listFeedDigest` RPC 端点将所有源在服务端聚合成单个分类响应，而不是让每个客户端浏览器通过单独的边缘函数调用独立获取数十个 RSS 源。
 
-下面的公开服务端摘要源清单以 `server/worldmonitor/news/v1/_feeds.ts` 为来源依据；该代码文件仍是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
+下面的公开服务端摘要源清单以 `shared/news-catalog.json`（各信息源的服务端放置）为来源依据；该目录是精确 URL、Google News 查询封装和特定区域 URL 参数的权威来源。源选择在此刻意可见，以便区域覆盖、官方来源纳入以及诸如 `Trump - Truth Social` 等政治敏感纳入项可供审阅，而非隐藏在一个通用的"RSS"标签之后。按语言限定的源以其语言代码标记，仅当请求语言匹配时才纳入。`full` 变体还在 `intel` 类别下追加 `INTEL_SOURCES`。
 
 | 变体 | 类别 | 服务端源 |
 | --- | --- | --- |
@@ -502,6 +502,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 - 西太平洋热带气旋观测（香港天文台、日本气象厅）
 - 15 个冲突与灾害高发区域的气候异常检测（Open-Meteo ERA5）
 - 天气警报和恶劣天气状况（NWS + ECCC 多边形，WMO SWIC 官方 CAP 点位）
+- 来自 NASA ICESat-2 激光雷达的战略水库与湖泊水面水位变化（`climate:reservoir-levels:v1`，由 `/api/climate/v1/list-reservoir-levels` 提供），比实时滞后 50 至 70 天
 - 辐射监测 — 见[辐射监测面板](/zh/panels/radiation-watch)
 
 **主要提供商**
@@ -511,11 +512,14 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
 | Earthquakes Canada (NRCan) | 加拿大国家地震公报（Atom） | [earthquakescanada.nrcan.gc.ca](https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| Copernicus Sentinel-5P TROPOMI | 对流层 NO2 柱浓度，按日聚合到 167 个国家与 32 个工业集群，作为同比活动方向（Sentinel Hub Statistical API）。包含经修改的 Copernicus Sentinel 数据。 | [dataspace.copernicus.eu](https://dataspace.copernicus.eu) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
 | 香港天文台 | 本地热带气旋警告信号 | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
 | 日本气象厅 | 西北太平洋热带气旋观测 | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 再分析气候数据 | [open-meteo.com](https://open-meteo.com) |
+| NASA ICESat-2 ATL13（NSIDC），经 SlideRule Earth 处理 | 沿每次激光过境的内陆水面高度，截取到每个水库固定的开阔水面框内 | [nsidc.org/data/atl13](https://nsidc.org/data/atl13) |
+| NASA ICESat-2 ATL06（NSIDC），经 SlideRule Earth 处理 | 沿每次激光过境的地表高度，用于 ATL13 覆盖不佳的水库 | [nsidc.org/data/atl06](https://nsidc.org/data/atl06) |
 | 美国国家气象局 | 官方美国天气警报（多边形） | [api.weather.gov](https://api.weather.gov/alerts/active) |
 | 加拿大环境与气候变化部 | 官方加拿大天气警报（多边形） | [api.weather.gc.ca](https://api.weather.gc.ca) |
 | WMO 恶劣天气信息中心 | WMO 成员官方 CAP，合并进 `weather:alerts:v1`（点位） | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
@@ -548,6 +552,20 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 
 异常送入信号聚合器，在其中放大受影响国家的 CII 评分（气候压力是公认的冲突加速因素）。气候异常面板以按严重性排序的列表展示这些偏差。
 
+### 战略水位
+
+一份对水电、灌溉、航运和跨境水资源争端具有重要意义的水库与湖泊观察清单，由 NASA 的 ICESat-2 激光测高仪测量（产品 ATL13，内陆水面高度；少数 ATL13 覆盖不佳的水库使用 ATL06）。每个数值都是相对 EGM2008 大地水准面的水面**水位**，单位为米。它不是蓄水量，该数据集也不估算蓄水量。
+
+- **测量。** 对每次卫星过境，水位取落在一个固定开阔水面框内的 ATL13 水体分段高度的中位数。该框位于水库主体上，远离入流支汊和岸线，并处于该水库的 ATL13 水体之内。
+- **质量规则。** 若一次过境的分段少于 5 个、中位数绝对偏差超过 0.25 m，或各波束之间相差超过 0.3 m，则舍弃该过境。若一次过境偏离其前后两个相邻过境的范围超过 1 m 加上间隔每天 0.05 m，则作为错位过境舍弃。
+- **延迟与重访。** NASA 在过境后 50 至 70 天发布 ATL13。重访周期取决于水库的大小和纬度，大型湖泊为几天，狭窄峡谷水库约为一个月。健康检查只跟踪种子程序自身的运行时间；最新观测较旧是数据本身的属性。在首次成功发布之前，健康检查最多一天报告 `ROLLOUT_PENDING`；之后种子程序写入 `seed-activated:climate:reservoir-levels`，键缺失时读作 `EMPTY`。
+- **变化指标。** 自上一次过境以来以及 30、90 和 365 天内的变化（在过境之间插值，从不外推）、相对往年同期的异常，以及在 2018 年末以来记录范围内的位置。`record_low`、`falling_fast` 或 `no_recent_data` 等状态对这些指标进行概括。`falling_fast` 和 `rising_fast` 要求 90 天变化既超过绝对阈值，也超过通常的季节性波动，因此正常的季风或融雪蓄水读作 `normal`。`low` 和 `high` 在存在季节性异常时依据该异常，否则依据在记录范围内的位置。最新一次过境只有一个相邻过境，因此只有当它发生跳变、且其所在地面轨道此前的过境大多作为错位过境被舍弃时，才会被舍弃。
+- **验证。** 与美国垦务局在米德湖的每日水位站对比，156 次匹配过境（2018 至 2026 年，水位站量程 17.8 m）在去除 0.046 m 基准偏移后的 RMSE 为 0.052 m，最大误差 0.149 m，相关系数 0.99994。
+
+若 ATL13 记录的过境太少，则从 ATL06（陆地和冰面高度）读取水位，ATL06 没有水体掩膜。每次过境保留质量标志良好且沿轨坡度不超过 0.01 的分段，将其排序后的高度在相邻两个高度相差超过 0.5 m 处切分，并从至少包含 5 个分段且占保留分段 10% 的最低分组中读取水位：水面是框内最低的平坦表面。每个水库设有一个高度窗口，舍弃水面不可能取到的范围之外的分段，从而去除大多数只经过陆地的过境；该范围内的平坦陆地仍可能形成一个分组，上述质量规则可能会拒绝这样的过境，但并不保证。Darbandikhan 和 Gibe III 的拒绝率尚未测量。随后适用相同的质量规则，但 Gibe III 的水位每天变化可能超过 0.05 m，因此在错位过境检查中允许间隔每天 0.3 m。在整个任务期内的米德湖、Tharthar 和 Atatürk 框内，ATL06 与 ATL13 逐次过境匹配，去除基准偏移后的 RMSE 分别为 0.021、0.018 和 0.021 m（最大误差 0.068、0.062 和 0.102 m），并在 174 次过境中与米德湖水位站匹配，RMSE 为 0.045 m，最大误差为 0.139 m。Darbandikhan 和 Gibe III 使用 ATL06。
+
+数据粒通过 NASA CMR 列出，并在公共 SlideRule Earth 服务上截取子集。自 2018 年 10 月起的一次性回填随种子程序一同提交；每次每日运行都会加入此后发布的数据粒。
+
 ---
 
 ## 航空与空域
@@ -568,6 +586,7 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | OpenSky Network | 旧版按请求恢复（在军事种子任务中已禁用） | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | 美国机场延误和地面停留数据 | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM 空域关闭数据 | [icao.int](https://www.icao.int) |
+| FAA NOTAM Management Service | 全球 NOTAM，用于机场关闭和航班延误图层中的 NOTAM 空域（需凭据） | [faa.gov](https://www.faa.gov) |
 | AviationStack | 国际机场延误覆盖 | [aviationstack.com](https://aviationstack.com/) |
 
 深入阅读：[航空情报面板](/zh/panels/airline-intel)
@@ -581,10 +600,18 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 | **FAA ASWS**       | 美国枢纽机场目录        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
 | **AviationStack**  | 国际机场目录  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
 | **ICAO NOTAM API** | MENA 机场目录           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+| **FAA NMS-API**    | 同一 NOTAM 监测列表      | FAA 全球 NOTAM 库（国内、FDC、国际、军事），通过每日批量加载和增量拉取保持最新 |
 
 **NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
 
-**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
+**FAA NOTAM Management Service。** `scripts/seed-notam-nms.mjs` 使用 OAuth2 客户端凭据（`NOTAM_KEY`、`NOTAM_SECRET`）认证。每个 NOTAM 分类每 24 小时最多批量加载一次，其余运行只拉取自上次游标以来的变更，符合 FAA 每日一次批量加载、每三分钟一次增量拉取的限制。已取消、已替换和已过结束时间的 NOTAM 会被移除。该库产出两个键：
+
+- `aviation:notam:nms:closures:v1`：完全关闭的机场（Q 码 `FALC` 或 `AD CLSD` 文本）和有限制生效的机场。带例外的关闭（如 `AD CLSD EXC MEDEVAC`）或仅限 IFR、夜间运行的关闭按限制计；没有例外的 `AD CLSD TO ALL TFC` 按关闭计。只针对某一类航空器、不影响航班运行的关闭（如洛杉矶、波士顿、拉斯维加斯的 `AD AP CLSD TO NON SKED TRANSIENT GA ACFT EXC 24HR PPR`）不计入。当该列表不超过 30 分钟时，航空种子任务会把它排在 ICAO 之前合并，按同一监测列表过滤，并把每条警报归属到报告它的数据源。NMS 在生产环境首次发布后，如果 NMS 列表缺失或超过 30 分钟，航空种子任务会保留上一次有效的关闭数据，而不是只发布 ICAO 数据，以免 NMS 恢复时关闭记录消失后再次告警。
+- `aviation:notam:airspace:v1`：当前生效或 24 小时内开始的临时飞行限制、禁区、限制区、危险区、军事区、保留区及关闭的空域，由**航班延误**（航空）地图图层绘制（仅限 deck.gl 渲染器）。给出半径的 NOTAM 以测量该半径的 Q 行中心点绘制为圆，半径超过 250 NM 的绘制为标记；给出多边形的绘制为多边形；没有半径、形状仅在文本中描述的 FDC TFR 绘制为标记。
+
+两个键的健康预算均为 20 分钟。Railway 服务 `seed-notam-nms` 每 5 分钟针对 FAA 生产主机运行一次。种子任务对任何非生产主机都只做试运行，因为预发布环境提供的是 FAA 测试 NOTAM。设置 `NMS_ALLOW_NONPROD_WRITE=1` 后，非生产运行也只发布地图图层，不发布关闭数据或激活标记。
+
+**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。AviationStack 的取消率中每个实际执行的航班只计一次（代码共享记录计入它所指的执行航班，该航班已有记录时不重复计算），起飞时间按机场当地时区读取。已到起飞时间（计划起飞时间已过或已起飞）的航班至少有 10 个时，只按这些航班计算；不足时，返回的是当天较晚的航班，只能判定关闭（至少 80% 取消），不给出更低的取消等级，因为提前取消的后续航班属于时刻调整，不是运营中断。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
 
 ### 航空情报面板
 

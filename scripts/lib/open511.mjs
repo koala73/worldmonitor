@@ -10,6 +10,7 @@
  */
 
 import { acquire511Slot } from '../_511-rate-limit.mjs';
+import { readBoundedJsonResponse } from '../_china-exchange-transport.mjs';
 import { lonLatPair } from './geo-coord.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -194,16 +195,15 @@ export function validateOpen511Envelope(envelope) {
   return envelope != null && typeof envelope === 'object' && Array.isArray(envelope.records);
 }
 
+// Streams the body and cancels it at the cap; a body without a declared
+// length is never buffered whole.
 async function readLimitedJson(resp, maxBytes) {
-  const contentLength = resp.headers?.get?.('content-length');
-  if (contentLength && Number(contentLength) > maxBytes) {
-    throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
+  try {
+    return await readBoundedJsonResponse(resp, maxBytes);
+  } catch (err) {
+    if (err?.code === 'RESPONSE_TOO_LARGE') throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
+    throw err?.code === 'MALFORMED_RESPONSE' && err.cause ? err.cause : err;
   }
-  const buffer = Buffer.from(await resp.arrayBuffer());
-  if (buffer.byteLength > maxBytes) {
-    throw new Error(`open511: payload exceeds ${maxBytes} bytes`);
-  }
-  return JSON.parse(buffer.toString('utf8'));
 }
 
 function eventsUrl(baseUrl, { status = 'ACTIVE', limit = DEFAULT_LIMIT, offset } = {}) {

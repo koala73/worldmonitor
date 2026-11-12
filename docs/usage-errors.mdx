@@ -33,7 +33,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `429` | Rate limited | Yes — honor `Retry-After` |
 | `500` | Server bug | Yes — with backoff, then report |
 | `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
-| `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`) | Yes — honor `Retry-After`, else exponential backoff |
+| `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`); or a notify publish whose outcome is unknown (`publish_outcome_unknown` — `Retry-After: 180`) | Yes — honor `Retry-After`, else exponential backoff. Exception: retry `publish_outcome_unknown` only if a duplicate event is acceptable |
 | `504` | Upstream timeout | Yes — with backoff |
 
 ### The edge bot gate (`403 {"error":"Forbidden"}`)
@@ -46,7 +46,7 @@ Before any handler runs, the edge middleware refuses `/api/*` requests whose `Us
 The middleware also has narrowly scoped bypass categories:
 
 - Exact bot-gate bypass paths: intentionally public `/api/version`, `/api/health`, `/api/llms.txt`, `/api/product-catalog`, and `/api/download.md`; authenticated machine routes `/api/seed-contract-probe` (requires `x-probe-secret: $RELAY_SHARED_SECRET`) and `/api/internal/brief-why-matters` (requires `Authorization: Bearer $RELAY_SHARED_SECRET`) also bypass only this User-Agent filter.
-- Method-aware `GET`/`HEAD` API markdown twins: valid requests for `/api/**/*.md` bypass the gate; other methods do not inherit that exception.
+- Method-aware `GET`/`HEAD` API markdown twins: `/api/**/*.md` bypasses the gate for declared AI crawlers (GPTBot, ClaudeBot, anthropic-ai, Claude-User, ChatGPT-User, OAI-SearchBot, PerplexityBot, Google-Extended, Applebot-Extended, CCBot) and for twins of the exact bypass paths above. Any other client meets the same gate as the twin's sibling route, and other methods do not inherit the exception.
 - Recognized social preview UAs may fetch `/api/story` and `/api/og-story`; recognized social image UAs may fetch `.png` paths and valid signed brief-carousel route shapes.
 
 Other `/api/*` paths — including anonymous public reads like `GET /api/bootstrap?public=1` — remain behind the gate. That is why a bare `curl` of a documented anonymous endpoint can return 403 while the same URL works from a browser.
@@ -70,7 +70,12 @@ Generated RPC handlers preserve the same billing decision in their native error 
 | `invalid_payload` | Body failed schema validation. |
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
 | `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
-| `Too many requests` | 429 fired; honor `Retry-After`. |
+| `Too many requests` | 429 fired; honor `Retry-After`. For a [desktop key](/api-keys#desktop-keys) the body also carries `limit_type: "per_minute"` — the account's burst limit (120 requests a minute). |
+| `Daily request limit reached` | 429 for a [desktop key](/api-keys#desktop-keys): the account used its daily allowance (7,500 requests, shared by all its desktop keys and counted per UTC day). The body carries `limit_type: "daily"` and `reset`; `Retry-After` is the seconds to the next UTC midnight. Revoking and recreating a key does not reset it. |
+| `Rate-limit service temporarily unavailable` | 503 with `X-RateLimit-Mode: degraded` and `Retry-After: 5`: the desktop-key counter could not be read, so the request was refused rather than served unmetered. Retry. |
+| `Desktop key limit reached for this account` | 403: the account has more working keys than its plan allows desktop keys (Pro 2, Pro Business 3) — typically an API-plan owner who moved to Pro. The oldest keys keep working; revoke one to free a slot. |
+| `This endpoint requires an API plan` | 403 from the gateway when a desktop key reaches a gateway-served `/api/v2/` path. The other API-only surfaces — the shipping webhook routes, the MCP endpoint and OAuth authorize — are served by their own edges, whose validators accept only API keys: a desktop key there is `401 Invalid API key` (OAuth authorize renders it as `invalid_key`). Use an API key from an API plan. |
+| `Desktop keys work only in the World Monitor desktop app and self-hosted dashboards. …` | 403 when a [desktop key](/api-keys#desktop-keys) is sent by a script, SDK or other client instead of the desktop app or a self-hosted dashboard. The request does not count against the desktop-key ceiling. Use an API Starter or API Business key. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
@@ -79,6 +84,7 @@ Generated RPC handlers preserve the same billing decision in their native error 
 | `renewal_verification_failed` | The provider re-check could not complete and is in a short cooldown. Retryable 503 — honor `Retry-After`. |
 | `entitlement_verification_unavailable` | The billing backend produced no answer about your access — unreachable, erroring, or rejecting the server's own credential — so the denial states nothing about your plan and must never be read as one. Emitted on every authenticated surface (`wm_` API keys, bootstrap, session/bearer tier checks, MCP). Retryable 503 with `Retry-After: 5` and `X-Billing-Verification: entitlement_verification_unavailable`. |
 | `TIER_VERIFICATION_UNAVAILABLE` | The Pro-MCP OAuth handshake (`POST /api/internal/mcp-grant-mint`, `GET /api/internal/mcp-grant-context`) could not verify the caller's subscription. Retryable 503 carrying `Retry-After` and `X-Billing-Verification`; the handshake keeps its own SCREAMING_SNAKE vocabulary. `INSUFFICIENT_TIER` is the terminal 403 for genuinely insufficient states, while a provider-confirmed lapse follows the free-account path. |
+| `publish_outcome_unknown` | 503 from `POST /api/notify` with `Retry-After: 180`: the event queue did not answer before the deadline, so the event may or may not have been published. Retry only if a duplicate event is acceptable. With an `Idempotency-Key` that the server stored, the key stays locked for up to 180 seconds, and a retry while it is locked gets `409 idempotency_conflict` instead of a second publish. The server still publishes when it cannot store the key (its Redis call failed), and then no lock exists. Once the lock expires, or when there was none, a retry publishes again and can duplicate the event. Without a key, any retry can duplicate it. |
 | `idempotency_conflict` | A POST with this `Idempotency-Key` is still processing. Retry after `Retry-After: 2`. |
 | `idempotency_key_reused` | The same `Idempotency-Key` was already used with a different request body. |
 | `invalid_idempotency_key` | The `Idempotency-Key` header is too long or contains non-printable characters. Generated OpenAPI POSTs also reject an empty key. |
@@ -91,7 +97,7 @@ Retrying a POST with the same key and an identical request body replays the orig
 
 If the first request is still running, the retry returns `409 idempotency_conflict` with `Retry-After: 2`; retry after that delay with the same key and identical body. If the same key is reused with a different request body, the API returns `422 idempotency_key_reused`; do not retry unchanged, because the client must either send the original body or choose a new key for the new operation.
 
-For mutations this avoids duplicating the side effect, including async enqueues such as `POST /api/scenario/v1/run-scenario`. For batch-read POSTs, replay returns the cached snapshot and that snapshot can be up to 24 hours stale. A `409 idempotency_conflict` means the original keyed request is still running and keeps its in-flight lock until it completes. If the original execution itself returns a retryable status (`408`, `409`, `429`, or 5xx), that response is not cached and the processing lock is released, so a later retry may re-execute the operation and should only be sent when the endpoint contract is safe for that retry or the client can tolerate re-execution.
+For mutations this avoids duplicating the side effect, including async enqueues such as `POST /api/scenario/v1/run-scenario`. For batch-read POSTs, replay returns the cached snapshot and that snapshot can be up to 24 hours stale. A `409 idempotency_conflict` means the original keyed request is still running and keeps its in-flight lock until it completes. If the original execution itself returns a retryable status (`408`, `409`, `429`, or 5xx), that response is not cached and the processing lock is released, so a later retry may re-execute the operation and should only be sent when the endpoint contract is safe for that retry or the client can tolerate re-execution. One exception: `POST /api/notify` keeps the lock after `503 publish_outcome_unknown`, because the event may already have been published.
 
 ## Retry strategy
 
@@ -99,12 +105,14 @@ For mutations this avoids duplicating the side effect, including async enqueues 
 
 **Idempotent reads** (`GET`): retry 429/5xx honoring `Retry-After`; when it is absent, use exponential backoff (1s, 2s, 4s, cap 30s, 5 attempts). Most GET responses are cached at the edge, so the retry usually goes faster.
 
-**Writes**: send `Idempotency-Key` on any POST you may retry. Never auto-retry most 4xx responses; the exception is `409 idempotency_conflict`, which means a keyed request is still in flight and can be retried after `Retry-After: 2` with the same key and identical body. 5xx responses are not cached for replay even when a key is present; retry only when the endpoint contract is safe for a repeated execution or the client can tolerate that possibility — honoring `Retry-After` when present, and otherwise backing off exponentially. A billing-verification 503 is safe to replay on this point: the entitlement gate answers before the handler runs, so no side effect has been applied. Without a key, inspect the endpoint contract before retrying because an unkeyed repeat can duplicate the side effect.
+**Writes**: send `Idempotency-Key` on any POST you may retry. Never auto-retry most 4xx responses; the exception is `409 idempotency_conflict`, which means a keyed request is still in flight and can be retried after `Retry-After: 2` with the same key and identical body. On `POST /api/notify`, a client whose own request timed out may see that 409 without ever seeing a `publish_outcome_unknown` response. A retry after the lock expires can then publish the event twice, so retry only if a duplicate event is acceptable. 5xx responses are not cached for replay even when a key is present; retry only when the endpoint contract is safe for a repeated execution or the client can tolerate that possibility — honoring `Retry-After` when present, and otherwise backing off exponentially. A billing-verification 503 is safe to replay on this point: the entitlement gate answers before the handler runs, so no side effect has been applied. Without a key, inspect the endpoint contract before retrying because an unkeyed repeat can duplicate the side effect.
 
 **MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
 
+**Reporting a failure**: every MCP error carries `error.data.requestId`. An unexpected tool failure (`-32603`) and an unknown tool (`-32602`) also carry `error.data.reportWith: "report_issue"`. On those, or when a tool you need does not exist, call [`report_issue`](/mcp-tools/meta#report_issue) with the `requestId`. Over REST, `POST /api/feedback/v1/submit-report` takes the same report, with the response's `x-vercel-id` as `requestId`. Both are credential-free. Billing denials, rate limits, upstream outages and validation errors are expected states and carry no `reportWith`: handle them, do not report them.
+
 ## Debugging
 
-- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues.
+- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues. An agent can send `x-vercel-id` as the `requestId` of a `report_issue` call.
 - Sentry alerts forward to [status.worldmonitor.app](https://status.worldmonitor.app/).
 - `GET /api/health` and `GET /api/seed-health` show per-seed freshness; a stale seed is the most common root cause of unexpected empty payloads.

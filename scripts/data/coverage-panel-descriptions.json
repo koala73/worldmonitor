@@ -2,7 +2,7 @@
   "aaii-sentiment": "Shows the weekly AAII Investor Sentiment Survey split into bullish, neutral and bearish readings, with eight-week averages.",
   "ai-regulation": "Tracks AI laws and regulatory actions by country in timeline, upcoming-deadline, regulation and country views, from a list kept in the app's config.",
   "breakthroughs": "Scrolls a ticker of science headlines from feeds such as ScienceDaily, Nature News, New Scientist and Live Science.",
-  "china-activity-nowcast": "Compares China's official activity releases with logistics, commodity and market proxies to show where the two agree or diverge.",
+  "china-activity-nowcast": "Compares China's official activity releases with logistics, commodity, market and satellite NO2 proxies to show where the two agree or diverge.",
   "china-corridors": "Tracks four China logistics corridors using port, aviation, hazard, energy and trade data from sources such as IMF PortWatch and UN Comtrade.",
   "commodities-news": "Lists commodity market headlines from news feeds including Oil & Gas, Gold & Metals, Agriculture and Commodity Trading.",
   "cross-source-signals": "Lists severity-ranked signals combined from separate datasets such as thermal escalation, GPS jamming, unrest, cyber threats, earthquakes and markets.",

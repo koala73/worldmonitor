@@ -193,9 +193,14 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
       ['POST', '2099-99-99'], ['GET', '2099-99-99'], ['HEAD', '2099-99-99'],
       ['POST', ''], ['POST', '2026-07-28'], ['POST', 'not-a-version'],
     ]) {
+      // An anonymous plain GET is an OAuth discovery probe and gets the 401
+      // challenge instead (covered below), so the GET case carries credentials.
       const res = await fetch(server.url, {
         method,
-        headers: { 'MCP-Protocol-Version': version },
+        headers: {
+          'MCP-Protocol-Version': version,
+          ...(method === 'GET' ? { Authorization: `Bearer ${PRO_BEARER}` } : {}),
+        },
         ...(method === 'POST' ? { body: '{' } : {}),
       });
       assert.equal(res.status, 400, method);
@@ -249,7 +254,9 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     body.params.protocolVersion = '2026-07-28';
     const res = await fetch(server.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28' },
+      // A connector User-Agent: fetch's default `node` completes the handshake
+      // anonymously (see mcp-transport-challenge.test.mjs).
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'MCP-Protocol-Version': '2026-07-28', 'User-Agent': 'Claude-User' },
       body: JSON.stringify(body),
     });
     assert.equal(res.status, 401);
@@ -965,6 +972,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   const realFetch = globalThis.fetch;
   const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
   const guideText = readFileSync(new URL('../public/mcp-server.md', import.meta.url), 'utf8');
+  const setupHtml = readFileSync(new URL('../public/mcp-setup.html', import.meta.url), 'utf8');
 
   beforeEach(async () => {
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
@@ -990,6 +998,10 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       if (href.endsWith('/mcp-server.md')) {
         staticFetchCalls.push({ href, init });
         return Promise.resolve(new Response(guideText, { status: 200, headers: { 'Content-Type': 'text/markdown' } }));
+      }
+      if (href.endsWith('/mcp-setup.html')) {
+        staticFetchCalls.push({ href, init });
+        return Promise.resolve(new Response(setupHtml, { headers: { 'Content-Type': 'text/html' } }));
       }
       return realFetch(input, init);
     };
@@ -1041,17 +1053,54 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(card.url, 'https://worldmonitor.app/mcp');
   });
 
-  it('plain GET /mcp serves the human-readable server guide (crawler-accessible discovery)', async () => {
+  it('browser GET /mcp serves HTML setup instructions', async () => {
     const res = await fetch(server.url, {
       headers: { Accept: 'text/html,application/xhtml+xml,*/*' },
     });
     assert.equal(res.status, 200, 'a plain GET /mcp must not be the transport 405 (Search Console reads it as "cannot access")');
-    assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i);
+    assert.match(res.headers.get('content-type') ?? '', /text\/html/i);
     const body = await res.text();
-    assert.match(body, /# World Monitor MCP Server/, 'must be the mcp-server.md guide, not the JSON card');
+    assert.equal(body, setupHtml);
+    assert.match(body, /codex mcp login worldmonitor/);
+    assert.match(body, /Authenticate/);
     assert.match(body, /https:\/\/worldmonitor\.app\/mcp/, 'guide must advertise the apex transport URL');
     assert.match(res.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
       'discovery representation must declare the apex endpoint canonical');
+    assert.match(res.headers.get('cache-control') ?? '', /no-store/);
+    const head = await fetch(server.url, { method: 'HEAD', headers: { Accept: 'text/html' } });
+    assert.equal(head.status, res.status);
+    assert.equal(head.headers.get('content-type'), res.headers.get('content-type'));
+    assert.equal(await head.text(), '');
+  });
+
+  it('keeps Markdown discovery for machine requests and rejected HTML', async () => {
+    for (const accept of ['*/*', 'text/markdown', 'application/json', 'text/html;q=0,*/*']) {
+      const res = await fetch(server.url, { headers: { Accept: accept } });
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i);
+      assert.equal(await res.text(), guideText);
+    }
+    const html = await fetch(server.url, { headers: { Accept: 'Text/HTML; q=0.9' } });
+    assert.match(html.headers.get('content-type') ?? '', /text\/html/i);
+  });
+
+  it('challenges an anonymous MCP client probing GET /mcp, whatever version it names', async () => {
+    // rmcp (Codex) probes the resource with a plain GET carrying
+    // MCP-Protocol-Version: 2024-11-05, looking for the 401 that names the
+    // protected-resource metadata (RFC 9728 §5.1). A browser never sends the header.
+    for (const version of ['2024-11-05', '2025-11-25']) {
+      const res = await fetch(server.url, { headers: { 'MCP-Protocol-Version': version, Accept: 'text/html' } });
+      assert.equal(res.status, 401, version);
+      assert.equal(res.headers.get('cache-control'), 'no-store', version);
+      assert.match(res.headers.get('www-authenticate') ?? '',
+        /resource_metadata="https:\/\/worldmonitor\.app\/\.well-known\/oauth-protected-resource\/mcp"/, version);
+    }
+
+    // A credentialed probe keeps the guide, and an unsupported version is still refused.
+    const authed = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2025-11-25', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(authed.status, 200);
+    const refused = await fetch(server.url, { headers: { 'MCP-Protocol-Version': '2024-11-05', Authorization: `Bearer ${PRO_BEARER}` } });
+    assert.equal(refused.status, 400);
   });
 
   it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
@@ -1067,7 +1116,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       if (href.endsWith('/.well-known/mcp/server-card.json')) {
         return Promise.reject(new Error('deployment self-fetch failed'));
       }
-      if (href.endsWith('/mcp-server.md')) {
+      if (href.endsWith('/mcp-server.md') || href.endsWith('/mcp-setup.html')) {
         return Promise.resolve(new Response(null, { status: 503 }));
       }
       return realFetch(input, init);
@@ -1088,7 +1137,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
         redirect: 'manual',
       });
       assert.equal(guideFallback.status, 302);
-      assert.equal(guideFallback.headers.get('location'), '/mcp-server.md');
+      assert.equal(guideFallback.headers.get('location'), 'https://www.worldmonitor.app/docs/mcp-quickstart');
       assert.match(guideFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
       assert.match(guideFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
 
@@ -1107,6 +1156,12 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       });
       assert.equal(guideHeadFallback.status, guideFallback.status);
       assert.equal(guideHeadFallback.headers.get('location'), guideFallback.headers.get('location'));
+
+      const markdownFallback = await fetch(fallbackServer.url, {
+        headers: { Accept: 'text/markdown' }, redirect: 'manual',
+      });
+      assert.equal(markdownFallback.status, 302);
+      assert.equal(markdownFallback.headers.get('location'), '/mcp-server.md');
     } finally {
       globalThis.fetch = successfulStaticFetch;
       await fallbackServer.close();
@@ -1146,10 +1201,10 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   });
 
   it('an SSE-flavoured GET /mcp still gets the transport 405, never the guide', async () => {
-    const res = await fetch(server.url, { headers: { Accept: 'text/event-stream' } });
+    const res = await fetch(server.url, { headers: { Accept: 'text/event-stream, text/html' } });
     assert.equal(res.status, 405, 'standalone SSE stream open must keep its graceful 405 signal');
     assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
-    assert.doesNotMatch(res.headers.get('content-type') ?? '', /text\/markdown/i);
+    assert.doesNotMatch(res.headers.get('content-type') ?? '', /text\/(markdown|html)/i);
   });
 
   it('classifies SSE Accept values case-insensitively and honors q=0', async () => {
@@ -1158,7 +1213,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
 
     const rejectedSse = await fetch(server.url, { headers: { Accept: 'text/event-stream;q=0, text/html' } });
     assert.equal(rejectedSse.status, 200, 'q=0 explicitly rejects SSE and must select the discovery guide');
-    assert.match(rejectedSse.headers.get('content-type') ?? '', /text\/markdown/i);
+    assert.match(rejectedSse.headers.get('content-type') ?? '', /text\/html/i);
   });
 
   it('HEAD /mcp preserves discovery, stream-open, and replay GET semantics', async () => {
@@ -1190,7 +1245,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
 
     const replay = await fetch(server.url, {
       method: 'HEAD',
-      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+      headers: { Accept: 'text/html', 'Last-Event-ID': 'smoke-canary' },
     });
     assert.equal(replay.status, 401, 'HEAD must preserve the equivalent authenticated replay GET status');
     assert.match(replay.headers.get('www-authenticate') ?? '', /^Bearer\b/i);

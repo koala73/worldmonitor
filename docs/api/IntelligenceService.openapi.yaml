@@ -299,7 +299,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetPizzintStatus
-            description: GetPizzintStatus retrieves Pentagon Pizza Index and GDELT tension data.
+            description: GetPizzintStatus returns the Pentagon Pizza Index from pizzint.watch and, on request, GDELT country-pair tension scores with supporting evidence.
             operationId: GetPizzintStatus
             parameters:
                 - name: include_gdelt
@@ -333,9 +333,17 @@ paths:
                                     - "changePercent": 42.5
                                       "countries":
                                           - "US"
+                                      "evidence":
+                                          - "airports":
+                                              - "name": "WorldMonitor Analyst"
+                                                "status": "example"
+                                            "baseline": 1.5
+                                            "channel": "example"
+                                            "countries":
+                                                - "US"
+                                            "observedAt": 1717200000000
                                       "id": "example-id"
                                       "label": "example"
-                                      "region": "example"
                             schema:
                                 $ref: '#/components/schemas/GetPizzintStatusResponse'
                 "400":
@@ -426,7 +434,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent analyzes a news event using AI models. PRO-gated. Requires entitlement tier >= 1.
+            description: ClassifyEvent has an LLM assign a news headline a threat level and one of 14 event categories, cached for 24 hours. PRO-gated. Requires entitlement tier >= 1.
             operationId: ClassifyEvent
             security:
                 - WorldMonitorKey: []
@@ -572,7 +580,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryHistory
-            description: Daily country snapshots with source versions, gaps and tier-limited depth.
+            description: GetCountryHistory returns daily snapshots of a country's CII and resilience scores, top events, and key signals, with depth set by the caller's plan.
             operationId: GetCountryHistory
             security:
                 - {}
@@ -716,7 +724,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryRisk
-            description: GetCountryRisk retrieves composite risk intelligence for a specific country.
+            description: GetCountryRisk returns a country's Country Instability Index score, its travel advisory level, and the number of sanctions entries tied to it.
             operationId: GetCountryRisk
             parameters:
                 - name: country_code
@@ -1133,7 +1141,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchGdeltDocuments
-            description: SearchGdeltDocuments searches the GDELT GKG API for relevant documentation.
+            description: SearchGdeltDocuments returns up to 20 articles from the first seeded GDELT topic that matches a query, or recent articles for a country:XX query.
             operationId: SearchGdeltDocuments
             parameters:
                 - name: query
@@ -1305,7 +1313,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: DeductSituation
-            description: DeductSituation performs broad situational analysis using LLMs. PRO-gated. Requires entitlement tier >= 1.
+            description: DeductSituation runs LLM reasoning over a user query and geographic context, with matching prediction market odds. PRO-gated. Requires entitlement tier >= 1.
             operationId: DeductSituation
             security:
                 - WorldMonitorKey: []
@@ -1480,7 +1488,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSatellites
-            description: ListSatellites retrieves current orbital positions and metadata.
+            description: ListSatellites returns CelesTrak two-line element sets (TLE) for tracked satellites, for client-side propagation, refreshed every 2h and filterable by country.
             operationId: ListSatellites
             parameters:
                 - name: country
@@ -1601,7 +1609,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListGpsInterference
-            description: ListGpsInterference retrieves detected GPS/GNSS interference data (jamming).
+            description: ListGpsInterference returns daily gpsjam.org H3 hexes rated low, medium, or high by the share of aircraft reporting GPS/GNSS problems, filterable by region.
             operationId: ListGpsInterference
             parameters:
                 - name: region
@@ -1728,7 +1736,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListOrefAlerts
-            description: ListOrefAlerts retrieves Israeli Home Front Command alerts (Red Alerts).
+            description: ListOrefAlerts returns active Israeli Home Front Command Red Alert sirens from Tzeva Adom, with oref.org.il as fallback, or alert history in MODE_HISTORY.
             operationId: ListOrefAlerts
             parameters:
                 - name: mode
@@ -1863,7 +1871,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListTelegramFeed
-            description: ListTelegramFeed retrieves real-time OSINT messages from monitored Telegram channels.
+            description: ListTelegramFeed returns recent OSINT messages from monitored Telegram channels via the relay, filterable by topic or channel, up to 200 per request.
             operationId: ListTelegramFeed
             parameters:
                 - name: limit
@@ -2761,7 +2769,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryFacts
-            description: GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
+            description: GetCountryFacts returns a country's head of state, population, area, capital, languages, and currencies from Wikidata plus its Wikipedia summary.
             operationId: GetCountryFacts
             parameters:
                 - name: country_code
@@ -2882,7 +2890,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListSecurityAdvisories
-            description: ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
+            description: ListSecurityAdvisories returns travel and health advisories from the US State Department, UK FCDO, Smartraveller, CDC, ECDC, and WHO with per-country levels.
             operationId: ListSecurityAdvisories
             parameters:
                 - name: jmespath
@@ -2900,13 +2908,24 @@ paths:
                         application/json:
                             example:
                                 "advisories":
-                                    - "country": "US"
-                                      "level": "example"
-                                      "link": "https://example.com/worldmonitor"
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
                                       "pubDate": "2026-01-15"
-                                      "source": "example"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                                 "byCountry":
-                                    "exampleKey": "example"
+                                    "MX": "caution"
+                                "fetchedAt": 1768478400000
+                                "registerLevels":
+                                    - "country": "MX"
+                                      "level": "caution"
+                                      "link": "https://travel.state.gov/"
+                                      "pubDate": "2026-01-15"
+                                      "source": "US State Dept"
+                                      "sourceCountry": "US"
+                                      "title": "Mexico - Level 2"
                             schema:
                                 $ref: '#/components/schemas/ListSecurityAdvisoriesResponse'
                 "400":
@@ -2997,7 +3016,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetGdeltTopicTimeline
-            description: GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+            description: 'GetGdeltTopicTimeline returns 14-day GDELT tone and volume timelines for one topic: military, cyber, nuclear, sanctions, intelligence, or maritime.'
             operationId: GetGdeltTopicTimeline
             parameters:
                 - name: topic
@@ -3120,7 +3139,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListCrossSourceSignals
-            description: ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+            description: ListCrossSourceSignals returns signals from GPS jamming, unrest, OREF, market, cyber, and other feeds, ranked by severity, with composite escalation zones.
             operationId: ListCrossSourceSignals
             parameters:
                 - name: jmespath
@@ -3363,7 +3382,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListWsbTickers
-            description: Premium Reddit ticker feed. PRO-gated. Requires an active Pro subscription.
+            description: ListWsbTickers ranks the top 50 tickers mentioned on r/wallstreetbets, r/stocks, and r/investing by velocity. PRO-gated. Requires an active Pro subscription.
             operationId: ListWsbTickers
             security:
                 - WorldMonitorKey: []
@@ -3481,7 +3500,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetSocialVelocity
-            description: GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+            description: GetSocialVelocity returns hot posts from r/worldnews and r/geopolitics ranked by a velocity score of upvotes, ratio, and recency, refreshed every 3 hours.
             operationId: GetSocialVelocity
             parameters:
                 - name: jmespath
@@ -3595,7 +3614,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryEnergyProfile
-            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            description: GetCountryEnergyProfile returns a country's power mix, JODI oil and gas balances, IEA stock cover, Ember electricity, gas storage, prices, and SPR policy.
             operationId: GetCountryEnergyProfile
             parameters:
                 - name: country_code
@@ -3714,7 +3733,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: ComputeEnergyShockScenario
-            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            description: ComputeEnergyShockScenario models the oil, gas, or combined supply deficit a country faces when 10 to 100 percent of a chokepoint's flow is disrupted.
             operationId: ComputeEnergyShockScenario
             parameters:
                 - name: country_code
@@ -3738,7 +3757,7 @@ paths:
                         - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
-                  description: Percent of chokepoint flow disrupted, from 0 to 100.
+                  description: Percent of chokepoint flow disrupted, 10 to 100. Other values are clamped; an absent value models 10.
                   required: false
                   example: 1
                   schema:
@@ -3864,7 +3883,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryPortActivity
-            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            description: GetCountryPortActivity returns up to 25 IMF PortWatch ports for a country with 30-day tanker calls, trend versus the prior 30 days, and tanker DWT.
             operationId: GetCountryPortActivity
             parameters:
                 - name: country_code
@@ -3896,6 +3915,7 @@ paths:
                                       "importTankerDwt": 1.5
                                       "lat": 40.7128
                                       "lon": -74.006
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/CountryPortActivityResponse'
                 "400":
@@ -7544,26 +7564,27 @@ components:
                          Bumped whenever CII_FORMULA_VERSION changes so API clients can detect
                          score or movement-semantics drift. See docs/methodology/cii-risk-scores.mdx.
                 eventMultiplier:
+                    deprecated: true
                     type: number
                     maximum: 10
                     minimum: 0
                     format: double
                     description: |-
-                        Editorial per-country event multiplier applied to live signals before
-                         they roll into the composite score, in [0, 10]. See
-                         docs/methodology/cii-risk-scores.mdx.
+                        Deprecated: always 1. It was an editorial per-country multiplier on ACLED
+                         events; no live signal is multiplied any more. Kept on the wire for
+                         existing clients. See docs/methodology/cii-risk-scores.mdx.
                 advisoryLevel:
                     type: string
                     description: |-
                         Travel advisory level used by the score, when any advisory input applies.
-                         Empty means no live or fallback advisory level affected boosts/floors.
+                         Empty means no advisory level affected boosts/floors.
                 advisoryProvenance:
                     type: string
                     pattern: ^(live|fallback|absent)$
                     description: |-
-                        Provenance for advisory_level: "live" when sourced from the Redis advisory
-                         feed, "fallback" when using the embedded State Department fallback table,
-                         and "absent" when no advisory input affected this score.
+                        advisory_level source: "live" for this build's Redis feed read; "fallback"
+                         for its last good snapshot (at most 72 hours old) if missing or stale;
+                         "absent" when no advisory input affected this score.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         CiiComponents:
             type: object
@@ -7591,7 +7612,7 @@ components:
                     maximum: 100
                     minimum: 0
                     format: double
-                    description: Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).
+                    description: Security contribution; always 0 because v15 scores no Security input.
             description: CiiComponents represents the contributing factors to a CII score.
         StrategicRisk:
             type: object
@@ -7787,7 +7808,49 @@ components:
                 region:
                     type: string
                     description: Geographic region.
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TensionEvidence'
             description: GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
+        TensionEvidence:
+            type: object
+            properties:
+                channel:
+                    type: string
+                    description: strikes, airports, military_aircraft, pla_aircraft, pla_ships or sanctions.
+                value:
+                    type: number
+                    format: double
+                    description: Current count over the channel's window.
+                baseline:
+                    type: number
+                    format: double
+                    description: Usual count over the same window, when there is enough history.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: ISO 3166-1 alpha-2 codes the signal names.
+                airports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TensionEvidenceAirport'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Source update time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+            description: TensionEvidence is one non-news signal for a tension pair.
+        TensionEvidenceAirport:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: Airport city.
+                status:
+                    type: string
+                    description: closed, halted or restricted.
+            description: TensionEvidenceAirport is one disrupted airport.
         ClassifyEventRequest:
             type: object
             properties:
@@ -9220,6 +9283,14 @@ components:
                     type: object
                     additionalProperties:
                         type: string
+                registerLevels:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SecurityAdvisoryItem'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
         ByCountryEntry:
             type: object
             properties:
@@ -9701,6 +9772,63 @@ components:
                     format: int32
                 importShareSource:
                     type: string
+                regionalEnergyFeeds:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegionalEnergyFeed'
+        RegionalEnergyFeed:
+            type: object
+            properties:
+                sourceId:
+                    type: string
+                name:
+                    type: string
+                sourceUrl:
+                    type: string
+                licence:
+                    type: string
+                status:
+                    type: string
+                    description: |-
+                        available, partial, stale, unavailable, or error. Partial means that the
+                         latest series have different freshness states. It is not a risk rating.
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: 'Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Latest observation period in Unix epoch milliseconds; zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                dataUrls:
+                    type: array
+                    items:
+                        type: string
+                observations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegionalEnergyObservation'
+                error:
+                    type: string
+                    description: Stable failure code. Empty for a valid record, including retained stale data.
+        RegionalEnergyObservation:
+            type: object
+            properties:
+                metric:
+                    type: string
+                period:
+                    type: string
+                    description: 'Source reporting period: YYYY-MM, YYYY-MM-DD, or a UTC ISO timestamp.'
+                value:
+                    type: number
+                    format: double
+                unit:
+                    type: string
+                area:
+                    type: string
+                    description: Provider coverage, product, or cross-border partner. Empty means national.
+                stale:
+                    type: boolean
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:
@@ -9713,7 +9841,7 @@ components:
                 disruptionPct:
                     type: integer
                     format: int32
-                    description: Percent of chokepoint flow disrupted, from 0 to 100.
+                    description: Percent of chokepoint flow disrupted, 10 to 100. Other values are clamped; an absent value models 10.
                 fuelMode:
                     type: string
                     description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
@@ -9730,9 +9858,11 @@ components:
                 gulfCrudeShare:
                     type: number
                     format: double
+                    description: 'Headline: preCrisisBaseline.gulfCrudeShare, a fraction of import value (tonnes if national_monthly) times the route factor; 0 when that baseline is absent or fuel_mode is gas.'
                 crudeLossKbd:
                     type: number
                     format: double
+                    description: 'Headline: preCrisisBaseline.crudeLossAfterBypassKbd when present, else preCrisisBaseline.crudeLossKbd; 0 when the loss is not modeled or fuel_mode is gas.'
                 products:
                     type: array
                     items:
@@ -9740,6 +9870,12 @@ components:
                 effectiveCoverDays:
                     type: integer
                     format: int32
+                    description: |-
+                        -1 marks a net oil exporter: the IEA flag, or, without an IEA record, a JODI
+                         crude row with positive production, crude exports above imports (unreported
+                         imports count as zero; an invalid reported figure disqualifies the row), and
+                         production at least refinery intake when intake is reported. No
+                         import-cover duration applies. It does not mean domestic supply is unexposed.
                 assessment:
                     type: string
                 dataAvailable:
@@ -9771,6 +9907,15 @@ components:
                     $ref: '#/components/schemas/GasImpact'
                 gasSensitivity:
                     $ref: '#/components/schemas/GasSensitivity'
+                preCrisisBaseline:
+                    $ref: '#/components/schemas/CrudeShareBaseline'
+                currentFlows:
+                    $ref: '#/components/schemas/CrudeShareBaseline'
+                reserveEstimate:
+                    deprecated: true
+                    $ref: '#/components/schemas/ReserveEstimate'
+                reportedStocks:
+                    $ref: '#/components/schemas/ReportedStocks'
         ProductImpact:
             type: object
             properties:
@@ -9782,6 +9927,9 @@ components:
                 demandKbd:
                     type: number
                     format: double
+                    description: |-
+                        JODI demand; with none in the window or latest month, national annual final
+                         consumption 0-3 years before the flow month (a "Product demand for" limitation).
                 deficitPct:
                     type: number
                     format: double
@@ -9842,7 +9990,7 @@ components:
                 lngDisruptionTj:
                     type: number
                     format: double
-                    description: Assumed monthly LNG loss against the route baseline, independent of current shipping flow.
+                    description: Monthly LNG loss at the route share, independent of current shipping flow.
                 totalDemandTj:
                     type: number
                     format: double
@@ -9863,7 +10011,11 @@ components:
                     description: JODI observation month (YYYY-MM), or empty when unknown. Availability does not imply freshness.
                 modelBasis:
                     type: string
-                    description: '"assumed_route_sensitivity". No country-specific supplier exposure is measured.'
+                    description: '"comtrade_lng_origin_share" (Hormuz), "observed_zero_lng_imports", or "assumed_route_sensitivity" (fixed route share).'
+                preCrisisBaseline:
+                    $ref: '#/components/schemas/LngShareBaseline'
+                currentFlows:
+                    $ref: '#/components/schemas/LngShareBaseline'
         GasStorageObservation:
             type: object
             properties:
@@ -9879,6 +10031,116 @@ components:
                     type: string
                 scope:
                     type: string
+        LngShareBaseline:
+            type: object
+            properties:
+                basis:
+                    type: string
+                    description: '"comtrade_monthly" or "comtrade_annual".'
+                fromMonth:
+                    type: string
+                toMonth:
+                    type: string
+                monthsCovered:
+                    type: integer
+                    format: int32
+                hormuzLngShare:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+            description: Hormuz (Qatar, UAE) share of LNG imports over one window, from UN Comtrade HS 271111.
+        CrudeShareBaseline:
+            type: object
+            properties:
+                basis:
+                    type: string
+                    description: |-
+                        "comtrade_monthly" (UN Comtrade import value); "national_monthly" (the importer's own customs or regulator
+                         statistics in tonnes, a volume share; Turkey from EPDK, as Turkey files no crude partners to Comtrade); or
+                         "comtrade_annual" for the annual partner-share fallback.
+                fromMonth:
+                    type: string
+                toMonth:
+                    type: string
+                monthsCovered:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                    description: |-
+                        Gulf share of crude import value (tonnes if national_monthly) times the chokepoint route factor: 1.0 for Hormuz and Bab el-Mandeb,
+                         0.6 for Suez and 0.7 for Malacca, where it is below the measured Gulf import share.
+                crudeLossKbd:
+                    type: number
+                    format: double
+                    description: Loss at disruption_pct on the Gulf supplier share, with no bypass recovery. Comtrade records origin, not route, so for currentFlows it counts crude already loading at Yanbu or Fujairah (an upper bound). 0 when not modeled (see limitations).
+                crudeLossAfterBypassKbd:
+                    type: number
+                    format: double
+                    description: 'preCrisisBaseline only: steady state after Hormuz bypass rerouting. Absent for other chokepoints, without per-exporter shares, or when the loss is not modeled.'
+            description: |-
+                Gulf crude share over one window and the crude loss it implies. preCrisisBaseline: the 12 months before the Hormuz crisis
+                 from at least 9 monthly filings (Comtrade, or national statistics for an importer with no Comtrade partner filings),
+                 else the annual share (basis comtrade_annual); drives the headline, products and cover.
+                 currentFlows: the latest 3 monthly filings since the crisis; absent when unavailable, never used for the
+                 products array or cover; the "product balance, current flows" line in limitations nets its crude loss.
+        ReserveEstimate:
+            type: object
+            properties:
+                scope:
+                    type: string
+                asOf:
+                    type: string
+                credibility:
+                    type: string
+                    description: '"high" or "low".'
+                lowMb:
+                    type: number
+                    format: double
+                centralMb:
+                    type: number
+                    format: double
+                highMb:
+                    type: number
+                    format: double
+                coverDaysLow:
+                    type: integer
+                    format: int32
+                    description: Cover at the low and high stock; absent when the loss is not modeled.
+                coverDaysHigh:
+                    type: integer
+                    format: int32
+            description: 'Deprecated: hand-entered reserve estimates were replaced by ReportedStocks.'
+        ReportedStocks:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: '"jodi".'
+                month:
+                    type: string
+                    description: YYYY-MM, the month the stocks closed.
+                crudeMb:
+                    type: number
+                    format: double
+                    description: Millions of barrels, as are products_mb and total_mb; each rounded separately.
+                productsMb:
+                    type: number
+                    format: double
+                totalMb:
+                    type: number
+                    format: double
+                stockDays:
+                    type: integer
+                    format: int32
+                    description: total_mb in days of JODI crude imports; absent unless the stocks set the cover.
+            description: |-
+                Month-end oil stocks a country without an IEA record reports to JODI (not
+                 IEA data). They set effective_cover_days only when stock_days is present;
+                 a net exporter keeps -1. Whether government reserves count depends on the reporter.
         GetCountryPortActivityRequest:
             type: object
             properties:
@@ -9896,6 +10158,11 @@ components:
                     type: string
                 available:
                     type: boolean
+                stale:
+                    type: boolean
+                    description: |-
+                        True when IMF PortWatch has not refreshed this country for seven days or
+                         more. The ports are its last data, served for up to 30 days.
         PortActivityEntry:
             type: object
             properties:

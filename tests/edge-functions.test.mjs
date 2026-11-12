@@ -80,8 +80,12 @@ describe('scripts/shared/ stays in sync with shared/', () => {
   ]);
   // The attribution manifest is canonical at shared/ and is consumed by
   // repository-rooted build tooling. It is not a scripts-runtime input, so a
-  // second committed copy would recreate the shared-file merge hotspot.
-  const canonicalOnlyFiles = new Set(['source-attribution-manifest.json']);
+  // second committed copy would recreate the shared-file merge hotspot. The
+  // full population-density outlines are Edge-only; the PS subset is also
+  // read by the browser. Neither is a scripts-runtime input. The seasonal
+  // hazard calendar is written by scripts/build-seasonal-hazard-calendar.mjs
+  // and read only by the travel risk assessment.
+  const canonicalOnlyFiles = new Set(['source-attribution-manifest.json', 'population-density-boundaries.json', 'population-density-palestine.json', 'seasonal-hazard-calendar.json']);
   const sharedFiles = readdirSync(sharedDir).filter(
     (f) => !canonicalOnlyFiles.has(f)
       && (f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f)),

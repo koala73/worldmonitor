@@ -139,7 +139,7 @@ body {
 
 .wm-embed-attribution:hover,
 .wm-embed-attribution:focus-visible {
-  color: var(--green);
+  color: var(--green-text, var(--green));
   border-color: var(--green);
   outline: none;
 }

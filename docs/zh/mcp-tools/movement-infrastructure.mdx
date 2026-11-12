@@ -1,0 +1,204 @@
+---
+title: "MCP 工具：交通与基础设施"
+sidebarTitle: "交通与基础设施"
+description: "World Monitor MCP 工具参考：航空、空域、海运、航班、网络摄像头与基础设施。逐一列出每个工具的输入参数与类型、数据新鲜度窗口、对应的后端 REST API 端点，以及可直接复制使用的示例调用负载，帮助开发者构建情报智能体、工作流自动化与自定义 MCP 客户端集成。"
+---
+
+本页属于 [MCP 工具参考](/zh/mcp-tools-reference)，该索引列出全部工具。连接、认证、套餐与错误见 [MCP Server 概览](/zh/mcp-overview)。
+
+以下工具暂仅提供英文参考：[`find_webcams`](/mcp-tools/movement-infrastructure#find_webcams)、[`get_webcam_media`](/mcp-tools/movement-infrastructure#get_webcam_media)、[`get_internet_activity`](/mcp-tools/movement-infrastructure#get_internet_activity)。
+
+`curl` 示例假设已执行 `export WM_KEY="wm_…"`；使用 OAuth 时，请将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+### `get_aviation_status`
+
+返回缓存的机场中断快照：每个受监控机场（全球约 85 个主要机场）一行告警，含 iata、name、country 和 severity，由国际枢纽的 AviationStack 延误聚合、美国机场的 FAA ASWS 延误以及 ICAO NOTAM 关闭构成。约每 30 分钟写入种子、90 分钟后标记为过期。快照包含所有受监控机场，因此除非设置 disrupted_only=true，大多数行的 severity 为 "normal"；默认 limit 30 只返回其中一部分（0 返回完整列表）。仅机场级状态；不含票价、航班时刻或航迹。缓存读取，无实时抓取：API 套餐权重 1，包含在已登录免费额度内。country 为不区分大小写的名称子串，iata 选择单个机场，limit 限制列表长度（默认 30，0 表示不限）。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `disrupted_only` | boolean | 丢弃严重度为 "normal" 的机场 — 仅保留实际经历延误/关闭的机场。引导数据列出每个受监测机场，因此不设此项时大多数行都是非事件。 |
+| `country` | string | 按名称筛选为一个国家（不区分大小写的子串，例如 "united states"）。 |
+| `iata` | string | 按 IATA 代码筛选为单个机场（例如 "JFK"）。 |
+| `limit` | number | 将警报列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_aviation_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_airspace`
+
+某国上空的实时 ADS-B 航空器。返回由 Wingbits 支持的民用航班，以及来自可再分发提供方的已识别军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码（例如 "AE"、"US"、"GB"、"JP"） |
+| `type` | string (all / civilian / military) | 否 | 筛选：所有航班（默认）、仅民用或仅军用 |
+
+- **API 端点：** `GET /api/aviation/v1/track-aircraft`, `GET /api/military/v1/list-military-flights`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_airspace","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_maritime_activity`
+
+按国家查询海上活动。`view: "traffic"` 为默认视图，返回实时 AIS 密度和中断。`view: "ports"` 返回最多 25 个港口的 30 天油轮到访量、进口与出口载重吨，以及相对前 30 天的变化。前期到访量为零或未知时 `trend_delta_pct` 为 null。未覆盖或过期数据返回 `available:false`。PortWatch 数据按计划采集，可能滞后于实时，`fetched_at` 为抓取时间。两个视图均需订阅，API 权重均为 2，且各调用一次下游接口。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码（例如 "AE"、"SA"、"JP"、"EG"） |
+| `view` | `traffic / ports` | 否 | 默认 `traffic`；`ports` 为定期采集的港口油轮活动。 |
+
+- **API 端点：** `GET /api/maritime/v1/get-vessel-snapshot`, `GET /api/intelligence/v1/get-country-port-activity`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_maritime_activity","arguments":{"country_code":"NL","view":"ports"}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flights`
+
+从 Google Flights 结果页实时读取特定日期两个机场之间的行程。每个行程包含全部乘客的美元总价、经停、时长，以及每个航段的航空公司、航班号、机场和当地出发与到达时间。提供 return_date 时价格覆盖往返行程，航段为去程。degraded 带 error 表示数据源失败；无 degraded 的空列表表示未找到行程。机场使用 IATA 代码（例如 "JFK"、"LHR"、"DXB"）。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
+| `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
+| `departure_date` | string | **是** | 出发日期，格式为 YYYY-MM-DD |
+| `return_date` | string | 否 | 往返行程的返程日期，格式为 YYYY-MM-DD（可选） |
+| `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选，默认 economy） |
+| `max_stops` | string | 否 | 最大经停数："0" 或 "non_stop" 表示直飞，"1" 或 "one_stop" 表示最多一次经停，省略表示不限（可选） |
+| `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
+| `sort_by` | string | 否 | 排序方式："price"（最便宜）、"duration"、"departure" 或 "arrival"（可选） |
+
+- **API 端点：** `GET /api/aviation/v1/search-google-flights`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","departure_date":"2026-08-15"}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flight_prices_by_date`
+
+两个机场之间每个出发日期的 Google Flights 最低票价，日期范围最多 31 天（每个日期一次结果页搜索）。每行包含日期、往返行程的返程日期（出发日期加 trip_duration），以及全部乘客的最低美元总价。没有行程的日期不列出。degraded 带 error 表示部分或全部日期失败，列表只包含有结果的日期。机场使用 IATA 代码。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
+| `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
+| `start_date` | string | **是** | 日期范围起始，格式为 YYYY-MM-DD |
+| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD，最多在 start_date 之后 30 天 |
+| `is_round_trip` | boolean | 否 | 是否搜索往返价格（默认 false）。为 true 时需要 trip_duration。 |
+| `trip_duration` | number | 否 | 行程天数 — is_round_trip 为 true 时必填（例如 7 表示一周行程） |
+| `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选） |
+| `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
+| `sort_by_price` | boolean | 否 | 按价格升序排序结果（默认 false，按日期排序） |
+
+- **API 端点：** `GET /api/aviation/v1/search-google-dates`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_infrastructure_status`
+
+Cloudflare Radar 互联网快照，分三个数据集：`outages`（故障及主要云提供商和互联网服务的状态）、`traffic`（流量异常，`totalCount` 为筛选前的全球总数）和 `ddos`（全球 DDoS 协议、向量和目标国家摘要）。原 `get_internet_activity` 已并入本工具，旧名称仍可调用并返回 `deprecation` 提示。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `dataset` | `array<string: outages / traffic / ddos>` | 将响应限制为故障、流量异常或 DDoS 摘要。省略则返回全部三个。 |
+| `country` | string | 按 ISO 3166-1 alpha-2 或 alpha-3 代码或英文国家名称筛选故障和流量异常。无法解析的输入返回 Invalid params。DDoS 摘要为全球数据，仅请求 DDoS 时传入 `country` 会返回 Invalid params。 |
+| `severity` | string | 筛选为一种故障严重度（不区分大小写的子串）。 |
+| `limit` | integer | 将每个列表（故障、异常、DDoS 协议、向量和目标国家）限制为最多这么多项（默认 30，传 0 表示不限）。 |
+
+- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`, `GET /api/infrastructure/v1/list-internet-traffic-anomalies`, `GET /api/infrastructure/v1/list-internet-ddos-attacks`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 故障 **30 分钟**，流量异常和 DDoS **60 分钟**；任一数据集超出预算即标记 `stale: true`。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_infrastructure_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>

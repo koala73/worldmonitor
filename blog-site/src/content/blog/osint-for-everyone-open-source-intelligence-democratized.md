@@ -15,7 +15,7 @@ World Monitor collapses that entire workflow into a single interactive dashboard
 
 ## The Tab Sprawl Problem
 
-If you've ever tried to monitor a developing situation, whether it's a military escalation, a natural disaster, or a supply chain disruption, you know the drill:
+If you've ever tried to monitor a developing situation, whether it's a military escalation, a [natural disaster](/blog/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/), or a supply chain disruption, you know the drill:
 
 1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
 2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
@@ -87,7 +87,7 @@ This runs locally in your browser. No data leaves your machine unless you explic
 
 ## The Country Instability Index
 
-One of World Monitor's original contributions to OSINT is the **Country Instability Index (CII)**, a real-time 0-100 score computed for every monitored nation:
+One of World Monitor's original contributions to OSINT is the **[Country Instability Index (CII)](/country-instability-index/)**, a real-time 0-100 score computed for every monitored nation:
 
 - **Baseline risk (40%):** Historical conflict data, governance indicators
 - **Unrest indicators (20%):** Protests, strikes, civil disorder events

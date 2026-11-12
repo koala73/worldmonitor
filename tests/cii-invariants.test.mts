@@ -14,10 +14,17 @@ import { after, describe, it } from 'node:test';
 
 import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
 import { ciiScoredVersion, loadCiiFixtures, pairsOrderedAgainstBlend, readCiiVersionClaim, type CiiFixture } from '../scripts/lib/cii-fixtures.mts';
+import { assessCiiInputs } from '../api/_cii-input-health.js';
 import {
   assessCiiInputAvailability,
+  assessUcdpWindow,
   buildCiiAuxiliarySources,
+  outageCountryCode,
+  ciiInputDetails,
+  computeCiiScoreTable,
+  type CiiRawInputs,
   scoreCiiAuxiliarySources,
+  withCiiInputQuietClocks,
   type AuxiliarySources,
   type CiiScoreTableRow,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
@@ -38,11 +45,41 @@ const KNOWN_GAPS: Record<string, ReadonlySet<string>> = {
     'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
     'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
+  // B2 split P8: P8a (no country moves > K) is still a gap, P8b (an alarm on
+  // an advisory provenance flip) now holds.
   v15: new Set([
-    'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P7b', 'P8', 'P9', 'P10',
-    'P11a', 'P12a', 'P12b', 'P14', 'P15b', 'P15e',
+    'P1', 'P2', 'P3a', 'P3b', 'P3c', 'P4', 'P5a', 'P5c', 'P7a', 'P8a', 'P9', 'P10b',
+    'P11a', 'P12b', 'P14', 'P15b', 'P15e',
   ]),
 };
+const CLAIM = readCiiVersionClaim();
+const SCORED = ciiScoredVersion(CLAIM);
+
+/**
+ * v15 release blockers: properties that passed as real assertions in v14 and
+ * fail after a Stage B change because of the floors that remain. Stage C
+ * removes the floors and must make each pass. While a property is listed it
+ * runs as a todo with its measured value; the ratchet below fails once one
+ * passes, names an unmeasured property, or is also a known gap, and the
+ * release gate fails while the list is non-empty and cii-next.json no longer
+ * marks v15 in progress, so cii-v15 cannot ship to main with a blocker.
+ */
+const V15_RELEASE_BLOCKERS: Array<{ id: string; measured: string; reason: string; owner: 'stage-c' }> = [
+  {
+    id: 'P15d',
+    measured: '60–64 (AE–CU), 31/31 outside 70–100',
+    reason: 'B6 removed the UCDP war floor (70) that met this anchor. In the v14 linear blend Conflict carries at most '
+      + '0.30 × 0.6 = 18 points. No Conflict term can reach 70 for a low-prior country; '
+      + 'Stage C\'s aggregation must, without a floor.',
+    owner: 'stage-c',
+  },
+  {
+    id: 'P5b',
+    measured: '8/31 = 26% of countries in [60, 65) on 2026-10-21T0628Z (AF, IQ, IR, KP, LB, MM, RU, SY at the advisory floor of 60)',
+    reason: 'B4 removed nine off-construct or context-only inputs; blends fell and floor-lifted countries rose, so max(blend, floor) stacks eight countries on 60. Owner approved P5b as a v15 release blocker on 2026-10-24.',
+    owner: 'stage-c',
+  },
+];
 const CLAIM = readCiiVersionClaim();
 const SCORED = ciiScoredVersion(CLAIM);
 
@@ -134,8 +171,12 @@ const channels: Record<string, (aux: AuxiliarySources, nowMs: number) => void> =
   strikes: (aux, nowMs) => addStrikes(aux, CODES, nowMs, [5]),
   // +1 severe violent event: one UCDP event yesterday with 25 deaths.
   violence: (aux, nowMs) => addUcdpEvents(aux, CODES, nowMs, 1, 25, 0),
-  // +1 severe unrest event: a nationwide internet shutdown.
-  unrest: (aux) => { aux.outages = [...aux.outages, ...CODES.map((code) => ({ countryCode: code, severity: 'OUTAGE_SEVERITY_TOTAL' }))]; },
+  // +1 severe unrest event: a nationwide internet shutdown, ordered by the government an hour ago and still on.
+  unrest: (aux, nowMs) => {
+    aux.outages = [...aux.outages, ...CODES.map((code) => ({
+      countryCode: code, severity: 'OUTAGE_SEVERITY_TOTAL', cause: 'GOVERNMENT_DIRECTED', detectedAt: nowMs - HOUR_MS, endedAt: 0,
+    }))];
+  },
   // +10 on the information channel: ten more high-threat headlines.
   information: (aux) => addHeadlines(aux, CODES, { high: 10 }),
 };
@@ -322,69 +363,192 @@ function measureP7a(): Measurement {
 }
 
 function measureP7b(): Measurement {
-  const cases = FIXTURES.map((f) => {
-    const aux = parse(f);
-    const records = aux.outages.length;
-    const mapped = aux.outages.filter((o: any) => CODES.includes(String(o.countryCode || o.country_code || '').toUpperCase())).length;
-    const state = assessCiiInputAvailability([], aux, f.nowMs, false).outages;
-    return { label: f.label, records, mapped, state };
+  // Each fixture as captured, and again with every record's country made
+  // unresolvable: a reader mapping none of its N > 0 records must read
+  // unusable, and one that maps any record must not.
+  type OutageRow = Record<string, unknown>;
+  const cases = FIXTURES.flatMap((f) => {
+    const rows = (f.inputs.outages as { outages?: OutageRow[] } | null)?.outages ?? [];
+    const unmapped = rows.map(({ countryCode: _a, country_code: _b, ...row }) => ({ ...row, country: 'Nowhere' }));
+    return ([[f.label, rows], [`${f.label} with unresolvable countries`, unmapped]] as const).map(([label, outages]) => {
+      const aux = buildCiiAuxiliarySources({ ...f.inputs, outages: { outages } }, f.nowMs, { iranEventsEnabled: f.iranEventsEnabled });
+      const mapped = outages.filter((o) => outageCountryCode(o)).length;
+      return { label, records: outages.length, mapped, state: assessCiiInputAvailability([], aux, f.nowMs, false).outages };
+    });
   });
-  const bad = cases.filter((c) => c.records > 0 && c.mapped === 0 && c.state !== 'unusable');
-  const c = bad[0] ?? cases[0]!;
-  return { pass: bad.length === 0, value: `outages: ${c.mapped} of ${c.records} records map to a country, health reads ${c.state} (want unusable)` };
+  const bad = cases.filter((c) => c.records > 0 && (c.mapped === 0) !== (c.state === 'unusable'));
+  const exercised = cases.some((c) => c.records > 0 && c.mapped === 0);
+  const c = bad[0] ?? cases.find((x) => x.records > 0 && x.mapped === 0) ?? cases[0]!;
+  return {
+    pass: exercised && bad.length === 0,
+    value: `outages (${c.label}): ${c.mapped} of ${c.records} records map to a country, health reads ${c.state}`,
+  };
 }
 
+// A failed advisory read is measured after its last good snapshot expires.
+// measureP8a also exercises the bounded snapshot through the real read path.
 const FAILED_INPUT: Record<string, Partial<AuxiliarySources>> = {
-  ucdp: { ucdpEvents: [] }, outages: { outages: [] }, climate: { climate: [] }, fires: { fires: null },
-  gpsjam: { gpsHexes: [] }, iranEvents: { iranEvents: [] }, oref: { orefData: null }, advisories: { advisories: null },
+  ucdp: { ucdpEvents: [] }, outages: { outages: [] },
+  iranEvents: { iranEvents: [] }, oref: { orefData: null },
+  advisories: { advisories: null },
   displacement: { displacedByIso3: {} }, crossBorder: { crossBorderSurgeCountries: [] }, newsInsights: { newsTopStories: [] },
-  threatSummary: { threatSummaryByCountry: null }, aviation: { aviationAlerts: [] }, earthquakes: { earthquakes: [] },
-  sanctions: { sanctionsCountries: [], sanctionsCountryCounts: null }, militaryCii: { militaryCii: null },
+  threatSummary: { threatSummaryByCountry: null },
   gdeltCountryEvents: { gdeltCountryEvents: null }, strikePressure: { confirmedStrikes: null },
 };
 
-function measureP8(): Measurement {
+const ADVISORY_EXPIRED = 'advisories, snapshot expired';
+const ADVISORY_SNAPSHOT = 'advisories, snapshot standing in';
+
+function measureP8a(): Measurement {
   const moves: Array<{ input: string; code: string; label: string; delta: number }> = [];
   for (const { f, table } of fixtureTables) {
     const aux = parse(f);
-    for (const [input, failed] of Object.entries(FAILED_INPUT)) {
-      const next = score({ ...aux, ...failed }, f.nowMs);
+    const record = (input: string, next: Table) => {
       for (const code of CODES) moves.push({ input, code, label: f.label, delta: S(next, code) - S(table, code) });
+    };
+    for (const [input, failed] of Object.entries(FAILED_INPUT)) {
+      record(input === 'advisories' ? ADVISORY_EXPIRED : input, score({ ...aux, ...failed }, f.nowMs));
     }
+    const byCountry = (f.inputs.advisories as { byCountry?: Record<string, string> } | null)?.byCountry ?? {};
+    const failedRead = { ...f.inputs, advisories: null, advisoriesLastGood: { byCountry, fetchedAt: f.nowMs - HOUR_MS } };
+    record(ADVISORY_SNAPSHOT, score(buildCiiAuxiliarySources(failedRead, f.nowMs, { iranEventsEnabled: f.iranEventsEnabled }), f.nowMs));
   }
   const top = worst(moves, (m) => Math.abs(m.delta), 3);
+  const largest = (input: string) => worst(moves.filter((m) => m.input === input), (m) => Math.abs(m.delta), 1)[0]!;
+  const standingIn = largest(ADVISORY_SNAPSHOT);
+  const expired = largest(ADVISORY_EXPIRED);
   return {
     pass: top.every((m) => Math.abs(m.delta) <= 10),
-    value: `one failed input moves a country by up to ${top.map((m) => `${m.code} ${m.delta > 0 ? '+' : ''}${m.delta} (${m.input})`).join(', ')}; limit K = 10; no provenance-flip alarm exists`,
+    value: `one failed input moves a country by up to ${top.map((m) => `${m.code} ${m.delta > 0 ? '+' : ''}${m.delta} (${m.input})`).join(', ')}; limit K = 10; a failed advisory read moves at most ${Math.abs(standingIn.delta)} while its snapshot lasts, ${Math.abs(expired.delta)} (${expired.code}) once it has expired`,
+  };
+}
+
+/**
+ * P8b: an advisory provenance flip raises an input-health alarm when the read
+ * or a register was lost; a country delisted with every register reporting is
+ * a warning. Every case states which it must be, so each one asserts, and no
+ * flip may go unreported. A fixture that cannot build a case fails the property
+ * rather than skipping it.
+ */
+function measureP8b(): Measurement {
+  const wrong: string[] = [];
+  let checked = 0;
+  for (const f of FIXTURES) {
+    const live = (f.inputs.advisories as { byCountry?: Record<string, string> } | null)?.byCountry;
+    if (!live || Object.keys(live).length === 0) {
+      wrong.push(`${f.label}: no live advisory map to build the cases from`);
+      continue;
+    }
+    const fresh = { byCountry: live, fetchedAt: f.nowMs - HOUR_MS };
+    const expired = { byCountry: live, fetchedAt: f.nowMs - 4 * DAY_MS };
+    const partial = Object.fromEntries(Object.entries(live).filter(([code]) => code !== 'QA' && code !== 'UA'));
+    const levelItems = (sources: string[]) => sources.map((sourceCountry) => ({ sourceCountry, country: 'QA', level: 'caution' }));
+    const cases: Array<{ name: string; inputs: CiiRawInputs; alarm: boolean; warning?: boolean }> = [
+      { name: 'live', inputs: f.inputs, alarm: false },
+      { name: 'live with both level sources', inputs: { ...f.inputs, advisories: { byCountry: live, advisories: levelItems(['US', 'AU']) } }, alarm: false },
+      { name: 'live without the US source', inputs: { ...f.inputs, advisories: { byCountry: live, advisories: levelItems(['AU']) } }, alarm: true },
+      { name: 'partial live map with a fresh snapshot, every register reporting', inputs: { ...f.inputs, advisories: { byCountry: partial, advisories: levelItems(['US', 'AU']) }, advisoriesLastGood: fresh }, alarm: false, warning: true },
+      { name: 'partial live map with a fresh snapshot, a register missing', inputs: { ...f.inputs, advisories: { byCountry: partial, advisories: levelItems(['AU']) }, advisoriesLastGood: fresh }, alarm: true },
+      { name: 'failed read with a fresh snapshot', inputs: { ...f.inputs, advisories: null, advisoriesLastGood: fresh }, alarm: true },
+      { name: 'failed read with an expired snapshot', inputs: { ...f.inputs, advisories: null, advisoriesLastGood: expired }, alarm: true },
+      { name: 'failed read, no snapshot', inputs: { ...f.inputs, advisories: null }, alarm: true },
+      { name: 'failed read, snapshot read failed', inputs: { ...f.inputs, advisories: null, advisoriesLastGoodReadFailed: true }, alarm: true },
+    ];
+    for (const c of cases) {
+      const t = computeCiiScoreTable(c.inputs, { nowMs: f.nowMs, iranEventsEnabled: f.iranEventsEnabled });
+      const states = assessCiiInputAvailability([], t.aux, f.nowMs, false);
+      const reports = withCiiInputQuietClocks(states, null, f.nowMs, { details: ciiInputDetails(t.aux) });
+      const health = assessCiiInputs({ inputs: reports }, f.nowMs);
+      const alarmed = health.dead.some((d: { id: string }) => d.id === 'advisories');
+      const warned = health.warnings.some((d: { id: string }) => d.id === 'advisories');
+      const flipped = t.scores.some((s) => s.advisoryProvenance === 'fallback');
+      checked += 1;
+      if (alarmed !== c.alarm) wrong.push(`${f.label}/${c.name}: alarm ${alarmed}, want ${c.alarm}`);
+      else if (warned !== Boolean(c.warning)) wrong.push(`${f.label}/${c.name}: warning ${warned}, want ${Boolean(c.warning)}`);
+      else if (flipped && !alarmed && !warned) wrong.push(`${f.label}/${c.name}: fallback scores with neither an alarm nor a warning`);
+    }
+  }
+  return {
+    pass: checked > 0 && wrong.length === 0,
+    value: wrong.length
+      ? `${wrong.length} of ${checked} advisory provenance case(s) wrong, e.g. ${wrong[0]}`
+      : `${checked} advisory provenance cases: each alarms when the read or a register was lost, and a country delisted with every register reporting is a warning`,
   };
 }
 
 function measureP9(): Measurement {
-  const WINDOW_DAYS = 730;
+  // The read-time check the producer reports in input health (assessUcdpWindow):
+  // the rows reach back to within a month of the term's window start, no month
+  // between their oldest and newest rows is near-empty, and the newest is fresh.
   const cases = FIXTURES.map((f) => {
-    const dates = parse(f).ucdpEvents.map((e: any) => Number(e.dateStart)).filter((d) => Number.isFinite(d) && d <= f.nowMs && f.nowMs - d < WINDOW_DAYS * DAY_MS);
-    const spanDays = dates.length ? (f.nowMs - Math.min(...dates)) / DAY_MS : 0;
-    const recent = dates.filter((d) => f.nowMs - d < 60 * DAY_MS).length / Math.max(1, dates.length);
-    return { label: f.label, spanDays, recent, newestDays: dates.length ? (f.nowMs - Math.max(...dates)) / DAY_MS : NaN };
+    const aux = parse(f);
+    return { label: f.label, ...assessUcdpWindow(aux.ucdpEvents, aux.ucdpDailyTotals, f.nowMs, aux.ucdpWriterComplete ?? null, aux.ucdpUpstreamGapMonths ?? []) };
   });
-  const c = worst(cases, (x) => -x.spanDays, 1)[0]!;
+  const c = cases.find((x) => !x.honest) ?? cases[0]!;
   return {
-    pass: cases.every((x) => x.spanDays >= 0.9 * WINDOW_DAYS),
-    value: `UCDP cache spans ${Math.round(c.spanDays)} of the ${WINDOW_DAYS} days its thresholds assume, ${Math.round(c.recent * 100)}% of rows in the last 60 days, newest ${Math.round(c.newestDays)} days old`,
+    pass: cases.every((x) => x.honest),
+    value: `UCDP cache reaches ${c.oldestAgeDays} of the ${c.assumedDays} days the term assumes (${c.label}), newest ${c.newestAgeDays} days old, `
+      + `${c.gapMonths.length} near-empty months between (${c.gapMonths.join(', ') || 'none'})`,
   };
 }
 
-function measureP10(): Measurement {
+/**
+ * P10a: more airports, ADS-B receivers, AIS stations, satellite passes and
+ * seismic stations never raise S. Each instrument-density feed the fixtures
+ * carry is densified at the raw-input level. None is scored since v15, so this
+ * is the regression guard against any removed input returning.
+ */
+function measureP10a(): Measurement {
+  const moves: Array<{ code: string; feed: string; delta: number }> = [];
+  for (const { f, table } of fixtureTables) {
+    const military = (f.inputs.militaryCii as { byCountry?: Record<string, any> } | null)?.byCountry ?? {};
+    const fires = f.inputs.fires as { byCountry?: Record<string, object[]> } | null;
+    const denser: Record<string, Record<string, any>> = {
+      // Ten more airports reporting moderate delays.
+      airports: { aviation: { alerts: [...rawRows(f, 'aviation', 'alerts'), ...CODES.flatMap((code) => Array.from({ length: 10 }, () => ({ country: TIER1_COUNTRIES[code as keyof typeof TIER1_COUNTRIES], severity: 'moderate', delayType: 'general' })))] } },
+      // More ADS-B receivers: every jammed hex seen six times.
+      'ADS-B receivers': { gpsjam: { hexes: rawRows(f, 'gpsjam', 'hexes').flatMap((h) => Array.from({ length: 6 }, () => h)) } },
+      // More AIS stations and ADS-B coverage: ten more vessels, flights and AIS disruptions per country.
+      'AIS stations': { militaryCii: { byCountry: Object.fromEntries(CODES.map((code) => {
+        const m = military[code] ?? {};
+        return [code, { ...m, foreignFlights: Number(m.foreignFlights ?? 0) + 10, foreignVessels: Number(m.foreignVessels ?? 0) + 10, aisDisruptionHigh: Number(m.aisDisruptionHigh ?? 0) + 10 }];
+      })) } },
+      // More satellite passes: twenty more bright detections per country.
+      // More seismic stations: ten more magnitude 5.6 quakes recorded in each country.
+      'seismic stations': { earthquakes: { earthquakes: [...rawRows(f, 'earthquakes', 'earthquakes'), ...CODES.flatMap((code) => Array.from({ length: 10 }, () => ({
+        magnitude: 5.6, occurredAt: f.nowMs - 3_600_000, place: `10 km N of a town, ${TIER1_COUNTRIES[code as keyof typeof TIER1_COUNTRIES]}`, location: { latitude: -89, longitude: 0 },
+      })))] } },
+      'satellite passes': fires ? { fires: { ...fires, byCountry: Object.fromEntries(CODES.map((code) => [code, [...(fires.byCountry?.[code] ?? []), ...Array.from({ length: 20 }, () => ({ brightness: 400, frp: 80 }))]])) } } : {},
+    };
+    for (const [feed, inputs] of Object.entries(denser)) {
+      const moved = score(parseRaw(f, inputs), f.nowMs);
+      for (const code of CODES) moves.push({ code, feed, delta: S(moved, code) - S(table, code) });
+    }
+  }
+  const w = worst(moves, (m) => m.delta, 1)[0]!;
+  return { pass: w.delta <= 0, value: `denser airports, ADS-B, AIS, satellite and seismic coverage raise ${moves.filter((m) => m.delta > 0).length}/${moves.length} cases, up to +${w.delta} (${w.code}, ${w.feed})` };
+}
+
+/**
+ * P10b: twice the media volume on the scored inputs never raises S: each top
+ * story from a second outlet, and twice the classified headline counts. GDELT
+ * article volume is P12b's, so it is not counted twice here. Outage records are
+ * left out: none maps to a country until the outage reader is fixed (B1), so a
+ * second monitor per outage would read 0 vacuously; re-run then.
+ */
+function measureP10b(): Measurement {
   const moves: Array<{ code: string; delta: number }> = [];
   for (const { f, table } of fixtureTables) {
-    const aux = parse(f);
-    // Ten more airports reporting moderate delays: infrastructure density, not instability.
-    const next = { ...aux, aviationAlerts: [...aux.aviationAlerts, ...CODES.flatMap((code) => Array.from({ length: 10 }, () => ({ country: TIER1_COUNTRIES[code as keyof typeof TIER1_COUNTRIES], severity: 'moderate', delayType: 'general' })))] };
+    const next = clone(parse(f));
+    next.newsTopStories = [...next.newsTopStories, ...next.newsTopStories];
+    if (next.threatSummaryByCountry) {
+      for (const row of Object.values(next.threatSummaryByCountry)) for (const level of Object.keys(row)) (row as any)[level] *= 2;
+    }
     const moved = score(next, f.nowMs);
     for (const code of CODES) moves.push({ code, delta: S(moved, code) - S(table, code) });
   }
   const w = worst(moves, (m) => m.delta, 1)[0]!;
-  return { pass: w.delta <= 0, value: `10 more delayed airports raise ${moves.filter((m) => m.delta > 0).length}/${moves.length} cases, up to +${w.delta} (${w.code})` };
+  return { pass: w.delta <= 0, value: `twice the news and threat-summary volume raises ${moves.filter((m) => m.delta > 0).length}/${moves.length} cases, up to +${w.delta} (${w.code}); GDELT volume: see P12b; outages vacuous until B1 maps records, re-run then` };
 }
 
 function measureP11a(): Measurement {
@@ -400,13 +564,18 @@ function measureP11a(): Measurement {
   return { pass: moves.every((m) => m.delta === 0), value: `a headline on A's strike abroad raises A in ${moves.filter((m) => m.delta !== 0).length}/${moves.length} cases, up to +${w.delta} (${w.code})` };
 }
 
+/** Raw inputs as the Redis reads return them, parsed again: measures a scorer that stops reading an input too. */
+function parseRaw(f: CiiFixture, inputs: Record<string, any>): AuxiliarySources {
+  return buildCiiAuxiliarySources({ ...f.inputs, ...inputs }, f.nowMs, { iranEventsEnabled: f.iranEventsEnabled });
+}
+const rawRows = (f: CiiFixture, key: string, field: string): any[] => ((f.inputs as Record<string, any>)[key]?.[field] ?? []) as any[];
+
 function measureP11b(): Measurement {
   const moves: number[] = [];
   for (const { f, table } of fixtureTables) {
-    const aux = parse(f);
-    const militaryCii = { ...(aux.militaryCii ?? {}) };
-    for (const code of CODES) militaryCii[code] = { ...(militaryCii[code] ?? {}), ownFlights: Number(militaryCii[code]?.ownFlights ?? 0) + 50, ownVessels: Number(militaryCii[code]?.ownVessels ?? 0) + 20 };
-    const moved = score({ ...aux, militaryCii }, f.nowMs);
+    const byCountry = { ...((f.inputs.militaryCii as { byCountry?: Record<string, any> } | null)?.byCountry ?? {}) };
+    for (const code of CODES) byCountry[code] = { ...(byCountry[code] ?? {}), ownFlights: Number(byCountry[code]?.ownFlights ?? 0) + 50, ownVessels: Number(byCountry[code]?.ownVessels ?? 0) + 20 };
+    const moved = score(parseRaw(f, { militaryCii: { byCountry } }), f.nowMs);
     for (const code of CODES) moves.push(S(moved, code) - S(table, code));
   }
   const maxMove = Math.max(...moves.map(Math.abs));
@@ -427,9 +596,8 @@ function mulberry32(seed: number): () => number {
 
 /**
  * ±10% on every magnitude, including the scored numbers inside list records
- * (UCDP deaths, quake magnitude, fire brightness and radiative power, numeric
- * climate severity); dates and locations stay fixed. Each list record is also
- * dropped or duplicated with probability 5% each.
+ * (UCDP deaths); dates and locations stay fixed. Each list
+ * record is also dropped or duplicated with probability 5% each.
  */
 function perturb(aux: AuxiliarySources, rand: () => number): AuxiliarySources {
   const jitter = (n: number) => n * (0.9 + 0.2 * rand());
@@ -441,18 +609,12 @@ function perturb(aux: AuxiliarySources, rand: () => number): AuxiliarySources {
     return out;
   };
   const next = clone(aux);
-  for (const field of ['ucdpEvents', 'outages', 'climate', 'gpsHexes', 'iranEvents', 'aviationAlerts', 'earthquakes', 'newsTopStories'] as const) {
+  for (const field of ['ucdpEvents', 'outages', 'iranEvents', 'newsTopStories'] as const) {
     (next as any)[field] = resample((next as any)[field] ?? []);
   }
   next.ucdpEvents = next.ucdpEvents.map((e) => jitterFields(e, ['deathsBest']));
-  next.earthquakes = next.earthquakes.map((e) => jitterFields(e, ['magnitude']));
-  next.climate = next.climate.map((a) => jitterFields(a, ['severity', 'score']));
-  next.fires = mapValues(next.fires, (rows) => resample(rows).map((f) => jitterFields(f, ['brightness', 'frp'])));
   next.displacedByIso3 = mapValues(next.displacedByIso3, jitter) ?? {};
   next.threatSummaryByCountry = mapValues(next.threatSummaryByCountry, (row) => mapValues(row as any, jitter) as any);
-  next.sanctionsCountryCounts = mapValues(next.sanctionsCountryCounts, jitter);
-  next.sanctionsCountries = next.sanctionsCountries.map((c: any) => ({ ...c, entryCount: jitter(Number(c.entryCount) || 0) }));
-  next.militaryCii = mapValues(next.militaryCii, (m: any) => mapValues(m, (v: any) => (typeof v === 'number' ? jitter(v) : v)));
   next.confirmedStrikes = mapValues(next.confirmedStrikes, (days) => mapValues(days, jitter) as any);
   if (next.orefData) next.orefData = { activeAlertCount: Math.round(jitter(next.orefData.activeAlertCount)), historyCount24h: Math.round(jitter(next.orefData.historyCount24h)) };
   if (next.gdeltCountryEvents) {
@@ -592,9 +754,11 @@ const PROPERTIES: Array<{ id: string; title: string; measure: () => Measurement 
   { id: 'P5c', title: 'preserves information: 0 pairs ordered against the evidence', measure: measureP5c },
   { id: 'P7a', title: 'unknown ≠ calm: a nulled input sets coverage < 1', measure: measureP7a },
   { id: 'P7b', title: 'unknown ≠ calm: a reader mapping 0 of N records is unusable, not quiet', measure: measureP7b },
-  { id: 'P8', title: 'robust to a failed input: no country moves by > 10', measure: measureP8 },
+  { id: 'P8a', title: 'robust to a failed input: no country moves by > 10', measure: measureP8a },
+  { id: 'P8b', title: 'robust to a failed input: an alarm fires on an advisory provenance flip', measure: measureP8b },
   { id: 'P9', title: 'window honesty: the cached window equals the calibrated window', measure: measureP9 },
-  { id: 'P10', title: 'normalisation: more infrastructure never raises S', measure: measureP10 },
+  { id: 'P10a', title: 'normalisation (regression guard for removed inputs): more airports, receivers, stations, satellite passes or seismometers never raise S', measure: measureP10a },
+  { id: 'P10b', title: 'normalisation: more news and threat-summary volume never raises S', measure: measureP10b },
   { id: 'P11a', title: "exclusion: A's strikes on B leave A unchanged", measure: measureP11a },
   { id: 'P11b', title: "exclusion: A's forces abroad leave A unchanged", measure: measureP11b },
   { id: 'P12a', title: 'noise: ±10% on every input gives median |ΔS| ≤ 2, p99 ≤ 6', measure: measureP12a },
@@ -610,7 +774,9 @@ const NOT_COMPUTABLE: Array<{ id: string; title: string; reason: string }> = [
 ];
 
 const gaps = KNOWN_GAPS[SCORED] ?? new Set<string>();
-const results = PROPERTIES.map((p) => ({ ...p, ...p.measure(), known: gaps.has(p.id) }));
+const blockers = SCORED === 'v15' ? V15_RELEASE_BLOCKERS : [];
+const blockerIds = new Set(blockers.map((b) => b.id));
+const results = PROPERTIES.map((p) => ({ ...p, ...p.measure(), known: gaps.has(p.id), blocker: blockerIds.has(p.id) }));
 
 describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
   it('runs on at least three committed fixture dates', () => {
@@ -622,6 +788,7 @@ describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
     // A known gap was measured above and its value is in the name; the ratchet
     // below fails once it passes, so its body has nothing left to assert.
     if (r.known) it(name, { todo: `known ${SCORED} gap` }, () => {});
+    else if (r.blocker) it(name, { todo: `${SCORED} release blocker (owner stage-c)` }, () => {});
     else it(name, () => assert.ok(r.pass, r.value));
   }
   for (const p of NOT_COMPUTABLE) it(`${p.id} ${p.title}`, { todo: `not computable in CI: ${p.reason}` });
@@ -631,6 +798,68 @@ describe(`CII invariants (${SCORED}, ${FIXTURES.length} fixtures)`, () => {
     assert.deepEqual(fixed, [], `now passing, promote to a real assertion: ${fixed.join(', ')}`);
     const unknown = [...gaps].filter((id) => !results.some((r) => r.id === id));
     assert.deepEqual(unknown, [], `KNOWN_GAPS names unmeasured properties: ${unknown.join(', ')}`);
+  });
+
+  it('every v15 release blocker still fails, is measured, and is not also a known gap', () => {
+    const fixed = results.filter((r) => r.blocker && r.pass).map((r) => r.id);
+    assert.deepEqual(fixed, [], `release blocker now passes, remove it from V15_RELEASE_BLOCKERS: ${fixed.join(', ')}`);
+    const unknown = blockers.map((b) => b.id).filter((id) => !results.some((r) => r.id === id));
+    assert.deepEqual(unknown, [], `V15_RELEASE_BLOCKERS names unmeasured properties: ${unknown.join(', ')}`);
+    const both = blockers.map((b) => b.id).filter((id) => gaps.has(id));
+    assert.deepEqual(both, [], `a release blocker is also listed in KNOWN_GAPS: ${both.join(', ')}`);
+  });
+});
+
+// ------------------------------------------------------------------------
+// The release gate (docs/methodology/cii-change-brief.md section 3). An
+// integration branch scores `next` under the released CII_FORMULA_VERSION, so
+// its tables are checked under `next`. If that reached main unchanged,
+// production would serve next's scores labelled with the old version and every
+// fixture check would stay green. Main and PRs into main must therefore carry
+// no in-progress version, and a released tree must name its own version.
+// ------------------------------------------------------------------------
+
+const versionNumber = (v: string) => Number(v.slice(1));
+/** CI on main, a PR into main, or a merge-queue run for main. */
+function ciiTargetsMain(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.GITHUB_BASE_REF) return env.GITHUB_BASE_REF === 'main';
+  const ref = env.GITHUB_REF ?? '';
+  return ref === 'refs/heads/main' || ref.startsWith('refs/heads/gh-readonly-queue/main/');
+}
+
+describe('CII release gate', () => {
+  it('main carries no in-progress CII version', {
+    skip: ciiTargetsMain() ? false : 'runs in CI on main and on PRs into main (GITHUB_BASE_REF / GITHUB_REF); this run targets neither',
+  }, () => {
+    assert.notEqual(CLAIM.inProgress, true,
+      `cii-next.json marks ${CLAIM.next} in progress on ${CLAIM.branch}. Before it merges to main: bump CII_FORMULA_VERSION to ${CLAIM.next}, clear inProgress, move the claim on, and freeze the ${CLAIM.next} hash.`);
+  });
+
+  it('a released tree names its own version: CII_FORMULA_VERSION is next, or the claim has moved on to the version after, it has a KNOWN_GAPS entry, and no release blocker remains', {
+    skip: CLAIM.inProgress === true ? `${CLAIM.next} is in progress on ${CLAIM.branch}; checked once it is cleared` : false,
+  }, () => {
+    const gap = versionNumber(CLAIM.next) - versionNumber(CII_FORMULA_VERSION);
+    assert.ok(gap === 0 || gap === 1,
+      `cii-next.json names ${CLAIM.next} while CII_FORMULA_VERSION is ${CII_FORMULA_VERSION}: a shipped version must bump CII_FORMULA_VERSION and move the claim on by one`);
+    assert.ok(KNOWN_GAPS[CII_FORMULA_VERSION], `KNOWN_GAPS has no ${CII_FORMULA_VERSION} entry; a released version lists its gaps, or an empty set`);
+    assert.deepEqual(V15_RELEASE_BLOCKERS.map((b) => `${b.id}: ${b.measured}`), [],
+      'v15 cannot be released while it carries regressions against v14');
+  });
+
+  it('no v15 release blocker remains once v15 is no longer in progress', {
+    skip: CLAIM.inProgress === true ? `${CLAIM.next} is in progress on ${CLAIM.branch}; checked once it is cleared` : false,
+  }, () => {
+    assert.deepEqual(V15_RELEASE_BLOCKERS.map((b) => `${b.id} (${b.measured})`), [],
+      'cii-v15 cannot ship while a v15 release blocker is listed: Stage C must make each pass without a floor');
+  });
+
+  it('recognises the CI runs that target main', () => {
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'main', GITHUB_REF: 'refs/pull/1/merge' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_BASE_REF: 'cii-v15', GITHUB_REF: 'refs/pull/1/merge' }), false);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/main' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-1-abc' }), true);
+    assert.equal(ciiTargetsMain({ GITHUB_REF: 'refs/heads/cii-v15' }), false);
+    assert.equal(ciiTargetsMain({}), false);
   });
 });
 
@@ -681,9 +910,9 @@ describe('CII release gate', () => {
 after(() => {
   const lines = [
     `CII invariants, ${SCORED}, fixtures ${FIXTURES.map((f) => f.label).join(', ')}`,
-    ...results.map((r) => `${r.id.padEnd(5)} ${(r.pass ? 'pass' : r.known ? 'todo' : 'FAIL').padEnd(5)} ${r.value}`),
+    ...results.map((r) => `${r.id.padEnd(5)} ${(r.pass ? 'pass' : r.known ? 'todo' : r.blocker ? 'block' : 'FAIL').padEnd(5)} ${r.value}`),
     ...NOT_COMPUTABLE.map((p) => `${p.id.padEnd(5)} todo  not computable: ${p.reason}`),
-    `pass ${results.filter((r) => r.pass).length}, todo ${results.filter((r) => !r.pass && r.known).length + NOT_COMPUTABLE.length}, fail ${results.filter((r) => !r.pass && !r.known).length}`,
+    `pass ${results.filter((r) => r.pass).length}, todo ${results.filter((r) => !r.pass && r.known).length + NOT_COMPUTABLE.length}, release blockers ${results.filter((r) => !r.pass && r.blocker).length}, fail ${results.filter((r) => !r.pass && !r.known && !r.blocker).length}`,
   ];
   console.log(lines.join('\n'));
 });

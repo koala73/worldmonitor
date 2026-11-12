@@ -43,6 +43,7 @@ Set these before enabling strict relay auth.
 | `AISSTREAM_API_KEY` | Railway | none | Yes | Auth for AIS upstream stream source. |
 | `VITE_AISSTREAM_API_KEY` | Local dev only | none | No | Local fallback if `AISSTREAM_API_KEY` is missing. Not recommended for production. |
 | `PORT` | Railway/local | `3004` | No | HTTP server listen port for relay process. |
+| `RELAY_BIND_HOST` | Local | all interfaces | No | Address the relay listens on. Native installs outside Docker set `127.0.0.1`; leave unset on Railway. |
 | `WS_RELAY_URL` | Vercel + server handlers | none | Yes (for relay-backed features) | Base URL used by Vercel/server to reach Railway relay. |
 | `VITE_WS_RELAY_URL` | Browser (local dev) | none | No | Localhost fallback path for direct browser calls in development only. |
 | `RELAY_SHARED_SECRET` | Railway + Vercel + self-hosted | empty | **Yes (always)** | Shared secret for non-public relay routes. The relay refuses to start without it unless `I_UNDERSTAND_THIS_DISABLES_AUTH=true`. |
