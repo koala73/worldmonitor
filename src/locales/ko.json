@@ -5030,7 +5030,7 @@
       "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
       "emptyCorrelation": "이 국가들에 대한 신호가 없습니다"
     },
-    "draftAssessment": "초안 평가",
+    "draftAssessment": "여행 위험 평가",
     "draftAssessmentAria": "이 포커스로 미리 채워진 여행 위험 평가 열기",
     "draftCopied": "요청이 복사되었습니다. AI 어시스턴트에 붙여넣으세요.",
     "draftCopiedPartial": "첫 {{count}}개 국가에 대한 요청이 복사되었습니다. 평가는 최대 {{max}}개 국가를 포함할 수 있습니다. 제외된 국가: {{omitted}}.",

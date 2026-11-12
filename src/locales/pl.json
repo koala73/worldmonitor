@@ -5114,7 +5114,7 @@
       "emptyDisplacement": "Brak danych o przesiedleniach dla tych krajów",
       "emptyCorrelation": "Brak sygnałów dla tych krajów"
     },
-    "draftAssessment": "Szkic oceny",
+    "draftAssessment": "Ocena podróży",
     "draftAssessmentAria": "Otwórz ocenę podróży, wstępnie wypełnioną tym fokusem",
     "draftCopied": "Prośba skopiowana. Wklej ją do swojego asystenta AI.",
     "draftCopiedPartial": "Żądanie skopiowano dla pierwszych {{count}} krajów. Ocena obejmuje co najwyżej {{max}} krajów. Pominięte kraje: {{omitted}}.",

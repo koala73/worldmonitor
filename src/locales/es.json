@@ -5086,7 +5086,7 @@
       "emptyDisplacement": "Sin datos de desplazamiento para estos países",
       "emptyCorrelation": "Sin señales para estos países"
     },
-    "draftAssessment": "Evaluación preliminar",
+    "draftAssessment": "Evaluación de viaje",
     "draftAssessmentAria": "Abre la evaluación de viaje, rellenada previamente con este enfoque",
     "draftCopied": "Solicitud copiada. Pégala en tu asistente de IA.",
     "draftCopiedPartial": "Solicitud copiada para los primeros {{count}} países. Una evaluación cubre como máximo {{max}} países. Países excluidos: {{omitted}}.",

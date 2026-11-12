@@ -106,6 +106,7 @@
     { "source": "/use-cases/:slug([a-z0-9-]+)", "destination": "/use-cases/:slug/", "permanent": true },
     { "source": "/accuracy", "destination": "/accuracy/", "permanent": true },
     { "source": "/monitor-the-situation", "destination": "/monitor-the-situation/", "permanent": true },
+    { "source": "/security", "destination": "/security/", "permanent": true },
     { "source": "/trust", "destination": "/trust/", "permanent": true },
     { "source": "/agent", "destination": "/agent/", "permanent": true },
     { "source": "/trust/review", "destination": "/trust/review/", "permanent": false },
