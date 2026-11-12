@@ -36,6 +36,13 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-changed-tests.sh');
 
+// A sync child blocks the event loop, so node:test's per-test timeout cannot
+// fire while it runs. Without a deadline, a child that never exits hangs the
+// whole file until run-data-tests' 300s watchdog aborts it unnamed (#10334).
+// SIGKILL, because the default SIGTERM leaves the call blocked until a child
+// that ignores it exits on its own.
+const CHILD_TIMEOUT_MS = 60_000;
+
 // Every mkdtemp below funnels through here so the run leaves nothing behind.
 // These fixtures used to accumulate one directory per call in $TMPDIR forever.
 const FIXTURE_DIRS = [];
@@ -106,6 +113,8 @@ function partition(mode, { cwd, changed = CHANGED } = {}) {
     // gate that failed. `err.stderr` is still populated, which is what the
     // loud-failure assertions match on.
     stdio: ['pipe', 'pipe', 'pipe'],
+    timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
   return out.split('\0').filter(Boolean);
 }
@@ -125,6 +134,8 @@ function loadDomTestConfig(env = {}) {
     encoding: 'utf8',
     env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: CHILD_TIMEOUT_MS,
+    killSignal: 'SIGKILL',
   });
   return JSON.parse(out.trim().split('\n').at(-1));
 }
@@ -337,8 +348,11 @@ describe('runner dispatch', () => {
           ...(concurrency ? { WM_PREPUSH_TEST_CONCURRENCY: concurrency } : {}),
           ...env,
         },
+        timeout: CHILD_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
       });
     } catch (err) {
+      if (err.code === 'ETIMEDOUT') throw err;
       status = err.status;
     }
 

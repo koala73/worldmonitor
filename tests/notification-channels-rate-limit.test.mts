@@ -90,7 +90,9 @@ describe('/api/notification-channels POST write rate limit', () => {
   it('budgets POST writes per user on the exported scope, then reaches the relay', async () => {
     const { mod, limiterCalls, relayCalls } = await installDeps(ALLOWED);
 
-    const res = await mod.default(makeRequest('POST', { action: 'set-alert-rules', rules: [] }), ctx);
+    // An in-shape rule: the edge now answers out-of-shape bodies with a 400
+    // before the relay (tests/notification-channels-rule-shape.test.mts).
+    const res = await mod.default(makeRequest('POST', { action: 'set-alert-rules', variant: 'full', enabled: true, eventTypes: [], channels: [] }), ctx);
 
     assert.notEqual(res.status, 429);
     assert.notEqual(res.status, 503);

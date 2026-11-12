@@ -4,6 +4,7 @@ import { runSeed } from '../scripts/_seed-utils.mjs';
 import { seedOptions } from '../scripts/seed-displacement-summary.mjs';
 import { getDisplacementSummary } from '../server/worldmonitor/displacement/v1/get-displacement-summary.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
+import { withSeedLockFence } from './helpers/seed-lock-fence.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalExit = process.exit;
@@ -34,7 +35,8 @@ beforeEach(() => {
   process.env.WM_SEED_RETRY_DELAY_MS = '0';
   for (const name of ['LOCAL_API_MODE', 'BUNDLE_COMPLETION_META_KEY', 'VERCEL_ENV', 'VERCEL_GIT_COMMIT_SHA']) delete process.env[name];
   redis = installRedis({}, { now: () => now });
-  globalThis.fetch = (async (input, init) => {
+  // Failure injection keys on the seed-meta SET, so fenced writes arrive as SETs.
+  globalThis.fetch = withSeedLockFence((async (input, init) => {
     assert.equal(new URL(String(input)).hostname, 'redis.example', 'No real service calls are allowed');
     const command = init?.body ? JSON.parse(String(init.body)) : null;
     if (Array.isArray(command) && command[0] === 'SET' && command[1] === metaKey) {
@@ -43,7 +45,7 @@ beforeEach(() => {
     const response = await redis.fetchImpl(input, init);
     if (Array.isArray(command) && command[0] === 'SET' && command[1] === key) now += 250;
     return response;
-  }) as typeof fetch;
+  }) as typeof fetch) as typeof fetch;
   process.exit = ((code: number) => { throw Object.assign(new Error('controlled seed exit'), { exitCode: code }); }) as never;
 });
 

@@ -9,6 +9,7 @@ import {
   resolveSeedMetaTtl,
 } from './_seed-utils.mjs';
 import { COUNTRY_COORDS, mapTrafficAnomaly, toEpochMs } from './lib/radar-country-coords.mjs';
+import { asnCountryGroups, asnImpactBudgetMs, measureAsnImpactsWithinBudget } from './lib/radar-asn-impact.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -85,7 +86,7 @@ function requireRadarObject(result, field, source) {
   return value;
 }
 
-async function fetchOutages() {
+async function fetchOutages({ fetchDeadlineAtMs } = {}) {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!token) {
     console.log('CLOUDFLARE_API_TOKEN not set — skipping');
@@ -105,8 +106,15 @@ async function fetchOutages() {
   const annotations = requireRadarArray(result, 'annotations', 'outage annotations');
 
   const outages = [];
+  const asnGroups = [];
   for (const raw of annotations) {
-    if (!raw.locations?.length) continue;
+    if (!raw.locations?.length) {
+      // Filed against networks, not a country. Kept apart (asnOutages) with
+      // the national impact the CII needs (scripts/lib/radar-asn-impact.mjs);
+      // the map and the other readers of `outages` are unchanged.
+      for (const group of asnCountryGroups(raw)) asnGroups.push({ raw, group });
+      continue;
+    }
     const countryCode = raw.locations[0];
     if (!countryCode) continue;
 
@@ -128,6 +136,9 @@ async function fetchOutages() {
       link: raw.linkedUrl || 'https://radar.cloudflare.com/outage-center',
       description: raw.description ?? '',
       detectedAt: toEpochMs(raw.startDate),
+      // ISO 3166-1 alpha-2 from Radar. Readers that place an outage by country
+      // (CII, resilience) key on this; `country` is the display name.
+      countryCode,
       country: countryName,
       region: '',
       location: { latitude: coords[0], longitude: coords[1] },
@@ -139,7 +150,63 @@ async function fetchOutages() {
     });
   }
 
-  return { outages, pagination: undefined };
+  // Optional work: one shared budget inside runSeed's fetch deadline, so a
+  // slow NetFlows API never holds back the outages above.
+  const impacts = await measureAsnImpactsWithinBudget(
+    asnGroups.map(({ raw, group }) => ({
+      countryCode: group.countryCode, asns: group.asns, cause: raw.outage?.outageCause || '',
+      startMs: toEpochMs(raw.startDate), endMs: toEpochMs(raw.endDate),
+    })),
+    {
+      getWithTimeout: (path, ms) => radarResult(path, token, ms),
+      budgetMs: asnImpactBudgetMs(fetchDeadlineAtMs),
+      nowMs: Date.now(),
+    },
+  );
+  const asnOutages = asnGroups.map(({ raw, group }, i) => asnOutageRecord(raw, group, impacts[i]));
+
+  return { outages, asnOutages, pagination: undefined };
+}
+
+/** One Radar GET returning the validated `result`, for the ASN impact measure. */
+async function radarResult(path, token, timeoutMs) {
+  const resp = await fetch(`${CF_RADAR_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return requireRadarResult(await resp.json(), 'ASN impact');
+}
+
+/**
+ * The record for one country among an ASN-only annotation's ASNs, carrying
+ * the ASNs and the measured national impact (null when it could not be
+ * measured; `impactUnknownReason` says why, 'budget' when time ran out).
+ */
+function asnOutageRecord(raw, group, impact) {
+  const coords = COUNTRY_COORDS[group.countryCode];
+  const networks = group.asns.map((asn, i) => `AS${asn}${group.asnNames[i] ? ` ${group.asnNames[i]}` : ''}`).join(', ');
+  return {
+    id: `cf-${raw.id}-${group.countryCode}`,
+    title: `Internet disruption on ${networks} (${group.countryName})`,
+    link: raw.linkedUrl || 'https://radar.cloudflare.com/outage-center',
+    description: raw.description ?? '',
+    detectedAt: toEpochMs(raw.startDate),
+    endedAt: toEpochMs(raw.endDate),
+    countryCode: group.countryCode,
+    country: group.countryName,
+    location: coords ? { latitude: coords[0], longitude: coords[1] } : null,
+    severity: mapOutageSeverity(raw.outage?.outageType),
+    cause: raw.outage?.outageCause || '',
+    outageType: raw.outage?.outageType || '',
+    asns: group.asns,
+    asnNames: group.asnNames,
+    impactMeasure: impact.measure,
+    nationalImpact: impact.nationalImpact,
+    impactIsUpperBound: impact.impactIsUpperBound,
+    ...(impact.unknownReason ? { impactUnknownReason: impact.unknownReason } : {}),
+    ...(impact.parts ? { impactParts: impact.parts } : {}),
+  };
 }
 
 /**
@@ -379,11 +446,11 @@ function publishCompanion(companion, token) {
 // canonical publish is skipped whenever the annotations leg fails. The companion
 // keys MUST therefore be published here, before the annotations rejection is
 // rethrown, or an annotations outage would withhold two healthy sibling updates.
-async function fetchAll() {
+async function fetchAll(context = {}) {
   const token = process.env.CLOUDFLARE_API_TOKEN;
 
   const [outagesResult] = await Promise.allSettled([
-    fetchOutages(),
+    fetchOutages(context),
     ...COMPANIONS.map((companion) => publishCompanion(companion, token)),
   ]);
 
@@ -392,11 +459,11 @@ async function fetchAll() {
 }
 
 function validate(data) {
-  return data && Array.isArray(data.outages);
+  return data && Array.isArray(data.outages) && (data.asnOutages === undefined || Array.isArray(data.asnOutages));
 }
 
 export function declareRecords(data) {
-  return Array.isArray(data?.outages) ? data.outages.length : 0;
+  return (Array.isArray(data?.outages) ? data.outages.length : 0) + (Array.isArray(data?.asnOutages) ? data.asnOutages.length : 0);
 }
 
 runSeed('infra', 'outages', CANONICAL_KEY, fetchAll, {

@@ -51,75 +51,42 @@ const ENGLISH_ALLOWED_KEYS = new Set([
   'nav.enterprise',
   'tiers.pro',
   'tiers.enterprise',
-  'twoPath.entTitle',
-  'twoPath.proTitle',
   'whatsNew.proTag',
   'apiSection.business',
   'apiSection.starter',
-  'pricingTable.apiRow',
-  'pricingTable.apiHeader',
-  'pricingTable.proHeader',
-  'pricingTable.freeHeader',
-  'pricingTable.f3',
-  'pricingTable.f10',
-  'pricingTable.f25',
-  'pricingTable.f40',
-  'pricingTable.f80',
-  'pricingTable.fBYOK',
-  'pricingTable.fSiemMcp',
-  'pricingTable.fWebhook',
-  'pricingTable.fRestWebhook',
-  'pricingTable.ai',
-  'welcome.pricing.proTitle',
   'welcome.agents.resources.api',
-  'pricing.tiers.enterprise.features[8]',
+  'pricing.tiers.enterprise.features[9]',
   'enterpriseShowcase.soc',
 ]);
 
-const PENDING_ENGLISH_REVIEW_KEYS = new Set([
-  'meta.title',
-  'meta.ogTitle',
-  'welcome.nav.blog',
-  'welcome.live.liveBadge',
-  'welcome.nav.menu',
-  'welcome.pricing.freeTitle',
-  'welcome.hero.trustOpenSource',
-  'welcome.live.marketBest',
-  'welcome.live.trendStable',
-  'welcome.depth.s8l',
-  'welcome.moments.m2.c1',
-  'welcome.moments.m4.c3',
-  'welcome.agents.resources.mcp',
-  'welcome.agents.resources.agentView',
-  'welcome.agents.termTitle',
-  'pricingTable.fCloud',
-  'pricingTable.fStandard',
-  'pricingTable.fStandardCadence',
-  'pricingTable.deployment',
-  'pricingTable.dashboard',
-  'pricingTable.fCloudOnPrem',
-  'pricingTable.fLiveEdge',
-  'pricingTable.fWhiteLabel',
-  'pricingTable.fQuotes30s',
-  'pricingTable.f50panels',
-  'proShowcase.supplyChainLab',
-  'deliveryDesk.eyebrow',
-  'slackMock.elevated',
-  'pricing.axisCommercial',
-  'pricing.axisPersonal',
-  'hero.signalWord',
-  'whatsNew.eyebrow',
-  'pricing.tiers.proBusiness.features[4]',
-  'pricing.tiers.apiBusiness.features[2]',
-  'livePreview.iframeTitle',
-]);
-
-// Ceilings, not exact counts. Rewording an English value drops the count on its
-// own (the stale Persian copy stops matching the new English), so an exact count
-// would red every unrelated en.json copy edit. Lower the ceiling as fa improves.
-const TEMPORARY_LOCALE_EXEMPTIONS = {
-  fa: 388,
+// Same-spelling words and product tokens a locale already uses. A global
+// allowlist would let a locale that translates the word fall back to English
+// without a failing test, so the exemption is per locale. #9165.
+const INTENTIONAL_ENGLISH = {
+  cs: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  de: ['welcome.nav.blog', 'welcome.live.liveBadge', 'hero.signalWord', 'pricingTable.rowSupport'],
+  es: ['welcome.nav.blog'],
+  fr: [
+    'welcome.nav.blog', 'welcome.nav.menu', 'pricing.axisCommercial', 'welcome.live.trendStable',
+    'welcome.moments.m2.c1', 'welcome.moments.m4.c3', 'welcome.agents.termTitle',
+    'hero.signalWord', 'pricingTable.rowSupport',
+  ],
+  hr: ['welcome.nav.blog', 'hero.signalWord'],
+  hu: ['welcome.nav.blog'],
+  it: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  nl: ['welcome.nav.blog', 'welcome.nav.menu', 'welcome.live.liveBadge'],
+  pl: ['welcome.nav.blog', 'welcome.nav.menu'],
+  pt: ['welcome.nav.blog', 'welcome.nav.menu'],
+  ro: ['welcome.nav.blog', 'welcome.live.liveBadge'],
+  sv: ['welcome.live.liveBadge', 'welcome.agents.termTitle', 'hero.signalWord', 'pricingTable.rowSupport'],
+  tr: ['welcome.nav.blog'],
+  vi: ['welcome.nav.blog', 'welcome.nav.menu'],
 };
+
+// No locale gets a count ceiling. A ceiling hides new English copy, which is
+// how fa.json stayed an English placeholder (#5644). Brands and tokens that
+// stay English are named in ENGLISH_ALLOWED_KEYS or INTENTIONAL_ENGLISH.
+const TEMPORARY_LOCALE_EXEMPTIONS = {};
 
 describe('pro locale freshness', () => {
   it('tracks every shipped locale', () => {
@@ -193,23 +160,26 @@ describe('pro locale freshness', () => {
     assert.deepEqual(problems, [], 'pro locales are out of date. ' + hintFor(problemLocales));
   });
 
-  it('names only real catalog keys in the English allowlist and the review exemption', () => {
-    const overlap = [...ENGLISH_ALLOWED_KEYS].filter((key) => PENDING_ENGLISH_REVIEW_KEYS.has(key));
-    const missing = [...ENGLISH_ALLOWED_KEYS, ...PENDING_ENGLISH_REVIEW_KEYS].filter((key) => !(key in enFlat));
-    const idlePending = [];
-    for (const key of PENDING_ENGLISH_REVIEW_KEYS) {
-      const stillEnglish = LOCALES.some((locale) => {
-        if (locale in TEMPORARY_LOCALE_EXEMPTIONS) return false;
-        const file = join(LOCALES_DIR, locale + '.json');
-        if (!existsSync(file)) return false;
-        const flat = flatten(readJson(file));
-        return flat[key] === enFlat[key];
-      });
-      if (!stillEnglish) idlePending.push(key);
+  it('names only real catalog keys in the English allowlist and the per-locale exemptions', () => {
+    const intentionalPairs = Object.entries(INTENTIONAL_ENGLISH).flatMap(([locale, keys]) =>
+      keys.map((key) => locale + ' ' + key),
+    );
+    const overlap = intentionalPairs.filter((pair) => ENGLISH_ALLOWED_KEYS.has(pair.split(' ')[1]));
+    const missing = [
+      ...ENGLISH_ALLOWED_KEYS,
+      ...intentionalPairs.map((pair) => pair.split(' ')[1]),
+    ].filter((key) => !(key in enFlat));
+    const idle = [];
+    for (const [locale, keys] of Object.entries(INTENTIONAL_ENGLISH)) {
+      const file = join(LOCALES_DIR, locale + '.json');
+      const flat = existsSync(file) ? flatten(readJson(file)) : {};
+      for (const key of keys) {
+        if (flat[key] !== enFlat[key]) idle.push(locale + ' ' + key);
+      }
     }
     assert.deepEqual(
-      { overlap, missing, idlePending },
-      { overlap: [], missing: [], idlePending: [] },
+      { overlap, missing, idle },
+      { overlap: [], missing: [], idle: [] },
     );
   });
 
@@ -221,7 +191,7 @@ describe('pro locale freshness', () => {
       const flat = flatten(readJson(file));
       const unexplained = Object.keys(flat)
         .filter((key) => key in enFlat && flat[key] === enFlat[key])
-        .filter((key) => !ENGLISH_ALLOWED_KEYS.has(key) && !PENDING_ENGLISH_REVIEW_KEYS.has(key))
+        .filter((key) => !ENGLISH_ALLOWED_KEYS.has(key) && !(INTENTIONAL_ENGLISH[locale] ?? []).includes(key))
         .sort();
       const exemption = TEMPORARY_LOCALE_EXEMPTIONS[locale];
       if (exemption !== undefined) {

@@ -13,9 +13,13 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import ts from 'typescript';
+import vm from 'node:vm';
+import { mergeSanctionEntries, parseSemaXml, SEMA_SOURCE } from '../scripts/_sema-sanctions.mjs';
+import { CSL_SOURCES, CSL_ROW_ID } from '../scripts/_csl-sanctions.mjs';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
+  CII_ADVISORY_MAX_AGE_MS,
   CII_CONFLICT_ACTIVITY_CAP,
   CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
@@ -29,6 +33,14 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_OUTAGE_ASN_NATIONAL_SHARE,
+  CII_OUTAGE_EXAM_TERMS,
+  CII_OUTAGE_FUTURE_SKEW_MS,
+  CII_OUTAGE_NEGATION_TERMS,
+  CII_OUTAGE_NEGATION_WINDOW_WORDS,
+  CII_OUTAGE_SCORED_CAUSES,
+  CII_OUTAGE_UNREST_TERMS,
+  CII_OUTAGE_WINDOW_MS,
   CII_STRIKE_BOOST_CAP,
   CII_STRIKE_BOOST_PER_DOUBLING,
   CII_STRIKE_BOOST_PIVOT,
@@ -54,12 +66,11 @@ import {
 import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
+  CII_ADVISORY_LAST_GOOD_KEY,
   CII_REALTIME_REQUIRED_SIGNAL_FAMILY_COUNT,
   CII_TREND_BUCKET_LOOKUP_RADIUS,
   CII_TREND_BUCKET_MS,
   CII_TREND_TARGET_AGE_MS,
-  climateCountriesForAnomaly,
-  EVENT_MULTIPLIER,
   countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
   strikePressureFloor,
@@ -78,9 +89,7 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../shared/cii-climate-zones.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
   CII_COUNTRY_WEIGHTS,
-  CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
   DEFAULT_CII_BASELINE_RISK,
-  DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
 import { ciiScoredVersion, readCiiVersionClaim } from '../scripts/lib/cii-fixtures.mts';
@@ -128,7 +137,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // Each Stage B PR regenerates this entry, and only this one, with the command in
   // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
   // is frozen as released when v15 ships.
-  v15: '268f02f1ce0fbea260326b841edbf75652e58b75fab637bfe953e7362f781f6c',
+  v15: 'bb47dfc1e3975ce5c5e6152f69202a33532b78ad5dd4fb64227f645b56737ce6',
 };
 
 // The released entries above are a record. This digest of every entry except
@@ -140,9 +149,10 @@ const CII_SCORED_VERSION = ciiScoredVersion(CII_VERSION_CLAIM);
 
 const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
 const GUARDED_SCORE_FUNCTION_NAMES = [
-  'climateSeverityScore', 'deriveUcdpIntensityByRegion', 'computeCIIScores',
+  'deriveUcdpIntensityByRegion', 'computeCIIScores',
   'gdeltStrikeDays', 'strikePressure', 'strikePressureFloor', 'strikePressureBoost',
   'strikeEventCountry', 'isInterceptStrikeEvent', 'confirmedStrikeDaysFromEvents', 'confirmedStrikeDaysFromSeed',
+  'isScoredOutage', 'outageVerdict',
 ];
 // Strike attribution and counting (CII v15 B3) turn on strings and record
 // shapes, not numeric literals: which events count, for which country, from
@@ -275,8 +285,6 @@ interface NumericConstSnapshot {
 
 interface ScoreHelperInputSnapshot {
   ucdpClassificationWindowMs: NumericConstSnapshot;
-  advisoryLevelsFallback: ScoreHelperSnapshotValue;
-  zoneCountryMap: ScoreHelperSnapshotValue;
 }
 
 function requireTopLevelConstDeclaration(sourceFile: ts.SourceFile, constName: string): ts.VariableDeclaration {
@@ -436,7 +444,7 @@ function extractTopLevelConstLiteralSnapshot(
   return literalExpressionSnapshot(declaration.initializer!, sourceFile);
 }
 
-function extractScoreHelperInputSnapshot(source: string, climateZoneSource = source): ScoreHelperInputSnapshot {
+function extractScoreHelperInputSnapshot(source: string): ScoreHelperInputSnapshot {
   const sourceFile = ts.createSourceFile(
     'get-risk-scores.ts',
     source,
@@ -447,11 +455,6 @@ function extractScoreHelperInputSnapshot(source: string, climateZoneSource = sou
 
   return {
     ucdpClassificationWindowMs: extractNumericConstSnapshot(sourceFile, 'UCDP_CLASSIFICATION_WINDOW_MS'),
-    advisoryLevelsFallback: extractTopLevelConstLiteralSnapshot(sourceFile, 'ADVISORY_LEVELS_FALLBACK'),
-    zoneCountryMap: extractTopLevelConstLiteralSnapshot(
-      ts.createSourceFile('cii-climate-zones.ts', climateZoneSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
-      'CII_CLIMATE_ZONE_COUNTRIES',
-    ),
   };
 }
 
@@ -603,24 +606,43 @@ function emptyAux() {
   return {
     ucdpEvents: [] as any[],
     outages: [] as any[],
-    climate: [] as any[],
-    fires: {} as Record<string, Array<{ brightness: number; frp: number }>> | null,
-    gpsHexes: [] as any[],
     iranEvents: [] as any[],
     orefData: null as { activeAlertCount: number; historyCount24h: number } | null,
-    advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'> } | null,
+    advisories: null as { byCountry: Record<string, 'do-not-travel' | 'reconsider' | 'caution'>; provenance?: 'live' | 'fallback'; fetchedAtMs?: number | null } | null,
     displacedByIso3: {} as Record<string, number>,
     crossBorderSurgeCountries: [] as string[],
     newsTopStories: [] as Array<{ countryCode: string | null; countryCodes?: string[]; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
-    aviationAlerts: [] as any[],
-    earthquakes: [] as any[],
-    sanctionsCountries: [] as any[],
-    sanctionsCountryCounts: null as Record<string, number> | null,
     temporalAnomalies: [] as any[],
-    militaryCii: null as Record<string, any> | null,
   };
 }
+
+it('keeps SEMA regulation targets separate and all sanctions counts out of CII', () => {
+  const source = readFileSync('scripts/seed-sanctions-pressure.mjs', 'utf8');
+  const producer = vm.createContext({ console, SEMA_SOURCE, CSL_SOURCES, CSL_ROW_ID });
+  vm.runInContext(source.replace(/^import\s.*$/gm, '').replace(/loadEnvFile\([^)]+\);/, '')
+    .split('async function fetchSource')[0], producer);
+  const ofac = Array.from({ length: 100 }, (_, i) => ({
+    id: `SDN:${i}`, name: `Address entity ${i}`, entityType: 'SANCTIONS_ENTITY_TYPE_ENTITY',
+    countryCodes: ['IR'], countryNames: ['Iran'], sourceLists: ['SDN'], programs: [], isNew: false,
+  }));
+  const sema = parseSemaXml(Array.from({ length: 500 }, (_, i) =>
+    `<record><Country>Iran</Country><EntityOrShip>Target entity ${i}</EntityOrShip><Schedule>1</Schedule><Item>${i + 1}</Item></record>`).join('')).records;
+  sema.forEach(row => { row.isNew = true; });
+  const entries = mergeSanctionEntries({ ofac, sema });
+  const aux = {
+    ...emptyAux(),
+    sanctionsCountries: producer.buildCountryPressure(entries),
+    sanctionsCountryCounts: producer.buildCountryCounts(entries),
+  };
+  const terms: Record<string, any> = {};
+  const options = { nowMs: Date.parse('2026-10-23T09:46:00Z') };
+  const scores = computeCIIScores([], aux, options, terms);
+  assert.deepEqual(scores, computeCIIScores([], emptyAux(), options), 'sanctions are excluded from CII in v15');
+  assert.equal(terms.IR.boosts.sanctions, undefined);
+  assert.equal(aux.sanctionsCountryCounts?.IR, 100);
+  assert.equal(producer.buildRegulationTargets(entries)[0].entryCount, 500);
+});
 
 function acledEvent(country: string, type: string, fatalities = 0) {
   return { country, event_type: type, fatalities };
@@ -780,7 +802,7 @@ describe('CII signal wiring', () => {
     assert.equal(geoToCountry(31.9539, 35.9106), null, 'Amman must fail closed because Jordan is not a Tier-1 CII country');
   });
 
-  it('climate producer zones intersect the CII consumer map for score-relevant zones', () => {
+  it('climate producer zones intersect the country-detail climate map (not scored since v15)', () => {
     const producerZones = new Set(CLIMATE_ZONES.map((zone) => zone.name));
     const expected: Record<string, string[]> = {
       Ukraine: ['UA'],
@@ -801,59 +823,9 @@ describe('CII signal wiring', () => {
       assert.deepEqual(
         expectedCodes.filter((code) => CII_CLIMATE_ZONE_COUNTRIES[zone]?.includes(code)),
         expectedCodes,
-        `${zone} must feed CII countries ${expectedCodes.join(', ')}`,
+        `${zone} must map to ${expectedCodes.join(', ')}`,
       );
     }
-  });
-
-  it('climate anomaly enum severities raise scores for producer zone names', () => {
-    const cases: Array<[string, string]> = [
-      ['California', 'US'],
-      ['Ukraine', 'UA'],
-      ['East Asia', 'KP'],
-      ['East Asia', 'KR'],
-      ['East Asia', 'JP'],
-      ['Europe', 'PL'],
-      ['Europe', 'DE'],
-      ['Europe', 'FR'],
-      ['Europe', 'GB'],
-      ['Latin America', 'VE'],
-      ['Amazon', 'BR'],
-      ['Taiwan Strait', 'TW'],
-      ['Caribbean', 'MX'],
-      ['Caribbean', 'CU'],
-    ];
-
-    for (const [zone, code] of cases) {
-      const countryName = TIER1_COUNTRIES[code as keyof typeof TIER1_COUNTRIES];
-      const activity = acledEvents(countryName, 'Battles', 1000);
-      const base = scoreFor(computeCIIScores(activity, emptyAux()), code);
-      const aux = emptyAux();
-      aux.climate = [{ zone, severity: 'ANOMALY_SEVERITY_EXTREME' }];
-      const withClimate = scoreFor(computeCIIScores(activity, aux), code);
-      assert.ok(
-        withClimate!.combinedScore > base!.combinedScore,
-        `${zone} anomaly should raise ${code} through climateBoost`,
-      );
-    }
-  });
-
-  it('climate anomaly coordinate fallback attributes producer records with unknown zone vocabulary', () => {
-    assert.deepEqual(
-      climateCountriesForAnomaly({
-        zone: 'Producer Vocabulary Added After Consumer Deploy',
-        location: { latitude: 41.28, longitude: 129.09 },
-      }),
-      ['KP'],
-    );
-    assert.deepEqual(
-      climateCountriesForAnomaly({
-        zone: 'Producer Vocabulary Added After Consumer Deploy',
-        lat: 51.25,
-        lon: 22.57,
-      }),
-      ['PL'],
-    );
   });
 
   it('ACLED 7d and 30d fetch windows do not double-count the 7-day boundary date', () => {
@@ -866,166 +838,6 @@ describe('CII signal wiring', () => {
       'older window must end before the recent inclusive start date');
   });
 
-  it('earthquake seed fetches the same 7-day window that CII scoring claims', () => {
-    const seedPath = resolve(
-      fileURLToPath(new URL('.', import.meta.url)),
-      '..',
-      'scripts',
-      'seed-earthquakes.mjs',
-    );
-    const seed = readFileSync(seedPath, 'utf8');
-    assert.match(seed, /summary\/4\.5_week\.geojson/,
-      'seed-earthquakes must use the USGS 7-day feed because CII scores a 7-day earthquake lookback');
-    assert.doesNotMatch(seed, /summary\/4\.5_day\.geojson/,
-      'seed-earthquakes must not publish only a 1-day feed under the 7-day CII scoring contract');
-  });
-
-  it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
-    // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
-    // producer emits region:'global' so they cannot be country-attributed. The
-    // score rise asserted below comes entirely from earthquakeBoost + sanctionsBoost.
-    const acled = [acledEvent('US', 'protest', 0)];
-    const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
-    const aux = emptyAux();
-    aux.earthquakes = [{ magnitude: 7.0, occurredAt: Date.now(), location: { latitude: 39, longitude: -98 } }];
-    aux.sanctionsCountries = [
-      { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
-      { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
-    ];
-    const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
-    assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
-    assert.ok(withAux!.combinedScore > base!.combinedScore,
-      'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
-  });
-
-  it('an offshore earthquake scores to the country USGS names in its place', () => {
-    // 150 km off Honshu: beyond the 12-nautical-mile coastal waters, so no
-    // border reaches it, but USGS names the country after the last comma.
-    const nowMs = Date.UTC(2026, 9, 19);
-    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'JP')!;
-    const offshore = emptyAux();
-    offshore.earthquakes = [{
-      magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: '151 km E of Namie, Japan',
-      location: { latitude: 37.5, longitude: 142.9 },
-    }];
-    assert.ok(scoreFor(computeCIIScores([], offshore, { nowMs }), 'JP')!.combinedScore > base.combinedScore);
-    // A region with no country, and a country named only mid-string, score nowhere.
-    const remote = emptyAux();
-    remote.earthquakes = [
-      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'South Sandwich Islands region', location: { latitude: -58, longitude: -26 } },
-      { magnitude: 7.1, occurredAt: nowMs - 3_600_000, place: 'off the coast of Japan trench, Pacific Ocean', location: { latitude: 30, longitude: 160 } },
-    ];
-    const remoteScores = computeCIIScores([], remote, { nowMs });
-    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
-    for (const s of remoteScores) assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, s.region);
-  });
-
-  it('never reads an ocean or region name, or a quake on non-Tier-1 land, as a Tier-1 country', () => {
-    // Review on #9421: 'Southern Indian Ocean' matched India's 'indian'; a comma-free
-    // 'Off coast of Central America' matched 'america'; and a Tajik epicentre that
-    // USGS describes from the nearest Afghan town is on non-Tier-1 land, which
-    // counts for no Tier-1 country.
-    const nowMs = Date.UTC(2026, 9, 19);
-    const quake = (place: string, latitude: number, longitude: number) => ({
-      magnitude: 7.5, occurredAt: nowMs - 3_600_000, place, location: { latitude, longitude },
-    });
-    const baseScores = computeCIIScores([], emptyAux(), { nowMs });
-    for (const eq of [
-      quake('Southern Indian Ocean', -40, 70),
-      quake('Off coast of Central America', 10, -95),
-      quake('412 km S of Port Blair, Indian Ocean', 8, 92.5),
-      quake('61 km NE of Jurm, Afghanistan', 37.49, 71.55),
-      // Review on #9421: a news keyword is not a country name. USGS writes US
-      // states after the comma, and 'washington' is a US news keyword.
-      quake('180 km W of Neah Bay, Washington', 48.2, -127.2),
-      quake('300 km E of Hachijo-jima, Tokyo', 33.0, 143.0),
-    ]) {
-      const aux = emptyAux();
-      aux.earthquakes = [eq];
-      const scores = computeCIIScores([], aux, { nowMs });
-      for (const s of scores) {
-        assert.equal(s.combinedScore, scoreFor(baseScores, s.region)!.combinedScore, `${eq.place}: ${s.region}`);
-      }
-    }
-  });
-
-  it('earthquake lookback honors injected CII scorer clock', () => {
-    const nowMs = Date.UTC(2020, 0, 10);
-    const base = scoreFor(computeCIIScores([], emptyAux(), { nowMs }), 'US')!;
-
-    const recentAux = emptyAux();
-    recentAux.earthquakes = [
-      { magnitude: 7.0, occurredAt: nowMs - 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
-    ];
-    const recent = scoreFor(computeCIIScores([], recentAux, { nowMs }), 'US')!;
-    assert.ok(
-      recent.combinedScore > base.combinedScore,
-      'a one-day-old magnitude 7 earthquake must boost scores relative to injected nowMs',
-    );
-
-    const staleAux = emptyAux();
-    staleAux.earthquakes = [
-      { magnitude: 7.0, occurredAt: nowMs - 8 * 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
-    ];
-    const stale = scoreFor(computeCIIScores([], staleAux, { nowMs }), 'US')!;
-    assert.equal(
-      stale.combinedScore,
-      base.combinedScore,
-      'an eight-day-old earthquake must be ignored relative to injected nowMs',
-    );
-  });
-
-  it('Phase 3b D8: high-brightness fires raise the score', () => {
-    const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
-    const aux = emptyAux();
-    aux.fires = { US: [{ brightness: 400, frp: 60 }] };
-    const us = scoreFor(computeCIIScores([], aux), 'US');
-    assert.ok(us!.combinedScore > base!.combinedScore, 'a bright fire feeds fireBoost');
-    const dim = emptyAux();
-    dim.fires = { US: Array.from({ length: 8 }, () => ({ brightness: 300, frp: 5 })) };
-    const usDim = scoreFor(computeCIIScores([], dim), 'US');
-    assert.ok(usDim!.combinedScore > base!.combinedScore, 'dim fires still feed the count term of fireBoost');
-  });
-
-  it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
-    const aux = emptyAux();
-    aux.sanctionsCountries = [
-      { countryCode: 'US', entryCount: 60, newEntryCount: 1 },
-      { countryCode: 'US', entryCount: 60, newEntryCount: 0 },
-    ];
-    const us = scoreFor(computeCIIScores([], aux), 'US');
-    const none = scoreFor(computeCIIScores([], emptyAux()), 'US');
-    // 60+60 = 120 entries → tier ≥101 → boost 5, +2 newEntry = 7. Had the loop overwritten
-    // instead of accumulated, 60 alone → tier <101 → boost 3+2 = 5. The gap proves accumulation.
-    assert.ok(us!.combinedScore - none!.combinedScore >= 7,
-      'duplicate-ISO2 sanctions rows accumulate (120 entries crosses the ≥101 tier)');
-  });
-
-  it('Phase 3b D6: sanctions all-country count map scores countries outside the top pressure rows', () => {
-    const aux = emptyAux();
-    aux.sanctionsCountries = [];
-    aux.sanctionsCountryCounts = { GB: 120 };
-    const gb = scoreFor(computeCIIScores([], aux), 'GB');
-    const none = scoreFor(computeCIIScores([], emptyAux()), 'GB');
-    assert.ok(gb!.combinedScore > none!.combinedScore,
-      'CII must use sanctions:country-counts:v1 so countries outside the top-12 pressure rows are not silently ignored');
-  });
-
-  it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
-    // No GPS hexes — pre-Phase-3b this would score security 0; the 4-input formula
-    // must now pick up military activity and aviation.
-    const aux = emptyAux();
-    aux.militaryCii = {
-      US: { ownFlights: 0, foreignFlights: 3, ownVessels: 0, foreignVessels: 1, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
-    };
-    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure' }];
-    const us = scoreFor(computeCIIScores([], aux), 'US');
-    assert.ok(us, 'US scored');
-    // flightScore = 3·2·3 = 18; vesselScore = 1·2·5 = 10; aviationScore (one closure) = 20; GPS = 0
-    assert.equal(us!.components!.militaryActivity, 48,
-      'security = flightScore(18) + vesselScore(10) + aviationScore(20), no GPS');
-  });
-
   it('Phase 3b C1: a riot adds severityBoost vs a plain protest', () => {
     // Same unrest count (1 event), 0 fatalities, 0 outages in both — the only difference
     // is the riot classifies as high-severity → severityBoost. Isolates C1.
@@ -1035,55 +847,9 @@ describe('CII signal wiring', () => {
       'a riot is high-severity unrest and adds severityBoost; a plain protest does not');
   });
 
-  it('C3: foreign military presence is weighted x2', () => {
-    const aux = emptyAux();
-    // 0 own + 5 foreign flights → reconstructed count 0 + 5·2 = 10 → flightScore min(50, 30) = 30
-    aux.militaryCii = {
-      US: { ownFlights: 0, foreignFlights: 5, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
-    };
-    const us = scoreFor(computeCIIScores([], aux), 'US');
-    assert.equal(us!.components!.militaryActivity, 30, 'foreign flights weighted x2: 5·2·3 = 30');
-  });
 });
 
-describe('CII v14: own military activity and hosting-location cyber feeds', () => {
-  // Live 2026-10-20T09:41Z intelligence:military-cii:v1 rows. GB's ownFlights went
-  // 9 → 31 overnight on RAF training sorties; its 53 "own vessels" are constant.
-  const GB_LIVE = { ownFlights: 31, foreignFlights: 2, ownVessels: 53, foreignVessels: 1, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 };
-
-  it('a country\'s own air force and navy do not raise its Security component', () => {
-    const aux = emptyAux();
-    aux.militaryCii = { GB: { ...GB_LIVE, foreignFlights: 0, foreignVessels: 0 } };
-    const gb = scoreFor(computeCIIScores([], aux), 'GB')!;
-    const base = scoreFor(computeCIIScores([], emptyAux()), 'GB')!;
-    assert.equal(gb.components!.militaryActivity, 0, 'own flights/vessels are routine, not instability');
-    assert.equal(gb.combinedScore, base.combinedScore);
-  });
-
-  it('own training sorties no longer swing Security between two days', () => {
-    const yesterday = emptyAux();
-    yesterday.militaryCii = { GB: { ...GB_LIVE, ownFlights: 9, foreignFlights: 0, foreignVessels: 3 } };
-    const today = emptyAux();
-    today.militaryCii = { GB: { ...GB_LIVE, foreignFlights: 0, foreignVessels: 3 } };
-    assert.equal(
-      scoreFor(computeCIIScores([], today), 'GB')!.combinedScore,
-      scoreFor(computeCIIScores([], yesterday), 'GB')!.combinedScore,
-      '9 → 31 own RAF flights must not move GB',
-    );
-  });
-
-  it('foreign military flights over a country still register at the v13 foreign weight', () => {
-    const aux = emptyAux();
-    // e.g. foreign aircraft over Israel or Poland: 6 foreign flights → 6·2·3 = 36.
-    aux.militaryCii = {
-      IL: { ownFlights: 40, foreignFlights: 6, ownVessels: 12, foreignVessels: 2, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
-      PL: { ownFlights: 0, foreignFlights: 10, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
-    };
-    const scores = computeCIIScores([], aux);
-    assert.equal(scoreFor(scores, 'IL')!.components!.militaryActivity, 36 + 20, 'flight 36 + foreign vessels 2·2·5 = 20');
-    assert.equal(scoreFor(scores, 'PL')!.components!.militaryActivity, 50, 'a surge of 10 foreign flights saturates the flight term');
-  });
-
+describe('CII v14: hosting-location cyber feeds', () => {
   it('hosting-location cyber IOC rows do not move any country', () => {
     // Live 2026-10-20T09:47Z cyber:threats-bootstrap:v2 rows for GB: 40 AbuseIPDB
     // CRITICAL; every source in the feed geolocates attacker infrastructure.
@@ -1191,7 +957,9 @@ describe('CII scoring', () => {
   });
 
   it('advisory do-not-travel floor: composite >= 60', () => {
-    const scores = computeCIIScores([], emptyAux());
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'do-not-travel', SY: 'do-not-travel', YE: 'do-not-travel', MM: 'do-not-travel' } };
+    const scores = computeCIIScores([], aux);
     for (const code of ['UA', 'SY', 'YE', 'MM']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 60, `${code} score ${s.combinedScore} should be >= 60 (do-not-travel)`);
@@ -1199,7 +967,9 @@ describe('CII scoring', () => {
   });
 
   it('advisory reconsider floor: composite >= 50', () => {
-    const scores = computeCIIScores([], emptyAux());
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { MX: 'reconsider', IR: 'reconsider', PK: 'reconsider', VE: 'reconsider', CU: 'reconsider' } };
+    const scores = computeCIIScores([], aux);
     for (const code of ['MX', 'IR', 'PK', 'VE', 'CU']) {
       const s = scoreFor(scores, code)!;
       assert.ok(s.combinedScore >= 50, `${code} score ${s.combinedScore} should be >= 50 (reconsider)`);
@@ -1207,20 +977,20 @@ describe('CII scoring', () => {
   });
 
   it('advisory provenance distinguishes live, fallback, and absent inputs', () => {
-    const fallbackScores = computeCIIScores([], emptyAux());
-    const uaFallback = scoreFor(fallbackScores, 'UA') as unknown as {
-      advisoryLevel: string;
-      advisoryProvenance: string;
-    };
-    const usAbsent = scoreFor(fallbackScores, 'US') as unknown as {
-      advisoryLevel: string;
-      advisoryProvenance: string;
-    };
+    // No advisory input is unknown: no country gets a level from anywhere else.
+    for (const score of computeCIIScores([], emptyAux())) {
+      const disclosure = score as unknown as { advisoryLevel: string; advisoryProvenance: string };
+      assert.equal(`${disclosure.advisoryLevel}/${disclosure.advisoryProvenance}`, '/absent', score.region);
+    }
 
+    const snapshotAux = emptyAux();
+    snapshotAux.advisories = { byCountry: { UA: 'do-not-travel' }, provenance: 'fallback', fetchedAtMs: 1 };
+    const uaFallback = scoreFor(computeCIIScores([], snapshotAux), 'UA') as unknown as {
+      advisoryLevel: string;
+      advisoryProvenance: string;
+    };
     assert.equal(uaFallback.advisoryLevel, 'do-not-travel');
     assert.equal(uaFallback.advisoryProvenance, 'fallback');
-    assert.equal(usAbsent.advisoryLevel, '');
-    assert.equal(usAbsent.advisoryProvenance, 'absent');
 
     const aux = emptyAux();
     aux.advisories = { byCountry: { UA: 'caution' } };
@@ -1232,7 +1002,7 @@ describe('CII scoring', () => {
     assert.equal(uaLive.advisoryProvenance, 'live');
   });
 
-  it('invalid live advisory levels do not suppress the fallback table', () => {
+  it('an invalid live advisory level scores nothing', () => {
     const aux = emptyAux();
     aux.advisories = { byCountry: { UA: 'unknown-level' as 'do-not-travel' } };
 
@@ -1241,8 +1011,8 @@ describe('CII scoring', () => {
       advisoryProvenance: string;
     };
 
-    assert.equal(ua.advisoryLevel, 'do-not-travel');
-    assert.equal(ua.advisoryProvenance, 'fallback');
+    assert.equal(ua.advisoryLevel, '');
+    assert.equal(ua.advisoryProvenance, 'absent');
   });
 
   it('OREF active alerts boost IL conflict score', () => {
@@ -1256,31 +1026,25 @@ describe('CII scoring', () => {
 
   it('outage TOTAL severity gives higher unrest component than PARTIAL', () => {
     const auxTotal = emptyAux();
-    auxTotal.outages = [{ countryCode: 'DE', severity: 'OUTAGE_SEVERITY_TOTAL' }];
+    const shutdown = { countryCode: 'DE', cause: 'GOVERNMENT_DIRECTED', detectedAt: Date.now() - 60 * 60 * 1000, endedAt: 0 };
+    auxTotal.outages = [{ ...shutdown, severity: 'OUTAGE_SEVERITY_TOTAL' }];
     const auxPartial = emptyAux();
-    auxPartial.outages = [{ countryCode: 'DE', severity: 'OUTAGE_SEVERITY_PARTIAL' }];
+    auxPartial.outages = [{ ...shutdown, severity: 'OUTAGE_SEVERITY_PARTIAL' }];
     const total = scoreFor(computeCIIScores([], auxTotal), 'DE')!;
     const partial = scoreFor(computeCIIScores([], auxPartial), 'DE')!;
     assert.ok(total.components!.ciiContribution > partial.components!.ciiContribution,
       `TOTAL unrest (${total.components!.ciiContribution}) should be > PARTIAL (${partial.components!.ciiContribution})`);
   });
 
-  it('GPS high level gives higher weight than medium', () => {
-    const auxHigh = emptyAux();
-    auxHigh.gpsHexes = Array.from({ length: 5 }, () => ({ lat: 33.0, lon: 35.0, level: 'high' }));
-    const auxMed = emptyAux();
-    auxMed.gpsHexes = Array.from({ length: 5 }, () => ({ lat: 33.0, lon: 35.0, level: 'medium' }));
-    const high = scoreFor(computeCIIScores([], auxHigh), 'IL')!;
-    const med = scoreFor(computeCIIScores([], auxMed), 'IL')!;
-    assert.ok(high.components!.militaryActivity >= med.components!.militaryActivity,
-      `GPS high (${high.components!.militaryActivity}) should be >= medium (${med.components!.militaryActivity})`);
-  });
-
   it('conflict fatalities use sqrt scaling', () => {
     const acled100 = [acledEvent('Ukraine', 'Battles', 100)];
     const acled400 = [acledEvent('Ukraine', 'Battles', 400)];
-    const s100 = scoreFor(computeCIIScores(acled100, emptyAux()), 'UA')!;
-    const s400 = scoreFor(computeCIIScores(acled400, emptyAux()), 'UA')!;
+    // The background this case was written on: until v15 an empty build gave
+    // UA a do-not-travel level from the removed fallback table.
+    const aux = emptyAux();
+    aux.advisories = { byCountry: { UA: 'do-not-travel' } };
+    const s100 = scoreFor(computeCIIScores(acled100, aux), 'UA')!;
+    const s400 = scoreFor(computeCIIScores(acled400, aux), 'UA')!;
     const diff = s400.combinedScore - s100.combinedScore;
     assert.ok(diff < (s400.combinedScore - s100.staticBaseline) * 0.5,
       'sqrt scaling should produce diminishing returns for 4x fatalities');
@@ -1298,15 +1062,6 @@ describe('CII scoring', () => {
       ir.components!.geoConvergence >= cn.components!.geoConvergence + 10,
       `IR conflict component (${ir.components!.geoConvergence}) should materially exceed CN (${cn.components!.geoConvergence})`,
     );
-  });
-
-  it('log2 scaling dampens high-volume low-multiplier countries vs linear', () => {
-    const manyProtests = Array.from({ length: 100 }, () => acledEvent('United States', 'Protests'));
-    const fewProtests = Array.from({ length: 10 }, () => acledEvent('United States', 'Protests'));
-    const many = scoreFor(computeCIIScores(manyProtests, emptyAux()), 'US')!;
-    const few = scoreFor(computeCIIScores(fewProtests, emptyAux()), 'US')!;
-    const ratio = many.components!.ciiContribution / Math.max(1, few.components!.ciiContribution);
-    assert.ok(ratio < 5, `10x events should produce < 5x unrest ratio (got ${ratio.toFixed(2)}), log2 dampens`);
   });
 
   it('displacement boost preserves humanitarian scale above six figures', () => {
@@ -1420,13 +1175,7 @@ describe('CII scoring', () => {
   });
 
   it('UAE geo events attributed to AE not SA despite bbox overlap', () => {
-    const aux = emptyAux();
-    aux.gpsHexes = [{ lat: 25.2, lon: 55.3, level: 'high' }];
-    const scores = computeCIIScores([], aux);
-    const ae = scoreFor(scores, 'AE')!;
-    const sa = scoreFor(scores, 'SA')!;
-    assert.ok(ae.components!.militaryActivity > 0, 'AE should get the Dubai GPS hex');
-    assert.equal(sa.components!.militaryActivity, 0, 'SA should not get the Dubai GPS hex');
+    assert.equal(geoToCountry(25.2, 55.3), 'AE', 'Dubai is AE');
   });
 
   it('empty data returns baseline-derived scores with floors', () => {
@@ -1437,31 +1186,18 @@ describe('CII scoring', () => {
 
   it('clamps negative upstream counts before score math', () => {
     const aux = emptyAux();
-    aux.militaryCii = {
-      UA: {
-        ownFlights: -5,
-        foreignFlights: -3,
-        ownVessels: -2,
-        foreignVessels: -1,
-        aisDisruptionHigh: -4,
-        aisDisruptionElevated: -8,
-        aisDisruptionLow: -13,
-      },
-    };
     aux.orefData = { activeAlertCount: -5, historyCount24h: -12 };
     aux.threatSummaryByCountry = { UA: { critical: -2, high: -3, medium: -5, low: -8, info: -13 } };
-    aux.sanctionsCountryCounts = { UA: -200 };
 
     const scores = computeCIIScores([acledEvent('Ukraine', 'Battles', -9)], aux, { nowMs: TREND_TEST_NOW });
     const ua = scoreFor(scores, 'UA')!;
 
     assert.equal(Number.isFinite(ua.combinedScore), true, 'negative fatalities must not produce NaN scores');
     assert.equal(Number.isFinite(ua.components!.ciiContribution), true, 'negative counts must not produce NaN components');
-    assert.ok(ua.components!.militaryActivity >= 0, 'negative military counts must not lower security below zero');
     assert.ok(ua.components!.newsActivity >= 0, 'negative threat counts must not lower news below zero');
   });
 
-  it('applies ACLED bucket weights and replays earthquake lookback, trend prior, and computedAt from fixed nowMs', () => {
+  it('applies ACLED bucket weights and replays trend prior and computedAt from fixed nowMs', () => {
     const replayNowMs = Date.UTC(2020, 0, 10, 12, 0, 0);
     // ACLED `daysAgo` is computed before computeCIIScores runs; this guards the
     // scorer's bucket weights, not clock-derived ACLED age calculation.
@@ -1489,26 +1225,13 @@ describe('CII scoring', () => {
       '8-30d ACLED bucket still contributes to scoring',
     );
 
-    const withRecentEqAux = emptyAux();
-    withRecentEqAux.earthquakes = [
-      { magnitude: 7.0, occurredAt: replayNowMs - 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
-    ];
-    const withStaleEqAux = emptyAux();
-    withStaleEqAux.earthquakes = [
-      { magnitude: 7.0, occurredAt: replayNowMs - 8 * 24 * 60 * 60 * 1000, location: { latitude: 39, longitude: -98 } },
-    ];
-    const withRecentEq = scoreFor(computeCIIScores([], withRecentEqAux, { nowMs: replayNowMs }), 'US')!;
-    const withStaleEq = scoreFor(computeCIIScores([], withStaleEqAux, { nowMs: replayNowMs }), 'US')!;
-    assert.ok(withRecentEq.combinedScore > base.combinedScore, 'earthquake inside fixed 7d replay window raises score');
-    assert.equal(withStaleEq.combinedScore, base.combinedScore, 'earthquake outside fixed 7d replay window is ignored');
-
     const targetSnapshot = trendSnapshot(replayNowMs - CII_TREND_TARGET_AGE_MS);
-    targetSnapshot.ciiScores = [priorCiiScore('US', withRecentEq.combinedScore - 5, targetSnapshot.capturedAt)];
+    targetSnapshot.ciiScores = [priorCiiScore('US', recent.combinedScore - 5, targetSnapshot.capturedAt)];
     const recentSnapshot = trendSnapshot(replayNowMs - 10 * 60 * 1000);
-    recentSnapshot.ciiScores = [priorCiiScore('US', withRecentEq.combinedScore + 40, recentSnapshot.capturedAt)];
+    recentSnapshot.ciiScores = [priorCiiScore('US', recent.combinedScore + 40, recentSnapshot.capturedAt)];
     const selectedPrior = selectCiiTrendPriorSnapshot([recentSnapshot, targetSnapshot], replayNowMs);
     const replayed = scoreFor(
-      computeCIIScores([], withRecentEqAux, {
+      computeCIIScores(recentAcled, emptyAux(), {
         nowMs: replayNowMs,
         priorScores: selectedPrior?.ciiScores ?? null,
       }),
@@ -1770,15 +1493,9 @@ describe('CII scoring', () => {
     }
   });
 
-  it('every score carries the shared editorial eventMultiplier', () => {
-    const scores = computeCIIScores([], emptyAux());
-    for (const s of scores) {
-      const mult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      const expected = SHARED_EVENT_MULTIPLIER[s.region as keyof typeof SHARED_EVENT_MULTIPLIER];
-      assert.ok(Number.isFinite(mult), `${s.region} eventMultiplier should be finite, got ${mult}`);
-      assert.ok(mult > 0, `${s.region} eventMultiplier should be > 0, got ${mult}`);
-      assert.ok(mult <= 5, `${s.region} eventMultiplier should be <= 5 (sanity), got ${mult}`);
-      assert.equal(mult, expected, `${s.region} eventMultiplier should match shared/cii-weights.ts`);
+  it('every score carries the deprecated eventMultiplier wire field at its neutral 1', () => {
+    for (const s of computeCIIScores([], emptyAux())) {
+      assert.equal(s.eventMultiplier, 1, `${s.region} eventMultiplier must be the neutral 1: no live signal is multiplied`);
     }
   });
 
@@ -1820,8 +1537,9 @@ describe('CII scoring', () => {
       advisoryLevel: string;
       advisoryProvenance: string;
     };
-    assert.equal(ua.advisoryLevel, 'do-not-travel');
-    assert.equal(ua.advisoryProvenance, 'fallback');
+    // The level a legacy score used was not recorded, so none is claimed.
+    assert.equal(ua.advisoryLevel, '');
+    assert.equal(ua.advisoryProvenance, 'absent');
     assert.equal(us.advisoryLevel, '');
     assert.equal(us.advisoryProvenance, 'absent');
   });
@@ -1834,7 +1552,7 @@ describe('CII scoring', () => {
     }
   });
 
-  it('server and frontend baseline/multiplier values match shared CII weights for every country', () => {
+  it('server and frontend baseline values match shared CII weights for every country', () => {
     const sharedCodes = Object.keys(CII_COUNTRY_WEIGHTS).sort();
     assert.deepEqual(Object.keys(CURATED_COUNTRIES).sort(), sharedCodes,
       'CURATED_COUNTRIES keys must match shared/cii-weights.ts keys');
@@ -1848,24 +1566,15 @@ describe('CII scoring', () => {
       const expected = CII_COUNTRY_WEIGHTS[code as keyof typeof CII_COUNTRY_WEIGHTS];
       assert.equal(CURATED_COUNTRIES[code]?.baselineRisk, expected.baselineRisk,
         `${code} frontend baselineRisk should come from shared/cii-weights.ts`);
-      assert.equal(CURATED_COUNTRIES[code]?.eventMultiplier, expected.eventMultiplier,
-        `${code} frontend eventMultiplier should come from shared/cii-weights.ts`);
       assert.equal(BASELINE_RISK[code], expected.baselineRisk,
         `${code} server BASELINE_RISK should come from shared/cii-weights.ts`);
-      assert.equal(EVENT_MULTIPLIER[code], expected.eventMultiplier,
-        `${code} server EVENT_MULTIPLIER should come from shared/cii-weights.ts`);
       assert.equal(SHARED_BASELINE_RISK[code as keyof typeof SHARED_BASELINE_RISK], expected.baselineRisk,
         `${code} shared baseline map should be derived from CII_COUNTRY_WEIGHTS`);
-      assert.equal(SHARED_EVENT_MULTIPLIER[code as keyof typeof SHARED_EVENT_MULTIPLIER], expected.eventMultiplier,
-        `${code} shared multiplier map should be derived from CII_COUNTRY_WEIGHTS`);
 
       const s = scoreFor(scores, code);
       assert.ok(s, `${code} score missing`);
       assert.equal(s!.staticBaseline, expected.baselineRisk,
         `${code} staticBaseline ${s!.staticBaseline} should match shared baselineRisk ${expected.baselineRisk}`);
-      const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      assert.equal(actualMult, expected.eventMultiplier,
-        `${code} eventMultiplier ${actualMult} should match shared eventMultiplier ${expected.eventMultiplier}`);
     }
   });
 
@@ -1886,10 +1595,8 @@ describe('CII scoring', () => {
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
     const getRiskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-    const climateZoneSource = readRepoFile('shared/cii-climate-zones.ts');
     const scoreFormulaLiterals = extractScoreFormulaLiterals(getRiskScoresSource);
-    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource, climateZoneSource);
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'climateSeverityScore', 5, 'return 5');
+    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource);
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 100, 'eventCount > 100');
@@ -1900,8 +1607,6 @@ describe('CII scoring', () => {
       'UCDP classification window must remain a two-year trailing window',
     );
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 0.4, '(ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4');
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 360, 'safeNonNegativeNum(f.brightness) >= 360');
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 5.5, 'mag < 5.5');
     if (getRiskScoresSource.includes('NEWS_THREAT_WEIGHT')) {
       assertFormulaLiteralCovered(scoreFormulaLiterals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
       assertFormulaLiteralCovered(scoreFormulaLiterals, 'NEWS_THREAT_WEIGHT', 0.5, 'low: 0.5');
@@ -1912,9 +1617,9 @@ describe('CII scoring', () => {
       ),
       defaultWeight: {
         baselineRisk: DEFAULT_CII_BASELINE_RISK,
-        eventMultiplier: DEFAULT_CII_EVENT_MULTIPLIER,
       },
       riskConfig: {
+        CII_ADVISORY_MAX_AGE_MS,
         CII_CONFLICT_ACTIVITY_CAP,
         CII_CONFLICT_ACTIVITY_PIVOT,
         CII_GDELT_ESCALATION_CAP,
@@ -1927,6 +1632,14 @@ describe('CII scoring', () => {
         CII_GDELT_LEVEL_MIN_ARTICLES,
         CII_GDELT_LEVEL_PROTEST_FLOOR,
         CII_GDELT_LEVEL_PROTEST_SATURATION,
+        CII_OUTAGE_ASN_NATIONAL_SHARE,
+        CII_OUTAGE_EXAM_TERMS,
+        CII_OUTAGE_FUTURE_SKEW_MS,
+        CII_OUTAGE_NEGATION_TERMS,
+        CII_OUTAGE_NEGATION_WINDOW_WORDS,
+        CII_OUTAGE_SCORED_CAUSES: [...CII_OUTAGE_SCORED_CAUSES].sort(),
+        CII_OUTAGE_UNREST_TERMS,
+        CII_OUTAGE_WINDOW_MS,
         CII_STRIKE_BOOST_CAP,
         CII_STRIKE_BOOST_PER_DOUBLING,
         CII_STRIKE_BOOST_PIVOT,
@@ -1989,9 +1702,6 @@ describe('CII scoring', () => {
         low: 0.5,
         info: 0,
       };
-      function climateSeverityScore(): number {
-        return 5;
-      }
       function deriveUcdpIntensityByRegion(): string {
         const totalDeaths = 1001;
         const eventCount = 101;
@@ -2026,6 +1736,12 @@ describe('CII scoring', () => {
       export function confirmedStrikeDaysFromSeed(): number {
         return 2;
       }
+      export function isScoredOutage(): boolean {
+        return false;
+      }
+      export function outageVerdict(): string {
+        return 'cause';
+      }
     `);
     assertFormulaLiteralCovered(literals, 'gdeltStrikeDays', 7, 'return 7');
     assertFormulaLiteralCovered(literals, 'confirmedStrikeDaysFromSeed', 2, 'return 2');
@@ -2042,34 +1758,9 @@ describe('CII scoring', () => {
     const helperInputs = extractScoreHelperInputSnapshot(`
       const TWO_YEARS_MS = (2 * 365 * 24 * 60 * 60 * 1000) as const;
       const UCDP_CLASSIFICATION_WINDOW_MS = TWO_YEARS_MS;
-      const HIGH_RISK_FALLBACKS = { UA: 'do-not-travel', SY: 'do-not-travel' } as const;
-      const CAUTION_FALLBACKS = <Record<string, string>>{ RU: 'caution' };
-      const ADVISORY_LEVELS_FALLBACK = {
-        ...CAUTION_FALLBACKS,
-        ...HIGH_RISK_FALLBACKS,
-        IL: 'reconsider',
-      } satisfies Record<string, string>;
-      const EUROPE_COUNTRIES = ['DE', 'FR'] as const;
-      const EXTRA_MIDDLE_EAST_COUNTRIES = ['IL', 'SA'] as const;
-      const MIDDLE_EAST_COUNTRIES = ['IR', ...EXTRA_MIDDLE_EAST_COUNTRIES];
-      const CLIMATE_ZONE_GROUPS = { Europe: EUROPE_COUNTRIES } satisfies Record<string, readonly string[]>;
-      const CII_CLIMATE_ZONE_COUNTRIES = {
-        ...CLIMATE_ZONE_GROUPS,
-        'Middle East': MIDDLE_EAST_COUNTRIES,
-      };
     `);
 
     assert.equal(helperInputs.ucdpClassificationWindowMs.value, 2 * 365 * 24 * 60 * 60 * 1000);
-    assert.deepEqual(helperInputs.advisoryLevelsFallback, {
-      IL: 'reconsider',
-      RU: 'caution',
-      SY: 'do-not-travel',
-      UA: 'do-not-travel',
-    });
-    assert.deepEqual(helperInputs.zoneCountryMap, {
-      Europe: ['DE', 'FR'],
-      'Middle East': ['IR', 'IL', 'SA'],
-    });
   });
 
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
@@ -2153,7 +1844,6 @@ describe('CII scoring', () => {
   it('riskScores health coverage ignores slow/static score movers during real-time outage', () => {
     const aux = emptyAux();
     aux.displacedByIso3 = { USA: 5_600_000 };
-    aux.sanctionsCountryCounts = { US: 2_500 };
     aux.advisories = { byCountry: { US: 'do-not-travel' } };
     const baseline = scoreFor(computeCIIScores([], emptyAux()), 'US')!;
     const slowOnly = scoreFor(computeCIIScores([], aux), 'US')!;
@@ -2161,7 +1851,7 @@ describe('CII scoring', () => {
 
     assert.ok(
       slowOnly.combinedScore > baseline.combinedScore,
-      'slow/static displacement, sanctions, and advisory inputs still move the CII score',
+      'slow/static displacement and advisory inputs still move the CII score',
     );
     assert.equal(
       countScoredRealtimeComponents(scores),
@@ -2385,14 +2075,15 @@ describe('CII scoring', () => {
 
   it('proto and OpenAPI CiiComponents descriptions match the server scoring sources', () => {
     const expectedGeo = 'Armed-conflict contribution from ACLED events, fatalities, civilian violence, GDELT conflict coverage, and OREF alerts (0-100).';
-    const expectedMilitary = 'Security-mobility contribution from military flights, military vessels, aviation disruption, and GPS interference (0-100).';
-    const staleSourcePattern = /ACLED\/UCDP|AIS disruption/;
+    // v15 scores no Security input: flights, vessels, aviation and GPS left under rule I1.
+    const expectedMilitary = 'Security contribution; always 0 because v15 scores no Security input.';
+    const staleSourcePattern = /ACLED\/UCDP|AIS disruption|military flights|military vessels|GPS interference/;
 
     const proto = readRepoFile('proto/worldmonitor/intelligence/v1/intelligence.proto');
     const protoBlock = proto.match(/message CiiComponents \{[\s\S]*?\n\}/)?.[0] ?? '';
     assert.ok(protoBlock, 'intelligence.proto must define CiiComponents.');
     assert.ok(protoBlock.includes(expectedGeo), 'intelligence.proto must describe geo_convergence with current ACLED-only sources.');
-    assert.ok(protoBlock.includes(expectedMilitary), 'intelligence.proto must describe military_activity with military vessels.');
+    assert.ok(protoBlock.includes(expectedMilitary), 'intelligence.proto must describe military_activity as always 0.');
     assert.doesNotMatch(protoBlock, staleSourcePattern);
 
     const serviceOpenApi = JSON.parse(readRepoFile('docs/api/IntelligenceService.openapi.json')) as {
@@ -2407,9 +2098,14 @@ describe('CII scoring', () => {
       const block = openApi.match(/\n {8}[A-Za-z0-9_]*CiiComponents:\n[\s\S]*?(?=\n {8}[A-Za-z][A-Za-z0-9_]*:\n)/)?.[0] ?? '';
       assert.ok(block, `${path} must define CiiComponents.`);
       assert.ok(block.includes(`description: ${expectedGeo}`), `${path} must describe geoConvergence with current ACLED-only sources.`);
-      assert.ok(block.includes(`description: ${expectedMilitary}`), `${path} must describe militaryActivity with military vessels.`);
+      assert.ok(block.includes(`description: ${expectedMilitary}`), `${path} must describe militaryActivity as always 0.`);
       assert.doesNotMatch(block, staleSourcePattern);
     }
+
+    // The MCP get_risk_scores schema agents read must say the same.
+    const rpcTools = readRepoFile('api/mcp/registry/rpc-tools.ts');
+    const mcpMilitary = rpcTools.match(/militaryActivity: \{ type: 'number', description: '([^']*)' \}/)?.[1] ?? '';
+    assert.equal(mcpMilitary, 'SECURITY contribution; always 0 because v15 scores no Security input.');
   });
 
   // ===== Methodology doc drift guard (issue #3725) =====
@@ -2432,16 +2128,15 @@ describe('CII scoring', () => {
       `docs/methodology/cii-risk-scores.mdx is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
   });
 
-  it('methodology doc baseline/multiplier columns match BASELINE_RISK and EVENT_MULTIPLIER exactly (numeric drift guard)', () => {
+  it('methodology doc baseline column matches BASELINE_RISK exactly (numeric drift guard)', () => {
     // PR #3780 review hardening: the previous regex-existence check only
     // verified that a row exists for each code. That lets the doc and the
     // code silently disagree on the numeric values — exactly the kind of
     // drift this whole methodology disclosure was meant to prevent.
     //
-    // This stricter test parses each row's numeric columns and asserts they
-    // match BASELINE_RISK[code] and EVENT_MULTIPLIER[code] character-for-
-    // character. Bump CII_FORMULA_VERSION and update the doc together when
-    // either changes.
+    // This stricter test parses each row's numeric column and asserts it
+    // matches BASELINE_RISK[code]. Bump CII_FORMULA_VERSION and update the doc
+    // together when it changes.
     const docPath = resolve(
       fileURLToPath(new URL('.', import.meta.url)),
       '..',
@@ -2451,10 +2146,9 @@ describe('CII scoring', () => {
     );
     const doc = readFileSync(docPath, 'utf8');
     // Parse the per-country table. Rows look like:
-    //   | AE | United Arab Emirates | 10 | 1.5 | — |
-    // The first non-header table row defines the column count; we tolerate
-    // any number of trailing columns (drift notes etc.) but require at least
-    // 4 columns: code, name, baseline, multiplier.
+    //   | AE | United Arab Emirates | 10 |
+    // We tolerate trailing columns (drift notes etc.) but require at least
+    // 3 columns: code, name, baseline.
     const drifts: string[] = [];
     for (const code of Object.keys(BASELINE_RISK)) {
       // Capture the row for this code. Anchor on `| <CODE> |` then non-greedy
@@ -2467,25 +2161,19 @@ describe('CII scoring', () => {
       }
       // Split the remaining row on `|`, strip whitespace.
       const cols = m[1]!.split('|').map((c) => c.trim());
-      // cols = [name, baseline, multiplier, driftNote, '']  (5 entries after split)
-      // We need cols[1] and cols[2].
-      if (cols.length < 4) {
-        drifts.push(`${code}: malformed row, expected at least 4 columns, got ${cols.length}`);
+      // cols = [name, baseline, '']  (3 entries after split); we need cols[1].
+      if (cols.length < 3) {
+        drifts.push(`${code}: malformed row, expected at least 3 columns, got ${cols.length}`);
         continue;
       }
       const docBaseline = Number(cols[1]);
-      const docMultiplier = Number(cols[2]);
       const expectedBaseline = BASELINE_RISK[code]!;
-      const expectedMultiplier = EVENT_MULTIPLIER[code]!;
       if (docBaseline !== expectedBaseline) {
         drifts.push(`${code}: baseline doc=${cols[1]} code=${expectedBaseline}`);
       }
-      if (docMultiplier !== expectedMultiplier) {
-        drifts.push(`${code}: multiplier doc=${cols[2]} code=${expectedMultiplier}`);
-      }
     }
     assert.equal(drifts.length, 0,
-      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK / EVENT_MULTIPLIER.`);
+      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK.`);
   });
 
   it('every TIER1_COUNTRIES code is listed in the methodology doc (server tables stay in sync)', () => {
@@ -2518,39 +2206,19 @@ describe('CII scoring', () => {
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 
-  it('methodology doc discloses advisory fallback and CII attribution caveats', () => {
+  it('methodology doc discloses the missing-advisory rule and CII attribution caveats', () => {
     const methodologyDoc = readRepoFile('docs/methodology/cii-risk-scores.mdx');
     const overviewDoc = readRepoFile('docs/country-instability-index.mdx');
     const dataSourcesDoc = readRepoFile('docs/data-sources.mdx');
     const riskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
-    const fallbackBlock = riskScoresSource.match(/const ADVISORY_LEVELS_FALLBACK[\s\S]*?\};/)?.[0] ?? '';
-    assert.ok(fallbackBlock, 'get-risk-scores.ts must keep the advisory fallback table inspectable.');
-
-    const fallbackRows = [...fallbackBlock.matchAll(/\b([A-Z]{2}): '([^']+)'/g)]
-      .map((match) => ({ code: match[1]!, level: match[2]! }));
-    assert.equal(fallbackRows.length, 15, 'advisory fallback table size changed; update methodology disclosure.');
-
-    for (const { code, level } of fallbackRows) {
-      const label = level === 'do-not-travel' ? 'Do not travel'
-        : level === 'reconsider' ? 'Reconsider'
-        : 'Caution';
-      assert.match(
-        methodologyDoc,
-        new RegExp(`^\\| \`${code}\` \\| [^|]+ \\| ${label} \\|`, 'm'),
-        `cii-risk-scores.mdx must disclose fallback advisory level for ${code}.`,
-      );
-    }
-
+    // v15 removed the embedded advisory table: it disagreed with the live feed.
+    assert.doesNotMatch(riskScoresSource, /ADVISORY_LEVELS_FALLBACK/, 'no embedded advisory table may return.');
     assert.match(
       methodologyDoc,
-      /live security-advisory feed[\s\S]{0,160}fallback/i,
-      'methodology doc must state that live advisory data wins before fallback.',
+      new RegExp(`### Missing advisory data[\\s\\S]*${CII_ADVISORY_LAST_GOOD_KEY}[\\s\\S]*${CII_ADVISORY_MAX_AGE_MS / 3_600_000} hours`),
+      'methodology doc must state the last good snapshot and its maximum age.',
     );
-    assert.match(
-      dataSourcesDoc,
-      /Live advisory feed values override the fallback/i,
-      'data-sources doc must state that CII advisory fallback does not override live feed values.',
-    );
+    assert.match(dataSourcesDoc, /there is no embedded fallback table/i, 'data-sources doc must state that no table stands in for the feed.');
     assert.doesNotMatch(
       dataSourcesDoc,
       /consensus bonus/i,
@@ -2744,6 +2412,7 @@ describe('CII scoring', () => {
       'docs/strategic-risk.mdx',
       'docs/algorithms.mdx',
       'docs/overview.mdx',
+      'docs/platform-evaluation.mdx',
       'docs/features.mdx',
       'docs/methodology/cii-risk-scores.mdx',
       'docs/Docs_To_Review/DOCUMENTATION.md',

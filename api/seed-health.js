@@ -55,6 +55,7 @@ const CHINA_DECISION_SIGNAL_STATES = new Set([
 // scripts/seed-china-decision-signals.mjs.
 const CHINA_DECISION_HEALTHY_QUIET_CAUSE = 'healthy_quiet_window';
 const SEED_DOMAINS = {
+  'maritime:ukmto-incidents': { key: 'seed-meta:maritime:ukmto-incidents', intervalMin: 37.5, activationKey: 'seed-activated:maritime:ukmto-incidents' }, // 2x matches the 75-minute reader and health budget
   'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
@@ -66,6 +67,9 @@ const SEED_DOMAINS = {
   'climate:co2-monitoring':   { key: 'seed-meta:climate:co2-monitoring',   intervalMin: 1440 }, // daily cron; health.js maxStaleMin:4320 (3x) is intentionally higher — it's an alarm threshold, not the cron cadence
   'climate:ocean-ice':        { key: 'seed-meta:climate:ocean-ice',        intervalMin: 1440 }, // daily cron; health.js maxStaleMin:2880 (2x) tolerates one missed run
   'climate:news-intelligence': { key: 'seed-meta:climate:news-intelligence', intervalMin: 30 },
+  // Daily bundle member; health.js maxStaleMin:4320 (3x). The activation marker keeps the row
+  // pending (not degraded) until the first publication; minRecordCount matches api/health.js.
+  'climate:reservoir-levels': { key: 'seed-meta:climate:reservoir-levels', intervalMin: 1440, minRecordCount: 50, activationKey: 'seed-activated:climate:reservoir-levels' },
   // #4920 completeness measurement — both run in the daily feed-validation
   // GitHub Actions workflow (00:00 UTC), not Railway. 1440-min cadence;
   // classifier stales at intervalMin*2 = one fully missed day.
@@ -77,6 +81,7 @@ const SEED_DOMAINS = {
   // publisher alarms as missing/stale instead of reverting to pending.
   'news:feed-health':         { key: 'seed-meta:news:feed-health',         intervalMin: 1440, activationKey: 'seed-activated:news:feed-health' },
   'news:recall-benchmark':    { key: 'seed-meta:news:recall-benchmark',    intervalMin: 1440, activationKey: 'seed-activated:news:recall-benchmark' },
+  'open-data:chokepoints':    { key: 'seed-meta:open-data:chokepoints',    intervalMin: 1440, activationKey: 'seed-activated:open-data:chokepoints' },
   // Phase 2 — Parameterized endpoints
   'unrest:events':            { key: 'seed-meta:unrest:events',            intervalMin: 15 },
   'cyber:threats':            { key: 'seed-meta:cyber:threats',            intervalMin: 240 },
@@ -713,17 +718,22 @@ export async function handleSeedHealth(req, options = {}) {
       // written before the field existed, which is absence of evidence, not a
       // failure — reporting it as one would flag every legacy run.
       worldExports: meta.worldExports ?? null,
+      // The run's three Hormuz LNG origin requests, read by the energy shock
+      // model. Null on a snapshot written before the field existed.
+      lngOrigin: meta.lngOrigin ?? null,
     } : null;
     // Only failures are a coverage gap. A reporter with no positive rows
     // (no_records) and an observed importer that does not trade every reviewed
     // heading are valid observations; flagging them would keep the domain
     // partial on every healthy run. Both stay visible in bilateralCoverage.
     //
-    // World exports are one run-level fetch, so anything but 'observed' — an
-    // unrecognised state included — is a gap the brief's supplier scale inherits.
+    // World exports and the LNG origin snapshot are run-level fetches, so
+    // anything but 'observed' — an unrecognised state included — is a gap their
+    // readers (the brief's supplier scale, the gas shock model) inherit.
     const bilateralPartial = bilateralGaps && (bilateralGaps.preservedCountries.length > 0
       || Object.values(bilateralGaps.countryCoverage).some(c => BILATERAL_FAILURE_STATES.has(c?.state))
-      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed'));
+      || (bilateralGaps.worldExports != null && bilateralGaps.worldExports.state !== 'observed')
+      || (bilateralGaps.lngOrigin != null && bilateralGaps.lngOrigin.state !== 'observed'));
     // Same policy as api/health.js riskScores, without the sibling staleness
     // checks this endpoint does not compute.
     const ciiInputs = cfg.ciiInputs ? assessCiiInputs(meta, evaluationNow) : null;

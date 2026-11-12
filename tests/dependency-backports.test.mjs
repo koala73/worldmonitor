@@ -13,8 +13,10 @@ describe('installed dependency backports', () => {
   for (const [lockfile, name, version, resolved] of [
     ['package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:vendor/braces'],
     ['pro-test/package-lock.json', 'braces', '3.0.4-worldmonitor.1', 'file:../vendor/braces'],
-    ['package-lock.json', 'stream-json', '1.9.2-worldmonitor.1', 'file:vendor/stream-json'],
-    ['pro-test/package-lock.json', 'stream-json', '1.9.2-worldmonitor.1', 'file:../vendor/stream-json'],
+    ['package-lock.json', 'stream-json', '1.9.2-worldmonitor.2', 'file:vendor/stream-json'],
+    ['pro-test/package-lock.json', 'stream-json', '1.9.2-worldmonitor.2', 'file:../vendor/stream-json'],
+    ['package-lock.json', 'deepmerge', '4.3.1-worldmonitor.2', 'file:scripts/vendor/deepmerge'],
+    ['scripts/package-lock.json', 'deepmerge', '4.3.1-worldmonitor.2', 'file:vendor/deepmerge'],
     ['blog-site/package-lock.json', 'http-cache-semantics', '4.2.1-worldmonitor.2', 'file:../vendor/http-cache-semantics'],
   ]) {
     it(`${lockfile} selects only the source backport for ${name}`, () => {
@@ -48,6 +50,13 @@ describe('installed dependency backports', () => {
     assert.deepEqual(readFileSync(consumer.resolve('stream-json/Assembler')), readFileSync(new URL('../vendor/stream-json/Assembler.js', import.meta.url)));
     assert.equal(consumer('stream-json/package.json').private, true);
     assert.equal(consumer('stream-json/package.json').scripts, undefined);
+  });
+
+  it('installs the patched merge implementation for the Rollup resolver', () => {
+    const consumer = createRequire(require.resolve('@rollup/plugin-node-resolve'));
+    assert.deepEqual(readFileSync(consumer.resolve('deepmerge')), readFileSync(new URL('../scripts/vendor/deepmerge/index.js', import.meta.url)));
+    assert.equal(consumer('deepmerge/package.json').private, true);
+    assert.equal(consumer('deepmerge/package.json').scripts, undefined);
   });
 
   it('installs the patched source for Astro', { skip: !existsSync(new URL('../blog-site/node_modules/astro/package.json', import.meta.url)) }, () => {

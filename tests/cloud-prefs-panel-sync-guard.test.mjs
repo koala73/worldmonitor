@@ -1,3 +1,25 @@
+// Text checks on the App-side cloud-preference wiring in src/App.ts and
+// src/app/panel-layout.ts (#8690, section 2).
+//
+// Why the text is the contract here: every check below pins WHERE a call
+// sits inside App's cloud-apply handler, the free-tier clamp block, the
+// source-cap helper and the auth subscription (reconcile only after the
+// account handoff, re-run the cap before reloading disabled feeds, heal
+// stored tabs once the tier is known). Those are ordering constraints
+// inside private methods of a class that no DOM harness can drive end to
+// end yet; tests/dom/app-destroy-lifecycle.test.mts constructs App without
+// init, but the cloud-apply path needs a mounted dashboard and a signed-in
+// entitlement state. When PanelLayoutManager and the cloud-apply handler
+// get a harness (#5892), move each check there and delete it here.
+//
+// What this file no longer holds: the dirty-key persistence checks, which
+// run for real in tests/cloud-prefs-sync-concurrency.test.mts (reload
+// recovery at "restores a persisted dirty marker", two-tab
+// union and settle at "two-tab dirty-key persistence", sign-out cleanup at
+// "cloud prefs sign-out cleanup", partial-import markers at "settings
+// import cloud transaction"); and the panel-order sync-key checks, which
+// run in tests/dom/cloud-prefs-panel-order-keys.test.mts.
+
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
@@ -10,37 +32,6 @@ function readSrc(path) {
 }
 
 describe('cloud prefs panel sync guardrails', () => {
-  it('syncs the real panel order storage keys', () => {
-    const syncKeysSrc = readSrc('src/utils/sync-keys.ts');
-    const panelLayoutSrc = readSrc('src/app/panel-layout.ts');
-
-    assert.match(
-      panelLayoutSrc,
-      /saveToStorage\(this\.ctx\.PANEL_ORDER_KEY,\s*allOrder\)/,
-      'panel layout must persist unified order at PANEL_ORDER_KEY',
-    );
-    assert.match(
-      panelLayoutSrc,
-      /saveToStorage\(this\.ctx\.PANEL_ORDER_KEY \+ '-bottom-set',\s*Array\.from\(this\.bottomSetMemory\)\)/,
-      'panel layout must persist bottom placement at PANEL_ORDER_KEY + -bottom-set',
-    );
-    assert.match(
-      syncKeysSrc,
-      /'panel-order'/,
-      'cloud sync key list must include the actual panel-order key',
-    );
-    assert.match(
-      syncKeysSrc,
-      /'panel-order-bottom-set'/,
-      'cloud sync key list must include the actual panel bottom-set key',
-    );
-    assert.doesNotMatch(
-      syncKeysSrc,
-      /'worldmonitor-panel-order'/,
-      'cloud sync must not watch stale worldmonitor-panel-order, which the app never writes',
-    );
-  });
-
   it('notifies the running tab when cloud prefs are applied', () => {
     const cloudSyncSrc = readSrc('src/utils/cloud-prefs-sync.ts');
     const appSrc = readSrc('src/App.ts');
@@ -235,75 +226,6 @@ describe('cloud prefs panel sync guardrails', () => {
       appSrc,
       /this\.enforceFreeTierLimits\(\);\s*this\.panelLayout\.healStoredTabSnapshots\(\);/,
       'the fallback callback must heal stored tab snapshots after clamping global panels',
-    );
-  });
-
-  it('persists dirty cloud preference keys across reloads until upload settles', () => {
-    const cloudSyncSrc = readSrc('src/utils/cloud-prefs-sync.ts');
-
-    assert.match(
-      cloudSyncSrc,
-      /const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys'/,
-      'cloud prefs sync must store pending dirty-key metadata outside the uploaded blob',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /hydrateDirtyKeysFromStorage\(userId\);/,
-      'cloud prefs sync must restore dirty keys for the signed-in user before resolving sign-in conflicts',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /userId: _dirtyKeysUserId,[\s\S]*keys: \[\.\.\._dirtyKeys\]/,
-      'persisted dirty-key metadata must be scoped to the user that made the edit',
-    );
-    assert.doesNotMatch(
-      cloudSyncSrc,
-      /export function install[\s\S]*hydrateDirtyKeysFromStorage\(/,
-      'cloud prefs sync must not restore ownerless dirty keys at install time',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /markDirtyKey\(key as CloudSyncKey\);/,
-      'local pref writes must persist their dirty-key marker before debounce upload',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /function markDirtyKey\(key: CloudSyncKey\): void \{\s*_dirtyKeys\.add\(key\);\s*persistDirtyKeyAddition\(key\);\s*\}/,
-      'marking a key dirty must union into the persisted set so concurrent same-user tabs cannot clobber each other (#4746)',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /if \(settled\.length > 0\) persistSettledDirtyKeyRemovals\(settled\);/,
-      'successful uploads must clear only the dirty keys that actually settled, by targeted removal — never a wholesale overwrite (#4746)',
-    );
-    assert.match(
-      cloudSyncSrc,
-      // Accessor-agnostic on purpose: #7833 moved this module onto
-      // safeStorageRemove, and pinning a spelling just re-breaks on the next
-      // migration. What this pins is the ORDER — the empty-set delete has to
-      // happen before the ownerless bail.
-      /if \(_dirtyKeys\.size === 0\) \{[\s\S]*(?:safeStorageRemove|rawRemove|Storage\.prototype\.removeItem\.call)\([^)]*KEY_DIRTY_KEYS[^)]*\);[\s\S]*return;[\s\S]*\}[\s\S]*if \(!_dirtyKeysUserId\) return;/,
-      'ownerless dirty writes before sign-in must not delete the previous persisted dirty-key marker',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /const preservePersistedDirtyKeys = _syncOperations\.busy && _dirtyKeys\.size > 0;[\s\S]*_dirtyKeys\.clear\(\);\s*if \(!preservePersistedDirtyKeys\) persistDirtyKeys\(\);\s*_dirtyKeysUserId = null;/,
-      'sign-out must retain user-scoped dirty metadata only when an interrupted writer still needs recovery',
-    );
-  });
-
-  it('does not clear/persist settled dirty keys after a mid-upload account switch', () => {
-    const cloudSyncSrc = readSrc('src/utils/cloud-prefs-sync.ts');
-
-    assert.match(
-      cloudSyncSrc,
-      /if \(_authGeneration !== myGeneration\) return 'stopped';[\s\S]*clearSettledDirtyKeys\(postedBlob\)/,
-      'uploadNow success branch must bail before clearing settled dirty keys when the auth generation advanced (sign-out / account switch mid-upload)',
-    );
-    assert.match(
-      cloudSyncSrc,
-      /if \(_authGeneration !== callerGeneration\) return false;[\s\S]*clearSettledDirtyKeys\(merged\)/,
-      'resolveConflictWithMerge must bail before clearing settled dirty keys when the caller auth generation advanced',
     );
   });
 });

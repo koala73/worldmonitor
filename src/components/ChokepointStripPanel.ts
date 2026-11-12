@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
 import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
+import { chokepointCoverageWarning } from '@/services/supply-chain/chokepoint-coverage';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -24,7 +25,7 @@ function shortName(id: string): string {
     case 'suez': return t('components.chokepointStrip.shortName.suez');
     case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
     case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
-    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.doverStrait');
     case 'panama': return t('components.chokepointStrip.shortName.panama');
     // Empty string lets the call site's `|| cp.name` fallback fire so any
     // future chokepoint added to the API but not yet in this switch
@@ -114,8 +115,9 @@ export class ChokepointStripPanel extends Panel {
           </div>
         </div>`;
     }));
-    const coverageWarning = this.data.upstreamUnavailable
-      ? safeHtml`<div class="cp-strip-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+    const coverageText = chokepointCoverageWarning(this.data);
+    const coverageWarning = coverageText
+      ? safeHtml`<div class="cp-strip-warning">${coverageText}</div>`
       : safeHtml``;
 
     const nAis = ordered.reduce(

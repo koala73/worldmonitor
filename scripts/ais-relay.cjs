@@ -74,7 +74,7 @@ const {
 } = require('./lib/occurrence-events.cjs');
 const {
   createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  X_SHARED_COVERAGE_MODEL,
   xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
@@ -87,6 +87,16 @@ const {
   CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   classifyDigestRetryDecision,
 } = require('./lib/classify-digest-request.cjs');
+const {
+  DIGEST_WARM_ACTIVATION_KEY,
+  DIGEST_WARM_HEARTBEAT_KEY,
+  DIGEST_WARM_HEARTBEAT_TTL_SECONDS,
+  DIGEST_WARM_INTERVAL_MS,
+  fetchDigestWarmCell,
+  runDigestWarmCycle,
+  shouldPublishDigestWarmHeartbeat,
+  summarizeDigestWarmCycle,
+} = require('./lib/news-digest-warm.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -112,6 +122,9 @@ const { recordPizzintHistory } = require('./shared/pizzint-history.cjs');
 const { pizzintVenuePoint } = require('./shared/pizzint-location.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
+const { PREVIOUS_SESSION_CHART_QUERY, awaitsSessionOpen, previousSessionClose } = require('./shared/yahoo-closed-session.cjs');
+const { SPARKLINE_HISTORY_QUERY, SPARKLINE_HISTORY_RETRY_SECONDS, buildQuoteSparkline } = require('./shared/quote-sparkline.cjs');
+const { crudeOilQuoteProvenance } = require('./shared/oil-quote-provenance.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -170,6 +183,14 @@ const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
   : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
+// Unset = every interface, which Railway and the Docker network need. A native
+// install with no container boundary sets RELAY_BIND_HOST=127.0.0.1.
+const RELAY_BIND_HOST = (process.env.RELAY_BIND_HOST || '').trim() || undefined;
+// Self-requests must reach the bound address; `localhost` may resolve to the
+// other address family than a specific RELAY_BIND_HOST.
+const RELAY_SELF_HOST = !RELAY_BIND_HOST || RELAY_BIND_HOST === '0.0.0.0' || RELAY_BIND_HOST === '::'
+  ? 'localhost'
+  : (RELAY_BIND_HOST.includes(':') ? `[${RELAY_BIND_HOST}]` : RELAY_BIND_HOST);
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
@@ -1227,6 +1248,14 @@ const telegramState = {
   startedAt: Date.now(),
 };
 
+// The feed lives in process memory and a new container waits
+// TELEGRAM_STARTUP_DELAY_MS before polling, so every deploy served an empty
+// feed for minutes and blanked the panel for every open dashboard. Each good
+// poll snapshots the items; a starting container serves that snapshot until
+// its own first poll. The TTL bounds how old a restored feed can be.
+const TELEGRAM_ITEMS_SNAPSHOT_KEY = 'intelligence:telegram-feed:items:v1';
+const TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS = 1800;
+
 const TELEGRAM_RESOLVE_CACHE_TTL_MS = 60 * 60 * 1000;
 const TELEGRAM_CHANNEL_CACHE_TTL_MS = 30_000;
 const TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES = 512;
@@ -2202,6 +2231,10 @@ async function pollTelegramOnce() {
 
   if (channelsPolled > 0) {
     const rc = telegramState.items.length;
+    upstashSet(TELEGRAM_ITEMS_SNAPSHOT_KEY, {
+      savedAt: new Date(telegramState.lastPollAt).toISOString(),
+      items: telegramState.items,
+    }, TELEGRAM_ITEMS_SNAPSHOT_TTL_SECONDS).catch(() => {});
     // Data key TTL must outlive maxStaleMin (10 min = 600s) by enough
     // buffer so health sees hasData=true + stale seed-meta → STALE_SEED.
     // If both keys expire together, health jumps straight to EMPTY and
@@ -2240,9 +2273,28 @@ function guardedTelegramPoll() {
     });
 }
 
+async function restoreTelegramSnapshot() {
+  const snapshot = await upstashGet(TELEGRAM_ITEMS_SNAPSHOT_KEY);
+  const savedAt = Date.parse(snapshot?.savedAt);
+  // Keep only feed-item shapes: the topic/channel filters and the poll merge
+  // read fields on every entry, and a bad one would sit there until TTL.
+  const items = Array.isArray(snapshot?.items)
+    ? snapshot.items.filter(item => item && typeof item === 'object' && typeof item.id === 'string' && item.id)
+    : [];
+  if (!items.length || !Number.isFinite(savedAt)) return;
+  // A poll that finished first holds fresher items; never overwrite it.
+  if (telegramState.lastPollAt || telegramState.items.length) return;
+  telegramState.items = items.slice(0, TELEGRAM_MAX_FEED_ITEMS);
+  // updatedAt reports when these posts were polled. lastSuccessfulPollAt stays
+  // 0: it gates the strike feed's freshness and no poll has run here yet.
+  telegramState.lastPollAt = savedAt;
+  console.log(`[Relay] Telegram feed restored ${telegramState.items.length} items from snapshot saved ${snapshot.savedAt}`);
+}
+
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
   loadTelegramChannels();
+  restoreTelegramSnapshot().catch((e) => console.warn('[Relay] Telegram snapshot restore failed:', e?.message || e));
   if (TELEGRAM_STARTUP_DELAY_MS > 0) {
     console.log(`[Relay] Telegram connect delayed ${TELEGRAM_STARTUP_DELAY_MS}ms (waiting for old container to disconnect)`);
     setTimeout(() => {
@@ -2272,7 +2324,11 @@ const X_POLL_INTERVAL_MS = 15 * 60 * 1000;
 // cycle with no error anywhere. Coerce non-numeric env values to the default.
 const X_MAX_FEED_ITEMS = Math.max(50, Number(process.env.X_MAX_FEED_ITEMS) || xNewsAccounts.DEFAULT_MAX_FEED_ITEMS);
 const X_MAX_TEXT_CHARS = Math.max(200, Number(process.env.X_MAX_TEXT_CHARS) || 800);
-const X_TRACK_A_ACCOUNT_BUDGET = 64;
+// Reviewed enabled-registry ceiling. Post spend stays one List page per slot
+// (96 slots of 5 Posts) plus one 25-Post deletion audit, so member count does
+// not add Post reads. Raise this only after re-checking that math. It is not
+// the live List size: the List still has to match this registry exactly.
+const X_TRACK_A_ACCOUNT_BUDGET = 65;
 const X_FEED_CACHE_KEY = 'intelligence:x-feed:v1';
 const X_FEED_META_KEY = 'seed-meta:intelligence:x-feed:v1';
 const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
@@ -2289,7 +2345,7 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = 120;
 const X_POLL_STUCK_AFTER_MS = 60_000;
 const xPostBudget = createXPostBudget({
   evalCommand: upstashEval,
-  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  ...X_SHARED_COVERAGE_MODEL,
 });
 
 const xState = {
@@ -2973,6 +3029,7 @@ const {
   fetchCandidatePages: ucdpFetchCandidatePages,
   capWithAnnualFloor: ucdpCapWithAnnualFloor,
   candidateContentMeta: ucdpCandidateContentMeta,
+  hasPreciseUcdpLocation,
 } = require('./shared/ucdp-candidate.cjs');
 const UCDP_MAX_EVENTS = 2000; // Default capacity. Complete candidate rows plus the annual floor take precedence.
 // CII accepts two years, but these newest annual pages and the candidate release
@@ -2987,7 +3044,7 @@ function ucdpFetchPage(version, page, timeoutMs = 30000) {
     const pageUrl = new URL(`https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`);
     const headers = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' };
     if (UCDP_ACCESS_TOKEN) headers['x-ucdp-access-token'] = UCDP_ACCESS_TOKEN;
-    const req = https.request(pageUrl, { method: 'GET', headers, timeout: timeoutMs }, (resp) => {
+    const req = https.request(pageUrl, { signal: AbortSignal.timeout(timeoutMs), method: 'GET', headers, timeout: timeoutMs }, (resp) => {
       if (resp.statusCode === 401 || resp.statusCode === 403) {
         resp.resume();
         return reject(new Error(`UCDP ${version} page ${page}: HTTP ${resp.statusCode} — API token required (set UCDP_ACCESS_TOKEN env var)`));
@@ -3159,6 +3216,8 @@ async function seedUcdpEvents() {
       dateEnd: Date.parse(e.date_end) || 0,
       location: { latitude: Number(e.latitude) || 0, longitude: Number(e.longitude) || 0 },
       country: e.country || '',
+      hasPreciseLocation: hasPreciseUcdpLocation(e),
+      locationName: (e.where_coordinates || '').substring(0, 200),
       sideA: (e.side_a || '').substring(0, 200),
       sideB: (e.side_b || '').substring(0, 200),
       deathsBest: Number(e.best) || 0,
@@ -3194,6 +3253,23 @@ async function seedUcdpEvents() {
       ...ucdpCandidateContentMeta(capped),
     }, 604800);
     console.log(`[UCDP] Seeded ${capped.length} events (raw: ${allEvents.length}, candidate: ${candidateVersion || 'none'}, failed pages: ${failedPages}, redis: ${ok ? 'OK' : 'FAIL'})`);
+    // The bootstrap tier hydrates from the compact projection, which health
+    // watches under its own seed-meta. The backup cron skips while the canonical
+    // seed-meta above is fresh, so this writer must refresh the projection too or
+    // it ages past its budget between backup runs (Sentry WORLDMONITOR-1DC).
+    // Best-effort, like the backup cron: the canonical key is already published.
+    if (ok) {
+      try {
+        const { compactUcdpDashboardPayload, UCDP_BOOTSTRAP_KEY, UCDP_BOOTSTRAP_META_KEY } = await import('./_ucdp-dashboard.mjs');
+        const compact = compactUcdpDashboardPayload(payload);
+        if (!await upstashSet(UCDP_BOOTSTRAP_KEY, compact, UCDP_TTL_SECONDS)) throw new Error('projection SET failed');
+        if (!await upstashSet(UCDP_BOOTSTRAP_META_KEY, { fetchedAt: Date.now(), recordCount: compact.events.length }, 604800)) {
+          throw new Error('projection seed-meta SET failed');
+        }
+      } catch (err) {
+        console.warn(`[UCDP] Compact projection write failed: ${err?.message || err}`);
+      }
+    }
     const newConflicts = capped.filter(e => e.deathsBest >= 10 && !ucdpPrevAlertedIds.has(e.id)).sort((a, b) => b.deathsBest - a.deathsBest);
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
@@ -3278,7 +3354,7 @@ async function seedSatelliteTLEs() {
       try {
         text = await new Promise((resolve, reject) => {
           const url = new URL(`https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=tle`);
-          const req = https.request(url, { method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
+          const req = https.request(url, { signal: AbortSignal.timeout(15000), method: 'GET', headers: { 'User-Agent': CHROME_UA }, timeout: 15000 }, (resp) => {
             if (resp.statusCode < 200 || resp.statusCode >= 300) {
               resp.resume();
               return reject(new Error(`CelesTrak ${group}: HTTP ${resp.statusCode}`));
@@ -3417,7 +3493,14 @@ function _parseYahooChartJson(body) {
         .filter((value) => value != null)
         .map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value))
       : [];
-    return { price, change, sparkline };
+    return {
+      price,
+      change,
+      sparkline,
+      awaitingSessionOpen: awaitsSessionOpen(data),
+      lastTradeAt: meta.regularMarketTime,
+      chart: data,
+    };
   } catch { return null; }
 }
 
@@ -3432,6 +3515,7 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   return new Promise((resolve) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       timeout: 10000,
     }, (resp) => {
@@ -3449,7 +3533,56 @@ function _fetchYahooChartNoProxy(symbol, query = '') {
   });
 }
 
+// A rolled chart's previous close stays the same until the next trade, so one
+// daily-chart request per symbol covers a whole weekend of 5-minute cycles.
+const _previousSessionCloses = new Map();
+
+async function _withPreviousSessionChange(symbol, quote) {
+  let cached = _previousSessionCloses.get(symbol);
+  if (cached?.lastTradeAt !== quote.lastTradeAt) {
+    await sleep(150);
+    const daily = await _fetchYahooChartOnce(symbol, PREVIOUS_SESSION_CHART_QUERY);
+    const close = previousSessionClose(daily?.chart, quote.lastTradeAt);
+    if (!close) return quote;
+    cached = { lastTradeAt: quote.lastTradeAt, close };
+    _previousSessionCloses.set(symbol, cached);
+  }
+  return { ...quote, change: ((quote.price - cached.close) / cached.close) * 100 };
+}
+
+// History bars before the default chart's first bar never change, so one
+// history request per symbol per session covers every 5-minute cycle. After a
+// failed request the symbol waits SPARKLINE_HISTORY_RETRY_SECONDS.
+const _sparklineHistories = new Map();
+const _sparklineHistoryFailedAt = new Map();
+
+async function _commoditySparkline(symbol, quote) {
+  const firstBarAt = quote.chart?.chart?.result?.[0]?.timestamp?.[0] ?? quote.lastTradeAt;
+  const cacheable = Number.isFinite(firstBarAt);
+  let cached = cacheable ? _sparklineHistories.get(symbol) : null;
+  if (!cached || cached.firstBarAt !== firstBarAt) {
+    const backingOff = Date.now() - (_sparklineHistoryFailedAt.get(symbol) ?? -Infinity) < SPARKLINE_HISTORY_RETRY_SECONDS * 1000;
+    let history = null;
+    if (!backingOff) {
+      await sleep(150);
+      history = await _fetchYahooChartOnce(symbol, SPARKLINE_HISTORY_QUERY);
+      if (history) _sparklineHistoryFailedAt.delete(symbol);
+      else _sparklineHistoryFailedAt.set(symbol, Date.now());
+    }
+    cached = { firstBarAt, chart: history?.chart ?? null };
+    if (history && cacheable) _sparklineHistories.set(symbol, cached);
+    if (!history) logThrottled('warn', `market-sparkline-history:${symbol}`, `[Market] ${symbol} sparkline history unavailable; publishing today's bars only`);
+  }
+  const { sparkline, ...labels } = buildQuoteSparkline(quote.chart, cached.chart);
+  return { sparkline: sparkline.map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value)), ...labels };
+}
+
 function fetchYahooChartDirect(symbol, query = '') {
+  return _fetchYahooChartOnce(symbol, query)
+    .then((quote) => (!query && quote?.awaitingSessionOpen ? _withPreviousSessionChange(symbol, quote) : quote));
+}
+
+function _fetchYahooChartOnce(symbol, query = '') {
   return _fetchYahooChartNoProxy(symbol, query).then((result) => {
     if (result) return result;
     if (!PROXY_URL) return null;
@@ -3513,6 +3646,7 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
   return new Promise((resolve) => {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`;
     const req = https.get(url, {
+      signal: AbortSignal.timeout(10000),
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', 'X-Finnhub-Token': apiKey },
       timeout: 10000,
     }, (resp) => {
@@ -3678,10 +3812,15 @@ async function seedMarketQuotes() {
 async function seedCommodityQuotes() {
   const quotes = [];
   const missing = [];
+  const toQuote = async (symbol, meta, yahoo) => ({
+    symbol, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change,
+    ...(await _commoditySparkline(symbol, yahoo)),
+    ...crudeOilQuoteProvenance(symbol, 'Yahoo Finance', 'futures', yahoo.lastTradeAt * 1000),
+  });
   for (const s of COMMODITY_SYMBOLS) {
     const meta = COMMODITY_META.get(s) || { name: s, display: s };
     const yahoo = await fetchYahooChartDirect(s);
-    if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
     else missing.push(s);
     await sleep(150);
   }
@@ -3691,7 +3830,7 @@ async function seedCommodityQuotes() {
     for (const s of missing) {
       const meta = COMMODITY_META.get(s);
       const yahoo = await fetchYahooChartDirect(s);
-      if (yahoo) quotes.push({ symbol: s, name: meta.name, display: meta.display, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+      if (yahoo) quotes.push(await toQuote(s, meta, yahoo));
       await sleep(200);
     }
   }
@@ -3896,7 +4035,7 @@ async function seedEtfFlows() {
     try {
       const raw = await new Promise((resolve) => {
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=5d&interval=1d`;
-        const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
+        const req = https.get(url, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' }, timeout: 10000 }, (resp) => {
           if (resp.statusCode !== 200) { resp.resume(); return resolve(null); }
           let body = '';
           resp.on('data', (chunk) => { body += chunk; });
@@ -4425,7 +4564,7 @@ function cyberToProto(t) {
 
 function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -4437,7 +4576,7 @@ function cyberHttpGetJson(url, reqHeaders, timeoutMs) {
 }
 function cyberHttpGetText(url, reqHeaders, timeoutMs) {
   return new Promise((resolve) => {
-    const req = https.get(url, { headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(timeoutMs || 10000), headers: { 'User-Agent': CHROME_UA, ...reqHeaders }, timeout: timeoutMs || 10000 }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) { resp.resume(); return resolve(null); }
       const chunks = [];
       resp.on('data', (c) => chunks.push(c));
@@ -4713,10 +4852,20 @@ const CLASSIFY_SEED_INTERVAL_MS = 15 * 60 * 1000;
 const CLASSIFY_CACHE_TTL = 86400;
 const CLASSIFY_SKIP_TTL = 1800;
 const CLASSIFY_BATCH_SIZE = 50;
-const CLASSIFY_VARIANTS = ['full', 'tech', 'finance', 'happy', 'commodity'];
-// Zero under RELAY_TEST_MODE so the /__test/seed-classify seam runs a full
-// five-variant cycle in milliseconds instead of twelve minutes.
-const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE ? 0 : 3 * 60 * 1000;
+// Every edition the news digest serves, generated from shared/news-catalog.json
+// (scripts/generate-browser-news-catalog.mjs), so a new edition is classified
+// without a relay edit.
+const CLASSIFY_VARIANTS = requireShared('news-digest-editions.json');
+// The waits between editions total CLASSIFY_STAGGER_TOTAL_MS whatever the
+// edition count, leaving the rest of the 15-minute interval for classify work;
+// a fixed per-edition wait would overrun the interval as editions are added and
+// the in-flight guard would then skip every other cycle. Zero under
+// RELAY_TEST_MODE so the /__test/seed-classify seam runs a full cycle in
+// milliseconds.
+const CLASSIFY_STAGGER_TOTAL_MS = 12 * 60 * 1000;
+const CLASSIFY_VARIANT_STAGGER_MS = RELAY_TEST_MODE
+  ? 0
+  : Math.floor(CLASSIFY_STAGGER_TOTAL_MS / Math.max(1, CLASSIFY_VARIANTS.length - 1));
 
 // Relay gates — active only when RELAY_GATES_READY=1 (see Appendix E of docs/internal/news-alerts-enhancements-from-trendradar.md).
 // When the flag is set the relay becomes the sole authoritative source of rss_alert events and
@@ -5075,7 +5224,7 @@ const CLASSIFY_LLM_PROVIDERS = [
       if (apiKey) h.Authorization = `Bearer ${apiKey}`;
       return h;
     },
-    extraBody: { think: false },
+    extraBody: { reasoning_effort: 'none' },
     timeout: 30000,
   },
   {
@@ -5134,6 +5283,7 @@ function classifyFetchLlmSingle(titles, _apiKey, apiUrl, model, headers, extraBo
     const parsed = new URL(apiUrl);
     const transport = parsed.protocol === 'http:' ? http : https;
     const req = transport.request(parsed, {
+      signal: AbortSignal.timeout(timeout),
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(bodyStr) },
       timeout,
@@ -5200,6 +5350,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     try {
       const resp = await new Promise((resolve, reject) => {
         const req = transport.get(digestUrl, {
+          signal: AbortSignal.timeout(15000),
           headers: buildClassifyDigestHeaders({
             userAgent: CHROME_UA,
             relayKey: RELAY_API_KEY,
@@ -5526,6 +5677,52 @@ async function startClassifySeedLoop() {
   const activeProviders = CLASSIFY_LLM_PROVIDERS.filter((p) => !!process.env[p.envKey]).map((p) => p.name);
   console.log(`[Classify] Seed loop starting (interval ${CLASSIFY_SEED_INTERVAL_MS / 1000 / 60}min, providers:${activeProviders.length ? activeProviders.join(',') : 'none'})`);
   startBootSeedLoop('Classify', 'seed-meta:classify', CLASSIFY_SEED_INTERVAL_MS, seedClassify, (e) => console.warn('[Classify] Initial seed error:', e?.message || e), (e) => console.warn('[Classify] Seed error:', e?.message || e));
+}
+
+// ─────────────────────────────────────────────────────────────
+// News digest warm cycle — requests every (edition, language) digest the
+// catalog places a feed in, so every catalog feed is fetched whether or not a
+// reader requests its language (scripts/lib/news-digest-warm.cjs).
+// ─────────────────────────────────────────────────────────────
+const DIGEST_WARM_CELLS = requireShared('news-digest-warm-cells.json');
+let digestWarmInFlight = false;
+
+async function seedDigestWarm() {
+  if (digestWarmInFlight) {
+    console.log('[DigestWarm] Previous cycle still running, skipping');
+    return;
+  }
+  digestWarmInFlight = true;
+  const startedAt = Date.now();
+  try {
+    const results = await runDigestWarmCycle(DIGEST_WARM_CELLS, {
+      fetchCell: (cell) => fetchDigestWarmCell(cell, { userAgent: CHROME_UA, relayKey: RELAY_API_KEY }),
+    });
+    const summary = summarizeDigestWarmCycle(results, { fetchedAt: Date.now(), durMs: Date.now() - startedAt });
+    console.log(
+      `[DigestWarm] ${summary.cells} cells: ${summary.fresh} fresh, ${summary.stale} stale, ${summary.failed} failed ` +
+        `in ${Math.round(summary.durMs / 1000)}s${summary.failures.length ? ` (${summary.failures.join(', ')})` : ''}`,
+    );
+    if (!shouldPublishDigestWarmHeartbeat(summary)) {
+      console.warn(`[DigestWarm] Fewer than half the cells served news${RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set)'} — heartbeat not written`);
+      return;
+    }
+    if (!await upstashSet(DIGEST_WARM_HEARTBEAT_KEY, summary, DIGEST_WARM_HEARTBEAT_TTL_SECONDS)) return;
+    // Durable, no TTL: health reads the probe as pending until the first
+    // healthy cycle and strict afterwards (api/health.js ACTIVATION_MARKERS).
+    await upstashEval("return redis.call('SET', KEYS[1], ARGV[1])", [DIGEST_WARM_ACTIVATION_KEY], [String(summary.fetchedAt)]);
+  } finally {
+    digestWarmInFlight = false;
+  }
+}
+
+function startDigestWarmLoop() {
+  if (!UPSTASH_ENABLED) {
+    console.log('[DigestWarm] Disabled (no Upstash Redis)');
+    return;
+  }
+  console.log(`[DigestWarm] Warm loop starting (${DIGEST_WARM_CELLS.length} cells, interval ${DIGEST_WARM_INTERVAL_MS / 1000 / 60}min)`);
+  startBootSeedLoop('DigestWarm', DIGEST_WARM_HEARTBEAT_KEY, DIGEST_WARM_INTERVAL_MS, seedDigestWarm, (e) => console.warn('[DigestWarm] Initial cycle error:', e?.message || e), (e) => console.warn('[DigestWarm] Cycle error:', e?.message || e));
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -6078,7 +6275,7 @@ async function handleWingbitsTrackRequest(req, res) {
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+  const resp = await fetch(`http://${RELAY_SELF_HOST}:${relayBoundPort}/opensky`, {
     headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
     signal: AbortSignal.timeout(20_000),
   });
@@ -7122,6 +7319,7 @@ function techEventsParseRSS(rssText) {
 function techEventsFetchUrl(url) {
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Accept: 'text/calendar, application/rss+xml, application/xml, text/xml, */*',
@@ -7231,10 +7429,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
-const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
-
-const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
+const { computeWorldBankTechRankings: wbComputeRankings } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_INDICATORS = [
   { key: 'internet',  id: 'IT.NET.USER.ZS', dateRange: '2019:2024' },
@@ -7260,6 +7455,7 @@ const WB_RENEWABLE_REGION_NAMES = {
 function wbFetchJson(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
+      signal: AbortSignal.timeout(30000),
       headers: { 'User-Agent': 'WorldMonitor-Seed/1.0', Accept: 'application/json' },
       timeout: 30000,
     }, (resp) => {
@@ -7304,43 +7500,6 @@ async function wbFetchIndicator(indicatorId, dateRange) {
     }
   }
   return latestByCountry;
-}
-
-function wbNormalize(val, max) {
-  if (val === undefined || val === null) return null;
-  return Math.min(100, (val / max) * 100);
-}
-
-function wbComputeRankings(indicatorData) {
-  const allCountries = new Set();
-  for (const data of Object.values(indicatorData)) {
-    Object.keys(data).forEach(c => allCountries.add(c));
-  }
-  const scores = [];
-  for (const cc of allCountries) {
-    const components = {
-      internet:  wbNormalize(indicatorData.internet[cc]?.value, WB_NORMALIZE_MAX.internet),
-      mobile:    wbNormalize(indicatorData.mobile[cc]?.value, WB_NORMALIZE_MAX.mobile),
-      broadband: wbNormalize(indicatorData.broadband[cc]?.value, WB_NORMALIZE_MAX.broadband),
-      rdSpend:   wbNormalize(indicatorData.rdSpend[cc]?.value, WB_NORMALIZE_MAX.rdSpend),
-    };
-    let totalWeight = 0, weightedSum = 0;
-    for (const [key, weight] of Object.entries(WB_WEIGHTS)) {
-      if (components[key] !== null) { weightedSum += components[key] * weight; totalWeight += weight; }
-    }
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    const observations = buildWorldBankTechObservations({
-      internet: indicatorData.internet[cc],
-      mobile: indicatorData.mobile[cc],
-      broadband: indicatorData.broadband[cc],
-      rdSpend: indicatorData.rdSpend[cc],
-    });
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
-  }
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-  return scores;
 }
 
 async function wbFetchProgress() {
@@ -7416,7 +7575,7 @@ async function seedWorldBank() {
       console.log(`[WB]   ${id}: ${Object.keys(indicatorData[key]).length} countries`);
     }
     const rankings = wbComputeRankings(indicatorData);
-    console.log(`[WB] Rankings: ${rankings.length} countries`);
+    console.log(`[WB] Rankings: ${rankings.filter(entry => entry.rank !== null).length}/${rankings.length} countries ranked`);
 
     console.log('[WB] Fetching progress indicators...');
     const progressData = await wbFetchProgress();
@@ -8608,7 +8767,10 @@ async function pollPizzintBestTimeVenue(apiKey, venue) {
     });
     if (!resp.ok) {
       try { await resp.body?.cancel(); } catch { /* Keep the HTTP outcome if cleanup fails. */ }
-      return { outcome: 'http' };
+      // The status is the only diagnostic worth keeping: a 400/401 means the
+      // key is wrong, a 429 means the plan budget is spent, a 5xx is BestTime
+      // itself. The body is dropped unread (it can echo the key).
+      return { outcome: 'http', status: resp.status };
     }
     let reply;
     try {
@@ -8651,12 +8813,14 @@ function pizzintBestTimePlaceholder(venue, reply) {
 async function fetchPizzintBestTimeLocations(apiKey) {
   const polls = await Promise.all(PIZZINT_BESTTIME_VENUES.map(venue => pollPizzintBestTimeVenue(apiKey, venue)));
   const counts = { accepted: 0, unavailable: 0, invalid: 0, http: 0, timeout: 0, transport: 0, json: 0 };
+  const httpStatuses = new Map();
   const locations = [];
   const published = [];
   const historyLocations = [];
   PIZZINT_BESTTIME_VENUES.forEach((venue, i) => {
-    const { outcome, location, reply } = polls[i];
+    const { outcome, location, reply, status } = polls[i];
     counts[outcome]++;
+    if (outcome === 'http') httpStatuses.set(status, (httpStatuses.get(status) || 0) + 1);
     if (location) {
       locations.push(location);
       published.push(location);
@@ -8676,7 +8840,13 @@ async function fetchPizzintBestTimeLocations(apiKey) {
       noLiveSignal: true,
     });
   });
-  const summary = Object.entries(counts).map(([category, count]) => `${category}=${count}`).join(' ');
+  // http=3 alone cannot tell a bad key (400/401) from a spent plan budget
+  // (429) or a BestTime outage (5xx); the status histogram can.
+  const summary = Object.entries(counts).map(([category, count]) => (
+    category === 'http' && count > 0
+      ? `http=${count}(${[...httpStatuses].sort(([a], [b]) => a - b).map(([code, n]) => `${code}x${n}`).join(',')})`
+      : `${category}=${count}`
+  )).join(' ');
   // Every venue answered cleanly; with no accepted reading, all reported unavailable.
   const answered = counts.accepted + counts.unavailable === PIZZINT_BESTTIME_VENUES.length;
   if (locations.length === 0) {
@@ -10437,7 +10607,10 @@ async function seedChokepointTransits() {
   const payload = { transits, transitCoverage, fetchedAt: now };
   const ok = await envelopeWrite(CHOKEPOINT_TRANSIT_KEY, payload, CHOKEPOINT_TRANSIT_TTL, { recordCount: covered, sourceVersion: 'chokepoint-transits' });
   if (!ok) throw new Error('Transit count publication failed');
-  await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  // Health names the measurable straits from this transitCoverage, so a dropped
+  // write must fail the tick instead of leaving the previous coverage in place.
+  const metaOk = await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: covered, transitCoverage }, 604800);
+  if (!metaOk) throw new Error('Transit coverage metadata write failed');
   console.log(`[Transit] Seeded ${covered}/${canonical.length} measured chokepoints (missing: ${missing.join(', ')})`);
 }
 
@@ -10673,7 +10846,7 @@ async function ucdpRelayFetchPage(version, page) {
   const url = `https://ucdpapi.pcr.uu.se/api/gedevents/${version}?pagesize=${UCDP_PAGE_SIZE}&page=${page}`;
 
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
+    const req = https.get(url, { signal: AbortSignal.timeout(UCDP_FETCH_TIMEOUT), headers: { Accept: 'application/json' }, timeout: UCDP_FETCH_TIMEOUT }, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`UCDP API ${res.statusCode} (v${version} p${page})`));
@@ -11161,6 +11334,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
     return _openskyProxyConnect('auth.opensky-network.org', 443).then((tlsSocket) => {
       return new Promise((resolve) => {
         const req = https.request({
+          signal: AbortSignal.timeout(10000),
           // tlsSocket is ALREADY a TLS connection to the target — proxyConnectTunnel
           // does tls.connect() through the CONNECT tunnel. Reuse it via
           // createConnection (NOT `socket:`): `socket:` makes https.request wrap it
@@ -11201,6 +11375,7 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
 
   return new Promise((resolve) => {
     const req = https.request({
+      signal: AbortSignal.timeout(10000),
       hostname: 'auth.opensky-network.org',
       port: 443,
       family: 4,
@@ -11312,6 +11487,7 @@ function _openskyRawFetch(url, token) {
     return _openskyProxyConnect(parsed.hostname, 443, 15000).then((tlsSocket) => {
       return new Promise((resolve) => {
         const request = https.get({
+          signal: AbortSignal.timeout(15000),
           // Reuse the already-TLS tunnel socket via createConnection, not `socket:`
           // — passing an already-TLS socket as `socket:` double-wraps TLS and throws
           // EPROTO "wrong version number", failing every OpenSky states fetch. See #5074.
@@ -11337,6 +11513,7 @@ function _openskyRawFetch(url, token) {
 
   return new Promise((resolve) => {
     const request = https.get(url, {
+      signal: AbortSignal.timeout(15000),
       family: 4,
       headers: reqHeaders,
       agent: httpsKeepAliveAgent,
@@ -11754,6 +11931,8 @@ function handleWorldBankRequest(req, res) {
   console.log('[Relay] World Bank request (MISS):', indicator);
 
   const request = https.get(wbUrl, {
+
+    signal: AbortSignal.timeout(15000),
     headers: {
       'Accept': 'application/json',
       'User-Agent': 'Mozilla/5.0 (compatible; WorldMonitor/1.0; +https://worldmonitor.app)',
@@ -11937,6 +12116,7 @@ function fetchPolymarketUpstream(cacheKey, endpoint, params, tag) {
         }
       }
       const request = https.get(gammaUrl, {
+        signal: AbortSignal.timeout(10000),
         headers: { 'Accept': 'application/json', 'User-Agent': CHROME_UA },
         timeout: 10000,
       }, (response) => {
@@ -12061,7 +12241,8 @@ function handlePolymarketRequest(req, res) {
     polymarketInflight.set(cacheKey, inflight);
   }
 
-  inflight.then((data) => {
+  // Returned so a throw while serving reaches the router's catch instead of going unhandled.
+  return inflight.then((data) => {
     if (data) {
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
@@ -12194,6 +12375,8 @@ function handleYahooChartRequest(req, res) {
   }
 
   const yahooReq = https.get(yahooUrl, {
+
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -12342,6 +12525,7 @@ function handleAviationStackRequest(req, res) {
 
   const apiUrl = `https://api.aviationstack.com/v1/flights?${params}`;
   const apiReq = https.get(apiUrl, {
+    signal: AbortSignal.timeout(10000),
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     timeout: 10000,
   }, (upstream) => {
@@ -12411,6 +12595,9 @@ function fetchViaProxy(targetUrl, proxy) {
 const ICAO_API_KEY = process.env.ICAO_API_KEY;
 const notamCache = { data: null, ts: 0 };
 const NOTAM_CACHE_TTL = 30 * 60 * 1000; // 30 min
+// Comma-separated ICAO location indicators. The value is pasted into the ICAO
+// query string after the API key, so nothing else may get through.
+const NOTAM_LOCATIONS_RE = /^[A-Z0-9]{4}(?:,[A-Z0-9]{4}){0,199}$/;
 
 function handleNotamProxyRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
@@ -12418,6 +12605,10 @@ function handleNotamProxyRequest(req, res) {
   if (!locations) {
     return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
       JSON.stringify({ error: 'Missing locations parameter' }));
+  }
+  if (!NOTAM_LOCATIONS_RE.test(locations)) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Invalid locations parameter' }));
   }
   if (!ICAO_API_KEY) {
     return sendCompressed(req, res, 200, { 'Content-Type': 'application/json' },
@@ -12436,6 +12627,8 @@ function handleNotamProxyRequest(req, res) {
   const apiUrl = `https://dataservices.icao.int/api/notams-realtime-list?api_key=${ICAO_API_KEY}&format=json&locations=${locations}`;
 
   const request = https.get(apiUrl, {
+
+    signal: AbortSignal.timeout(25000),
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
     timeout: 25000,
   }, (upstream) => {
@@ -12518,7 +12711,24 @@ function getCorsOrigin(req) {
   return '';
 }
 
-const server = http.createServer(async (req, res) => {
+// A throw that escapes a request (the router's own awaits, or an async route
+// handler) would otherwise be an unhandled rejection, which exits the relay on
+// Node 24 and takes every route and the AIS stream down with it. Route handlers
+// are dispatched with `return` so this one catch covers them.
+const server = http.createServer((req, res) => handleRelayRequest(req, res)
+  .catch((err) => handleRelayRequestFailure(res, err)));
+
+function handleRelayRequestFailure(res, err) {
+  console.error('[Relay] request handler failed:', err?.name || 'Error', err?.message || '');
+  // A half-written body must not be ended as if complete: cut the socket so the client sees the failure.
+  if (res.headersSent) {
+    if (!res.writableEnded) res.destroy();
+    return;
+  }
+  safeEnd(res, 500, {}, '');
+}
+
+async function handleRelayRequest(req, res) {
   const pathname = (req.url || '/').split('?')[0];
   const corsOrigin = getCorsOrigin(req);
   // Always emit Vary: Origin on /rss (browser-direct via CDN) to prevent
@@ -12917,6 +13127,7 @@ const server = http.createServer(async (req, res) => {
       const apiResult = await new Promise((resolve) => {
         const start = Date.now();
         const apiReq = https.get('https://opensky-network.org/api/states/all?lamin=47&lomin=5&lamax=48&lomax=6', {
+          signal: AbortSignal.timeout(15000),
           family: 4,
           headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
           timeout: 15000,
@@ -13476,38 +13687,38 @@ const server = http.createServer(async (req, res) => {
       }));
     }
   } else if (pathname.startsWith('/ucdp-events')) {
-    handleUcdpEventsRequest(req, res);
+    return handleUcdpEventsRequest(req, res);
   } else if (pathname.startsWith('/wingbits/track')) {
-    handleWingbitsTrackRequest(req, res);
+    return handleWingbitsTrackRequest(req, res);
   } else if (pathname.startsWith('/opensky')) {
-    handleOpenSkyRequest(req, res, PORT);
+    return handleOpenSkyRequest(req, res, PORT);
   } else if (pathname.startsWith('/worldbank')) {
-    handleWorldBankRequest(req, res);
+    return handleWorldBankRequest(req, res);
   } else if (pathname === '/wits') {
     return handleWitsRequest(req, res);
   } else if (pathname.startsWith('/polymarket')) {
-    handlePolymarketRequest(req, res);
+    return handlePolymarketRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
-    handleYahooChartRequest(req, res);
+    return handleYahooChartRequest(req, res);
   } else if (pathname === '/crypto-quotes') {
-    handleCryptoQuotesRequest(req, res);
+    return handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
-    handleNotamProxyRequest(req, res);
+    return handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
-    handleAviationStackRequest(req, res);
+    return handleAviationStackRequest(req, res);
   } else if (pathname === '/google-flights/search') {
-    handleGoogleFlightsSearch(req, res);
+    return handleGoogleFlightsSearch(req, res);
   } else if (pathname === '/google-flights/search-dates') {
-    handleGoogleFlightsDates(req, res);
+    return handleGoogleFlightsDates(req, res);
   } else if (pathname === '/widget-agent/health' && req.method === 'GET') {
-    handleWidgetAgentHealthRequest(req, res);
+    return handleWidgetAgentHealthRequest(req, res);
   } else if (pathname === '/widget-agent' && req.method === 'POST') {
-    handleWidgetAgentRequest(req, res);
+    return handleWidgetAgentRequest(req, res);
   } else {
     res.writeHead(404);
     res.end();
   }
-});
+}
 
 // ─── Google Flights ───────────────────────────────────────────────────────────
 //
@@ -14556,6 +14767,10 @@ async function handleWidgetAgentRequest(req, res) {
   } catch {
     return safeEnd(res, 400, {}, '');
   }
+  // Valid JSON need not be an object: reading .tier off null throws.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return safeEnd(res, 400, {}, '');
+  }
 
   const rawTier = body.tier;
   if (rawTier !== undefined && rawTier !== 'basic' && rawTier !== 'pro') {
@@ -14672,7 +14887,11 @@ async function handleWidgetAgentRequest(req, res) {
 
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
+    // The widget deadline and cancellation own recovery; SDK retries would
+    // replay billed turns and can sleep beyond the remaining request budget.
+    // Turns are non-streaming, so headers arrive only after generation: the
+    // client timeout must cover the whole request budget, not a fixed minute.
+    const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY, timeout: timeoutMs, maxRetries: 0 });
 
     const messages = [
       ...conversationHistory
@@ -15461,10 +15680,10 @@ function connectUpstream() {
 
 const wss = new WebSocketServer({ server });
 
-server.listen(PORT, () => {
+server.listen(PORT, RELAY_BIND_HOST, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort}, host ${server.address()?.address} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {
@@ -15507,6 +15726,7 @@ server.listen(PORT, () => {
   startChokepointWarmPingLoop();
   startCableHealthWarmPingLoop();
   startClassifySeedLoop();
+  startDigestWarmLoop();
   startMiddleEastStrikesLoop();
   startServiceStatusesSeedLoop();
   startTheaterPostureSeedLoop();

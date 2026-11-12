@@ -184,6 +184,7 @@ module.exports = {
   stripNotificationControlChars,
   sanitizeNotificationText,
   redactNotificationUrlTokens,
+  URL_TOKEN_PATTERN,
   isImpersonatingSource,
   sanitizeNotificationTitle,
   sanitizeCommunityNotificationTitle,

@@ -139,7 +139,7 @@ test('the smoke CLI does not report unstarted probes after the run budget expire
 // take over the keyless `tools/list` on /mcp, the check that broke on a
 // connection cut mid-body in production (run 39392466642). `skillFor` and
 // `onAuthMd` override the advertised agent_auth.skill and the /auth.md answer.
-function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
+function createHealthyFixtureServer({ setupHtml = '<!doctype html><title>Connect to World Monitor MCP</title>', onTransportList, skillFor = (origin) => `${origin}/auth.md`, onAuthMd } = {}) {
   return createServer(async (req, res) => {
     const origin = `http://${req.headers.host}`;
     const body = req.method === 'POST' ? await readRequestBody(req) : '';
@@ -152,16 +152,24 @@ function createHealthyFixtureServer({ onTransportList, skillFor = (origin) => `$
       link: '<https://worldmonitor.app/mcp>; rel="canonical"',
     };
 
+    // Production negotiates on Accept (#10519): an explicit text/html gets the
+    // HTML setup page, anything else gets the markdown guide.
+    const guideHeadersFor = (accept = '') => (/text\/html/i.test(accept)
+      ? { ...commonGuideHeaders, 'content-type': 'text/html; charset=utf-8' }
+      : commonGuideHeaders);
+
     if (req.url === '/mcp' && req.method === 'GET') {
       if (req.headers.accept?.toLowerCase() === 'text/event-stream') {
         res.writeHead(405).end();
+      } else if (/text\/html/i.test(req.headers.accept ?? '')) {
+        res.writeHead(200, guideHeadersFor(req.headers.accept)).end(setupHtml);
       } else {
         res.writeHead(200, commonGuideHeaders).end('World Monitor MCP Server');
       }
       return;
     }
     if (req.url === '/mcp' && req.method === 'HEAD') {
-      res.writeHead(200, commonGuideHeaders).end();
+      res.writeHead(200, guideHeadersFor(req.headers.accept)).end();
       return;
     }
     if ((req.url === '/mcp' || req.url === '/api/mcp') && req.method === 'POST') {
@@ -332,7 +340,16 @@ test('an HTTP status failure is never retried', async () => {
   assert.match(report.failures[0].detail, /expected HTTP 200, got 503/);
 });
 
-test('fails when agent_auth.skill is not the issuer origin /auth.md', async () => {
+test('fails when the HTML representation of /mcp is not the setup page', async () => {
+  const server = createHealthyFixtureServer({ setupHtml: '<!doctype html><title>Welcome to nginx</title>' });
+  const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-html-body-');
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(report.failures.map((failure) => failure.check), ['GET /mcp (browser)']);
+  assert.match(report.failures[0].detail, /body is not the HTML setup page/);
+});
+
+test('fails when agent_auth.skill is not the canonical host /auth.md', async () => {
   const server = createHealthyFixtureServer({ skillFor: () => 'https://www.worldmonitor.app/auth.md' });
   const { exitCode, report } = await runSmokeAgainst(server, 'wm-mcp-live-smoke-skill-host-');
 
@@ -341,7 +358,7 @@ test('fails when agent_auth.skill is not the issuer origin /auth.md', async () =
   assert.match(report.failures[0].detail, /expected http:\/\/127\.0\.0\.1:\d+\/auth\.md/);
 });
 
-test('fails when the issuer /auth.md redirects instead of serving markdown', async () => {
+test('fails when the canonical /auth.md redirects instead of serving markdown', async () => {
   const server = createHealthyFixtureServer({
     onAuthMd: (_req, res) => {
       res.writeHead(301, { location: 'https://www.worldmonitor.app/auth.md' }).end();
@@ -395,12 +412,17 @@ test('the smoke CLI writes a zero-failure report after every expected check succ
 });
 
 test('default alias labels stay aligned with the shared host-policy module', async () => {
-  const { MCP_PRODUCTION_ALIAS_LABELS } = await import('../shared/mcp-host-policy.ts');
+  const { MCP_RETIRED_ALIAS_LABELS, MCP_SERVED_ALIAS_LABELS } = await import('../shared/mcp-host-policy.ts');
   const smoke = readFileSync(join(process.cwd(), 'scripts/mcp-live-smoke.mjs'), 'utf8');
-  const match = smoke.match(/const DEFAULT_ALIAS_LABELS = \[([^\]]+)\]/);
-  assert.ok(match, 'DEFAULT_ALIAS_LABELS not found in scripts/mcp-live-smoke.mjs');
-  const labels = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
-  assert.deepEqual(labels, [...MCP_PRODUCTION_ALIAS_LABELS]);
+  for (const [name, expected] of [
+    ['DEFAULT_ALIAS_LABELS', MCP_RETIRED_ALIAS_LABELS],
+    ['DEFAULT_SERVED_ALIAS_LABELS', MCP_SERVED_ALIAS_LABELS],
+  ]) {
+    const match = smoke.match(new RegExp(`const ${name} = \\[([^\\]]+)\\]`));
+    assert.ok(match, `${name} not found in scripts/mcp-live-smoke.mjs`);
+    const labels = [...match[1].matchAll(/'([^']+)'/g)].map((entry) => entry[1]);
+    assert.deepEqual(labels, [...expected], name);
+  }
 });
 
 test('MCP_SMOKE_HOSTS override skips production aliases and the www proxy', async () => {
@@ -532,5 +554,56 @@ test('the smoke CLI asserts alias 308/410 migration and www proxy liveness', asy
     server.close();
     await once(server, 'close');
     rmSync(reportDir, { recursive: true, force: true });
+  }
+});
+
+test('the smoke CLI asserts the served alias challenges with its own OAuth document', async () => {
+  for (const [served, expectedExit] of [[true, 0], [false, 1]]) {
+    let origin = '';
+    const server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => { raw += chunk; });
+      req.on('end', () => {
+        let id = null;
+        try { id = JSON.parse(raw).id; } catch { /* not JSON */ }
+        if (!served) {
+          res.writeHead(410, { 'content-type': 'application/json' }).end(JSON.stringify({
+            jsonrpc: '2.0', id, error: { code: -32000, message: 'Use https://worldmonitor.app/mcp' },
+          }));
+          return;
+        }
+        res.writeHead(401, {
+          'content-type': 'application/json',
+          'www-authenticate': `Bearer realm="worldmonitor", resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+        }).end(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32001, message: 'auth required' } }));
+      });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    origin = `http://127.0.0.1:${server.address().port}`;
+    const reportDir = mkdtempSync(join(tmpdir(), 'wm-mcp-live-smoke-served-'));
+    const reportPath = join(reportDir, 'report.json');
+    try {
+      const child = spawn(process.execPath, ['scripts/mcp-live-smoke.mjs', '--report', reportPath], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          MCP_SMOKE_HOSTS: '',
+          MCP_SMOKE_ALIAS_HOSTS: '',
+          MCP_SMOKE_SERVED_ALIAS_HOSTS: origin,
+          MCP_SMOKE_PROXY_HOSTS: '',
+        },
+      });
+      const [exitCode] = await once(child, 'close');
+      assert.equal(exitCode, expectedExit, `served=${served}`);
+      const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+      assert.deepEqual(report.completedGroups, ['canonical', 'aliases', 'proxy']);
+      assert.ok(report.requests.some((request) => request.group === 'aliases'
+        && request.method === 'POST' && request.pathname === '/mcp'));
+    } finally {
+      server.close();
+      await once(server, 'close');
+      rmSync(reportDir, { recursive: true, force: true });
+    }
   }
 });

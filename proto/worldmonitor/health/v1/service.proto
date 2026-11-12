@@ -9,12 +9,12 @@ import "worldmonitor/health/v1/list_disease_outbreaks.proto";
 service HealthService {
   option (sebuf.http.service_config) = {base_path: "/api/health/v1"};
 
-  // ListDiseaseOutbreaks returns recent WHO/ProMED disease outbreak alerts.
+  // ListDiseaseOutbreaks returns recent outbreak alerts from WHO Disease Outbreak News, CDC, ECDC, CIDRAP and ProMED-sourced ThinkGlobalHealth, with alert levels.
   rpc ListDiseaseOutbreaks(ListDiseaseOutbreaksRequest) returns (ListDiseaseOutbreaksResponse) {
     option (sebuf.http.config) = {path: "/list-disease-outbreaks", method: HTTP_METHOD_GET};
   }
 
-  // ListAirQualityAlerts returns recent PM2.5 stations with AQI-derived health risk.
+  // ListAirQualityAlerts returns PM2.5 stations reporting in the last 2 hours from OpenAQ, supplemented by WAQI, with AQI and a derived health risk level.
   rpc ListAirQualityAlerts(ListAirQualityAlertsRequest) returns (ListAirQualityAlertsResponse) {
     option (sebuf.http.config) = {path: "/list-air-quality-alerts", method: HTTP_METHOD_GET};
   }

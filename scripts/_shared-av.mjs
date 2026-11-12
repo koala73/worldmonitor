@@ -4,7 +4,8 @@
  * Single implementation used by seed-market-quotes, seed-commodity-quotes, seed-etf-flows.
  */
 
-import { CHROME_UA, sleep } from './_seed-utils.mjs';
+import { CHROME_UA, sleep, roundSparkline } from './_seed-utils.mjs';
+import { crudeOilQuoteProvenance } from './shared/oil-quote-provenance.cjs';
 
 export const AV_PHYSICAL_MAP = {
   'CL=F': 'WTI',
@@ -44,14 +45,14 @@ async function avFetch(url, label) {
 
 /**
  * Fetch physical commodity quote from AV daily series.
- * Returns price, day-over-day change, and a 7-point sparkline from daily closes.
+ * Returns price, day-over-day change, and a sparkline of the last 7 daily closes.
  *
  * Note: AV physical commodity endpoints are daily-close data (not intraday).
  * Prices reflect the most recent market-day close.
  *
  * @param {string} yahooSymbol
  * @param {string} apiKey
- * @returns {Promise<{ price: number; change: number; sparkline: number[] } | null>}
+ * @returns {Promise<{ price: number; change: number; sparkline: number[]; sparklineIntervalSeconds?: number; sparklineStartAt?: number } | null>}
  */
 export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
   const fn = AV_PHYSICAL_MAP[yahooSymbol];
@@ -68,9 +69,16 @@ export async function fetchAvPhysicalCommodity(yahooSymbol, apiKey) {
     const prev = parseFloat(data[1].value);
     if (!Number.isFinite(latest) || latest <= 0) return null;
     const change = (Number.isFinite(prev) && prev > 0) ? ((latest - prev) / prev) * 100 : 0;
-    // Build sparkline from last 7 daily closes (oldest → newest)
-    const sparkline = data.slice(0, 7).map(d => parseFloat(d.value)).filter(Number.isFinite).reverse();
-    return { price: latest, change, sparkline };
+    const days = data.slice(0, 7)
+      .map(d => ({ value: parseFloat(d.value), at: Date.parse(d.date) }))
+      .filter(d => Number.isFinite(d.value) && Number.isFinite(d.at))
+      .reverse();
+    return {
+      price: latest, change,
+      sparkline: roundSparkline(days.map(d => d.value)),
+      ...(days.length > 0 && { sparklineIntervalSeconds: 86400, sparklineStartAt: days[0].at }),
+      ...crudeOilQuoteProvenance(yahooSymbol, 'Alpha Vantage', 'spot', Date.parse(data[0].date)),
+    };
   } catch (err) {
     console.warn(`  [AV] ${fn} parse error: ${err.message}`);
     return null;

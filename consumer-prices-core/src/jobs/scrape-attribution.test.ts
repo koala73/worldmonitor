@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ValidatorResult } from '../adapters/validator.js';
+import { parseSize } from '../normalizers/size.js';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -37,10 +38,6 @@ vi.mock('../db/queries/matches.js', () => ({
   getPinnedUrlsForRetailer: mocks.getPinnedUrlsForRetailer,
   getDisabledPinsForRecovery: mocks.getDisabledPinsForRecovery,
   upsertProductMatch: mocks.upsertProductMatch,
-}));
-vi.mock('../normalizers/size.js', () => ({
-  parseSize: vi.fn(),
-  unitPrice: vi.fn(),
 }));
 vi.mock('../config/loader.js', () => ({
   loadRetailerConfig: mocks.loadRetailerConfig,
@@ -188,6 +185,25 @@ beforeEach(() => {
 });
 
 describe('scrapeRetailer failure attribution', () => {
+  it.each([
+    { sizeText: '12 Pack', context: { baseUnit: 'ct', marketCode: 'ae' }, price: 16.25, quantity: 12, unit: 'ct' },
+    { sizeText: '2 Pint', context: { baseUnit: 'ml', marketCode: 'gb' }, price: 1.2, quantity: 1136.5225, unit: 'ml' },
+  ])('writes the contextual $sizeText basis and unit price from the adapter', async fixture => {
+    const normalizedSize = parseSize(fixture.sizeText, fixture.context)!;
+    expect(normalizedSize).not.toBeNull();
+    mocks.parseListing.mockResolvedValueOnce([{
+      ...lowScoreProduct, rawSizeText: fixture.sizeText, price: fixture.price, normalizedSize,
+      rawPayload: { direct: false, validator: highScoreValidator },
+    }]);
+
+    await scrapeRetailer('retailer-a');
+
+    expect(mocks.insertObservation).toHaveBeenCalledWith(expect.objectContaining({
+      price: fixture.price, unitBasisQty: fixture.quantity, unitBasisUnit: fixture.unit,
+      unitPrice: fixture.price / fixture.quantity,
+    }));
+  });
+
   it('persists SearchTargetError reasons and a matching error count', async () => {
     mocks.fetchTarget.mockRejectedValueOnce(
       new SearchTargetError('all candidates failed', 0, [{ provider: 'firecrawl', reason: 'missing-price' }]),

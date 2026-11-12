@@ -1,6 +1,7 @@
 import { decodeHealthPipeline } from './helpers/health-pipeline-fixture.mjs';
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
@@ -8,7 +9,7 @@ process.env.WORLDMONITOR_VALID_KEYS = 'test-health-admin-key';
 
 const { default: handler, handleHealth, __testing__ } = await import('../api/health.js');
 const { nextChinaDecisionCoverageFailure } = await import('../scripts/seed-china-decision-signals.mjs');
-const { findOperationalProblems, findPendingDiagnostics } = await import('../scripts/check-seed-freshness.mjs');
+const { canadianWildfireAfterPublish } = await import('../scripts/wildfire/bc-fire-points.mjs');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
@@ -669,6 +670,8 @@ function sweepFetch({
   failGraceClaim = false,
   chinaCoverageSummary,
   chinaDecisionMeta,
+  incidentAlerts = null,
+  seedMeta = {},
 } = {}) {
   return async (_url, init) => {
     const { commands, encodeResults } = decodeHealthPipeline(init.body);
@@ -691,6 +694,11 @@ function sweepFetch({
       if (op === 'HGET') return { result: graceStore.get(field) ?? null };
       if (op === 'HDEL') return { result: 1 };
       if (op === 'PEXPIRE') return { result: 1 };
+      if (op === 'GET' && String(key).endsWith('health:failure-log-sig')) return { result: null };
+      if (op === 'GET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) {
+        return incidentAlerts === INCIDENT_ALERTS_UNREADABLE ? { error: 'ERR unreachable' } : { result: incidentAlerts };
+      }
+      if (op === 'GET' && Object.hasOwn(seedMeta, key)) return { result: JSON.stringify(seedMeta[key]) };
       if (op === 'GET' && key === TEMPORAL_META_KEY) {
         return {
           result: JSON.stringify({
@@ -717,6 +725,8 @@ function sweepFetch({
     return new Response(JSON.stringify(encodeResults(results)), { status: 200 });
   };
 }
+
+const INCIDENT_ALERTS_UNREADABLE = Symbol('unreadable');
 
 async function sweepCompactBody(fetchImpl) {
   globalThis.fetch = fetchImpl;
@@ -830,7 +840,7 @@ function chinaHealthyCoverageSummary(now) {
   };
 }
 
-test('producer evidence stays non-blocking through health and the monitor until the three-hour boundary', async () => {
+test('producer evidence stays non-blocking through health until the three-hour boundary', async () => {
   const lastSuccessAt = Date.parse('2026-09-08T12:00:00.000Z');
   const failureAt = lastSuccessAt + 15 * 60_000;
   const deadline = lastSuccessAt + CHINA_DECISION_SIGNALS_PENDING_MS;
@@ -862,21 +872,16 @@ test('producer evidence stays non-blocking through health and the monitor until 
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline - 1),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findPendingDiagnostics(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
-  assert.ok(!findOperationalProblems(pendingBody, deadline - 1).some(
-    ({ name }) => name === 'chinaDecisionSignals',
-  ));
+  assert.ok(pendingBody.pending?.chinaDecisionSignals);
+  assert.equal(pendingBody.problems?.chinaDecisionSignals, undefined);
 
   Date.now = () => deadline;
   const warningBody = await sweepCompactBody(sweepFetch({
     chinaCoverageSummary: chinaHealthyCoverageSummary(deadline),
     chinaDecisionMeta: seedMeta,
   }));
-  assert.ok(findOperationalProblems(warningBody, deadline).some(
-    ({ name, status }) => name === 'chinaDecisionSignals' && status === 'COVERAGE_PARTIAL',
-  ));
+  assert.equal(warningBody.problems?.chinaDecisionSignals?.status, 'COVERAGE_PARTIAL');
+  assert.notEqual(warningBody.dataStatus, 'OK');
 });
 
 test('handleHealth keeps repeated producer-owned China failures pending for three hours', async () => {
@@ -1062,4 +1067,277 @@ test('handleHealth serves a graced snapshot until its deadline, then sweeps agai
   graced.pending.temporalAnomalies.staleContentGraceUntil = new Date(now).toISOString();
   await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   assert.equal(sweeps, 1, 'an expired grace must force a fresh sweep, not serve a stale ok');
+});
+
+// ── Health is the only source of ingestion truth (dataStatus + incidents) ──
+
+test('dataStatus is the strict data verdict and never contains the uptime keyword', () => {
+  const { dataStatusFromSummary } = __testing__;
+  assert.equal(dataStatusFromSummary({ warn: 0, crit: 0 }), 'OK');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 0 }), 'DEGRADED');
+  assert.equal(dataStatusFromSummary({ warn: 2, crit: 1 }), 'CRITICAL');
+  for (const value of ['OK', 'DEGRADED', 'CRITICAL']) assert.doesNotMatch(value, /HEALTHY/);
+});
+
+test('a contained warning keeps availability HEALTHY but reports dataStatus DEGRADED', () => {
+  const body = __testing__.healthResponseBody({
+    status: 'HEALTHY',
+    summary: { total: 100, ok: 99, warn: 1, containedWarn: 1, onDemandWarn: 0, crit: 0 },
+    checkedAt: new Date(0).toISOString(),
+    checks: { ttcAlerts: { status: 'STALE_SEED', records: 68, seedAgeMin: 160, maxStaleMin: 30 } },
+  }, true);
+  assert.equal(body.status, 'HEALTHY');
+  assert.equal(body.dataStatus, 'DEGRADED');
+  assert.equal(body.problems.ttcAlerts.status, 'STALE_SEED');
+});
+
+test('pendingIncidentKeys and nextAlertedIncidents keep only accepted, still-active incidents', () => {
+  const { pendingIncidentKeys, nextAlertedIncidents } = __testing__;
+  const current = ['a:STALE_SEED', 'b:SEED_ERROR'];
+  assert.deepEqual(pendingIncidentKeys(null, current), current, 'nothing reported yet');
+  assert.deepEqual(pendingIncidentKeys('["a:STALE_SEED","b:SEED_ERROR"]', current), [], 'a reported incident is quiet');
+  assert.deepEqual(pendingIncidentKeys('["a:SEED_ERROR"]', current), current, 'a changed status is a new incident');
+  assert.deepEqual(pendingIncidentKeys('not json', current), current, 'callers gate corrupt records first');
+  assert.deepEqual(
+    nextAlertedIncidents('["a:STALE_SEED","gone:EMPTY"]', current, []),
+    ['a:STALE_SEED'],
+    'a recovered source leaves the record so a recurrence alerts again',
+  );
+  assert.deepEqual(nextAlertedIncidents('[]', current, ['b:SEED_ERROR']), ['b:SEED_ERROR'], 'only accepted deliveries are recorded');
+});
+
+// WORLDMONITOR-1DQ: Tanzania's ministry posted no wholesale price sheet for 14
+// days, one day past the source's freshness limit, and that opened a Sentry
+// issue. A government publication running late is the publisher's schedule,
+// not a fault we can fix. The panel already labels it stale; Sentry waits a
+// month past the limit, when the source may really have stopped.
+test('a late government food-price release stays out of Sentry for a month past its limit', () => {
+  const { isReportableIncident, GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN } = __testing__;
+  const DAY_MIN = 1_440;
+  assert.equal(GOVERNMENT_RELEASE_INCIDENT_GRACE_MIN, 30 * DAY_MIN);
+  const limit = 14 * DAY_MIN;
+  const staleBy = (overMin) => ({
+    foodPricesMit: { status: 'STALE_CONTENT', records: 952, contentAgeMin: limit + overMin, maxContentAgeMin: limit },
+  });
+
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(180)), false, 'the 1DQ case: 3 h late');
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(30 * DAY_MIN)), false, 'exactly a month late');
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', staleBy(30 * DAY_MIN + 1)), true, 'more than a month late');
+
+  // No content age means no date could be read, which points at our parser.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', {
+    foodPricesMit: { status: 'STALE_CONTENT', records: 0, maxContentAgeMin: limit },
+  }), true);
+  // A future-dated item reads STALE_CONTENT with a negative age: bad data, not lateness.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_CONTENT', {
+    foodPricesMit: { status: 'STALE_CONTENT', records: 952, contentAgeMin: -90, maxContentAgeMin: limit },
+  }), true);
+  // A dead seeder or a failed fetch is ours to fix and reports at once.
+  assert.equal(isReportableIncident('foodPricesMit:STALE_SEED', {
+    foodPricesMit: { status: 'STALE_SEED', records: 952, seedAgeMin: 5_000, maxStaleMin: 4_320 },
+  }), true);
+  assert.equal(isReportableIncident('foodPricesMit:SEED_ERROR', { foodPricesMit: { status: 'SEED_ERROR' } }), true);
+  // Fast feeds keep the immediate alarm: a frozen live feed is a real fault.
+  assert.equal(isReportableIncident('temporalAnomalies:STALE_CONTENT', {
+    temporalAnomalies: { status: 'STALE_CONTENT', records: 10, contentAgeMin: 200, maxContentAgeMin: 120 },
+  }), true);
+});
+
+test('every food-price source gets the government release grace', () => {
+  const { GOVERNMENT_RELEASE_KEYS, SEED_META } = __testing__;
+  const sources = JSON.parse(readFileSync(new URL('../shared/food-price-sources.json', import.meta.url), 'utf8'));
+  const graced = [...GOVERNMENT_RELEASE_KEYS].map((name) => SEED_META[name]?.key).sort();
+  assert.deepEqual(graced, sources.map((source) => `seed-meta:economic:food-prices-${source.id}`).sort());
+});
+
+test('handleHealth holds a late government release back from Sentry, then reports it once it is a month late', async () => {
+  const limitMin = 14 * 1_440;
+  // The alert record carries from sweep to sweep, as in production: a held-back
+  // incident recorded as alerted would never report once its grace ran out.
+  let incidentAlerts = null;
+  const sweep = async (overMin) => {
+    const captures = [];
+    globalThis.fetch = sweepFetch({
+      incidentAlerts,
+      onCommands: (commands) => {
+        for (const [op, key, value] of commands) {
+          if (op === 'SET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) incidentAlerts = value;
+        }
+      },
+      seedMeta: {
+        'seed-meta:economic:food-prices-mit': {
+          fetchedAt: Date.now() - 60_000,
+          recordCount: 952,
+          newestItemAt: Date.now() - (limitMin + overMin) * 60_000,
+          maxContentAgeMin: limitMin,
+        },
+      },
+    });
+    const response = await handleHealth(new Request('https://api.worldmonitor.app/api/health?compact=1'), undefined, {
+      captureIncident: async (error, opts) => { captures.push(opts.tags); return true; },
+    });
+    const body = await response.json();
+    return { body, mit: captures.filter((tags) => tags.health_source === 'foodPricesMit'), total: captures.length };
+  };
+
+  // Past the 3 h stale-content grace, so health reports it, but well inside a month.
+  const late = await sweep(6 * 60);
+  assert.equal(late.body.problems.foodPricesMit?.status, 'STALE_CONTENT', 'health still shows the late release');
+  assert.deepEqual(late.mit, [], 'Sentry does not hear about it');
+  assert.ok(late.total > 0, 'other incidents in the same sweep still report');
+  assert.equal(JSON.parse(incidentAlerts).includes('foodPricesMit:STALE_CONTENT'), false, 'and it is not recorded as alerted');
+
+  const gone = await sweep(31 * 1_440);
+  assert.equal(gone.body.problems.foodPricesMit?.status, 'STALE_CONTENT');
+  assert.deepEqual(gone.mit, [{ health_source: 'foodPricesMit', health_status: 'STALE_CONTENT' }], 'a month past the limit, it reports');
+});
+
+test('wildfire incidents distinguish retained source data from unavailable source data', async () => {
+  const now = Date.now();
+  const lastSuccessAt = now - 40 * 60_000;
+  const firstFailureAt = now - 30 * 60_000;
+  const retainedUntil = lastSuccessAt + 3 * 60 * 60_000;
+  for (const mode of ['retained', 'expired', 'legacy', 'malformed']) {
+    const retained = mode !== 'expired';
+    const snapshot = {
+      fetchedAt: retained ? lastSuccessAt : null,
+      firstFailureAt,
+      retainedUntil: retained ? retainedUntil : null,
+      lastAttemptAt: now - 60_000,
+      consecutiveFailures: retained ? 3 : 18,
+      fireDetections: retained ? [{ id: 'cwfis:one' }, { id: 'cwfis:two' }] : [],
+    };
+    const { freshnessMetaPatch } = canadianWildfireAfterPublish({
+      _firmsState: 'ok', _bcState: 'ok', _cwfisState: 'failed', _cwfisSnapshot: snapshot,
+    });
+    freshnessMetaPatch.sourceHealth.cwfis.providerResponse = 'must not reach public health or Sentry';
+    if (mode === 'legacy') delete freshnessMetaPatch.sourceHealth.cwfis.retainedRecordCount;
+    if (mode === 'malformed') freshnessMetaPatch.sourceHealth.cwfis.retainedRecordCount = '2';
+    const expected = { cwfis: {
+      lastSuccessAt: retained ? lastSuccessAt : null,
+      firstFailureAt,
+      retainedUntil: retained ? retainedUntil : null,
+      retainedRecordCount: mode === 'legacy' || mode === 'malformed' ? null : retained ? 2 : 0,
+    } };
+    const captures = [];
+    globalThis.fetch = sweepFetch({ seedMeta: {
+      'seed-meta:wildfire:fires': { fetchedAt: now, recordCount: 100, ...freshnessMetaPatch },
+    } });
+    const response = await handleHealth(new Request('https://api.worldmonitor.app/api/health?compact=1'), undefined, {
+      captureIncident: async (_error, opts) => { captures.push(opts); return true; },
+    });
+    const body = await response.json();
+    assert.equal(body.problems.wildfires.status, 'SEED_ERROR');
+    assert.deepEqual(body.problems.wildfires.sourceHealth, expected);
+    const wildfire = captures.filter((capture) => capture.tags.health_source === 'wildfires');
+    assert.equal(wildfire.length, 1);
+    assert.deepEqual(wildfire[0].extra.sourceHealth, expected);
+  }
+});
+
+test('a source incident carries the diagnostics that say why it fired', async () => {
+  const { reportSourceIncident } = __testing__;
+  const report = async (key, checks) => {
+    let extra;
+    await reportSourceIncident(key, checks, undefined, async (_error, opts) => { extra = opts.extra; return true; });
+    return extra;
+  };
+  // WORLDMONITOR-1D6: CHINA_DEGRADED arrived with no extras at all, so the
+  // failing China entry and its reason codes were unrecoverable.
+  const problems = [{ id: 'cn-customs', status: 'degraded', reasonCodes: ['COVERAGE_BELOW_FLOOR'] }];
+  const china = await report('chinaCoverage:CHINA_DEGRADED', {
+    chinaCoverage: { status: 'CHINA_DEGRADED', chinaStatus: 'degraded', counts: { healthy: 11, degraded: 1 }, problems, degradedStreak: 3 },
+  });
+  assert.deepEqual(china.problems, problems);
+  assert.deepEqual(china.counts, { healthy: 11, degraded: 1 });
+  assert.equal(china.chinaStatus, 'degraded');
+  assert.equal(china.degradedStreak, 3);
+
+  // WORLDMONITOR-1DF: COVERAGE_PARTIAL has several causes; the floor and the
+  // count that missed it must both be on the event.
+  const partial = await report('demographicsCapability:COVERAGE_PARTIAL', {
+    demographicsCapability: { status: 'COVERAGE_PARTIAL', records: 229, minRecordCount: 230, seedAgeMin: 1, poolCounts: { a: 1 }, minPoolCounts: { a: 2 } },
+  });
+  assert.deepEqual(partial, { records: 229, seedAgeMin: 1, minRecordCount: 230, poolCounts: { a: 1 }, minPoolCounts: { a: 2 } });
+
+  // An oversized diagnostic is cut to a bounded string, not dropped or sent whole.
+  const huge = await report('x:COVERAGE_PARTIAL', { x: { status: 'COVERAGE_PARTIAL', coverage: { countries: 'Z'.repeat(20_000) } } });
+  assert.equal(typeof huge.coverage, 'string');
+  assert.ok(huge.coverage.length <= 4_100, `coverage ${huge.coverage.length}`);
+  assert.match(huge.coverage, /…\[truncated\]$/);
+  // Strings are capped too: degradedProblemKey serializes the China problems.
+  const hugeKey = await report('chinaCoverage:CHINA_DEGRADED', { chinaCoverage: { status: 'CHINA_DEGRADED', degradedProblemKey: 'k'.repeat(20_000) } });
+  assert.ok(hugeKey.degradedProblemKey.length <= 4_100, `key ${hugeKey.degradedProblemKey.length}`);
+  assert.match(hugeKey.degradedProblemKey, /…\[truncated\]$/);
+
+  // Causes set after classification by the composers.
+  const transits = await report('chokepointTransits:COVERAGE_PARTIAL', {
+    chokepointTransits: { status: 'COVERAGE_PARTIAL', records: 13, missingMeasurable: ['hormuz', 'bab-el-mandeb'] },
+  });
+  assert.deepEqual(transits.missingMeasurable, ['hormuz', 'bab-el-mandeb']);
+  const risk = await report('riskScores:COVERAGE_PARTIAL', {
+    riskScores: { status: 'COVERAGE_PARTIAL', ciiInputs: { valid: true, unfedFamilies: ['news'], dead: [] }, readModelReady: false },
+  });
+  assert.deepEqual(risk.ciiInputs, { valid: true, unfedFamilies: ['news'], dead: [] });
+  assert.equal(risk.readModelReady, false);
+  const vuln = await report('v:COVERAGE_PARTIAL', { v: { status: 'COVERAGE_PARTIAL', requiredVulnerabilityCoverage: { lng: 0.8 } } });
+  assert.deepEqual(vuln.requiredVulnerabilityCoverage, { lng: 0.8 });
+});
+
+test('handleHealth reports each incident until Sentry accepts it, then stays quiet', async () => {
+  const sweep = async (incidentAlerts, accepted = () => true) => {
+    const captures = [];
+    let record;
+    globalThis.fetch = sweepFetch({
+      incidentAlerts,
+      onCommands: (commands) => {
+        for (const [op, key, value] of commands) {
+          if (op === 'SET' && String(key).endsWith(__testing__.HEALTH_INCIDENT_ALERTS_KEY)) record = value;
+        }
+      },
+    });
+    const response = await handleHealth(
+      new Request('https://api.worldmonitor.app/api/health?compact=1'),
+      undefined,
+      {
+        captureIncident: async (error, opts) => {
+          captures.push({ message: error.message, ...opts });
+          return accepted(opts.tags.health_source);
+        },
+      },
+    );
+    return { body: await response.json(), captures, record };
+  };
+
+  const first = await sweep(null);
+  assert.notEqual(first.body.dataStatus, 'OK');
+  const alerted = JSON.parse(first.record);
+  assert.ok(alerted.length > 0);
+  assert.equal(first.captures.length, alerted.length, 'every active problem is reported once');
+  const [incident] = first.captures;
+  const { health_source: source, health_status: status } = incident.tags;
+  assert.ok(alerted.includes(`${source}:${status}`));
+  assert.equal(incident.level, 'warning');
+  assert.deepEqual(incident.fingerprint, ['health-source-incident', source, status]);
+  assert.equal(incident.message, `Health source incident: ${source} ${status}`);
+
+  const repeat = await sweep(first.record);
+  assert.equal(repeat.captures.length, 0, 'an accepted incident must not re-alert');
+
+  const unreadable = await sweep(INCIDENT_ALERTS_UNREADABLE);
+  assert.equal(unreadable.captures.length, 0, 'an unreadable record cannot prove anything is new');
+  assert.equal(unreadable.record, undefined, 'and must not be overwritten');
+  for (const corrupt of ['not json', '{"a":1}', '[1,2]']) {
+    const result = await sweep(corrupt);
+    assert.equal(result.captures.length, 0, `a corrupt record (${corrupt}) must not re-alert accepted incidents`);
+    assert.equal(result.record, undefined, 'and must not be overwritten');
+  }
+
+  const withoutSource = JSON.stringify(alerted.filter((key) => key !== `${source}:${status}`));
+  const failed = await sweep(withoutSource, (name) => name !== source);
+  assert.deepEqual(failed.captures.map((capture) => capture.tags.health_source), [source]);
+  assert.equal(JSON.parse(failed.record).includes(`${source}:${status}`), false, 'an undelivered incident stays pending');
+  const retried = await sweep(failed.record);
+  assert.deepEqual(retried.captures.map((capture) => capture.tags.health_source), [source], 'the next sweep retries it');
+  assert.ok(JSON.parse(retried.record).includes(`${source}:${status}`));
 });

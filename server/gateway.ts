@@ -93,6 +93,23 @@ import {
   ENTERPRISE_API_RATE_LIMIT,
 } from './_shared/api-key-rate-limit';
 import {
+  accountRateLimitPlan,
+  accountSafetyLimitResponse,
+  accountServedHeaders,
+  type AccountRateLimitPlan,
+} from './_shared/account-rate-limit';
+import { isApiOnlyPath } from './_shared/api-only-paths';
+import {
+  DESKTOP_KEY_API_ONLY_ERROR,
+  DESKTOP_KEY_CLIENT_ERROR,
+  DESKTOP_KEY_LIMIT_ERROR,
+  admitsDesktopKeyClientRequest,
+  resolveUserKeyEntitlement,
+  resolveUserKeyScope,
+} from './_shared/desktop-key-principal';
+import { chargeDesktopKeyBudget } from './_shared/desktop-key-meter';
+import type { UserKeyPrincipal } from './_shared/user-api-key';
+import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
@@ -259,6 +276,8 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
 };
 
 const RPC_CACHE_TIER: Record<string, CacheTier> = {
+  // Server cache owns enrichment lifetime; provider disablement must be immediate.
+  '/api/cyber/v1/get-network-info': 'no-store',
   // 'live' tier — bbox-quantized + tanker-aware caching upstream of the
   // 60s in-handler cache, absorbing identical-bbox requests at the CDN
   // before they hit this Vercel function. Energy Atlas live-tanker layer.
@@ -314,6 +333,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/natural/v1/list-natural-events': 'slow',
   '/api/wildfire/v1/list-fire-detections': 'static',
   '/api/maritime/v1/list-navigational-warnings': 'static',
+  '/api/maritime/v1/list-ukmto-incidents': 'no-store',
   '/api/supply-chain/v1/get-china-corridor-control-towers': 'medium',
   '/api/supply-chain/v1/get-shipping-rates': 'daily',
   '/api/supply-chain/v1/list-pipelines': 'static',
@@ -341,6 +361,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/climate/v1/get-ocean-ice-data': 'daily',
   '/api/climate/v1/list-air-quality-data': 'fast',
   '/api/climate/v1/list-climate-news': 'slow',
+  '/api/climate/v1/list-reservoir-levels': 'daily',
   '/api/sanctions/v1/list-sanctions-pressure': 'daily',
   '/api/sanctions/v1/lookup-sanction-entity': 'no-store',
   '/api/radiation/v1/list-radiation-observations': 'slow',
@@ -372,6 +393,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/list-bigmac-prices': 'daily',
   '/api/economic/v1/list-fuel-prices': 'daily',
   '/api/economic/v1/get-fao-food-price-index': 'daily',
+  '/api/economic/v1/get-food-prices': 'slow',
   '/api/economic/v1/get-crude-inventories': 'daily',
   '/api/economic/v1/get-nat-gas-storage': 'daily',
   '/api/economic/v1/get-eu-yield-curve': 'daily',
@@ -406,7 +428,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // edge cache would pin a transient upstream failure long after it healed.
   '/api/intelligence/v1/get-country-coverage': 'medium',
   '/api/intelligence/v1/get-risk-scores': 'slow',
-  '/api/intelligence/v1/get-pizzint-status': 'slow',
+  // Live, not slow: the relay publishes a BestTime reading every 15 min, and
+  // an hour of CDN cache kept venues CLOSED long after they opened.
+  '/api/intelligence/v1/get-pizzint-status': 'live',
   '/api/intelligence/v1/classify-event': 'static',
   '/api/intelligence/v1/search-gdelt-documents': 'slow',
   '/api/infrastructure/v1/get-cable-health': 'slow',
@@ -425,6 +449,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // holding one body for an hour made the CDN the freshness floor.
   '/api/news/v1/list-feed-digest': 'fast',
   '/api/news/v1/list-country-headlines': 'fast',
+  '/api/news/v1/list-media-perspective': 'fast',
+  '/api/news/v1/list-news-pool': 'fast',
+  // #9796: cached feed rows for a panel's enabled sources below the category cap.
+  '/api/news/v1/list-source-items': 'fast',
   '/api/news/v1/list-label-changes': 'fast',
   // #9093 operator queue: never cached, it is gated by a secret header.
   '/api/news/v1/list-error-reports': 'no-store',
@@ -472,6 +500,8 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-economic-calendar': 'slow',
   '/api/economic/v1/get-china-macro-snapshot': 'slow',
   '/api/economic/v1/get-china-activity-nowcast': 'medium',
+  // Daily seed (#9722); the CDN key carries the country_code, region_id and kind filters.
+  '/api/economic/v1/get-no2-activity': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/intelligence/v1/list-wsb-tickers': 'no-store',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
@@ -556,6 +586,9 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
+  '/api/scorecard/v1/get-five-factor-scorecard',
+  '/api/scorecard/v1/get-bloc-scorecard',
+  '/api/scorecard/v1/list-five-factor-scorecards',
   '/api/intelligence/v1/get-china-decision-signals',
   '/api/resilience/v1/get-runtime-manifest',
   // Lead-capture RPCs serve ANONYMOUS prospects by definition: the /pro
@@ -574,6 +607,12 @@ export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   // endpoint limit (server/_shared/rate-limit.ts), and a bounded review queue
   // that refuses rather than evicts. Reports are never applied automatically.
   '/api/news/v1/submit-error-report',
+  // #8721 agent feedback: agents without a key are the reporters we most want
+  // (threat model Decision 1), so REST callers are always anonymous. Gates:
+  // the 24 KB body cap, the outer per-IP endpoint limit, and
+  // admitFeedbackReport's fail-closed buckets. Reports are never acted on
+  // automatically.
+  '/api/feedback/v1/submit-report',
   // #9093 /trust page: public label history and today's counts. Read-only,
   // public coverage metadata; a visitor who lands on /trust directly has no
   // session cookie. Bounded by a per-IP endpoint limit and the 'fast' CDN tier.
@@ -913,6 +952,8 @@ const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
 // value and the platform answering 500. The outer handler drains it on a
 // rejected dispatch and releases the slot there.
 const pendingDirectLlmReservations = new WeakMap<Request, () => Promise<void>>();
+// Same contract for the daily request meter: nothing served, nothing billed.
+const pendingDailyMeterReleases = new WeakMap<Request, () => Promise<void>>();
 
 function methodForGetEquivalentPolicy(method: string): string {
   return method === 'HEAD' ? 'GET' : method;
@@ -983,10 +1024,9 @@ function markAuthErrorNoStore(response: Response): Response {
  * Every request header the gateway or a sibling auth path treats as a
  * credential (#8400). `hasCredentialBearingHeader` consumes this list so a
  * new credential header cannot be added without appearing in the cache-tier
- * guard. `register-interest.ts` desktop HMAC headers and `mcp-internal-hmac.ts`
- * service-auth headers export their own constants and stay OUT: their
- * verification is route-scoped (a single POST RPC, the internal-MCP
- * pre-check) rather than consumed as a bearer by an auth path — per-principal
+ * guard. `mcp-internal-hmac.ts` service-auth headers export their own
+ * constants and stay OUT: their verification is route-scoped (the
+ * internal-MCP pre-check) rather than consumed as a bearer by an auth path — per-principal
  * bodies behind those MUST be no-store at the handler instead of relying on
  * this audience overwrite.
  *
@@ -1004,6 +1044,18 @@ export const CREDENTIAL_BEARING_HEADERS = [
   'X-Widget-Key',
   'X-Pro-Key',
   'Cookie',
+] as const;
+
+// The only caller headers a `.md` twin's in-process sibling request carries:
+// the network identity the rate limiters and usage telemetry key on, and the
+// Origin the CORS allowlist checks. Credentials (CREDENTIAL_BEARING_HEADERS)
+// and gateway-internal markers are deliberately absent.
+const MARKDOWN_TWIN_CALLER_HEADERS = [
+  'x-real-ip',
+  'x-vercel-forwarded-for',
+  'cf-connecting-ip',
+  'x-wm-edge-proof',
+  'origin',
 ] as const;
 
 export function hasCredentialBearingHeader(request: Request): boolean {
@@ -1062,20 +1114,21 @@ export function createDomainGateway(
 
     // Vercel resolves versioned API paths such as
     // `/api/forecast/v1/get-forecast-scorecard.md` to the more-specific
-    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all. Handle
-    // markdown probes here, before auth and RPC dispatch, so every dynamic
-    // domain gateway follows the same site-wide `.md` twin contract without a
-    // broad rewrite that would shadow the real endpoints (#4724).
+    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all, so
+    // every dynamic domain gateway serves the site-wide `.md` twin contract
+    // here without a broad rewrite that would shadow the real endpoints
+    // (#4724). The sibling is dispatched back through this gateway in-process,
+    // so origin, auth and both rate limiters run exactly as on a direct call.
     if (
       originalPathname.startsWith('/api/') &&
       isMarkdownTwinPath(originalPathname) &&
       (originalRequest.method === 'GET' || originalRequest.method === 'HEAD')
     ) {
-      return buildMarkdownTwinResponse(originalRequest, originalPathname);
+      return serveMarkdownTwin(originalRequest, originalPathname, ctx);
     }
 
     let request = stripClientTrustedHeaders(originalRequest);
-    const rawPathname = new URL(request.url).pathname;
+    const rawPathname = originalPathname;
     const pathname = stripTrailingSlashes(rawPathname);
     const t0 = Date.now();
 
@@ -1184,6 +1237,8 @@ export function createDomainGateway(
             host: deriveHost(originalRequest),
             sentryTraceId: deriveSentryTraceId(originalRequest),
             reason: effectiveReason,
+            accountId: identity.account_id,
+            overage: identity.overage,
           }),
         ]);
       })());
@@ -1533,8 +1588,13 @@ export function createDomainGateway(
         isSidecarOllamaTranslation = body.provider === 'ollama' && body.mode === 'translate';
       } catch { /* malformed requests retain the normal authentication path */ }
     }
-    const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
-    const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    // Both are route-scoped credential checks that read only the request, and
+    // either can short-circuit to `false` without touching the other. This is
+    // the per-request dispatch path, so resolve them together.
+    const [seedRefreshVerified, relayWarmPingVerified] = await Promise.all([
+      isResilienceRankingSeedRefreshRequest(request, pathname),
+      isRelayWarmPingRequest(request, pathname),
+    ]);
     // Resolve the quota policy against the route POST compatibility will use.
     // Keep body validation after auth and abuse limiting; invalid bodies still
     // return before reservation or dispatch.
@@ -1614,6 +1674,9 @@ export function createDomainGateway(
     // wm_ key is still an explicit authenticating credential and its owner must
     // pass the #4611 apiAccess gate.
     let isUserApiKey = false;
+    // The validated wm_ principal with its kind (plan 2026-10-25-001). Set
+    // together with isUserApiKey; the #4611 gate below reads the kind.
+    let userKeyPrincipal: UserKeyPrincipal | null = null;
     const wmKey = getHeaderApiKey(request);
     const dockerSelfHostSessionAuthorized =
       isDockerSelfHostCountryBrief &&
@@ -1644,15 +1707,21 @@ export function createDomainGateway(
         return validationGuardResponse;
       }
 
-      // Only destructure validateUserApiKey: several gateway unit tests mock this
-      // module with a partial surface. Requiring isUserApiKeyUnavailableError at
-      // import time breaks those mocks (vitest throws "No export is defined").
-      // Classify unavailability by the stable `code` field instead.
-      const { validateUserApiKey } = await import('./_shared/user-api-key');
+      // Only destructure validateUserApiKeyPrincipal: several gateway unit tests
+      // mock this module with a partial surface. Requiring
+      // isUserApiKeyUnavailableError at import time breaks those mocks (vitest
+      // throws "No export is defined"). Classify unavailability by the stable
+      // `code` field instead.
+      //
+      // The desktop-aware variant (KTD3): it returns `api` AND `desktop` keys
+      // with their kind, and the #4611 gate below decides what the kind may
+      // reach. The generic validator would answer 401 for every desktop key.
+      const { validateUserApiKeyPrincipal } = await import('./_shared/user-api-key');
       try {
-        const userKeyResult = await validateUserApiKey(wmKey);
+        const userKeyResult = await validateUserApiKeyPrincipal(wmKey);
         if (userKeyResult) {
           isUserApiKey = true;
+          userKeyPrincipal = userKeyResult;
           usage.isUserApiKey = true;
           usage.userApiKeyCustomerRef = userKeyResult.userId;
           keyCheck = { valid: true, required: true };
@@ -1831,17 +1900,29 @@ export function createDomainGateway(
     //     negative cache, ahead of any rate limit) for no revenue gain — public
     //     data is not the paid product — and would wrongly gate the
     //     intentionally-anonymous lead-capture forms.
+    //
+    // Kind routes before plan (plan 2026-10-25-001, KTD4/KTD5): a `desktop`
+    // key never enters the apiAccess branch. It — or a downgraded owner's
+    // `api` key within `maxDesktopKeys` — is admitted when the owner is
+    // covered and holds desktopKeyAccess (or apiAccess, the R8 upgrade case),
+    // then gets exactly the checks a signed-in Pro session gets below
+    // (checkEntitlementDetailed on the owner's tier, the legacy Pro bearer
+    // gate already satisfied by the key), the owner as rate-limit principal,
+    // the desktop meter instead of the #3199 REST meter, and a 403 on every
+    // path in the API-only set (KTD7). An `api` key whose owner has apiAccess
+    // keeps today's behaviour exactly.
     let userKeyEntitlement: CachedEntitlements | null | undefined;
-    if (isUserApiKey && sessionUserId) {
-      userKeyEntitlement = await getEntitlements(sessionUserId);
+    let isDesktopPrincipal = false;
+    if (isUserApiKey && sessionUserId && userKeyPrincipal) {
+      // One cached read; a pre-deploy entry that cannot answer the desktop
+      // decision is refetched through Convex (desktop-key-principal.ts).
+      userKeyEntitlement = await resolveUserKeyEntitlement(sessionUserId, userKeyPrincipal);
       recordUsageEntitlement(userKeyEntitlement);
-      const apiAccessCovered = !!userKeyEntitlement &&
-        userKeyEntitlement.features.apiAccess &&
-        hasCurrentEntitlementCoverage(userKeyEntitlement);
+      const keyScope = resolveUserKeyScope(userKeyPrincipal, userKeyEntitlement);
       const billingDenial = denyForBillingVerification(
         userKeyEntitlement,
         corsHeaders,
-        apiAccessCovered,
+        keyScope.scope !== 'denied',
       );
       if (billingDenial) return billingDenial;
       // Key ownership does not prove paid access. Missing configuration and
@@ -1864,16 +1945,29 @@ export function createDomainGateway(
             },
           },
         );
-      } else if (
-        !userKeyEntitlement.features.apiAccess ||
-        !hasCurrentEntitlementCoverage(userKeyEntitlement)
-      ) {
+      } else if (keyScope.scope === 'denied') {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
           403,
-          'API access requires an active subscription',
+          keyScope.reason === 'over_cap'
+            ? DESKTOP_KEY_LIMIT_ERROR
+            : userKeyPrincipal.keyKind === 'desktop'
+              ? 'Pro subscription required'
+              : 'API access requires an active subscription',
           corsHeaders,
         );
+      } else if (keyScope.scope === 'desktop') {
+        if (isApiOnlyPath(pathname)) {
+          emitRequest(403, 'tier_403', null);
+          return createGatewayAuthErrorResponse(403, DESKTOP_KEY_API_ONLY_ERROR, corsHeaders);
+        }
+        if (!admitsDesktopKeyClientRequest(request)) {
+          emitRequest(403, 'tier_403', null);
+          return createGatewayAuthErrorResponse(403, DESKTOP_KEY_CLIENT_ERROR, corsHeaders);
+        }
+        // Pro-session treatment from here on, attributed to the owner.
+        isDesktopPrincipal = true;
+        rateLimitPrincipalUserId = sessionUserId;
       } else {
         // A validated user key plus active apiAccess is a trusted paid
         // principal even on routes without an endpoint tier policy.
@@ -1987,6 +2081,16 @@ export function createDomainGateway(
       && Boolean(enterpriseCredential)
       && !isUserApiKey
       && keyCheck.kind === 'enterprise';
+    if (requiresDirectLlmQuota && isEnterpriseAuth && enterpriseCredential !== wmKey) {
+      const origin = request.headers.get('Origin');
+      const hasRequestIntent = origin
+        ? isAllowedOrigin(origin)
+        : request.headers.get('Sec-Fetch-Site') === 'same-origin';
+      if (!hasRequestIntent) {
+        emitRequest(403, 'auth_403', null);
+        return createGatewayAuthErrorResponse(403, 'Request intent required for cookie-authorized AI work', corsHeaders);
+      }
+    }
     if (
       !dockerSelfHostSessionAuthorized &&
       !isEnterpriseAuth &&
@@ -2110,7 +2214,7 @@ export function createDomainGateway(
       }
     }
     if (!matchedHandler) {
-      const allowed = router.allowedMethods(new URL(request.url).pathname);
+      const allowed = router.allowedMethods(rawPathname);
       if (allowed.length > 0) {
         emitRequest(405, 'method_not_allowed', null);
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
@@ -2142,7 +2246,9 @@ export function createDomainGateway(
     const hasIdempotencyKey = request.method === 'POST'
       && request.headers.has(IDEMPOTENCY_HEADER)
       && !IDEMPOTENCY_EXEMPT_RPC_PATHS.has(pathname);
-    const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    const idScope = isUserApiKey && pathname === '/api/v2/shipping/webhooks'
+      ? userKeyPrincipal?.keyHash ?? null
+      : identityForScope.principal_id ?? identityForScope.customer_id;
     const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
 
     // Look up an existing idempotency record before rate-limit/quota counters.
@@ -2210,6 +2316,25 @@ export function createDomainGateway(
       }
     }
 
+    // Rate-limit headers (+ the overage marker) a pooled Enterprise account
+    // request carries on its served response; set by the per-account block
+    // below once the request is counted on the account's day key.
+    let accountResponseHeaders: Record<string, string> | null = null;
+    // Releases the daily-meter charge (pooled account, per-user or desktop)
+    // for a request that ends without being served, and drops the overage
+    // marker and account headers with it. Idempotent.
+    let rollbackDailyMeter: (() => Promise<void>) | undefined;
+    const releaseDailyMeter = async (): Promise<void> => {
+      const rollback = rollbackDailyMeter;
+      rollbackDailyMeter = undefined;
+      usage.overage = null;
+      accountResponseHeaders = null;
+      if (rollback) await rollback();
+    };
+    // If dispatch throws later (e.g. a handler response body that fails to
+    // stream), the outer wrapper releases the charge.
+    pendingDailyMeterReleases.set(originalRequest, releaseDailyMeter);
+
     // Internal-MCP verified requests skip the remaining gateway layer: the MCP edge
     // already enforced 50/day + 60/min per userId in api/mcp.ts. A second
     // limiter here would create misleading double-counting and could 429
@@ -2250,13 +2375,48 @@ export function createDomainGateway(
       // user keys resolve getEntitlements explicitly (cached); enterprise keys
       // carry no entitlement and use hardcoded limits.
       let governedByApiKeyLayer = false;
-      let rollbackDailyMeter: (() => Promise<void>) | undefined;
-      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth)) {
-        const enforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
+
+      // ── Per-account desktop-key meter (plan 2026-10-25-001, KTD6) ────────
+      // One counter per OWNER per UTC day plus a per-minute burst bucket, so
+      // two keys share one allowance and revoke-and-recreate cannot reset it.
+      // Replaces the #3199 REST meter for desktop principals (they are Pro
+      // subscribers, not API customers) and runs on every route, sub-requests
+      // included, like the account meters above. Fails CLOSED: a Redis error
+      // is the same rate-limit-degraded 503 the sub-request admission emits.
+      if (isDesktopPrincipal && sessionUserId) {
+        const budget = await chargeDesktopKeyBudget({
+          userId: sessionUserId,
+          entitlement: userKeyEntitlement,
+          pipeline: (cmds) => runRedisPipeline(cmds),
+        });
+        if (!budget.ok) {
+          emitRequest(
+            budget.status,
+            budget.reason === 'unavailable' ? 'rate_limit_degraded' : budget.reason === 'daily' ? 'rl_ceiling_429' : 'rl_min_429',
+            null,
+          );
+          return new Response(JSON.stringify(budget.body), {
+            status: budget.status,
+            headers: { 'Content-Type': 'application/json', ...budget.headers, ...corsHeaders },
+          });
+        }
+        // Daily only: an unserved request keeps its burst slot spent.
+        rollbackDailyMeter = budget.releaseDaily;
+      }
+
+      if (keyCheck.valid && (isUserApiKey || isEnterpriseAuth) && !isDesktopPrincipal) {
+        const flagEnforce = process.env.API_RATE_LIMIT_ENFORCE === 'true';
         let perMinute = 0;
         let allowance = -1;
         let identity = '';
         let planKey = ''; // #4635 — hoisted for the informative 429 (ent is block-scoped below)
+        // Enterprise contract member: the key owner's requests draw on the
+        // account's pooled day key and burst bucket (`acct:<id>`), shared with
+        // every other member and with their MCP calls. `allowance` below is
+        // then the SAFETY LIMIT (contract allowance × breaker multiple), not
+        // the contract allowance: requests between the two are served and
+        // billed as overage.
+        let account: AccountRateLimitPlan | null = null;
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
           // A circuit-breaker ceiling, not a plan limit (high-usage-alarm.ts).
@@ -2286,7 +2446,14 @@ export function createDomainGateway(
             // audit can compare each request to the customer's actual cap.
             recordUsageEntitlement(ent);
           }
-          if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
+          account = ent && !ent.verificationUnavailable ? accountRateLimitPlan(ent.account) : null;
+          if (ent && account) {
+            perMinute = account.perMinuteBurst;
+            allowance = account.breakerCeiling;
+            planKey = ent.planKey;
+            identity = account.identity;
+            usage.accountId = account.id;
+          } else if (ent && ent.features.apiAccess && ent.features.apiRateLimit > 0) {
             perMinute = ent.features.apiRateLimit;
             // undefined ⇒ fail-open (no daily limit); -1 ⇒ unlimited.
             allowance =
@@ -2300,6 +2467,10 @@ export function createDomainGateway(
           // falls through to the per-IP path — never a slidingWindow(0).
         }
 
+        // Account limits are contract terms, not the self-serve rollout, so
+        // they are enforced whatever API_RATE_LIMIT_ENFORCE says. Everyone
+        // else stays governed by the flag exactly as before.
+        const enforce = flagEnforce || account !== null;
         if (perMinute > 0 && identity) {
           // #4635 — informative 429 upgrade link; omitted for enterprise/top tier.
           const upgradeUrl =
@@ -2335,10 +2506,16 @@ export function createDomainGateway(
               userId: identity,
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
+              // Pooled meters also count the member, for the per-member
+              // breakdown of the account's day.
+              ...(account && sessionUserId ? { memberUserId: sessionUserId } : {}),
             });
             if (meter.metered) rollbackDailyMeter = meter.rollback;
             // Tier-3 ceilings are circuit breakers; page well before one trips.
-            if (meter.metered && planKey === 'enterprise') {
+            // A contract account has its own breaker (the safety limit below)
+            // and expected overage, so the self-serve Enterprise page is not
+            // for it.
+            if (meter.metered && planKey === 'enterprise' && !account) {
               reportHighUsageIfCrossed({
                 meter: 'rest',
                 credential: isEnterpriseAuth ? 'operator-key' : 'enterprise-plan',
@@ -2347,6 +2524,16 @@ export function createDomainGateway(
                 ceiling: allowance,
                 ctx,
               });
+            }
+            if (meter.overLimit && account) {
+              // The breaker, not the allowance (account-rate-limit.ts).
+              await meter.rollback();
+              emitRequest(429, 'rl_ceiling_429', null);
+              return accountSafetyLimitResponse(account, meter, corsHeaders, planKey);
+            }
+            if (meter.metered && account) {
+              usage.overage = meter.count > account.dailyAllowance;
+              accountResponseHeaders = accountServedHeaders(account, meter);
             }
             if (meter.overLimit) {
               if (enforce) {
@@ -2400,7 +2587,7 @@ export function createDomainGateway(
             })
           : await checkRateLimit(request, corsHeaders);
         if (rateLimitResponse) {
-          await rollbackDailyMeter?.();
+          await releaseDailyMeter();
           const reason = getRateLimitTelemetryReason(
             rateLimitResponse,
             'rate_limit_429_global',
@@ -2412,6 +2599,7 @@ export function createDomainGateway(
     }
 
     if (pendingPostToGetCompatError) {
+      await releaseDailyMeter();
       emitRequest(400, 'malformed_request', null);
       return pendingPostToGetCompatError;
     }
@@ -2446,6 +2634,7 @@ export function createDomainGateway(
         : null;
       const quotaUserId = operatorQuotaUserId ?? sessionUserId ?? dockerQuotaUserId;
       if (!quotaUserId) {
+        await releaseDailyMeter();
         emitRequest(401, 'auth_401', null);
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
@@ -2485,6 +2674,7 @@ export function createDomainGateway(
           pipeline: (cmds) => runRedisPipeline(cmds, true),
         });
         if (!reservation.ok) {
+          await releaseDailyMeter();
           const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
           emitRequest(
             response.status,
@@ -2526,18 +2716,22 @@ export function createDomainGateway(
       switch (idempotency.kind) {
         case 'invalid':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(400, 'idempotency_invalid', null);
           return idempotency.response;
         case 'replay':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(idempotency.response.status, 'idempotent_replay', null);
           return idempotency.response;
         case 'conflict':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(409, 'idempotency_conflict', null);
           return idempotency.response;
         case 'mismatch':
           await releaseDirectLlmReservation();
+          await releaseDailyMeter();
           emitRequest(422, 'idempotency_mismatch', null);
           return idempotency.response;
         // 'disabled' (fail-open) and 'proceed' fall through to execution.
@@ -2566,7 +2760,10 @@ export function createDomainGateway(
       const userId = sessionUserId ?? usage.sessionUserId;
       const ent = !isEnterpriseAuth && userId ? (userKeyEntitlement ?? quotaEntitlements ?? await getEntitlements(userId)) : null;
       const denial = ent?.verificationUnavailable ? getBillingVerificationDenial(ent, corsHeaders) : null;
-      if (denial) return denial;
+      if (denial) {
+        await releaseDailyMeter();
+        return denial;
+      }
       bindCountryHistoryAccess(requestForHandler, isEnterpriseAuth ? 365 : countryHistoryDays(ent));
     }
     try {
@@ -2582,11 +2779,16 @@ export function createDomainGateway(
       );
     } catch (err) {
       console.error('[gateway] Unhandled handler error:', err);
+      // A crash in our handler is not a served request; do not bill it.
+      await releaseDailyMeter();
       response = new Response(JSON.stringify({ message: 'Internal server error' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    // A server error is never billed: give the daily-meter charge back so it
+    // neither consumes the allowance nor counts as contract overage.
+    if (response.status >= 500) await releaseDailyMeter();
 
     // Merge CORS + handler side-channel headers into response.
     // Every side channel below is keyed by the Request object the handler
@@ -2605,6 +2807,11 @@ export function createDomainGateway(
       }
     }
     appendDeprecationPolicyLink(mergedHeaders);
+    if (accountResponseHeaders) {
+      for (const [key, value] of Object.entries(accountResponseHeaders)) {
+        mergedHeaders.set(key, value);
+      }
+    }
     const retryableResponse = drainRetryableResponse(requestForHandler);
 
     // Release the direct-LLM reservation when the request was not served: the
@@ -2696,7 +2903,8 @@ export function createDomainGateway(
         // re-invoking the function, so a disallowed origin could read a cached ACAO: * response.
       }
       mergedHeaders.delete('X-No-Cache');
-      if (!new URL(request.url).searchParams.has('_debug')) {
+      const responseSearchParams = new URL(request.url).searchParams;
+      if (!responseSearchParams.has('_debug')) {
         mergedHeaders.delete('X-Cache-Tier');
       }
 
@@ -2708,7 +2916,7 @@ export function createDomainGateway(
       // via their requestBody and their responses are not cached/ETagged here.
       // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
       let responseView = new Uint8Array(bodyBytes);
-      const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
+      const jmespathExpr = responseSearchParams.get('jmespath');
       if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
         let projection = projectJsonResponse(bodyStr, jmespathExpr);
         if (projection.ok) {
@@ -2836,7 +3044,47 @@ export function createDomainGateway(
     });
   }
 
-  return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+  // A `.md` twin of an API route. The sibling request never leaves this
+  // isolate: an HTTP self-fetch reaches the gateway from the platform egress
+  // address with no caller headers, so every per-IP limiter charged one bucket
+  // shared by all twin readers and the caller was never charged at all.
+  //
+  // The sibling carries only the caller's network identity and Origin. Never a
+  // credential: a twin is an anonymous rendering, and its body is cached by
+  // the sibling's rules. The identity headers arrive from the platform exactly
+  // as on the twin request itself, and the gateway re-derives trust from them
+  // (edge proof, Origin allowlist) the same way it does for a direct call.
+  async function serveMarkdownTwin(caller: Request, markdownPath: string, ctx?: GatewayCtx): Promise<Response> {
+    let corsHeaders: Record<string, string>;
+    try {
+      corsHeaders = isDisallowedOrigin(caller) ? getOriginDeniedCorsHeaders(caller) : getCorsHeaders(caller);
+    } catch {
+      // Fail closed: no CORS headers means a browser blocks any cross-origin
+      // read. The sibling dispatch reports the same failure as its own 500.
+      corsHeaders = {};
+    }
+    const callerOrigin = new URL(caller.url).origin;
+    const dispatchSibling = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      // Only a route this gateway serves; never a network fetch. A redirect
+      // onto any other path ends as a plain 404.
+      if (url.origin !== callerOrigin || router.allowedMethods(stripTrailingSlashes(url.pathname)).length === 0) {
+        return new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } });
+      }
+      const headers = new Headers(init?.headers);
+      for (const name of MARKDOWN_TWIN_CALLER_HEADERS) {
+        const value = caller.headers.get(name);
+        if (value) headers.set(name, value);
+      }
+      return gatewayHandler(new Request(url, { method: init?.method ?? 'GET', headers, signal: init?.signal }), ctx);
+    }) as typeof fetch;
+    return buildMarkdownTwinResponse(caller, markdownPath, dispatchSibling, {
+      corsHeaders,
+      inheritSiblingCacheControl: true,
+    });
+  }
+
+  const gatewayHandler = async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
     let response: Response;
     try {
       response = await dispatch(originalRequest, ctx);
@@ -2848,9 +3096,16 @@ export function createDomainGateway(
         pendingDirectLlmReservations.delete(originalRequest);
         await rollback();
       }
+      const releaseMeter = pendingDailyMeterReleases.get(originalRequest);
+      if (releaseMeter) {
+        pendingDailyMeterReleases.delete(originalRequest);
+        await releaseMeter();
+      }
       throw err;
     }
     pendingDirectLlmReservations.delete(originalRequest);
+    pendingDailyMeterReleases.delete(originalRequest);
     return originalRequest.method === 'HEAD' ? toHeadResponse(response) : response;
   };
+  return gatewayHandler;
 }

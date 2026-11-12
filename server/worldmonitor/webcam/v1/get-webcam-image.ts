@@ -51,34 +51,55 @@ export async function getWebcamImage(_ctx: ServerContext, req: GetWebcamImageReq
     return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
   }
 
-  const { data: result } = await cachedFetchJsonWithMeta<GetWebcamImageResponse>(
-    `webcam:image:${webcamId}`,
-    CACHE_TTL,
-    async () => {
-      const resp = await fetch(`${WINDY_BASE}/${encodeURIComponent(webcamId)}?include=images,urls`, {
-        headers: { 'x-windy-api-key': apiKey, 'User-Agent': CHROME_UA },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!resp.ok) return null;
+  try {
+    const { data: result } = await cachedFetchJsonWithMeta<GetWebcamImageResponse>(
+      `webcam:image:${webcamId}`,
+      CACHE_TTL,
+      async () => {
+        const resp = await fetch(`${WINDY_BASE}/${encodeURIComponent(webcamId)}?include=images,player,urls`, {
+          headers: { 'x-windy-api-key': apiKey, 'User-Agent': CHROME_UA },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!resp.ok) return null;
 
-      const data = await resp.json();
-      const wc = data.webcams?.[0] ?? data;
-      const images = wc.images || wc.image || {};
-      const urls = wc.urls || {};
+        const data = await resp.json();
+        const wc = data.webcams?.[0] ?? data;
+        if (!wc || wc.status === 'inactive') return null;
+        // Windy v3: images.current, player.<timespan>, urls.detail (not urls.player).
+        // https://api.windy.com/webcams/version-transfer
+        const thumbnailUrl = providerUrl(wc.images?.current?.preview) || providerUrl(wc.images?.current?.thumbnail);
+        const timelapseUrl = ['day', 'month', 'year', 'lifetime'].map(span => providerUrl(wc.player?.[span])).find(Boolean) || '';
+        const playerUrl = timelapseUrl || providerUrl(wc.player?.live);
+        if (!thumbnailUrl && !playerUrl) return null;
+        const capturedAt = typeof wc.lastUpdatedOn === 'string' ? Date.parse(wc.lastUpdatedOn) : NaN;
 
-      return {
-        thumbnailUrl: images.current?.preview || images.current?.thumbnail || '',
-        playerUrl: urls.player || '',
-        title: wc.title || '',
-        windyUrl,
-        lastUpdated: wc.lastUpdatedOn ? new Date(wc.lastUpdatedOn).toISOString() : '',
-        error: '',
-      };
-    },
-    120,
-    { shouldFetch: () => isSeededWebcamId(webcamId) },
-  );
+        return {
+          thumbnailUrl,
+          playerUrl,
+          title: typeof wc.title === 'string' ? wc.title : '',
+          windyUrl: providerUrl(wc.urls?.detail) || windyUrl,
+          lastUpdated: Number.isFinite(capturedAt) ? new Date(capturedAt).toISOString() : '',
+          resolvedAt: Date.now(),
+          mediaType: timelapseUrl ? 'timelapse' : playerUrl ? 'live' : 'snapshot',
+          error: '',
+        };
+      },
+      120,
+      { shouldFetch: () => isSeededWebcamId(webcamId) },
+    );
 
-  return result ?? { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
+    return result ?? { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
+  } catch {
+    // Provider timeouts, malformed responses and cache failures are media misses.
+    return { thumbnailUrl: '', playerUrl: '', title: '', windyUrl, lastUpdated: '', error: 'unavailable' };
+  }
+}
+
+function providerUrl(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? value : '';
+  } catch { return ''; }
 }

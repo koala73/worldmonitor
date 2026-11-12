@@ -3,7 +3,6 @@
  * Seed script: World Bank Tech Readiness indicators → Redis
  *
  * Fetches WB indicators for all countries, computes tech-readiness rankings
- * identical to getTechReadinessRankings() in src/services/economic/index.ts,
  * stores economic:worldbank-techreadiness:v1 for bootstrap hydration, and
  * writes economic:worldbank:v2 RPC snapshots the Edge handler reads when
  * api.worldbank.org is unreachable.
@@ -31,10 +30,6 @@ const TTL_SECONDS = 7 * 24 * 3600; // 7 days — WB data is annual
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
-// Mirror weights from getTechReadinessRankings()
-const WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
-const NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
-
 // WB indicators + date ranges matching the RPC handler
 const INDICATORS = [
   { key: 'internet',  id: 'IT.NET.USER.ZS', unit: 'percent', dateRange: '2019:2024' },
@@ -42,7 +37,7 @@ const INDICATORS = [
   { key: 'broadband', id: 'IT.NET.BBND.P2', unit: 'per 100 people', dateRange: '2019:2024' },
   { key: 'rdSpend',   id: 'GB.XPD.RSDV.GD.ZS', unit: 'percent of GDP', dateRange: '2018:2024' },
 ];
-const { buildWorldBankTechObservations } = wbTechProjection;
+export const { computeWorldBankTechRankings: computeRankings } = wbTechProjection;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -218,66 +213,6 @@ async function fetchWbIndicator(indicatorId, dateRange) {
 }
 
 // ---------------------------------------------------------------------------
-// Rankings computation (mirrors getTechReadinessRankings() exactly)
-// ---------------------------------------------------------------------------
-
-function normalize(val, max) {
-  if (val === undefined || val === null) return null;
-  return Math.min(100, (val / max) * 100);
-}
-
-export function computeRankings(indicatorData) {
-  const allCountries = new Set();
-  for (const data of Object.values(indicatorData)) {
-    Object.keys(data).forEach(c => allCountries.add(c));
-  }
-
-  const scores = [];
-
-  for (const countryCode of allCountries) {
-    const iData = indicatorData.internet[countryCode];
-    const mData = indicatorData.mobile[countryCode];
-    const bData = indicatorData.broadband[countryCode];
-    const rData = indicatorData.rdSpend[countryCode];
-
-    const components = {
-      internet:  normalize(iData?.value, NORMALIZE_MAX.internet),
-      mobile:    normalize(mData?.value, NORMALIZE_MAX.mobile),
-      broadband: normalize(bData?.value, NORMALIZE_MAX.broadband),
-      rdSpend:   normalize(rData?.value, NORMALIZE_MAX.rdSpend),
-    };
-
-    let totalWeight = 0;
-    let weightedSum = 0;
-    for (const [key, weight] of Object.entries(WEIGHTS)) {
-      const val = components[key];
-      if (val !== null) {
-        weightedSum += val * weight;
-        totalWeight += weight;
-      }
-    }
-
-    const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
-    const countryName = iData?.name || mData?.name || bData?.name || rData?.name || countryCode;
-    const observations = buildWorldBankTechObservations({ internet: iData, mobile: mData, broadband: bData, rdSpend: rData });
-
-    scores.push({
-      country: countryCode,
-      countryName,
-      score: Math.round(score * 10) / 10,
-      rank: 0,
-      components,
-      observations,
-    });
-  }
-
-  scores.sort((a, b) => b.score - a.score);
-  scores.forEach((s, i) => { s.rank = i + 1; });
-
-  return scores;
-}
-
-// ---------------------------------------------------------------------------
 // Progress indicators (Human Progress panel)
 // ---------------------------------------------------------------------------
 
@@ -443,8 +378,9 @@ async function main() {
   }
 
   const rankings = computeRankings(indicatorData);
-  console.log(`  → ${rankings.length} countries ranked`);
-  console.log(`  Top 5: ${rankings.slice(0, 5).map(r => `${r.rank}. ${r.countryName} (${r.score})`).join(', ')}\n`);
+  const ranked = rankings.filter(entry => entry.rank !== null);
+  console.log(`  → ${ranked.length}/${rankings.length} countries ranked`);
+  console.log(`  Top 5: ${ranked.slice(0, 5).map(r => `${r.rank}. ${r.countryName} (${r.score})`).join(', ')}\n`);
 
   // ── 2. Progress indicators ──
   console.log('── Progress Indicators ──');

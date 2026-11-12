@@ -22,6 +22,15 @@ const OPENROUTER_FREE_PRIMARY_MODEL = 'google/gemma-4-26b-a4b-it:free';
 // probe), inkling (403, agent harnesses only), both nex-n2.5 models (expire
 // 2026-09-25), ling (served only by ignored providers).
 //
+// nemotron-3-super:free left /models with no endpoints around 2026-10-21
+// (the daily live check went red that day). Its successor, NVIDIA's
+// nemotron-3.5-super-vl (same 120B/12B-active MoE, same NVIDIA free endpoint
+// and terms), answered 8 of 8 production-shape probes on 2026-11-03 in
+// 0.5-0.8s, clean prose and bare JSON, zero reasoning tokens. Rejected:
+// nemotron-3-ultra (8 of 8 but 0.8-3.6s), nemotron-3.5-lightning (one 45s
+// empty reply), xing4.0 (429 on 6 of 8), dots-3-note-preview (expires
+// 2026-12-31), inkling (expires 2026-11-04), flint (endpoint down).
+//
 // This overrides the 2026-08-15 research decision not to use this model in
 // production (docs/research/openrouter-free-model-fallback-2026-08-15.md):
 // NVIDIA logs free-endpoint prompts and its API Trial Terms cover trial and
@@ -34,7 +43,7 @@ const OPENROUTER_FREE_PRIMARY_MODEL = 'google/gemma-4-26b-a4b-it:free';
 // .github/workflows/openrouter-free-models-live.yml, fails when either free
 // leg leaves the listing, is 14 days from its expiration_date, loses its last
 // usable endpoint, or (with a key) refuses a real completion.
-const OPENROUTER_FREE_BACKUP_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+const OPENROUTER_FREE_BACKUP_MODEL = 'nvidia/nemotron-3.5-super-vl:free';
 const OPENROUTER_PROVIDER_ROUTING = {
   ignore: ['baidu', 'alibaba', 'deepseek', 'siliconflow', 'streamlake', 'novita'],
   sort: 'throughput',

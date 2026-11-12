@@ -574,3 +574,26 @@ describe('country intel brief source parsing', () => {
     ]);
   });
 });
+
+describe('airport evidence in the grounded country brief', () => {
+  const sources = [{ title: 'Saudi Arabia shuts Jeddah airspace after drone attack', source: 'Reuters', url: 'https://example.com/a', publishedAt: '' }];
+  const airport = {
+    id: 'E1', kind: 'airport', label: 'NOTAM airport status', value: 'closed', asOf: '2026-10-24T18:30:00.000Z', url: '',
+    factText: 'King Abdulaziz International (JED) in Saudi Arabia is closed under a NOTAM, as of Oct 24, 2026.',
+  };
+  const render = (risks) => renderEvidenceGroundedCountryBrief(JSON.stringify({
+    situation: [{ text: 'Saudi Arabia shuts Jeddah airspace after drone attack', sources: [1], evidence: [] }],
+    implications: [], risks, outlook: [], watch: [],
+  }), sources, [airport], 'Saudi Arabia');
+
+  it('publishes a risk that states the closure as cited', () => {
+    const result = render([{ text: 'King Abdulaziz International (JED) in Saudi Arabia is closed under a NOTAM', sources: [], evidence: ['E1'] }]);
+    assert.deepEqual(result.sections.map((section) => section.key), ['situation', 'risks']);
+    assert.equal(result.withheld, 0);
+  });
+
+  it('withholds a closure claim that adds a number the data point does not state', () => {
+    const result = render([{ text: 'King Abdulaziz International (JED) in Saudi Arabia is closed under a NOTAM for 48 hours', sources: [], evidence: ['E1'] }]);
+    assert.equal(result.withheld, 1);
+  });
+});

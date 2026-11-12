@@ -18,11 +18,22 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createTimeoutSignal, isTimeoutOrAbortError } from '../pro-test/src/services/timeout-signal.ts';
+import { createRequestTimeoutSignal, createTimeoutSignal, isTimeoutOrAbortError } from '../pro-test/src/services/timeout-signal.ts';
 import { createTimeoutSignal as createDashboardTimeoutSignal } from '../src/services/timeout-signal.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+
+it('request deadlines preserve a Request cancellation signal and fetch init override', () => {
+  const controller = new AbortController();
+  const request = new Request('https://example.test', { signal: controller.signal });
+  const inherited = createRequestTimeoutSignal(request, undefined, 1000);
+  const overridden = createRequestTimeoutSignal(request, { signal: null }, 1000);
+  controller.abort(new Error('caller cancelled'));
+  assert.equal(inherited.aborted, true);
+  assert.equal(inherited.reason.message, 'caller cancelled');
+  assert.equal(overridden.aborted, false, 'an explicit null init signal replaces Request cancellation');
+});
 
 /** Run `fn` with `AbortSignal.timeout` removed, as on Chrome < 103. */
 function withoutNativeTimeout<T>(fn: () => T): T {

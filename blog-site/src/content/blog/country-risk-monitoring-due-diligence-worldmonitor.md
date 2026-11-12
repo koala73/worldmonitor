@@ -179,7 +179,7 @@ Corroborate country findings with first-party sources such as [World Bank Data](
 ## Frequently Asked Questions
 
 **What is country risk monitoring?**
-Country risk monitoring is the repeated review of political, security, sanctions, macroeconomic, health, infrastructure, and market signals that could affect an organization's exposure to a country.
+[Country risk monitoring](https://www.worldmonitor.app/use-cases/monitor-country-risk/) is the repeated review of political, security, sanctions, macroeconomic, health, infrastructure, and market signals that could affect an organization's exposure to a country.
 
 **What is the Country Instability Index?**
 The Country Instability Index is WorldMonitor's 0-100 country-level risk score. It combines structural and live signals such as conflict, unrest, security events, information velocity, advisory input, and other risk indicators.

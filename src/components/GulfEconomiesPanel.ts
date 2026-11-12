@@ -22,7 +22,7 @@ function renderSection(title: string, quotes: GulfQuote[]): string {
       </div>
       <div class="market-data">
         ${miniSparkline(q.sparkline, q.change)}
-        <span class="market-price">${formatPrice(q.price)}</span>
+        <span class="market-price">${escapeHtml(formatPrice(q.price))}</span>
         <span class="market-change ${getChangeClass(q.change)}">${formatChange(q.change)}</span>
       </div>
     </div>

@@ -20,7 +20,7 @@ async function mergedFixture(count) {
     fetchCwfis: async () => ({ fireDetections: [], _cwfisState: 'degraded', _cwfisErrorCode: 'CWFIS_PRESCRIBED_FAILED' }),
     fetchBcWildfire: async () => ({ fireDetections: [], _bcVia: 'kml' }),
   });
-  return { ...merged, fetchedAt: NOW, dataAvailable: true, futureInternalField: 'fixture-only' };
+  return { ...merged, futureInternalField: 'fixture-only' };
 }
 
 function assertPublic(payload) {
@@ -31,7 +31,7 @@ function assertPublic(payload) {
 
 for (const count of [0, 1, 501]) {
   test(`public compaction removes producer diagnostics for ${count} detections and preserves canonical metadata`, async () => {
-    const merged = await mergedFixture(count);
+    const merged = { ...await mergedFixture(count), fetchedAt: NOW, dataAvailable: true };
     const publishData = wildfirePublishData(merged);
     assert.equal(publishData._firmsPartial, true);
     assert.equal(publishData._firmsFailedCalls, 1);
@@ -52,7 +52,10 @@ for (const count of [0, 1, 501]) {
 
 test('public Redis fallback and CDN assembly strip diagnostics from legacy seed envelopes', async (t) => {
   const merged = await mergedFixture(1);
-  const envelope = buildEnvelope({ fetchedAt: NOW, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 1, state: 'OK', data: wildfirePublishData(merged) });
+  const data = seedCompact(wildfirePublishData(merged));
+  assert.equal(data.fetchedAt, undefined);
+  assert.equal(data.dataAvailable, undefined);
+  const envelope = buildEnvelope({ fetchedAt: NOW, recordCount: 1, sourceVersion: 'fixture', schemaVersion: 1, state: 'OK', data });
   for (const [name, value] of Object.entries({
     UPSTASH_REDIS_REST_URL: 'https://redis.test',
     UPSTASH_REDIS_REST_TOKEN: 'fixture-token',
@@ -84,7 +87,7 @@ test('public Redis fallback and CDN assembly strip diagnostics from legacy seed 
 });
 
 test('dashboard byte measurement excludes internal fields while canonical retains them', async () => {
-  const payload = await mergedFixture(1);
+  const payload = { ...await mergedFixture(1), fetchedAt: NOW, dataAvailable: true };
   payload.futureInternalField = 'x'.repeat(10_000);
   const measureBytes = (value) => Buffer.byteLength(JSON.stringify(value));
   for (const compact of [seedCompact, edgeCompact]) {

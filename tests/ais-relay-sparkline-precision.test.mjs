@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { parseYahooChart, SPARKLINE_SIGNIFICANT_DIGITS, roundSparkline } from '../scripts/_seed-utils.mjs';
+import { awaitsSessionOpen } from '../scripts/shared/yahoo-closed-session.cjs';
 
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
@@ -43,8 +44,9 @@ const relayObservationGuard = RELAY_SOURCE.includes('function _finiteObservation
   ? extractFunction('_finiteObservation')
   : '';
 const parseRelayYahooChart = Function(
+  'awaitsSessionOpen',
   `${relayObservationGuard}\n${extractFunction('_parseYahooChartJson')}\nreturn _parseYahooChartJson;`,
-)();
+)(awaitsSessionOpen);
 
 function chart(meta, close = []) {
   return { chart: { result: [{ meta, indicators: { quote: [{ close }] } }] } };

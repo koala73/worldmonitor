@@ -29,15 +29,16 @@ describe('Vercel Analytics URL redaction', () => {
   it('strips checkout secrets, invite tokens, referral, and Clerk params', () => {
     const redacted = redactAnalyticsUrl({
       type: 'pageview',
-      url: 'https://www.worldmonitor.app/dashboard?email=a@b.com&license_key=SEKRET&subscription_id=sub_1&payment_id=pay_1&accept-business-invite=g1&token=tok123&access_token=qsecret&ref=abc&wm_referral=xyz&__clerk_handshake=h&__clerk_ticket=t&__clerk_foo=bar&checkoutProduct=pro&checkoutDiscount=SAVE&tab=news',
+      url: 'https://www.worldmonitor.app/dashboard?email=a@b.com&license_key=SEKRET&subscription_id=sub_1&payment_id=pay_1&accept-business-invite=g1&token=tok123&access_token=qsecret&ref=abc&wm_referral=xyz&__clerk_handshake=h&__clerk_ticket=t&__clerk_foo=bar&checkoutProduct=pro&checkoutDiscount=SAVE&wm_checkout_account=79b0aa0042b3c056&wm_checkout_ref=REFCODE&wm_checkout_discount=DISC10&wm_checkout_product=pdt_1&tab=news',
     });
     // Parsed params, never substrings: URLSearchParams re-encodes '@' as %40,
     // so `!includes('a@b.com')` could not fail.
     const params = new URL(redacted.url).searchParams;
-    for (const key of ['email', 'license_key', 'subscription_id', 'payment_id', 'accept-business-invite', 'token', 'access_token', 'ref', 'wm_referral', '__clerk_handshake', '__clerk_ticket', '__clerk_foo', 'checkoutProduct', 'checkoutDiscount']) {
+    for (const key of ['email', 'license_key', 'subscription_id', 'payment_id', 'accept-business-invite', 'token', 'access_token', 'ref', 'wm_referral', '__clerk_handshake', '__clerk_ticket', '__clerk_foo', 'checkoutProduct', 'checkoutDiscount', 'wm_checkout_account', 'wm_checkout_ref', 'wm_checkout_discount']) {
       assert.equal(params.get(key), null, `${key} must be redacted`);
     }
     assert.equal(params.get('tab'), 'news', 'benign params survive');
+    assert.equal(params.get('wm_checkout_product'), 'pdt_1', 'non-secret funnel params survive');
   });
 
   it('keeps a redacted absolute URL absolute', () => {
@@ -136,7 +137,7 @@ describe('boot-time URL strip', () => {
 
 describe('one sensitive-param list for every telemetry vendor', () => {
   it('the DebugBear gate matches exactly what analytics redacts', () => {
-    for (const key of ['ref', 'wm_referral', 'accept-business-invite', 'token', 'invite_token', '__clerk_ticket', '__clerk_status', '__clerk_handshake', 'checkoutReferral', 'email', 'license_key']) {
+    for (const key of ['ref', 'wm_referral', 'accept-business-invite', 'token', 'invite_token', '__clerk_ticket', '__clerk_status', '__clerk_handshake', 'checkoutReferral', 'email', 'license_key', 'wm_checkout_account', 'wm_checkout_ref', 'wm_checkout_discount']) {
       const href = `https://www.worldmonitor.app/dashboard?${key}=v&tab=news`;
       assert.equal(urlCarriesSensitiveParams(href), true, `${key} must hold DebugBear`);
       const redacted = redactAnalyticsUrl({ type: 'pageview', url: href });

@@ -221,6 +221,11 @@ export async function fetchCommodityQuotes(
       price: q.price,
       change: q.change,
       sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+      sparklineIntervalSeconds: q.sparklineIntervalSeconds,
+      sparklineStartAt: q.sparklineStartAt,
+      priceSource: q.priceSource,
+      priceBasis: q.priceBasis,
+      priceAt: q.priceAt,
     };
   });
 

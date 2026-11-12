@@ -166,7 +166,8 @@ test('retains validated NHC coverage after required point requests fail without 
   assert.deepEqual(calls, { eonet: 1, gdacs: 6, nhc: 30, hko: 1 });
   assert.equal(payload._nhcSnapshot.fetchedAt, NOW);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 1);
-  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 215 * MIN).toISOString());
+  // The miss at +5 min stays pending for 60 min, past the next */30 run.
+  assert.equal(verdict(payload, NOW + 5 * MIN).sourceFailurePendingUntil, new Date(NOW + 65 * MIN).toISOString());
 });
 
 test('one failed required point layer rejects the whole current NHC slice', async () => {
@@ -226,6 +227,62 @@ test('response-body transport failures retry only the failed required layer', as
   assert.equal(calls.get(6), 1);
   assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
   assert.deepEqual(payload._nhcSnapshot.events, []);
+});
+
+// NOAA's ArcGIS service answers some queries with HTTP 200 and an error body.
+// It hits a different layer on each pass (seen live 2026-11-08), so with 15
+// required layers nearly every run met one. Sentry WORLDMONITOR-1AG.
+const arcgisErrorBody = { error: { code: 400, message: 'Unable to complete operation.', details: [] } };
+
+test('an ArcGIS error body under HTTP 200 retries only that layer', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    previous: null,
+    nhc: async (_input, id) => {
+      const attempt = (calls.get(id) || 0) + 1;
+      calls.set(id, attempt);
+      if (id === 32 && attempt === 1) return Response.json(arcgisErrorBody);
+      return Response.json(collection());
+    },
+  });
+
+  assert.equal(calls.get(32), 2);
+  assert.equal(calls.get(6), 1);
+  assert.equal(payload._nhcSnapshot.errorCode, null);
+  assert.equal(payload._nhcSnapshot.consecutiveFailures, 0);
+});
+
+test('a persistent ArcGIS error body is a request failure, not invalid data', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    now: NOW + MIN,
+    nhc: async (_input, id) => {
+      calls.set(id, (calls.get(id) || 0) + 1);
+      if (id === 32) return Response.json(arcgisErrorBody);
+      return Response.json(collection(id === 6 ? [currentStormPoint] : []));
+    },
+  });
+
+  assert.equal(calls.get(32), 2);
+  assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_REQUEST_FAILED');
+  assert.deepEqual(payload.events.filter(event => event.sourceName === 'NHC'), [retainedStorm]);
+});
+
+test('a non-transient ArcGIS error body is invalid data and is not retried', async () => {
+  const calls = new Map();
+  const payload = await runNhc({
+    now: NOW + MIN,
+    nhc: async (_input, id) => {
+      calls.set(id, (calls.get(id) || 0) + 1);
+      if (id === 32) {
+        return Response.json({ error: { code: 400, message: 'Invalid or missing input parameters.', details: [] } });
+      }
+      return Response.json(collection(id === 6 ? [currentStormPoint] : []));
+    },
+  });
+
+  assert.equal(calls.get(32), 1);
+  assert.equal(payload._nhcSnapshot.errorCode, 'NHC_POINT_RESPONSE_INVALID');
 });
 
 test('malformed required GeoJSON is actionable and cannot earn first-failure pending', async () => {
@@ -674,12 +731,23 @@ async function seedProcess(initial, now, {
       if (url.pathname.startsWith('/get/')) {
         return Response.json({ result: store.get(decodeURIComponent(url.pathname.slice(5))) ?? null });
       }
-      const body = JSON.parse(init.body);
+      // runSeed's lock fence (SM-122): renewal and fenced writes find the lock
+      // held; a fenced write (two keys: lock, target) is the SET it performs,
+      // so the write-failure modes below still see it as a SET.
+      const raw = JSON.parse(init.body);
+      const isFence = raw[0] === 'EVAL' && String(raw[1]).includes('PEXPIRE');
+      const body = isFence && raw[2] === 2
+        ? (raw[8] === '' ? ['SET', raw[4], raw[7]] : ['SET', raw[4], raw[7], 'EX', raw[8]])
+        : raw;
       if (failStateWrite && body[0] === 'SET' && body[1] === 'natural:events:nhc-snapshot:v1') {
         return new Response('', { status: 403 });
       }
       if (failSourceStateWrite && body[0] === 'SET' && body[1] === 'natural:events:source-snapshots:v1') {
         return new Response('', { status: 403 });
+      }
+      if (isFence) {
+        if (body[0] === 'SET') redis(body);
+        return Response.json({ result: [1, ''] });
       }
       return Response.json(Array.isArray(body[0])
         ? body.map(command => ({ result: redis(command) }))

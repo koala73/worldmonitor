@@ -88,6 +88,7 @@ Layers are organized into logical groups for efficient monitoring:
 |-------|-------------|
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
 | **Weather** | Official severe weather alerts (NWS, ECCC, WMO SWIC) |
+| **Water Levels** | One dot per reservoir or lake on the 50-entry Strategic Water Levels watchlist, coloured by status: red and amber for falling or low, blue for rising or high, grey for normal, and a hollow ring when there is no recent satellite pass or too little history to judge. Geopolitical and Energy variants. Off by default |
 
 **Overlays & Labels**
 | Layer | Description |
@@ -119,6 +120,7 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
 | **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
+| **Strategic Water Levels** | Water-surface level of 50 reservoirs and lakes that matter for hydropower, irrigation, shipping and transboundary water disputes, from NASA ICESat-2 lidar. Records and fast moves sort first. Each row shows the status, the level against the usual for that month (or the 12-month change), a level sparkline and the date of the last satellite pass, with All, Needs attention and Transboundary filters. Selecting a row opens it on the map. Level only, not storage volume; NASA publishes each pass 50 to 70 days after it is measured. On by default in the Energy variant, opt-in in the geopolitical variant. See [Strategic Water Levels](/data-sources#strategic-water-levels) |
 | **Displacement Tracking** | UNHCR refugee, asylum seeker, and IDP data by origin and host country, IDMC new internal displacement events, IOM DTM internal displacement by region, and source-dated cross-border movements (UNHCR portal, UK Home Office, US CBP, Frontex, Panama) |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
@@ -289,7 +291,56 @@ The full panel inventory lives in the app itself — Cmd+K surfaces what's avail
 - Country dossier evidence bundles as portable Markdown with source links and freshness notes where available (Pro and above)
 - Historical playback from snapshots
 
-Dashboard tabs are capped per plan: 3 on Free, 10 on Pro, 25 on Pro Business. The cap applies when you create a tab — tabs you already have keep working, and none are removed if your plan changes.
+## Dashboard tabs and sharing
+
+Dashboard tabs are capped per plan: 3 on Free, 10 on Pro, 25 on Pro Business. The cap applies when you create a tab. Existing tabs keep working if your plan changes.
+
+The **▾** button next to **+** sets what new tabs start with: **Use this tab's panels** saves the current tab's shown and hidden panels and their order, and **Use the default panels** returns new tabs to the built-in set.
+
+To share a map position and its layers, copy the browser URL. See [Shareable links](#shareable-links) for the included settings. A map link does not share your dashboard's panel layout or grant paid access.
+
+### Team dashboards
+
+Team dashboards share a tab's panel layout and map settings with signed-in teammates. API Business owners and accepted members of their [Pro seats](/accounts#api-business-team-seats) have access while the subscription covers them. Enterprise members need an active membership and a current contract.
+
+Only one team is available at a time. World Monitor selects your eligible Enterprise account first, then your own API Business subscription, then an accepted seat on another owner's API Business subscription. If your Enterprise account or own subscription takes priority, you will not see the inviting team's dashboards. If no higher-priority team applies and several accepted seats qualify, World Monitor selects the first eligible seat it finds. Other inviting teams' dashboards are unavailable.
+
+Standalone Pro, Pro Business, and API Starter subscriptions do not create a team. The 25 custom dashboards on Pro Business are personal tabs, not 25 shared team dashboards. See [Plans & Pricing](/pricing#dashboard-sharing-by-plan).
+
+#### Share a dashboard with your team
+
+1. Sign in with your own account that belongs to the team.
+2. Open the tab you want to share.
+3. Arrange its panels and map settings.
+4. Click **Team** next to the dashboard tabs.
+5. Click **Share this tab with your team**.
+
+The dashboard appears in your team's list under the tab's name. It includes panel order, visibility, docking, and sizes, plus the map view, zoom, center, time range, and layers. Custom widgets and MCP panels are excluded. Sharing copies the layout, not a snapshot of the data or the publisher's credentials. Each member's own access determines which paid data they can view.
+
+#### Open and update a team dashboard
+
+1. Click **Team** in the same dashboard variant as your teammate.
+2. Click the shared dashboard's name.
+
+The dashboard opens as a new tab. If it is already open, World Monitor switches to that tab. Your personal tab limit still applies when opening a new tab.
+
+Your changes are not published to teammates until you click **Team**, then **Share this tab's changes with your team**. Use **Get the latest version** to apply a newer shared layout. This replaces the tab's panel layout, including any unpublished local panel edits.
+
+Opening a team dashboard as a new tab or getting its latest version also applies its map settings to the browser's current map. Map settings are shared across tabs. Switching tabs restores panel state but does not restore the previous map. Panel sizes also apply to those panels in other tabs in the same browser.
+
+If another member publishes after your Team list was last loaded, sharing reports a conflict and refreshes the list. Once the list refreshes, sharing your older local layout can overwrite the teammate's newer layout without another conflict warning. Save any local work you need, then use **Get the latest version** and review it before publishing further changes.
+
+#### Stop sharing a dashboard
+
+1. Click **Team**.
+2. Click the remove button beside the dashboard, labelled **Stop sharing** followed by its name.
+3. Confirm the removal.
+
+The dashboard leaves the team's list. Tabs that members already opened remain available.
+
+Every team member can publish, update, or stop sharing any dashboard in that team. Each team can share up to 25 dashboards per dashboard variant. At that limit, stop sharing an existing dashboard before publishing another.
+
+If **Team** is missing, check that you are signed in with an accepted API Business seat or an active Enterprise membership. An API Business owner also needs a current subscription. A standalone paid subscription does not grant team membership.
 
 ---
 

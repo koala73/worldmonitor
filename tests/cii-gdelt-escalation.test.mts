@@ -2,7 +2,9 @@
 // had no live event input: acledScore, fatalityScore, civilianBoost and the
 // protest/riot terms all read the ACLED API, which returns nothing without a
 // token. In October 2026 Houthi strikes hit Riyadh and Dammam and France had
-// nationwide riots, and both components stayed 0 for every country.
+// nationwide riots, and both components stayed 0 for every country. ACLED
+// stays an optional source for licence holders; where a country has ACLED
+// rows, each component takes the larger of its ACLED and GDELT terms.
 //
 // The replacement input is GDELT volume scored against each country's OWN
 // four-week norm (gdelt:bulk:country-events:v1). Raw volume is unusable
@@ -78,7 +80,7 @@ function components(snapshot: unknown, code: string, acled: any[] = []) {
   return { conflict: score.components!.geoConvergence, unrest: score.components!.ciiContribution };
 }
 
-describe('CII Conflict and Unrest from GDELT escalation while ACLED is dark', () => {
+describe('CII Conflict and Unrest from GDELT escalation', () => {
   it('scores the Riyadh strikes on Conflict and leaves the week before at zero', () => {
     assert.ok(gdeltEscalationScore(CONFLICT.SA_OCT12) >= 40);
     assert.equal(gdeltEscalationScore(CONFLICT.SA_OCT05), 0);
@@ -136,17 +138,27 @@ describe('CII Conflict and Unrest from GDELT escalation while ACLED is dark', ()
     assert.ok(components(seed(spike), 'SA').conflict >= 40);
   });
 
-  it('does not apply eventMultiplier, which is reserved for verified events', () => {
-    // SA carries 2.0 and QA 0.8; the same escalation scores the same.
+  it('scores the same escalation the same in every country', () => {
+    // No per-country multiplier: SA and QA read the same spike identically.
     const snapshot = seed({ SA: { conflict: CONFLICT.SA_OCT12 }, QA: { conflict: CONFLICT.SA_OCT12 } });
     assert.equal(components(snapshot, 'SA').conflict, components(snapshot, 'QA').conflict);
   });
 
-  it('stands down when ACLED returns events, so a credentialed deploy never double counts', () => {
+  it('keeps scoring every other country when one country has ACLED rows', () => {
+    // A credentialed deploy with ACLED rows for Ukraine leaves SA and FR on GDELT.
     const snapshot = seed({ SA: { conflict: CONFLICT.SA_OCT12 }, FR: { protest: PROTEST.FR_OCT19 } });
     const acled = [{ country: 'Ukraine', event_type: 'Battles', fatalities: 0, daysAgo: 0 }];
-    assert.equal(components(snapshot, 'SA', acled).conflict, 0);
-    assert.equal(components(snapshot, 'FR', acled).unrest, 0);
+    assert.deepEqual(components(snapshot, 'SA', acled), components(snapshot, 'SA'));
+    assert.deepEqual(components(snapshot, 'FR', acled), components(snapshot, 'FR'));
+  });
+
+  it('takes the larger of ACLED and GDELT in a country with both, never the sum', () => {
+    const snapshot = seed({ FR: { protest: PROTEST.FR_OCT19 } });
+    const riot = [{ country: 'France', event_type: 'Riots', fatalities: 0, daysAgo: 0 }];
+    // One riot: ACLED unrest 8 + 10 = 18 against GDELT's 70.
+    assert.equal(components(snapshot, 'FR', riot).unrest, CII_GDELT_ESCALATION_CAP);
+    // Without GDELT the riot alone counts.
+    assert.equal(components(seed({}), 'FR', riot).unrest, 18);
   });
 
   it('counts a live GDELT baseline toward realtime conflict coverage', () => {
@@ -192,7 +204,7 @@ const WEEK = {
   MM_OCT19: { articles: 47, conflict: 5, protest: 1 }, // too few articles to read a share
 };
 
-describe('CII Conflict and Unrest from the sustained GDELT level while ACLED is dark', () => {
+describe('CII Conflict and Unrest from the sustained GDELT level', () => {
   it('scores a sustained campaign that has already raised its own norm', () => {
     // SA's last 24h sit at its (raised) median: escalation 0.
     const atNorm = { current: 90, baselineMedian: 95 };
@@ -244,11 +256,11 @@ describe('CII Conflict and Unrest from the sustained GDELT level while ACLED is 
     assert.equal(components(seed({ SA: { conflict: spike, week: WEEK.SA_OCT19 } }), 'SA').conflict, Math.max(escalation, level));
   });
 
-  it('gates the level on ACLED being dark, a fresh snapshot and a ready week', () => {
+  it('gates the level on a fresh snapshot and a ready week, never on another country\'s ACLED rows', () => {
     const row = { SA: { week: WEEK.SA_OCT19 } };
     assert.ok(components(seed(row), 'SA').conflict > 0);
     const acled = [{ country: 'Ukraine', event_type: 'Battles', fatalities: 0, daysAgo: 0 }];
-    assert.equal(components(seed(row), 'SA', acled).conflict, 0);
+    assert.equal(components(seed(row), 'SA', acled).conflict, components(seed(row), 'SA').conflict);
     assert.equal(components(seed(row, { updatedAt: NOW - CII_GDELT_ESCALATION_MAX_AGE_MS - 1 }), 'SA').conflict, 0);
     assert.equal(components(seed(row, { weekReady: false }), 'SA').conflict, 0);
   });

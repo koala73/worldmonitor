@@ -158,7 +158,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: 'Scoring & Indices',
     metaTitle: 'Pentagon Pizza Index: Live Tracker & Method | World Monitor',
     metaDescription:
-      'The Pentagon Pizza Index reads pizza-shop busyness near the Pentagon as a crisis tell. See the live level, how it is scored, and why it is not a forecast.',
+      'Live Pentagon Pizza Index: the current DEFCON-style level from pizza-shop busyness near the Pentagon, how the index is scored, and why it is not a forecast.',
     short:
       'The Pentagon Pizza Index is an OSINT folk indicator: unusual busyness at pizza places near the Pentagon, read as a hint of late-night crisis work.',
     body: [

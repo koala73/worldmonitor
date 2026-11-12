@@ -15,7 +15,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -54,8 +54,8 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("plain alpha-2 list is stored as-is", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -70,8 +70,8 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("normalizes case + whitespace + dedupe", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -90,8 +90,8 @@ describe("alertRules.countries — persistence + normalization", () => {
     // 'US123', '', 'United States' all fail the regex and are dropped.
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -106,7 +106,6 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("caps at 50 entries — throws COUNTRIES_LIMIT_EXCEEDED on 101", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // 101 unique 2-letter codes (cycles AA, AB, ... ; not real ISO but shape-valid).
     const codes: string[] = [];
     const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -117,7 +116,8 @@ describe("alertRules.countries — persistence + normalization", () => {
       }
     }
     await expect(
-      asUser.mutation(api.alertRules.setAlertRules, {
+      t.mutation(internal.alertRules.setAlertRulesForUser, {
+        userId: USER.subject,
         variant: VARIANT,
         enabled: true,
         eventTypes: [],
@@ -131,8 +131,8 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("backward compat: insert without countries field → field absent on row", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -147,9 +147,9 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("preserve-on-omit: existing countries:['US'] + caller omits → row still has ['US']", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
     // First write: seed countries.
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -158,7 +158,8 @@ describe("alertRules.countries — persistence + normalization", () => {
       countries: ["US"],
     });
     // Second write: omit countries (e.g. user toggled 'enabled' on the form).
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: false,
       eventTypes: [],
@@ -173,8 +174,8 @@ describe("alertRules.countries — persistence + normalization", () => {
   test("explicit reset: existing countries:['US'] + caller passes [] → row stores []", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
-    const asUser = t.withIdentity(USER);
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],
@@ -182,7 +183,8 @@ describe("alertRules.countries — persistence + normalization", () => {
       channels: [],
       countries: ["US"],
     });
-    await asUser.mutation(api.alertRules.setAlertRules, {
+    await t.mutation(internal.alertRules.setAlertRulesForUser, {
+      userId: USER.subject,
       variant: VARIANT,
       enabled: true,
       eventTypes: [],

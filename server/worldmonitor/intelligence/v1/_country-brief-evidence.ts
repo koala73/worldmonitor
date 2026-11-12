@@ -10,18 +10,20 @@
 
 import { getCachedJson } from '../../../_shared/redis';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
-import { displayNameForIso2 } from '../../../_shared/country-normalize';
+import { displayNameForIso2, normalizeCountryToIso2 } from '../../../_shared/country-normalize';
 import { CHOKEPOINT_REGISTRY } from '../../../_shared/chokepoint-registry';
 import { sanitizeForPromptLine } from '../../../_shared/llm-sanitize.js';
 import { instabilityBand } from '../../../../shared/cii-band.js';
 import { CHOKEPOINT_COUNTRY_CODES } from '../../../../shared/chokepoint-countries.js';
 import { countryMentionTerms, mentionsCountry } from '../../../../shared/country-mention.js';
+import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { TIER1_COUNTRIES } from './_shared';
 import type { ResolvedEnergyImportDependency } from './_energy-import-dependency';
 
 export type CountryBriefEvidenceKind =
   | 'cii'
   | 'advisory'
+  | 'airport'
   | 'sanctions'
   | 'resilience'
   | 'resilience-dimension'
@@ -42,7 +44,18 @@ export interface CountryBriefEvidenceItem {
 
 export interface CountryBriefEvidenceOptions {
   energyImportDependency: ResolvedEnergyImportDependency;
+  // The handler reads these first to key its cache; passing them here keeps
+  // the brief and its key on one read.
+  airportNotams?: CountryAirportNotam[];
   nowMs?: number;
+}
+
+export interface CountryAirportNotam {
+  icao: string;
+  iata: string;
+  name: string;
+  status: 'closed' | 'restricted';
+  asOfMs: number;
 }
 
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
@@ -55,6 +68,10 @@ const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
 // The counts map carries no timestamp of its own; the seeder writes this meta
 // record beside it in the same publish.
 const SANCTIONS_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';
+// Merged FAA NMS + ICAO NOTAM closures for the monitored airports, written by
+// scripts/seed-aviation.mjs with its seed-meta beside it.
+const NOTAM_CLOSURES_KEY = 'aviation:notam:closures:v2';
+const NOTAM_CLOSURES_META_KEY = 'seed-meta:aviation:notam';
 const MARKETS_COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 // The ~41 KB dashboard projection, not the 188 KB canonical key with dossiers.
 const FORECASTS_KEY = 'forecast:predictions-bootstrap:v1';
@@ -75,6 +92,9 @@ const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export const EVIDENCE_MAX_AGE_MS = Object.freeze({
   cii: 2 * HOUR_MS,
   advisory: 6 * HOUR_MS,
+  // seed-aviation runs every 30 minutes; a closure list older than two hours
+  // may describe an airport that has since reopened.
+  airport: 2 * HOUR_MS,
   sanctions: 36 * HOUR_MS,
   resilience: 14 * DAY_MS,
   market: 6 * HOUR_MS,
@@ -84,6 +104,7 @@ export const EVIDENCE_MAX_AGE_MS = Object.freeze({
 const MAX_WEAKEST_DIMENSIONS = 3;
 const MAX_MARKETS = 5;
 const MAX_FORECASTS = 3;
+const MAX_AIRPORTS = 3;
 const MAX_TITLE_LENGTH = 160;
 
 // Public labels from the country page (formatAdvisory in
@@ -248,6 +269,61 @@ function advisoryEvidence(raw: unknown, code: string, name: string, nowMs: numbe
     factText: `The most severe government travel advisory World Monitor tracks for ${name} is ${label}, as of ${formatDate(fetchedAt)}.`,
     asOf: new Date(fetchedAt).toISOString(),
   }];
+}
+
+const AIRPORT_BY_ICAO: ReadonlyMap<string, (typeof MONITORED_AIRPORTS)[number]> = new Map(
+  MONITORED_AIRPORTS.map((airport) => [airport.icao, airport]),
+);
+
+/**
+ * The monitored airports in `countryCode` that a NOTAM closes or restricts,
+ * closures first, at most three. Empty when the closure list or its seed-meta
+ * is missing, malformed or stale. Pure, so the handler's cache key and the
+ * evidence pack derive from one read.
+ */
+export function countryAirportNotamsFrom(raw: unknown, meta: unknown, countryCode: string, nowMs: number): CountryAirportNotam[] {
+  const closures = isObject(raw) && isObject(raw.data) && '_seed' in raw ? raw.data : raw;
+  if (!isObject(closures) || !isObject(meta)) return [];
+  const fetchedAt = timestampMs(meta.fetchedAt);
+  if (!isFresh(fetchedAt, EVIDENCE_MAX_AGE_MS.airport, nowMs)) return [];
+  const out: CountryAirportNotam[] = [];
+  const seen = new Set<string>();
+  for (const [status, list] of [['closed', closures.closedIcaos], ['restricted', closures.restrictedIcaos]] as const) {
+    if (!Array.isArray(list)) continue;
+    for (const icao of [...list].map(String).sort()) {
+      if (out.length >= MAX_AIRPORTS || seen.has(icao)) continue;
+      const airport = AIRPORT_BY_ICAO.get(icao);
+      if (!airport || normalizeCountryToIso2(airport.country) !== countryCode) continue;
+      seen.add(icao);
+      out.push({ icao, iata: airport.iata, name: airport.name, status, asOfMs: fetchedAt });
+    }
+  }
+  return out;
+}
+
+export async function readCountryAirportNotams(countryCode: string, nowMs: number = Date.now()): Promise<CountryAirportNotam[]> {
+  const code = String(countryCode ?? '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return [];
+  try {
+    const [raw, meta] = await Promise.all([readKey(NOTAM_CLOSURES_KEY), readKey(NOTAM_CLOSURES_META_KEY)]);
+    return countryAirportNotamsFrom(raw, meta, code, nowMs);
+  } catch {
+    return [];
+  }
+}
+
+// Status only. The NOTAM's own text is operator shorthand with phone numbers
+// and times the claim validator would have to license, so it stays out.
+function airportEvidence(notams: CountryAirportNotam[], name: string): EvidenceDraft[] {
+  return notams.map((notam) => ({
+    kind: 'airport' as const,
+    label: 'NOTAM airport status',
+    value: notam.status,
+    factText: notam.status === 'closed'
+      ? `${notam.name} (${notam.iata}) in ${name} is closed under a NOTAM, as of ${formatDate(notam.asOfMs)}.`
+      : `${notam.name} (${notam.iata}) in ${name} has a NOTAM restriction in force, as of ${formatDate(notam.asOfMs)}.`,
+    asOf: new Date(notam.asOfMs).toISOString(),
+  }));
 }
 
 function sanctionsEvidence(raw: unknown, meta: unknown, code: string, name: string, nowMs: number): EvidenceDraft[] {
@@ -442,6 +518,7 @@ export async function buildCountryBriefEvidence(
   const name = countryDisplayName(code);
 
   const reads = await Promise.allSettled([
+    opts.airportNotams ? Promise.resolve(opts.airportNotams) : readCountryAirportNotams(code, nowMs),
     readKey(CII_RISK_SCORE_CACHE_KEYS.stale),
     readKey(ADVISORIES_KEY),
     readKey(SANCTIONS_COUNTS_KEY),
@@ -450,7 +527,7 @@ export async function buildCountryBriefEvidence(
     readKey(MARKETS_COUNTRY_INDEX_KEY),
     readKey(FORECASTS_KEY),
   ]);
-  const [cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
+  const [airportNotams, cii, advisories, sanctions, sanctionsMeta, resilience, markets, forecasts] = reads
     .map((read) => (read.status === 'fulfilled' ? read.value : null));
 
   // Each builder is isolated too: one source's unexpected shape must not
@@ -458,6 +535,7 @@ export async function buildCountryBriefEvidence(
   const sections: Array<() => EvidenceDraft[]> = [
     () => ciiEvidence(cii, code, name, nowMs),
     () => advisoryEvidence(advisories, code, name, nowMs),
+    () => airportEvidence(Array.isArray(airportNotams) ? airportNotams as CountryAirportNotam[] : [], name),
     () => sanctionsEvidence(sanctions, sanctionsMeta, code, name, nowMs),
     () => resilienceEvidence(resilience, name, nowMs),
     () => energyEvidence(opts.energyImportDependency, name),

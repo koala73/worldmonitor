@@ -151,25 +151,25 @@ describe("subscription.updated → status='cancelled' (paid-through invariant)",
     expect(ent?.validUntil).toBe(periodEnd);
   });
 
-  test("does NOT touch entitlement on cancellation — only subscription.expired downgrades to free", async () => {
+  test("a cancellation after the paid period ended resolves the entitlement to free", async () => {
     const t = convexTest(schema, modules);
     const expiredPeriodEnd = Date.now() - 1 * DAY_MS;
     await seedActiveSub(t, { currentPeriodEnd: expiredPeriodEnd });
 
-    // Cancellation alone NEVER downgrades, even when the period is already
-    // in the past. The entitlement's `validUntil` already reflects period
-    // end; `subscription.expired` is the only path that flips planKey→free.
-    // Pin the payload date to the stored (already-lapsed) period so this
-    // stays a lapsed cancel, not the missed-renewal case that persists a
-    // newer next_billing_date.
+    // The cancellation recomputes coverage from every source (SM-097), so a
+    // lapsed cancel with no other subscription lands on free. Access had
+    // already ended at period end; the row now says so. Pin the payload
+    // date to the stored (already-lapsed) period so this stays a lapsed
+    // cancel, not the missed-renewal case that persists a newer
+    // next_billing_date.
     await fireSubscriptionUpdated(t, "cancelled", {
       cancelledAt: Date.now(),
       nextBillingDate: expiredPeriodEnd,
     });
 
     const ent = await readEntitlement(t);
-    expect(ent?.planKey).toBe("pro_monthly");
-    expect(ent?.validUntil).toBe(expiredPeriodEnd);
+    expect(ent?.planKey).toBe("free");
+    expect(ent?.validUntil).toBeLessThanOrEqual(Date.now());
   });
 });
 

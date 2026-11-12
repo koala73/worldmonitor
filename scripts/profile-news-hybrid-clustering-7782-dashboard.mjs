@@ -188,7 +188,7 @@ async function waitForUrl(url, timeoutMs = 120_000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     try {
-      const response = await fetch(url, { redirect: 'manual' });
+      const response = await fetch(url, { signal: AbortSignal.timeout(30_000), redirect: 'manual' });
       if (response.ok || response.status === 304) return;
     } catch {
       // Preview is still starting.

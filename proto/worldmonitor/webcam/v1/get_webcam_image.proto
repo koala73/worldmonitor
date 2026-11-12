@@ -14,10 +14,11 @@ message GetWebcamImageResponse {
   string player_url = 2;
   string title = 3;
   string windy_url = 4;
-  // ISO-8601 datetime string of the webcam's most recent update
-  // (e.g. "2026-07-03T12:00:00.000Z"); empty string when unknown or unavailable.
-  // String (not int64): the handler emits new Date(...).toISOString(), so the
-  // field carries a datetime string, never epoch milliseconds.
+  // Latest image update as an ISO-8601 string; empty if unknown or unavailable.
   string last_updated = 5;
   string error = 6;
+  // URL resolution time in Unix milliseconds, not image capture time.
+  optional int64 resolved_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // snapshot, timelapse or live. A live URL does not confirm the camera is online.
+  optional string media_type = 8;
 }
