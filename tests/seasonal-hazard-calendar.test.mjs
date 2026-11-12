@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
-import { aggregateSeasonalCalendar, fetchPage, GDACS_HAZARDS } from '../scripts/build-seasonal-hazard-calendar.mjs';
+import { aggregateSeasonalCalendar, fetchPage, fetchGdacsEvents, GDACS_HAZARDS } from '../scripts/build-seasonal-hazard-calendar.mjs';
 
 const WINDOWS = { TC: { fromYear: 2011, toYear: 2025 }, FL: { fromYear: 2019, toYear: 2025 } };
 const event = (type, eventId, fromDate, countries) => ({ type, eventId, fromDate, countries });
@@ -27,6 +27,16 @@ describe('aggregateSeasonalCalendar', () => {
       event('TC', 7, '2015-08-01T00:00:00', ['PH']),
     ], WINDOWS);
     assert.equal(calendar.PH.TC[7], 1);
+  });
+
+  it('keeps affected countries added by a later record of the same event', () => {
+    const calendar = aggregateSeasonalCalendar([
+      event('TC', 7, '2015-08-01T00:00:00', []),
+      event('TC', 7, '2015-08-01T00:00:00', ['PH']),
+      event('TC', 7, '2015-08-01T00:00:00', ['PH', 'TW']),
+    ], WINDOWS);
+    assert.equal(calendar.PH.TC[7], 1);
+    assert.equal(calendar.TW.TC[7], 1);
   });
 
   it('credits every affected country and ignores malformed country codes', () => {
@@ -71,6 +81,42 @@ describe('fetchPage', () => {
     let calls = 0;
     const fetchFn = async () => (++calls < 2 ? new Response('', { status: 500 }) : new Response(JSON.stringify({ features: [{ properties: {} }] }), { status: 200 }));
     assert.equal((await fetchPage('TC', '2019-01-01', '2019-12-31', 1, fetchFn, 0)).length, 1);
+  });
+
+  for (const failure of ['transport', 'body']) {
+    it(`retries ${failure} failures and preserves the final error`, async () => {
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        if (failure === 'transport') throw new Error('connection reset');
+        return { text: async () => { throw new Error('body interrupted'); } };
+      };
+      await assert.rejects(() => fetchPage('FL', '2019-01-01', '2019-12-31', 1, fetchFn, 0), /GDACS archive FL.*(?:connection reset|body interrupted)/);
+      assert.equal(calls, 3);
+      calls = 0;
+      const recover = async (...args) => calls < 2 ? fetchFn(...args) : new Response('{"features":[]}', { status: 200 });
+      assert.deepEqual(await fetchPage('FL', '2019-01-01', '2019-12-31', 1, recover, 0), []);
+      assert.equal(calls, 2);
+    });
+  }
+});
+
+describe('fetchGdacsEvents', () => {
+  const windows = { TC: { fromYear: 2025, toYear: 2025 }, FL: { fromYear: 2025, toYear: 2025 } };
+  const features = Array.from({ length: 100 }, (_, eventid) => ({ properties: { eventid, fromdate: '2025-09-01', affectedcountries: [{ iso2: 'TH' }] } }));
+
+  it('rejects a full final page rather than returning truncated history', async () => {
+    let calls = 0;
+    const fetchFn = async () => { calls++; return Response.json({ features }); };
+    await assert.rejects(() => fetchGdacsEvents(windows, fetchFn), /TC 2025: pagination limit reached/);
+    assert.equal(calls, 40);
+  });
+
+  it('completes each hazard-year only after a short page', async () => {
+    const fetchFn = async (url) => Response.json({ features: url.searchParams.get('pagenumber') === '1' ? features : [] });
+    const result = await fetchGdacsEvents(windows, fetchFn);
+    assert.deepEqual(result.perYear, { 'TC:2025': 100, 'FL:2025': 100 });
+    assert.equal(result.events.length, 200);
   });
 });
 

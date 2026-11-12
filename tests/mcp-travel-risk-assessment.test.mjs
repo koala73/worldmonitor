@@ -667,7 +667,7 @@ describe('seasonal hazards block', () => {
   const trip = (countryCode, arrive, depart) => ({ countryCode, countryName: countryCode === 'TH' ? 'Thailand' : countryCode === 'EG' ? 'Egypt' : 'Nowhere', cities: [], arrive, depart });
   const open = { countries: [], dateFrom: null, dateTo: null, taskLabel: null };
 
-  it('reports the hazards in season for the trip months, each with source and observation date', () => {
+  it('reports historical coverage and calendar build date without inventing an event date', () => {
     const block = seasonalBlock(trip('TH', '2026-09-10', '2026-09-20'), open, CALENDAR);
     assert.equal(block.status, 'reported');
     assert.equal(block.count, 2);
@@ -676,8 +676,10 @@ describe('seasonal hazards block', () => {
     assert.match(flood.text, /^Flood: .* September in 6 of 7 years \(2019 to 2025\)/);
     for (const finding of block.findings) {
       assert.equal(finding.source, 'GDACS event archive');
-      assert.match(finding.observed, /^2025-12-31$/);
+      assert.equal(finding.observed, null);
     }
+    assert.equal(block.asOf, CALENDAR.generatedAt);
+    assert.match(block.statement, /calendar built 2026-11-12/);
     assert.match(block.statement, /for 2026-09-10 to 2026-09-20 \(GDACS event archive\)/);
     assert.match(block.statement, /not a forecast, and it does not cover wildfire, extreme heat, drought or monsoon rainfall/);
   });
@@ -692,6 +694,7 @@ describe('seasonal hazards block', () => {
     const quiet = seasonalBlock(trip('TH', '2026-03-01', '2026-03-10'), open, CALENDAR);
     assert.equal(quiet.status, 'none', 'two flood years of seven is below the three-year floor');
     assert.equal(quiet.count, 0);
+    assert.equal(quiet.asOf, CALENDAR.generatedAt);
     assert.match(quiet.statement, /^No tropical cyclone or flood season recorded for Thailand/);
     const sparse = seasonalBlock(trip('TH', '2026-07-01', '2026-07-05'), open, CALENDAR);
     assert.equal(sparse.findings.some((f) => f.text.startsWith('Tropical cyclone')), false, 'one cyclone year of fifteen');
@@ -726,7 +729,8 @@ describe('seasonal hazards block', () => {
   it('uses the shipped calendar for real countries without throwing on any code it holds', () => {
     const block = seasonalBlock(trip('TH', '2026-09-01', '2026-09-30'), open);
     assert.equal(block.status, 'reported');
-    assert.ok(block.findings.every((finding) => finding.observed && finding.source));
+    assert.ok(block.findings.every((finding) => finding.observed === null && finding.source));
+    assert.match(block.asOf, /^\d{4}-\d{2}-\d{2}$/);
   });
 });
 

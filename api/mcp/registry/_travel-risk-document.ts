@@ -798,7 +798,7 @@ export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: Sea
     findings.push({
       text: `${label}: GDACS recorded events affecting ${trip.countryName} that began in ${detail} (${window.fromYear} to ${window.toYear}). Recorded history, not a forecast.`,
       source: SEASONAL_SOURCE,
-      observed: `${window.toYear}-12-31`,
+      observed: null,
       url: 'https://www.gdacs.org/',
     });
   }
@@ -807,7 +807,6 @@ export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: Sea
     return window ? `${label.toLowerCase()} events ${window.fromYear} to ${window.toYear}` : label.toLowerCase();
   }).join(', ');
   const limits = `This is a record of GDACS alerts (${covered}; calendar built ${calendar.generatedAt}), not a forecast, and it does not cover wildfire, extreme heat, drought or monsoon rainfall.`;
-  const asOf = findings[0]?.observed ?? `${Math.max(...Object.values(calendar.windows).map((window) => window.toYear))}-12-31`;
   return {
     topic: SEASONAL_TOPIC,
     status: findings.length === 0 ? 'none' : 'reported',
@@ -815,7 +814,7 @@ export function seasonalBlock(trip: TripCountry, input: TripInput, calendar: Sea
       ? `No tropical cyclone or flood season recorded for ${trip.countryName}${dates} (${SEASONAL_SOURCE}). ${limits}`
       : `${plural(findings.length, 'hazard', 'hazards')} recorded in season for ${trip.countryName}${dates} (${SEASONAL_SOURCE}). ${limits}`,
     source: SEASONAL_SOURCE,
-    asOf,
+    asOf: calendar.generatedAt,
     count: findings.length,
     findings,
     omitted: 0,

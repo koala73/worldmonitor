@@ -36,11 +36,7 @@ const OUT_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'shared', '
  */
 export function aggregateSeasonalCalendar(events, windows) {
   const yearsByCell = new Map();
-  const seen = new Set();
   for (const event of events) {
-    const dedupe = `${event.type}:${event.eventId}`;
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
     const match = /^(\d{4})-(\d{2})-\d{2}/.exec(event.fromDate ?? '');
     if (!match) continue;
     const year = Number(match[1]);
@@ -80,16 +76,18 @@ export async function fetchPage(type, fromDate, toDate, page, fetchFn, retryDela
     pagenumber: String(page),
   }).toString();
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const response = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(60_000) });
-    const text = await response.text();
-    if (response.status === 204 || (response.ok && text.trim() === '')) return [];
-    if (response.ok) {
-      try {
+    try {
+      const response = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(60_000) });
+      const text = await response.text();
+      if (response.status === 204 || (response.ok && text.trim() === '')) return [];
+      if (response.ok) {
         const body = JSON.parse(text);
         if (Array.isArray(body.features)) return body.features;
-      } catch { /* fall through to retry */ }
+      }
+      throw new Error(`HTTP ${response.status}: invalid archive page`);
+    } catch (error) {
+      if (attempt === 3) throw new Error(`GDACS archive ${type} ${fromDate}..${toDate} page ${page}: ${error.message}`, { cause: error });
     }
-    if (attempt === 3) throw new Error(`GDACS archive ${type} ${fromDate}..${toDate} page ${page}: HTTP ${response.status}`);
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
   }
   return [];
@@ -101,6 +99,7 @@ export async function fetchGdacsEvents(windows, fetchFn = (...args) => globalThi
   for (const type of GDACS_HAZARDS) {
     for (let year = windows[type].fromYear; year <= windows[type].toYear; year++) {
       let total = 0;
+      let complete = false;
       for (let page = 1; page <= MAX_PAGES; page++) {
         const features = await fetchPage(type, `${year}-01-01`, `${year}-12-31`, page, fetchFn);
         for (const feature of features) {
@@ -113,8 +112,12 @@ export async function fetchGdacsEvents(windows, fetchFn = (...args) => globalThi
           });
         }
         total += features.length;
-        if (features.length < PAGE_SIZE) break;
+        if (features.length < PAGE_SIZE) {
+          complete = true;
+          break;
+        }
       }
+      if (!complete) throw new Error(`GDACS archive ${type} ${year}: pagination limit reached (${MAX_PAGES * PAGE_SIZE} records); calendar not written`);
       perYear[`${type}:${year}`] = total;
     }
   }
