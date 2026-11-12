@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect to World Monitor MCP</title>
+  <meta name="description" content="Connect your AI assistant to World Monitor with the hosted MCP server. Copy the server URL, add it to your client, and sign in.">
+  <link rel="canonical" href="https://worldmonitor.app/mcp">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101618; color: #edf3f1; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 780px; margin: 0 auto; padding: 56px 24px; }
+    .brand { color: #a8c0b7; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; text-decoration: none; }
+    h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.1; letter-spacing: -.035em; margin: 36px 0 20px; }
+    p, li { line-height: 1.65; color: #bdcdc7; }
+    a { color: #87e3b6; text-underline-offset: 4px; }
+    a:focus-visible { outline: 2px solid #87e3b6; outline-offset: 5px; }
+    h2 { font-size: 21px; margin: 32px 0 12px; }
+    pre { padding: 18px; background: #1b2725; border: 1px solid #34463e; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    code { font-size: 14px; }
+    ol { padding-left: 24px; }
+    li { padding-left: 6px; margin: 12px 0; }
+    strong { color: #edf3f1; }
+    .endpoint { color: #a4f3ca; font-size: 17px; }
+    .note { border-top: 1px solid #34463e; margin-top: 32px; padding-top: 20px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="brand" href="https://www.worldmonitor.app">World Monitor</a>
+    <h1>Connect your AI assistant to World Monitor.</h1>
+    <p>Bring global intelligence on countries, markets, conflicts, and supply chains into your conversations using the Model Context Protocol (MCP).</p>
+    <h2>Server URL</h2>
+    <pre><code class="endpoint">https://worldmonitor.app/mcp</code></pre>
+    <ol>
+      <li><strong>Add the server.</strong> Open your assistant’s MCP or custom connector settings and paste the URL above. Choose OAuth if asked.</li>
+      <li><strong>Sign in.</strong> Use your World Monitor account and authorize the connection. A free account works; access and daily allowances depend on your plan.</li>
+      <li><strong>Ask a question.</strong> Try “What are the biggest global risks today?”</li>
+    </ol>
+    <p><a href="https://www.worldmonitor.app/docs/mcp-quickstart">Setup guide for Claude, ChatGPT, Codex, and Cursor →</a></p>
+    <h2>Terminal setup</h2>
+    <p><strong>Codex</strong></p>
+    <pre><code>codex mcp add worldmonitor --url https://worldmonitor.app/mcp
+codex mcp login worldmonitor</code></pre>
+    <p><strong>Claude Code</strong></p>
+    <pre><code>claude mcp add --transport http worldmonitor https://worldmonitor.app/mcp</code></pre>
+    <p>Then run <code>/mcp</code>, select <strong>worldmonitor</strong>, and choose <strong>Authenticate</strong>.</p>
+    <p class="note">This address is also the live MCP endpoint using Streamable HTTP. MCP clients connect to the same URL. See the <a href="https://www.worldmonitor.app/docs/mcp-overview">MCP overview</a> or <a href="https://www.worldmonitor.app/mcp-server.md">Markdown server guide</a> for more details.</p>
+  </main>
+</body>
+</html>
