@@ -1,4 +1,4 @@
-import { t } from '@/services/i18n';
+import { getCurrentLanguageTag, t } from '@/services/i18n';
 import { createFocusTrap } from '@/utils/focus-trap';
 import { declareOverlay } from '@/utils/open-modal';
 import { iso2ToCountryName } from '@/utils/country-codes';
@@ -65,15 +65,18 @@ interface CatalogEntry {
 }
 
 let catalog: CatalogEntry[] | null = null;
+let catalogTag: string | null = null;
 
 function countryCatalog(): CatalogEntry[] {
   // Built once per open language: names follow the UI language, and the
   // English name stays searchable for analysts who type it.
-  if (!catalog || catalog[0]?.name !== focusCountryName(catalog[0]!.code)) {
+  const tag = getCurrentLanguageTag();
+  if (!catalog || catalogTag !== tag) {
     catalog = SCOPE_ISO2_CODES.map((code) => {
       const name = focusCountryName(code);
       return { code, name, keys: [fold(name), fold(iso2ToCountryName(code))] };
     });
+    catalogTag = tag;
   }
   return catalog;
 }

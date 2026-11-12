@@ -81,6 +81,17 @@ const stripButton = (action: string) => strip()?.querySelector<HTMLButtonElement
 const rowFor = (title: string) => [...el().querySelectorAll('.item')].find((n) => n.querySelector('.item-title')?.textContent === title);
 
 describe('NewsPanel under a focus', () => {
+  it('retains the location country when a long title fills the attribution budget', async () => {
+    mountFlat();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const item = { ...news('France announces talks '.padEnd(1100, 'x')), locationName: 'Thailand' } as NewsItem;
+    panel.renderNews([item]);
+    panel.applyScope(scopeOf(['TH'], false));
+    await settle();
+    expect(titles()).toEqual([item.title]);
+    expect(el().querySelector('.panel-scope-empty')).toBeNull();
+  });
+
   it('lists chosen countries first, then the neighbour marked, and counts the rest', async () => {
     mountFlat();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
