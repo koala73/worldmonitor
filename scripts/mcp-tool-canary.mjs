@@ -111,6 +111,10 @@ export function buildFixtures(now = new Date()) {
     // Answers -32002 for an operator (non-user-bound) key by design; the
     // canary records which credential kind it ran with.
     get_mcp_allowance: { args: {}, acceptRpcErrorCodes: [-32002] },
+    // Plan-gated (travelRiskAssessment, #10451): the canary account must be on
+    // API Business or higher, so the call runs and its output is validated. A
+    // -32002 plan refusal here means the account is on the wrong plan.
+    prepare_travel_risk_assessment: { countries: [{ country_code: 'TH' }] },
     get_bilateral_tariff: { reporter: 'US', partner: 'CN', hs_code: '870380' },
     get_us_import_duty: { hs_code: '870380', partner: 'CN' },
     find_webcams: { bound_w: 2.2, bound_s: 48.8, bound_e: 2.45, bound_n: 48.92, zoom: 12 },

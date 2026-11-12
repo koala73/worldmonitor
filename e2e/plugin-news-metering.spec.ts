@@ -555,9 +555,11 @@ test('unknown loaded category refuses the whole patch and preserves human camera
   const beforeDrag = (await newsAction(page, 'apply_news_view', {})).structuredContent!;
   const mapBox = await frame.locator('.map-svg').boundingBox();
   expect(mapBox).not.toBeNull();
-  await page.mouse.move(mapBox!.x + mapBox!.width / 2, mapBox!.y + mapBox!.height / 2);
+  // Start the drag in the lower-left quarter: the open article popup sits beside the Japan marker and can cover the map's center.
+  const start = { x: mapBox!.x + mapBox!.width * 0.25, y: mapBox!.y + mapBox!.height * 0.75 };
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(mapBox!.x + mapBox!.width / 2 + 80, mapBox!.y + mapBox!.height / 2 + 30, { steps: 8 });
+  await page.mouse.move(start.x + 80, start.y + 30, { steps: 8 });
   await page.mouse.up();
   const before = (await newsAction(page, 'apply_news_view', {})).structuredContent!;
   expect(Math.abs(before.center!.lon - beforeDrag.center!.lon)).toBeGreaterThan(1);
@@ -675,7 +677,10 @@ test('pending category surviving refresh applies after hazard loading', async ({
   await expect(frame.getByRole('combobox', { name: 'News category' }).locator('option[value="fixture"]')).toHaveCount(0);
   host.releaseHazards();
   const receipt = (await pending).structuredContent!;
-  expect(receipt).toMatchObject({ applied: true, view: { category: 'politics', source: 'Fixture publisher', time_range: '24h', map_layers: ['fires'] }, categoryLabel: 'World News', center: { lat: -20, lon: 50 }, map: { zoom: 2 } });
+  expect(receipt).toMatchObject({ applied: true, view: { category: 'politics', source: 'Fixture publisher', time_range: '24h', map_layers: ['fires'] }, categoryLabel: 'World News', map: { zoom: 2 } });
+  // The SVG projection round trip leaves floating-point noise in the reported center.
+  expect(receipt.center?.lat).toBeCloseTo(-20, 4);
+  expect(receipt.center?.lon).toBeCloseTo(50, 4);
   await expect(frame.getByRole('button', { name: 'Refresh news', exact: true })).toBeEnabled();
   await expect(frame.getByRole('combobox', { name: 'News category' })).toHaveValue('politics');
   await expect(frame.locator('#pluginCategoryNotice')).toBeHidden();
@@ -1610,11 +1615,20 @@ test('isolated globe wheel publishes the changed camera without another view com
     const map = (window as unknown as RendererProbeWindow).__newsMap;
     return { zoom: map.getState().zoom, authority: map.getViewportAuthorityToken() };
   });
-  const bounds = await frame.locator('#mapContainer canvas').first().boundingBox();
+  // focus_news_article smooth-scrolls the article row into view, which can scroll the host page and the view document.
+  // Measure the canvas only after its on-screen position settles, or the wheel lands on the news panels.
+  const canvas = frame.locator('#mapContainer canvas').first();
+  await expect.poll(async () => {
+    const first = JSON.stringify(await canvas.boundingBox());
+    await page.waitForTimeout(150);
+    return first === JSON.stringify(await canvas.boundingBox());
+  }).toBe(true);
+  const bounds = await canvas.boundingBox();
   expect(bounds).not.toBeNull();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.wheel(0, -400);
-  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(before.zoom);
+  // Floating-point noise can lift the zoom by 1e-15 without any wheel; require a real change.
+  await expect.poll(() => frame.locator('body').evaluate(() => (window as unknown as RendererProbeWindow).__newsMap.getState().zoom)).toBeGreaterThan(before.zoom + 0.01);
   const changed = await frame.locator('body').evaluate(async () => {
     const map = (window as unknown as RendererProbeWindow).__newsMap;
     await map.whenViewportSettled();

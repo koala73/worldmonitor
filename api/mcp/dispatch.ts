@@ -521,6 +521,9 @@ export async function dispatchToolsCall(
   // execution error the model can read and correct, instead of -32602. Only
   // tools/call on 2025-11-25+ opts in; resources/read re-wraps JSON-RPC errors.
   inputErrorsAsToolResults?: boolean,
+  // The pre-check read `travelRiskAssessment: true` off the caller's
+  // entitlement (#10451). Omitted → tools that require it are refused.
+  travelRiskAssessment?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
   // Every argument-validation failure goes through here. Protocol errors (a
@@ -664,6 +667,16 @@ export async function dispatchToolsCall(
   // from metering below: `describe_tool` has an `_execute`, but it is a purely
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
+  //
+  // A plan-feature tool (#10451) is refused first, so a free account is told
+  // which plans include it rather than the generic Pro copy below.
+  if (tool._planFeature === 'travelRiskAssessment' && context.kind !== 'env_key' && travelRiskAssessment !== true) {
+    if (deferredBurst) {
+      const limited = await applyPerMinuteLimit(context, corsHeaders, toolBurstPerMinute, id);
+      if (limited) return limited;
+    }
+    return mcpDenialResponse({ reason: 'upgrade-required', planFeature: tool._planFeature, upgradeFrom }, -32002, 403, id, corsHeaders);
+  }
   if (freeAccountAllowance && toolAccess(tool) === 'subscription') {
     return mcpDenialResponse({ reason: 'upgrade-required', upgradeFrom }, -32002, 403, id, corsHeaders);
   }

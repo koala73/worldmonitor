@@ -10,6 +10,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/travel-risk-tool.ts",
+      "category": "external-protocol",
+      "reason": "MCP travel-risk-assessment tool definition. It reads cached seed keys server-side for a plan-gated caller and exports no HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/country-history-tool.ts",
       "category": "external-protocol",
       "reason": "MCP country-history tool definition. It forwards to the generated intelligence RPC with the verified caller's credential and exports no HTTP route.",

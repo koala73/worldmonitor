@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import type { PluginMapLayer } from '../../shared/plugin-news-view';
 import type { Earthquake } from '@/services/earthquakes';
 import { toNaturalEvent } from '@/services/eonet';

@@ -3,7 +3,7 @@ import { argBool } from './filters';
 import { JMESPATH_SCHEMA } from './jmespath';
 import { SUMMARY_SCHEMA } from './registry';
 import { RESPONSE_MODE_SCHEMA, SPOKEN_LANGUAGE_SCHEMA } from './spoken';
-import { z } from 'zod';
+import * as z from 'zod';
 import type { ToolDef } from './types';
 
 // Validation keywords used by the registry. Descriptions, defaults and non-UUID format

@@ -70,6 +70,7 @@ const INSTRUCTIONS = [
   '- Use `scan-cyber-threats` when the user asks about active malware IOCs, C2 infrastructure, or CISA known-exploited vulnerabilities.',
   '- Use `check-sanctions-pressure` when the user asks which countries/programs face OFAC sanctions pressure or what was recently designated (Pro-gated).',
   '- Use `check-country-risk` when the user asks how risky or unstable a country is right now — CII stress score, advisory level, sanctions exposure.',
+  '- Use `prepare-travel-risk-assessment` when the user wants a sourced first draft of a travel risk assessment for a trip across up to 6 countries. It runs on the MCP server for Pro Business, API Business and Enterprise plans.',
   '- Use `check-airport-delays` when the user asks whether an airport is delayed or disrupted, with quantified delay/cancellation impact.',
   '- Use `track-military-flights` when the user asks about military air activity in a region — tracked aircraft plus activity clusters.',
   '- Use `monitor-internet-outages` when the user asks whether a country’s internet is down, shut down, or throttled.',

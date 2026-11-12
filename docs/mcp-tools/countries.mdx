@@ -1,7 +1,7 @@
 ---
 title: "MCP tools: Country intelligence"
 sidebarTitle: "Country intelligence"
-description: "World Monitor MCP tool reference for country risk, history, coverage and country briefs: parameters, freshness, backing API endpoints and example calls."
+description: "World Monitor MCP tool reference for country risk, history, coverage, country briefs and travel risk drafts: parameters, freshness, backing API endpoints and example calls."
 ---
 
 Part of the [MCP Tools Reference](/mcp-tools-reference), which indexes every tool. Connection, auth, plans and errors are in the [MCP Server overview](/mcp-overview).
@@ -161,6 +161,42 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_country_brief","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `prepare_travel_risk_assessment`
+
+Draft a travel risk assessment for an itinerary of up to 6 countries, for an analyst to review and finish. The draft has 9 numbered sections. Sections 1 to 7 cover the summary and rating, government travel advice, security, natural hazards, health, getting in and out, and communications. Section 8 lists the topics no feed covers, and section 9 lists the sources with their capture time. The tool returns the draft as Markdown in `markdown` and the same content structured in `document`.
+
+Every finding names its source and the date that source gives for it. A source that could not be read is reported as unavailable with the reason, and a source that was read and holds nothing for a country names the window it covers. The rating is the higher of the US State Department and Australian Smartraveller levels, which share a scale of 1 to 4. The UK FCDO and CDC levels are reported beside it and not converted. Street crime, medical facilities, local laws, emergency contacts and venue risks are left as empty headings marked "Analyst to complete". The draft gives no advice of its own.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `countries` | array&lt;object&gt; | **yes** | 1 to 6 entries in travel order, each country once. Each entry takes `country_code` (ISO 3166-1 alpha-2), optional `cities` (up to 5 city names), `arrive` and `depart` (YYYY-MM-DD) |
+| `date_from` | string | no | Trip start, YYYY-MM-DD; country dates must fall inside the trip window |
+| `date_to` | string | no | Trip end, YYYY-MM-DD, on or after `date_from` |
+| `task_label` | string | no | Label printed at the top of the draft, up to 120 characters. No personal details |
+
+Unknown arguments are rejected, but `task_label` and `cities` accept free text, so do not put traveller names, contact details or addresses in them. Trip details are not written to logs, telemetry or cache keys.
+
+- **API endpoints:** none; the tool reads the seeded caches directly.
+- **Access:** `subscription`, and only on the Pro Business, API Business and Enterprise plans. Other plans get `-32002` with `data.reason: "upgrade-required"` and `data.planFeature: "travelRiskAssessment"`. Weight 2 on API plans.
+- **Kind:** cache reads, at most 3 at a time with a 5-second limit each. One failed source makes its own sections unavailable and leaves the rest of the draft intact. `-32003` is returned only when no source can be read at all.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"prepare_travel_risk_assessment","arguments":{"countries":[{"country_code":"TH","cities":["Bangkok"],"arrive":"2026-12-01","depart":"2026-12-05"},{"country_code":"VN"}],"date_from":"2026-12-01","date_to":"2026-12-10"}}
   }'
 ```
 

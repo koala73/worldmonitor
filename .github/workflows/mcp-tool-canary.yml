@@ -17,9 +17,10 @@ name: MCP Tool Canary
 # Calls are paced at <= 40/min to stay under the per-credential MCP limit.
 #
 # Credential: MCP_CANARY_KEY, a user-bound wm_ key owned by the dedicated
-# mcp-canary@worldmonitor.app account (comped api_starter: 1000 requests/day,
-# 60/min). It exercises the customer path: Convex key validation, entitlement
-# and the daily allowance. One pass spends ~160 allowance units, so four runs
+# mcp-canary@worldmonitor.app account (comped api_business so the plan-gated
+# prepare_travel_risk_assessment tool runs, #10451; limits are at least the old
+# api_starter 1000 requests/day, 60/min). It exercises the customer path: Convex
+# key validation, entitlement and the daily allowance. One pass spends ~160 allowance units, so four runs
 # leave ~350/day of headroom for retries. The report records the credential
 # kind (user or operator) that ran.
 
