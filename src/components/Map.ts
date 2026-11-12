@@ -3,7 +3,7 @@ import { createTimeoutSignal } from '@/services/timeout-signal';
 import * as d3 from 'd3';
 import { UKMTO_SOURCE_URL, ukmtoIncidentLabel, type UkmtoMapIncident } from '../../shared/ukmto-incidents';
 import { iso2ToUnCode } from '../../shared/country-numeric-codes';
-import type { FocusFitBounds } from '@/utils/focus-map';
+import { FOCUS_CENTRES, type FocusFitBounds } from '@/utils/focus-map';
 import type { ReservoirLevel } from '@/services/climate';
 import { reservoirTone, statusLabel as reservoirStatusLabel } from './reservoir-levels-view';
 import * as topojson from 'topojson-client';
@@ -5125,6 +5125,29 @@ export class MapComponent {
     // above the rest, chosen countries above their neighbours.
     countries.filter('.country-focus-neighbour').raise();
     countries.filter('.country-focus-chosen').raise();
+    // The 110m topology omits small states. Keep their focus visible with a
+    // screen-sized ring, without inventing a geographic boundary or hit target.
+    const present = new Set<string>();
+    countries.each((datum) => { if (datum?.id != null) present.add(String(datum.id)); });
+    const centres = Object.entries(FOCUS_CENTRES).flatMap(([code, [lat, lon]]) => {
+      const id = iso2ToUnCode(code);
+      if (!id || present.has(id) || !focus || (!focus.chosen.has(id) && !focus.neighbours.has(id))) return [];
+      return [{ id, lat, lon, chosen: focus.chosen.has(id) }];
+    });
+    const rings = group.selectAll<SVGCircleElement, typeof centres[number]>('.focus-centre-ring')
+      .data(centres, (d) => d.id)
+      .join('circle')
+      .attr('class', (d) => `focus-centre-ring country-focus-${d.chosen ? 'chosen' : 'neighbour'}`)
+      .attr('data-id', (d) => d.id)
+      .attr('fill', 'none')
+      .attr('pointer-events', 'none');
+    if (centres.length) {
+      const { width, height } = this.readContainerSize();
+      const projection = this.getProjection(width, height);
+      rings.attr('cx', (d) => projection([d.lon, d.lat])![0])
+        .attr('cy', (d) => projection([d.lon, d.lat])![1]);
+    }
+    rings.raise();
   }
 
   /**
