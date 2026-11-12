@@ -199,10 +199,11 @@ export class DisplacementPanel extends Panel {
         ${sources.map((source) => `<button class="panel-tab ${this.activeTab === source.id ? 'active' : ''}" data-tab="${source.id}" role="tab" aria-selected="${this.activeTab === source.id}" id="disp-tab-${source.id}" aria-controls="disp-tab-panel">${source.label}</button>`).join('')}
       </div>
     `;
-    const statsHtml = this.data ? this.renderStats(this.data) : '';
     const active = sources.find((source) => source.id === this.activeTab)!;
     this.focusedCount = null;
     const bodyHtml = active.render ? active.render() : this.renderUnhcrTable(this.data!);
+    // Worldwide totals would mislabel the focused table.
+    const statsHtml = this.data && this.focusedCount === null ? this.renderStats(this.data) : '';
     // The header count follows the focused tab; without a focus it is the
     // count setData / setEventsData set.
     if (this.focusedCount !== null) this.setCount(this.focusedCount);

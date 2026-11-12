@@ -68,13 +68,14 @@ const THAI = card('th', 'Thailand convergence', ['TH']);
 const NONE = card('none', 'Unplaced convergence', []);
 const CARDS = [LAOS, US, MULTI, THAI, NONE];
 
-function publish(domain: CorrelationDomain, cards: ConvergenceCard[] | null, status: CorrelationSnapshotState['status'] = 'current'): void {
+function publish(domain: CorrelationDomain, cards: ConvergenceCard[] | null, status: CorrelationSnapshotState['status'] = 'current'): CorrelationSnapshotState {
   const state = {
     status,
     offline: false,
     snapshot: cards ? { cards, computedAt: Date.now(), origin: 'seed' } : null,
   } as CorrelationSnapshotState;
   snapshots.listeners.get(domain)!(state);
+  return state;
 }
 
 let panel: InstanceType<typeof CorrelationPanel>;
@@ -214,6 +215,27 @@ describe('CorrelationPanel under a focus', () => {
     await settle();
     expect(el().querySelector('.panel-error-state')?.textContent).toContain('Correlation failed');
     expect(strip()?.hidden).toBe(true);
+  });
+
+  it.each(['assessment', 'queued-data', 'status'])('keeps a later load failure through a %s redraw', async (reason) => {
+    mount();
+    const initial = publish('economic', CARDS);
+    await settle();
+    panel.applyScope(scopeOf(['TH']));
+    if (reason === 'queued-data') publish('economic', [...CARDS]);
+    const retry = vi.fn();
+    panel.showError('Correlation failed', retry, 30);
+    if (reason === 'assessment') {
+      document.dispatchEvent(new CustomEvent('wm:correlation-updated', {
+        detail: { assessmentUpdate: true, domains: ['economic'] },
+      }));
+    }
+    if (reason === 'status') snapshots.listeners.get('economic')!({ ...initial, status: 'updating' });
+    await settle();
+    expect(el().querySelector('.panel-error-state')?.textContent).toContain('Correlation failed');
+    expect(el().querySelector('.panel-header-error')).toBeTruthy();
+    expect(strip()?.hidden).toBe(true);
+    expect(retry).not.toHaveBeenCalled();
   });
 
   it('a new snapshot after a failure still recovers the panel', async () => {

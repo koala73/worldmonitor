@@ -40,7 +40,7 @@ export class UcdpEventsPanel extends Panel {
   // Dashboard focus (#10453). The bootstrap payload is a 150-row projection
   // (#5300): filtering it would call a country quiet when its events simply
   // were not in the slice. Under a focus the panel loads the full set once
-  // and filters that in memory; later focus changes reuse it.
+  // and filters that in memory; later focus changes reuse it until refresh.
   private readonly scopeFilter: PanelScopeFilter;
   private readonly loadFullSet: UcdpFullSetLoader;
   private fullEvents: UcdpGeoEvent[] | null = null;
@@ -93,12 +93,10 @@ export class UcdpEventsPanel extends Panel {
     this.events = events;
     this.aggregates = aggregates;
     this.hasLoadedEvents = true;
-    // A full set supersedes any earlier upgrade; a projection keeps it.
-    if (!aggregates) {
-      this.fullEvents = null;
-      this.fullSetState = 'idle';
-      this.fullSetRequest++; // an upgrade still in flight is now stale
-    }
+    // Every refresh invalidates the earlier upgrade, including in-flight results.
+    this.fullEvents = null;
+    this.fullSetState = 'idle';
+    this.fullSetRequest++;
     this.ensureFullSetForScope();
     this.renderContent();
   }
@@ -227,7 +225,7 @@ export class UcdpEventsPanel extends Panel {
       `<button class="panel-tab ${t.key === this.activeTab ? 'active' : ''}" data-tab="${t.key}">${t.label} <span class="ucdp-tab-count">${tabCounts[t.key]}</span></button>`
     ).join('');
 
-    const displayed = filtered.slice(0, 50);
+    const displayed = rowFor ? filtered : filtered.slice(0, 50);
     let bodyHtml: string;
 
     if (displayed.length === 0) {
@@ -266,8 +264,8 @@ export class UcdpEventsPanel extends Panel {
         </div>`;
     }
 
-    const moreHtml = filtered.length > 50
-      ? `<div class="panel-more">${t('components.ucdpEvents.moreNotShown', { count: filtered.length - 50 })}</div>`
+    const moreHtml = filtered.length > displayed.length
+      ? `<div class="panel-more">${t('components.ucdpEvents.moreNotShown', { count: filtered.length - displayed.length })}</div>`
       : '';
 
     this.setSafeContent(unsafeRawHtml(`

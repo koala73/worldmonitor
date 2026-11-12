@@ -126,6 +126,23 @@ async function openTab(tab: string): Promise<void> {
 }
 
 describe('DisplacementPanel under a focus', () => {
+  it('hides worldwide totals while focused and restores them on Show all and clearing', async () => {
+    panel.setData(UNHCR);
+    await settle();
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    panel.applyScope(SUDAN);
+    await settle();
+    expect(el().querySelector('.disp-stats-grid')).toBeNull();
+    await openTab('hosts');
+    expect(el().querySelector('.disp-stats-grid')).toBeNull();
+    stripButton('show-all')!.click();
+    await settle();
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+    panel.applyScope(null);
+    await settle();
+    expect(el().querySelectorAll('.disp-stat-box')).toHaveLength(4);
+  });
+
   it('origins: chosen country, then neighbours marked; counts hidden and unresolvable codes', async () => {
     panel.setData(UNHCR);
     panel.applyScope(SUDAN);

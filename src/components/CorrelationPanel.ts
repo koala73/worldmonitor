@@ -54,9 +54,10 @@ export class CorrelationPanel extends Panel {
     this.observeNearViewport(() => {
       if (this.correlationDestroyed) return;
       this.stopSnapshots = subscribeCorrelationSnapshot(this.domain, state => {
+        const newData = state.snapshot !== null && state.snapshot !== this.snapshotState.snapshot;
         this.snapshotState = state;
         this.requestAssessments();
-        this.requestRender(false);
+        this.requestRender(false, newData);
       });
     }, 400);
 
@@ -88,6 +89,7 @@ export class CorrelationPanel extends Panel {
   }
 
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
+    this.queuedRecoversFromFailure = false;
     this.scopeFilter.hideStrip();
     super.showError(message, onRetry, autoRetrySeconds);
   }
@@ -122,7 +124,7 @@ export class CorrelationPanel extends Panel {
   private forceRender = false;
   private queuedRecoversFromFailure = false;
   /** Schedule a safe redraw for subclasses that install deferred panel data. */
-  protected requestRender(force = true, recoversFromFailure = true): void {
+  protected requestRender(force = true, recoversFromFailure = false): void {
     this.forceRender ||= force;
     this.queuedRecoversFromFailure ||= recoversFromFailure;
     if (this.correlationDestroyed || this.pendingRender) return;
