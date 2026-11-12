@@ -26,7 +26,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // can never observe the probe. null means the real ROOT.
 let rootOverride = null;
 const rootOf = () => rootOverride ?? ROOT;
-const read = (p) => readFileSync(join(rootOf(), p), 'utf8');
+const read = (p) => readFileSync(join(rootOf(), p), 'utf8').replace(/\r\n/g, '\n');
 const dirsIn = (p) =>
   readdirSync(join(rootOf(), p), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 const filesIn = (p) =>
