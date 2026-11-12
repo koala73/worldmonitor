@@ -508,14 +508,14 @@ export class MapContainer {
     if (this.pendingChokepointOpen === null) return;
     const pendingChokepointOpen = this.pendingChokepointOpen;
     this.pendingChokepointOpen = null;
-    this.openChokepoint(pendingChokepointOpen);
+    this.showChokepoint(pendingChokepointOpen);
   }
 
   private replayPendingReservoirOpen(): void {
     if (this.pendingReservoirOpen === null) return;
     const pendingReservoirOpen = this.pendingReservoirOpen;
     this.pendingReservoirOpen = null;
-    this.openReservoir(pendingReservoirOpen);
+    this.showReservoir(pendingReservoirOpen);
   }
 
   private startResizeObserver(): void {
@@ -1550,6 +1550,10 @@ export class MapContainer {
   /** Centre the map on a reservoir and open its popup (Strategic Water Levels row click). */
   public openReservoir(reservoir: ReservoirLevel): void {
     ++this.viewportActionToken;
+    this.showReservoir(reservoir);
+  }
+
+  private showReservoir(reservoir: ReservoirLevel): void {
     // A renderer switch clears the renderer before its async init finishes; keep the
     // latest selection and replay it on readiness, as openChokepoint does.
     if (!this.isChokepointRendererReady()) {
@@ -1834,6 +1838,10 @@ export class MapContainer {
   // clicks above, globe is a real target here (it pans the point to front-centre).
   public openChokepoint(id: string): void {
     ++this.viewportActionToken;
+    this.showChokepoint(id);
+  }
+
+  private showChokepoint(id: string): void {
     if (!this.isChokepointRendererReady()) {
       this.pendingChokepointOpen = id;
       this.pendingReservoirOpen = null; // a newer destination; the reservoir replays last and would override it

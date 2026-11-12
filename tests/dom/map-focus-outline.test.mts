@@ -440,6 +440,19 @@ describe('MapContainer focus scope', () => {
     expect(destination === 'reservoir' ? deck.openReservoir : deck.openChokepoint).toHaveBeenCalledOnce();
   });
 
+  it.each(['reservoir', 'chokepoint'])('replaying an older %s open preserves a newer loading focus fit', async (destination) => {
+    const { map, deck } = container({ ready: false });
+    if (destination === 'reservoir') map.openReservoir({ id: 'test' });
+    else map.openChokepoint('hormuz');
+    map.setFocusScope(OUTLINE, { fit: true });
+    map.markRendererReady(1);
+    const open = destination === 'reservoir' ? deck.openReservoir : deck.openChokepoint;
+    expect(open).toHaveBeenCalledOnce();
+    await vi.dynamicImportSettled();
+    expect(deck.fitFocusBounds).toHaveBeenCalledWith(focusFitBounds(OUTLINE.chosen), 6);
+    expect(open.mock.invocationCallOrder[0]).toBeLessThan(deck.fitFocusBounds.mock.invocationCallOrder[0]!);
+  });
+
   it('a team dashboard\'s stored view, applied after the focus, wins over the fit', async () => {
     const { map, deck } = container();
     // Even without FocusMapSync's hold, a later viewport command supersedes
