@@ -192,7 +192,7 @@ export class SecurityAdvisoriesPanel extends Panel {
       </div>
     `;
 
-    const displayed = filtered.slice(0, 30);
+    const displayed = view.partition ? filtered : filtered.slice(0, 30);
     let itemsHtml: string;
 
     if (displayed.length === 0) {

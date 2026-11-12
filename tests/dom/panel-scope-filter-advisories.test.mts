@@ -66,6 +66,30 @@ const itemFor = (title: string) => [...el().querySelectorAll('.sa-item')].find((
 const count = () => el().querySelector('.panel-count')?.textContent;
 
 describe('SecurityAdvisoriesPanel under a focus', () => {
+  it('shows all matching advisories beyond the unfocused row cap', async () => {
+    const rows = Array.from({ length: 45 }, (_, i) => advisory(`Thailand ${i}`, 'TH'));
+    panel.setData(rows);
+    await settle();
+    expect(titles()).toHaveLength(30);
+    panel.applyScope(FOCUS);
+    await settle();
+    expect(titles()).toHaveLength(45);
+    expect(count()).toBe('45');
+  });
+
+  it.each(['show-all', 'show-unattributed', 'hide-unattributed', 'apply'])('preserves keyboard focus on %s when data redraws the strip', async (action) => {
+    panel.setData(ADVISORIES);
+    panel.applyScope(FOCUS);
+    await settle();
+    if (action === 'hide-unattributed') stripButton('show-unattributed')!.click();
+    if (action === 'apply') stripButton('show-all')!.click();
+    await settle();
+    stripButton(action)!.focus();
+    panel.setData([...ADVISORIES, advisory('Another US advisory', 'US')]);
+    await settle();
+    expect(document.activeElement).toBe(stripButton(action));
+  });
+
   it('shows the chosen country, then the neighbour marked, and counts hidden and no-country items', async () => {
     panel.setData(ADVISORIES);
     panel.applyScope(FOCUS);
