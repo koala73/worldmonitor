@@ -214,6 +214,53 @@ describe('post-merge deploy monitor', () => {
     assert.equal(verdict.verdict, 'DEPLOY_JOB_MISSING');
   });
 
+  // Run 43228825420: GitHub skipped `deploy` on a convex=false push (the repair
+  // job's `needs.deploy.result == 'skipped'` gate ran), yet the jobs API never
+  // listed the skipped `deploy` or `record-baseline` records. The baseline proof
+  // already says production has main, so the listing gap must not page.
+  it('accepts an unlisted Convex deploy job when the baseline proves production is current', () => {
+    const verdict = judgeWorkflow({
+      workflow: CONVEX,
+      run: run({ runId: 43228825420 }),
+      jobs: new Map([
+        ['convex-changes', { name: 'convex-changes', conclusion: 'success', status: 'completed' }],
+        ['repair-stale-on-hold-derived-state', { name: 'repair-stale-on-hold-derived-state', conclusion: 'success', status: 'completed' }],
+      ]),
+      skipProof: () => true,
+      now: NOW,
+    });
+    assert.equal(verdict.state, 'OK');
+    assert.equal(verdict.verdict, 'DEPLOY_JOB_UNLISTED');
+    assert.match(verdict.detail, /production already has every bundled change on main/);
+  });
+
+  it('still alarms on an unlisted Convex deploy job when production is behind', () => {
+    const verdict = judgeWorkflow({
+      workflow: CONVEX,
+      run: run({ runId: 778 }),
+      jobs: new Map([['convex-changes', { name: 'convex-changes', conclusion: 'success', status: 'completed' }]]),
+      skipProof: () => false,
+      now: NOW,
+    });
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'DEPLOY_BEHIND_BASELINE');
+  });
+
+  it('still alarms on an unlisted deploy job in a workflow with no baseline proof', () => {
+    for (const workflow of [RECONCILE, WORKER]) {
+      const verdict = judgeWorkflow({
+        workflow,
+        run: run({ runId: 779 }),
+        jobs: new Map(),
+        skipProof: () => true,
+        deploymentRequired: false,
+        now: NOW,
+      });
+      assert.equal(verdict.state, 'ALARM', workflow.file);
+      assert.equal(verdict.verdict, 'DEPLOY_JOB_MISSING', workflow.file);
+    }
+  });
+
   it('alarms when a run succeeds but its deploy job failed', () => {
     const verdict = judgeWorkflow({
       workflow: RECONCILE,

@@ -536,7 +536,9 @@ export function readNewestRun({
  * `if:` filtering: a job skipped by a `convex=false` diff appears with
  * `conclusion: skipped` and an empty steps array (verified live on run
  * 31384987576), while a failed deploy job concludes `failure` with steps
- * (runs 31323075509 / 31323823825).
+ * (runs 31323075509 / 31323823825). GitHub can also leave a skipped job out
+ * of the listing entirely (run 43228825420), so absence is not proof of
+ * failure; judgeWorkflow decides what it means.
  */
 export function readRunJobs({ gh, repository, runId, runAttempt }) {
   const payload = JSON.parse(readGithub(gh, [
@@ -821,7 +823,8 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
   // the deploy job failed is impossible (the run would be red), but a success
   // with the deploy job SKIPPED is the #6376 shape in reverse — the run went
   // green while nothing deployed. Positive detection only: absence of every
-  // deploy job in the listing reads as failure, not as healthy.
+  // deploy job in the listing reads as failure, unless the deployed baseline
+  // proves production already has main.
   //
   // The deploy job's name is not one string. convex-deploy.yml names its job
   // `deploy`; deploy-railway-reconcile-control.yml and deploy-worker.yml give
@@ -835,6 +838,18 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
   const deployName = workflow.deployJobName ?? 'deploy';
   const deployJobs = [...(jobs?.entries() ?? [])].filter(([name]) => name === deployName);
   if (deployJobs.length === 0) {
+    // The jobs API can omit `if:`-skipped jobs from a run outright: Convex run
+    // 43228825420 listed neither `deploy` nor `record-baseline`, though its
+    // repair job ran on `needs.deploy.result == 'skipped'`. With the baseline
+    // proven current, production has main whatever the listing shows.
+    if (baseline !== null) {
+      return {
+        state: 'OK',
+        verdict: 'DEPLOY_JOB_UNLISTED',
+        runId: run.runId,
+        detail: `run ${run.runId} has no '${deployName}' job in its listing, but production already has every bundled change on main`,
+      };
+    }
     return {
       state: 'ALARM',
       verdict: 'DEPLOY_JOB_MISSING',
