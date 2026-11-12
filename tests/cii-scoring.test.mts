@@ -33,6 +33,7 @@ import {
   CII_GDELT_LEVEL_MIN_ARTICLES,
   CII_GDELT_LEVEL_PROTEST_FLOOR,
   CII_GDELT_LEVEL_PROTEST_SATURATION,
+  CII_OUTAGE_ASN_NATIONAL_SHARE,
   CII_OUTAGE_EXAM_TERMS,
   CII_OUTAGE_FUTURE_SKEW_MS,
   CII_OUTAGE_NEGATION_TERMS,
@@ -138,7 +139,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // Each Stage B PR regenerates this entry, and only this one, with the command in
   // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
   // is frozen as released when v15 ships.
-  v15: 'bfff45aa3809d084274a91a8accbc4088b9faa7c833cb9c13a07213448de8a5d',
+  v15: 'cc53e2dd7a867c233076d46e8a0e8db1206e791cdbc5365ab295e3374b41cd26',
 };
 
 // The released entries above are a record. This digest of every entry except
@@ -1643,6 +1644,7 @@ describe('CII scoring', () => {
         CII_GDELT_LEVEL_MIN_ARTICLES,
         CII_GDELT_LEVEL_PROTEST_FLOOR,
         CII_GDELT_LEVEL_PROTEST_SATURATION,
+        CII_OUTAGE_ASN_NATIONAL_SHARE,
         CII_OUTAGE_EXAM_TERMS,
         CII_OUTAGE_FUTURE_SKEW_MS,
         CII_OUTAGE_NEGATION_TERMS,

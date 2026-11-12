@@ -201,6 +201,16 @@ export const CII_OUTAGE_SCORED_CAUSES: ReadonlySet<string> = new Set(['GOVERNMEN
  */
 export const CII_OUTAGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /**
+ * An outage Radar files against networks (ASNs) rather than a country counts
+ * for the country Radar places those ASNs in only when it disrupted MORE than
+ * this fraction of that country's Internet (owner ruling, 2026-10-24). A
+ * regional ISP, a data centre or a cloud region going dark is not national
+ * instability unless the country loses that much. The impact is measured by
+ * scripts/lib/radar-asn-impact.mjs (traffic share x traffic drop, structured
+ * Radar data). An impact that could not be measured never counts as above.
+ */
+export const CII_OUTAGE_ASN_NATIONAL_SHARE = 0.4;
+/**
  * A record's weight falls linearly from 1 to 0 over this last part of
  * CII_OUTAGE_WINDOW_MS, measured from when it was last active. Without the
  * fade a 50-point outage term left the score in one step on the day it aged

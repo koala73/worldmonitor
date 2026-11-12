@@ -269,6 +269,13 @@ export function trimCiiRawInputs(raw: CiiRawInputs): CiiRawInputs {
     // fields were kept hold none of them.
     outages: nullable(raw.outages, (v) => ({
       outages: rows(v, 'outages').map((o) => pick(o, ['countryCode', 'country_code', 'severity', 'country', 'cause', 'detectedAt', 'endedAt', 'description', 'title'])),
+      // ASN-attributed records score only above the national-share threshold.
+      ...(isObj(v) && Array.isArray(v.asnOutages) ? {
+        asnOutages: rows(v, 'asnOutages').map((o) => pick(o, [
+          'id', 'countryCode', 'severity', 'country', 'cause', 'detectedAt', 'endedAt', 'description', 'title',
+          'nationalImpact', 'impactIsUpperBound',
+        ])),
+      } : {}),
     })),
     climate: nullable(raw.climate, (v) => ({
       anomalies: rows(v, 'anomalies').map((a) => pick(a, ['zone', 'region', 'severity', 'score', 'location', 'lat', 'lon', 'latitude', 'longitude', 'lng'])),

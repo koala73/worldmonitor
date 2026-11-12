@@ -460,6 +460,14 @@ the status and drops the block. `/api/seed-health` grades the same report for
 `intelligence:risk-scores` and reports `coverage_partial` with the same
 `ciiInputs` block, without the sibling staleness checks.
 
+`ciiInputs.unknownImpact` lists inputs with Tier-1 records whose effect could
+not be measured, as `{ id, count, countries }`. Today that is an ASN-attributed
+outage whose national impact Radar could not supply: the outage is excluded
+from scoring and the input keeps its `live` or `quiet` state, because the feed
+itself was read. The list is informational and never changes the status. A
+long-running entry for every outage points at the Radar NetFlows measurement,
+not at the outage feed.
+
 `portwatchPortActivity` also uses `minRecordCount`. A fresh
 `seed-meta:supply_chain:portwatch-ports` record below 174 countries reports
 `COVERAGE_PARTIAL` instead of `OK`; partial runs may still refresh per-country

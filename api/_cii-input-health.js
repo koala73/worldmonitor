@@ -27,6 +27,9 @@
 // for another reason.
 //   not_configured  disabled by deployment design (no ACLED credentials,
 //                   IRAN_EVENTS_ENABLED off)
+// A Tier-1 ASN outage whose national impact could not be measured leaves the
+// state alone (the feed was read). It is listed in `unknownImpact`, for
+// operators, and does not change the health status.
 // An unreadable key rejects the whole build, so it surfaces as a stale
 // riskScores seed-meta rather than as a per-input state.
 //
@@ -104,6 +107,7 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     : null;
   const states = {};
   const dead = [];
+  const unknownImpact = [];
   const warnings = [];
   const notConfigured = [];
   const healthy = new Set();
@@ -111,6 +115,10 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
   for (const [id, cfg] of Object.entries(CII_INPUT_POLICY.inputs)) {
     const report = reported?.[id];
     const state = report && PRODUCER_STATES.has(report.state) ? report.state : 'unreported';
+    const asnUnknown = report?.excluded?.asnImpactUnknown;
+    if (Number(asnUnknown?.tier1Count) > 0) {
+      unknownImpact.push({ id, count: Number(asnUnknown.tier1Count), countries: Array.isArray(asnUnknown.tier1Countries) ? asnUnknown.tier1Countries : [] });
+    }
     const sourceCheck = cfg.sourceCheck && STALE_SOURCE_STATUSES.has(sourceStatuses[id]) ? cfg.sourceCheck : null;
     states[id] = state;
 
@@ -161,5 +169,5 @@ export function assessCiiInputs(meta, now, sourceStatuses = {}) {
     .filter(([, members]) => !members.some((id) => healthy.has(id)))
     .map(([family]) => family);
 
-  return { valid: reported !== null, states, dead, warnings, notConfigured, unfedFamilies };
+  return { valid: reported !== null, states, dead, warnings, notConfigured, unfedFamilies, unknownImpact };
 }
