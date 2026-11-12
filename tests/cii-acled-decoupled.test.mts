@@ -147,8 +147,10 @@ describe('CII ACLED is per country: an optional source that never gates another 
   for (const type of ['Battles', 'Explosions/Remote violence']) {
     it(`a country with ${type} rows takes the larger of its ACLED and GDELT terms, never the sum`, () => {
       const fixture = FIXTURES[0]!;
-      const base = byRegion(table(fixture, []).rows);
-      const withRows = byRegion(table(fixture, CODES.map((code) => row(code, type, 1))).rows);
+      // Isolate this source pair; B6 adds UCDP as a third Conflict candidate.
+      const pairAux = { ...FIXTURE_AUX.get(fixture.label)!, ucdpEvents: [] };
+      const base = byRegion(scoreCiiAuxiliarySources(pairAux, { nowMs: fixture.nowMs, acledEvents: [] }).rows);
+      const withRows = byRegion(scoreCiiAuxiliarySources(pairAux, { nowMs: fixture.nowMs, acledEvents: CODES.map((code) => row(code, type, 1)) }).rows);
       for (const code of CODES) {
         const before = base.get(code)!;
         const after = withRows.get(code)!;
