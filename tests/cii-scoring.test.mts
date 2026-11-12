@@ -70,7 +70,6 @@ import {
   CII_TREND_BUCKET_LOOKUP_RADIUS,
   CII_TREND_BUCKET_MS,
   CII_TREND_TARGET_AGE_MS,
-  EVENT_MULTIPLIER,
   countCiiRealtimeSignalDensityCoverage,
   computeCIIScores,
   strikePressureFloor,
@@ -89,9 +88,7 @@ import { CII_CLIMATE_ZONE_COUNTRIES } from '../shared/cii-climate-zones.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
   CII_COUNTRY_WEIGHTS,
-  CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
   DEFAULT_CII_BASELINE_RISK,
-  DEFAULT_CII_EVENT_MULTIPLIER,
 } from '../shared/cii-weights.ts';
 import { CLIMATE_ZONES } from '../scripts/_climate-zones.mjs';
 import { ciiScoredVersion, readCiiVersionClaim } from '../scripts/lib/cii-fixtures.mts';
@@ -139,7 +136,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // Each Stage B PR regenerates this entry, and only this one, with the command in
   // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
   // is frozen as released when v15 ships.
-  v15: 'cc53e2dd7a867c233076d46e8a0e8db1206e791cdbc5365ab295e3374b41cd26',
+  v15: 'e7fcbb40a58ec8ea146131d9dd39f835d9fad866f47c7aca47c0afd507b40880',
 };
 
 // The released entries above are a record. This digest of every entry except
@@ -1052,15 +1049,6 @@ describe('CII scoring', () => {
     );
   });
 
-  it('log2 scaling dampens high-volume low-multiplier countries vs linear', () => {
-    const manyProtests = Array.from({ length: 100 }, () => acledEvent('United States', 'Protests'));
-    const fewProtests = Array.from({ length: 10 }, () => acledEvent('United States', 'Protests'));
-    const many = scoreFor(computeCIIScores(manyProtests, emptyAux()), 'US')!;
-    const few = scoreFor(computeCIIScores(fewProtests, emptyAux()), 'US')!;
-    const ratio = many.components!.ciiContribution / Math.max(1, few.components!.ciiContribution);
-    assert.ok(ratio < 5, `10x events should produce < 5x unrest ratio (got ${ratio.toFixed(2)}), log2 dampens`);
-  });
-
   it('displacement boost preserves humanitarian scale above six figures', () => {
     const moderateAux = emptyAux();
     moderateAux.displacedByIso3 = { USA: 120_000 };
@@ -1489,15 +1477,9 @@ describe('CII scoring', () => {
     }
   });
 
-  it('every score carries the shared editorial eventMultiplier', () => {
-    const scores = computeCIIScores([], emptyAux());
-    for (const s of scores) {
-      const mult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      const expected = SHARED_EVENT_MULTIPLIER[s.region as keyof typeof SHARED_EVENT_MULTIPLIER];
-      assert.ok(Number.isFinite(mult), `${s.region} eventMultiplier should be finite, got ${mult}`);
-      assert.ok(mult > 0, `${s.region} eventMultiplier should be > 0, got ${mult}`);
-      assert.ok(mult <= 5, `${s.region} eventMultiplier should be <= 5 (sanity), got ${mult}`);
-      assert.equal(mult, expected, `${s.region} eventMultiplier should match shared/cii-weights.ts`);
+  it('every score carries the deprecated eventMultiplier wire field at its neutral 1', () => {
+    for (const s of computeCIIScores([], emptyAux())) {
+      assert.equal(s.eventMultiplier, 1, `${s.region} eventMultiplier must be the neutral 1: no live signal is multiplied`);
     }
   });
 
@@ -1554,7 +1536,7 @@ describe('CII scoring', () => {
     }
   });
 
-  it('server and frontend baseline/multiplier values match shared CII weights for every country', () => {
+  it('server and frontend baseline values match shared CII weights for every country', () => {
     const sharedCodes = Object.keys(CII_COUNTRY_WEIGHTS).sort();
     assert.deepEqual(Object.keys(CURATED_COUNTRIES).sort(), sharedCodes,
       'CURATED_COUNTRIES keys must match shared/cii-weights.ts keys');
@@ -1568,24 +1550,15 @@ describe('CII scoring', () => {
       const expected = CII_COUNTRY_WEIGHTS[code as keyof typeof CII_COUNTRY_WEIGHTS];
       assert.equal(CURATED_COUNTRIES[code]?.baselineRisk, expected.baselineRisk,
         `${code} frontend baselineRisk should come from shared/cii-weights.ts`);
-      assert.equal(CURATED_COUNTRIES[code]?.eventMultiplier, expected.eventMultiplier,
-        `${code} frontend eventMultiplier should come from shared/cii-weights.ts`);
       assert.equal(BASELINE_RISK[code], expected.baselineRisk,
         `${code} server BASELINE_RISK should come from shared/cii-weights.ts`);
-      assert.equal(EVENT_MULTIPLIER[code], expected.eventMultiplier,
-        `${code} server EVENT_MULTIPLIER should come from shared/cii-weights.ts`);
       assert.equal(SHARED_BASELINE_RISK[code as keyof typeof SHARED_BASELINE_RISK], expected.baselineRisk,
         `${code} shared baseline map should be derived from CII_COUNTRY_WEIGHTS`);
-      assert.equal(SHARED_EVENT_MULTIPLIER[code as keyof typeof SHARED_EVENT_MULTIPLIER], expected.eventMultiplier,
-        `${code} shared multiplier map should be derived from CII_COUNTRY_WEIGHTS`);
 
       const s = scoreFor(scores, code);
       assert.ok(s, `${code} score missing`);
       assert.equal(s!.staticBaseline, expected.baselineRisk,
         `${code} staticBaseline ${s!.staticBaseline} should match shared baselineRisk ${expected.baselineRisk}`);
-      const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      assert.equal(actualMult, expected.eventMultiplier,
-        `${code} eventMultiplier ${actualMult} should match shared eventMultiplier ${expected.eventMultiplier}`);
     }
   });
 
@@ -1628,7 +1601,6 @@ describe('CII scoring', () => {
       ),
       defaultWeight: {
         baselineRisk: DEFAULT_CII_BASELINE_RISK,
-        eventMultiplier: DEFAULT_CII_EVENT_MULTIPLIER,
       },
       riskConfig: {
         CII_ADVISORY_MAX_AGE_MS,
@@ -2115,16 +2087,15 @@ describe('CII scoring', () => {
       `docs/methodology/cii-risk-scores.mdx is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
   });
 
-  it('methodology doc baseline/multiplier columns match BASELINE_RISK and EVENT_MULTIPLIER exactly (numeric drift guard)', () => {
+  it('methodology doc baseline column matches BASELINE_RISK exactly (numeric drift guard)', () => {
     // PR #3780 review hardening: the previous regex-existence check only
     // verified that a row exists for each code. That lets the doc and the
     // code silently disagree on the numeric values — exactly the kind of
     // drift this whole methodology disclosure was meant to prevent.
     //
-    // This stricter test parses each row's numeric columns and asserts they
-    // match BASELINE_RISK[code] and EVENT_MULTIPLIER[code] character-for-
-    // character. Bump CII_FORMULA_VERSION and update the doc together when
-    // either changes.
+    // This stricter test parses each row's numeric column and asserts it
+    // matches BASELINE_RISK[code]. Bump CII_FORMULA_VERSION and update the doc
+    // together when it changes.
     const docPath = resolve(
       fileURLToPath(new URL('.', import.meta.url)),
       '..',
@@ -2134,10 +2105,9 @@ describe('CII scoring', () => {
     );
     const doc = readFileSync(docPath, 'utf8');
     // Parse the per-country table. Rows look like:
-    //   | AE | United Arab Emirates | 10 | 1.5 | — |
-    // The first non-header table row defines the column count; we tolerate
-    // any number of trailing columns (drift notes etc.) but require at least
-    // 4 columns: code, name, baseline, multiplier.
+    //   | AE | United Arab Emirates | 10 |
+    // We tolerate trailing columns (drift notes etc.) but require at least
+    // 3 columns: code, name, baseline.
     const drifts: string[] = [];
     for (const code of Object.keys(BASELINE_RISK)) {
       // Capture the row for this code. Anchor on `| <CODE> |` then non-greedy
@@ -2150,25 +2120,19 @@ describe('CII scoring', () => {
       }
       // Split the remaining row on `|`, strip whitespace.
       const cols = m[1]!.split('|').map((c) => c.trim());
-      // cols = [name, baseline, multiplier, driftNote, '']  (5 entries after split)
-      // We need cols[1] and cols[2].
-      if (cols.length < 4) {
-        drifts.push(`${code}: malformed row, expected at least 4 columns, got ${cols.length}`);
+      // cols = [name, baseline, '']  (3 entries after split); we need cols[1].
+      if (cols.length < 3) {
+        drifts.push(`${code}: malformed row, expected at least 3 columns, got ${cols.length}`);
         continue;
       }
       const docBaseline = Number(cols[1]);
-      const docMultiplier = Number(cols[2]);
       const expectedBaseline = BASELINE_RISK[code]!;
-      const expectedMultiplier = EVENT_MULTIPLIER[code]!;
       if (docBaseline !== expectedBaseline) {
         drifts.push(`${code}: baseline doc=${cols[1]} code=${expectedBaseline}`);
       }
-      if (docMultiplier !== expectedMultiplier) {
-        drifts.push(`${code}: multiplier doc=${cols[2]} code=${expectedMultiplier}`);
-      }
     }
     assert.equal(drifts.length, 0,
-      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK / EVENT_MULTIPLIER.`);
+      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK.`);
   });
 
   it('every TIER1_COUNTRIES code is listed in the methodology doc (server tables stay in sync)', () => {

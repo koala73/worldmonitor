@@ -15,7 +15,6 @@ import {
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
-import { CII_COUNTRY_WEIGHTS } from '../shared/cii-weights.ts';
 
 it('current public and translated CII claims use the published formula version', () => {
   const paths = [
@@ -173,7 +172,6 @@ describe('CII docs drift guards', () => {
     const trendSection = markdownSection(doc, '### Trend Detection');
     const pizzintSection = markdownSection(doc, '### DEFCON-Style Alerting');
     const gdeltSection = markdownSection(doc, '### World Monitor Tension Pairs');
-    const multipliersSection = markdownSection(doc, '### Event Significance Multipliers');
 
     assert.match(
       scoreSection,
@@ -249,17 +247,7 @@ describe('CII docs drift guards', () => {
       'strategic-risk tension table must omit unsupported or low-volume pairs',
     );
     assert.match(gdeltSection, /World Monitor tension scores computed independently from GDELT event exports/);
-    assert.equal(CII_COUNTRY_WEIGHTS.US.eventMultiplier, 0.3);
-    assert.match(
-      multipliersSection,
-      /\|\s*0\.3x\s*\|\s*US\s*\|/,
-      'strategic-risk doc must publish the US event multiplier separately from the 0.5-0.8x bucket',
-    );
-    assert.doesNotMatch(
-      multipliersSection,
-      /\|\s*0\.5-0\.8x\s*\|[^|\n]*\bUS\b/,
-      'strategic-risk doc must not list US in the 0.5-0.8x multiplier bucket',
-    );
+    assert.ok(!doc.includes('### Event Significance Multipliers'), 'strategic-risk doc must not publish per-country event multipliers: none is applied');
     assert.doesNotMatch(
       riskLevels,
       /70\/50\/30|50-69|30-49|\*\*Moderate\*\*/,
