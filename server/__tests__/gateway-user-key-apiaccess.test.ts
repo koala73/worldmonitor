@@ -260,6 +260,7 @@ describe("#4611 — expired wm_ key rejected on all route classes", () => {
     entitlement = DOWNGRADED;
     const res = await makeGateway()(keyReq(REGULAR_PATH), ctx);
     expect(res.status).toBe(403);
+    expect(res.headers.get("WWW-Authenticate")).toBeNull();
     // Gate runs before #3199 — neither the per-account nor per-IP limiter fires.
     expect(checkBurst).not.toHaveBeenCalled();
     expect(checkRateLimit).not.toHaveBeenCalled();

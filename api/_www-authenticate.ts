@@ -1,8 +1,7 @@
 /**
- * RFC 9728 §5.1 bearer challenge shared by every entry point that answers a
- * 401: the MCP transport, /agent/auth and the REST gateway (#4840). One
- * definition keeps `realm` and the protected-resource pointer identical
- * across surfaces, and the pointer is derived from the request Host through
+ * RFC 9728 §5.1 challenges for MCP OAuth and REST API-key discovery (#4840).
+ * REST describes its own accepted credentials rather than advertising MCP
+ * OAuth tokens it cannot consume. The pointer is derived from the Host through
  * `resolveMetadataOrigin` so a spoofed Host can never be reflected into it.
  */
 import { resolveMetadataOrigin } from './_agent-metadata';
@@ -20,7 +19,7 @@ export function protectedResourceMetadataUrl(req: Request): string {
   return `${resolveMetadataOrigin(req)}${PROTECTED_RESOURCE_METADATA_PATH}`;
 }
 
-/** The challenge a REST entry point attaches to its 401 for `req`. */
-export function bearerChallenge(req: Request, errorParam = ''): string {
-  return wwwAuthHeader(protectedResourceMetadataUrl(req), errorParam);
+/** RFC 9728 §5.1 permits resource_metadata with schemes other than Bearer. */
+export function apiKeyChallenge(req: Request): string {
+  return `ApiKey realm="worldmonitor", header="X-WorldMonitor-Key", resource_metadata="${protectedResourceMetadataUrl(req)}/api"`;
 }

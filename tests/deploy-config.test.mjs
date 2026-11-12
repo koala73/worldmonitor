@@ -4199,7 +4199,7 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
     // api/mcp/handler.ts and the template-literal that emits
     // `resource_metadata="${url}"` lives in api/_www-authenticate.ts (the
     // `wwwAuthHeader` helper, re-exported by api/mcp/auth.ts since #4840 so
-    // the gateway's 401s share it). Concatenate all three so the sub-greps
+    // the gateway's API-key challenge lives alongside it). Concatenate all three so the sub-greps
     // below still see the same byte surface they did pre-split.
     const source = readFileSync(resolve(__dirname, '../api/mcp/handler.ts'), 'utf-8')
       + '\n'

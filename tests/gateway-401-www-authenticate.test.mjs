@@ -1,21 +1,22 @@
 // RUN WITH: `npm run test:data` OR `node --import=tsx --test tests/gateway-401-www-authenticate.test.mjs`.
 //
-// RFC 9728 §5.1 / #4840: every REST gateway 401 carries a `WWW-Authenticate`
-// bearer challenge whose `resource_metadata` points at the protected-resource
+// RFC 9728 §5.1 / #4840: REST gateway auth failures carry a `WWW-Authenticate`
+// API-key challenge whose `resource_metadata` points at the REST resource
 // metadata document for the request's host, so an agent learns the auth
 // requirements from the rejection itself instead of hunting for the
-// well-known document. The MCP transport and /agent/auth already did this;
-// this suite pins the gateway and the shared helper they now all use.
+// well-known document. MCP and /agent/auth retain their OAuth challenges.
 
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
-import { bearerChallenge, protectedResourceMetadataUrl, wwwAuthHeader } from '../api/_www-authenticate.ts';
+import { apiKeyChallenge, protectedResourceMetadataUrl, wwwAuthHeader } from '../api/_www-authenticate.ts';
 import { wwwAuthHeader as mcpWwwAuthHeader } from '../api/mcp/auth.ts';
+import resourceMetadata from '../api/oauth-protected-resource.ts';
 
 const VALID_KEY = 'www-authenticate-test-operator-key';
-const APEX_CHALLENGE = 'Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"';
+const MCP_CHALLENGE = 'Bearer realm="worldmonitor", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"';
+const APEX_CHALLENGE = 'ApiKey realm="worldmonitor", header="X-WorldMonitor-Key", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource/api"';
 
 function gateway() {
   return createDomainGateway([
@@ -30,7 +31,7 @@ function gateway() {
 describe('shared bearer challenge helper', () => {
   it('is the single definition the MCP transport re-exports', () => {
     assert.equal(mcpWwwAuthHeader, wwwAuthHeader);
-    assert.equal(wwwAuthHeader('https://worldmonitor.app/.well-known/oauth-protected-resource'), APEX_CHALLENGE);
+    assert.equal(wwwAuthHeader('https://worldmonitor.app/.well-known/oauth-protected-resource'), MCP_CHALLENGE);
     assert.equal(
       wwwAuthHeader('https://worldmonitor.app/.well-known/oauth-protected-resource', 'invalid_token'),
       'Bearer realm="worldmonitor", error="invalid_token", resource_metadata="https://worldmonitor.app/.well-known/oauth-protected-resource"',
@@ -42,7 +43,7 @@ describe('shared bearer challenge helper', () => {
     assert.equal(protectedResourceMetadataUrl(req('api.worldmonitor.app')), 'https://api.worldmonitor.app/.well-known/oauth-protected-resource');
     assert.equal(protectedResourceMetadataUrl(req('www.worldmonitor.app')), 'https://www.worldmonitor.app/.well-known/oauth-protected-resource');
     assert.equal(protectedResourceMetadataUrl(req('evil.com')), 'https://worldmonitor.app/.well-known/oauth-protected-resource');
-    assert.equal(bearerChallenge(req('evil.com')), APEX_CHALLENGE);
+    assert.equal(apiKeyChallenge(req('evil.com')), APEX_CHALLENGE);
   });
 });
 
@@ -79,7 +80,7 @@ describe('REST gateway 401 challenge (#4840)', () => {
       headers: { Authorization: 'Bearer definitely-not-a-session' },
     }));
     assert.equal(res.status, 401);
-    assert.equal(res.headers.get('www-authenticate'), APEX_CHALLENGE.replace(', resource_metadata=', ', error="invalid_token", resource_metadata='));
+    assert.equal(res.headers.get('www-authenticate'), APEX_CHALLENGE);
     assert.equal((await res.json()).error, 'Invalid or expired session');
   });
 
@@ -92,7 +93,7 @@ describe('REST gateway 401 challenge (#4840)', () => {
     assert.equal(api.status, 401);
     assert.equal(
       api.headers.get('www-authenticate'),
-      'Bearer realm="worldmonitor", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"',
+      'ApiKey realm="worldmonitor", header="X-WorldMonitor-Key", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource/api"',
     );
     const spoofed = await g(new Request('https://worldmonitor.app/api/seismology/v1/list-earthquakes', {
       headers: { host: 'evil.com' },
@@ -109,4 +110,31 @@ describe('REST gateway 401 challenge (#4840)', () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('www-authenticate'), null);
   });
+
+  it('follows REST discovery to an accepted credential without advertising MCP OAuth', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
+    const url = 'https://api.worldmonitor.app/api/seismology/v1/list-earthquakes';
+    const g = gateway();
+    const denied = await g(new Request(url));
+    const challenge = denied.headers.get('www-authenticate');
+    assert.match(challenge, /^ApiKey /);
+    const metadataUrl = challenge.match(/resource_metadata="([^"]+)"/)[1];
+    const metadata = resourceMetadata(new Request(metadataUrl));
+    assert.equal(metadata.status, 200);
+    const info = await metadata.json();
+    assert.equal(info.resource, 'https://api.worldmonitor.app/api');
+    assert.deepEqual(info.authorization_servers, []);
+    assert.deepEqual(info.scopes_supported, []);
+    assert.equal(info.api_key_header, 'X-WorldMonitor-Key');
+    assert.equal(info.api_key_registration_uri, 'https://www.worldmonitor.app/pro');
+    assert.equal(info.resource_documentation, 'https://www.worldmonitor.app/docs/usage-auth#api-key-mode');
+    const accepted = await g(new Request(url, { headers: { [info.api_key_header]: VALID_KEY } }));
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await accepted.json(), { source: 'rpc' });
+    const wrongKey = await g(new Request(url, { headers: { [info.api_key_header]: 'invalid' } }));
+    assert.equal(wrongKey.status, 401);
+    const mcpToken = await g(new Request(url, { headers: { Authorization: 'Bearer opaque-mcp-token' } }));
+    assert.equal(mcpToken.status, 401);
+  });
+
 });
