@@ -61,6 +61,14 @@ import {
   CII_STRIKE_SEVERITY_WEIGHTS,
   CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
+  CII_POPULATION_MILLIONS,
+  CII_UCDP_CONFLICT_CAP,
+  CII_UCDP_HALF_LIFE_DAYS,
+  CII_UCDP_MAX_LAG_DAYS,
+  CII_UCDP_MIN_MONTH_SHARE,
+  CII_UCDP_RATE_KNEE,
+  CII_UCDP_RATE_SATURATION,
+  CII_UCDP_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -580,65 +588,184 @@ function buildPriorCiiScoreMap(priorScores: CiiScore[] | null | undefined): Map<
 
 const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
 
-// --- UCDP conflict classification (ported from the frontend, src/services/conflict/index.ts
-// deriveUcdpClassifications + getUcdpFloor) ---
+// --- UCDP organised violence (v15) ---
 //
-// The cached `conflict:ucdp-events:v1` payload (written by scripts/seed-ucdp-events.mjs and
-// scripts/ais-relay.cjs) emits per-event rows shaped as
-// `{ country, location, violenceType, deathsBest, dateStart, ... }`. There is NO
-// `intensity_level` or `type_of_violence` field — the pre-existing scorer read those two
-// non-existent keys, so `parseInt(...) === 0` for every event and the UCDP floor/coverage
-// were silently dead. The correct classification is the same per-country aggregate the
-// frontend uses: a 2-year trailing window scored by total deaths and event count.
-// The Redis writers currently keep only a capped 1-year trailing slice
-// (newest pages, max 2,000 mapped rows), so the effective cached-event window is
-// seed-bounded until UCDP retention is widened with production volume safeguards.
-const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+// The cached `conflict:ucdp-events:v1` payload (scripts/seed-ucdp-events.mjs and
+// scripts/ais-relay.cjs) carries `countryDays`: per UCDP country name, one
+// [UTC day, events, deaths] row per day of the writers' trailing window, built
+// from every GED and GED Candidate event in it, plus `dailyTotals`, the events
+// per day across all countries. Its `events` list is a capped newest slice for
+// the map and the RPC, too short for a one-year term. A payload written before
+// countryDays existed (and the fixtures captured from one) is read from
+// `events`, one row per event. See CII_UCDP_* in ./_risk-config for the term.
+const UCDP_KERNEL_YEARS = (CII_UCDP_HALF_LIFE_DAYS / Math.LN2)
+  * (1 - 0.5 ** (CII_UCDP_WINDOW_DAYS / CII_UCDP_HALF_LIFE_DAYS)) / 365;
 
-type UcdpIntensity = 'minor' | 'war';
+/** One UCDP row as the term reads it: an event, or one country-day of the writers' aggregate. */
+export interface CiiUcdpRow { country?: string; location?: string; dateStart: number; deathsBest: number; events?: number }
 
-function isRecentUcdpClassificationDate(dateStart: unknown, nowMs: number): boolean {
-  const eventMs = finiteNumber(dateStart);
-  return eventMs !== null
-    && Number.isFinite(nowMs)
-    && eventMs <= nowMs
-    && nowMs - eventMs < UCDP_CLASSIFICATION_WINDOW_MS;
+/**
+ * Rows and global day totals from the cached payload, in either shape, and
+ * whether the writers fetched the whole window (`window.complete`; null for a
+ * payload without it). A release with a failed page can leave a month dense
+ * enough to pass the read-time check while the writers know it is short.
+ */
+export function parseUcdpCache(raw: unknown): {
+  rows: CiiUcdpRow[];
+  dailyTotals: Record<string, number> | null;
+  writerComplete: boolean | null;
+  /** Months after the newest data whose release UCDP has not published yet (the writers' `window.upstreamGapMonths`). */
+  upstreamGapMonths: string[];
+} {
+  const payload = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+  const countryDays = payload?.countryDays;
+  const window = payload?.window && typeof payload.window === 'object' ? payload.window as Record<string, unknown> : null;
+  const writerComplete = typeof window?.complete === 'boolean' ? window.complete : null;
+  const upstreamGapMonths = Array.isArray(window?.upstreamGapMonths)
+    ? (window.upstreamGapMonths as unknown[]).filter((m): m is string => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m))
+    : [];
+  if (!countryDays || typeof countryDays !== 'object' || Array.isArray(countryDays)) {
+    const events = Array.isArray(raw) ? raw : Array.isArray(payload?.events) ? payload.events : [];
+    return { rows: (events as CiiUcdpRow[]).slice(0, 10000), dailyTotals: null, writerComplete, upstreamGapMonths };
+  }
+  const rows: CiiUcdpRow[] = [];
+  for (const [country, days] of Object.entries(countryDays as Record<string, unknown>)) {
+    if (!Array.isArray(days)) continue;
+    for (const day of days) {
+      if (!Array.isArray(day)) continue;
+      const dayIndex = finiteNumber(day[0]);
+      if (dayIndex === null) continue;
+      rows.push({ country, dateStart: dayIndex * CII_DAY_MS, events: safeNonNegativeNum(day[1]), deathsBest: safeNonNegativeNum(day[2]) });
+    }
+  }
+  const dailyTotals: Record<string, number> = {};
+  for (const entry of Array.isArray(payload?.dailyTotals) ? payload.dailyTotals : []) {
+    const dayIndex = Array.isArray(entry) ? finiteNumber(entry[0]) : null;
+    if (dayIndex !== null) dailyTotals[String(dayIndex)] = safeNonNegativeNum(entry[1]);
+  }
+  return { rows, dailyTotals: Object.keys(dailyTotals).length ? dailyTotals : null, writerComplete, upstreamGapMonths };
+}
+
+/** Age in days, or null when the row is undated, in the future or outside the window. */
+function ucdpRowAgeDays(row: CiiUcdpRow | null | undefined, nowMs: number): number | null {
+  const dateStart = finiteNumber(row?.dateStart);
+  if (dateStart === null || !Number.isFinite(nowMs) || dateStart > nowMs) return null;
+  const age = (nowMs - dateStart) / CII_DAY_MS;
+  return age < CII_UCDP_WINDOW_DAYS ? age : null;
 }
 
 /**
- * Classify each Tier-1 country's live UCDP conflict intensity from the cached event list,
- * matching the frontend `deriveUcdpClassifications` heuristic. Returns only countries that
- * clear the `minor`/`war` threshold (i.e. those that should receive a UCDP floor).
+ * Decay-weighted deaths per million people per year, by Tier-1 country. Each
+ * row counts at least one death per event: UCDP records an event only when it
+ * killed someone.
  */
-function deriveUcdpIntensityByRegion(
-  ucdpEvents: any[] | undefined | null,
-  nowMs: number,
-): Map<string, UcdpIntensity> {
-  // Group by raw country string (frontend groups by `e.country`), then attribute to ISO2.
-  const eventsByCountryName = new Map<string, any[]>();
-  for (const ev of ucdpEvents ?? []) {
-    const name = String(ev?.country || ev?.location || '');
+export function ucdpViolenceRates(rows: CiiUcdpRow[] | null | undefined, nowMs: number): Record<string, number> {
+  const decayed: Record<string, number> = {};
+  const codeByName = new Map<string, string | null>();
+  for (const row of rows ?? []) {
+    const age = ucdpRowAgeDays(row, nowMs);
+    if (age === null) continue;
+    const name = String(row?.country || row?.location || '');
     if (!name) continue;
-    if (!eventsByCountryName.has(name)) eventsByCountryName.set(name, []);
-    eventsByCountryName.get(name)!.push(ev);
-  }
-
-  const byRegion = new Map<string, UcdpIntensity>();
-  for (const [countryName, events] of eventsByCountryName) {
-    const code = normalizeCountryName(countryName);
+    if (!codeByName.has(name)) codeByName.set(name, normalizeCountryName(name));
+    const code = codeByName.get(name);
     if (!code || !isTier1CountryCode(code)) continue;
-    const recent = events.filter((e) => isRecentUcdpClassificationDate(e?.dateStart, nowMs));
-    const totalDeaths = recent.reduce((sum, e) => sum + safeNonNegativeNum(e?.deathsBest), 0);
-    const eventCount = recent.length;
-    let intensity: UcdpIntensity | null = null;
-    if (totalDeaths > 1000 || eventCount > 100) intensity = 'war';
-    else if (eventCount > 10) intensity = 'minor';
-    if (!intensity) continue;
-    // Same ISO2 may be reached via multiple raw spellings — keep the stronger classification.
-    const prev = byRegion.get(code);
-    if (intensity === 'war' || !prev) byRegion.set(code, intensity);
+    const deaths = Math.max(safeNonNegativeNum(row.deathsBest), Math.max(1, safeNonNegativeNum(row.events)));
+    decayed[code] = (decayed[code] ?? 0) + deaths * 0.5 ** (age / CII_UCDP_HALF_LIFE_DAYS);
   }
-  return byRegion;
+  const rates: Record<string, number> = {};
+  for (const [code, deaths] of Object.entries(decayed)) {
+    const population = CII_POPULATION_MILLIONS[code];
+    if (population && population > 0) rates[code] = deaths / (UCDP_KERNEL_YEARS * population);
+  }
+  return rates;
+}
+
+/** 0..CII_UCDP_CONFLICT_CAP from a rate in deaths per million people per year. */
+export function ucdpViolenceScore(rate: number): number {
+  if (!(rate > 0)) return 0;
+  return CII_UCDP_CONFLICT_CAP * Math.min(
+    1,
+    Math.log1p(rate / CII_UCDP_RATE_KNEE) / Math.log1p(CII_UCDP_RATE_SATURATION / CII_UCDP_RATE_KNEE),
+  );
+}
+
+/** What the cached UCDP rows cover, against the window the term assumes (P9). */
+export interface CiiUcdpWindow {
+  assumedDays: number;
+  /** Age of the oldest and newest in-window rows, in whole days; null when there are none. */
+  oldestAgeDays: number | null;
+  newestAgeDays: number | null;
+  /** Calendar months (UTC) between those rows holding under CII_UCDP_MIN_MONTH_SHARE of the median non-empty month's daily events. */
+  gapMonths: string[];
+  /** The writers' own verdict on their fetch (`window.complete`), null when the payload has none. */
+  writerComplete: boolean | null;
+  /** Months after the newest data whose release UCDP has not published yet (the writers' frontier): reported only. */
+  upstreamGapMonths: string[];
+  honest: boolean;
+}
+
+/**
+ * Read-time window check. Events per day come from the writers' global day
+ * totals when the payload has them (every country, so the check is not
+ * fooled by a trimmed copy), else from the rows themselves.
+ */
+export function assessUcdpWindow(
+  rows: CiiUcdpRow[] | null | undefined,
+  dailyTotals: Record<string, number> | null | undefined,
+  nowMs: number,
+  writerComplete: boolean | null = null,
+  upstreamGapMonths: readonly string[] = [],
+): CiiUcdpWindow {
+  const perDay = new Map<number, number>();
+  const add = (day: number, events: number) => perDay.set(day, (perDay.get(day) ?? 0) + events);
+  if (dailyTotals) {
+    for (const [day, events] of Object.entries(dailyTotals)) {
+      const dayIndex = Number(day);
+      if (ucdpRowAgeDays({ dateStart: dayIndex * CII_DAY_MS, deathsBest: 0 }, nowMs) !== null && events > 0) add(dayIndex, events);
+    }
+  } else {
+    for (const row of rows ?? []) {
+      if (ucdpRowAgeDays(row, nowMs) === null) continue;
+      add(Math.floor(Number(row.dateStart) / CII_DAY_MS), Math.max(1, safeNonNegativeNum(row.events)));
+    }
+  }
+  const days = [...perDay.keys()].sort((a, b) => a - b);
+  const nowDay = Math.floor(nowMs / CII_DAY_MS);
+  if (!days.length) return { assumedDays: CII_UCDP_WINDOW_DAYS, oldestAgeDays: null, newestAgeDays: null, gapMonths: [], writerComplete, upstreamGapMonths: [...upstreamGapMonths], honest: false };
+  const first = days[0]!;
+  const last = days[days.length - 1]!;
+  // Events per covered day for each calendar month between the first and last day.
+  const months = new Map<string, { events: number; days: number }>();
+  for (let day = first; day <= last; day++) {
+    const month = new Date(day * CII_DAY_MS).toISOString().slice(0, 7);
+    const m = months.get(month) ?? { events: 0, days: 0 };
+    m.events += perDay.get(day) ?? 0;
+    m.days += 1;
+    months.set(month, m);
+  }
+  // The median over months that hold events: missing months must not set the bar they are measured against.
+  const rates = [...months.values()].map((m) => m.events / m.days).filter((r) => r > 0).sort((a, b) => a - b);
+  const median = rates[Math.floor(rates.length / 2)]!;
+  // No month inside the rows is exempt, whatever the payload says: a release
+  // UCDP has not published can only follow the newest one with data.
+  const gapMonths = [...months.entries()]
+    .filter(([, m]) => m.events / m.days < CII_UCDP_MIN_MONTH_SHARE * median)
+    .map(([month]) => month);
+  const oldestAgeDays = nowDay - first;
+  const newestAgeDays = nowDay - last;
+  return {
+    assumedDays: CII_UCDP_WINDOW_DAYS,
+    oldestAgeDays,
+    newestAgeDays,
+    gapMonths,
+    writerComplete,
+    upstreamGapMonths: [...upstreamGapMonths],
+    honest: gapMonths.length === 0
+      && writerComplete !== false
+      && newestAgeDays <= CII_UCDP_MAX_LAG_DAYS
+      && oldestAgeDays >= CII_UCDP_WINDOW_DAYS - 31,
+  };
 }
 
 interface CountrySignals {
@@ -652,8 +779,8 @@ interface CountrySignals {
   /** GDELT term, 0..CII_GDELT_ESCALATION_CAP: max(escalation over the country's own norm, sustained level). */
   gdeltConflictEscalation: number;
   gdeltUnrestEscalation: number;
-  ucdpWar: boolean;
-  ucdpMinor: boolean;
+  /** UCDP organised violence, decay-weighted deaths per million people per year. */
+  ucdpRate: number;
   /** Raw outage points before the cap of 50. */
   outagePoints: number;
   /** Decayed strike pressure P (v12), 0 when the country has not been struck. */
@@ -679,7 +806,7 @@ function emptySignals(): CountrySignals {
     protestFatalities: 0, conflictFatalities: 0,
     gdeltConflictEscalation: 0,
     gdeltUnrestEscalation: 0,
-    ucdpWar: false, ucdpMinor: false,
+    ucdpRate: 0,
     outagePoints: 0,
     strikePressure: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
@@ -1035,7 +1162,13 @@ export function strikePressureBoost(pressure: number): number {
 }
 
 export interface AuxiliarySources {
-  ucdpEvents: any[];
+  ucdpEvents: CiiUcdpRow[];
+  /** Events per UTC day across every country, from the UCDP writers; null for a payload without them. */
+  ucdpDailyTotals?: Record<string, number> | null;
+  /** The UCDP writers' `window.complete`; null for a payload without it. */
+  ucdpWriterComplete?: boolean | null;
+  /** Months after the newest data whose UCDP release is not published yet (`window.upstreamGapMonths`). */
+  ucdpUpstreamGapMonths?: string[];
   outages: any[];
   iranEvents: any[];
   orefData: { activeAlertCount: number; historyCount24h: number } | null;
@@ -1375,8 +1508,12 @@ export function buildCiiAuxiliarySources(
       ? (threatSummaryRaw as any).byCountry
       : null;
 
+  const ucdp = parseUcdpCache(ucdpRaw);
   return {
-    ucdpEvents: arr(ucdpRaw, 'events'),
+    ucdpEvents: ucdp.rows,
+    ucdpDailyTotals: ucdp.dailyTotals,
+    ucdpWriterComplete: ucdp.writerComplete,
+    ucdpUpstreamGapMonths: ucdp.upstreamGapMonths,
     outages,
     iranEvents: arr(iranRaw, 'events'),
     orefData,
@@ -1426,6 +1563,8 @@ export interface CiiInputReport {
   excluded?: Record<string, CiiInputExclusion>;
   state: CiiInputState;
   quietSince?: number;
+  /** Read-time UCDP window check (P9). */
+  window?: CiiUcdpWindow;
   snapshotAt?: number;
   filled?: string[];
   sourcesMissing?: string[];
@@ -1444,6 +1583,14 @@ export interface CiiInputExclusion {
 export type CiiInputExclusions = Partial<Record<CiiInputId, Record<string, CiiInputExclusion>>>;
 const CII_EXCLUSION_SAMPLES = 5;
 const CII_EXCLUSION_TEXT_MAX = 200;
+/** Read-time window checks, by input: what the cache covers against what the term assumes (P9). */
+export type CiiInputWindows = Partial<Record<CiiInputId, CiiUcdpWindow>>;
+
+export function assessCiiInputWindows(aux: AuxiliarySources, nowMs: number): CiiInputWindows {
+  return aux.inputReads?.ucdp === 'present'
+    ? { ucdp: assessUcdpWindow(aux.ucdpEvents, aux.ucdpDailyTotals, nowMs, aux.ucdpWriterComplete ?? null, aux.ucdpUpstreamGapMonths ?? []) }
+    : {};
+}
 
 const CII_INPUT_AUX_FIELD: Record<Exclude<CiiInputId, 'acled'>, keyof AuxiliarySources> = {
   ucdp: 'ucdpEvents',
@@ -1472,7 +1619,7 @@ const CII_INPUT_REJECTED_AS_NULL = new Set<CiiInputId>([
  * build. This reuses computeCIIScores as-is, so it follows any formula change
  * and measures exactly "zero across all Tier-1 countries". GDELT is graded on
  * what it contributes alone, even where ACLED rows outscore it.
- * An input whose whole effect lands under a score floor (UCDP, advisory)
+ * An input whose whole effect lands under a score floor (advisory)
  * reads quiet; the quiet budgets in api/_cii-input-health.js are set only for
  * feeds that move unfloored countries every day.
  */
@@ -1566,8 +1713,9 @@ export interface CiiInputReportOptions {
   /** ciiInputDetails output. */
   details?: Partial<Record<CiiInputId, CiiInputDetail>>;
   exclusions?: CiiInputExclusions;
+  windows?: CiiInputWindows;
 }
-const CII_INPUT_REPORT_OPTION_KEYS = new Set<string>(['details', 'exclusions']);
+const CII_INPUT_REPORT_OPTION_KEYS = new Set<string>(['details', 'exclusions', 'windows']);
 
 /**
  * Attaches `quietSince`, carried from the previous report while the input
@@ -1592,7 +1740,7 @@ export function withCiiInputQuietClocks(
   const reports = {} as Record<CiiInputId, CiiInputReport>;
   for (const id of CII_HEALTH_INPUT_IDS) {
     const state = states[id];
-    const detail = { ...details[id], ...(options.exclusions?.[id] ? { excluded: options.exclusions[id] } : {}) };
+    const detail = { ...details[id], ...(options.windows?.[id] ? { window: options.windows[id] } : {}), ...(options.exclusions?.[id] ? { excluded: options.exclusions[id] } : {}) };
     if (state !== 'quiet') {
       reports[id] = { state, ...detail };
       continue;
@@ -1610,7 +1758,7 @@ export interface CiiCountryTerms {
   /** The parts of each component, before its cap and rounding. */
   parts: {
     unrestBase: number; unrestFatalityBoost: number; unrestSeverityBoost: number; outageBoost: number; gdeltUnrest: number;
-    acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number;
+    acledScore: number; fatalityScore: number; civilianBoost: number; orefBoost: number; gdeltConflict: number; ucdpViolence: number;
     newsScore: number; threatSummaryScore: number;
   };
   eventScore: number;
@@ -1620,10 +1768,12 @@ export interface CiiCountryTerms {
   };
   /** baseline and eventScore weighted, plus every boost: the score before floors, rounding and the cap. */
   blended: number;
-  floors: { ucdp: number; advisory: number; strike: number };
+  floors: { advisory: number; strike: number };
   /** The largest floor candidate; it binds when it exceeds the rounded blend. */
   floor: number;
   strikePressure: number;
+  /** UCDP organised violence, decay-weighted deaths per million people per year. */
+  ucdpRate: number;
   combinedScore: number;
 }
 
@@ -1703,14 +1853,9 @@ export function computeCIIScores(
     );
   }
 
-  // --- UCDP ---
-  // Per-country aggregate classification (deaths + event count over a 2-year trailing
-  // window), matching the frontend `deriveUcdpClassifications`. The cached feed has no
-  // `intensity_level`/`type_of_violence` field — see deriveUcdpIntensityByRegion above.
-  for (const [code, intensity] of deriveUcdpIntensityByRegion(aux.ucdpEvents, computedAt)) {
-    if (!data[code]) continue;
-    if (intensity === 'war') data[code].ucdpWar = true;
-    else data[code].ucdpMinor = true;
+  // --- UCDP organised violence (v15): decayed deaths per capita, scored inside Conflict ---
+  for (const [code, rate] of Object.entries(ucdpViolenceRates(aux.ucdpEvents, computedAt))) {
+    if (data[code]) data[code].ucdpRate = rate;
   }
 
   // --- Outages (string enum severity) ---
@@ -1827,9 +1972,13 @@ export function computeCIIScores(
     const orefBoost = (code === 'IL' && d.orefAlertCount > 0)
       ? 25 + Math.min(25, d.orefAlertCount * 5)
       : 0;
+    const ucdpViolence = ucdpViolenceScore(d.ucdpRate);
+    // One violence family: ACLED, GDELT conflict coverage and UCDP deaths report
+    // the same war, so they merge by max, never by sum (brief, P6). OREF rocket
+    // alerts are a separate signal and add on top.
     const conflict = Math.min(
       100,
-      Math.max(acledScore + fatalityScore + civilianBoost, d.gdeltConflictEscalation) + orefBoost,
+      Math.max(acledScore + fatalityScore + civilianBoost, d.gdeltConflictEscalation, ucdpViolence) + orefBoost,
     );
 
     // --- Security score: no inputs since v15 ---
@@ -1893,12 +2042,11 @@ export function computeCIIScores(
       // Strike pressure (v12), capped; replaces the 72h strikeBoost inside Conflict.
       + strikePressureBoost(d.strikePressure);
 
-    // --- Floors ---
-    const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);
+    // --- Floors (v15 removed the UCDP class floors: UCDP scores inside Conflict) ---
     const advisoryFloor = d.advisoryLevel === 'do-not-travel' ? 60
       : d.advisoryLevel === 'reconsider' ? 50 : 0;
     const strikeFloor = Math.round(strikePressureFloor(d.strikePressure));
-    const floor = Math.max(ucdpFloor, advisoryFloor, strikeFloor);
+    const floor = Math.max(advisoryFloor, strikeFloor);
 
     const composite = Math.min(100, Math.max(floor, Math.round(blended)));
     const { dynamicScore, trend } = deriveCiiTrendDelta(composite, priorByRegion.get(code), computedAt);
@@ -1908,7 +2056,7 @@ export function computeCIIScores(
         components: { unrest, conflict, security, information },
         parts: {
           unrestBase, unrestFatalityBoost, unrestSeverityBoost, outageBoost, gdeltUnrest: d.gdeltUnrestEscalation,
-          acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation,
+          acledScore, fatalityScore, civilianBoost, orefBoost, gdeltConflict: d.gdeltConflictEscalation, ucdpViolence,
           newsScore: d.newsScore, threatSummaryScore: d.threatSummaryScore,
         },
         eventScore,
@@ -1918,9 +2066,10 @@ export function computeCIIScores(
           strikePressure: strikePressureBoost(d.strikePressure),
         },
         blended,
-        floors: { ucdp: ucdpFloor, advisory: advisoryFloor, strike: strikeFloor },
+        floors: { advisory: advisoryFloor, strike: strikeFloor },
         floor,
         strikePressure: d.strikePressure,
+        ucdpRate: d.ucdpRate,
         combinedScore: composite,
       };
     }
@@ -2078,12 +2227,12 @@ export function countCiiRealtimeSignalDensityCoverage(
   // Conflict family: satisfied by EITHER the ACLED API path OR the UCDP aux feed.
   // ACLED is only one of two live conflict sources both consumed by computeCIIScores —
   // when the ACLED API path returns empty (rate-limit/auth/quiet window), the rich
-  // `conflict:ucdp-events:v1` feed (15+ Tier-1 countries) still drives the score floor,
+  // `conflict:ucdp-events:v1` feed (15+ Tier-1 countries) still drives the Conflict term,
   // so the conflict signal is genuinely alive and must count toward health coverage.
   // Requiring ACLED specifically here flipped /api/health.riskScores to COVERAGE_PARTIAL
   // whenever ACLED was thin even though UCDP was fully healthy.
   const acledCoversTier1 = (acled ?? []).some((ev) => isTier1CountryCode(normalizeCountryName(ev.country)));
-  const ucdpCoversTier1 = deriveUcdpIntensityByRegion(aux?.ucdpEvents, nowMs).size > 0;
+  const ucdpCoversTier1 = Object.values(ucdpViolenceRates(aux?.ucdpEvents, nowMs)).some((rate) => ucdpViolenceScore(rate) > 0);
   // GDELT scores every country, with or without ACLED rows, as in computeCIIScores.
   const gdeltCoversTier1 = Object.keys(aux?.gdeltCountryEvents?.byCountry ?? {}).some(isTier1CountryCode);
   if (acledCoversTier1 || ucdpCoversTier1 || gdeltCoversTier1) {
@@ -2366,6 +2515,7 @@ async function recordRejectedRiskScoresBuild(err: RiskInputsUnavailableError): P
 /** What a build hands to persistence besides the response. */
 interface RiskScoresBuildSide {
   realtimeSignalDensityCoverageCount: number;
+  ciiInputWindows: CiiInputWindows;
   ciiInputExclusions: CiiInputExclusions;
   ciiInputs: Record<CiiInputId, CiiInputState> | null;
   ciiInputDetails: Partial<Record<CiiInputId, CiiInputDetail>>;
@@ -2423,6 +2573,7 @@ async function buildRiskScoresPayload(): Promise<RiskScoresBuildSide & { respons
     response: { ciiScores, strategicRisks, degraded: false, stale: false },
     realtimeSignalDensityCoverageCount,
     ciiInputs: assessCiiInputAvailability(acled, aux, nowMs),
+    ciiInputWindows: assessCiiInputWindows(aux, nowMs),
     ciiInputExclusions: ciiInputExclusions(aux, nowMs),
     ciiInputDetails: ciiInputDetails(aux),
     advisoriesLastGood: ciiAdvisoryLastGoodSnapshot(aux, nowMs),
@@ -2442,7 +2593,7 @@ async function persistFreshRiskScorePayload(
   // restarts the clocks, which can only delay a quiet-too-long verdict.
   const previousMeta = ciiInputs ? await getCachedJson(RISK_SEED_META_KEY).catch(() => null) : null;
   const inputs = ciiInputs
-    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { details: side.ciiInputDetails, exclusions: side.ciiInputExclusions })
+    ? withCiiInputQuietClocks(ciiInputs, (previousMeta as { inputs?: unknown } | null)?.inputs, fetchedAt, { details: side.ciiInputDetails, exclusions: side.ciiInputExclusions, windows: side.ciiInputWindows })
     : undefined;
   const writes: Array<Promise<unknown>> = [
     setCachedJson(RISK_STALE_CACHE_KEY, freshResult, RISK_STALE_TTL),
@@ -2473,7 +2624,7 @@ export async function getRiskScores(
 ): Promise<GetRiskScoresResponse> {
   try {
     let side: RiskScoresBuildSide = {
-      realtimeSignalDensityCoverageCount: 0, ciiInputs: null, ciiInputDetails: {}, ciiInputExclusions: {}, advisoriesLastGood: null,
+      realtimeSignalDensityCoverageCount: 0, ciiInputWindows: {}, ciiInputs: null, ciiInputDetails: {}, ciiInputExclusions: {}, advisoriesLastGood: null,
     };
     const { data: result, source, leader } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,

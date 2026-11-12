@@ -317,7 +317,7 @@ describe('CII docs drift guards', () => {
     assert.doesNotMatch(section, /Outside target\./);
   });
 
-  it('CII public docs publish UCDP newest-release behavior and classifier thresholds', () => {
+  it('CII public docs publish UCDP newest-release behavior and the continuous UCDP term', () => {
     const methodologyDoc = readFileSync(resolve(root, 'docs/methodology/cii-risk-scores.mdx'), 'utf8');
     const countryDoc = readFileSync(resolve(root, 'docs/country-instability-index.mdx'), 'utf8');
     const algorithmsDoc = readFileSync(resolve(root, 'docs', 'algorithms.mdx'), 'utf8');
@@ -345,7 +345,7 @@ describe('CII docs drift guards', () => {
     );
     assert.match(
       countryDoc,
-      /`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or\s+outside the 2-year scoring window/i,
+      /`COVERAGE_PARTIAL` only when ACLED is dark and UCDP is also absent, stale, or\s+outside the 365-day scoring window/i,
       'country-instability-index doc must not imply ACLED auth missing alone causes COVERAGE_PARTIAL',
     );
     assert.match(
@@ -357,16 +357,10 @@ describe('CII docs drift guards', () => {
       { label: 'country-instability-index doc', text: countryFloors },
       { label: 'algorithms doc', text: algorithmsDoc },
     ]) {
-      assert.match(
-        surface.text,
-        /2-year[\s\S]{0,240}(?:total\s+deaths (?:are\s+)?greater than 1000|total\s+deaths > 1000)[\s\S]{0,120}(?:event\s+count (?:is\s+)?greater than 100|event\s+count > 100)/i,
-        `${surface.label} must publish the UCDP war thresholds`,
-      );
-      assert.match(
-        surface.text,
-        /(?:minor conflict|UCDP \*\*minor conflict\*\*)[\s\S]{0,160}(?:event\s+count (?:is\s+)?greater than 10|event\s+count > 10)/i,
-        `${surface.label} must publish the UCDP minor-conflict threshold`,
-      );
+      // v15: UCDP is a continuous per-capita term inside Conflict, not a class floor.
+      assert.match(surface.text, /365[\s\S]{0,400}half-life[\s\S]{0,400}per million/i, `${surface.label} must publish the UCDP term's window, half-life and per-capita scale`);
+      assert.match(surface.text, /World Bank/, `${surface.label} must name the World Bank intensity thresholds the term is anchored on`);
+      assert.doesNotMatch(surface.text, /UCDP active war pins|\| UCDP active war \| 70 \||\| UCDP minor conflict \| 50 \|/, `${surface.label} must not publish the removed UCDP floors`);
     }
   });
 

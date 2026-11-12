@@ -58,6 +58,12 @@ import {
   CII_STRIKE_SEVERITY_WEIGHTS,
   CII_STRIKE_TALLY_VERSION,
   CII_STRIKE_WINDOW_DAYS,
+  CII_POPULATION_MILLIONS,
+  CII_UCDP_CONFLICT_CAP,
+  CII_UCDP_HALF_LIFE_DAYS,
+  CII_UCDP_RATE_KNEE,
+  CII_UCDP_RATE_SATURATION,
+  CII_UCDP_WINDOW_DAYS,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
@@ -137,7 +143,7 @@ const CII_PROTOCOL_SNAPSHOT_HASH_BY_VERSION: Record<string, string> = {
   // Each Stage B PR regenerates this entry, and only this one, with the command in
   // docs/methodology/cii-change-brief.md section 3, and says so in its PR body. It
   // is frozen as released when v15 ships.
-  v15: 'bb47dfc1e3975ce5c5e6152f69202a33532b78ad5dd4fb64227f645b56737ce6',
+  v15: '6ace5cea9fa8c8d17cf9fc5d511dfe3a2fd0c6b4b862afd0c50c1de3675296a1',
 };
 
 // The released entries above are a record. This digest of every entry except
@@ -147,9 +153,9 @@ const CII_RELEASED_PROTOCOL_HASHES_SHA256 = '82d6b1e150e452adad1055cf56fa964e204
 const CII_VERSION_CLAIM = readCiiVersionClaim();
 const CII_SCORED_VERSION = ciiScoredVersion(CII_VERSION_CLAIM);
 
-const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_CLASSIFICATION_WINDOW_MS'];
+const GUARDED_TOP_LEVEL_SCORE_CONST_NAMES = ['NEWS_THREAT_WEIGHT', 'UCDP_KERNEL_YEARS'];
 const GUARDED_SCORE_FUNCTION_NAMES = [
-  'deriveUcdpIntensityByRegion', 'computeCIIScores',
+  'ucdpViolenceRates', 'ucdpViolenceScore', 'computeCIIScores',
   'gdeltStrikeDays', 'strikePressure', 'strikePressureFloor', 'strikePressureBoost',
   'strikeEventCountry', 'isInterceptStrikeEvent', 'confirmedStrikeDaysFromEvents', 'confirmedStrikeDaysFromSeed',
   'isScoredOutage', 'outageVerdict',
@@ -283,9 +289,6 @@ interface NumericConstSnapshot {
   value: number;
 }
 
-interface ScoreHelperInputSnapshot {
-  ucdpClassificationWindowMs: NumericConstSnapshot;
-}
 
 function requireTopLevelConstDeclaration(sourceFile: ts.SourceFile, constName: string): ts.VariableDeclaration {
   const declaration = findTopLevelConstDeclaration(sourceFile, constName);
@@ -436,27 +439,6 @@ function extractNumericConstSnapshot(sourceFile: ts.SourceFile, constName: strin
   };
 }
 
-function extractTopLevelConstLiteralSnapshot(
-  sourceFile: ts.SourceFile,
-  constName: string,
-): ScoreHelperSnapshotValue {
-  const declaration = requireTopLevelConstDeclaration(sourceFile, constName);
-  return literalExpressionSnapshot(declaration.initializer!, sourceFile);
-}
-
-function extractScoreHelperInputSnapshot(source: string): ScoreHelperInputSnapshot {
-  const sourceFile = ts.createSourceFile(
-    'get-risk-scores.ts',
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-
-  return {
-    ucdpClassificationWindowMs: extractNumericConstSnapshot(sourceFile, 'UCDP_CLASSIFICATION_WINDOW_MS'),
-  };
-}
 
 interface ScoreFormulaLiteral {
   region: string;
@@ -650,8 +632,8 @@ function acledEvent(country: string, type: string, fatalities = 0) {
 
 // Mirror of the real `conflict:ucdp-events:v1` row shape (seed-ucdp-events.mjs /
 // ais-relay.cjs): { country, violenceType, deathsBest, dateStart }. There is NO
-// `intensity_level`/`type_of_violence` field — the scorer classifies per-country
-// using deaths + event count over a 2-year window (deriveUcdpClassifications parity).
+// `intensity_level`/`type_of_violence` field. Since v15 the scorer turns deaths
+// over the trailing window into a decayed per-capita term inside Conflict.
 function ucdpEvent(country: string, deathsBest = 1, dateStart = Date.now()) {
   return {
     country,
@@ -661,8 +643,8 @@ function ucdpEvent(country: string, deathsBest = 1, dateStart = Date.now()) {
   };
 }
 
-// `war` = totalDeaths > 1000 OR eventCount > 100. A single high-death event is the
-// simplest war fixture; >10 low-death events is the simplest `minor` fixture.
+// The v8-v14 class fixtures: one high-death event ("war") and eleven one-death
+// events ("minor"). v15 has no classes; they remain as small and large inputs.
 function ucdpWarEvents(country: string) {
   return [ucdpEvent(country, 1500)];
 }
@@ -693,7 +675,7 @@ function countScoredRealtimeComponents(scores: ReturnType<typeof computeCIIScore
 
 const TREND_TEST_NOW = 1_700_000_000_000;
 const CII_TEST_DAY_MS = 24 * 60 * 60 * 1000;
-const UCDP_TEST_WINDOW_MS = 2 * 365 * CII_TEST_DAY_MS;
+const UCDP_TEST_WINDOW_MS = CII_UCDP_WINDOW_DAYS * CII_TEST_DAY_MS;
 
 function priorCiiScore(region: string, combinedScore: number, computedAt = TREND_TEST_NOW - CII_TREND_TARGET_AGE_MS) {
   return {
@@ -890,43 +872,45 @@ describe('CII scoring', () => {
     assert.ok(scoreFor(scores, 'QA'), 'QA missing');
   });
 
-  it('UCDP war floor: composite >= 70', () => {
+  it('UCDP organised violence raises Conflict continuously, with no floor (v15)', () => {
+    const quiet: Record<string, any> = {};
+    computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }, quiet);
+    const terms: Record<string, any> = {};
     const aux = emptyAux();
-    // Real feed shape: high-death state-based events → war (totalDeaths > 1000).
-    aux.ucdpEvents = ucdpWarEvents('Ukraine');
-    const scores = computeCIIScores([], aux);
-    const ua = scoreFor(scores, 'UA')!;
-    assert.ok(ua.combinedScore >= 70, `UA score ${ua.combinedScore} should be >= 70 with UCDP war`);
+    // Real feed shape: one 1,500-death state-based event yesterday.
+    aux.ucdpEvents = [ucdpEvent('Ukraine', 1500, TREND_TEST_NOW - CII_TEST_DAY_MS)];
+    computeCIIScores([], aux, { nowMs: TREND_TEST_NOW }, terms);
+    assert.ok(terms.UA.components.conflict > quiet.UA.components.conflict,
+      `UCDP deaths must raise UA's Conflict component (${quiet.UA.components.conflict} -> ${terms.UA.components.conflict})`);
+    // The blend, not the final score: the advisory fallback floor (60) can still hold UA's final.
+    assert.ok(terms.UA.blended > quiet.UA.blended, `UA's blend must rise with UCDP deaths, got ${quiet.UA.blended} -> ${terms.UA.blended}`);
+    assert.ok(!('ucdp' in terms.UA.floors), 'no UCDP floor exists');
   });
 
-  it('UCDP minor conflict floor: composite >= 50', () => {
+  it('eleven one-death UCDP events no longer pin a 50 floor: the old minor class is gone (v15)', () => {
+    const terms: Record<string, any> = {};
     const aux = emptyAux();
-    // Real feed shape: > 10 low-death events but below the war thresholds → minor.
-    aux.ucdpEvents = ucdpMinorEvents('Pakistan');
-    const scores = computeCIIScores([], aux);
-    const pk = scoreFor(scores, 'PK')!;
-    assert.ok(pk.combinedScore >= 50, `PK score ${pk.combinedScore} should be >= 50 with UCDP minor`);
+    aux.ucdpEvents = ucdpMinorEvents('Brazil');
+    computeCIIScores([], aux, { nowMs: Date.now() }, terms);
+    assert.ok(!('ucdp' in terms.BR.floors), 'no UCDP floor exists');
+    assert.ok(terms.BR.parts.ucdpViolence > 0 && terms.BR.parts.ucdpViolence < 5,
+      `eleven deaths in Brazil a year are a small per-capita term, got ${terms.BR.parts.ucdpViolence}`);
   });
 
-  it('UCDP regression: feed without intensity_level/type_of_violence still classifies (real shape)', () => {
-    // The cached feed has NO intensity_level/type_of_violence — the old scorer read
-    // those non-existent keys and never applied a UCDP floor. Guard the field names.
+  it('UCDP regression: feed without intensity_level/type_of_violence still scores (real shape)', () => {
+    // The cached feed has NO intensity_level/type_of_violence — the pre-v8 scorer read
+    // those non-existent keys and never scored UCDP. Guard the field names.
+    const terms: Record<string, any> = {};
     const aux = emptyAux();
     aux.ucdpEvents = [
       { country: 'Ukraine', violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', deathsBest: 2000, dateStart: Date.now() },
     ];
-    const scores = computeCIIScores([], aux);
-    const ua = scoreFor(scores, 'UA')!;
-    assert.ok(ua.combinedScore >= 70,
-      `UA must reach the war floor from the real UCDP shape (violenceType/deathsBest), got ${ua.combinedScore}`);
-    // A handful of low-death events stays below thresholds → no floor beyond baseline/advisory.
-    const auxQuiet = emptyAux();
-    auxQuiet.ucdpEvents = [{ country: 'Brazil', violenceType: 'UCDP_VIOLENCE_TYPE_NON_STATE', deathsBest: 1, dateStart: Date.now() }];
-    const br = scoreFor(computeCIIScores([], auxQuiet), 'BR')!;
-    assert.ok(br.combinedScore < 50, `BR with a single quiet UCDP event must not reach the minor floor, got ${br.combinedScore}`);
+    computeCIIScores([], aux, { nowMs: Date.now() }, terms);
+    assert.ok(terms.UA.ucdpRate > 0 && terms.UA.parts.ucdpViolence > 0,
+      `UA must score UCDP from the real shape (violenceType/deathsBest), got rate ${terms.UA.ucdpRate}`);
   });
 
-  it('UCDP date guard ignores future and non-finite dates for conflict floors', () => {
+  it('UCDP date guard ignores future and non-finite dates', () => {
     const baseline = scoreFor(computeCIIScores([], emptyAux(), { nowMs: TREND_TEST_NOW }), 'UA')!;
     const aux = emptyAux();
     aux.ucdpEvents = [
@@ -939,21 +923,22 @@ describe('CII scoring', () => {
     assert.equal(
       ua.combinedScore,
       baseline.combinedScore,
-      `future/non-finite UCDP rows must not impose a war floor; got ${ua.combinedScore} vs baseline ${baseline.combinedScore}`,
+      `future/non-finite UCDP rows must not score; got ${ua.combinedScore} vs baseline ${baseline.combinedScore}`,
     );
-    assert.ok(ua.combinedScore < 70, `future-dated UCDP row must not trigger war floor, got ${ua.combinedScore}`);
   });
 
-  it('UCDP date guard preserves valid current and trailing-window conflict floors', () => {
-    for (const dateStart of [
-      TREND_TEST_NOW,
-      TREND_TEST_NOW - UCDP_TEST_WINDOW_MS + CII_TEST_DAY_MS,
-    ]) {
+  it('UCDP date guard keeps rows inside the trailing window and drops rows past it', () => {
+    const terms = (dateStart: number) => {
+      const sink: Record<string, any> = {};
       const aux = emptyAux();
       aux.ucdpEvents = [ucdpEvent('Ukraine', 2000, dateStart)];
-      const ua = scoreFor(computeCIIScores([], aux, { nowMs: TREND_TEST_NOW }), 'UA')!;
-      assert.ok(ua.combinedScore >= 70, `valid UCDP date ${dateStart} must still trigger war floor, got ${ua.combinedScore}`);
+      computeCIIScores([], aux, { nowMs: TREND_TEST_NOW }, sink);
+      return sink.UA;
+    };
+    for (const dateStart of [TREND_TEST_NOW, TREND_TEST_NOW - UCDP_TEST_WINDOW_MS + CII_TEST_DAY_MS]) {
+      assert.ok(terms(dateStart).ucdpRate > 0, `UCDP row at ${dateStart} is inside the window and must score`);
     }
+    assert.equal(terms(TREND_TEST_NOW - UCDP_TEST_WINDOW_MS - CII_TEST_DAY_MS).ucdpRate, 0, 'a row past the window must not score');
   });
 
   it('advisory do-not-travel floor: composite >= 60', () => {
@@ -1596,16 +1581,10 @@ describe('CII scoring', () => {
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
     const getRiskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
     const scoreFormulaLiterals = extractScoreFormulaLiterals(getRiskScoresSource);
-    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource);
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 100, 'eventCount > 100');
-    assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 10, 'eventCount > 10');
-    assert.equal(
-      scoreHelperInputs.ucdpClassificationWindowMs.value,
-      2 * 365 * 24 * 60 * 60 * 1000,
-      'UCDP classification window must remain a two-year trailing window',
-    );
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'UCDP_KERNEL_YEARS', 365, '/ 365');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'ucdpViolenceRates', 0.5, '0.5 ** (age / CII_UCDP_HALF_LIFE_DAYS)');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'ucdpViolenceRates', 1, 'Math.max(1, safeNonNegativeNum(row.events))');
+    assertFormulaLiteralCovered(scoreFormulaLiterals, 'ucdpViolenceScore', 1, 'Math.min(');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'computeCIIScores', 0.4, '(ev.daysAgo ?? 0) <= 7 ? 1.0 : 0.4');
     if (getRiskScoresSource.includes('NEWS_THREAT_WEIGHT')) {
       assertFormulaLiteralCovered(scoreFormulaLiterals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
@@ -1657,13 +1636,18 @@ describe('CII scoring', () => {
         CII_STRIKE_SEVERITY_WEIGHTS,
         CII_STRIKE_TALLY_VERSION,
         CII_STRIKE_WINDOW_DAYS,
+        CII_UCDP_WINDOW_DAYS,
+        CII_UCDP_HALF_LIFE_DAYS,
+        CII_UCDP_RATE_KNEE,
+        CII_UCDP_RATE_SATURATION,
+        CII_UCDP_CONFLICT_CAP,
+        CII_POPULATION_MILLIONS,
         STRATEGIC_RISK_POSITIONAL_DECAY,
         STRATEGIC_RISK_SCALE_FACTOR,
         STRATEGIC_RISK_SCALE_FLOOR,
         STRATEGIC_RISK_TOP_N,
       },
       scoreFormulaLiterals,
-      scoreHelperInputs,
       scoreLevelCutoffs: extractScoreLevelCutoffs(cachedRiskSource, 'getScoreLevel'),
       strikeReadersSha256: guardedFunctionSourceSha256(getRiskScoresSource, GUARDED_STRIKE_READER_NAMES),
       // Coordinate attribution: which Tier-1 country a fire, jamming hex, quake or strike scores to.
@@ -1694,7 +1678,7 @@ describe('CII scoring', () => {
 
   it('CII protocol snapshot includes guarded top-level score constants and helpers', () => {
     const literals = extractScoreFormulaLiterals(`
-      const UCDP_CLASSIFICATION_WINDOW_MS = 2 * 365 * 24 * 60 * 60 * 1000;
+      const UCDP_KERNEL_YEARS = 90 / 365;
       const NEWS_THREAT_WEIGHT: Record<string, number> = {
         critical: 4,
         high: 2,
@@ -1702,12 +1686,11 @@ describe('CII scoring', () => {
         low: 0.5,
         info: 0,
       };
-      function deriveUcdpIntensityByRegion(): string {
-        const totalDeaths = 1001;
-        const eventCount = 101;
-        if (totalDeaths > 1000 || eventCount > 100) return 'war';
-        if (eventCount > 10) return 'minor';
-        return 'none';
+      function ucdpViolenceRates(): number {
+        return 2 * 0.5 ** (3 / 4);
+      }
+      function ucdpViolenceScore(): number {
+        return Math.min(1, 7);
       }
       export function computeCIIScores(): number {
         return 1;
@@ -1746,22 +1729,13 @@ describe('CII scoring', () => {
     assertFormulaLiteralCovered(literals, 'gdeltStrikeDays', 7, 'return 7');
     assertFormulaLiteralCovered(literals, 'confirmedStrikeDaysFromSeed', 2, 'return 2');
 
-    assertFormulaLiteralCovered(literals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
+    assertFormulaLiteralCovered(literals, 'UCDP_KERNEL_YEARS', 365, '90 / 365');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 4, 'critical: 4');
     assertFormulaLiteralCovered(literals, 'NEWS_THREAT_WEIGHT', 0.5, 'low: 0.5');
-    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
-    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 100, 'eventCount > 100');
-    assertFormulaLiteralCovered(literals, 'deriveUcdpIntensityByRegion', 10, 'eventCount > 10');
+    assertFormulaLiteralCovered(literals, 'ucdpViolenceRates', 0.5, '0.5 ** (3 / 4)');
+    assertFormulaLiteralCovered(literals, 'ucdpViolenceScore', 7, 'Math.min(1, 7)');
   });
 
-  it('CII helper input snapshot resolves local literal aliases and spreads', () => {
-    const helperInputs = extractScoreHelperInputSnapshot(`
-      const TWO_YEARS_MS = (2 * 365 * 24 * 60 * 60 * 1000) as const;
-      const UCDP_CLASSIFICATION_WINDOW_MS = TWO_YEARS_MS;
-    `);
-
-    assert.equal(helperInputs.ucdpClassificationWindowMs.value, 2 * 365 * 24 * 60 * 60 * 1000);
-  });
 
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');

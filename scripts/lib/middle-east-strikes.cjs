@@ -680,7 +680,8 @@ function sameUnlistedPlace(a, b) {
   if (fewer.every((word) => more.includes(word))) return true;
   const shorter = Math.min(a.length, b.length);
   const allowed = shorter < 5 ? 0 : shorter < 10 ? 1 : 2;
-  return allowed > 0 && editDistance(a, b) <= allowed;
+  if (allowed === 0 || Math.abs(a.length - b.length) > allowed) return false;
+  return editDistance(a, b) <= allowed;
 }
 
 // Telegram reports the gazetteer could only place at a country centroid. Two
@@ -698,9 +699,14 @@ function reconcileUnlistedPlaces(candidates) {
     sides.get(side).push(c);
   }
   const replaced = new Map();
+  // Curated channels can still flood distinct, unlisted names. Bound the
+  // expensive spelling comparisons across the whole cycle, not per country.
+  // Exact aliases remain indexed; beyond the budget a new name keeps its key.
+  let comparisons = 0;
   for (const reports of sides.values()) {
     const countryKey = `${reports[0].iso2}:*`;
     const spellings = [];
+    const aliases = new Map();
     const named = [];
     const unnamed = [];
     for (const report of reports) {
@@ -711,10 +717,20 @@ function reconcileUnlistedPlaces(candidates) {
       let resolved = report;
       if (report.placeKey.startsWith(`${countryKey}:`)) {
         const slug = report.placeKey.slice(countryKey.length + 1);
-        let spelling = spellings.find((known) => sameUnlistedPlace(known, slug));
+        let spelling = aliases.get(slug);
         if (!spelling) {
-          spelling = slug;
-          spellings.push(slug);
+          if (comparisons < 20_000) {
+            spelling = spellings.find((known) => {
+              if (comparisons >= 20_000) return false;
+              comparisons++;
+              return sameUnlistedPlace(known, slug);
+            });
+          }
+          if (!spelling) {
+            spelling = slug;
+            if (spellings.length < 256) spellings.push(slug);
+          }
+          aliases.set(slug, spelling);
         }
         if (spelling !== slug) {
           resolved = { ...report, placeKey: `${countryKey}:${spelling}` };
