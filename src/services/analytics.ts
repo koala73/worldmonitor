@@ -340,6 +340,10 @@ const EVENTS = {
   'about-you-shown': true,
   'about-you-answered': true,
   'about-you-skipped': true,
+  // A digest request failed but news was still on screen (retained or saved
+  // copy, or a retry that recovered). Carries outcome, failure kind and
+  // variant only. A failure that left empty panels goes to Sentry instead.
+  'news-digest-degraded': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;

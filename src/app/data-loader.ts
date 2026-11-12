@@ -1,5 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { track } from '@/services/analytics';
 import { isPageUnloading } from '@/bootstrap/page-unload-signal';
 import { fetchUkmtoIncidents } from '@/services/ukmto-incidents';
 import { getRpcBaseUrl } from '@/services/rpc-client';
@@ -942,6 +943,14 @@ export class DataLoaderManager implements AppModule {
     const kind = classifyDigestFetchFailure(error, deadlineExpired);
     if (this.reportedDigestFailures.has(kind)) return;
     this.reportedDigestFailures.add(kind);
+    // Sentry WORLDMONITOR-1D4: only a failure that left the panels empty is an
+    // incident. Every other outcome had news on screen, so it is a rate to
+    // watch, not an issue to triage: counted in analytics instead.
+    const outcome = digestFailureOutcome(fallback, retry);
+    if (outcome !== 'empty') {
+      track('news-digest-degraded', { outcome, failure: kind, variant: SITE_VARIANT });
+      return;
+    }
     enqueueSentryCall((s) => s.captureMessage('News digest fetch failed', {
       level: 'warning',
       tags: {
@@ -5526,6 +5535,19 @@ export function classifyDigestFetchFailure(error: unknown, deadlineExpired = fal
   if (message === 'digest returned 0 categories') return 'empty-body';
   if (error instanceof TypeError) return 'network';
   return 'other';
+}
+
+/**
+ * What the user was left with after a failed digest request. `empty` is the
+ * only outcome with no news on screen: no retained or saved copy, and no retry
+ * that recovered.
+ */
+export function digestFailureOutcome(
+  fallback: 'retained' | 'saved' | 'none',
+  retry: 'none' | 'recovered' | 'failed',
+): 'retained' | 'saved' | 'recovered' | 'empty' {
+  if (fallback !== 'none') return fallback;
+  return retry === 'recovered' ? 'recovered' : 'empty';
 }
 
 /**
