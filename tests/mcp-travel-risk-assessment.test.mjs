@@ -753,6 +753,20 @@ describe('review follow-ups (#10505)', () => {
     assert.doesNotMatch(markdown, /example\.com\/a/);
   });
 
+  it('strips hidden Unicode tag characters and other invisible carriers from text and links', () => {
+    const hidden = [0xe0041, 0xe0020, 0xe007f, 0xe0100, 0xfe0f, 0xad, 0x34f, 0x180e].map((cp) => String.fromCodePoint(cp)).join('');
+    const sources = fullSources();
+    sources.feeds.unrest = ok({ events: [
+      { title: `Road${hidden} closed`, city: `Bang${hidden}kok`, country: 'Thailand', occurredAt: NOW - 2 * DAY, sources: [`Post${hidden}`], sourceUrls: [`https://example.com/a${hidden}b`] },
+    ] });
+    const { markdown, document } = buildTravelRiskResult(TRIP, sources, NOW);
+    const invisible = /[\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}\ufe00-\ufe0f\u00ad\u034f\u180e]/u;
+    assert.doesNotMatch(markdown, invisible);
+    assert.doesNotMatch(JSON.stringify(document), invisible);
+    assert.match(markdown, /Road closed/);
+    assert.doesNotMatch(markdown, /example\.com\/a/, 'a link carrying hidden characters is dropped');
+  });
+
   it('rejects country dates that contradict the listed travel order', () => {
     const violations = (args) => {
       try { parseTravelRiskArgs(args); } catch (error) { return error.violations; }

@@ -191,6 +191,13 @@ function str(value: unknown): string {
 }
 
 /**
+ * Characters that render as nothing or reorder text: direction and zero-width
+ * controls, the Unicode tag block and variation selectors (both can carry
+ * hidden text to a model reading the draft), soft hyphen and joiner fillers.
+ */
+const INVISIBLE_CHARS = /[\u061c\u00ad\u034f\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufe00-\ufe0f\ufeff\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
+
+/**
  * Feed text is untrusted: one line, no direction or invisible format controls,
  * no table breaks, no live Markdown links, images, emphasis, code spans or
  * HTML, bounded. Straight double quotes become single quotes, because the draft
@@ -199,7 +206,7 @@ function str(value: unknown): string {
  */
 export function cleanText(value: unknown, max = MAX_TEXT_CHARS): string {
   const flat = str(value)
-    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '')
+    .replace(INVISIBLE_CHARS, '')
     .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -232,8 +239,8 @@ function httpsUrl(value: unknown): string | null {
   const url = str(value).trim();
   // A link is shown to the analyst as well as followed: direction and invisible
   // controls could make the shown address differ from the real one.
-  const controls = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/;
-  return /^https:\/\/[^\s<>"]+$/.test(url) && url.length <= 500 && !controls.test(url) ? url : null;
+  const controls = /[\u0000-\u001f\u007f-\u009f]/;
+  return /^https:\/\/[^\s<>"]+$/.test(url) && url.length <= 500 && !controls.test(url) && url === url.replace(INVISIBLE_CHARS, '') ? url : null;
 }
 
 /** Epoch milliseconds from a number or a parseable string; null otherwise. */
