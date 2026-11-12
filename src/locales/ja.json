@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "これらの国の燃料不足はありません",
       "emptyEnergyDisruptions": "これらの国のエネルギー供給障害はありません",
       "emptyDisplacement": "これらの国の難民データはありません",
-      "emptyCorrelation": "これらの国のシグナルはありません"
+      "emptyCorrelation": "これらの国のシグナルはありません",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "ドラフト評価",
     "draftAssessmentAria": "旅行リスク評価を開く（このフォーカスで事前入力）",

@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "这些国家没有燃料短缺",
       "emptyEnergyDisruptions": "这些国家没有能源中断",
       "emptyDisplacement": "这些国家没有人口流离失所数据",
-      "emptyCorrelation": "这些国家没有信号"
+      "emptyCorrelation": "这些国家没有信号",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "草稿评估",
     "draftAssessmentAria": "打开行程评估，使用此焦点预填充",

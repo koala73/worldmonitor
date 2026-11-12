@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "이 국가들에 대한 연료 부족 기록이 없습니다",
       "emptyEnergyDisruptions": "이 국가들에 대한 에너지 중단 기록이 없습니다",
       "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
-      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다"
+      "emptyCorrelation": "이 국가들에 대한 신호가 없습니다",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "초안 평가",
     "draftAssessmentAria": "이 포커스로 미리 채워진 여행 위험 평가 열기",

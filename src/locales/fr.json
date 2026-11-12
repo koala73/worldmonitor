@@ -5084,7 +5084,11 @@
       "emptyFuelShortages": "Aucune pénurie de carburant pour ces pays",
       "emptyEnergyDisruptions": "Aucune perturbation énergétique pour ces pays",
       "emptyDisplacement": "Aucune donnée de déplacement pour ces pays",
-      "emptyCorrelation": "Aucun signal pour ces pays"
+      "emptyCorrelation": "Aucun signal pour ces pays",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "Brouillon d'évaluation",
     "draftAssessmentAria": "Ouvrir l'évaluation de voyage, préremplie avec ce focus",

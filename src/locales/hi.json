@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "इन देशों में कोई ईंधन की कमी नहीं",
       "emptyEnergyDisruptions": "इन देशों में कोई ऊर्जा व्यवधान नहीं",
       "emptyDisplacement": "इन देशों के लिए कोई विस्थापन डेटा नहीं",
-      "emptyCorrelation": "इन देशों के लिए कोई सिग्नल नहीं"
+      "emptyCorrelation": "इन देशों के लिए कोई सिग्नल नहीं",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "ड्राफ्ट मूल्यांकन",
     "draftAssessmentAria": "यात्रा आकलन खोलें, इस फोकस के साथ पूर्व-भरा हुआ",

@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Inga bränslebrist för dessa länder",
       "emptyEnergyDisruptions": "Inga energistörningar för dessa länder",
       "emptyDisplacement": "Ingen förflyttningsdata för dessa länder",
-      "emptyCorrelation": "Inga signaler för dessa länder"
+      "emptyCorrelation": "Inga signaler för dessa länder",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "Utkast till bedömning",
     "draftAssessmentAria": "Öppna resebedömningen, förifylld med denna fokusering",

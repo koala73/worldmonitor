@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Няма недостиг на гориво за тези държави",
       "emptyEnergyDisruptions": "Няма нарушения в енергоснабдяването за тези държави",
       "emptyDisplacement": "Няма данни за преселение за тези държави",
-      "emptyCorrelation": "Няма сигнали за тези държави"
+      "emptyCorrelation": "Няма сигнали за тези държави",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "Проектна оценка",
     "draftAssessmentAria": "Отворете оценката на пътуването, предварително попълнена с това внимание",

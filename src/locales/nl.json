@@ -5056,7 +5056,11 @@
       "emptyFuelShortages": "Geen brandstoftekorten voor deze landen",
       "emptyEnergyDisruptions": "Geen energieonderbrekingen voor deze landen",
       "emptyDisplacement": "Geen vluchtelingengegevens voor deze landen",
-      "emptyCorrelation": "Geen signalen voor deze landen"
+      "emptyCorrelation": "Geen signalen voor deze landen",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "Conceptbeoordeling",
     "draftAssessmentAria": "Open de risicoanalyse reisroute, vooringevuld met deze focus",

@@ -5028,7 +5028,11 @@
       "emptyFuelShortages": "ไม่มีการขาดแคลนเชื้อเพลิงสำหรับประเทศเหล่านี้",
       "emptyEnergyDisruptions": "ไม่มีการหยุดชะงักของพลังงานสำหรับประเทศเหล่านี้",
       "emptyDisplacement": "ไม่มีข้อมูลการอพยพสำหรับประเทศเหล่านี้",
-      "emptyCorrelation": "ไม่มีสัญญาณสำหรับประเทศเหล่านี้"
+      "emptyCorrelation": "ไม่มีสัญญาณสำหรับประเทศเหล่านี้",
+      "emptyExposure": "No population exposure locations for these countries",
+      "emptyExposurePartial": "No exposure locations for these countries in the available data. Full UCDP coverage is pending.",
+      "partialExposureLoading": "Loading full UCDP locations before filtering exposure. Coverage counts include unrest only.",
+      "partialExposure": "Full UCDP locations could not load. Exposure is incomplete; coverage counts include unrest only."
     },
     "draftAssessment": "ร่างการประเมิน",
     "draftAssessmentAria": "เปิดการประเมินการเดินทาง ที่เต็มไปด้วยข้อมูลนี้แล้ว",
