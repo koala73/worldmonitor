@@ -2622,7 +2622,7 @@ describe('security header guardrails', () => {
       assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
       assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
       assert.equal(
-        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting,WebMCP'),
         entry.expected.testingFlag,
         `${entry.name} testing flag`,
       );
@@ -2754,7 +2754,9 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /process\.env\.WM_WEBMCP_CHROME_EXECUTABLE_PATH/);
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
-    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    // Chrome 157 dropped the WebMCPTesting name for document.modelContext; 156 still
+    // needs it. Both must stay or one runner-image major loses the native provider.
+    assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting,WebMCP'/);
     assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
     assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
     assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
