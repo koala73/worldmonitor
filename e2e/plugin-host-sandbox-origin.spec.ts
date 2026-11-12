@@ -29,12 +29,25 @@ async function installSandboxedHost(page: Page) {
     const { pathname } = new URL(route.request().url());
     assetRequests.push(pathname);
     const file = pathname.split('/').at(-1)!;
-    if (pathname.startsWith('/plugin/assets/')) return serve(route, join(process.cwd(), 'dist/plugin/assets', file));
+    // Mirror production routing: files exist only at their canonical paths, and
+    // vercel.json rewrites /plugin/assets/boot-N/ for .js files only.
+    if (/^\/plugin\/assets\/(boot-[0-9]+\/[\w.-]+\.js|[\w.-]+)$/.test(pathname)) return serve(route, join(process.cwd(), 'dist/plugin/assets', file));
     if (pathname === '/plugin/plugin.html') return serve(route, join(process.cwd(), 'dist/plugin/plugin.html'));
-    if (pathname.startsWith('/data/')) return serve(route, join(process.cwd(), 'public/data', file));
-    if (pathname.startsWith('/textures/')) return serve(route, join(process.cwd(), 'public/textures', file));
+    if (/^\/data\/[\w.-]+$/.test(pathname)) return serve(route, join(process.cwd(), 'public/data', file));
+    if (/^\/textures\/[\w.-]+$/.test(pathname)) return serve(route, join(process.cwd(), 'public/textures', file));
     return route.fulfill({ status: 404, body: 'Not Found' });
   });
+  // Headless Chromium renders with SwiftShader, which the map treats as no GPU. Hide the renderer name so deck.gl loads.
+  await page.addInitScript(() => {
+    const getExtension = WebGL2RenderingContext.prototype.getExtension;
+    WebGL2RenderingContext.prototype.getExtension = function (name) {
+      return name === 'WEBGL_debug_renderer_info' ? null : Reflect.apply(getExtension, this, [name]);
+    };
+  });
+  await page.route(/^https:\/\/(tiles\.openfreemap\.org\/styles\/|basemaps\.cartocdn\.com\/gl\/)/, route => route.fulfill({
+    json: { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#111111' } }] },
+    headers: { 'Access-Control-Allow-Origin': '*' },
+  }));
   const shell = buildPluginShell({ origin: ASSET_ORIGIN, entry: 'plugin.html', root: 'pluginRoot' });
   await page.route(`${SANDBOX_ORIGIN}/**`, route => {
     const { pathname } = new URL(route.request().url());
@@ -79,9 +92,12 @@ async function installSandboxedHost(page: Page) {
 test('a host sandbox that blocks <base> still gets the map assets and country shapes from WorldMonitor', async ({ page }) => {
   const host = await installSandboxedHost(page);
   await expect(host.frame.locator('#panelsGrid')).toContainText(ARTICLE.title);
-  // The 2D map needs the country topology; the deck.gl map also needs its stylesheet.
-  await expect.poll(() => host.assetRequests.some(path => /^\/data\/countries/.test(path)), { timeout: 15_000 }).toBe(true);
-  await page.waitForTimeout(1000);
+  // The requested country view applies only once the country geometry has loaded.
+  await expect(host.frame.getByRole('button', { name: 'JP country brief' })).toBeVisible({ timeout: 15_000 });
+  // deck.gl renders only when its stylesheets load; without them the view falls back to the SVG map.
+  await expect(host.frame.locator('#mapContainer')).toHaveClass(/deckgl-mode/);
+  await expect(host.frame.locator('#pluginStatus')).not.toContainText(/could not be applied|unavailable/);
+  expect(host.assetRequests.filter(path => path.endsWith('.css'))).not.toEqual([]);
   expect(host.sandboxRequests, 'nothing may resolve against the sandbox origin').toEqual([]);
-  expect(host.consoleProblems.filter(text => /Failed to load map data|Unable to preload CSS|DeckGL initialization failed/.test(text))).toEqual([]);
+  expect(host.consoleProblems.filter(text => /Failed to load|Unable to preload CSS|DeckGL initialization failed|\[country-geometry\]/.test(text))).toEqual([]);
 });
