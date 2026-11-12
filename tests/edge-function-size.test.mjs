@@ -27,10 +27,27 @@ for (const [entry, budget] of [
 // `import { z }` binds zod's namespace object as a value, so esbuild keeps every
 // zod export, all locales included: about 63 KB gzip in api/mcp.ts.
 // docs/solutions/performance-issues/zod-named-z-import-bloats-edge-bundle.md
+// Type-only imports (`import type { z }`, `import { type z }`) are erased and stay allowed.
+function importsZodValueZ(source) {
+  for (const [, typeOnly, specifiers] of source.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]zod['"]/g)) {
+    if (typeOnly) continue;
+    if (specifiers.split(',').some((s) => /^z(\s+as\s+\w+)?$/.test(s.trim()))) return true;
+  }
+  return false;
+}
+
+test('the zod import guard flags value imports of z and allows type-only ones', () => {
+  for (const flagged of ["import { z } from 'zod';", 'import { ZodError, z } from "zod";', "import {\n  z as zod,\n} from 'zod';"]) {
+    assert.equal(importsZodValueZ(flagged), true, flagged);
+  }
+  for (const allowed of ["import * as z from 'zod';", "import type { z } from 'zod';", "import { type z } from 'zod';", "import { ZodError } from 'zod';", "import { zz } from 'zod';"]) {
+    assert.equal(importsZodValueZ(allowed), false, allowed);
+  }
+});
+
 test('source files import zod as a namespace, not the named z object', () => {
-  const files = execFileSync('git', ['grep', '-l', 'zod', '--', '*.ts', '*.tsx', '*.mts', '*.js', '*.mjs'], { encoding: 'utf8' })
+  const files = execFileSync('git', ['grep', '-l', 'zod', '--', '*.ts', '*.tsx', '*.mts', '*.js', '*.mjs', ':!tests/edge-function-size.test.mjs'], { encoding: 'utf8' })
     .split('\n').filter(Boolean);
-  const named = /import\s*(type\s*)?\{[^}]*\bz\b[^}]*\}\s*from\s*['"]zod['"]/;
-  const hits = files.filter((f) => named.test(readFileSync(f, 'utf8').replace(/import\s+type\s*\{[^}]*\}\s*from\s*['"]zod['"]/g, '')));
+  const hits = files.filter((f) => importsZodValueZ(readFileSync(f, 'utf8')));
   assert.deepEqual(hits, [], `use \`import * as z from 'zod'\` in: ${hits.join(', ')}`);
 });
