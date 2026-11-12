@@ -908,6 +908,20 @@ function normalizeAuthError(error: string | undefined): string {
   return error;
 }
 
+// Overloads make the challenge impossible to forget: a 401 must pass the
+// request, a 403 must not (it is an authenticated denial and carries none).
+function createGatewayAuthErrorResponse(
+  status: 403,
+  error: string | undefined,
+  corsHeaders: Record<string, string>,
+): Response;
+function createGatewayAuthErrorResponse(
+  status: 401,
+  error: string | undefined,
+  corsHeaders: Record<string, string>,
+  request: Request,
+  bearerError?: string,
+): Response;
 function createGatewayAuthErrorResponse(
   status: 401 | 403,
   error: string | undefined,
@@ -924,7 +938,10 @@ function createGatewayAuthErrorResponse(
       Link: DEPRECATION_POLICY_LINK,
       // RFC 9728 §5.1 discovery pointer (#4840): an agent learns where the
       // auth requirements live from the 401 itself. 403s are authenticated
-      // denials, so they carry no challenge.
+      // denials, so they carry no challenge. The pointer is the origin-wide
+      // resource document shared with the MCP surface: it is a discovery
+      // pointer, not a promise that an MCP-issued OAuth token authenticates
+      // REST. REST accepts an X-WorldMonitor-Key API key or a legacy session.
       ...(status === 401 && request ? { 'WWW-Authenticate': bearerChallenge(request, bearerError) } : {}),
     },
   });
