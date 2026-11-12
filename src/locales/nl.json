@@ -5057,6 +5057,11 @@
       "emptyEnergyDisruptions": "Geen energieonderbrekingen voor deze landen",
       "emptyDisplacement": "Geen vluchtelingengegevens voor deze landen",
       "emptyCorrelation": "Geen signalen voor deze landen"
-    }
+    },
+    "draftAssessment": "Conceptbeoordeling",
+    "draftAssessmentAria": "Kopieer een verzoek om uw AI-assistent een risicobeoordelingsrapport voor reizen voor deze focus op te stellen",
+    "draftCopied": "Verzoek gekopieerd. Plak het in uw AI-assistent.",
+    "draftCopiedPartial": "Verzoek gekopieerd voor de eerste {{count}} landen. Een beoordeling omvat maximaal {{max}} landen.",
+    "draftCopyFailed": "Kon het verzoek niet kopiëren."
   }
 }

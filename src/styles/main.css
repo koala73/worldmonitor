@@ -5035,6 +5035,15 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   transform: translateX(-50%) translateY(0);
 }
 
+/* The phone tab bar (z 10003, 58px) sits over a toast at the desktop offset
+   and hides half of its message; lift the toast clear of the bar. */
+@media (max-width: 768px) {
+  .toast-notification {
+    bottom: calc(58px + 12px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 32px);
+  }
+}
+
 /* Story Modal */
 .story-modal-overlay {
   position: fixed;
@@ -29537,8 +29546,13 @@ body.map-width-resizing {
 
 .focus-bar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  flex-shrink: 0;
+  /* Longer labels (German "Entwurf einer Bewertung") must wrap inside the
+     row on a narrow phone instead of pushing it wider than the screen. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .focus-bar-btn {

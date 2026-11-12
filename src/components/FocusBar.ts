@@ -7,9 +7,18 @@ import { focusCountryName, focusWindowText, formatCountryList } from './focus-fo
 export interface FocusBarCallbacks {
   onEdit(): void;
   onClear(): void;
+  /**
+   * Hand the focus to the travel risk assessment (#10451). The action shows
+   * only when both are given and `canDraftAssessment` says the plan holds the
+   * grant, read at every render so a lapsed grant removes it.
+   */
+  canDraftAssessment?(): boolean;
+  onDraftAssessment?(): void;
 }
 
 let nextId = 0;
+
+const FOCUS_ACTIONS = ['focus-bar-draft', 'focus-bar-edit', 'focus-bar-clear'] as const;
 
 /**
  * The bar at the top of a focused tab (#10453): "Focused on Thailand,
@@ -151,13 +160,28 @@ export class FocusBar {
 
     const actions = document.createElement('div');
     actions.className = 'focus-bar-actions';
+    const { canDraftAssessment, onDraftAssessment } = this.callbacks;
+    if (canDraftAssessment && onDraftAssessment && canDraftAssessment()) {
+      const draft = document.createElement('button');
+      draft.type = 'button';
+      draft.className = 'focus-bar-btn focus-bar-draft';
+      draft.textContent = t('focus.draftAssessment');
+      draft.setAttribute('aria-label', t('focus.draftAssessmentAria'));
+      draft.addEventListener('click', () => onDraftAssessment());
+      actions.append(draft);
+    }
     actions.append(edit, clear);
 
     const row = document.createElement('div');
     row.className = 'focus-bar-row';
     row.append(text, actions);
 
+    // A redraw replaces the buttons; a keyboard user who was on one of them
+    // stays on its replacement.
+    const focusedAction = FOCUS_ACTIONS.find((cls) => document.activeElement?.classList.contains(cls)
+      && this.element.contains(document.activeElement));
     this.element.replaceChildren(row, details);
+    if (focusedAction) this.element.querySelector<HTMLElement>(`.${focusedAction}`)?.focus();
     this.scheduleRefresh(resolved);
   }
 

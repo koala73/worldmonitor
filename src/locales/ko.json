@@ -5029,6 +5029,11 @@
       "emptyEnergyDisruptions": "이 국가들에 대한 에너지 중단 기록이 없습니다",
       "emptyDisplacement": "이 국가들에 대한 난민 데이터가 없습니다",
       "emptyCorrelation": "이 국가들에 대한 신호가 없습니다"
-    }
+    },
+    "draftAssessment": "초안 평가",
+    "draftAssessmentAria": "이 포커스에 대한 여행 위험 평가 초안을 작성해달라는 요청을 AI 어시스턴트에 복사합니다",
+    "draftCopied": "요청이 복사되었습니다. AI 어시스턴트에 붙여넣으세요.",
+    "draftCopiedPartial": "첫 {{count}}개 국가에 대한 요청이 복사되었습니다. 평가는 최대 {{max}}개 국가를 포함할 수 있습니다.",
+    "draftCopyFailed": "요청을 복사할 수 없습니다."
   }
 }

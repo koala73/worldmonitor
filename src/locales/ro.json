@@ -5085,6 +5085,11 @@
       "emptyEnergyDisruptions": "Nicio întrerupere de energie pentru aceste țări",
       "emptyDisplacement": "Niciun date de deplasare pentru aceste țări",
       "emptyCorrelation": "Niciun semnal pentru aceste țări"
-    }
+    },
+    "draftAssessment": "Ciornă de evaluare",
+    "draftAssessmentAria": "Copiază o cerere care cere asistentului tău AI să redacteze o evaluare a riscului de călătorie pentru acest focus",
+    "draftCopied": "Cerere copiată. Lipește-o în asistentul tău AI.",
+    "draftCopiedPartial": "Cererea a fost copiată pentru primele {{count}} țări. O evaluare acoperă cel mult {{max}} țări.",
+    "draftCopyFailed": "Nu s-a putut copia cererea."
   }
 }

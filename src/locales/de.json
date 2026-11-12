@@ -5057,6 +5057,11 @@
       "emptyEnergyDisruptions": "Keine Energieunterbrechungen für diese Länder",
       "emptyDisplacement": "Keine Fluchtlingsdaten für diese Länder",
       "emptyCorrelation": "Keine Signale für diese Länder"
-    }
+    },
+    "draftAssessment": "Entwurf einer Bewertung",
+    "draftAssessmentAria": "Kopiere eine Anfrage, um deinen KI-Assistenten zu bitten, eine Reiserisikobewertung für diesen Focus zu erstellen",
+    "draftCopied": "Anfrage kopiert. Füge sie in deinen KI-Assistenten ein.",
+    "draftCopiedPartial": "Anfrage für die ersten {{count}} Länder kopiert. Eine Bewertung umfasst höchstens {{max}} Länder.",
+    "draftCopyFailed": "Die Anfrage konnte nicht kopiert werden."
   }
 }

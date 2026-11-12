@@ -11,6 +11,7 @@ import { getPanelScopeBehaviour } from '@/config/panel-scope';
 import { scopeNoticeFor } from './panel-scope-notice';
 
 export { FocusBar } from './FocusBar';
+export { copyAssessmentRequest } from './focus-handoff';
 export { focusGateCopy, formatCountryList } from './focus-format';
 
 /** Show or hide one panel's "Not filtered" chip for the given focus. */

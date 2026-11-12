@@ -70,7 +70,7 @@ import {
   panelGateStateChanged,
   sweepLegacyDisabledCustomWidgets,
 } from '@/app/free-tier-gate';
-import { initEntitlementSubscription, destroyEntitlementSubscription, markEntitlementVerificationUnavailable, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { initEntitlementSubscription, destroyEntitlementSubscription, markEntitlementVerificationUnavailable, isEntitlementActive, hasTier, getEntitlementState, onEntitlementChange, hasTravelRiskAssessmentForAccount } from '@/services/entitlements';
 import { createEntitlementReloadController } from '@/services/entitlement-reload-controller';
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
@@ -555,6 +555,7 @@ export class PanelLayoutManager implements AppModule {
   // subscription, and the editor while it is open.
   private focusBar: FocusBar | null = null;
   private unsubscribeScope: (() => void) | null = null;
+  private unsubscribeFocusEntitlement: (() => void) | null = null;
   private focusEditor: { close(): void } | null = null;
   // Panels the active tab has a filter choice for; see planPanelFilterApply.
   private appliedPanelFilters = new Set<string>();
@@ -1029,6 +1030,8 @@ export class PanelLayoutManager implements AppModule {
     this.panelTabBar = null;
     this.unsubscribeScope?.();
     this.unsubscribeScope = null;
+    this.unsubscribeFocusEntitlement?.();
+    this.unsubscribeFocusEntitlement = null;
     this.focusEditor?.close();
     this.focusEditor = null;
     this.focusBar?.destroy();
@@ -1635,6 +1638,10 @@ export class PanelLayoutManager implements AppModule {
     this.focusBar?.destroy();
     this.focusBar = null;
     this.unsubscribeScope = subscribeScope((resolved) => this.onScopeChanged(resolved));
+    // The bar's report action follows the plan, which can hydrate or lapse
+    // after the bar is drawn.
+    this.unsubscribeFocusEntitlement?.();
+    this.unsubscribeFocusEntitlement = onEntitlementChange(() => this.focusBar?.render(getResolvedScope()));
     // Reload: the stored tab's focus becomes the active one. Not gated; see
     // restoreActiveScope.
     restoreActiveScope(this.activeTab()?.scope ?? null);
@@ -1674,6 +1681,11 @@ export class PanelLayoutManager implements AppModule {
       this.focusBar = new ui.FocusBar({
         onEdit: () => this.openFocusEditor('bar'),
         onClear: () => this.setActiveTabFocus(null),
+        canDraftAssessment: () => hasTravelRiskAssessmentForAccount(),
+        onDraftAssessment: () => {
+          const scope = getActiveScope();
+          if (scope) void ui.copyAssessmentRequest(scope);
+        },
       });
       // Above the map and the grid, so it reads as a statement about the
       // whole tab and stays visible however the grid scrolls.

@@ -5057,6 +5057,11 @@
       "emptyEnergyDisruptions": "Bu ülkeler için enerji kesintisi yok",
       "emptyDisplacement": "Bu ülkeler için yer değiştirme verisi yok",
       "emptyCorrelation": "Bu ülkeler için sinyal yok"
-    }
+    },
+    "draftAssessment": "Taslak değerlendirme",
+    "draftAssessmentAria": "Bu odak için seyahat riski değerlendirmesi hazırlamasını isteyen bir istemi AI asistanınıza kopyala",
+    "draftCopied": "İstem kopyalandı. AI asistanınıza yapıştırın.",
+    "draftCopiedPartial": "İlk {{count}} ülke için istek kopyalandı. Bir değerlendirme en fazla {{max}} ülkeyi kapsar.",
+    "draftCopyFailed": "İstem kopyalanamadı."
   }
 }

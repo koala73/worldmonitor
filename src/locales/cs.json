@@ -5113,6 +5113,11 @@
       "emptyEnergyDisruptions": "Žádné přerušení energetiky pro tyto země",
       "emptyDisplacement": "Žádné údaje o vysídlení pro tyto země",
       "emptyCorrelation": "Žádné signály pro tyto země"
-    }
+    },
+    "draftAssessment": "Návrh posouzení",
+    "draftAssessmentAria": "Zkopírujte požadavek, který požádá vašeho AI asistenta, aby vypracoval posouzení rizika cestování pro toto zaměření",
+    "draftCopied": "Požadavek zkopírován. Vložte jej do vašeho AI asistenta.",
+    "draftCopiedPartial": "Požadavek zkopírován pro prvních {{count}} zemí. Posouzení zahrnuje maximálně {{max}} zemí.",
+    "draftCopyFailed": "Nepodařilo se zkopírovat požadavek."
   }
 }
