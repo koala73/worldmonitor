@@ -1,3 +1,7 @@
+---
+noindex: true
+---
+
 # CII v15 calibration: pre-registration
 
 Registered at 2026-11-12T19:26:40.877672+00:00 before any candidate formula is evaluated in this session. The final study will be committed after U2. No scorer implementation is authorized by this document.
@@ -274,3 +278,41 @@ country, add a floor or raise an amplitude to bypass this result.
 The owner must supply the rulings. Independent methodology review is still
 required and has not occurred. U3, U16 and U10 remain separate main-targeted
 PRs; deployment and the located/37-target production captures remain gated.
+
+## Preserved GPI benchmark snapshot
+
+These are the exact GPI risk-direction scores read at 2026-11-12T19:49:07.763Z and used for every reported benchmark correlation. This appendix preserves study inputs; it is not a production fixture. All entries have source `gpi-voh` and data year 2026.
+
+| Country | GPI score | GPI rank |
+|---|---:|---:|
+| AE | 1.927 | 73 |
+| AF | 3.106 | 157 |
+| BR | 2.333 | 124 |
+| CN | 2.231 | 118 |
+| CU | 2.139 | 109 |
+| DE | 1.657 | 28 |
+| EG | 2.186 | 113 |
+| FR | 2.083 | 99 |
+| GB | 1.73 | 39 |
+| IL | 3.124 | 159 |
+| IN | 2.409 | 127 |
+| IQ | 2.662 | 140 |
+| IR | 2.759 | 144 |
+| JP | 1.489 | 10 |
+| KP | 2.845 | 147 |
+| KR | 1.839 | 57 |
+| LB | 2.435 | 131 |
+| MM | 2.911 | 151 |
+| MX | 2.65 | 139 |
+| PK | 2.919 | 152 |
+| PL | 1.615 | 22 |
+| QA | 1.676 | 31 |
+| RU | 3.367 | 163 |
+| SA | 2.067 | 95 |
+| SY | 3.067 | 155 |
+| TR | 2.605 | 136 |
+| TW | 1.751 | 42 |
+| UA | 3.184 | 160 |
+| US | 2.535 | 134 |
+| VE | 2.516 | 133 |
+| YE | 3.081 | 156 |
