@@ -2782,7 +2782,9 @@
         "high": "Hoog voor het seizoen",
         "normal": "Gebruikelijk",
         "insufficient_history": "Te korte reeks",
-        "no_recent_data": "Geen recente overkomst"
+        "no_recent_data": "Geen recente overkomst",
+        "lowInRange": "Laag in zijn bereik",
+        "highInRange": "Hoog in zijn bereik"
       },
       "vsUsual": "{{value}} t.o.v. gebruikelijk in {{month}}",
       "in12Months": "{{value}} in 12 maanden",

@@ -3145,7 +3145,9 @@
         "high": "高於同期",
         "normal": "正常",
         "insufficient_history": "歷史資料不足",
-        "no_recent_data": "近期無過境"
+        "no_recent_data": "近期無過境",
+        "lowInRange": "在其範圍內較低",
+        "highInRange": "在其範圍內較高"
       },
       "vsUsual": "較{{month}}常年 {{value}}",
       "in12Months": "12 個月 {{value}}",

@@ -3208,7 +3208,9 @@
         "high": "Высокий для сезона",
         "normal": "Обычный",
         "insufficient_history": "Мало истории",
-        "no_recent_data": "Нет свежего пролёта"
+        "no_recent_data": "Нет свежего пролёта",
+        "lowInRange": "Низкий в диапазоне",
+        "highInRange": "Высокий в диапазоне"
       },
       "vsUsual": "{{value}} от обычного ({{month}})",
       "in12Months": "{{value}} за 12 месяцев",

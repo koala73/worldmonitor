@@ -3279,6 +3279,8 @@
         "rising_fast": "Rising fast",
         "low": "Low for season",
         "high": "High for season",
+        "lowInRange": "Low in its range",
+        "highInRange": "High in its range",
         "normal": "Normal",
         "insufficient_history": "Too little history",
         "no_recent_data": "No recent pass"

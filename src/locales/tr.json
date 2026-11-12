@@ -3166,7 +3166,9 @@
         "high": "Mevsime göre yüksek",
         "normal": "Olağan",
         "insufficient_history": "Yetersiz geçmiş",
-        "no_recent_data": "Yakın tarihli geçiş yok"
+        "no_recent_data": "Yakın tarihli geçiş yok",
+        "lowInRange": "Aralığında düşük",
+        "highInRange": "Aralığında yüksek"
       },
       "vsUsual": "{{month}} olağanına göre {{value}}",
       "in12Months": "12 ayda {{value}}",
