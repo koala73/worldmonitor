@@ -88,6 +88,24 @@ Imagery is requested from NASA GIBS without a key, for exactly the visible area,
 
 The Brief view shows the AI world brief as a page: the brief paragraph and its numbered story lines on the left, and on the right what the selected line is talking about: the sources it cites (`[n]`) first, then headlines from the live digest that share its keywords and matching ranked stories. `Enter` on a line jumps to that pane; `Enter` on an item expands it, `o` opens it in the browser.
 
+### Phenomena
+
+<Frame caption="Phenomena: the headline rail with a research run streaming on the left; the global signal noise oscilloscope, energy heatmap and cross-source coincidences on the right.">
+  <img src="/images/tui/phenomena-signals.webp" alt="Phenomena view with the research log, headlines, oscilloscope and heatmap" />
+</Frame>
+
+The Phenomena view watches science the way the rest of the dashboard watches the world. It polls detector alert streams (neutrinos, gravitational waves, transients), space weather and near-Earth objects, seismic and volcanic feeds, preprint servers and journals, lab and agency newsrooms, declassified and FOIA archives, retraction records and prize announcements, all directly from your machine with no account. The right side, when nothing is playing, shows the **global signal noise**: the live instrument series stacked into one waveform, a heatmap of energy spikes per source group per hour, and **coincidences**, time-stamped overlaps between anomalies of different kinds (a solar flare a few hours before a neutrino alert, a geomagnetic storm during a quake swarm). `Enter` on a coincidence expands both events; `s` lists every tracked source and its status.
+
+**Run research** hands the freshest items to your local Claude Code (`claude`, no API key; it uses your existing login) with instructions to go deep: preprints, lab pages, instrument streams, patents, declassified archives, non-English sources, retracted or buried claims. The research is shown as it happens, faint lines of what it is searching and reading, and each verified finding materialises as a headline in the rail. `+` opens a prompter for a topic of your own. Findings are saved under `$XDG_DATA_HOME/worldmonitor/phenomena/` and build up across runs.
+
+<Frame caption="An explainer playing: 3D wireframe scenes with camera moves, a callout box pointing at the part being explained, typed narration, and the scene progress bar with speed and voice controls.">
+  <img src="/images/tui/phenomena-play.webp" alt="Phenomena explainer stage with a 3D scene, a callout box, narration and transport controls" />
+</Frame>
+
+Open a headline and the stage plays a long, cinematic **explainer** written for it: a dozen or more scenes of animated 3D wireframes (particles, jets, detectors, galaxies, the Earth, lattices, instruments) with camera zooms and orbits, callout boxes whose leader lines point at what is being explained, charts drawn from the real numbers, equation boxes, person cards, and typed narration that teaches the mechanism, the journey, the instrument, the measurement, the history and the people who found it and who helped, how it was dismissed, classified or covered up if it was, the math worked through, where it happened, and what it is for. The explainer for the headline you clicked is written first; the rest build quietly in the background. A built-in explainer, a high-energy neutrino's journey to IceCube, plays even before any research run or when `claude` is not installed.
+
+With **voice** on (`v`), the narration is read aloud through the system speech engine (`say` on macOS, `espeak-ng` on Linux), the typing slows to speaking pace, and a scene waits for the voice to finish before moving on. `[` and `]` slow down or speed up everything together: the camera, the callouts, the typing and the voice; the footer buttons do the same with the mouse. `Space` pauses, `←` `→` step scenes, `↑` `↓` scrub inside a scene, `Enter` expands the scene (full narration, callouts, equation, sources), `i` opens the whole story (people, timeline, math, uses, glossary, sources), `a` asks the explainer a follow-up question and appends the answer as new scenes, `m` shows the scene's location on the map, `S` returns to the signals, `d` deletes a headline.
+
 ### News
 
 <Frame caption="News: digest sections on the left, ranked headlines with source, importance score and age in the middle, and the selected story's scores, summary and link on the right.">
@@ -187,6 +205,8 @@ Every action works from the keyboard, and tabs, rows and buttons are clickable. 
 | `a` | Toggle animations |
 | `r` | Refresh the current view now |
 | `W` | Open the web dashboard |
+| `R`, `+` | Phenomena: run research, research a topic |
+| `Space`, `←` `→`, `[` `]`, `v` | Phenomena explainer: pause, step scenes, slower / faster, voice on/off |
 | `?` | Help |
 | `q` or `Ctrl+C` | Quit |
 
@@ -202,7 +222,7 @@ Press `t` to cycle themes, or `T` to open the picker. The picker previews each t
   <img src="/images/tui/picker.webp" alt="Theme picker overlay previewing the Matrix theme" />
 </Frame>
 
-Your theme, the animation setting and the last view are saved in `$XDG_CONFIG_HOME/worldmonitor/tui.json` (usually `~/.config/worldmonitor/tui.json`). The file never contains your API key.
+Your theme, the animation setting, the last view and the Phenomena voice and speed settings are saved in `$XDG_CONFIG_HOME/worldmonitor/tui.json` (usually `~/.config/worldmonitor/tui.json`). The file never contains your API key.
 
 ## Options
 
@@ -224,10 +244,15 @@ These flags apply to the terminal dashboard. `worldmonitor web` has its own flag
 | `WM_TUI_COLOR` | Force `truecolor` or `256` colours when detection is wrong |
 | `WM_TUI_VO` | Force mpv's terminal video output, for example `kitty` or `tct` |
 | `WM_TUI_FORCE` | Start the dashboard even when stdin or stdout is not a terminal |
+| `WM_CLAUDE_BIN` | Path to the `claude` binary the Phenomena research uses, when it is not on `PATH` |
+| `WM_PHENOMENA_MODEL` | Model alias for the Phenomena runs (default `opus`) |
+| `WM_PHENOMENA_DIR` | Where Phenomena findings and explainers are saved (default `$XDG_DATA_HOME/worldmonitor/phenomena`) |
+| `WM_VOICE` | Voice name for the explainer narration (`say -v ?` lists them on macOS) |
+| `WM_TUI_NO_VOICE` | Never start the speech engine |
 
 ## Data and privacy
 
-The dashboard reads the same public endpoints as the web dashboard: the public bootstrap tiers, the news digest, the compact health endpoint and the version endpoint. Military flights and vessel snapshots use an anonymous, short-lived session token, minted the same way the browser mints one. When `WORLDMONITOR_API_KEY` or `--api-key` is set, that key is sent instead.
+The dashboard reads the same public endpoints as the web dashboard: the public bootstrap tiers, the news digest, the compact health endpoint and the version endpoint. Military flights and vessel snapshots use an anonymous, short-lived session token, minted the same way the browser mints one. When `WORLDMONITOR_API_KEY` or `--api-key` is set, that key is sent instead. The Phenomena view reads public science feeds directly from your machine and runs research through your own local `claude`; nothing from those runs is sent to the WorldMonitor API.
 
 Data refreshes in the background: the fast tier every minute, news and health every 2 minutes, the slow tier every 5 minutes. Flights and vessels refresh only while the Air & Sea view is open. A source that fails waits before it retries, and the System view shows its error.
 

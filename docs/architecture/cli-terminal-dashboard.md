@@ -1,6 +1,6 @@
 # WorldMonitor TUI: design and implementation plan
 
-Date: 2026-10-17, map/globe, brief and expand-everything added 2026-10-18. Status: implemented (PR pending). Owner: CLI (`cli/`).
+Date: 2026-10-17, map/globe, brief and expand-everything added 2026-10-18, Phenomena (science monitor, local-Claude research, cinematic explainers, voice) added 2026-11-03. Status: implemented (PR pending). Owner: CLI (`cli/`).
 
 ## Intent
 
@@ -98,6 +98,8 @@ cli/src/tui/
   data/select.mjs       selectors that turn bootstrap and digest payloads into view models
   data/catalog.generated.json  live channels, webcams, world-map bitmap
   views/*.mjs           one module per tab (base.mjs holds shared pane behaviour)
+  science/*.mjs         Phenomena: source registry, feed hub, correlation engine, local-Claude runner, prompts, storyboard format, library, voice, demo
+  scene/*.mjs           Phenomena stage: 3D engine, scene renderer, player
   video.mjs             mpv / yt-dlp / browser fallback, http(s)-only link opener
   web.mjs               `worldmonitor web`: local dev server in a checkout, else hosted
   prefs.mjs             XDG prefs (theme, animations, last view)
@@ -160,6 +162,32 @@ Boundary rules from `AGENTS.md` hold: `cli/` imports nothing from `src/` or
   lines on the left; on the right the sources a line cites (`[n]` →
   `worldBriefSources[n-1]`) and digest headlines ranked by keyword overlap,
   each expandable and openable.
+- Phenomena: a scientific-discovery monitor. `science/sources.mjs` registers
+  keyless feeds by group (detectors, space weather and objects, earth,
+  preprints, journals, labs, press, declassified and FOIA archives, integrity,
+  prizes, AI, biology); `science/feeds.mjs` polls them while the view is open
+  (lenient RSS/Atom/RDF parser, capped bodies, per-source cadence and backoff)
+  into one event timeline plus signal series; `science/correlate.mjs` builds
+  the composite "global signal noise" waveform, the group × hour heatmap and
+  cross-source coincidences. Research runs spawn the user's local Claude Code
+  (`science/claude.mjs`: `claude -p --output-format stream-json`, no API key,
+  `CLAUDECODE` unset so it may nest) with `science/prompts.mjs`; findings
+  stream as `<finding>` blocks and are parsed incrementally
+  (`science/storyboard.mjs`), saved by `science/library.mjs` under the XDG data
+  dir, and queued for explainer builds (the clicked one first). An explainer is
+  a storyboard in the scene vocabulary (`storyboard.mjs` normalises and
+  validates; a repair prompt runs once when the writer's JSON is poor); the
+  stage renders it with `scene/engine.mjs` (orbiting perspective camera, easing,
+  deterministic generators for spheres, Earth from the land mask, galaxies,
+  particle emitters, beams, lattices, helices, tori, dishes, detector strings,
+  waves, atoms, pulses), `scene/render.mjs` (starfield, depth-cued wireframes,
+  element labels, the typed callout box with its leader line to the target and
+  dimming of everything else, chart / equation / card panels) and
+  `scene/player.mjs` (scene clock, pause, speed, scrub, loop, hold while speech
+  plays). `science/voice.mjs` reads narration through `say` or `espeak-ng`;
+  the typewriter slows to speech pace and scenes wait for the voice. A
+  hand-written demo storyboard (`science/demo.mjs`) ships as the first
+  explainer and the writer's worked example.
 - News: category tabs from the feed catalog; headline list with source, age and
   tier colour; detail pane with summary and link; `o` opens in browser.
 - Markets: indices, commodities, FX, sector heatmap, crypto, Gulf markets,
@@ -190,13 +218,17 @@ override `describe`). Map: drag pans, wheel zooms at the cursor, hover
 highlights a layer, click pins, Enter opens details, `g` globe, `s` satellite,
 `i` imagery, `d` day/night, `L` layers panel, `/` search, `z` reset, `p` pause
 rotation. `[` `]`
-change the News section or the Live region. `t` cycles theme, `T` opens the
+change the News section or the Live region, and the explainer speed in Phenomena. Phenomena: `R` research,
+`+` topic prompter, Enter plays a headline, Space pauses, `←` `→` step scenes, `↑` `↓` scrub, `v` voice, `a` ask,
+`i` story, `s` sources, `m` map, `S` signals, `d` delete, `x` cancel. `t` cycles theme, `T` opens the
 theme picker, `a` toggles animations, `r` refreshes the current view, `o` opens
 the selected link in the browser, `W` opens the web dashboard, `?` help, `q` /
 Ctrl+C quit. Live view: Enter plays in the terminal, `w` in an mpv window, `b`
 in the browser, `s` cycles stream sources.
 
 ## Verification
+
+- `cli/test/tui-phenomena.test.mjs`: feed parsing with fixtures, source parsers on real payload shapes, the correlation engine, storyboard normalisation and validation, the stream-json parser with a fake `claude`, player timing, speech arguments, the renderer over every demo scene, and the view headless (signals, playback, keys, a fake research run streaming into headlines and an explainer build).
 
 - Unit tests (node:test, `cli/test/tui-*.test.mjs`, run by `npm run test:data`):
   ANSI colour fallback, screen diff output, input decoding (keys, SGR mouse),

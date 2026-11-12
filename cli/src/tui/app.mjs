@@ -24,6 +24,8 @@ const HELP_LINES = [
   'Map: drag pan · wheel zoom · hover highlights a layer · click pins · Enter details',
   '     g globe/flat · s satellite · i imagery · d day/night · L layers · / search · z reset',
   'Brief: ↑↓ story lines · → related sources & news · Enter expand · o open',
+  'Phenomena: R research · + topic · Enter play · space pause · ←→ scenes · [ ] slower/faster · v voice on/off',
+  '           ↑↓ scrub · a ask the explainer · s story/sources · i info · m map · S signals · d delete',
   'Live view: Enter plays in the terminal (mpv), w opens an mpv window, b the browser',
 ];
 
@@ -35,9 +37,10 @@ function hotkeyFor(i) {
 }
 
 export class App {
-  constructor({ store, catalog, prefs, savePrefs, env = {}, out, cols, rows, depth = 24, now = () => Date.now(), createViews, player, apiKeyPresent = false, fetchImpl = null }) {
+  constructor({ store, catalog, prefs, savePrefs, env = {}, out, cols, rows, depth = 24, now = () => Date.now(), createViews, player, apiKeyPresent = false, fetchImpl = null, userAgent = 'worldmonitor-tui' }) {
     this.store = store;
     this.fetchImpl = fetchImpl;
+    this.userAgent = userAgent;
     this.detail = null;
     this.catalog = catalog;
     this.prefs = prefs;
@@ -194,6 +197,7 @@ export class App {
   animating() {
     if (!this.boot.done) return true;
     if (this.toastState) return true;
+    if (this.view.animating?.()) return true; // playback and streaming runs keep their clocks even with decorations off
     if (!this.anim) return false;
     if (this.now() - this.tabSwitchedAt < 300) return true;
     return true; // ticker and map sweep run continuously while animations are on

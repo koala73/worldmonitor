@@ -2,6 +2,8 @@
 // drive keys, mouse clicks and wheel events through the real dispatch paths.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { App } from '../src/tui/app.mjs';
@@ -35,6 +37,9 @@ function makeApp({ cols = 160, rows = 45, anim = true } = {}) {
     createViews,
     now: () => clock.t,
     player: { mpv: null, ytdlp: null, vo: 'tct' },
+    // Phenomena: no network, no local claude, and a scratch library.
+    env: { PATH: '', WM_PHENOMENA_DIR: join(tmpdir(), 'wm-tui-test-phenomena') },
+    fetchImpl: async () => ({ ok: false, status: 599, text: async () => '', headers: new Map() }),
   });
   // Skip the boot sequence for most tests.
   app.boot.done = true;
@@ -106,13 +111,13 @@ describe('App input', () => {
     app.handleEvent({ type: 'key', name: 'tab', shift: true });
     assert.equal(app.view.id, 'overview');
     app.handleEvent({ type: 'key', name: '9', ch: '9' });
-    assert.equal(app.view.id, 'climate');
+    assert.equal(app.view.id, 'cyber');
     app.handleEvent({ type: 'key', name: '0', ch: '0' });
-    assert.equal(app.view.id, 'predict');
-    assert.equal(saved[saved.length - 1].view, 'predict');
+    assert.equal(app.view.id, 'climate');
+    assert.equal(saved[saved.length - 1].view, 'climate');
     app.render();
     const tabRow = app.screen.toLines()[1];
-    const x = tabRow.indexOf('5:Markets');
+    const x = tabRow.indexOf('6:Markets');
     app.handleEvent({ type: 'mouse', kind: 'down', button: 0, x: x + 1, y: 1 });
     assert.equal(app.view.id, 'markets');
   });
