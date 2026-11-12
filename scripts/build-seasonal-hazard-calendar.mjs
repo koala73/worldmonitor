@@ -69,7 +69,7 @@ export function aggregateSeasonalCalendar(events, windows) {
   return sorted;
 }
 
-async function fetchPage(type, fromDate, toDate, page, fetchFn) {
+export async function fetchPage(type, fromDate, toDate, page, fetchFn, retryDelayMs = 2_000) {
   const url = new URL(GDACS_ARCHIVE_URL);
   url.search = new URLSearchParams({
     eventlist: type,
@@ -82,7 +82,7 @@ async function fetchPage(type, fromDate, toDate, page, fetchFn) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const response = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(60_000) });
     const text = await response.text();
-    if (response.status === 204 || text.trim() === '') return [];
+    if (response.status === 204 || (response.ok && text.trim() === '')) return [];
     if (response.ok) {
       try {
         const body = JSON.parse(text);
@@ -90,7 +90,7 @@ async function fetchPage(type, fromDate, toDate, page, fetchFn) {
       } catch { /* fall through to retry */ }
     }
     if (attempt === 3) throw new Error(`GDACS archive ${type} ${fromDate}..${toDate} page ${page}: HTTP ${response.status}`);
-    await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
   }
   return [];
 }

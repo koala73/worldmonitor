@@ -5,7 +5,7 @@ import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
-import { aggregateSeasonalCalendar, GDACS_HAZARDS } from '../scripts/build-seasonal-hazard-calendar.mjs';
+import { aggregateSeasonalCalendar, fetchPage, GDACS_HAZARDS } from '../scripts/build-seasonal-hazard-calendar.mjs';
 
 const WINDOWS = { TC: { fromYear: 2011, toYear: 2025 }, FL: { fromYear: 2019, toYear: 2025 } };
 const event = (type, eventId, fromDate, countries) => ({ type, eventId, fromDate, countries });
@@ -49,6 +49,28 @@ describe('aggregateSeasonalCalendar', () => {
 
   it('skips events with no usable start date', () => {
     assert.deepEqual(aggregateSeasonalCalendar([event('FL', 1, '', ['TH']), event('FL', 2, undefined, ['TH'])], WINDOWS), {});
+  });
+});
+
+describe('fetchPage', () => {
+  const reply = (status, body) => async () => new Response(body, { status });
+
+  it('reads an empty 204 or empty 200 as an empty page', async () => {
+    assert.deepEqual(await fetchPage('FL', '2019-01-01', '2019-12-31', 1, reply(204, null), 0), []);
+    assert.deepEqual(await fetchPage('FL', '2019-01-01', '2019-12-31', 1, reply(200, ''), 0), []);
+  });
+
+  it('retries an empty error response and then fails instead of returning an empty page', async () => {
+    let calls = 0;
+    const fetchFn = async () => { calls++; return new Response('', { status: 503 }); };
+    await assert.rejects(() => fetchPage('FL', '2019-01-01', '2019-12-31', 1, fetchFn, 0), /HTTP 503/);
+    assert.equal(calls, 3);
+  });
+
+  it('recovers when a retry succeeds', async () => {
+    let calls = 0;
+    const fetchFn = async () => (++calls < 2 ? new Response('', { status: 500 }) : new Response(JSON.stringify({ features: [{ properties: {} }] }), { status: 200 }));
+    assert.equal((await fetchPage('TC', '2019-01-01', '2019-12-31', 1, fetchFn, 0)).length, 1);
   });
 });
 
