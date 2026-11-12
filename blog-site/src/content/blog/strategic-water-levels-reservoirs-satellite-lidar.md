@@ -36,7 +36,8 @@ The level for that pass is the median of those heights, in metres above the EGM2
 Two reservoirs that ATL13 covers poorly, Darbandikhan in Iraq and Gibe III in Ethiopia, use the ATL06 surface height product instead.
 
 Quality rules drop a pass that has fewer than 5 segments, a median absolute deviation above 0.25 m, or beams that disagree by more than 0.3 m.
-A pass that sits more than 1 m plus 0.05 m per day of gap outside the range of its two neighbours is dropped as mislocated.
+By default, a pass that sits more than 1 m plus 0.05 m per day of gap outside the range of its two neighbours is dropped as mislocated.
+Gibe III, whose level can move more than half a metre a day in the Omo flood, allows 0.3 m per day of gap instead.
 
 We checked the method against the US Bureau of Reclamation's daily gauge at Lake Mead.
 Over 156 matched overpasses from 2018 to 2026, across a gauge range of 17.8 m, the satellite levels agreed with the gauge to a root-mean-square error of 0.052 m after removing a fixed 0.046 m datum offset.
