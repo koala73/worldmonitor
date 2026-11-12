@@ -1624,7 +1624,7 @@
       "estimateWithin": "Environ {{count}} personnes dans un rayon de {{km}} km",
       "method": "Les estimations reposent sur la densité moyenne de population du pays.",
       "empty": "Aucun lieu d’événement ne répond aux critères",
-      "infoTooltip": "Les événements disposant de données de densité de population du pays sont affichés. Les lieux issus de données anciennes sans information de précision sont signalés en attente de mise à jour. Les zones estimées peuvent se chevaucher. Les troubles nécessitent une localisation précise ; les événements UCDP marqués comme imprécis sont exclus. Un lieu signalé par deux sources (troubles et UCDP) apparaît sur deux lignes.",
+      "infoTooltip": "Les événements disposant de données de densité de population du pays sont affichés. Les lieux des événements UCDP sans information de précision sont signalés en attente de mise à jour. Les zones estimées peuvent se chevaucher. Les troubles nécessitent une localisation précise ; les événements UCDP marqués comme imprécis sont exclus. Un lieu signalé par deux sources (troubles et UCDP) apparaît sur deux lignes.",
       "eventCount_one": "{{count}} événement",
       "eventCount_many": "{{count}} événements",
       "eventCount_other": "{{count}} événements",
