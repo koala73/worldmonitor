@@ -1463,6 +1463,10 @@ export class PanelLayoutManager implements AppModule {
       }
     });
 
+    // Mount the chip nav before createPanels() yields: a nav added after that await paints one
+    // frame with #panelsGrid 49px too high, then shifts it down.
+    if (this.ctx.isMobile) this.setupMobilePanelNav();
+
     await this.createPanels();
 
     this.initPanelTabs();
@@ -1470,7 +1474,7 @@ export class PanelLayoutManager implements AppModule {
 
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
-      this.setupMobilePanelNav();
+      this.mobilePanelNav?.refresh();
     }
   }
 
