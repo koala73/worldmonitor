@@ -435,7 +435,7 @@ describe('a run that cannot complete its window keeps the last good one', () => 
   describe('seed-ucdp-events.mjs writer', () => {
     // Runs the real script with fetch replaced (no network): annual pages
     // answer one row, every candidate release 400s, so discovery returns null.
-    function runStandalone(existing) {
+    function runStandalone(existing, exhaustBudget = false) {
       const dir = mkdtempSync(join(tmpdir(), 'ucdp-writer-'));
       const preload = join(dir, 'preload.mjs');
       const outPath = join(dir, 'calls.json');
@@ -444,10 +444,13 @@ import { writeFileSync } from 'node:fs';
 const existing = ${JSON.stringify(existing)};
 const annualRow = ${JSON.stringify(annualRow)};
 const calls = { sets: [], expires: [] };
+let clock = ${NOW};
+if (${exhaustBudget}) Date.now = () => clock;
 process.on('exit', () => writeFileSync(${JSON.stringify(outPath)}, JSON.stringify(calls)));
 globalThis.fetch = async (url, init) => {
   const u = String(url);
   if (u.includes('/api/gedevents/')) {
+    if (${exhaustBudget}) { clock += 250_000; throw new Error('upstream timeout'); }
     const version = u.split('/api/gedevents/')[1].split('?')[0];
     if (version.includes('.0.')) return new Response('{}', { status: 400 });
     return Response.json({ TotalPages: 1, Result: [annualRow] });
@@ -483,6 +486,13 @@ globalThis.fetch = async (url, init) => {
       assert.ok(calls.sets.includes(UCDP_REDIS_KEY));
       assert.ok(calls.sets.includes('seed-meta:conflict:ucdp-events'));
       assert.ok(!calls.expires.includes(UCDP_REDIS_KEY));
+    });
+
+    it('uses the reserved budget to preserve last-good data after discovery exhausts the deadline', () => {
+      const calls = runStandalone(recentGood, true);
+      assert.deepEqual(calls.sets, []);
+      assert.ok(calls.expires.includes(UCDP_REDIS_KEY));
+      assert.ok(calls.expires.includes('seed-meta:conflict:ucdp-events'));
     });
   });
 });
